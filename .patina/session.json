@@ -1,0 +1,28 @@
+{
+  "id": "55dfadef-c4f5-4bf9-8fbd-3f113ddf985c",
+  "patterns": [
+    {
+      "pattern_type": "topic",
+      "name": "rails-based-design",
+      "content": null,
+      "added_at": "2025-07-17T02:00:22.842229+00:00",
+      "committed": true
+    },
+    {
+      "pattern_type": "principle",
+      "name": "capture-raw-distill-later",
+      "content": null,
+      "added_at": "2025-07-17T02:00:40.223831+00:00",
+      "committed": true
+    },
+    {
+      "pattern_type": "decision",
+      "name": "human-notes-priority-context",
+      "content": null,
+      "added_at": "2025-07-17T02:00:48.907423+00:00",
+      "committed": true
+    }
+  ],
+  "created_at": "2025-07-17T02:00:22.842062+00:00",
+  "updated_at": "2025-07-17T02:00:58.109661+00:00"
+}

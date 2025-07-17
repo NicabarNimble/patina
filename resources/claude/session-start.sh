@@ -4,6 +4,7 @@
 SESSION_NAME="${1:-$(date +%Y%m%d-%H%M%S)}"
 SESSION_FILE=".claude/context/sessions/${SESSION_NAME}.md"
 LAST_SESSION_FILE=".claude/context/last-session.md"
+LAST_UPDATE_FILE=".claude/context/.last-update"
 
 mkdir -p .claude/context/sessions
 
@@ -13,7 +14,7 @@ CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "not in git repo"
 CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "no commits")
 UNCOMMITTED=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
 
-# Create session file with git context
+# Create session file with minimal rails
 cat > "$SESSION_FILE" << EOF
 # Session: ${SESSION_NAME}
 **Started**: $(date)
@@ -22,7 +23,7 @@ cat > "$SESSION_FILE" << EOF
 **Uncommitted Changes**: ${UNCOMMITTED} files
 
 ## Goals
-- [ ] ${2:-Add session goals here}
+- [ ] ${2:-[Session goals]}
 
 ## Context
 EOF
@@ -38,7 +39,7 @@ elif [ -n "$PREVIOUS_SESSION" ]; then
     echo "" >> "$SESSION_FILE"
 fi
 
-# Add current git status summary
+# Add current git status summary if uncommitted changes
 if [ "$UNCOMMITTED" -gt 0 ]; then
     echo "### Current Working State" >> "$SESSION_FILE"
     echo '```' >> "$SESSION_FILE"
@@ -47,8 +48,12 @@ if [ "$UNCOMMITTED" -gt 0 ]; then
     echo "" >> "$SESSION_FILE"
 fi
 
-echo "## Updates" >> "$SESSION_FILE"
+echo "## Activity Log" >> "$SESSION_FILE"
+echo "<!-- Claude fills this naturally during work -->" >> "$SESSION_FILE"
 echo "" >> "$SESSION_FILE"
+
+# Initialize last update time
+date +"%H:%M" > "$LAST_UPDATE_FILE"
 
 echo "Session started: $SESSION_FILE"
 echo "Branch: $CURRENT_BRANCH | Uncommitted: $UNCOMMITTED files"

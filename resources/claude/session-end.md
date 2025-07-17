@@ -1,24 +1,39 @@
-End the current Patina development session and distill insights:
+End the current Patina session with comprehensive distillation:
 
 1. Run the session end script:
    - Execute: `!.claude/bin/session-end.sh`
-   - This archives the raw session and creates a distilled template
+   - This will first run a final update, then add structure
 
-2. Read the archived raw session file from `.claude/context/sessions/archive/`
+2. Fill in ALL required sections in the session file:
+   
+   #### What We Did
+   - Summarize key activities from the activity log
+   - Include major files examined and changes made
+   
+   #### Key Insights  
+   - Extract important discoveries from the session
+   - Prioritize insights from user Notes
+   - Include architectural patterns discovered
+   
+   #### Patterns Identified
+   - List reusable patterns worth adding to brain
+   - Be specific about pattern names and types
+   - Example: "Rails-based session management (architecture pattern)"
+   
+   #### Next Session Should
+   - Provide concrete next steps
+   - Reference open questions or incomplete work
+   - Guide the continuation of work
 
-3. Read the distilled session file and fill in the sections:
-   - **Marks of Interest**: List all the interest marks from the session chronologically
-   - **Patterns Noticed**: Identify any patterns that emerge from looking at the marks together
-   - **Worth Remembering**: Extract 2-3 key insights that would be valuable in future sessions
+3. Verify your distillation:
+   - [ ] Check all user Notes were addressed
+   - [ ] Confirm activity log was summarized
+   - [ ] Verify patterns are actionable
+   - [ ] Ensure next steps are clear
 
-4. Keep the distillation focused:
-   - Only work from the actual marks in the session
-   - Don't add new analysis or interpretations
-   - Keep insights concrete and reusable
+4. Complete the process:
+   - Say: "Session ended and distilled"
+   - If patterns identified: "Found patterns: [X, Y]. Run `patina add <type> 'pattern'` to capture"
+   - Archive happens automatically
 
-5. Final output:
-   - Note how many marks were captured
-   - Note if any clear patterns emerged
-   - Confirm session archived and distilled
-
-Note: The goal is to transform your interest marks into distilled wisdom for future reference.
+IMPORTANT: Do not skip sections. Each serves a purpose for continuity and knowledge evolution.

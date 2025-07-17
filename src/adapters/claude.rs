@@ -151,9 +151,10 @@ impl LLMAdapter for ClaudeAdapter {
     
     fn get_custom_commands(&self) -> Vec<(&'static str, &'static str)> {
         vec![
-            ("/project:session-start [name]", "Start a new development session"),
-            ("/project:session-update [notes]", "Update current session with progress"),
-            ("/project:session-end [summary]", "End session and capture learnings"),
+            ("/session-start [name]", "Start a new development session"),
+            ("/session-update", "Update session with rich context"),
+            ("/session-note [insight]", "Add human insight to session"),
+            ("/session-end", "End session with comprehensive distillation"),
         ]
     }
     
@@ -322,6 +323,15 @@ impl ClaudeAdapter {
         
         let session_update_md = include_str!("../../resources/claude/session-update.md");
         fs::write(commands_path.join("session-update.md"), session_update_md)?;
+        
+        // Session note script and command
+        let session_note_sh = include_str!("../../resources/claude/session-note.sh");
+        let path = commands_path.join("session-note");
+        fs::write(&path, session_note_sh)?;
+        self.make_executable(&path)?;
+        
+        let session_note_md = include_str!("../../resources/claude/session-note.md");
+        fs::write(commands_path.join("session-note.md"), session_note_md)?;
         
         // Session end script and command
         let session_end_sh = include_str!("../../resources/claude/session-end.sh");

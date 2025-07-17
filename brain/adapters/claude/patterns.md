@@ -16,9 +16,10 @@ Claude-specific patterns for optimal interaction with Patina projects.
 ```
 
 ### 2. Session Management
-- Use `/project:session-start` to begin work
-- Update with `/project:session-update` for progress tracking
-- End with `/project:session-end` for summary
+- Use `/session-start` to begin work
+- Update with `/session-update` for progress tracking
+- Add insights with `/session-note` for human context
+- End with `/session-end` for summary
 
 ### 3. Code Generation Rules
 - Generate Rust code directly
