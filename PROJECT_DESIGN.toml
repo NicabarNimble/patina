@@ -1,0 +1,109 @@
+[project]
+name = "patina"
+type = "tool"
+purpose = "Context orchestration for AI-assisted development"
+
+[why]
+problem = "Constantly re-teaching AI assistants about project context, patterns, and constraints"
+solution = "Persistent, composable context system that accumulates wisdom over time"
+users = "Developers working with AI assistants on complex projects"
+value = "Eliminate context friction, maintain consistency, compound knowledge"
+
+[how]
+patterns = [
+    "Unix philosophy: one tool, one job",
+    "Composable context hierarchy",
+    "LLM-agnostic design",
+    "Environment-agnostic execution"
+]
+architecture = "Core + Brain + Adapters (Environment/LLM)"
+core_abstractions = [
+    "Context orchestration",
+    "Pattern storage/retrieval", 
+    "Knowledge evolution",
+    "Adapter traits"
+]
+
+[what]
+core_features = [
+    "Hierarchical context system (Core + Topics + Projects)",
+    "Pattern accumulation and evolution",
+    "Multiple environment providers (Docker, Dagger, Nix)",
+    "Multiple LLM adapters (Claude, OpenAI, Local)",
+    "PROJECT_DESIGN.toml as source of truth"
+]
+future_features = [
+    "SQLite brain for persistent storage",
+    "Pattern success tracking",
+    "Automatic context optimization",
+    "Cross-project pattern discovery"
+]
+non_goals = [
+    "Being an IDE or editor",
+    "Managing source code directly",
+    "Replacing human judgment"
+]
+
+[technical]
+language = "rust"
+min_rust_version = "1.75"
+dependencies = [
+    "tokio - async runtime",
+    "serde - serialization", 
+    "toml - configuration",
+    "clap - CLI parsing",
+    "anyhow - error handling",
+    "handlebars - template rendering",
+    "which - tool detection",
+    "chrono - time handling",
+    "uuid - unique identifiers",
+    "dirs - system directories"
+]
+constraints = [
+    "Pure Rust implementation",
+    "Plugin architecture for adapters",
+    "Zero network calls without consent",
+    "Respect system boundaries",
+    "Templates for non-Rust code generation",
+    "LLMs write Rust, orchestrate anything"
+]
+deployment = "Single binary distributed via cargo install"
+
+[development]
+[development.environment]
+required_tools = ["rust", "cargo", "git"]
+recommended_tools = ["docker", "go", "dagger", "claude"]
+setup_instructions = """
+1. Install Rust via rustup
+2. Clone repository
+3. cargo build --release
+4. Optional: Install Go and Dagger for enhanced builds
+"""
+
+[development.commands]
+test = "cargo test --workspace"
+lint = "cargo clippy --workspace -- -D warnings"
+format = "cargo fmt --all"
+build = "cargo build --release"
+run = "cargo run --"
+check = "cargo check --workspace"
+
+[development.conventions]
+code_style = """
+- Use rustfmt defaults
+- Prefer explicit over implicit
+- Document public APIs
+- Error messages guide users
+"""
+architecture = """
+- One crate per major component
+- Traits define boundaries
+- Adapters are optional features
+- Documentation drives development
+"""
+patterns = """
+- Templates for non-Rust code
+- Binaries as guardrails
+- Knowledge over configuration
+- Escape hatches everywhere
+"""

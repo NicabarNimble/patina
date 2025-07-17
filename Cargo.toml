@@ -1,0 +1,39 @@
+[package]
+name = "patina"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# CLI framework
+clap = { version = "4.5", features = ["derive"] }
+
+# Error handling
+anyhow = "1.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Filesystem
+dirs = "5.0"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID generation
+uuid = { version = "1.10", features = ["v4", "serde"] }
+
+# Environment detection
+which = "7.0"
+
+# Template rendering
+handlebars = "5.1"
+
+[[bin]]
+name = "patina"
+path = "src/main.rs"
+
+[lib]
+name = "patina"
+path = "src/lib.rs"

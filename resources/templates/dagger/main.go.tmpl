@@ -1,0 +1,69 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+
+	"dagger.io/dagger"
+)
+
+func main() {
+	ctx := context.Background()
+
+	// Initialize Dagger client
+	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stderr))
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+
+	// Create Rust container
+	container := client.Container().
+		From("rust:1.75").
+		WithDirectory("/app", client.Host().Directory("."), dagger.ContainerWithDirectoryOpts{
+			Exclude: []string{
+				"target/",
+				".git/",
+				"pipelines/",
+			},
+		}).
+		WithWorkdir("/app").
+		WithMountedCache("/usr/local/cargo/registry", client.CacheVolume("cargo-registry")).
+		WithMountedCache("/app/target", client.CacheVolume("cargo-target"))
+
+	// Run tests
+	fmt.Println("Running tests...")
+	testContainer := container.
+		WithExec([]string{"cargo", "test"})
+	
+	if _, err := testContainer.Stdout(ctx); err != nil {
+		fmt.Printf("Tests failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Build release
+	fmt.Println("Building release...")
+	buildContainer := container.
+		WithExec([]string{"cargo", "build", "--release"})
+	
+	if _, err := buildContainer.Stdout(ctx); err != nil {
+		fmt.Printf("Build failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Export as Docker image
+	fmt.Println("Creating Docker image...")
+	finalContainer := client.Container().
+		From("debian:bookworm-slim").
+		WithFile("/usr/local/bin/{{.name}}", buildContainer.File("/app/target/release/{{.name}}")).
+		WithEntrypoint([]string{"/usr/local/bin/{{.name}}"})
+
+	// Export to local Docker
+	_, err = finalContainer.Export(ctx, "{{.name}}:latest")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Successfully built {{.name}}:latest")
+}
