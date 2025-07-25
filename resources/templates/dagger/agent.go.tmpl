@@ -1,0 +1,190 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"dagger.io/dagger"
+)
+
+// AgentWorkspace represents an isolated environment for AI agent work
+type AgentWorkspace struct {
+	client    *dagger.Client
+	container *dagger.Container
+	branch    string
+	sessionID string
+}
+
+func main() {
+	ctx := context.Background()
+
+	// Initialize Dagger client
+	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stderr))
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+
+	// Get command from args
+	if len(os.Args) < 2 {
+		runBuild(ctx, client)
+		return
+	}
+
+	switch os.Args[1] {
+	case "agent":
+		runAgentWorkspace(ctx, client)
+	case "test":
+		runTests(ctx, client)
+	default:
+		runBuild(ctx, client)
+	}
+}
+
+// runAgentWorkspace creates an isolated container for agent work
+func runAgentWorkspace(ctx context.Context, client *dagger.Client) {
+	sessionID := os.Getenv("PATINA_SESSION_ID")
+	if sessionID == "" {
+		sessionID = "agent-default"
+	}
+
+	fmt.Printf("🤖 Creating agent workspace for session: %s\n", sessionID)
+
+	// Create base container with development tools
+	container := client.Container().
+		From("rust:1.75").
+		WithDirectory("/workspace", client.Host().Directory("."), dagger.ContainerWithDirectoryOpts{
+			Exclude: []string{
+				"target/",
+				".git/",
+				"pipelines/",
+				".patina/session.json", // Exclude current session to avoid conflicts
+			},
+		}).
+		WithWorkdir("/workspace").
+		WithMountedCache("/usr/local/cargo/registry", client.CacheVolume("cargo-registry")).
+		WithMountedCache("/workspace/target", client.CacheVolume(fmt.Sprintf("cargo-target-%s", sessionID))).
+		WithEnvVariable("PATINA_AGENT_MODE", "true").
+		WithEnvVariable("PATINA_SESSION_ID", sessionID)
+
+	// Install additional tools for agent development
+	container = container.
+		WithExec([]string{"apt-get", "update"}).
+		WithExec([]string{"apt-get", "install", "-y", "git", "curl", "vim"})
+
+	// Create a git branch for this agent session
+	container = container.
+		WithExec([]string{"git", "config", "--global", "user.email", "agent@patina.dev"}).
+		WithExec([]string{"git", "config", "--global", "user.name", "Patina Agent"}).
+		WithExec([]string{"git", "checkout", "-b", fmt.Sprintf("agent/%s", sessionID)})
+
+	// Export the container for interactive use
+	_, err := container.
+		WithExec([]string{"echo", "Agent workspace ready"}).
+		Stdout(ctx)
+	
+	if err != nil {
+		fmt.Printf("Failed to create agent workspace: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("✅ Agent workspace created on branch: agent/%s\n", sessionID)
+	fmt.Println("   Container is ready for agent operations")
+}
+
+// runTests runs the test suite in an isolated container
+func runTests(ctx context.Context, client *dagger.Client) {
+	fmt.Println("🧪 Running tests in isolated environment...")
+
+	container := client.Container().
+		From("rust:1.75").
+		WithDirectory("/app", client.Host().Directory("."), dagger.ContainerWithDirectoryOpts{
+			Exclude: []string{
+				"target/",
+				".git/",
+				"pipelines/",
+			},
+		}).
+		WithWorkdir("/app").
+		WithMountedCache("/usr/local/cargo/registry", client.CacheVolume("cargo-registry")).
+		WithMountedCache("/app/target", client.CacheVolume("cargo-target-test"))
+
+	// Run tests with output
+	testOutput, err := container.
+		WithExec([]string{"cargo", "test", "--workspace"}).
+		Stdout(ctx)
+	
+	if err != nil {
+		fmt.Printf("❌ Tests failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(testOutput)
+	fmt.Println("✅ All tests passed")
+}
+
+// runBuild performs the standard build pipeline
+func runBuild(ctx context.Context, client *dagger.Client) {
+	fmt.Println("🔨 Building {{.name}} with Dagger...")
+
+	// Create Rust container
+	container := client.Container().
+		From("rust:1.75").
+		WithDirectory("/app", client.Host().Directory("."), dagger.ContainerWithDirectoryOpts{
+			Exclude: []string{
+				"target/",
+				".git/",
+				"pipelines/",
+			},
+		}).
+		WithWorkdir("/app").
+		WithMountedCache("/usr/local/cargo/registry", client.CacheVolume("cargo-registry")).
+		WithMountedCache("/app/target", client.CacheVolume("cargo-target"))
+
+	// Run clippy for linting
+	fmt.Println("📋 Running clippy...")
+	lintContainer := container.
+		WithExec([]string{"cargo", "clippy", "--workspace", "--", "-D", "warnings"})
+	
+	if _, err := lintContainer.Stdout(ctx); err != nil {
+		fmt.Printf("⚠️  Linting warnings found: %v\n", err)
+		// Continue anyway for now
+	}
+
+	// Run tests
+	fmt.Println("🧪 Running tests...")
+	testContainer := container.
+		WithExec([]string{"cargo", "test", "--workspace"})
+	
+	if _, err := testContainer.Stdout(ctx); err != nil {
+		fmt.Printf("❌ Tests failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Build release
+	fmt.Println("📦 Building release...")
+	buildContainer := container.
+		WithExec([]string{"cargo", "build", "--release"})
+	
+	if _, err := buildContainer.Stdout(ctx); err != nil {
+		fmt.Printf("❌ Build failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Export as Docker image
+	fmt.Println("🐳 Creating Docker image...")
+	finalContainer := client.Container().
+		From("debian:bookworm-slim").
+		WithFile("/usr/local/bin/{{.name}}", buildContainer.File("/app/target/release/{{.name}}")).
+		WithEntrypoint([]string{"/usr/local/bin/{{.name}}"})
+
+	// Export to local Docker
+	_, err := finalContainer.Export(ctx, "{{.name}}:latest")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("✅ Successfully built {{.name}}:latest")
+}

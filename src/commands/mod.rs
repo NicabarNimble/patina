@@ -4,3 +4,5 @@ pub mod commit;
 pub mod push;
 pub mod update;
 pub mod build;
+pub mod agent;
+pub mod doctor;

@@ -1,10 +1,38 @@
 use super::LLMAdapter;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
 use toml::Value;
 use crate::brain::{Pattern, PatternType};
 use crate::environment::Environment;
+use serde::{Serialize, Deserialize};
+use std::collections::HashMap;
+
+/// Version of the Claude adapter - increment when scripts/commands change
+const CLAUDE_ADAPTER_VERSION: &str = "0.2.0";
+
+/// Changelog for adapter versions
+const VERSION_CHANGES: &[(&str, &[&str])] = &[
+    ("0.2.0", &[
+        "Fixed: Scripts now properly stored in .claude/bin/ directory",
+        "Added: Adapter versioning and update mechanism",
+        "Changed: Update command now updates adapter files instead of CLAUDE.md",
+        "Improved: Session commands now use correct script paths",
+    ]),
+    ("0.1.0", &[
+        "Initial Claude adapter implementation",
+        "Session management commands",
+        "CLAUDE.md context generation",
+    ]),
+];
+
+#[derive(Serialize, Deserialize)]
+struct AdapterManifest {
+    adapter: String,
+    version: String,
+    installed_at: String,
+    files: HashMap<String, String>,
+}
 
 pub struct ClaudeAdapter;
 
@@ -26,16 +54,25 @@ impl LLMAdapter for ClaudeAdapter {
         let mcp_path = claude_path.join("mcp");
         fs::create_dir_all(&mcp_path)?;
         
-        // Create commands directory
+        // Create commands directory for command definitions
         let commands_path = claude_path.join("commands");
         fs::create_dir_all(&commands_path)?;
-        self.create_session_commands(&commands_path)?;
+        
+        // Create bin directory for scripts
+        let bin_path = claude_path.join("bin");
+        fs::create_dir_all(&bin_path)?;
+        
+        // Create session commands and scripts
+        self.create_session_commands(&commands_path, &bin_path)?;
         
         // Create context/sessions directory
         let context_path = claude_path.join("context");
         fs::create_dir_all(&context_path)?;
         let sessions_path = context_path.join("sessions");
         fs::create_dir_all(&sessions_path)?;
+        
+        // Create adapter manifest
+        self.create_adapter_manifest(&claude_path)?;
         
         Ok(())
     }
@@ -87,7 +124,7 @@ impl LLMAdapter for ClaudeAdapter {
         project_name: &str,
         design: &Value,
         patterns: &[Pattern],
-        environment: &Environment,
+        _environment: &Environment,
     ) -> Result<()> {
         let mut content = String::new();
         
@@ -105,7 +142,7 @@ impl LLMAdapter for ClaudeAdapter {
         content.push_str("6. [Working Patterns](#working-patterns)\n\n");
         
         // Environment
-        content.push_str(&environment.to_markdown());
+        content.push_str(&_environment.to_markdown());
         content.push_str("\n");
         
         // Project Design
@@ -128,11 +165,22 @@ impl LLMAdapter for ClaudeAdapter {
         
         // Custom Commands
         content.push_str("## Custom Commands\n\n");
-        content.push_str("The following commands are available for Claude:\n\n");
+        content.push_str("Patina uses a two-phase session workflow: **Capture** (during work) → **Distill** (at session end)\n\n");
+        content.push_str("### Available Commands\n\n");
         for (cmd, desc) in self.get_custom_commands() {
             content.push_str(&format!("- `{}` - {}\n", cmd, desc));
         }
-        content.push_str("\nThese commands integrate with Patina's brain to capture development knowledge.\n\n");
+        content.push_str("\n### Session Workflow\n\n");
+        content.push_str("1. **Start**: `/session-start \"feature-name\"` - Creates timestamped session file (e.g., `20250122-1430-feature-name.md`)\n");
+        content.push_str("2. **Work**: Make changes, explore code, have discussions\n");
+        content.push_str("3. **Update**: `/session-update` - Marks time spans for Claude to fill with context\n");
+        content.push_str("4. **Note**: `/session-note \"key insight\"` - Captures human insights (high-signal for distillation)\n");
+        content.push_str("5. **End**: `/session-end` - Triggers distillation into patterns and next steps\n\n");
+        content.push_str("### Key Concepts\n\n");
+        content.push_str("- **Time-span tracking**: Updates show \"covering since 14:15\" to prevent context gaps\n");
+        content.push_str("- **Git awareness**: Sessions capture branch, commits, and changes\n");
+        content.push_str("- **Human priority**: Notes are treated as high-value insights\n");
+        content.push_str("- **Pattern extraction**: Session-end prompts for reusable patterns\n\n");
         
         // Working Patterns
         content.push_str(&self.generate_working_patterns_section());
@@ -160,6 +208,45 @@ impl LLMAdapter for ClaudeAdapter {
     
     fn get_context_file_path(&self, project_path: &Path) -> PathBuf {
         project_path.join(".claude").join("CLAUDE.md")
+    }
+    
+    fn check_for_updates(&self, project_path: &Path) -> Result<Option<(String, String)>> {
+        let manifest_path = project_path.join(".claude").join("adapter-manifest.json");
+        
+        if !manifest_path.exists() {
+            // No manifest means very old version or manual setup
+            return Ok(Some(("unknown".to_string(), CLAUDE_ADAPTER_VERSION.to_string())));
+        }
+        
+        let manifest_content = fs::read_to_string(&manifest_path)?;
+        let manifest: AdapterManifest = serde_json::from_str(&manifest_content)?;
+        
+        if manifest.version != CLAUDE_ADAPTER_VERSION {
+            Ok(Some((manifest.version, CLAUDE_ADAPTER_VERSION.to_string())))
+        } else {
+            Ok(None)
+        }
+    }
+    
+    fn update_adapter_files(&self, project_path: &Path) -> Result<()> {
+        println!("  Updating Claude adapter files to version {}...", CLAUDE_ADAPTER_VERSION);
+        
+        let claude_path = project_path.join(".claude");
+        let commands_path = claude_path.join("commands");
+        let bin_path = claude_path.join("bin");
+        
+        // Ensure directories exist
+        fs::create_dir_all(&commands_path)?;
+        fs::create_dir_all(&bin_path)?;
+        
+        // Update all command and script files
+        self.create_session_commands(&commands_path, &bin_path)?;
+        
+        // Update manifest
+        self.create_adapter_manifest(&claude_path)?;
+        
+        println!("  ✓ Claude adapter updated successfully");
+        Ok(())
     }
 }
 
@@ -305,39 +392,39 @@ impl ClaudeAdapter {
         Ok(content)
     }
     
-    fn create_session_commands(&self, commands_path: &Path) -> Result<()> {
+    fn create_session_commands(&self, commands_path: &Path, bin_path: &Path) -> Result<()> {
         // Session start script and command
         let session_start_sh = include_str!("../../resources/claude/session-start.sh");
-        let path = commands_path.join("session-start");
-        fs::write(&path, session_start_sh)?;
-        self.make_executable(&path)?;
+        let script_path = bin_path.join("session-start.sh");
+        fs::write(&script_path, session_start_sh)?;
+        self.make_executable(&script_path)?;
         
         let session_start_md = include_str!("../../resources/claude/session-start.md");
         fs::write(commands_path.join("session-start.md"), session_start_md)?;
         
         // Session update script and command
         let session_update_sh = include_str!("../../resources/claude/session-update.sh");
-        let path = commands_path.join("session-update");
-        fs::write(&path, session_update_sh)?;
-        self.make_executable(&path)?;
+        let script_path = bin_path.join("session-update.sh");
+        fs::write(&script_path, session_update_sh)?;
+        self.make_executable(&script_path)?;
         
         let session_update_md = include_str!("../../resources/claude/session-update.md");
         fs::write(commands_path.join("session-update.md"), session_update_md)?;
         
         // Session note script and command
         let session_note_sh = include_str!("../../resources/claude/session-note.sh");
-        let path = commands_path.join("session-note");
-        fs::write(&path, session_note_sh)?;
-        self.make_executable(&path)?;
+        let script_path = bin_path.join("session-note.sh");
+        fs::write(&script_path, session_note_sh)?;
+        self.make_executable(&script_path)?;
         
         let session_note_md = include_str!("../../resources/claude/session-note.md");
         fs::write(commands_path.join("session-note.md"), session_note_md)?;
         
         // Session end script and command
         let session_end_sh = include_str!("../../resources/claude/session-end.sh");
-        let path = commands_path.join("session-end");
-        fs::write(&path, session_end_sh)?;
-        self.make_executable(&path)?;
+        let script_path = bin_path.join("session-end.sh");
+        fs::write(&script_path, session_end_sh)?;
+        self.make_executable(&script_path)?;
         
         let session_end_md = include_str!("../../resources/claude/session-end.md");
         fs::write(commands_path.join("session-end.md"), session_end_md)?;
@@ -544,4 +631,50 @@ impl ClaudeAdapter {
         
         content
     }
+    
+    fn create_adapter_manifest(&self, claude_path: &Path) -> Result<()> {
+        let mut files = HashMap::new();
+        
+        // Calculate checksums for all adapter files
+        files.insert("commands/session-start.md".to_string(), 
+            self.calculate_checksum(include_str!("../../resources/claude/session-start.md")));
+        files.insert("commands/session-end.md".to_string(),
+            self.calculate_checksum(include_str!("../../resources/claude/session-end.md")));
+        files.insert("commands/session-update.md".to_string(),
+            self.calculate_checksum(include_str!("../../resources/claude/session-update.md")));
+        files.insert("commands/session-note.md".to_string(),
+            self.calculate_checksum(include_str!("../../resources/claude/session-note.md")));
+        
+        files.insert("bin/session-start.sh".to_string(),
+            self.calculate_checksum(include_str!("../../resources/claude/session-start.sh")));
+        files.insert("bin/session-end.sh".to_string(),
+            self.calculate_checksum(include_str!("../../resources/claude/session-end.sh")));
+        files.insert("bin/session-update.sh".to_string(),
+            self.calculate_checksum(include_str!("../../resources/claude/session-update.sh")));
+        files.insert("bin/session-note.sh".to_string(),
+            self.calculate_checksum(include_str!("../../resources/claude/session-note.sh")));
+        
+        let manifest = AdapterManifest {
+            adapter: "claude".to_string(),
+            version: CLAUDE_ADAPTER_VERSION.to_string(),
+            installed_at: chrono::Utc::now().to_rfc3339(),
+            files,
+        };
+        
+        let manifest_path = claude_path.join("adapter-manifest.json");
+        let manifest_json = serde_json::to_string_pretty(&manifest)?;
+        fs::write(manifest_path, manifest_json)?;
+        
+        Ok(())
+    }
+    
+    fn calculate_checksum(&self, content: &str) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        content.hash(&mut hasher);
+        format!("{:x}", hasher.finish())
+    }
+    
 }

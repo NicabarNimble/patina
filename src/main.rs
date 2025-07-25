@@ -50,11 +50,49 @@ enum Commands {
     /// Generate context for LLM
     Push,
     
-    /// Update CLAUDE.md with latest context
-    Update,
+    /// Check for and install adapter updates
+    Update {
+        /// Only check for updates, don't install
+        #[arg(short, long)]
+        check: bool,
+        
+        /// Automatically approve updates (non-interactive)
+        #[arg(short, long, conflicts_with = "no")]
+        yes: bool,
+        
+        /// Automatically decline updates (non-interactive)
+        #[arg(short, long, conflicts_with = "yes")]
+        no: bool,
+        
+        /// Output results as JSON
+        #[arg(short, long)]
+        json: bool,
+    },
     
     /// Build project with Docker
     Build,
+    
+    /// Run agent workflows with Dagger
+    Agent {
+        /// Subcommand (workspace, test, shell)
+        #[arg(value_name = "COMMAND")]
+        command: Option<String>,
+    },
+    
+    /// Check project health and environment
+    Doctor {
+        /// Only check, don't fix anything
+        #[arg(short, long)]
+        check: bool,
+        
+        /// Automatically fix issues (non-interactive)
+        #[arg(short, long, conflicts_with = "check")]
+        fix: bool,
+        
+        /// Output results as JSON
+        #[arg(short, long)]
+        json: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -73,11 +111,23 @@ fn main() -> Result<()> {
         Commands::Push => {
             commands::push::execute()?;
         }
-        Commands::Update => {
-            commands::update::execute()?;
+        Commands::Update { check, yes, no, json } => {
+            let exit_code = commands::update::execute(check, yes, no, json)?;
+            if exit_code != 0 {
+                std::process::exit(exit_code);
+            }
         }
         Commands::Build => {
             commands::build::execute()?;
+        }
+        Commands::Agent { command } => {
+            commands::agent::execute(command)?;
+        }
+        Commands::Doctor { check, fix, json } => {
+            let exit_code = commands::doctor::execute(check, fix, json)?;
+            if exit_code != 0 {
+                std::process::exit(exit_code);
+            }
         }
     }
     

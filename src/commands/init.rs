@@ -227,14 +227,87 @@ fn create_dagger_files(project_path: &Path, name: &str, design: &Value) -> Resul
     let go_mod_content = handlebars.render("go.mod", &data)?;
     fs::write(pipelines_dir.join("go.mod"), go_mod_content)?;
     
-    // Load and render main.go template
-    let main_go_template = include_str!("../../resources/templates/dagger/main.go.tmpl");
+    // Determine which template to use based on project type or features
+    let use_agent_template = design.get("project")
+        .and_then(|p| p.get("features"))
+        .and_then(|f| f.as_array())
+        .map(|features| features.iter().any(|f| f.as_str() == Some("agent-workflows")))
+        .unwrap_or(false);
+    
+    // Load and render appropriate main.go template
+    let main_go_template = if use_agent_template {
+        include_str!("../../resources/templates/dagger/agent.go.tmpl")
+    } else {
+        include_str!("../../resources/templates/dagger/main.go.tmpl")
+    };
     handlebars.register_template_string("main.go", main_go_template)?;
     let main_go_content = handlebars.render("main.go", &data)?;
     fs::write(pipelines_dir.join("main.go"), main_go_content)?;
     
     // Create a simple README for the pipelines
-    let readme_content = format!(r#"# {} Dagger Pipelines
+    let readme_content = if use_agent_template {
+        format!(r#"# {} Dagger Pipelines with Agent Workflows
+
+This directory contains Dagger pipelines for building, testing, and agent development.
+
+## Usage
+
+### Standard Build
+```bash
+# Run the build pipeline
+go run .
+
+# Or with dagger command
+dagger run go run .
+```
+
+### Agent Workflows
+```bash
+# Create an isolated agent workspace
+go run . agent
+
+# Run tests in isolation
+go run . test
+
+# With session tracking
+PATINA_SESSION_ID=my-session go run . agent
+```
+
+## Agent Features
+
+- **Isolated Workspaces**: Each agent gets its own container and git branch
+- **Session Integration**: Links with Patina sessions for context tracking
+- **Tool Installation**: Development tools pre-installed for agent use
+- **Cache Isolation**: Separate caches per session to avoid conflicts
+
+## Requirements
+
+- Go 1.21+
+- Dagger CLI (optional but recommended)
+- Docker daemon running
+
+## What it does
+
+### Build Mode (default)
+1. Runs clippy for linting
+2. Runs tests with `cargo test`
+3. Builds release binary with `cargo build --release`
+4. Creates a minimal Docker image with the binary
+5. Exports as `{}:latest` to your local Docker daemon
+
+### Agent Mode
+1. Creates isolated container with full development environment
+2. Creates git branch `agent/{{session-id}}`
+3. Mounts code with session-specific caches
+4. Ready for AI agent operations
+
+### Test Mode
+1. Runs tests in isolated environment
+2. Uses separate cache to avoid conflicts
+3. Shows full test output
+"#, name, name)
+    } else {
+        format!(r#"# {} Dagger Pipelines
 
 This directory contains Dagger pipelines for building and testing the project.
 
@@ -259,7 +332,8 @@ dagger run go run .
 2. Builds release binary with `cargo build --release`
 3. Creates a minimal Docker image with the binary
 4. Exports as `{}:latest` to your local Docker daemon
-"#, name, name);
+"#, name, name)
+    };
     
     fs::write(pipelines_dir.join("README.md"), readme_content)?;
     

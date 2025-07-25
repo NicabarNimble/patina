@@ -43,6 +43,17 @@ pub trait LLMAdapter {
     
     /// Get the main context file path for this LLM
     fn get_context_file_path(&self, project_path: &Path) -> std::path::PathBuf;
+    
+    /// Check if adapter files need updating
+    /// Returns Some((current_version, available_version)) if update available
+    fn check_for_updates(&self, project_path: &Path) -> Result<Option<(String, String)>> {
+        Ok(None) // Default: no updates
+    }
+    
+    /// Update adapter files to latest version
+    fn update_adapter_files(&self, project_path: &Path) -> Result<()> {
+        Ok(()) // Default: no-op
+    }
 }
 
 /// Get an LLM adapter by name

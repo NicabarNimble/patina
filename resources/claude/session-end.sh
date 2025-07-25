@@ -77,13 +77,22 @@ mkdir -p .claude/context/sessions/archive
 cp "$CURRENT_SESSION" ".claude/context/sessions/archive/"
 
 # Create summary pointer
-SUMMARY_NAME="$(date +%Y-%m-%d)-${SESSION_NAME}-summary"
+# Don't add another date - session name already has timestamp
+SUMMARY_NAME="${SESSION_NAME}-summary"
+
+# Extract human-readable part for display (after YYYYMMDD-HHMM-)
+DISPLAY_NAME=$(echo "$SESSION_NAME" | sed -E 's/^[0-9]{8}-[0-9]{4}-//')
+if [ -z "$DISPLAY_NAME" ] || [ "$DISPLAY_NAME" = "$SESSION_NAME" ]; then
+    # No human name found (timestamp-only session)
+    DISPLAY_NAME="session"
+fi
+
 cat > "$LAST_SESSION_FILE" << EOF
-# Last Session: $SESSION_NAME
+# Last Session: $DISPLAY_NAME
 
 See: .claude/context/sessions/${SUMMARY_NAME}.md
 
-Quick start: /session-start "continue-from-$SESSION_NAME"
+Quick start: /session-start "continue-from-$DISPLAY_NAME"
 EOF
 
 # Clean up temporary files

@@ -16,10 +16,47 @@ Claude-specific patterns for optimal interaction with Patina projects.
 ```
 
 ### 2. Session Management
-- Use `/session-start` to begin work
-- Update with `/session-update` for progress tracking
-- Add insights with `/session-note` for human context
-- End with `/session-end` for summary
+
+#### Philosophy: Capture Raw, Distill Later
+Sessions follow a two-phase approach:
+- **Capture Phase**: Low-friction recording during work
+- **Distill Phase**: Intelligence extraction at session end
+
+#### Command Details
+
+**`/session-start [name]`**
+- Creates timestamped file: `YYYYMMDD-HHMM-name.md`
+- Captures git state (branch, commit, uncommitted files)
+- Shows previous session context
+- No overwrites - always unique filenames
+
+**`/session-update`**
+- Adds time-span marker (e.g., "14:30 - Update (covering since 14:15)")
+- Claude fills in what happened during the period
+- Tracks: files examined, decisions made, patterns discovered
+- Zero friction - just marks the time
+
+**`/session-note "insight"`**
+- Captures human insights directly
+- High-priority input for distillation
+- Examples: "Rails pattern working well", "Consider async here"
+- Distinct from updates - these are human judgments
+
+**`/session-end`**
+- Runs final update automatically
+- Shows git statistics (commits, files changed)
+- Requires filling 4 sections:
+  - What We Did (factual summary)
+  - Key Insights (learnings, especially from Notes)
+  - Patterns Identified (reusable wisdom)
+  - Next Session Should (continuity)
+- Creates archive and last-session pointer
+
+#### Best Practices
+- Update every 10-30 minutes during active work
+- Use notes for "aha moments" and key decisions
+- Let Claude fill updates - don't write them manually
+- Always complete distillation sections at session end
 
 ### 3. Code Generation Rules
 - Generate Rust code directly
