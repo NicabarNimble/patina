@@ -82,8 +82,11 @@ pub fn execute(check_only: bool, auto_fix: bool, json_output: bool) -> Result<i3
     let pattern_count = count_patterns(&brain_path);
     
     // Count sessions
-    let sessions_path = project_root.join(".claude").join("context").join("sessions");
-    let session_count = count_sessions(&sessions_path);
+    let sessions_path = adapter.get_sessions_path(&project_root);
+    let session_count = sessions_path
+        .as_ref()
+        .map(|path| count_sessions(path))
+        .unwrap_or(0);
     
     health_check.project_config = ProjectStatus {
         llm: llm.to_string(),

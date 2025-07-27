@@ -1,117 +1,51 @@
-# Dagger Container-Use Pattern
+# Dagger Container-Use Pattern for Patina
 
 ## Overview
-Integration of Dagger's container-use pattern for AI agent workflows in Patina, enabling isolated development environments with git branch isolation and session tracking.
+Based on https://github.com/dagger/container-use - a pattern for interactive container development that Patina should adopt for agent workflows.
 
-## Implementation Details
+## Key Concepts
 
-### Template Selection
-The init command now detects agent workflow requirements:
-```rust
-let use_agent_template = design.get("project")
-    .and_then(|p| p.get("features"))
-    .and_then(|f| f.as_array())
-    .map(|features| features.iter().any(|f| f.as_str() == Some("agent-workflows")))
-    .unwrap_or(false);
-```
+### Container-Use Pattern
+- Keep a container running for the duration of development
+- Execute commands inside the persistent container
+- Maintain state between commands (unlike traditional CI)
+- Enable interactive workflows with AI agents
 
-### Agent Command Structure
-New `patina agent` command with subcommands:
-- `workspace`: Creates isolated development container
-- `test`: Runs tests in separate environment
-- `shell`: (Future) Interactive container access
+### Current Issues
+1. **Wrong Directory Mount**: Currently mounting pipelines/ as workspace instead of project root
+2. **Session Isolation**: Need to maintain container sessions for agent work
+3. **Context Preservation**: Container should preserve work between commands
 
-### Session Integration
-```rust
-// Agent command automatically uses Patina session ID
-let session_id = env::var("PATINA_SESSION_ID")
-    .unwrap_or_else(|_| {
-        if let Ok(session) = patina::session::Session::load(Path::new(".")) {
-            session.id.to_string()
-        } else {
-            format!("agent-{}", chrono::Utc::now().timestamp())
-        }
-    });
-```
+### Implementation Direction
 
-### Dagger Pipeline Features
+1. **Fix Directory Mounting**
+   ```go
+   // Should mount parent directory (project root) not pipelines/
+   WithDirectory("/workspace", client.Host().Directory(".."))
+   ```
 
-#### Workspace Isolation
-- Separate container per agent task
-- Git branch per session (`agent/{session-id}`)
-- Isolated caches to prevent conflicts
-- Full development environment
+2. **Session-Based Containers**
+   - Each agent session gets its own container
+   - Container persists for the session duration
+   - Can execute multiple commands in same context
 
-#### Enhanced Build Pipeline
-- Linting with clippy
-- Test isolation
-- Graceful fallbacks
-- Clear progress reporting
+3. **Agent Workflow Integration**
+   ```bash
+   patina agent start    # Start persistent container
+   patina agent exec ... # Run commands in container
+   patina agent stop     # Clean up container
+   ```
 
-## Key Design Decisions
+## Connection to Brain Architecture
 
-### 1. Template-Based Approach
-- Agent features opt-in via PROJECT_DESIGN.toml
-- Keeps simple projects simple
-- Progressive enhancement
+This aligns with our findings that:
+- Dagger is infrastructure in the environment dimension
+- Provides safe sandbox for autonomous agent work
+- Enables the LLM to test and iterate without breaking host
+- Brain patterns guide what the agent does in the container
 
-### 2. Session-First Design
-- Agent work tied to Patina sessions
-- Natural integration with knowledge capture
-- Traceable agent activities
-
-### 3. Git Branch Strategy
-- Automatic branch creation
-- Clear naming convention
-- Easy review workflow
-
-### 4. Cache Isolation
-- Per-session cache volumes
-- Prevents build conflicts
-- Maintains reproducibility
-
-## Usage Patterns
-
-### Basic Agent Workflow
-```bash
-# Start session
-/session-start "implement authentication"
-
-# Create agent workspace
-patina agent workspace
-
-# Agent works in container...
-# Human captures insights
-/session-update
-
-# Review changes
-git diff agent/$(patina session-id)
-
-# End session
-/session-end
-```
-
-### Parallel Agent Development
-```bash
-# Multiple agents on different features
-PATINA_SESSION_ID=auth patina agent workspace
-PATINA_SESSION_ID=api patina agent workspace
-
-# Each gets own branch and container
-```
-
-## Benefits Realized
-
-1. **Safety**: Agents can't break main development
-2. **Visibility**: All agent actions reviewable
-3. **Integration**: Natural fit with Patina's workflow
-4. **Flexibility**: Works with any AI agent
-
-## Future Enhancements
-
-1. **Container Persistence**: Keep containers running for reuse
-2. **Agent Communication**: Shared volumes for collaboration
-3. **Metrics Collection**: Track agent performance
-4. **Auto-merge**: Confidence-based automatic integration
-
-This implementation brings Dagger's container-use vision to life within Patina's context management framework.
+## Next Steps
+1. Study the container-use example implementation
+2. Adapt pattern for Patina's agent command
+3. Enable persistent containers for development sessions
+4. Integrate with brain patterns for guided execution

@@ -392,7 +392,7 @@ fn handle_config_updates(
 // For now, we'll duplicate it here, but in a real implementation
 // we'd extract it to a shared module
 fn create_dagger_files(project_path: &Path, name: &str, design: &Value) -> Result<serde_json::Value> {
-    use serde_json::json;
+    
     
     // Always create basic Dockerfile as fallback
     let _ = create_docker_files(project_path, design)?;

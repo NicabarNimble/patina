@@ -104,6 +104,17 @@ enum Commands {
         #[arg(short, long)]
         json: bool,
     },
+    
+    /// Show version information
+    Version {
+        /// Output as JSON
+        #[arg(short, long)]
+        json: bool,
+        
+        /// Show component versions
+        #[arg(short, long)]
+        components: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -142,6 +153,9 @@ fn main() -> Result<()> {
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
+        }
+        Commands::Version { json, components } => {
+            commands::version::execute(json, components)?;
         }
     }
     

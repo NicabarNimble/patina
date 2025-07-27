@@ -1,0 +1,11 @@
+# Single stage build for CLI tools
+FROM rust:latest
+
+WORKDIR /app
+
+COPY . .
+
+RUN cargo build --release
+
+# For tools, we might want to test or use them directly
+CMD ["cargo", "run", "--release"]

@@ -7,3 +7,4 @@ pub mod build;
 pub mod test;
 pub mod agent;
 pub mod doctor;
+pub mod version;

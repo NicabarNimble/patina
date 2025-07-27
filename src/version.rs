@@ -4,6 +4,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use crate::adapters::claude::CLAUDE_ADAPTER_VERSION;
+use crate::dev_env::dagger::DAGGER_VERSION;
+use crate::dev_env::docker::DOCKER_VERSION;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VersionManifest {
     pub patina: String,
@@ -20,19 +24,29 @@ impl VersionManifest {
     pub fn new() -> Self {
         let mut components = HashMap::new();
         
+        // LLM Adapters
         components.insert(
             "claude-adapter".to_string(),
             ComponentInfo {
-                version: "0.3.0".to_string(),
+                version: CLAUDE_ADAPTER_VERSION.to_string(),
                 description: "Claude AI session management and context generation".to_string(),
             },
         );
         
+        // Dev Environments
         components.insert(
-            "dagger-templates".to_string(),
+            "dagger".to_string(),
             ComponentInfo {
-                version: "1.0.0".to_string(),
-                description: "Dagger pipeline templates for container workflows".to_string(),
+                version: DAGGER_VERSION.to_string(),
+                description: "Dagger CI/CD pipeline integration".to_string(),
+            },
+        );
+        
+        components.insert(
+            "docker".to_string(),
+            ComponentInfo {
+                version: DOCKER_VERSION.to_string(),
+                description: "Docker containerization templates and integration".to_string(),
             },
         );
         
@@ -77,8 +91,10 @@ impl UpdateChecker {
     pub fn get_available_versions() -> HashMap<String, String> {
         let mut available = HashMap::new();
         
-        available.insert("claude-adapter".to_string(), "0.3.0".to_string());
-        available.insert("dagger-templates".to_string(), "1.0.0".to_string());
+        // Pull from the actual constants - single source of truth
+        available.insert("claude-adapter".to_string(), CLAUDE_ADAPTER_VERSION.to_string());
+        available.insert("dagger".to_string(), DAGGER_VERSION.to_string());
+        available.insert("docker".to_string(), DOCKER_VERSION.to_string());
         
         available
     }

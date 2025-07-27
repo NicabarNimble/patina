@@ -16,6 +16,12 @@ pub trait LLMAdapter {
     /// Initialize LLM-specific files and directories during project creation
     fn init_project(&self, project_path: &Path, design: &Value, environment: &Environment) -> Result<()>;
     
+    /// Called after project initialization to perform additional setup
+    /// This is where adapters can create development environment files, etc.
+    fn post_init(&self, _project_path: &Path, _design: &Value, _dev_env: &str) -> Result<()> {
+        Ok(()) // Default: no-op
+    }
+    
     /// Generate LLM-specific context from patterns and environment
     fn generate_context(
         &self,
@@ -58,6 +64,16 @@ pub trait LLMAdapter {
     /// Get version changes for a specific version
     fn get_version_changes(&self, _version: &str) -> Option<Vec<String>> {
         None // Default: no changes
+    }
+    
+    /// Get the sessions directory path for this adapter
+    fn get_sessions_path(&self, project_path: &Path) -> Option<std::path::PathBuf> {
+        None // Default: no sessions directory
+    }
+    
+    /// Get the version of this adapter
+    fn version(&self) -> &'static str {
+        "0.1.0" // Default version
     }
 }
 

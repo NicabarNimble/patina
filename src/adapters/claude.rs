@@ -9,7 +9,7 @@ use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
 /// Version of the Claude adapter - increment when scripts/commands change
-const CLAUDE_ADAPTER_VERSION: &str = "0.3.0";
+pub const CLAUDE_ADAPTER_VERSION: &str = "0.3.0";
 
 /// Changelog for adapter versions
 const VERSION_CHANGES: &[(&str, &[&str])] = &[
@@ -297,6 +297,14 @@ impl LLMAdapter for ClaudeAdapter {
         self.create_adapter_manifest(&claude_path)?;
         
         Ok(())
+    }
+    
+    fn get_sessions_path(&self, project_path: &Path) -> Option<std::path::PathBuf> {
+        Some(self.get_sessions_path(project_path))
+    }
+    
+    fn version(&self) -> &'static str {
+        CLAUDE_ADAPTER_VERSION
     }
 }
 
