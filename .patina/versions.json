@@ -1,0 +1,13 @@
+{
+  "patina": "0.1.0",
+  "components": {
+    "claude-adapter": {
+      "version": "0.3.0",
+      "description": "Claude AI session management and context generation"
+    },
+    "dagger-templates": {
+      "version": "1.0.0",
+      "description": "Dagger pipeline templates for container workflows"
+    }
+  }
+}

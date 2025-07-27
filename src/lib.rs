@@ -3,6 +3,7 @@ pub mod scaffold;
 pub mod session;
 pub mod environment;
 pub mod adapters;
+pub mod version;
 
 // Re-export commonly used types
 pub use brain::{Brain, Pattern, PatternType};
