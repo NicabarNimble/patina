@@ -1,18 +1,22 @@
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::env;
 use toml::Value;
-use handlebars::Handlebars;
 use serde_json::json;
 
 use patina::brain::{Brain, Pattern, PatternType};
+use patina::version::VersionManifest;
 
-pub fn execute(name: String, llm: String, design: String, dev: String) -> Result<()> {
+pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -> Result<()> {
     println!("🎨 Initializing Patina project: {}", name);
     
     // 1. Detect environment first
     println!("🔍 Detecting environment...");
     let environment = patina::Environment::detect()?;
+    
+    // Determine development environment if not specified
+    let dev = dev.unwrap_or_else(|| determine_dev_environment(&environment));
     
     // Display key environment info
     println!("  ✓ OS: {} ({})", environment.os, environment.arch);
@@ -100,29 +104,64 @@ pub fn execute(name: String, llm: String, design: String, dev: String) -> Result
     fs::write(&config_path, serde_json::to_string_pretty(&config)?)
         .with_context(|| "Failed to write project config")?;
     
+    // Create version manifest
+    let version_manifest = VersionManifest::new();
+    version_manifest.save(&project_path)
+        .with_context(|| "Failed to create version manifest")?;
+    println!("  ✓ Created version manifest");
+    
     // 8. Create LLM-specific files using adapter (now with environment)
     let adapter = patina::adapters::get_adapter(&llm);
     adapter.init_project(&project_path, &design_toml, &environment)?;
     println!("  ✓ Created {} integration files", adapter.name());
     
-    // 9. Create environment-specific files
-    match dev.as_str() {
+    // 9. Create environment-specific files and collect manifest
+    let dev_manifest = match dev.as_str() {
         "docker" => {
-            create_docker_files(&project_path, &design_toml)?;
+            let manifest = create_docker_files(&project_path, &design_toml)?;
             println!("  ✓ Created Docker environment files");
+            manifest
         }
         "dagger" => {
-            create_dagger_files(&project_path, &name, &design_toml)?;
+            let manifest = create_dagger_files(&project_path, &name, &design_toml)?;
             println!("  ✓ Created Dagger environment files");
+            manifest
+        }
+        "native" => {
+            println!("  ✓ Using native development (no container files)");
+            serde_json::json!({
+                "test_command": "cargo test --workspace",
+                "build_command": "cargo build --release",
+                "files_created": [],
+                "requirements": {
+                    "cargo": "1.70+"
+                }
+            })
         }
         "nix" => {
             // TODO: Create Nix files
             println!("  ✓ Created Nix environment files");
+            serde_json::json!({
+                "test_command": "nix-shell --run 'cargo test'",
+                "build_command": "nix-build",
+                "files_created": ["shell.nix", "default.nix"],
+                "requirements": {
+                    "nix": "2.0+"
+                }
+            })
         }
         _ => {
             println!("  ⚠️  Unknown dev environment: {}, skipping environment files", dev);
+            serde_json::json!({})
         }
-    }
+    };
+    
+    // Update config with dev manifest
+    let mut config = serde_json::from_str::<serde_json::Value>(
+        &fs::read_to_string(&config_path)?
+    )?;
+    config["dev_manifest"] = dev_manifest;
+    fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
     
     // 8. Initialize with core patterns from Patina's brain
     if let Ok(patina_brain_path) = std::env::current_exe() {
@@ -171,7 +210,7 @@ pub fn execute(name: String, llm: String, design: String, dev: String) -> Result
 }
 
 
-fn create_docker_files(project_path: &Path, design: &Value) -> Result<()> {
+fn create_docker_files(project_path: &Path, design: &Value) -> Result<serde_json::Value> {
     // Create basic Dockerfile
     let dockerfile_content = r#"FROM rust:latest
 
@@ -200,52 +239,46 @@ services:
         fs::write(project_path.join("docker-compose.yml"), compose_content)?;
     }
     
-    Ok(())
+    Ok(serde_json::json!({
+        "test_command": "docker run --rm -v $(pwd):/workspace -w /workspace rust:latest cargo test --workspace",
+        "build_command": "docker build -t $(basename $(pwd)):latest .",
+        "files_created": if design.get("services").is_some() {
+            vec!["Dockerfile", "docker-compose.yml"]
+        } else {
+            vec!["Dockerfile"]
+        },
+        "requirements": {
+            "docker": "20.10+"
+        }
+    }))
 }
 
 
-fn create_dagger_files(project_path: &Path, name: &str, design: &Value) -> Result<()> {
+fn create_dagger_files(project_path: &Path, name: &str, design: &Value) -> Result<serde_json::Value> {
     // Always create basic Dockerfile as fallback
-    create_docker_files(project_path, design)?;
+    let _ = create_docker_files(project_path, design)?;
     
     // Create pipelines directory
     let pipelines_dir = project_path.join("pipelines");
     fs::create_dir_all(&pipelines_dir)?;
     
-    // Set up Handlebars
-    let mut handlebars = Handlebars::new();
-    handlebars.set_strict_mode(true);
-    
-    // Template data
-    let data = json!({
-        "name": name
-    });
-    
-    // Load and render Go module template
-    let go_mod_template = include_str!("../../resources/templates/dagger/go.mod.tmpl");
-    handlebars.register_template_string("go.mod", go_mod_template)?;
-    let go_mod_content = handlebars.render("go.mod", &data)?;
+    // Copy Go module file (no templating needed - it's static)
+    let go_mod_content = include_str!("../../resources/templates/dagger/go.mod.tmpl");
     fs::write(pipelines_dir.join("go.mod"), go_mod_content)?;
     
-    // Determine which template to use based on project type or features
-    let use_agent_template = design.get("project")
+    // Check if project wants agent workflows
+    let use_agent_workflows = design.get("project")
         .and_then(|p| p.get("features"))
         .and_then(|f| f.as_array())
         .map(|features| features.iter().any(|f| f.as_str() == Some("agent-workflows")))
         .unwrap_or(false);
     
-    // Load and render appropriate main.go template
-    let main_go_template = if use_agent_template {
-        include_str!("../../resources/templates/dagger/agent.go.tmpl")
-    } else {
-        include_str!("../../resources/templates/dagger/main.go.tmpl")
-    };
-    handlebars.register_template_string("main.go", main_go_template)?;
-    let main_go_content = handlebars.render("main.go", &data)?;
+    // Copy main.go file (no templating needed - it's generic)
+    let main_go_content = include_str!("../../resources/templates/dagger/main.go.tmpl");
     fs::write(pipelines_dir.join("main.go"), main_go_content)?;
     
     // Create a simple README for the pipelines
-    let readme_content = if use_agent_template {
+    let readme_content = if use_agent_workflows {
         format!(r#"# {} Dagger Pipelines with Agent Workflows
 
 This directory contains Dagger pipelines for building, testing, and agent development.
@@ -337,7 +370,15 @@ dagger run go run .
     
     fs::write(pipelines_dir.join("README.md"), readme_content)?;
     
-    Ok(())
+    Ok(serde_json::json!({
+        "test_command": "cd pipelines && go run . test",
+        "build_command": "cd pipelines && go run . build",
+        "files_created": vec!["pipelines/main.go", "pipelines/go.mod", "pipelines/README.md", "Dockerfile"],
+        "requirements": {
+            "go": "1.21+",
+            "docker": "20.10+"
+        }
+    }))
 }
 
 fn copy_core_patterns(source_brain: &Path, target_brain: &Path) -> Result<()> {
@@ -420,5 +461,72 @@ fn validate_environment(env: &patina::Environment, design: &Value) -> Result<Opt
     }
     
     Ok(if warnings.is_empty() { None } else { Some(warnings) })
+}
+
+#[derive(Debug, PartialEq)]
+enum EnvironmentMode {
+    Interactive,
+    CI,
+    Headless,
+}
+
+fn detect_environment_mode() -> EnvironmentMode {
+    // Explicit overrides first
+    if env::var("PATINA_NONINTERACTIVE").is_ok() {
+        return EnvironmentMode::Headless;
+    }
+    
+    // Common CI environments
+    if env::var("CI").is_ok() || 
+       env::var("GITHUB_ACTIONS").is_ok() ||
+       env::var("GITLAB_CI").is_ok() ||
+       env::var("JENKINS_URL").is_ok() ||
+       env::var("BUILDKITE").is_ok() ||
+       env::var("CIRCLECI").is_ok() {
+        return EnvironmentMode::CI;
+    }
+    
+    // Default to interactive
+    EnvironmentMode::Interactive
+}
+
+fn determine_dev_environment(environment: &patina::Environment) -> String {
+    let mode = detect_environment_mode();
+    
+    // Check explicit override first
+    if let Ok(dev) = env::var("PATINA_DEV") {
+        eprintln!("📦 Using development environment from PATINA_DEV: {}", dev);
+        return dev;
+    }
+    
+    // In CI/headless mode, default to Docker for predictability
+    if mode == EnvironmentMode::CI || mode == EnvironmentMode::Headless {
+        eprintln!("🤖 Headless mode detected: defaulting to Docker");
+        eprintln!("   Set PATINA_DEV=dagger to use Dagger in CI");
+        return "docker".to_string();
+    }
+    
+    // Interactive mode: smart detection (best to worst)
+    let has_docker = environment.tools.get("docker")
+        .map(|t| t.available)
+        .unwrap_or(false);
+    
+    let has_go = environment.languages.get("go")
+        .map(|l| l.available)
+        .unwrap_or(false);
+    
+    if has_docker && has_go {
+        println!("📦 Using Dagger for development (fastest, cached builds)");
+        println!("   Detected: Docker ✓ Go ✓");
+        "dagger".to_string()
+    } else if has_docker {
+        println!("📦 Using Docker for development");
+        println!("   💡 Install Go to unlock Dagger's fast, cached builds");
+        "docker".to_string()
+    } else {
+        println!("📦 Using native builds (no containerization)");
+        println!("   ⚠️  Install Docker for reproducible builds");
+        "native".to_string()
+    }
 }
 

@@ -4,15 +4,21 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use toml::Value;
 use crate::brain::{Pattern, PatternType};
-use crate::environment::Environment;
+use crate::environment::{Environment, LanguageInfo};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
 /// Version of the Claude adapter - increment when scripts/commands change
-const CLAUDE_ADAPTER_VERSION: &str = "0.2.0";
+const CLAUDE_ADAPTER_VERSION: &str = "0.3.0";
 
 /// Changelog for adapter versions
 const VERSION_CHANGES: &[(&str, &[&str])] = &[
+    ("0.3.0", &[
+        "Enhanced: session-update now captures interest marks",
+        "Fixed: Arguments are now properly used by session-update script",
+        "Improved: Unified workflow for marking + context filling",
+        "Changed: Both marks and context are captured for richer sessions",
+    ]),
     ("0.2.0", &[
         "Fixed: Scripts now properly stored in .claude/bin/ directory",
         "Added: Adapter versioning and update mechanism",
@@ -26,6 +32,18 @@ const VERSION_CHANGES: &[(&str, &[&str])] = &[
     ]),
 ];
 
+/// Path constants for Claude adapter
+mod paths {
+    pub const ADAPTER_DIR: &str = ".claude";
+    pub const CONTEXT_FILE: &str = "CLAUDE.md";
+    pub const MCP_DIR: &str = "mcp";
+    pub const COMMANDS_DIR: &str = "commands";
+    pub const BIN_DIR: &str = "bin";
+    pub const CONTEXT_DIR: &str = "context";
+    pub const SESSIONS_DIR: &str = "sessions";
+    pub const MANIFEST_FILE: &str = "adapter-manifest.json";
+}
+
 #[derive(Serialize, Deserialize)]
 struct AdapterManifest {
     adapter: String,
@@ -36,6 +54,40 @@ struct AdapterManifest {
 
 pub struct ClaudeAdapter;
 
+impl ClaudeAdapter {
+    /// Get the base Claude directory path
+    fn get_claude_path(&self, project_path: &Path) -> PathBuf {
+        project_path.join(paths::ADAPTER_DIR)
+    }
+    
+    /// Get various subdirectory paths
+    fn get_mcp_path(&self, project_path: &Path) -> PathBuf {
+        self.get_claude_path(project_path).join(paths::MCP_DIR)
+    }
+    
+    fn get_commands_path(&self, project_path: &Path) -> PathBuf {
+        self.get_claude_path(project_path).join(paths::COMMANDS_DIR)
+    }
+    
+    fn get_bin_path(&self, project_path: &Path) -> PathBuf {
+        self.get_claude_path(project_path).join(paths::BIN_DIR)
+    }
+    
+    fn get_sessions_path(&self, project_path: &Path) -> PathBuf {
+        self.get_claude_path(project_path)
+            .join(paths::CONTEXT_DIR)
+            .join(paths::SESSIONS_DIR)
+    }
+    
+    fn get_context_file_path(&self, project_path: &Path) -> PathBuf {
+        self.get_claude_path(project_path).join(paths::CONTEXT_FILE)
+    }
+    
+    fn get_manifest_path(&self, project_path: &Path) -> PathBuf {
+        self.get_claude_path(project_path).join(paths::MANIFEST_FILE)
+    }
+}
+
 impl LLMAdapter for ClaudeAdapter {
     fn name(&self) -> &'static str {
         "claude"
@@ -43,33 +95,29 @@ impl LLMAdapter for ClaudeAdapter {
     
     fn init_project(&self, project_path: &Path, design: &Value, environment: &Environment) -> Result<()> {
         // Create .claude directory structure
-        let claude_path = project_path.join(".claude");
+        let claude_path = self.get_claude_path(project_path);
         fs::create_dir_all(&claude_path)?;
         
         // Create initial CLAUDE.md with environment info
         let claude_md_content = self.generate_initial_context(design, environment)?;
-        fs::write(claude_path.join("CLAUDE.md"), claude_md_content)?;
+        fs::write(self.get_context_file_path(project_path), claude_md_content)?;
         
         // Create MCP directory for MCP servers
-        let mcp_path = claude_path.join("mcp");
-        fs::create_dir_all(&mcp_path)?;
+        fs::create_dir_all(self.get_mcp_path(project_path))?;
         
         // Create commands directory for command definitions
-        let commands_path = claude_path.join("commands");
-        fs::create_dir_all(&commands_path)?;
+        fs::create_dir_all(self.get_commands_path(project_path))?;
         
         // Create bin directory for scripts
-        let bin_path = claude_path.join("bin");
-        fs::create_dir_all(&bin_path)?;
+        fs::create_dir_all(self.get_bin_path(project_path))?;
         
         // Create session commands and scripts
+        let commands_path = self.get_commands_path(project_path);
+        let bin_path = self.get_bin_path(project_path);
         self.create_session_commands(&commands_path, &bin_path)?;
         
         // Create context/sessions directory
-        let context_path = claude_path.join("context");
-        fs::create_dir_all(&context_path)?;
-        let sessions_path = context_path.join("sessions");
-        fs::create_dir_all(&sessions_path)?;
+        fs::create_dir_all(self.get_sessions_path(project_path))?;
         
         // Create adapter manifest
         self.create_adapter_manifest(&claude_path)?;
@@ -83,7 +131,7 @@ impl LLMAdapter for ClaudeAdapter {
         project_name: &str,
         design_content: &str,
         patterns: &[Pattern],
-        environment: &Environment,
+        _environment: &Environment,
     ) -> Result<()> {
         let mut content = String::new();
         
@@ -192,6 +240,9 @@ impl LLMAdapter for ClaudeAdapter {
         
         // Write to file
         let output_path = self.get_context_file_path(project_path);
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         fs::write(&output_path, content)?;
         
         Ok(())
@@ -206,20 +257,22 @@ impl LLMAdapter for ClaudeAdapter {
         ]
     }
     
-    fn get_context_file_path(&self, project_path: &Path) -> PathBuf {
-        project_path.join(".claude").join("CLAUDE.md")
+    fn get_context_file_path(&self, project_path: &Path) -> std::path::PathBuf {
+        self.get_claude_path(project_path).join(paths::CONTEXT_FILE)
     }
     
     fn check_for_updates(&self, project_path: &Path) -> Result<Option<(String, String)>> {
-        let manifest_path = project_path.join(".claude").join("adapter-manifest.json");
+        let manifest_path = self.get_manifest_path(project_path);
         
         if !manifest_path.exists() {
-            // No manifest means very old version or manual setup
-            return Ok(Some(("unknown".to_string(), CLAUDE_ADAPTER_VERSION.to_string())));
+            // No manifest means old installation
+            return Ok(Some((
+                "0.0.0".to_string(),
+                CLAUDE_ADAPTER_VERSION.to_string()
+            )));
         }
         
-        let manifest_content = fs::read_to_string(&manifest_path)?;
-        let manifest: AdapterManifest = serde_json::from_str(&manifest_content)?;
+        let manifest: AdapterManifest = serde_json::from_str(&fs::read_to_string(&manifest_path)?)?;
         
         if manifest.version != CLAUDE_ADAPTER_VERSION {
             Ok(Some((manifest.version, CLAUDE_ADAPTER_VERSION.to_string())))
@@ -229,171 +282,257 @@ impl LLMAdapter for ClaudeAdapter {
     }
     
     fn update_adapter_files(&self, project_path: &Path) -> Result<()> {
-        println!("  Updating Claude adapter files to version {}...", CLAUDE_ADAPTER_VERSION);
-        
-        let claude_path = project_path.join(".claude");
-        let commands_path = claude_path.join("commands");
-        let bin_path = claude_path.join("bin");
+        let claude_path = self.get_claude_path(project_path);
+        let commands_path = self.get_commands_path(project_path);
+        let bin_path = self.get_bin_path(project_path);
         
         // Ensure directories exist
         fs::create_dir_all(&commands_path)?;
         fs::create_dir_all(&bin_path)?;
         
-        // Update all command and script files
+        // Update session scripts
         self.create_session_commands(&commands_path, &bin_path)?;
         
         // Update manifest
         self.create_adapter_manifest(&claude_path)?;
         
-        println!("  ✓ Claude adapter updated successfully");
         Ok(())
     }
 }
 
+// Implementation details (private methods)
 impl ClaudeAdapter {
-    fn generate_initial_context(&self, design: &Value, environment: &Environment) -> Result<String> {
-        let mut content = String::from("# Claude Context\n\n");
+    fn add_patterns_to_content(&self, content: &mut String, patterns: &[Pattern]) {
+        // Group patterns by type
+        let mut core_patterns = Vec::new();
+        let mut topic_patterns = Vec::new();
+        let mut project_patterns = Vec::new();
         
-        // Add creation timestamp and environment
-        content.push_str(&format!("*Created: {}*\n\n", chrono::Utc::now().to_rfc3339()));
-        
-        // Environment overview
-        content.push_str("## Environment at Creation\n\n");
-        content.push_str(&format!("- **OS**: {} ({})\n", environment.os, environment.arch));
-        content.push_str(&format!("- **Working Directory**: {}\n", environment.current_dir));
-        
-        // Available tools summary
-        let available_tools: Vec<_> = environment.tools
-            .iter()
-            .filter(|(_, info)| info.available)
-            .map(|(name, info)| {
-                if let Some(version) = &info.version {
-                    format!("{} ({})", name, version)
-                } else {
-                    name.to_string()
-                }
-            })
-            .collect();
-        
-        if !available_tools.is_empty() {
-            content.push_str(&format!("- **Available Tools**: {}\n", available_tools.join(", ")));
-        }
-        
-        // Rust version and toolchain
-        if let Some(rust_info) = environment.languages.get("rust") {
-            if rust_info.available {
-                content.push_str(&format!("- **Rust**: {}\n", rust_info.version.as_ref().unwrap_or(&"detected".to_string())));
-                if let Some(toolchain) = &rust_info.toolchain {
-                    content.push_str(&format!("- **Toolchain**: {}\n", toolchain));
-                }
-            } else {
-                content.push_str("- **Rust**: ⚠️ NOT DETECTED - Required for Patina!\n");
+        for pattern in patterns {
+            match &pattern.pattern_type {
+                PatternType::Core => core_patterns.push(pattern),
+                PatternType::Topic(topic) => topic_patterns.push((topic, pattern)),
+                PatternType::Project(project) => project_patterns.push((project, pattern)),
             }
         }
         
-        // Rust-specific tools
-        let rust_tools: Vec<_> = environment.tools
-            .iter()
-            .filter(|(name, info)| name.starts_with("cargo") && info.available)
-            .map(|(name, _)| name.as_str())
-            .collect();
-        
-        if !rust_tools.is_empty() {
-            content.push_str(&format!("- **Cargo Tools**: {}\n", rust_tools.join(", ")));
+        // Write core patterns
+        if !core_patterns.is_empty() {
+            content.push_str("### Core Patterns\n\n");
+            content.push_str("Universal principles that apply across the entire system:\n\n");
+            for pattern in core_patterns {
+                self.write_pattern(content, pattern);
+            }
         }
         
-        let other_languages: Vec<_> = environment.languages
-            .iter()
-            .filter(|(name, info)| name.as_str() != "rust" && info.available)
-            .map(|(name, _)| name.as_str())
-            .collect();
+        // Write topic patterns
+        if !topic_patterns.is_empty() {
+            content.push_str("### Topic Patterns\n\n");
+            content.push_str("Domain-specific knowledge and patterns:\n\n");
+            
+            // Group by topic
+            let mut by_topic: std::collections::HashMap<&str, Vec<&Pattern>> = std::collections::HashMap::new();
+            for (topic, pattern) in topic_patterns {
+                by_topic.entry(topic).or_insert_with(Vec::new).push(pattern);
+            }
+            
+            for (topic, patterns) in by_topic {
+                content.push_str(&format!("#### Topic: {}\n\n", topic));
+                for pattern in patterns {
+                    self.write_pattern(content, pattern);
+                }
+            }
+        }
         
+        // Write project patterns
+        if !project_patterns.is_empty() {
+            content.push_str("### Project-Specific Patterns\n\n");
+            content.push_str("Patterns specific to this project:\n\n");
+            for (_, pattern) in project_patterns {
+                self.write_pattern(content, pattern);
+            }
+        }
+    }
+    
+    fn write_pattern(&self, content: &mut String, pattern: &Pattern) {
+        content.push_str(&format!("#### {}\n\n", pattern.name));
+        
+        if !pattern.content.is_empty() {
+            let pattern_content = &pattern.content;
+            // Parse the pattern content to extract sections
+            let lines: Vec<&str> = pattern_content.lines().collect();
+            let mut in_metadata = false;
+            let mut main_content = Vec::new();
+            let mut metadata_lines = Vec::new();
+            
+            for line in lines {
+                if line.starts_with("## Metadata") {
+                    in_metadata = true;
+                } else if in_metadata {
+                    metadata_lines.push(line);
+                } else if !line.starts_with("# ") { // Skip the title line
+                    main_content.push(line);
+                }
+            }
+            
+            // Write main content
+            content.push_str(&main_content.join("\n"));
+            content.push_str("\n");
+            
+            // Write metadata if present
+            if !metadata_lines.is_empty() {
+                content.push_str("\n**Metadata**:\n");
+                for line in metadata_lines {
+                    if !line.trim().is_empty() {
+                        content.push_str(&format!("{}\n", line));
+                    }
+                }
+            }
+        } else {
+            content.push_str("*Pattern content not yet defined*\n");
+        }
+        
+        content.push_str("---\n\n");
+    }
+    
+    fn generate_initial_context(&self, design: &Value, environment: &Environment) -> Result<String> {
+        let mut content = String::new();
+        
+        // Header
+        content.push_str("# Claude Context\n\n");
+        content.push_str("This file provides Claude with essential project context. Patina will maintain this automatically.\n\n");
+        
+        // Environment Summary
+        content.push_str("## Environment\n\n");
+        content.push_str(&format!("- **Platform**: {} ({})\n", environment.os, environment.arch));
+        content.push_str(&format!("- **Working Directory**: {}\n", environment.current_dir));
+        
+        // Key tools
+        content.push_str("\n### Available Tools\n\n");
+        
+        let critical_tools = ["cargo", "git", "docker"];
+        for tool in &critical_tools {
+            if let Some(tool_info) = environment.tools.get(*tool) {
+                if tool_info.available {
+                    if let Some(version) = &tool_info.version {
+                        content.push_str(&format!("- **{}**: ✓ ({})\n", tool, version));
+                    } else {
+                        content.push_str(&format!("- **{}**: ✓\n", tool));
+                    }
+                } else {
+                    content.push_str(&format!("- **{}**: ✗ (not found)\n", tool));
+                }
+            } else {
+                content.push_str(&format!("- **{}**: ✗ (not checked)\n", tool));
+            }
+        }
+        
+        // Language specifics
+        content.push_str("\n### Language Support\n\n");
+        
+        // Rust (always primary)
+        if let Some(rust_info) = environment.languages.get("rust") {
+            if let Some(version) = &rust_info.version {
+                content.push_str(&format!("- **Rust**: {} (primary language)\n", version));
+            } else {
+                content.push_str("- **Rust**: ✓ (primary language)\n");
+            }
+            
+            // Rust-specific tools
+            let rust_tools = ["rustfmt", "clippy"];
+            for tool in &rust_tools {
+                if let Some(tool_info) = environment.tools.get(&format!("cargo-{}", tool)) {
+                    if tool_info.available {
+                        if let Some(version) = &tool_info.version {
+                            content.push_str(&format!("  - {}: ✓ ({})\n", tool, version));
+                        } else {
+                            content.push_str(&format!("  - {}: ✓\n", tool));
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Other languages (if any)
+        let other_languages: Vec<(&String, &LanguageInfo)> = environment.languages.iter()
+            .filter(|(lang, _)| *lang != "rust")
+            .collect();
+            
         if !other_languages.is_empty() {
-            content.push_str(&format!("- **Other Languages**: {} (may need Rust bindings)\n", other_languages.join(", ")));
+            content.push_str(&format!("- **Other Languages**: {} (may need Rust bindings)\n", 
+                other_languages.iter()
+                    .map(|(lang, info)| {
+                        if let Some(ver) = &info.version {
+                            format!("{} {}", lang, ver)
+                        } else {
+                            lang.to_string()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
         }
         
-        content.push_str("\n");
+        // Project Design Overview
+        content.push_str("\n## Project Overview\n\n");
         
-        // Extract project information
         if let Some(project) = design.get("project") {
-            content.push_str("## Project\n");
             if let Some(name) = project.get("name").and_then(|v| v.as_str()) {
-                content.push_str(&format!("**Name**: {}\n", name));
+                content.push_str(&format!("**Project**: {}\n", name));
             }
             if let Some(purpose) = project.get("purpose").and_then(|v| v.as_str()) {
                 content.push_str(&format!("**Purpose**: {}\n", purpose));
             }
-            content.push('\n');
-        }
-        
-        // Extract why section
-        if let Some(why) = design.get("why") {
-            content.push_str("## Why\n");
-            if let Some(problem) = why.get("problem").and_then(|v| v.as_str()) {
-                content.push_str(&format!("**Problem**: {}\n", problem));
-            }
-            if let Some(solution) = why.get("solution").and_then(|v| v.as_str()) {
-                content.push_str(&format!("**Solution**: {}\n", solution));
-            }
-            content.push('\n');
-        }
-        
-        // Extract technical section with validation
-        if let Some(technical) = design.get("technical") {
-            content.push_str("## Technical Stack\n");
-            
-            // Language requirement vs detected
-            if let Some(language) = technical.get("language").and_then(|v| v.as_str()) {
-                let lang_status = match language {
-                    "rust" => if environment.languages.get("rust").map_or(false, |i| i.available) { "✓" } else { "⚠️" },
-                    _ => ""
-                };
-                content.push_str(&format!("**Language**: {} {}\n", language, lang_status));
-            }
-            
-            if let Some(framework) = technical.get("framework").and_then(|v| v.as_str()) {
-                content.push_str(&format!("**Framework**: {}\n", framework));
-            }
-            
-            if let Some(database) = technical.get("database").and_then(|v| v.as_str()) {
-                content.push_str(&format!("**Database**: {}\n", database));
-            }
-            
-            if let Some(constraints) = technical.get("constraints").and_then(|v| v.as_array()) {
-                content.push_str("\n**Constraints**:\n");
-                for constraint in constraints {
-                    if let Some(c) = constraint.as_str() {
-                        content.push_str(&format!("- {}\n", c));
-                    }
+            if let Some(project_type) = project.get("type").and_then(|v| v.as_str()) {
+                content.push_str(&format!("**Type**: {}\n", project_type));
+                
+                // Type-specific guidance
+                match project_type {
+                    "app" => content.push_str("*This is an application - focus on user-facing functionality*\n"),
+                    "library" => content.push_str("*This is a library - focus on API design and documentation*\n"),
+                    "tool" => content.push_str("*This is a CLI tool - focus on ergonomics and helpful output*\n"),
+                    _ => {}
                 }
             }
-            content.push('\n');
         }
         
-        // Development commands if available
+        // Development section if present
         if let Some(dev) = design.get("development") {
+            content.push_str("\n## Development Environment\n\n");
+            
+            if let Some(env_type) = dev.get("environment").and_then(|v| v.as_str()) {
+                content.push_str(&format!("**Environment**: {} ", env_type));
+                match env_type {
+                    "dagger" => content.push_str("(Container-based development with caching)\n"),
+                    "docker" => content.push_str("(Traditional container development)\n"),
+                    "native" => content.push_str("(Direct development on host)\n"),
+                    _ => content.push_str("\n"),
+                }
+            }
+            
+            // Development commands if available
             if let Some(commands) = dev.get("commands").and_then(|v| v.as_table()) {
-                content.push_str("## Development Commands\n\n");
+                content.push_str("\n### Commands\n\n");
                 for (cmd, desc) in commands {
-                    if let Some(s) = desc.as_str() {
-                        content.push_str(&format!("- `{}`: {}\n", cmd, s));
+                    if let Some(desc_str) = desc.as_str() {
+                        content.push_str(&format!("- `{}`: {}\n", cmd, desc_str));
                     }
                 }
-                content.push_str("\n");
             }
         }
         
-        // Footer with next steps
-        content.push_str("## Next Steps\n\n");
+        // Getting Started
+        content.push_str("\n## Getting Started\n\n");
         content.push_str("1. Start a development session: `.claude/commands/session-start`\n");
-        content.push_str("2. Add patterns as you work: `patina add <type> <name>`\n");
+        content.push_str("2. Make changes and explore the codebase\n");
         content.push_str("3. Update context anytime: `patina update`\n");
+        content.push_str("4. End session to distill learnings: `.claude/commands/session-end`\n");
         
         Ok(content)
     }
     
     fn create_session_commands(&self, commands_path: &Path, bin_path: &Path) -> Result<()> {
-        // Session start script and command
+        // Create session-start script
         let session_start_sh = include_str!("../../resources/claude/session-start.sh");
         let script_path = bin_path.join("session-start.sh");
         fs::write(&script_path, session_start_sh)?;
@@ -402,7 +541,7 @@ impl ClaudeAdapter {
         let session_start_md = include_str!("../../resources/claude/session-start.md");
         fs::write(commands_path.join("session-start.md"), session_start_md)?;
         
-        // Session update script and command
+        // Create session-update script
         let session_update_sh = include_str!("../../resources/claude/session-update.sh");
         let script_path = bin_path.join("session-update.sh");
         fs::write(&script_path, session_update_sh)?;
@@ -411,7 +550,7 @@ impl ClaudeAdapter {
         let session_update_md = include_str!("../../resources/claude/session-update.md");
         fs::write(commands_path.join("session-update.md"), session_update_md)?;
         
-        // Session note script and command
+        // Create session-note script
         let session_note_sh = include_str!("../../resources/claude/session-note.sh");
         let script_path = bin_path.join("session-note.sh");
         fs::write(&script_path, session_note_sh)?;
@@ -420,7 +559,7 @@ impl ClaudeAdapter {
         let session_note_md = include_str!("../../resources/claude/session-note.md");
         fs::write(commands_path.join("session-note.md"), session_note_md)?;
         
-        // Session end script and command
+        // Create session-end script
         let session_end_sh = include_str!("../../resources/claude/session-end.sh");
         let script_path = bin_path.join("session-end.sh");
         fs::write(&script_path, session_end_sh)?;
@@ -443,142 +582,96 @@ impl ClaudeAdapter {
     
     #[cfg(not(unix))]
     fn make_executable(&self, _path: &Path) -> Result<()> {
+        // On Windows, scripts are executed through shell interpreters
         Ok(())
     }
     
-    fn add_patterns_to_content(&self, content: &mut String, patterns: &[Pattern]) {
-        // Group patterns by type
-        let mut core_patterns = Vec::new();
-        let mut topic_patterns: std::collections::HashMap<String, Vec<&Pattern>> = std::collections::HashMap::new();
-        let mut project_patterns = Vec::new();
-        
-        for pattern in patterns {
-            match &pattern.pattern_type {
-                PatternType::Core => core_patterns.push(pattern),
-                PatternType::Topic(topic) => {
-                    topic_patterns.entry(topic.clone()).or_default().push(pattern);
-                }
-                PatternType::Project(_) => project_patterns.push(pattern),
-            }
-        }
-        
-        // Core patterns
-        if !core_patterns.is_empty() {
-            content.push_str("### Core Patterns\n\n");
-            content.push_str("Universal principles that apply across the entire system:\n\n");
-            
-            for pattern in core_patterns {
-                content.push_str(&format!("#### {}\n\n", pattern.name));
-                content.push_str(&pattern.content);
-                content.push_str("\n---\n\n");
-            }
-        }
-        
-        // Topic patterns
-        if !topic_patterns.is_empty() {
-            content.push_str("### Topic Patterns\n\n");
-            content.push_str("Domain-specific knowledge and patterns:\n\n");
-            
-            for (topic, patterns) in topic_patterns {
-                content.push_str(&format!("#### Topic: {}\n\n", topic));
-                
-                for pattern in patterns {
-                    content.push_str(&format!("##### {}\n\n", pattern.name));
-                    content.push_str(&pattern.content);
-                    content.push_str("\n");
-                }
-                
-                content.push_str("---\n\n");
-            }
-        }
-        
-        // Project patterns
-        if !project_patterns.is_empty() {
-            content.push_str("### Project-Specific Patterns\n\n");
-            content.push_str("Patterns specific to this project:\n\n");
-            
-            for pattern in project_patterns {
-                content.push_str(&format!("#### {}\n\n", pattern.name));
-                content.push_str(&pattern.content);
-                content.push_str("\n---\n\n");
-            }
-        }
-    }
-    
     fn format_design_toml(&self, design: &Value) -> String {
-        let mut output = String::new();
+        let mut content = String::new();
         
-        if let Some(project) = design.get("project").and_then(|v| v.as_table()) {
-            output.push_str("### Project Information\n\n");
-            for (key, value) in project {
-                if let Some(s) = value.as_str() {
-                    output.push_str(&format!("- **{}**: {}\n", key, s));
-                }
+        // Project Information
+        if let Some(project) = design.get("project") {
+            content.push_str("### Project Information\n\n");
+            if let Some(name) = project.get("name") {
+                content.push_str(&format!("- **name**: {}\n", name));
             }
-            output.push_str("\n");
+            if let Some(purpose) = project.get("purpose") {
+                content.push_str(&format!("- **purpose**: {}\n", purpose));
+            }
+            if let Some(project_type) = project.get("type") {
+                content.push_str(&format!("- **type**: {}\n", project_type));
+            }
+            content.push_str("\n");
         }
         
-        if let Some(why) = design.get("why").and_then(|v| v.as_table()) {
-            output.push_str("### Why\n\n");
-            for (key, value) in why {
-                if let Some(s) = value.as_str() {
-                    output.push_str(&format!("**{}**: {}\n\n", key.to_uppercase(), s));
+        // Why section
+        if let Some(why) = design.get("why") {
+            content.push_str("### Why\n\n");
+            for (key, value) in why.as_table().unwrap_or(&toml::map::Map::new()) {
+                if let Some(val_str) = value.as_str() {
+                    content.push_str(&format!("**{}**: {}\n\n", key.to_uppercase(), val_str));
                 }
             }
         }
         
-        if let Some(how) = design.get("how").and_then(|v| v.as_table()) {
-            output.push_str("### How\n\n");
-            for (key, value) in how {
-                match value {
-                    Value::Array(arr) => {
-                        output.push_str(&format!("**{}**:\n", key));
-                        for item in arr {
-                            if let Some(s) = item.as_str() {
-                                output.push_str(&format!("- {}\n", s));
-                            }
+        // How section
+        if let Some(how) = design.get("how") {
+            content.push_str("### How\n\n");
+            for (key, value) in how.as_table().unwrap_or(&toml::map::Map::new()) {
+                content.push_str(&format!("**{}**:\n", key));
+                if let Some(val_str) = value.as_str() {
+                    // Handle multiline strings
+                    for line in val_str.lines() {
+                        if line.starts_with("- ") {
+                            content.push_str(&format!("{}\n", line));
+                        } else {
+                            content.push_str(&format!("- {}\n", line));
                         }
-                        output.push_str("\n");
                     }
-                    Value::String(s) => {
-                        output.push_str(&format!("**{}**: {}\n\n", key, s));
+                } else if let Some(array) = value.as_array() {
+                    for item in array {
+                        if let Some(item_str) = item.as_str() {
+                            content.push_str(&format!("- {}\n", item_str));
+                        }
                     }
-                    _ => {}
                 }
+                content.push_str("\n");
             }
         }
         
-        if let Some(dev) = design.get("development").and_then(|v| v.as_table()) {
-            output.push_str("### Development\n\n");
+        // Development section
+        if let Some(dev) = design.get("development") {
+            content.push_str("### Development\n\n");
             
             if let Some(commands) = dev.get("commands").and_then(|v| v.as_table()) {
-                output.push_str("**Commands**:\n");
+                content.push_str("**Commands**:\n");
                 for (cmd, desc) in commands {
-                    if let Some(s) = desc.as_str() {
-                        output.push_str(&format!("- `{}`: {}\n", cmd, s));
+                    if let Some(desc_str) = desc.as_str() {
+                        content.push_str(&format!("- `{}`: {}\n", cmd, desc_str));
                     }
                 }
-                output.push_str("\n");
+                content.push_str("\n");
             }
         }
         
-        output
+        content
     }
     
     fn generate_sessions_section(&self, project_path: &Path) -> Result<String> {
-        let mut content = String::from("## Development Sessions\n\n");
+        let mut content = String::new();
+        content.push_str("## Development Sessions\n\n");
         
-        let sessions_path = project_path.join(".claude").join("context").join("sessions");
+        let sessions_path = self.get_sessions_path(project_path);
         if sessions_path.exists() {
             let mut sessions = Vec::new();
             for entry in fs::read_dir(&sessions_path)? {
                 let entry = entry?;
-                if entry.path().extension().map_or(false, |ext| ext == "md") {
+                if entry.path().extension().and_then(|s| s.to_str()) == Some("md") {
                     sessions.push(entry.path());
                 }
             }
             
-            // Sort by modification time (most recent first)
+            // Sort by modification time, newest first
             sessions.sort_by_key(|p| {
                 fs::metadata(p).and_then(|m| m.modified()).ok()
             });
@@ -589,17 +682,17 @@ impl ClaudeAdapter {
             } else {
                 content.push_str("Recent sessions:\n\n");
                 for (i, session_path) in sessions.iter().take(5).enumerate() {
-                    if let Some(filename) = session_path.file_name() {
-                        content.push_str(&format!("{}. {}\n", i + 1, filename.to_string_lossy()));
+                    if let Some(filename) = session_path.file_name().and_then(|s| s.to_str()) {
+                        content.push_str(&format!("{}. {}\n", i + 1, filename));
                     }
                 }
-                content.push_str("\n");
                 
-                // Include content of most recent session
+                content.push_str("\n### Most Recent Session\n\n");
                 if let Some(recent) = sessions.first() {
-                    content.push_str("### Most Recent Session\n\n");
+                    // Read first 50 lines of most recent session
                     if let Ok(session_content) = fs::read_to_string(recent) {
-                        content.push_str(&session_content);
+                        let lines: Vec<&str> = session_content.lines().take(50).collect();
+                        content.push_str(&lines.join("\n"));
                         content.push_str("\n");
                     }
                 }
@@ -612,7 +705,8 @@ impl ClaudeAdapter {
     }
     
     fn generate_working_patterns_section(&self) -> String {
-        let mut content = String::from("## Working Patterns\n\n");
+        let mut content = String::new();
+        content.push_str("## Working Patterns\n\n");
         
         content.push_str("### Adding Knowledge\n");
         content.push_str("```bash\n");
@@ -627,7 +721,7 @@ impl ClaudeAdapter {
         content.push_str("- `project` - Project-specific patterns\n");
         content.push_str("- `decision` - Architectural decisions\n");
         content.push_str("- `constraint` - Technical constraints\n");
-        content.push_str("- `principle` - Guiding principles\n\n");
+        content.push_str("- `principle` - Guiding principles\n");
         
         content
     }
@@ -635,24 +729,24 @@ impl ClaudeAdapter {
     fn create_adapter_manifest(&self, claude_path: &Path) -> Result<()> {
         let mut files = HashMap::new();
         
-        // Calculate checksums for all adapter files
+        // List all files we manage
         files.insert("commands/session-start.md".to_string(), 
-            self.calculate_checksum(include_str!("../../resources/claude/session-start.md")));
+            self.hash_content(include_str!("../../resources/claude/session-start.md")));
         files.insert("commands/session-end.md".to_string(),
-            self.calculate_checksum(include_str!("../../resources/claude/session-end.md")));
+            self.hash_content(include_str!("../../resources/claude/session-end.md")));
         files.insert("commands/session-update.md".to_string(),
-            self.calculate_checksum(include_str!("../../resources/claude/session-update.md")));
+            self.hash_content(include_str!("../../resources/claude/session-update.md")));
         files.insert("commands/session-note.md".to_string(),
-            self.calculate_checksum(include_str!("../../resources/claude/session-note.md")));
-        
+            self.hash_content(include_str!("../../resources/claude/session-note.md")));
+            
         files.insert("bin/session-start.sh".to_string(),
-            self.calculate_checksum(include_str!("../../resources/claude/session-start.sh")));
+            self.hash_content(include_str!("../../resources/claude/session-start.sh")));
         files.insert("bin/session-end.sh".to_string(),
-            self.calculate_checksum(include_str!("../../resources/claude/session-end.sh")));
+            self.hash_content(include_str!("../../resources/claude/session-end.sh")));
         files.insert("bin/session-update.sh".to_string(),
-            self.calculate_checksum(include_str!("../../resources/claude/session-update.sh")));
+            self.hash_content(include_str!("../../resources/claude/session-update.sh")));
         files.insert("bin/session-note.sh".to_string(),
-            self.calculate_checksum(include_str!("../../resources/claude/session-note.sh")));
+            self.hash_content(include_str!("../../resources/claude/session-note.sh")));
         
         let manifest = AdapterManifest {
             adapter: "claude".to_string(),
@@ -661,14 +755,13 @@ impl ClaudeAdapter {
             files,
         };
         
-        let manifest_path = claude_path.join("adapter-manifest.json");
-        let manifest_json = serde_json::to_string_pretty(&manifest)?;
-        fs::write(manifest_path, manifest_json)?;
+        let manifest_path = claude_path.join(paths::MANIFEST_FILE);
+        fs::write(manifest_path, serde_json::to_string_pretty(&manifest)?)?;
         
         Ok(())
     }
     
-    fn calculate_checksum(&self, content: &str) -> String {
+    fn hash_content(&self, content: &str) -> String {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
         
@@ -677,4 +770,24 @@ impl ClaudeAdapter {
         format!("{:x}", hasher.finish())
     }
     
+    fn get_changelog(&self, from_version: &str) -> Vec<String> {
+        let mut changes = Vec::new();
+        let mut found_version = false;
+        
+        for (version, version_changes) in VERSION_CHANGES {
+            if *version == from_version {
+                found_version = true;
+                continue;
+            }
+            
+            if found_version {
+                changes.push(format!("Version {}:", version));
+                for change in *version_changes {
+                    changes.push(format!("  - {}", change));
+                }
+            }
+        }
+        
+        changes
+    }
 }

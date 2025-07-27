@@ -27,9 +27,6 @@ uuid = { version = "1.10", features = ["v4", "serde"] }
 # Environment detection
 which = "7.0"
 
-# Template rendering
-handlebars = "5.1"
-
 [[bin]]
 name = "patina"
 path = "src/main.rs"
