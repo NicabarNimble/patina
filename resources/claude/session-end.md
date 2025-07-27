@@ -1,7 +1,7 @@
 End the current Patina session with comprehensive distillation:
 
 1. Run the session end script:
-   - Execute: `!.claude/bin/session-end.sh`
+   - Execute: `.claude/bin/session-end.sh`
    - This will first run a final update, then add structure
 
 2. Fill in ALL required sections in the session file:

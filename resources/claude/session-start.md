@@ -1,7 +1,7 @@
 Start a new Patina development session using the following steps:
 
 1. Run the session start script with the provided arguments:
-   - Execute: `!.claude/bin/session-start.sh $ARGUMENTS`
+   - Execute: `.claude/bin/session-start.sh $ARGUMENTS`
    - The script will create a session file with git context and output its location
 
 2. Analyze the current context:

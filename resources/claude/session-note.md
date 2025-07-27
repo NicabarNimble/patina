@@ -1,8 +1,8 @@
 Add a human note to the current Patina session:
 
 1. Run the session note script with your insight:
-   - Execute: `!.claude/bin/session-note.sh "$ARGUMENTS"`
-   - Example: `!.claude/bin/session-note.sh "discovered dual session architecture is key"`
+   - Execute: `.claude/bin/session-note.sh "$ARGUMENTS"`
+   - Example: `.claude/bin/session-note.sh "discovered dual session architecture is key"`
 
 2. Confirm the note was added:
    - Say: "Note added: [what user said]"
