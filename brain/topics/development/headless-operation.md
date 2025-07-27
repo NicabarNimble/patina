@@ -55,12 +55,17 @@ export PATINA_AUTO_APPROVE=1
 ### Update Command
 ```json
 {
-  "adapter": "claude",
-  "current_version": "0.1.0",
-  "available_version": "0.2.0",
-  "update_available": true,
-  "updated": false,
-  "error": null
+  "patina_version": "0.1.0",
+  "components": [
+    {
+      "name": "claude-adapter",
+      "current_version": "0.1.0",
+      "available_version": "0.2.0",
+      "updated": false
+    }
+  ],
+  "updates_available": true,
+  "updates_applied": []
 }
 ```
 
@@ -121,7 +126,7 @@ if ! patina doctor --check >/dev/null 2>&1; then
 fi
 
 # Ensure adapters are up to date
-if patina update --check --json | jq -e '.update_available' >/dev/null; then
+if patina update --check --json | jq -e '.updates_available' >/dev/null; then
   echo "⚠️  Adapter updates available. Run 'patina update' to update."
   exit 1
 fi
