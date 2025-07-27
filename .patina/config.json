@@ -1,1 +1,5 @@
-{"name": "patina", "llm": "claude"}
+{
+  "dev": "dagger",
+  "llm": "claude",
+  "name": "patina"
+}

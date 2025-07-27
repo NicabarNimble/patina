@@ -27,7 +27,7 @@ patina push                  # Generate LLM context
 # Development
 patina build                 # Smart build (Dagger or Docker)
 patina test                  # Run tests in container
-patina update               # Update context files
+patina update               # Update adapter components
 ```
 
 ## Build System

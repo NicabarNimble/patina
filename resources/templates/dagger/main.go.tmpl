@@ -18,52 +18,126 @@ func main() {
 	}
 	defer client.Close()
 
-	// Create Rust container
+	// Get command from args (passed by patina)
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: go run . <command> [args...]")
+		os.Exit(1)
+	}
+
+	command := os.Args[1]
+	args := os.Args[2:]
+
+	// Create base container with caching
 	container := client.Container().
 		From("rust:1.75").
-		WithDirectory("/app", client.Host().Directory("."), dagger.ContainerWithDirectoryOpts{
+		WithDirectory("/workspace", client.Host().Directory("."), dagger.ContainerWithDirectoryOpts{
 			Exclude: []string{
 				"target/",
 				".git/",
 				"pipelines/",
 			},
 		}).
-		WithWorkdir("/app").
+		WithWorkdir("/workspace").
 		WithMountedCache("/usr/local/cargo/registry", client.CacheVolume("cargo-registry")).
-		WithMountedCache("/app/target", client.CacheVolume("cargo-target"))
+		WithMountedCache("/workspace/target", client.CacheVolume("cargo-target"))
 
-	// Run tests
-	fmt.Println("Running tests...")
-	testContainer := container.
-		WithExec([]string{"cargo", "test"})
-	
-	if _, err := testContainer.Stdout(ctx); err != nil {
-		fmt.Printf("Tests failed: %v\n", err)
+	// Execute the command patina asked for
+	switch command {
+	case "exec":
+		// Generic execution - patina decides what to run
+		if len(args) == 0 {
+			fmt.Println("Error: exec requires command arguments")
+			os.Exit(1)
+		}
+		runExec(ctx, container, args)
+
+	case "build":
+		// Standard build pipeline
+		runBuild(ctx, container)
+
+	case "test":
+		// Standard test pipeline
+		runTest(ctx, container)
+
+	case "container":
+		// Just provide a running container
+		runContainer(ctx, container)
+
+	default:
+		fmt.Printf("Unknown command: %s\n", command)
 		os.Exit(1)
 	}
+}
 
-	// Build release
-	fmt.Println("Building release...")
-	buildContainer := container.
-		WithExec([]string{"cargo", "build", "--release"})
+// runExec runs arbitrary commands that patina requests
+func runExec(ctx context.Context, container *dagger.Container, args []string) {
+	fmt.Printf("🔧 Executing: %v\n", args)
 	
-	if _, err := buildContainer.Stdout(ctx); err != nil {
-		fmt.Printf("Build failed: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Export as Docker image
-	fmt.Println("Creating Docker image...")
-	finalContainer := client.Container().
-		From("debian:bookworm-slim").
-		WithFile("/usr/local/bin/{{.name}}", buildContainer.File("/app/target/release/{{.name}}")).
-		WithEntrypoint([]string{"/usr/local/bin/{{.name}}"})
-
-	// Export to local Docker
-	_, err = finalContainer.Export(ctx, "{{.name}}:latest")
+	output, err := container.
+		WithExec(args).
+		Stdout(ctx)
+	
 	if err != nil {
-		panic(err)
+		fmt.Printf("❌ Command failed: %v\n", err)
+		os.Exit(1)
 	}
+	
+	fmt.Print(output)
+}
 
-	fmt.Println("Successfully built {{.name}}:latest")
+// runBuild runs the standard build pipeline
+func runBuild(ctx context.Context, container *dagger.Container) {
+	fmt.Println("🔨 Building project...")
+	
+	// Build release binary
+	_, err := container.
+		WithExec([]string{"cargo", "build", "--release"}).
+		Sync(ctx)
+	
+	if err != nil {
+		fmt.Printf("❌ Build failed: %v\n", err)
+		os.Exit(1)
+	}
+	
+	fmt.Println("✅ Build completed successfully")
+}
+
+// runTest runs the test suite
+func runTest(ctx context.Context, container *dagger.Container) {
+	fmt.Println("🧪 Running tests...")
+	
+	output, err := container.
+		WithExec([]string{"cargo", "test", "--workspace"}).
+		Stdout(ctx)
+	
+	if err != nil {
+		fmt.Printf("❌ Tests failed: %v\n", err)
+		os.Exit(1)
+	}
+	
+	fmt.Print(output)
+	fmt.Println("✅ All tests passed")
+}
+
+// runContainer just keeps a container running for patina to use
+func runContainer(ctx context.Context, container *dagger.Container) {
+	fmt.Println("🐳 Container starting...")
+	
+	// Add git for basic operations
+	container = container.
+		WithExec([]string{"apt-get", "update", "-qq"}).
+		WithExec([]string{"apt-get", "install", "-y", "-qq", "git"})
+	
+	// Signal container is ready
+	_, err := container.
+		WithExec([]string{"echo", "Container ready"}).
+		Sync(ctx)
+	
+	if err != nil {
+		fmt.Printf("❌ Container failed: %v\n", err)
+		os.Exit(1)
+	}
+	
+	fmt.Println("✅ Container ready for commands")
+	// Note: Container only exists during this process
 }

@@ -21,8 +21,50 @@
       "content": null,
       "added_at": "2025-07-17T02:00:48.907423+00:00",
       "committed": true
+    },
+    {
+      "pattern_type": "topic",
+      "name": "liquid-template-pattern",
+      "content": null,
+      "added_at": "2025-07-27T11:57:29.656487+00:00",
+      "committed": false
+    },
+    {
+      "pattern_type": "topic",
+      "name": "hook-based-evolution",
+      "content": null,
+      "added_at": "2025-07-27T11:58:22.288076+00:00",
+      "committed": false
+    },
+    {
+      "pattern_type": "principle",
+      "name": "wisdom-vs-memory",
+      "content": null,
+      "added_at": "2025-07-27T11:58:37.013992+00:00",
+      "committed": false
+    },
+    {
+      "pattern_type": "topic",
+      "name": "orchestration-formula",
+      "content": null,
+      "added_at": "2025-07-27T11:58:44.657397+00:00",
+      "committed": false
+    },
+    {
+      "pattern_type": "topic",
+      "name": "hierarchical-pattern-storage",
+      "content": null,
+      "added_at": "2025-07-27T11:58:53.499429+00:00",
+      "committed": false
+    },
+    {
+      "pattern_type": "decision",
+      "name": "no-liquid-for-core",
+      "content": null,
+      "added_at": "2025-07-27T14:11:27.046206+00:00",
+      "committed": false
     }
   ],
   "created_at": "2025-07-17T02:00:22.842062+00:00",
-  "updated_at": "2025-07-17T02:00:58.109661+00:00"
+  "updated_at": "2025-07-27T14:11:27.046210+00:00"
 }
