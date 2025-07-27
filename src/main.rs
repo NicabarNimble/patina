@@ -4,7 +4,7 @@ use anyhow::Result;
 mod commands;
 
 #[derive(Parser)]
-#[command(author, version, about = "Context management for AI-assisted development", long_about = None)]
+#[command(author, version = env!("CARGO_PKG_VERSION"), about = "Context management for AI-assisted development", long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -25,9 +25,9 @@ enum Commands {
         #[arg(long)]
         design: String,
         
-        /// Development environment (docker, native)
+        /// Development environment (docker, dagger, native)
         #[arg(long)]
-        dev: String,
+        dev: Option<String>,
     },
     
     /// Add a pattern to the current session
@@ -50,7 +50,7 @@ enum Commands {
     /// Generate context for LLM
     Push,
     
-    /// Check for and install adapter updates
+    /// Check for and install adapter updates or modify project configuration
     Update {
         /// Only check for updates, don't install
         #[arg(short, long)]
@@ -67,10 +67,21 @@ enum Commands {
         /// Output results as JSON
         #[arg(short, long)]
         json: bool,
+        
+        /// Change or add LLM adapter (claude, gemini, local, openai)
+        #[arg(long)]
+        llm: Option<String>,
+        
+        /// Change or add development environment (docker, dagger, nix)
+        #[arg(long)]
+        dev: Option<String>,
     },
     
     /// Build project with Docker
     Build,
+    
+    /// Run tests in configured environment
+    Test,
     
     /// Run agent workflows with Dagger
     Agent {
@@ -111,14 +122,17 @@ fn main() -> Result<()> {
         Commands::Push => {
             commands::push::execute()?;
         }
-        Commands::Update { check, yes, no, json } => {
-            let exit_code = commands::update::execute(check, yes, no, json)?;
+        Commands::Update { check, yes, no, json, llm, dev } => {
+            let exit_code = commands::update::execute(check, yes, no, json, llm, dev)?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
         }
         Commands::Build => {
             commands::build::execute()?;
+        }
+        Commands::Test => {
+            commands::test::execute()?;
         }
         Commands::Agent { command } => {
             commands::agent::execute(command)?;

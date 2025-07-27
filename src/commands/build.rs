@@ -12,7 +12,7 @@ pub fn execute() -> Result<()> {
         if which::which("go").is_ok() {
             let output = Command::new("go")
                 .current_dir("pipelines")
-                .args(&["run", "."])
+                .args(&["run", ".", "build"])
                 .status()
                 .context("Failed to run Dagger pipeline")?;
             

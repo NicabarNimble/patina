@@ -54,6 +54,11 @@ pub trait LLMAdapter {
     fn update_adapter_files(&self, project_path: &Path) -> Result<()> {
         Ok(()) // Default: no-op
     }
+    
+    /// Get version changes for a specific version
+    fn get_version_changes(&self, _version: &str) -> Option<Vec<String>> {
+        None // Default: no changes
+    }
 }
 
 /// Get an LLM adapter by name
