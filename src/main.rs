@@ -40,7 +40,7 @@ enum Commands {
         name: String,
     },
     
-    /// Commit session patterns to brain
+    /// Commit session patterns to layer
     Commit {
         /// Commit message
         #[arg(short, long)]

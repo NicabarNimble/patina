@@ -1,11 +1,10 @@
 pub mod claude;
-pub mod openai;
-pub mod local;
+pub mod gemini;
 
 use anyhow::Result;
 use std::path::Path;
 use toml::Value;
-use crate::brain::Pattern;
+use crate::layer::Pattern;
 use crate::environment::Environment;
 
 /// Trait for LLM-specific implementations
@@ -52,12 +51,12 @@ pub trait LLMAdapter {
     
     /// Check if adapter files need updating
     /// Returns Some((current_version, available_version)) if update available
-    fn check_for_updates(&self, project_path: &Path) -> Result<Option<(String, String)>> {
+    fn check_for_updates(&self, _project_path: &Path) -> Result<Option<(String, String)>> {
         Ok(None) // Default: no updates
     }
     
     /// Update adapter files to latest version
-    fn update_adapter_files(&self, project_path: &Path) -> Result<()> {
+    fn update_adapter_files(&self, _project_path: &Path) -> Result<()> {
         Ok(()) // Default: no-op
     }
     
@@ -66,8 +65,13 @@ pub trait LLMAdapter {
         None // Default: no changes
     }
     
+    /// Get all changes since a given version
+    fn get_changelog_since(&self, _from_version: &str) -> Vec<String> {
+        Vec::new() // Default: no changelog
+    }
+    
     /// Get the sessions directory path for this adapter
-    fn get_sessions_path(&self, project_path: &Path) -> Option<std::path::PathBuf> {
+    fn get_sessions_path(&self, _project_path: &Path) -> Option<std::path::PathBuf> {
         None // Default: no sessions directory
     }
     
@@ -81,8 +85,7 @@ pub trait LLMAdapter {
 pub fn get_adapter(llm_name: &str) -> Box<dyn LLMAdapter> {
     match llm_name.to_lowercase().as_str() {
         "claude" => Box::new(claude::ClaudeAdapter),
-        "openai" | "gpt" => Box::new(openai::OpenAIAdapter),
-        "local" | "ollama" => Box::new(local::LocalAdapter),
+        "gemini" => Box::new(gemini::GeminiAdapter),
         _ => Box::new(claude::ClaudeAdapter), // Default to Claude
     }
 }

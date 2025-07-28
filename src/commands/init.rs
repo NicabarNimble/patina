@@ -3,9 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::env;
 use toml::Value;
-use serde_json::json;
 
-use patina::brain::{Brain, Pattern, PatternType};
+use patina::layer::{Layer, Pattern, PatternType};
 use patina::version::VersionManifest;
 
 pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -> Result<()> {
@@ -71,13 +70,13 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
     fs::copy(&design, &project_design_path)
         .with_context(|| "Failed to copy PROJECT_DESIGN.toml")?;
     
-    // 6. Set up brain directories
-    let brain_path = project_path.join("brain");
-    let brain = Brain::new(&brain_path);
-    brain.init()
-        .with_context(|| "Failed to initialize brain structure")?;
+    // 6. Set up layer directories
+    let layer_path = project_path.join("layer");
+    let layer = Layer::new(&layer_path);
+    layer.init()
+        .with_context(|| "Failed to initialize layer structure")?;
     
-    println!("  ✓ Created brain structure");
+    println!("  ✓ Created layer structure");
     
     // 7. Create .patina directory for session state
     let patina_dir = project_path.join(".patina");
@@ -139,16 +138,16 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
     config["dev_manifest"] = dev_manifest;
     fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
     
-    // 10. Initialize with core patterns from Patina's brain
-    if let Ok(patina_brain_path) = std::env::current_exe() {
-        if let Some(patina_root) = patina_brain_path
+    // 10. Initialize with core patterns from Patina's layer
+    if let Ok(patina_exe_path) = std::env::current_exe() {
+        if let Some(patina_root) = patina_exe_path
             .parent()
             .and_then(|p| p.parent())
             .and_then(|p| p.parent())
         {
-            let source_brain_path = patina_root.join("brain");
-            if source_brain_path.exists() {
-                copy_core_patterns(&source_brain_path, &brain_path)?;
+            let source_layer_path = patina_root.join("layer");
+            if source_layer_path.exists() {
+                copy_core_patterns(&source_layer_path, &layer_path)?;
                 println!("  ✓ Copied core patterns from Patina");
             }
         }
@@ -173,7 +172,7 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
         ),
     };
     
-    brain.store_pattern(&project_pattern)?;
+    layer.store_pattern(&project_pattern)?;
     
     // 12. Call adapter post_init for any additional setup
     adapter.post_init(&project_path, &design_toml, &dev)?;
@@ -182,15 +181,15 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
     println!("\nNext steps:");
     println!("  1. cd {}", name);
     println!("  2. patina add <type> <name>  # Add patterns to session");
-    println!("  3. patina commit             # Commit patterns to brain");
+    println!("  3. patina commit             # Commit patterns to layer");
     println!("  4. patina push               # Generate LLM context");
     
     Ok(())
 }
 
-fn copy_core_patterns(source_brain: &Path, target_brain: &Path) -> Result<()> {
-    let source_core = source_brain.join("core");
-    let target_core = target_brain.join("core");
+fn copy_core_patterns(source_layer: &Path, target_layer: &Path) -> Result<()> {
+    let source_core = source_layer.join("core");
+    let target_core = target_layer.join("core");
     
     if source_core.exists() {
         fs::create_dir_all(&target_core)?;

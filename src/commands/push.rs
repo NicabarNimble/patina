@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use patina::brain::Brain;
+use patina::layer::Layer;
 use patina::session::SessionManager;
 use std::fs;
 
@@ -28,12 +28,12 @@ pub fn execute() -> Result<()> {
     let design_content = fs::read_to_string(&design_path)
         .context("Failed to read PROJECT_DESIGN.toml")?;
     
-    // Initialize brain and gather all patterns
-    let brain_path = project_root.join("brain");
-    let brain = Brain::new(&brain_path);
+    // Initialize layer and gather all patterns
+    let layer_path = project_root.join("layer");
+    let layer = Layer::new(&layer_path);
     
-    let all_patterns = brain.get_all_patterns()
-        .context("Failed to retrieve patterns from brain")?;
+    let all_patterns = layer.get_all_patterns()
+        .context("Failed to retrieve patterns from layer")?;
     
     // Generate context using adapter
     let environment = patina::Environment::detect()?;

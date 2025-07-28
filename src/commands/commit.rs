@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use patina::brain::{Brain, Pattern, PatternType};
+use patina::layer::{Layer, Pattern, PatternType};
 use patina::session::SessionManager;
 use std::io::{self, Write};
 
@@ -28,9 +28,9 @@ pub fn execute(message: String) -> Result<()> {
         println!("  - {} '{}'", pattern.pattern_type, pattern.name);
     }
     
-    // Initialize brain
-    let brain_path = project_root.join("brain");
-    let brain = Brain::new(&brain_path);
+    // Initialize layer
+    let layer_path = project_root.join("layer");
+    let layer = Layer::new(&layer_path);
     
     // Get project name from config
     let config_path = project_root.join(".patina").join("config.json");
@@ -47,7 +47,7 @@ pub fn execute(message: String) -> Result<()> {
     for pattern in uncommitted {
         println!("\n🎯 Pattern: {} '{}'", pattern.pattern_type, pattern.name);
         
-        // Determine pattern type for brain storage
+        // Determine pattern type for layer storage
         let pattern_type = match pattern.pattern_type.as_str() {
             "core" => PatternType::Core,
             "topic" => {
@@ -103,24 +103,24 @@ pub fn execute(message: String) -> Result<()> {
             message
         );
         
-        // Store pattern in brain
-        let brain_pattern = Pattern {
+        // Store pattern in layer
+        let layer_pattern = Pattern {
             name: pattern.name.clone(),
             pattern_type,
             content: formatted_content,
         };
         
-        brain.store_pattern(&brain_pattern)?;
+        layer.store_pattern(&layer_pattern)?;
         committed_names.push(pattern.name.clone());
         
-        println!("✓ Committed '{}' to brain", pattern.name);
+        println!("✓ Committed '{}' to layer", pattern.name);
     }
     
     // Mark patterns as committed in session
     session.mark_committed(&committed_names);
     session_manager.save_session(&session)?;
     
-    println!("\n✨ Committed {} patterns to brain", committed_names.len());
+    println!("\n✨ Committed {} patterns to layer", committed_names.len());
     println!("   Message: {}", message);
     
     Ok(())

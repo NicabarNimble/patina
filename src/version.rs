@@ -5,6 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::adapters::claude::CLAUDE_ADAPTER_VERSION;
+use crate::adapters::gemini::GEMINI_ADAPTER_VERSION;
 use crate::dev_env::dagger::DAGGER_VERSION;
 use crate::dev_env::docker::DOCKER_VERSION;
 
@@ -30,6 +31,14 @@ impl VersionManifest {
             ComponentInfo {
                 version: CLAUDE_ADAPTER_VERSION.to_string(),
                 description: "Claude AI session management and context generation".to_string(),
+            },
+        );
+        
+        components.insert(
+            "gemini-adapter".to_string(),
+            ComponentInfo {
+                version: GEMINI_ADAPTER_VERSION.to_string(),
+                description: "Gemini AI context file generation".to_string(),
             },
         );
         
@@ -93,6 +102,7 @@ impl UpdateChecker {
         
         // Pull from the actual constants - single source of truth
         available.insert("claude-adapter".to_string(), CLAUDE_ADAPTER_VERSION.to_string());
+        available.insert("gemini-adapter".to_string(), GEMINI_ADAPTER_VERSION.to_string());
         available.insert("dagger".to_string(), DAGGER_VERSION.to_string());
         available.insert("docker".to_string(), DOCKER_VERSION.to_string());
         

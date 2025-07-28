@@ -105,16 +105,23 @@ pub fn execute(
     
     // Show what's new for specific components
     if !json_output && !check_only {
-        for (component, _, new_version) in &updates {
-            if component == "claude-adapter" && llm == "claude" {
-                // Get version changes from the adapter
-                let adapter = patina::adapters::get_adapter(llm);
-                if let Some(changes) = adapter.get_version_changes(new_version) {
-                    println!("\nWhat's new in claude-adapter {}:", new_version);
-                    for change in changes {
-                        println!("  - {}", change);
+        for (component, current_version, new_version) in &updates {
+            match component.as_str() {
+                "claude-adapter" if llm == "claude" => {
+                    let adapter = patina::adapters::get_adapter(llm);
+                    let changelog = adapter.get_changelog_since(current_version);
+                    if !changelog.is_empty() {
+                        println!("\nWhat's new since claude-adapter {}:", current_version);
+                        for change in changelog {
+                            println!("{}", change);
+                        }
                     }
                 }
+                "gemini-adapter" if llm == "gemini" => {
+                    println!("\nGemini adapter {} is now available", new_version);
+                    println!("  - Initial release with basic GEMINI.md generation");
+                }
+                _ => {}
             }
         }
     }

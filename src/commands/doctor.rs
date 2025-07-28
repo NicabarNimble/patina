@@ -31,7 +31,7 @@ struct ToolChange {
 struct ProjectStatus {
     llm: String,
     adapter_version: Option<String>,
-    brain_patterns: usize,
+    layer_patterns: usize,
     sessions: usize,
 }
 
@@ -77,9 +77,9 @@ pub fn execute(check_only: bool, auto_fix: bool, json_output: bool) -> Result<i3
     let adapter_version = adapter.check_for_updates(&project_root)?
         .map(|(current, _)| current);
     
-    // Count brain patterns
-    let brain_path = project_root.join("brain");
-    let pattern_count = count_patterns(&brain_path);
+    // Count layer patterns
+    let layer_path = project_root.join("layer");
+    let pattern_count = count_patterns(&layer_path);
     
     // Count sessions
     let sessions_path = adapter.get_sessions_path(&project_root);
@@ -91,7 +91,7 @@ pub fn execute(check_only: bool, auto_fix: bool, json_output: bool) -> Result<i3
     health_check.project_config = ProjectStatus {
         llm: llm.to_string(),
         adapter_version,
-        brain_patterns: pattern_count,
+        layer_patterns: pattern_count,
         sessions: session_count,
     };
     
@@ -189,7 +189,7 @@ fn analyze_environment(current: &Environment, stored_tools: &[String], config: &
         project_config: ProjectStatus {
             llm: String::new(),
             adapter_version: None,
-            brain_patterns: 0,
+            layer_patterns: 0,
             sessions: 0,
         },
         recommendations,
@@ -227,11 +227,11 @@ fn get_install_command(tool: &str) -> &'static str {
     }
 }
 
-fn count_patterns(brain_path: &std::path::Path) -> usize {
+fn count_patterns(layer_path: &std::path::Path) -> usize {
     let mut count = 0;
-    if brain_path.exists() {
+    if layer_path.exists() {
         for dir in ["core", "topics", "projects"] {
-            let path = brain_path.join(dir);
+            let path = layer_path.join(dir);
             if let Ok(entries) = fs::read_dir(path) {
                 count += entries.filter_map(Result::ok)
                     .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
@@ -279,7 +279,7 @@ fn display_health_check(health: &HealthCheck, _env: &Environment) -> Result<()> 
         health.project_config.llm,
         health.project_config.adapter_version.as_ref().unwrap_or(&"unknown".to_string())
     );
-    println!("  ✓ Brain: {} patterns stored", health.project_config.brain_patterns);
+    println!("  ✓ Layer: {} patterns stored", health.project_config.layer_patterns);
     println!("  ✓ Sessions: {} recorded", health.project_config.sessions);
     
     if !health.recommendations.is_empty() {

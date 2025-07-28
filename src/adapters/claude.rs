@@ -3,7 +3,7 @@ use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
 use toml::Value;
-use crate::brain::{Pattern, PatternType};
+use crate::layer::{Pattern, PatternType};
 use crate::environment::{Environment, LanguageInfo};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
@@ -184,7 +184,7 @@ impl LLMAdapter for ClaudeAdapter {
         content.push_str("## Table of Contents\n\n");
         content.push_str("1. [Environment](#environment)\n");
         content.push_str("2. [Project Design](#project-design)\n");
-        content.push_str("3. [Brain Patterns](#brain-patterns)\n");
+        content.push_str("3. [Layer Patterns](#layer-patterns)\n");
         content.push_str("4. [Development Sessions](#development-sessions)\n");
         content.push_str("5. [Custom Commands](#custom-commands)\n");
         content.push_str("6. [Working Patterns](#working-patterns)\n\n");
@@ -198,10 +198,10 @@ impl LLMAdapter for ClaudeAdapter {
         content.push_str(&self.format_design_toml(design));
         content.push_str("\n");
         
-        // Brain Patterns
-        content.push_str("## Brain Patterns\n\n");
+        // Layer Patterns
+        content.push_str("## Layer Patterns\n\n");
         if patterns.is_empty() {
-            content.push_str("*No patterns stored in brain yet*\n");
+            content.push_str("*No patterns stored in layer yet*\n");
         } else {
             self.add_patterns_to_content(&mut content, patterns);
         }
@@ -305,6 +305,20 @@ impl LLMAdapter for ClaudeAdapter {
     
     fn version(&self) -> &'static str {
         CLAUDE_ADAPTER_VERSION
+    }
+    
+    fn get_version_changes(&self, version: &str) -> Option<Vec<String>> {
+        // Get changes for a specific version only
+        for (v, changes) in VERSION_CHANGES {
+            if *v == version {
+                return Some(changes.iter().map(|s| s.to_string()).collect());
+            }
+        }
+        None
+    }
+    
+    fn get_changelog_since(&self, from_version: &str) -> Vec<String> {
+        self.get_changelog(from_version)
     }
 }
 
@@ -719,7 +733,7 @@ impl ClaudeAdapter {
         content.push_str("### Adding Knowledge\n");
         content.push_str("```bash\n");
         content.push_str("patina add <type> <name>  # Add pattern to session\n");
-        content.push_str("patina commit -m \"message\"  # Commit patterns to brain\n");
+        content.push_str("patina commit -m \"message\"  # Commit patterns to layer\n");
         content.push_str("patina update  # Refresh this file\n");
         content.push_str("```\n\n");
         

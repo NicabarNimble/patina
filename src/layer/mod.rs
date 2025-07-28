@@ -16,18 +16,18 @@ pub struct Pattern {
     pub content: String,
 }
 
-pub struct Brain {
+pub struct Layer {
     root_path: PathBuf,
 }
 
-impl Brain {
+impl Layer {
     pub fn new(root_path: impl AsRef<Path>) -> Self {
         Self {
             root_path: root_path.as_ref().to_path_buf(),
         }
     }
     
-    /// Initialize brain directory structure if it doesn't exist
+    /// Initialize layer directory structure if it doesn't exist
     pub fn init(&self) -> Result<()> {
         let dirs = [
             self.root_path.join("core"),

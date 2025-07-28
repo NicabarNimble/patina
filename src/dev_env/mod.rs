@@ -3,7 +3,6 @@ pub mod docker;
 
 use anyhow::Result;
 use std::path::Path;
-use toml::Value;
 
 /// Trait for development environment integrations
 pub trait DevEnvironment {
