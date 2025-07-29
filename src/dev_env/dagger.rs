@@ -35,6 +35,10 @@ impl DevEnvironment for DaggerEnvironment {
             
         fs::write(pipelines_dir.join("go.mod"), go_mod_content)?;
         
+        // Copy CONSTRAINTS.md to guide LLM interactions
+        let constraints_content = include_str!("../../resources/templates/dagger/CONSTRAINTS.md");
+        fs::write(pipelines_dir.join("CONSTRAINTS.md"), constraints_content)?;
+        
         Ok(())
     }
     

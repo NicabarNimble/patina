@@ -75,6 +75,10 @@ enum Commands {
         /// Change or add development environment (docker, dagger, nix)
         #[arg(long)]
         dev: Option<String>,
+        
+        /// Force update even if versions match
+        #[arg(short, long)]
+        force: bool,
     },
     
     /// Build project with Docker
@@ -133,8 +137,8 @@ fn main() -> Result<()> {
         Commands::Push => {
             commands::push::execute()?;
         }
-        Commands::Update { check, yes, no, json, llm, dev } => {
-            let exit_code = commands::update::execute(check, yes, no, json, llm, dev)?;
+        Commands::Update { check, yes, no, json, llm, dev, force } => {
+            let exit_code = commands::update::execute(check, yes, no, json, llm, dev, force)?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }

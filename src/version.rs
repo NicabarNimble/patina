@@ -127,4 +127,23 @@ impl UpdateChecker {
         
         updates
     }
+    
+    pub fn force_all_updates(manifest: &VersionManifest) -> Vec<(String, String, String)> {
+        let available = Self::get_available_versions();
+        let mut updates = Vec::new();
+        
+        for (component, available_version) in available {
+            let current_version = manifest.get_component_version(&component)
+                .unwrap_or(&available_version)
+                .to_string();
+            
+            updates.push((
+                component,
+                current_version,
+                available_version,
+            ));
+        }
+        
+        updates
+    }
 }

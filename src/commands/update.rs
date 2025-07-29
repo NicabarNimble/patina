@@ -30,6 +30,7 @@ pub fn execute(
     json_output: bool,
     llm: Option<String>,
     dev: Option<String>,
+    force: bool,
 ) -> Result<i32> {
     // Find project root
     let project_root = SessionManager::find_project_root()
@@ -37,7 +38,7 @@ pub fn execute(
     
     // If LLM or dev environment change requested, handle that separately
     if llm.is_some() || dev.is_some() {
-        return handle_config_updates(&project_root, llm, dev, check_only, json_output);
+        return handle_config_updates(&project_root, llm, dev, check_only, json_output, force);
     }
     
     // Check for non-interactive mode via environment variable
@@ -50,7 +51,12 @@ pub fn execute(
     
     // Load version manifest
     let mut manifest = VersionManifest::load(&project_root)?;
-    let updates = UpdateChecker::check_for_updates(&manifest);
+    let updates = if force {
+        // Force mode: treat all components as needing updates
+        UpdateChecker::force_all_updates(&manifest)
+    } else {
+        UpdateChecker::check_for_updates(&manifest)
+    };
     
     // Read project config for LLM info
     let config_path = project_root.join(".patina").join("config.json");
@@ -65,7 +71,7 @@ pub fn execute(
     let mut result = UpdateResult {
         patina_version: manifest.patina.clone(),
         components: vec![],
-        updates_available: !updates.is_empty(),
+        updates_available: !updates.is_empty() || force,
         updates_applied: vec![],
     };
     
@@ -79,7 +85,7 @@ pub fn execute(
         println!();
     }
     
-    if updates.is_empty() {
+    if updates.is_empty() && !force {
         if !json_output {
             println!("✓ All components are up to date");
         }
@@ -87,6 +93,13 @@ pub fn execute(
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
         return Ok(0);
+    }
+    
+    // If force mode and no updates, we need to create them
+    if updates.is_empty() && force {
+        if !json_output {
+            println!("⚡ Force mode: re-installing all components");
+        }
     }
     
     // Build component updates list
@@ -210,6 +223,7 @@ fn handle_config_updates(
     dev: Option<String>,
     check_only: bool,
     json_output: bool,
+    force: bool,
 ) -> Result<i32> {
     // Load current project config
     let config_path = project_root.join(".patina").join("config.json");
@@ -270,8 +284,31 @@ fn handle_config_updates(
         if !json_output {
             match new_dev.as_str() {
                 "dagger" => {
-                    if Path::new(project_root).join("pipelines").exists() {
+                    if Path::new(project_root).join("pipelines").exists() && !force {
                         println!("✓ Dagger pipeline already exists");
+                    } else if Path::new(project_root).join("pipelines").exists() && force {
+                        println!("⚡ Force updating Dagger pipeline files");
+                        
+                        if check_only {
+                            println!("  Would:");
+                            println!("  - Overwrite pipelines/main.go with constrained template");
+                            println!("  - Copy CONSTRAINTS.md to pipelines/");
+                            println!("  - Update go.mod if needed");
+                        } else {
+                            // Extract project name from config
+                            let project_name = config.get("name")
+                                .and_then(|n| n.as_str())
+                                .ok_or_else(|| anyhow::anyhow!("Project name not found in config"))?;
+                            
+                            // Force regenerate files
+                            let manifest = create_dagger_files(project_root, project_name, &design_toml)?;
+                            println!("  ✓ Force updated Dagger pipeline files");
+                            
+                            // Update config
+                            config["dev"] = serde_json::Value::String("dagger".to_string());
+                            config["dev_manifest"] = manifest;
+                            changes_made = true;
+                        }
                     } else {
                         println!("➕ Adding Dagger pipeline support");
                         
@@ -415,6 +452,10 @@ fn create_dagger_files(project_path: &Path, name: &str, design: &Value) -> Resul
     // Copy main.go file (no templating needed - it's generic)
     let main_go_content = include_str!("../../resources/templates/dagger/main.go.tmpl");
     fs::write(pipelines_dir.join("main.go"), main_go_content)?;
+    
+    // Copy CONSTRAINTS.md to guide LLM interactions
+    let constraints_content = include_str!("../../resources/templates/dagger/CONSTRAINTS.md");
+    fs::write(pipelines_dir.join("CONSTRAINTS.md"), constraints_content)?;
     
     // Create a simple README for the pipelines
     let readme_content = format!(r#"# {} Dagger Pipelines
