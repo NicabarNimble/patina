@@ -1,52 +1,67 @@
 use super::LLMAdapter;
+use crate::environment::{Environment, LanguageInfo};
+use crate::layer::{Pattern, PatternType};
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use toml::Value;
-use crate::layer::{Pattern, PatternType};
-use crate::environment::{Environment, LanguageInfo};
-use serde::{Serialize, Deserialize};
-use std::collections::HashMap;
 
 /// Version of the Claude adapter - increment when scripts/commands change
 pub const CLAUDE_ADAPTER_VERSION: &str = "0.5.0";
 
 /// Changelog for adapter versions
 const VERSION_CHANGES: &[(&str, &[&str])] = &[
-    ("0.5.0", &[
-        "Simplified: Removed content-capture agent references",
-        "Fixed: session-start now always prompts for todos",
-        "Changed: session-update now prompts directly for content",
-        "Changed: session-end no longer auto-runs update (manual control)",
-        "Updated: All markdown templates for clarity and consistency",
-        "Improved: Cleaner separation between script actions and Claude actions",
-    ]),
-    ("0.4.0", &[
-        "New: Active session management with active-session.md",
-        "New: Content-capture agent for automatic session documentation",  
-        "Enhanced: session-start now cleans up incomplete sessions",
-        "Enhanced: session-update invokes agent for automatic content capture",
-        "Enhanced: session-end invokes agent before archiving",
-        "Fixed: All commands now use consistent active-session.md file",
-        "Changed: Session workflow is now stateful with AI participation",
-    ]),
-    ("0.3.0", &[
-        "Enhanced: session-update now captures interest marks",
-        "Fixed: Arguments are now properly used by session-update script",
-        "Improved: Unified workflow for marking + context filling",
-        "Changed: Both marks and context are captured for richer sessions",
-    ]),
-    ("0.2.0", &[
-        "Fixed: Scripts now properly stored in .claude/bin/ directory",
-        "Added: Adapter versioning and update mechanism",
-        "Changed: Update command now updates adapter files instead of CLAUDE.md",
-        "Improved: Session commands now use correct script paths",
-    ]),
-    ("0.1.0", &[
-        "Initial Claude adapter implementation",
-        "Session management commands",
-        "CLAUDE.md context generation",
-    ]),
+    (
+        "0.5.0",
+        &[
+            "Simplified: Removed content-capture agent references",
+            "Fixed: session-start now always prompts for todos",
+            "Changed: session-update now prompts directly for content",
+            "Changed: session-end no longer auto-runs update (manual control)",
+            "Updated: All markdown templates for clarity and consistency",
+            "Improved: Cleaner separation between script actions and Claude actions",
+        ],
+    ),
+    (
+        "0.4.0",
+        &[
+            "New: Active session management with active-session.md",
+            "New: Content-capture agent for automatic session documentation",
+            "Enhanced: session-start now cleans up incomplete sessions",
+            "Enhanced: session-update invokes agent for automatic content capture",
+            "Enhanced: session-end invokes agent before archiving",
+            "Fixed: All commands now use consistent active-session.md file",
+            "Changed: Session workflow is now stateful with AI participation",
+        ],
+    ),
+    (
+        "0.3.0",
+        &[
+            "Enhanced: session-update now captures interest marks",
+            "Fixed: Arguments are now properly used by session-update script",
+            "Improved: Unified workflow for marking + context filling",
+            "Changed: Both marks and context are captured for richer sessions",
+        ],
+    ),
+    (
+        "0.2.0",
+        &[
+            "Fixed: Scripts now properly stored in .claude/bin/ directory",
+            "Added: Adapter versioning and update mechanism",
+            "Changed: Update command now updates adapter files instead of CLAUDE.md",
+            "Improved: Session commands now use correct script paths",
+        ],
+    ),
+    (
+        "0.1.0",
+        &[
+            "Initial Claude adapter implementation",
+            "Session management commands",
+            "CLAUDE.md context generation",
+        ],
+    ),
 ];
 
 /// Path constants for Claude adapter
@@ -76,32 +91,33 @@ impl ClaudeAdapter {
     fn get_claude_path(&self, project_path: &Path) -> PathBuf {
         project_path.join(paths::ADAPTER_DIR)
     }
-    
+
     /// Get various subdirectory paths
     fn get_mcp_path(&self, project_path: &Path) -> PathBuf {
         self.get_claude_path(project_path).join(paths::MCP_DIR)
     }
-    
+
     fn get_commands_path(&self, project_path: &Path) -> PathBuf {
         self.get_claude_path(project_path).join(paths::COMMANDS_DIR)
     }
-    
+
     fn get_bin_path(&self, project_path: &Path) -> PathBuf {
         self.get_claude_path(project_path).join(paths::BIN_DIR)
     }
-    
+
     fn get_sessions_path(&self, project_path: &Path) -> PathBuf {
         self.get_claude_path(project_path)
             .join(paths::CONTEXT_DIR)
             .join(paths::SESSIONS_DIR)
     }
-    
+
     fn get_context_file_path(&self, project_path: &Path) -> PathBuf {
         self.get_claude_path(project_path).join(paths::CONTEXT_FILE)
     }
-    
+
     fn get_manifest_path(&self, project_path: &Path) -> PathBuf {
-        self.get_claude_path(project_path).join(paths::MANIFEST_FILE)
+        self.get_claude_path(project_path)
+            .join(paths::MANIFEST_FILE)
     }
 }
 
@@ -109,39 +125,44 @@ impl LLMAdapter for ClaudeAdapter {
     fn name(&self) -> &'static str {
         "claude"
     }
-    
-    fn init_project(&self, project_path: &Path, design: &Value, environment: &Environment) -> Result<()> {
+
+    fn init_project(
+        &self,
+        project_path: &Path,
+        design: &Value,
+        environment: &Environment,
+    ) -> Result<()> {
         // Create .claude directory structure
         let claude_path = self.get_claude_path(project_path);
         fs::create_dir_all(&claude_path)?;
-        
+
         // Create initial CLAUDE.md with environment info
         let claude_md_content = self.generate_initial_context(design, environment)?;
         fs::write(self.get_context_file_path(project_path), claude_md_content)?;
-        
+
         // Create MCP directory for MCP servers
         fs::create_dir_all(self.get_mcp_path(project_path))?;
-        
+
         // Create commands directory for command definitions
         fs::create_dir_all(self.get_commands_path(project_path))?;
-        
+
         // Create bin directory for scripts
         fs::create_dir_all(self.get_bin_path(project_path))?;
-        
+
         // Create session commands and scripts
         let commands_path = self.get_commands_path(project_path);
         let bin_path = self.get_bin_path(project_path);
         self.create_session_commands(&commands_path, &bin_path)?;
-        
+
         // Create context/sessions directory
         fs::create_dir_all(self.get_sessions_path(project_path))?;
-        
+
         // Create adapter manifest
         self.create_adapter_manifest(&claude_path)?;
-        
+
         Ok(())
     }
-    
+
     fn generate_context(
         &self,
         project_path: &Path,
@@ -151,38 +172,41 @@ impl LLMAdapter for ClaudeAdapter {
         _environment: &Environment,
     ) -> Result<()> {
         let mut content = String::new();
-        
+
         // Header
-        content.push_str(&format!("# {} - Claude Context\n\n", project_name));
+        content.push_str(&format!("# {project_name} - Claude Context\n\n"));
         content.push_str("This context was generated by Patina to provide comprehensive project understanding.\n\n");
-        
+
         // Project Design
         content.push_str("## Project Design\n\n");
         content.push_str("```toml\n");
         content.push_str(design_content);
         content.push_str("\n```\n\n");
-        
+
         // Add patterns
         self.add_patterns_to_content(&mut content, patterns);
-        
+
         // Footer
         content.push_str("## Usage Notes\n\n");
         content.push_str("- This context provides the accumulated wisdom for this project\n");
         content.push_str("- Core patterns apply universally\n");
         content.push_str("- Topic patterns apply to specific domains\n");
         content.push_str("- Project patterns are specific to this codebase\n");
-        content.push_str(&format!("\nGenerated by Patina on {}\n", chrono::Utc::now().to_rfc3339()));
-        
+        content.push_str(&format!(
+            "\nGenerated by Patina on {}\n",
+            chrono::Utc::now().to_rfc3339()
+        ));
+
         // Write to .claude/CLAUDE.md
         let output_path = self.get_context_file_path(project_path);
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)?;
         }
         fs::write(&output_path, content)?;
-        
+
         Ok(())
     }
-    
+
     fn update_context(
         &self,
         project_path: &Path,
@@ -192,11 +216,11 @@ impl LLMAdapter for ClaudeAdapter {
         _environment: &Environment,
     ) -> Result<()> {
         let mut content = String::new();
-        
+
         // Header
-        content.push_str(&format!("# {} - Claude Context\n\n", project_name));
+        content.push_str(&format!("# {project_name} - Claude Context\n\n"));
         content.push_str("This context is maintained by Patina and provides comprehensive project understanding.\n\n");
-        
+
         // Table of Contents
         content.push_str("## Table of Contents\n\n");
         content.push_str("1. [Environment](#environment)\n");
@@ -205,16 +229,16 @@ impl LLMAdapter for ClaudeAdapter {
         content.push_str("4. [Development Sessions](#development-sessions)\n");
         content.push_str("5. [Custom Commands](#custom-commands)\n");
         content.push_str("6. [Working Patterns](#working-patterns)\n\n");
-        
+
         // Environment
         content.push_str(&_environment.to_markdown());
-        content.push_str("\n");
-        
+        content.push('\n');
+
         // Project Design
         content.push_str("## Project Design\n\n");
         content.push_str(&self.format_design_toml(design));
-        content.push_str("\n");
-        
+        content.push('\n');
+
         // Layer Patterns
         content.push_str("## Layer Patterns\n\n");
         if patterns.is_empty() {
@@ -222,108 +246,118 @@ impl LLMAdapter for ClaudeAdapter {
         } else {
             self.add_patterns_to_content(&mut content, patterns);
         }
-        content.push_str("\n");
-        
+        content.push('\n');
+
         // Development Sessions
         content.push_str(&self.generate_sessions_section(project_path)?);
-        content.push_str("\n");
-        
+        content.push('\n');
+
         // Custom Commands
         content.push_str("## Custom Commands\n\n");
         content.push_str("Patina uses a two-phase session workflow: **Capture** (during work) → **Distill** (at session end)\n\n");
         content.push_str("### Available Commands\n\n");
         for (cmd, desc) in self.get_custom_commands() {
-            content.push_str(&format!("- `{}` - {}\n", cmd, desc));
+            content.push_str(&format!("- `{cmd}` - {desc}\n"));
         }
         content.push_str("\n### Session Workflow\n\n");
         content.push_str("1. **Start**: `/session-start \"feature-name\"` - Creates timestamped session file (e.g., `20250122-1430-feature-name.md`)\n");
         content.push_str("2. **Work**: Make changes, explore code, have discussions\n");
-        content.push_str("3. **Update**: `/session-update` - Marks time spans for Claude to fill with context\n");
+        content.push_str(
+            "3. **Update**: `/session-update` - Marks time spans for Claude to fill with context\n",
+        );
         content.push_str("4. **Note**: `/session-note \"key insight\"` - Captures human insights (high-signal for distillation)\n");
-        content.push_str("5. **End**: `/session-end` - Triggers distillation into patterns and next steps\n\n");
+        content.push_str(
+            "5. **End**: `/session-end` - Triggers distillation into patterns and next steps\n\n",
+        );
         content.push_str("### Key Concepts\n\n");
         content.push_str("- **Time-span tracking**: Updates show \"covering since 14:15\" to prevent context gaps\n");
         content.push_str("- **Git awareness**: Sessions capture branch, commits, and changes\n");
         content.push_str("- **Human priority**: Notes are treated as high-value insights\n");
         content.push_str("- **Pattern extraction**: Session-end prompts for reusable patterns\n\n");
-        
+
         // Working Patterns
         content.push_str(&self.generate_working_patterns_section());
-        
+
         // Footer
         content.push_str("---\n\n");
-        content.push_str(&format!("*Generated by Patina on {}*\n", chrono::Utc::now().to_rfc3339()));
+        content.push_str(&format!(
+            "*Generated by Patina on {}*\n",
+            chrono::Utc::now().to_rfc3339()
+        ));
         content.push_str("*Run `patina update` to refresh this context*\n");
-        
+
         // Write to file
         let output_path = self.get_context_file_path(project_path);
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)?;
         }
         fs::write(&output_path, content)?;
-        
+
         Ok(())
     }
-    
+
     fn get_custom_commands(&self) -> Vec<(&'static str, &'static str)> {
         vec![
             ("/session-start [name]", "Start a new development session"),
             ("/session-update", "Update session with rich context"),
             ("/session-note [insight]", "Add human insight to session"),
-            ("/session-end", "End session with comprehensive distillation"),
+            (
+                "/session-end",
+                "End session with comprehensive distillation",
+            ),
         ]
     }
-    
+
     fn get_context_file_path(&self, project_path: &Path) -> std::path::PathBuf {
         self.get_claude_path(project_path).join(paths::CONTEXT_FILE)
     }
-    
+
     fn check_for_updates(&self, project_path: &Path) -> Result<Option<(String, String)>> {
         let manifest_path = self.get_manifest_path(project_path);
-        
+
         if !manifest_path.exists() {
             // No manifest means old installation
             return Ok(Some((
                 "0.0.0".to_string(),
-                CLAUDE_ADAPTER_VERSION.to_string()
+                CLAUDE_ADAPTER_VERSION.to_string(),
             )));
         }
-        
+
         let manifest: AdapterManifest = serde_json::from_str(&fs::read_to_string(&manifest_path)?)?;
-        
+
         if manifest.version != CLAUDE_ADAPTER_VERSION {
             Ok(Some((manifest.version, CLAUDE_ADAPTER_VERSION.to_string())))
         } else {
             Ok(None)
         }
     }
-    
+
     fn update_adapter_files(&self, project_path: &Path) -> Result<()> {
         let claude_path = self.get_claude_path(project_path);
         let commands_path = self.get_commands_path(project_path);
         let bin_path = self.get_bin_path(project_path);
-        
+
         // Ensure directories exist
         fs::create_dir_all(&commands_path)?;
         fs::create_dir_all(&bin_path)?;
-        
+
         // Update session scripts
         self.create_session_commands(&commands_path, &bin_path)?;
-        
+
         // Update manifest
         self.create_adapter_manifest(&claude_path)?;
-        
+
         Ok(())
     }
-    
+
     fn get_sessions_path(&self, project_path: &Path) -> Option<std::path::PathBuf> {
         Some(self.get_sessions_path(project_path))
     }
-    
+
     fn version(&self) -> &'static str {
         CLAUDE_ADAPTER_VERSION
     }
-    
+
     fn get_version_changes(&self, version: &str) -> Option<Vec<String>> {
         // Get changes for a specific version only
         for (v, changes) in VERSION_CHANGES {
@@ -333,7 +367,7 @@ impl LLMAdapter for ClaudeAdapter {
         }
         None
     }
-    
+
     fn get_changelog_since(&self, from_version: &str) -> Vec<String> {
         self.get_changelog(from_version)
     }
@@ -346,7 +380,7 @@ impl ClaudeAdapter {
         let mut core_patterns = Vec::new();
         let mut topic_patterns = Vec::new();
         let mut project_patterns = Vec::new();
-        
+
         for pattern in patterns {
             match &pattern.pattern_type {
                 PatternType::Core => core_patterns.push(pattern),
@@ -354,7 +388,7 @@ impl ClaudeAdapter {
                 PatternType::Project(project) => project_patterns.push((project, pattern)),
             }
         }
-        
+
         // Write core patterns
         if !core_patterns.is_empty() {
             content.push_str("### Core Patterns\n\n");
@@ -363,26 +397,27 @@ impl ClaudeAdapter {
                 self.write_pattern(content, pattern);
             }
         }
-        
+
         // Write topic patterns
         if !topic_patterns.is_empty() {
             content.push_str("### Topic Patterns\n\n");
             content.push_str("Domain-specific knowledge and patterns:\n\n");
-            
+
             // Group by topic
-            let mut by_topic: std::collections::HashMap<&str, Vec<&Pattern>> = std::collections::HashMap::new();
+            let mut by_topic: std::collections::HashMap<&str, Vec<&Pattern>> =
+                std::collections::HashMap::new();
             for (topic, pattern) in topic_patterns {
-                by_topic.entry(topic).or_insert_with(Vec::new).push(pattern);
+                by_topic.entry(topic).or_default().push(pattern);
             }
-            
+
             for (topic, patterns) in by_topic {
-                content.push_str(&format!("#### Topic: {}\n\n", topic));
+                content.push_str(&format!("#### Topic: {topic}\n\n"));
                 for pattern in patterns {
                     self.write_pattern(content, pattern);
                 }
             }
         }
-        
+
         // Write project patterns
         if !project_patterns.is_empty() {
             content.push_str("### Project-Specific Patterns\n\n");
@@ -392,10 +427,10 @@ impl ClaudeAdapter {
             }
         }
     }
-    
+
     fn write_pattern(&self, content: &mut String, pattern: &Pattern) {
         content.push_str(&format!("#### {}\n\n", pattern.name));
-        
+
         if !pattern.content.is_empty() {
             let pattern_content = &pattern.content;
             // Parse the pattern content to extract sections
@@ -403,106 +438,121 @@ impl ClaudeAdapter {
             let mut in_metadata = false;
             let mut main_content = Vec::new();
             let mut metadata_lines = Vec::new();
-            
+
             for line in lines {
                 if line.starts_with("## Metadata") {
                     in_metadata = true;
                 } else if in_metadata {
                     metadata_lines.push(line);
-                } else if !line.starts_with("# ") { // Skip the title line
+                } else if !line.starts_with("# ") {
+                    // Skip the title line
                     main_content.push(line);
                 }
             }
-            
+
             // Write main content
             content.push_str(&main_content.join("\n"));
-            content.push_str("\n");
-            
+            content.push('\n');
+
             // Write metadata if present
             if !metadata_lines.is_empty() {
                 content.push_str("\n**Metadata**:\n");
                 for line in metadata_lines {
                     if !line.trim().is_empty() {
-                        content.push_str(&format!("{}\n", line));
+                        content.push_str(&format!("{line}\n"));
                     }
                 }
             }
         } else {
             content.push_str("*Pattern content not yet defined*\n");
         }
-        
+
         content.push_str("---\n\n");
     }
-    
-    fn generate_initial_context(&self, design: &Value, environment: &Environment) -> Result<String> {
+
+    fn generate_initial_context(
+        &self,
+        design: &Value,
+        environment: &Environment,
+    ) -> Result<String> {
         let mut content = String::new();
-        
+
         // Header
         content.push_str("# Claude Context\n\n");
         content.push_str("This file provides Claude with essential project context. Patina will maintain this automatically.\n\n");
-        
+
         // Environment Summary
         content.push_str("## Environment\n\n");
-        content.push_str(&format!("- **Platform**: {} ({})\n", environment.os, environment.arch));
-        content.push_str(&format!("- **Working Directory**: {}\n", environment.current_dir));
-        
+        content.push_str(&format!(
+            "- **Platform**: {} ({})\n",
+            environment.os, environment.arch
+        ));
+        content.push_str(&format!(
+            "- **Working Directory**: {}\n",
+            environment.current_dir
+        ));
+
         // Key tools
         content.push_str("\n### Available Tools\n\n");
-        
+
         let critical_tools = ["cargo", "git", "docker"];
         for tool in &critical_tools {
             if let Some(tool_info) = environment.tools.get(*tool) {
                 if tool_info.available {
                     if let Some(version) = &tool_info.version {
-                        content.push_str(&format!("- **{}**: ✓ ({})\n", tool, version));
+                        content.push_str(&format!("- **{tool}**: ✓ ({version})\n"));
                     } else {
-                        content.push_str(&format!("- **{}**: ✓\n", tool));
+                        content.push_str(&format!("- **{tool}**: ✓\n"));
                     }
                 } else {
-                    content.push_str(&format!("- **{}**: ✗ (not found)\n", tool));
+                    content.push_str(&format!("- **{tool}**: ✗ (not found)\n"));
                 }
             } else {
-                content.push_str(&format!("- **{}**: ✗ (not checked)\n", tool));
+                content.push_str(&format!("- **{tool}**: ✗ (not checked)\n"));
             }
         }
-        
+
         // Language specifics
         content.push_str("\n### Language Support\n\n");
-        
+
         // Rust (always primary)
         if let Some(rust_info) = environment.languages.get("rust") {
             if let Some(version) = &rust_info.version {
-                content.push_str(&format!("- **Rust**: {} (primary language)\n", version));
+                content.push_str(&format!("- **Rust**: {version} (primary language)\n"));
             } else {
                 content.push_str("- **Rust**: ✓ (primary language)\n");
             }
-            
+
             // Rust-specific tools
             let rust_tools = ["rustfmt", "clippy"];
             for tool in &rust_tools {
-                if let Some(tool_info) = environment.tools.get(&format!("cargo-{}", tool)) {
+                if let Some(tool_info) = environment.tools.get(&format!("cargo-{tool}")) {
                     if tool_info.available {
                         if let Some(version) = &tool_info.version {
-                            content.push_str(&format!("  - {}: ✓ ({})\n", tool, version));
+                            content.push_str(&format!("  - {tool}: ✓ ({version})\n"));
                         } else {
-                            content.push_str(&format!("  - {}: ✓\n", tool));
+                            content.push_str(&format!("  - {tool}: ✓\n"));
                         }
                     }
                 }
             }
         }
-        
+
         // Other languages (if any)
-        let other_languages: Vec<(&String, &LanguageInfo)> = environment.languages.iter()
+        let other_languages: Vec<(&String, &LanguageInfo)> = environment
+            .languages
+            .iter()
             .filter(|(lang, _)| *lang != "rust")
             .collect();
-            
+
         if !other_languages.is_empty() {
-            content.push_str(&format!("- **Other Languages**: {} (may need Rust bindings)\n", 
-                other_languages.iter()
+            content.push_str(&format!(
+                "- **Other Languages**: {} (may need Rust bindings)\n",
+                other_languages
+                    .iter()
                     .map(|(lang, info)| {
                         if let Some(ver) = &info.version {
-                            format!("{} {}", lang, ver)
+                            format!("{lang} {ver}")
                         } else {
                             lang.to_string()
                         }
@@ -511,105 +561,110 @@ impl ClaudeAdapter {
                     .join(", ")
             ));
         }
-        
+
         // Project Design Overview
         content.push_str("\n## Project Overview\n\n");
-        
+
         if let Some(project) = design.get("project") {
             if let Some(name) = project.get("name").and_then(|v| v.as_str()) {
-                content.push_str(&format!("**Project**: {}\n", name));
+                content.push_str(&format!("**Project**: {name}\n"));
             }
             if let Some(purpose) = project.get("purpose").and_then(|v| v.as_str()) {
-                content.push_str(&format!("**Purpose**: {}\n", purpose));
+                content.push_str(&format!("**Purpose**: {purpose}\n"));
             }
             if let Some(project_type) = project.get("type").and_then(|v| v.as_str()) {
-                content.push_str(&format!("**Type**: {}\n", project_type));
-                
+                content.push_str(&format!("**Type**: {project_type}\n"));
+
                 // Type-specific guidance
                 match project_type {
-                    "app" => content.push_str("*This is an application - focus on user-facing functionality*\n"),
-                    "library" => content.push_str("*This is a library - focus on API design and documentation*\n"),
-                    "tool" => content.push_str("*This is a CLI tool - focus on ergonomics and helpful output*\n"),
+                    "app" => content.push_str(
+                        "*This is an application - focus on user-facing functionality*\n",
+                    ),
+                    "library" => content
+                        .push_str("*This is a library - focus on API design and documentation*\n"),
+                    "tool" => content.push_str(
+                        "*This is a CLI tool - focus on ergonomics and helpful output*\n",
+                    ),
                     _ => {}
                 }
             }
         }
-        
+
         // Development section if present
         if let Some(dev) = design.get("development") {
             content.push_str("\n## Development Environment\n\n");
-            
+
             if let Some(env_type) = dev.get("environment").and_then(|v| v.as_str()) {
-                content.push_str(&format!("**Environment**: {} ", env_type));
+                content.push_str(&format!("**Environment**: {env_type} "));
                 match env_type {
                     "dagger" => content.push_str("(Container-based development with caching)\n"),
                     "docker" => content.push_str("(Traditional container development)\n"),
                     "native" => content.push_str("(Direct development on host)\n"),
-                    _ => content.push_str("\n"),
+                    _ => content.push('\n'),
                 }
             }
-            
+
             // Development commands if available
             if let Some(commands) = dev.get("commands").and_then(|v| v.as_table()) {
                 content.push_str("\n### Commands\n\n");
                 for (cmd, desc) in commands {
                     if let Some(desc_str) = desc.as_str() {
-                        content.push_str(&format!("- `{}`: {}\n", cmd, desc_str));
+                        content.push_str(&format!("- `{cmd}`: {desc_str}\n"));
                     }
                 }
             }
         }
-        
+
         // Getting Started
         content.push_str("\n## Getting Started\n\n");
         content.push_str("1. Start a development session: `.claude/commands/session-start`\n");
         content.push_str("2. Make changes and explore the codebase\n");
         content.push_str("3. Update context anytime: `patina update`\n");
         content.push_str("4. End session to distill learnings: `.claude/commands/session-end`\n");
-        
+
         Ok(content)
     }
-    
+
     fn create_session_commands(&self, commands_path: &Path, bin_path: &Path) -> Result<()> {
         // Create session-start script
         let session_start_sh = include_str!("../../resources/claude/session-start.sh");
         let script_path = bin_path.join("session-start.sh");
         fs::write(&script_path, session_start_sh)?;
         self.make_executable(&script_path)?;
-        
+
         let session_start_md = include_str!("../../resources/claude/session-start.md");
         fs::write(commands_path.join("session-start.md"), session_start_md)?;
-        
+
         // Create session-update script
         let session_update_sh = include_str!("../../resources/claude/session-update.sh");
         let script_path = bin_path.join("session-update.sh");
         fs::write(&script_path, session_update_sh)?;
         self.make_executable(&script_path)?;
-        
+
         let session_update_md = include_str!("../../resources/claude/session-update.md");
         fs::write(commands_path.join("session-update.md"), session_update_md)?;
-        
+
         // Create session-note script
         let session_note_sh = include_str!("../../resources/claude/session-note.sh");
         let script_path = bin_path.join("session-note.sh");
         fs::write(&script_path, session_note_sh)?;
         self.make_executable(&script_path)?;
-        
+
         let session_note_md = include_str!("../../resources/claude/session-note.md");
         fs::write(commands_path.join("session-note.md"), session_note_md)?;
-        
+
         // Create session-end script
         let session_end_sh = include_str!("../../resources/claude/session-end.sh");
         let script_path = bin_path.join("session-end.sh");
         fs::write(&script_path, session_end_sh)?;
         self.make_executable(&script_path)?;
-        
+
         let session_end_md = include_str!("../../resources/claude/session-end.md");
         fs::write(commands_path.join("session-end.md"), session_end_md)?;
-        
+
         Ok(())
     }
-    
+
     #[cfg(unix)]
     fn make_executable(&self, path: &Path) -> Result<()> {
         use std::os::unix::fs::PermissionsExt;
@@ -618,88 +673,89 @@ impl ClaudeAdapter {
         fs::set_permissions(path, perms)?;
         Ok(())
     }
-    
+
     #[cfg(not(unix))]
     fn make_executable(&self, _path: &Path) -> Result<()> {
         // On Windows, scripts are executed through shell interpreters
         Ok(())
     }
-    
+
     fn format_design_toml(&self, design: &Value) -> String {
         let mut content = String::new();
-        
+
         // Project Information
         if let Some(project) = design.get("project") {
             content.push_str("### Project Information\n\n");
             if let Some(name) = project.get("name") {
-                content.push_str(&format!("- **name**: {}\n", name));
+                content.push_str(&format!("- **name**: {name}\n"));
             }
             if let Some(purpose) = project.get("purpose") {
-                content.push_str(&format!("- **purpose**: {}\n", purpose));
+                content.push_str(&format!("- **purpose**: {purpose}\n"));
             }
             if let Some(project_type) = project.get("type") {
-                content.push_str(&format!("- **type**: {}\n", project_type));
+                content.push_str(&format!("- **type**: {project_type}\n"));
             }
-            content.push_str("\n");
+            content.push('\n');
         }
-        
+
         // Why section
         if let Some(why) = design.get("why") {
             content.push_str("### Why\n\n");
             for (key, value) in why.as_table().unwrap_or(&toml::map::Map::new()) {
                 if let Some(val_str) = value.as_str() {
-                    content.push_str(&format!("**{}**: {}\n\n", key.to_uppercase(), val_str));
+                    let key_upper = key.to_uppercase();
+                    content.push_str(&format!("**{key_upper}**: {val_str}\n\n"));
                 }
             }
         }
-        
+
         // How section
         if let Some(how) = design.get("how") {
             content.push_str("### How\n\n");
             for (key, value) in how.as_table().unwrap_or(&toml::map::Map::new()) {
-                content.push_str(&format!("**{}**:\n", key));
+                content.push_str(&format!("**{key}**:\n"));
                 if let Some(val_str) = value.as_str() {
                     // Handle multiline strings
                     for line in val_str.lines() {
                         if line.starts_with("- ") {
-                            content.push_str(&format!("{}\n", line));
+                            content.push_str(&format!("{line}\n"));
                         } else {
-                            content.push_str(&format!("- {}\n", line));
+                            content.push_str(&format!("- {line}\n"));
                         }
                     }
                 } else if let Some(array) = value.as_array() {
                     for item in array {
                         if let Some(item_str) = item.as_str() {
-                            content.push_str(&format!("- {}\n", item_str));
+                            content.push_str(&format!("- {item_str}\n"));
                         }
                     }
                 }
-                content.push_str("\n");
+                content.push('\n');
             }
         }
-        
+
         // Development section
         if let Some(dev) = design.get("development") {
             content.push_str("### Development\n\n");
-            
+
             if let Some(commands) = dev.get("commands").and_then(|v| v.as_table()) {
                 content.push_str("**Commands**:\n");
                 for (cmd, desc) in commands {
                     if let Some(desc_str) = desc.as_str() {
-                        content.push_str(&format!("- `{}`: {}\n", cmd, desc_str));
+                        content.push_str(&format!("- `{cmd}`: {desc_str}\n"));
                     }
                 }
-                content.push_str("\n");
+                content.push('\n');
             }
         }
-        
+
         content
     }
-    
+
     fn generate_sessions_section(&self, project_path: &Path) -> Result<String> {
         let mut content = String::new();
         content.push_str("## Development Sessions\n\n");
-        
+
         let sessions_path = self.get_sessions_path(project_path);
         if sessions_path.exists() {
             let mut sessions = Vec::new();
@@ -709,13 +765,11 @@ impl ClaudeAdapter {
                     sessions.push(entry.path());
                 }
             }
-            
+
             // Sort by modification time, newest first
-            sessions.sort_by_key(|p| {
-                fs::metadata(p).and_then(|m| m.modified()).ok()
-            });
+            sessions.sort_by_key(|p| fs::metadata(p).and_then(|m| m.modified()).ok());
             sessions.reverse();
-            
+
             if sessions.is_empty() {
                 content.push_str("*No development sessions recorded*\n");
             } else {
@@ -725,35 +779,35 @@ impl ClaudeAdapter {
                         content.push_str(&format!("{}. {}\n", i + 1, filename));
                     }
                 }
-                
+
                 content.push_str("\n### Most Recent Session\n\n");
                 if let Some(recent) = sessions.first() {
                     // Read first 50 lines of most recent session
                     if let Ok(session_content) = fs::read_to_string(recent) {
                         let lines: Vec<&str> = session_content.lines().take(50).collect();
                         content.push_str(&lines.join("\n"));
-                        content.push_str("\n");
+                        content.push('\n');
                     }
                 }
             }
         } else {
             content.push_str("*No sessions directory found*\n");
         }
-        
+
         Ok(content)
     }
-    
+
     fn generate_working_patterns_section(&self) -> String {
         let mut content = String::new();
         content.push_str("## Working Patterns\n\n");
-        
+
         content.push_str("### Adding Knowledge\n");
         content.push_str("```bash\n");
         content.push_str("patina add <type> <name>  # Add pattern to session\n");
         content.push_str("patina commit -m \"message\"  # Commit patterns to layer\n");
         content.push_str("patina update  # Refresh this file\n");
         content.push_str("```\n\n");
-        
+
         content.push_str("### Pattern Types\n");
         content.push_str("- `core` - Universal principles\n");
         content.push_str("- `topic` - Domain-specific knowledge\n");
@@ -761,72 +815,88 @@ impl ClaudeAdapter {
         content.push_str("- `decision` - Architectural decisions\n");
         content.push_str("- `constraint` - Technical constraints\n");
         content.push_str("- `principle` - Guiding principles\n");
-        
+
         content
     }
-    
+
     fn create_adapter_manifest(&self, claude_path: &Path) -> Result<()> {
         let mut files = HashMap::new();
-        
+
         // List all files we manage
-        files.insert("commands/session-start.md".to_string(), 
-            self.hash_content(include_str!("../../resources/claude/session-start.md")));
-        files.insert("commands/session-end.md".to_string(),
-            self.hash_content(include_str!("../../resources/claude/session-end.md")));
-        files.insert("commands/session-update.md".to_string(),
-            self.hash_content(include_str!("../../resources/claude/session-update.md")));
-        files.insert("commands/session-note.md".to_string(),
-            self.hash_content(include_str!("../../resources/claude/session-note.md")));
-            
-        files.insert("bin/session-start.sh".to_string(),
-            self.hash_content(include_str!("../../resources/claude/session-start.sh")));
-        files.insert("bin/session-end.sh".to_string(),
-            self.hash_content(include_str!("../../resources/claude/session-end.sh")));
-        files.insert("bin/session-update.sh".to_string(),
-            self.hash_content(include_str!("../../resources/claude/session-update.sh")));
-        files.insert("bin/session-note.sh".to_string(),
-            self.hash_content(include_str!("../../resources/claude/session-note.sh")));
-        
+        files.insert(
+            "commands/session-start.md".to_string(),
+            self.hash_content(include_str!("../../resources/claude/session-start.md")),
+        );
+        files.insert(
+            "commands/session-end.md".to_string(),
+            self.hash_content(include_str!("../../resources/claude/session-end.md")),
+        );
+        files.insert(
+            "commands/session-update.md".to_string(),
+            self.hash_content(include_str!("../../resources/claude/session-update.md")),
+        );
+        files.insert(
+            "commands/session-note.md".to_string(),
+            self.hash_content(include_str!("../../resources/claude/session-note.md")),
+        );
+
+        files.insert(
+            "bin/session-start.sh".to_string(),
+            self.hash_content(include_str!("../../resources/claude/session-start.sh")),
+        );
+        files.insert(
+            "bin/session-end.sh".to_string(),
+            self.hash_content(include_str!("../../resources/claude/session-end.sh")),
+        );
+        files.insert(
+            "bin/session-update.sh".to_string(),
+            self.hash_content(include_str!("../../resources/claude/session-update.sh")),
+        );
+        files.insert(
+            "bin/session-note.sh".to_string(),
+            self.hash_content(include_str!("../../resources/claude/session-note.sh")),
+        );
+
         let manifest = AdapterManifest {
             adapter: "claude".to_string(),
             version: CLAUDE_ADAPTER_VERSION.to_string(),
             installed_at: chrono::Utc::now().to_rfc3339(),
             files,
         };
-        
+
         let manifest_path = claude_path.join(paths::MANIFEST_FILE);
         fs::write(manifest_path, serde_json::to_string_pretty(&manifest)?)?;
-        
+
         Ok(())
     }
-    
+
     fn hash_content(&self, content: &str) -> String {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
-        
+
         let mut hasher = DefaultHasher::new();
         content.hash(&mut hasher);
         format!("{:x}", hasher.finish())
     }
-    
+
     fn get_changelog(&self, from_version: &str) -> Vec<String> {
         let mut changes = Vec::new();
         let mut found_version = false;
-        
+
         for (version, version_changes) in VERSION_CHANGES {
             if *version == from_version {
                 found_version = true;
                 continue;
             }
-            
+
             if found_version {
-                changes.push(format!("Version {}:", version));
+                changes.push(format!("Version {version}:"));
                 for change in *version_changes {
-                    changes.push(format!("  - {}", change));
+                    changes.push(format!("  - {change}"));
                 }
             }
         }
-        
+
         changes
     }
 }
