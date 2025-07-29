@@ -1,5 +1,7 @@
 # Smart Session Naming Pattern
 
+**⚠️ NOT IMPLEMENTED**: This smart naming approach was designed but not implemented. The current session system passes user input directly to the session file without pre-processing. Only the bash script sanitization layer exists. See `layer/topics/development/session-implementation.md` for the current implementation.
+
 ## Overview
 A two-layer approach that combines Claude's intelligence with robust bash script sanitization for session file naming.
 

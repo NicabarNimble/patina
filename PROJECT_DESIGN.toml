@@ -16,27 +16,32 @@ patterns = [
     "LLM-agnostic design",
     "Environment-agnostic execution"
 ]
-architecture = "Core + Brain + Adapters (Environment/LLM)"
+architecture = "Core + Layer + Adapters (Environment/LLM)"
 core_abstractions = [
     "Context orchestration",
     "Pattern storage/retrieval", 
     "Knowledge evolution",
-    "Adapter traits"
+    "Adapter traits",
+    "Session capture and distillation"
 ]
 
 [what]
 core_features = [
     "Hierarchical context system (Core + Topics + Projects)",
     "Pattern accumulation and evolution",
-    "Multiple environment providers (Docker, Dagger, Nix)",
-    "Multiple LLM adapters (Claude, OpenAI, Local)",
+    "Session capture system with LLM-specific adapters",
+    "Multiple environment providers (Docker, Dagger)",
+    "Multiple LLM adapters (Claude, Gemini)",
+    "Independent component versioning and updates",
     "PROJECT_DESIGN.toml as source of truth"
 ]
 future_features = [
-    "SQLite brain for persistent storage",
+    "SQLite layer for indexed knowledge",
     "Pattern success tracking",
     "Automatic context optimization",
-    "Cross-project pattern discovery"
+    "Cross-project pattern discovery",
+    "Session search and intelligence",
+    "Git-based pattern experimentation"
 ]
 non_goals = [
     "Being an IDE or editor",
@@ -53,7 +58,6 @@ dependencies = [
     "toml - configuration",
     "clap - CLI parsing",
     "anyhow - error handling",
-    "handlebars - template rendering",
     "which - tool detection",
     "chrono - time handling",
     "uuid - unique identifiers",
@@ -96,9 +100,9 @@ code_style = """
 - Error messages guide users
 """
 architecture = """
-- One crate per major component
-- Traits define boundaries
-- Adapters are optional features
+- Monolithic binary with clear module boundaries
+- Traits define adapter interfaces
+- Components version independently
 - Documentation drives development
 """
 patterns = """

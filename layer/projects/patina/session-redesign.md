@@ -1,5 +1,7 @@
 # Session System Redesign
 
+**⚠️ DEPRECATED**: This design was explored but not implemented. The current session system uses a simpler approach without git integration and with `### HH:MM - Event Type` format instead of bracketed timestamps. See `layer/topics/development/session-implementation.md` for the current implementation.
+
 ## Overview
 Redesign sessions to create a clean pipeline from LLM-specific capture to permanent knowledge layer.
 

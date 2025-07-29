@@ -6,9 +6,12 @@ A tool that captures and evolves development patterns, making AI assistants smar
 Patina accumulates knowledge like the protective layer that forms on metal - your development wisdom builds up over time and transfers between projects.
 
 ## Architecture
-- **Brain**: Hierarchical pattern storage (Core → Topics → Projects)
-- **Adapters**: LLM-agnostic interfaces (Claude, OpenAI, Local)
+- **Layer**: Hierarchical pattern storage (Core → Topics → Projects)
+- **Adapters**: LLM-agnostic interfaces (Claude, Gemini)
 - **Environments**: Container-first with escape hatches (Dagger → Docker)
+
+## Design Document
+See PROJECT_DESIGN.toml for detailed architecture and design decisions.
 
 ## Development Guidelines
 - Write Rust exclusively - let the compiler be your guard rail
@@ -21,7 +24,7 @@ Patina accumulates knowledge like the protective layer that forms on metal - you
 # Project lifecycle
 patina init <name> --llm=claude --dev=dagger
 patina add <type> <name>     # Add pattern to session
-patina commit                # Commit patterns to brain
+patina commit                # Commit patterns to layer
 patina push                  # Generate LLM context
 
 # Development
@@ -40,7 +43,7 @@ patina update               # Update adapter components
 ```
 patina/
 ├── src/                    # Rust source (LLMs write here)
-├── brain/                  # Pattern storage
+├── layer/                  # Pattern storage
 │   ├── core/              # Universal patterns
 │   ├── topics/            # Domain patterns
 │   └── projects/          # Project-specific
@@ -57,4 +60,4 @@ patina/
 4. **Escape Hatches**: Never lock users in
 
 ## Current Focus
-Check brain/projects/patina/decisions.md for architectural decisions and brain/topics/ for established patterns.
+Check layer/projects/patina/decisions.md for architectural decisions and layer/topics/ for established patterns.

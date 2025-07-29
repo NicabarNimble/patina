@@ -1,32 +1,18 @@
-Mark something interesting and update the current Patina session:
+Update the current Patina session with recent activity:
 
-1. Run the session update script with your observation:
-   - Execute: `.claude/bin/session-update.sh "Your interesting observation"`
-   - This captures your mark and creates a time span to fill
+1. Execute the session update script:
+   `.claude/bin/session-update.sh`
 
-2. Confirm what was marked:
-   - Say: "Noted: [observation]"
+2. The script will show what time period to document (e.g., "14:15 → 14:45")
 
-3. Immediately fill in the work context:
-   - Navigate to the session file
-   - Find the newly created time span (shows your mark in the header)
-   - Fill in what work happened during that period
-   - Include: files edited, features implemented, decisions made, problems solved
+3. Read `.claude/context/active-session.md` and find the new update section
 
-4. Example workflow:
-   ```
-   User: "/session-update Successfully implemented smart defaulting"
-   Claude: Executes script → "Noted: Successfully implemented smart defaulting"
-   Claude: Fills time span with actual work done:
-           - Modified src/commands/init.rs to add determine_dev_environment()
-           - Tested Docker fallback when Go not available
-           - Added CI detection via environment variables
-   ```
+4. Fill in the update section with what happened during that time period:
+   - **Work completed**: Code written, files modified, problems solved
+   - **Key decisions**: Design choices, trade-offs, reasoning behind changes
+   - **Challenges faced**: Errors encountered, debugging steps, solutions found
+   - **Patterns observed**: Reusable insights, things that worked well
 
-5. Keep the context factual:
-   - What files were changed and why
-   - What was tested or verified
-   - Key decisions and their rationale
-   - Problems encountered and solutions
+5. Focus on capturing the "why" not just the "what" - this context will be valuable later
 
-Note: The mark captures what's interesting; the context captures what happened. Both are essential for pattern extraction at session end.
+Note: Each update creates a time-stamped checkpoint. The script tracks the last update time to prevent gaps in coverage.

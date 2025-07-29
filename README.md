@@ -29,7 +29,7 @@ Project patterns that prove successful can be promoted to topics, making them av
 ### Pluggable Architecture
 - **Environment Providers**: Docker, Dagger, Nix
 - **LLM Adapters**: Claude, OpenAI, Local models
-- **Brain Storage**: File-based (now), SQLite (future)
+- **Layer Storage**: File-based (now), SQLite (future)
 
 ## Quick Start
 
@@ -50,7 +50,7 @@ patina context generate
 
 ```
 patina-core/        # Context orchestration
-patina-brain/       # Knowledge storage
+patina-layer/       # Knowledge storage
 patina-env/         # Environment traits
 patina-llm/         # LLM adapter traits
 ```
@@ -59,7 +59,7 @@ Each component does one thing well, following Unix philosophy.
 
 ## Development Status
 
-Currently building the initial file-based brain system. SQLite storage coming next.
+Currently building the initial file-based layer system. SQLite storage coming next.
 
 ## Philosophy
 

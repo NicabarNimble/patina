@@ -1,107 +1,59 @@
 #!/bin/bash
-# End current Patina session with distillation and pattern extraction
+# Archive current Patina session to permanent storage
 
-CURRENT_SESSION=$(ls -t .claude/context/sessions/*.md 2>/dev/null | head -1)
+ACTIVE_SESSION=".claude/context/active-session.md"
 LAST_SESSION_FILE=".claude/context/last-session.md"
 LAST_UPDATE_FILE=".claude/context/.last-update"
+SILENT_MODE=false
 
-if [ -z "$CURRENT_SESSION" ]; then
-    echo "No active session found."
+# Check for silent mode
+if [ "$1" = "--silent" ]; then
+    SILENT_MODE=true
+fi
+
+if [ ! -f "$ACTIVE_SESSION" ]; then
+    [ "$SILENT_MODE" = false ] && echo "No active session found."
     exit 1
 fi
 
-# Run final update first
-echo "Running final session update..."
-.claude/bin/session-update.sh "final context before ending"
+# Extract session metadata (escape ** for grep)
+SESSION_ID=$(grep "\*\*ID\*\*:" "$ACTIVE_SESSION" | cut -d' ' -f2)
+SESSION_TITLE=$(grep "# Session:" "$ACTIVE_SESSION" | cut -d: -f2- | xargs)
+SESSION_START=$(grep "\*\*Started\*\*:" "$ACTIVE_SESSION" | cut -d' ' -f2-)
 
-# Get session metadata
-SESSION_NAME=$(basename "$CURRENT_SESSION" .md)
-SESSION_START=$(grep "Started:" "$CURRENT_SESSION" | head -1 | cut -d: -f2- | xargs)
-SESSION_START_COMMIT=$(grep "Starting Commit:" "$CURRENT_SESSION" | head -1 | awk '{print $3}')
-CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "no commits")
-
-# Calculate git statistics
-if [ -n "$SESSION_START_COMMIT" ] && [ "$SESSION_START_COMMIT" != "$CURRENT_COMMIT" ] && [ "$SESSION_START_COMMIT" != "no" ]; then
-    COMMITS_COUNT=$(git rev-list --count "$SESSION_START_COMMIT..$CURRENT_COMMIT" 2>/dev/null || echo "0")
-    FILES_CHANGED=$(git diff --name-only "$SESSION_START_COMMIT..$CURRENT_COMMIT" 2>/dev/null | wc -l | tr -d ' ')
-else
-    COMMITS_COUNT="0"
-    FILES_CHANGED="0"
+# Debug: Check if SESSION_ID is empty
+if [ -z "$SESSION_ID" ]; then
+    echo "Warning: SESSION_ID is empty, using timestamp"
+    SESSION_ID=$(date +"%Y%m%d-%H%M%S")
 fi
 
-# Add structured end section with rails
-echo "" >> "$CURRENT_SESSION"
-echo "---" >> "$CURRENT_SESSION"
-echo "## Session End: $(date)" >> "$CURRENT_SESSION"
-echo "**Duration**: $SESSION_START → $(date)" >> "$CURRENT_SESSION"
-echo "**Commits**: $COMMITS_COUNT (from $SESSION_START_COMMIT to $CURRENT_COMMIT)" >> "$CURRENT_SESSION"
-echo "" >> "$CURRENT_SESSION"
+# No content manipulation - just archive
 
-# Add git activity if relevant
-if [ "$COMMITS_COUNT" -gt "0" ]; then
-    echo "### Git Activity" >> "$CURRENT_SESSION"
-    echo '```' >> "$CURRENT_SESSION"
-    git log --oneline "$SESSION_START_COMMIT..$CURRENT_COMMIT" 2>/dev/null | head -10 >> "$CURRENT_SESSION"
-    echo '```' >> "$CURRENT_SESSION"
-    echo "" >> "$CURRENT_SESSION"
-fi
+# Archive the session
+mkdir -p .claude/context/sessions
+mkdir -p layer/sessions
 
-# Add required sections for Claude to fill
-cat >> "$CURRENT_SESSION" << 'EOF'
-### Required Sections (Claude: Please fill ALL sections)
+# Copy to both locations with ID as filename
+cp "$ACTIVE_SESSION" ".claude/context/sessions/${SESSION_ID}.md"
+cp "$ACTIVE_SESSION" "layer/sessions/${SESSION_ID}.md"
 
-#### What We Did
-<!-- List key activities from the activity log above -->
-
-#### Key Insights
-<!-- Extract important discoveries, especially from Notes -->
-
-#### Patterns Identified
-<!-- Any reusable patterns worth adding to brain? -->
-
-#### Next Session Should
-<!-- Based on progress and open questions -->
-
-### Verification Checklist
-- [ ] All Notes addressed in insights
-- [ ] Activity log summarized
-- [ ] Patterns extracted if any
-- [ ] Clear next steps provided
-EOF
-
-# Create verification status file
-echo "PENDING_DISTILLATION" > "$CURRENT_SESSION.status"
-
-# Archive the raw session
-mkdir -p .claude/context/sessions/archive
-cp "$CURRENT_SESSION" ".claude/context/sessions/archive/"
-
-# Create summary pointer
-# Don't add another date - session name already has timestamp
-SUMMARY_NAME="${SESSION_NAME}-summary"
-
-# Extract human-readable part for display (after YYYYMMDD-HHMM-)
-DISPLAY_NAME=$(echo "$SESSION_NAME" | sed -E 's/^[0-9]{8}-[0-9]{4}-//')
-if [ -z "$DISPLAY_NAME" ] || [ "$DISPLAY_NAME" = "$SESSION_NAME" ]; then
-    # No human name found (timestamp-only session)
-    DISPLAY_NAME="session"
-fi
-
+# Update last-session.md pointer
 cat > "$LAST_SESSION_FILE" << EOF
-# Last Session: $DISPLAY_NAME
+# Last Session: ${SESSION_TITLE}
 
-See: .claude/context/sessions/${SUMMARY_NAME}.md
+See: layer/sessions/${SESSION_ID}.md
 
-Quick start: /session-start "continue-from-$DISPLAY_NAME"
+Quick start: /session-start "continue from ${SESSION_TITLE}"
 EOF
 
-# Clean up temporary files
+# Clean up
+rm -f "$ACTIVE_SESSION"
 rm -f "$LAST_UPDATE_FILE"
 
-echo "Session end structure added to: $CURRENT_SESSION"
-echo ""
-echo "Next steps:"
-echo "1. Fill in ALL required sections in the session file"
-echo "2. Verify the checklist is complete"
-echo "3. Say 'Session ended and distilled' when done"
-echo "4. If patterns found: patina add <type> \"pattern-name\""
+if [ "$SILENT_MODE" = false ]; then
+    echo ""
+    echo "✓ Session archived:"
+    echo "  - .claude/context/sessions/${SESSION_ID}.md"
+    echo "  - layer/sessions/${SESSION_ID}.md"
+    echo "  - Updated last-session.md"
+fi

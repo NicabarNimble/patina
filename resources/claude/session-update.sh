@@ -1,11 +1,10 @@
 #!/bin/bash
 # Update current Patina session with rich context capture
 
-CURRENT_SESSION=$(ls -t .claude/context/sessions/*.md 2>/dev/null | head -1)
+ACTIVE_SESSION=".claude/context/active-session.md"
 LAST_UPDATE_FILE=".claude/context/.last-update"
-MARK="$*"  # Capture the arguments as the interest mark
 
-if [ -z "$CURRENT_SESSION" ]; then
+if [ ! -f "$ACTIVE_SESSION" ]; then
     echo "No active session found. Start one with: /session-start"
     exit 1
 fi
@@ -14,22 +13,19 @@ fi
 LAST_UPDATE=$(cat "$LAST_UPDATE_FILE" 2>/dev/null || echo "session start")
 CURRENT_TIME=$(date +"%H:%M")
 
-# Add timestamp header with mark (if provided) and time span
-echo "" >> "$CURRENT_SESSION"
-if [ -n "$MARK" ]; then
-    echo "### $CURRENT_TIME - $MARK (covering since $LAST_UPDATE)" >> "$CURRENT_SESSION"
-else
-    echo "### $CURRENT_TIME - Update (covering since $LAST_UPDATE)" >> "$CURRENT_SESSION"
-fi
-echo "" >> "$CURRENT_SESSION"
-echo "<!-- Claude: Fill in what happened during this time span -->" >> "$CURRENT_SESSION"
-echo "" >> "$CURRENT_SESSION"
+# Add timestamp header with time span
+echo "" >> "$ACTIVE_SESSION"
+echo "### $CURRENT_TIME - Update (covering since $LAST_UPDATE)" >> "$ACTIVE_SESSION"
 
-# Update last update time
+# Update last update time NOW so agent sees correct window
 echo "$CURRENT_TIME" > "$LAST_UPDATE_FILE"
 
-echo "Update marker added for time span: $LAST_UPDATE → $CURRENT_TIME"
-if [ -n "$MARK" ]; then
-    echo "Mark captured: $MARK"
-fi
-echo "Claude will fill in the context for this period"
+# Prompt for direct update
+echo ""
+echo "Please fill in the update section in active-session.md with:"
+echo "- Work completed since $LAST_UPDATE"
+echo "- Key decisions and reasoning"
+echo "- Challenges faced and solutions"
+echo "- Patterns observed"
+echo ""
+echo "✓ Update marker added: $LAST_UPDATE → $CURRENT_TIME"

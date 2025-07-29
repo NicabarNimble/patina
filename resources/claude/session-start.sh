@@ -1,70 +1,64 @@
 #!/bin/bash
-# Start a new Patina development session with git awareness
+# Start a new Patina development session
 
-# Create session name with timestamp prefix
-if [ -n "$1" ]; then
-    # User provided name: add timestamp prefix, sanitize for filesystem safety
-    # Replace non-alphanumeric chars (except ._-) with hyphens, squeeze multiple hyphens, limit length
-    SAFE_NAME=$(echo "$1" | tr -cs '[:alnum:]._-' '-' | sed 's/^-\+//;s/-\+$//' | cut -c1-50)
-    SESSION_NAME="$(date +%Y%m%d-%H%M)-${SAFE_NAME}"
-else
-    # No name provided: just use timestamp
-    SESSION_NAME="$(date +%Y%m%d-%H%M%S)"
+# Check for active session first
+ACTIVE_SESSION=".claude/context/active-session.md"
+if [ -f "$ACTIVE_SESSION" ]; then
+    echo "Found incomplete session, cleaning up..."
+    
+    # Check if active session has meaningful content
+    # (more than just headers - roughly 10 lines)
+    if [ $(wc -l < "$ACTIVE_SESSION") -gt 10 ]; then
+        # Run session-end silently to archive it
+        $(dirname "$0")/session-end.sh --silent
+    else
+        # Just delete if it's empty/trivial
+        rm "$ACTIVE_SESSION"
+        echo "Removed empty session file"
+    fi
 fi
-SESSION_FILE=".claude/context/sessions/${SESSION_NAME}.md"
-LAST_SESSION_FILE=".claude/context/last-session.md"
-LAST_UPDATE_FILE=".claude/context/.last-update"
 
+# Create session ID and title
+SESSION_ID="$(date +%Y%m%d-%H%M%S)"
+SESSION_TITLE="${1:-untitled}"
+
+# Create active session file
 mkdir -p .claude/context/sessions
 
-# Check for previous sessions and git state
-PREVIOUS_SESSION=$(ls -t .claude/context/sessions/*.md 2>/dev/null | grep -v "$SESSION_FILE" | head -1)
-CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "not in git repo")
-CURRENT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "no commits")
-UNCOMMITTED=$(git status --porcelain 2>/dev/null | wc -l | tr -d ' ')
 
-# Create session file with minimal rails
-# For display, show just the human-readable part if it exists
-DISPLAY_NAME="${1:-${SESSION_NAME}}"
-cat > "$SESSION_FILE" << EOF
-# Session: ${DISPLAY_NAME}
-**Started**: $(date)
-**Branch**: ${CURRENT_BRANCH}
-**Starting Commit**: ${CURRENT_COMMIT}
-**Uncommitted Changes**: ${UNCOMMITTED} files
+# Get LLM info (claude for now, extensible later)
+LLM_NAME="claude"
+
+# Create active session with metadata
+cat > "$ACTIVE_SESSION" << EOF
+# Session: ${SESSION_TITLE}
+**ID**: ${SESSION_ID}
+**Started**: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+**LLM**: ${LLM_NAME}
+
+## Previous Session Context
+<!-- AI: Summarize the last session from last-session.md -->
 
 ## Goals
-- [ ] ${2:-[Session goals]}
+- [ ] ${SESSION_TITLE}
 
-## Context
+## Activity Log
+### $(date +"%H:%M") - Session Start
+Session initialized with goal: ${SESSION_TITLE}
+
 EOF
 
-# Add previous session summary if exists
-if [ -f "$LAST_SESSION_FILE" ]; then
-    echo "### Previous Session Summary" >> "$SESSION_FILE"
-    cat "$LAST_SESSION_FILE" >> "$SESSION_FILE"
-    echo "" >> "$SESSION_FILE"
-elif [ -n "$PREVIOUS_SESSION" ]; then
-    echo "### Previous Session" >> "$SESSION_FILE"
-    echo "Found at: $PREVIOUS_SESSION" >> "$SESSION_FILE"
-    echo "" >> "$SESSION_FILE"
+# Create/update last update marker
+echo "$(date +"%H:%M")" > .claude/context/.last-update
+
+echo "✓ Session started: ${SESSION_TITLE}"
+echo "  ID: ${SESSION_ID}"
+
+# Prompt AI to read last-session.md and provide context
+echo ""
+if [ -f ".claude/context/last-session.md" ]; then
+    echo "Please read .claude/context/last-session.md and fill in the Previous Session Context section above."
+else
+    echo "No previous session found. Starting fresh."
 fi
-
-# Add current git status summary if uncommitted changes
-if [ "$UNCOMMITTED" -gt 0 ]; then
-    echo "### Current Working State" >> "$SESSION_FILE"
-    echo '```' >> "$SESSION_FILE"
-    git status --short 2>/dev/null >> "$SESSION_FILE"
-    echo '```' >> "$SESSION_FILE"
-    echo "" >> "$SESSION_FILE"
-fi
-
-echo "## Activity Log" >> "$SESSION_FILE"
-echo "<!-- Claude fills this naturally during work -->" >> "$SESSION_FILE"
-echo "" >> "$SESSION_FILE"
-
-# Initialize last update time
-date +"%H:%M" > "$LAST_UPDATE_FILE"
-
-echo "Session started: $SESSION_FILE"
-echo "Branch: $CURRENT_BRANCH | Uncommitted: $UNCOMMITTED files"
+echo "Then ask: 'Would you like me to create todos for \"${SESSION_TITLE}\"?'"

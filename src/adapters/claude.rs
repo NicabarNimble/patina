@@ -9,10 +9,27 @@ use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
 /// Version of the Claude adapter - increment when scripts/commands change
-pub const CLAUDE_ADAPTER_VERSION: &str = "0.3.0";
+pub const CLAUDE_ADAPTER_VERSION: &str = "0.5.0";
 
 /// Changelog for adapter versions
 const VERSION_CHANGES: &[(&str, &[&str])] = &[
+    ("0.5.0", &[
+        "Simplified: Removed content-capture agent references",
+        "Fixed: session-start now always prompts for todos",
+        "Changed: session-update now prompts directly for content",
+        "Changed: session-end no longer auto-runs update (manual control)",
+        "Updated: All markdown templates for clarity and consistency",
+        "Improved: Cleaner separation between script actions and Claude actions",
+    ]),
+    ("0.4.0", &[
+        "New: Active session management with active-session.md",
+        "New: Content-capture agent for automatic session documentation",  
+        "Enhanced: session-start now cleans up incomplete sessions",
+        "Enhanced: session-update invokes agent for automatic content capture",
+        "Enhanced: session-end invokes agent before archiving",
+        "Fixed: All commands now use consistent active-session.md file",
+        "Changed: Session workflow is now stateful with AI participation",
+    ]),
     ("0.3.0", &[
         "Enhanced: session-update now captures interest marks",
         "Fixed: Arguments are now properly used by session-update script",
