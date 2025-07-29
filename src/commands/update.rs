@@ -453,9 +453,27 @@ fn create_dagger_files(project_path: &Path, name: &str, design: &Value) -> Resul
     let main_go_content = include_str!("../../resources/templates/dagger/main.go.tmpl");
     fs::write(pipelines_dir.join("main.go"), main_go_content)?;
     
-    // Copy CONSTRAINTS.md to guide LLM interactions
+    // Read config to get current LLM
+    let config_path = project_path.join(".patina").join("config.json");
+    let llm = if config_path.exists() {
+        let config_content = fs::read_to_string(&config_path)?;
+        let config: serde_json::Value = serde_json::from_str(&config_content)?;
+        config.get("llm")
+            .and_then(|l| l.as_str())
+            .unwrap_or("claude")
+            .to_string()
+    } else {
+        "claude".to_string()
+    };
+    
+    // Copy constraints with LLM-specific filename
     let constraints_content = include_str!("../../resources/templates/dagger/CONSTRAINTS.md");
-    fs::write(pipelines_dir.join("CONSTRAINTS.md"), constraints_content)?;
+    let llm_filename = match llm.as_str() {
+        "claude" => "CLAUDE.md",
+        "gemini" => "GEMINI.md",
+        _ => "CONSTRAINTS.md"
+    };
+    fs::write(pipelines_dir.join(llm_filename), constraints_content)?;
     
     // Create a simple README for the pipelines
     let readme_content = format!(r#"# {} Dagger Pipelines
