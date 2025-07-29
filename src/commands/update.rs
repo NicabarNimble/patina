@@ -1,10 +1,10 @@
 use anyhow::{Context, Result};
 use patina::session::SessionManager;
-use patina::version::{VersionManifest, UpdateChecker};
+use patina::version::{UpdateChecker, VersionManifest};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
-use serde::{Serialize, Deserialize};
 use toml::Value;
 
 #[derive(Serialize, Deserialize)]
@@ -35,20 +35,20 @@ pub fn execute(
     // Find project root
     let project_root = SessionManager::find_project_root()
         .context("Not in a Patina project directory. Run 'patina init' first.")?;
-    
+
     // If LLM or dev environment change requested, handle that separately
     if llm.is_some() || dev.is_some() {
         return handle_config_updates(&project_root, llm, dev, check_only, json_output, force);
     }
-    
+
     // Check for non-interactive mode via environment variable
-    let non_interactive = auto_yes || auto_no || json_output ||
-        std::env::var("PATINA_NONINTERACTIVE").is_ok();
-    
+    let non_interactive =
+        auto_yes || auto_no || json_output || std::env::var("PATINA_NONINTERACTIVE").is_ok();
+
     if !json_output {
         println!("🔍 Checking for updates...");
     }
-    
+
     // Load version manifest
     let mut manifest = VersionManifest::load(&project_root)?;
     let updates = if force {
@@ -57,34 +57,35 @@ pub fn execute(
     } else {
         UpdateChecker::check_for_updates(&manifest)
     };
-    
+
     // Read project config for LLM info
     let config_path = project_root.join(".patina").join("config.json");
-    let config_content = fs::read_to_string(&config_path)
-        .context("Failed to read project config")?;
+    let config_content =
+        fs::read_to_string(&config_path).context("Failed to read project config")?;
     let config: serde_json::Value = serde_json::from_str(&config_content)?;
-    
-    let llm = config.get("llm")
+
+    let llm = config
+        .get("llm")
         .and_then(|l| l.as_str())
         .unwrap_or("claude");
-    
+
     let mut result = UpdateResult {
         patina_version: manifest.patina.clone(),
         components: vec![],
         updates_available: !updates.is_empty() || force,
         updates_applied: vec![],
     };
-    
+
     // Check current Patina version against Cargo version
     let current_patina = env!("CARGO_PKG_VERSION");
     if !json_output && manifest.patina != current_patina {
         println!("⚠️  Patina version mismatch:");
         println!("   Project expects: v{}", manifest.patina);
-        println!("   Installed: v{}", current_patina);
+        println!("   Installed: v{current_patina}");
         println!("   Run: cargo install patina --version {}", manifest.patina);
         println!();
     }
-    
+
     if updates.is_empty() && !force {
         if !json_output {
             println!("✓ All components are up to date");
@@ -94,14 +95,12 @@ pub fn execute(
         }
         return Ok(0);
     }
-    
+
     // If force mode and no updates, we need to create them
-    if updates.is_empty() && force {
-        if !json_output {
-            println!("⚡ Force mode: re-installing all components");
-        }
+    if updates.is_empty() && force && !json_output {
+        println!("⚡ Force mode: re-installing all components");
     }
-    
+
     // Build component updates list
     for (component, current, available) in &updates {
         result.components.push(ComponentUpdate {
@@ -110,12 +109,12 @@ pub fn execute(
             available_version: available.clone(),
             updated: false,
         });
-        
+
         if !json_output {
-            println!("📦 {} update available: {} → {}", component, current, available);
+            println!("📦 {component} update available: {current} → {available}");
         }
     }
-    
+
     // Show what's new for specific components
     if !json_output && !check_only {
         for (component, current_version, new_version) in &updates {
@@ -124,28 +123,28 @@ pub fn execute(
                     let adapter = patina::adapters::get_adapter(llm);
                     let changelog = adapter.get_changelog_since(current_version);
                     if !changelog.is_empty() {
-                        println!("\nWhat's new since claude-adapter {}:", current_version);
+                        println!("\nWhat's new since claude-adapter {current_version}:");
                         for change in changelog {
-                            println!("{}", change);
+                            println!("{change}");
                         }
                     }
                 }
                 "gemini-adapter" if llm == "gemini" => {
-                    println!("\nGemini adapter {} is now available", new_version);
+                    println!("\nGemini adapter {new_version} is now available");
                     println!("  - Initial release with basic GEMINI.md generation");
                 }
                 _ => {}
             }
         }
     }
-    
+
     if check_only || auto_no {
         if json_output {
             println!("{}", serde_json::to_string_pretty(&result)?);
         }
         return Ok(if check_only { 2 } else { 0 });
     }
-    
+
     // Determine whether to update
     let should_update = if non_interactive {
         auto_yes || std::env::var("PATINA_AUTO_APPROVE").is_ok()
@@ -157,15 +156,15 @@ pub fn execute(
         io::stdin().read_line(&mut response)?;
         response.trim().is_empty() || response.trim().eq_ignore_ascii_case("y")
     };
-    
+
     if should_update {
         // Update each component
         for (component, _, new_version) in &updates {
             if !json_output {
-                print!("  Updating {}... ", component);
+                print!("  Updating {component}... ");
                 io::stdout().flush()?;
             }
-            
+
             // Component-specific update logic
             match component.as_str() {
                 "claude-adapter" if llm == "claude" => {
@@ -173,12 +172,13 @@ pub fn execute(
                     adapter.update_adapter_files(&project_root)?;
                     manifest.update_component_version(component, new_version);
                     result.updates_applied.push(component.clone());
-                    
+
                     // Mark component as updated in results
-                    if let Some(comp) = result.components.iter_mut().find(|c| c.name == *component) {
+                    if let Some(comp) = result.components.iter_mut().find(|c| c.name == *component)
+                    {
                         comp.updated = true;
                     }
-                    
+
                     if !json_output {
                         println!("✓");
                     }
@@ -196,24 +196,27 @@ pub fn execute(
                 }
             }
         }
-        
+
         // Save updated manifest
         manifest.save(&project_root)?;
-        
+
         if !json_output {
             println!("\n✨ Updates completed successfully!");
-            if result.updates_applied.contains(&"claude-adapter".to_string()) {
+            if result
+                .updates_applied
+                .contains(&"claude-adapter".to_string())
+            {
                 println!("\nNote: Use 'patina push' to regenerate CLAUDE.md");
             }
         }
     } else if !json_output {
         println!("Update cancelled.");
     }
-    
+
     if json_output {
         println!("{}", serde_json::to_string_pretty(&result)?);
     }
-    
+
     Ok(0)
 }
 
@@ -227,45 +230,46 @@ fn handle_config_updates(
 ) -> Result<i32> {
     // Load current project config
     let config_path = project_root.join(".patina").join("config.json");
-    let config_content = fs::read_to_string(&config_path)
-        .context("Failed to read project config")?;
+    let config_content =
+        fs::read_to_string(&config_path).context("Failed to read project config")?;
     let mut config: serde_json::Value = serde_json::from_str(&config_content)?;
-    
+
     // Load PROJECT_DESIGN.toml for context
     let design_path = project_root.join("PROJECT_DESIGN.toml");
-    let design_content = fs::read_to_string(&design_path)
-        .context("Failed to read PROJECT_DESIGN.toml")?;
-    let design_toml: Value = toml::from_str(&design_content)
-        .context("Failed to parse PROJECT_DESIGN.toml")?;
-    
+    let design_content =
+        fs::read_to_string(&design_path).context("Failed to read PROJECT_DESIGN.toml")?;
+    let design_toml: Value =
+        toml::from_str(&design_content).context("Failed to parse PROJECT_DESIGN.toml")?;
+
     let mut changes_made = false;
-    
+
     // Handle LLM change
     if let Some(ref new_llm) = llm {
-        let current_llm = config.get("llm")
+        let current_llm = config
+            .get("llm")
             .and_then(|l| l.as_str())
             .unwrap_or("claude");
-        
+
         if !json_output {
             if current_llm == new_llm.as_str() {
-                println!("✓ LLM adapter already set to {}", new_llm);
+                println!("✓ LLM adapter already set to {new_llm}");
             } else {
-                println!("🔄 Changing LLM adapter from {} to {}", current_llm, new_llm);
-                
+                println!("🔄 Changing LLM adapter from {current_llm} to {new_llm}");
+
                 if check_only {
                     println!("  Would:");
-                    println!("  - Remove {} adapter files", current_llm);
-                    println!("  - Create {} adapter files", new_llm);
+                    println!("  - Remove {current_llm} adapter files");
+                    println!("  - Create {new_llm} adapter files");
                     println!("  - Update project configuration");
                 } else {
                     // Get current environment for adapter initialization
                     let environment = patina::Environment::detect()?;
-                    
+
                     // Initialize new adapter
-                    let adapter = patina::adapters::get_adapter(&new_llm);
+                    let adapter = patina::adapters::get_adapter(new_llm);
                     adapter.init_project(project_root, &design_toml, &environment)?;
-                    println!("  ✓ Created {} adapter files", new_llm);
-                    
+                    println!("  ✓ Created {new_llm} adapter files");
+
                     // Update config
                     config["llm"] = serde_json::Value::String(new_llm.clone());
                     changes_made = true;
@@ -273,14 +277,15 @@ fn handle_config_updates(
             }
         }
     }
-    
+
     // Handle dev environment change
     if let Some(ref new_dev) = dev {
-        let current_dev = config.get("dev")
+        let current_dev = config
+            .get("dev")
             .and_then(|d| d.as_str())
             .unwrap_or("docker")
             .to_string(); // Make owned copy to avoid borrow issues
-        
+
         if !json_output {
             match new_dev.as_str() {
                 "dagger" => {
@@ -288,7 +293,7 @@ fn handle_config_updates(
                         println!("✓ Dagger pipeline already exists");
                     } else if Path::new(project_root).join("pipelines").exists() && force {
                         println!("⚡ Force updating Dagger pipeline files");
-                        
+
                         if check_only {
                             println!("  Would:");
                             println!("  - Overwrite pipelines/main.go with constrained template");
@@ -296,14 +301,16 @@ fn handle_config_updates(
                             println!("  - Update go.mod if needed");
                         } else {
                             // Extract project name from config
-                            let project_name = config.get("name")
-                                .and_then(|n| n.as_str())
-                                .ok_or_else(|| anyhow::anyhow!("Project name not found in config"))?;
-                            
+                            let project_name =
+                                config.get("name").and_then(|n| n.as_str()).ok_or_else(|| {
+                                    anyhow::anyhow!("Project name not found in config")
+                                })?;
+
                             // Force regenerate files
-                            let manifest = create_dagger_files(project_root, project_name, &design_toml)?;
+                            let manifest =
+                                create_dagger_files(project_root, project_name, &design_toml)?;
                             println!("  ✓ Force updated Dagger pipeline files");
-                            
+
                             // Update config
                             config["dev"] = serde_json::Value::String("dagger".to_string());
                             config["dev_manifest"] = manifest;
@@ -311,7 +318,7 @@ fn handle_config_updates(
                         }
                     } else {
                         println!("➕ Adding Dagger pipeline support");
-                        
+
                         if check_only {
                             println!("  Would:");
                             println!("  - Create pipelines/ directory");
@@ -320,14 +327,16 @@ fn handle_config_updates(
                             println!("  - Update project configuration");
                         } else {
                             // Extract project name from config
-                            let project_name = config.get("name")
-                                .and_then(|n| n.as_str())
-                                .ok_or_else(|| anyhow::anyhow!("Project name not found in config"))?;
-                            
+                            let project_name =
+                                config.get("name").and_then(|n| n.as_str()).ok_or_else(|| {
+                                    anyhow::anyhow!("Project name not found in config")
+                                })?;
+
                             // Use the existing create_dagger_files function from init
-                            let manifest = create_dagger_files(project_root, project_name, &design_toml)?;
+                            let manifest =
+                                create_dagger_files(project_root, project_name, &design_toml)?;
                             println!("  ✓ Created Dagger pipeline files");
-                            
+
                             // Update config with dev and manifest
                             config["dev"] = serde_json::Value::String("dagger".to_string());
                             config["dev_manifest"] = manifest;
@@ -338,7 +347,7 @@ fn handle_config_updates(
                 "docker" => {
                     if !Path::new(project_root).join("Dockerfile").exists() {
                         println!("➕ Adding Docker support");
-                        
+
                         if check_only {
                             println!("  Would:");
                             println!("  - Create Dockerfile");
@@ -346,7 +355,7 @@ fn handle_config_updates(
                         } else {
                             let manifest = create_docker_files(project_root, &design_toml)?;
                             println!("  ✓ Created Docker files");
-                            
+
                             config["dev"] = serde_json::Value::String("docker".to_string());
                             config["dev_manifest"] = manifest;
                             changes_made = true;
@@ -354,7 +363,7 @@ fn handle_config_updates(
                     } else {
                         println!("✓ Docker support already configured");
                     }
-                    
+
                     // Update config if different from current
                     if current_dev != "docker" && !check_only {
                         config["dev"] = serde_json::Value::String("docker".to_string());
@@ -372,7 +381,7 @@ fn handle_config_updates(
                 }
                 "native" => {
                     println!("☑ Switching to native development environment");
-                    
+
                     if check_only {
                         println!("  Would:");
                         println!("  - Remove container files");
@@ -392,25 +401,28 @@ fn handle_config_updates(
                     }
                 }
                 _ => {
-                    anyhow::bail!("Unknown development environment: {}. Supported: docker, dagger, native", new_dev);
+                    anyhow::bail!(
+                        "Unknown development environment: {}. Supported: docker, dagger, native",
+                        new_dev
+                    );
                 }
             }
         }
     }
-    
+
     // Save updated config if not in check mode
     if changes_made && !check_only {
         fs::write(&config_path, serde_json::to_string_pretty(&config)?)?;
-        
+
         if !json_output {
             println!("\n✨ Project configuration updated successfully!");
-            
+
             // Provide next steps based on what was changed
             if llm.is_some() {
                 println!("\nNext steps:");
                 println!("  - Run 'patina push' to generate context for the new LLM adapter");
             }
-            
+
             if dev.is_some() && dev.as_deref() == Some("dagger") {
                 println!("\nTry the new Dagger pipeline:");
                 println!("  - 'patina build' to build with Dagger");
@@ -418,7 +430,7 @@ fn handle_config_updates(
             }
         }
     }
-    
+
     if json_output {
         let result = serde_json::json!({
             "config_updated": changes_made,
@@ -428,55 +440,59 @@ fn handle_config_updates(
         });
         println!("{}", serde_json::to_string_pretty(&result)?);
     }
-    
+
     Ok(0)
 }
 
 // Import the create_dagger_files function from init.rs
 // For now, we'll duplicate it here, but in a real implementation
 // we'd extract it to a shared module
-fn create_dagger_files(project_path: &Path, name: &str, design: &Value) -> Result<serde_json::Value> {
-    
-    
+fn create_dagger_files(
+    project_path: &Path,
+    name: &str,
+    design: &Value,
+) -> Result<serde_json::Value> {
     // Always create basic Dockerfile as fallback
     let _ = create_docker_files(project_path, design)?;
-    
+
     // Create pipelines directory
     let pipelines_dir = project_path.join("pipelines");
     fs::create_dir_all(&pipelines_dir)?;
-    
+
     // Copy Go module file (no templating needed - it's static)
     let go_mod_content = include_str!("../../resources/templates/dagger/go.mod.tmpl");
     fs::write(pipelines_dir.join("go.mod"), go_mod_content)?;
-    
+
     // Copy main.go file (no templating needed - it's generic)
     let main_go_content = include_str!("../../resources/templates/dagger/main.go.tmpl");
     fs::write(pipelines_dir.join("main.go"), main_go_content)?;
-    
+
     // Read config to get current LLM
     let config_path = project_path.join(".patina").join("config.json");
     let llm = if config_path.exists() {
         let config_content = fs::read_to_string(&config_path)?;
         let config: serde_json::Value = serde_json::from_str(&config_content)?;
-        config.get("llm")
+        config
+            .get("llm")
             .and_then(|l| l.as_str())
             .unwrap_or("claude")
             .to_string()
     } else {
         "claude".to_string()
     };
-    
+
     // Copy constraints with LLM-specific filename
     let constraints_content = include_str!("../../resources/templates/dagger/CONSTRAINTS.md");
     let llm_filename = match llm.as_str() {
         "claude" => "CLAUDE.md",
         "gemini" => "GEMINI.md",
-        _ => "CONSTRAINTS.md"
+        _ => "CONSTRAINTS.md",
     };
     fs::write(pipelines_dir.join(llm_filename), constraints_content)?;
-    
+
     // Create a simple README for the pipelines
-    let readme_content = format!(r#"# {} Dagger Pipelines
+    let readme_content = format!(
+        r#"# {name} Dagger Pipelines
 
 This directory contains Dagger pipelines for building and testing the project.
 
@@ -498,10 +514,11 @@ go run . exec cargo --version
 - Go 1.21+
 - Docker daemon running
 - Dagger CLI (optional but recommended)
-"#, name);
-    
+"#
+    );
+
     fs::write(pipelines_dir.join("README.md"), readme_content)?;
-    
+
     Ok(serde_json::json!({
         "test_command": "cd pipelines && go run . test",
         "build_command": "cd pipelines && go run . build",
@@ -526,10 +543,10 @@ RUN cargo build --release
 
 CMD ["cargo", "run"]
 "#;
-        
+
         fs::write(project_path.join("Dockerfile"), dockerfile_content)?;
     }
-    
+
     Ok(serde_json::json!({
         "test_command": "docker run --rm -v $(pwd):/workspace -w /workspace rust:latest cargo test --workspace",
         "build_command": "docker build -t $(basename $(pwd)):latest .",

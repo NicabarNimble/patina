@@ -1,10 +1,10 @@
-pub mod init;
 pub mod add;
-pub mod commit;
-pub mod push;
-pub mod update;
-pub mod build;
-pub mod test;
 pub mod agent;
+pub mod build;
+pub mod commit;
 pub mod doctor;
+pub mod init;
+pub mod push;
+pub mod test;
+pub mod update;
 pub mod version;

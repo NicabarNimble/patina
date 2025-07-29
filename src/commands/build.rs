@@ -1,42 +1,40 @@
 use anyhow::{Context, Result};
-use std::fs;
 use patina::dev_env;
+use std::fs;
 
 pub fn execute() -> Result<()> {
-    let project_root = std::env::current_dir()
-        .context("Failed to get current directory")?;
-    
+    let project_root = std::env::current_dir().context("Failed to get current directory")?;
+
     // Read config to determine which dev environment to use
     let config_path = project_root.join(".patina/config.json");
     let (dev_env_name, _project_name) = if config_path.exists() {
         let config_content = fs::read_to_string(&config_path)?;
         let config: serde_json::Value = serde_json::from_str(&config_content)?;
-        
-        let dev = config.get("dev")
+
+        let dev = config
+            .get("dev")
             .and_then(|d| d.as_str())
             .unwrap_or("docker");
-            
-        let name = config.get("name")
-            .and_then(|n| n.as_str())
-            .unwrap_or("app");
-            
+
+        let name = config.get("name").and_then(|n| n.as_str()).unwrap_or("app");
+
         (dev.to_string(), name.to_string())
     } else {
         ("docker".to_string(), "app".to_string())
     };
-    
+
     // Get the appropriate dev environment
     let dev_environment = dev_env::get_dev_env(&dev_env_name);
-    
+
     // Try to build with the selected environment
     match dev_environment.build(&project_root) {
         Ok(()) => Ok(()),
         Err(e) => {
             // If it fails and has a fallback, try that
             if let Some(fallback_name) = dev_environment.fallback() {
-                println!("⚠️  {} failed: {}", dev_environment.name(), e);
-                println!("   Falling back to {}...", fallback_name);
-                
+                println!("⚠️  {} failed: {e}", dev_environment.name());
+                println!("   Falling back to {fallback_name}...");
+
                 let fallback_env = dev_env::get_dev_env(fallback_name);
                 fallback_env.build(&project_root)
             } else {
