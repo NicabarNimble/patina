@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
-use patina::session::SessionManager;
 use patina::environment::Environment;
+use patina::session::SessionManager;
+use serde::{Deserialize, Serialize};
 use std::fs;
-use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]
 struct HealthCheck {
@@ -39,25 +39,25 @@ pub fn execute(check_only: bool, auto_fix: bool, json_output: bool) -> Result<i3
     // Find project root
     let project_root = SessionManager::find_project_root()
         .context("Not in a Patina project directory. Run 'patina init' first.")?;
-    
-    let non_interactive = auto_fix || json_output ||
-        std::env::var("PATINA_NONINTERACTIVE").is_ok();
-    
+
+    let non_interactive = auto_fix || json_output || std::env::var("PATINA_NONINTERACTIVE").is_ok();
+
     if !json_output {
         println!("🏥 Checking project health...");
     }
-    
+
     // Read project config
     let config_path = project_root.join(".patina").join("config.json");
-    let config_content = fs::read_to_string(&config_path)
-        .context("Failed to read project config")?;
+    let config_content =
+        fs::read_to_string(&config_path).context("Failed to read project config")?;
     let config: serde_json::Value = serde_json::from_str(&config_content)?;
-    
+
     // Get current environment
     let current_env = Environment::detect()?;
-    
+
     // Get stored environment snapshot
-    let stored_tools = config.get("environment_snapshot")
+    let stored_tools = config
+        .get("environment_snapshot")
         .and_then(|s| s.get("detected_tools"))
         .and_then(|t| t.as_array())
         .map(|arr| {
@@ -67,40 +67,44 @@ pub fn execute(check_only: bool, auto_fix: bool, json_output: bool) -> Result<i3
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    
+
     // Compare environments
     let mut health_check = analyze_environment(&current_env, &stored_tools, &config)?;
-    
+
     // Check project status
-    let llm = config.get("llm").and_then(|l| l.as_str()).unwrap_or("unknown");
+    let llm = config
+        .get("llm")
+        .and_then(|l| l.as_str())
+        .unwrap_or("unknown");
     let adapter = patina::adapters::get_adapter(llm);
-    let adapter_version = adapter.check_for_updates(&project_root)?
+    let adapter_version = adapter
+        .check_for_updates(&project_root)?
         .map(|(current, _)| current);
-    
+
     // Count layer patterns
     let layer_path = project_root.join("layer");
     let pattern_count = count_patterns(&layer_path);
-    
+
     // Count sessions
     let sessions_path = adapter.get_sessions_path(&project_root);
     let session_count = sessions_path
         .as_ref()
         .map(|path| count_sessions(path))
         .unwrap_or(0);
-    
+
     health_check.project_config = ProjectStatus {
         llm: llm.to_string(),
         adapter_version,
         layer_patterns: pattern_count,
         sessions: session_count,
     };
-    
+
     // Display results
     if json_output {
         println!("{}", serde_json::to_string_pretty(&health_check)?);
     } else {
         display_health_check(&health_check, &current_env)?;
-        
+
         if !health_check.environment_changes.missing_tools.is_empty() && !check_only {
             if auto_fix {
                 if !json_output {
@@ -113,7 +117,7 @@ pub fn execute(check_only: bool, auto_fix: bool, json_output: bool) -> Result<i3
                 io::stdout().flush()?;
                 let mut response = String::new();
                 io::stdin().read_line(&mut response)?;
-                
+
                 if response.trim().is_empty() || response.trim().eq_ignore_ascii_case("y") {
                     update_environment_snapshot(&config_path, &current_env)?;
                     if !json_output {
@@ -123,7 +127,7 @@ pub fn execute(check_only: bool, auto_fix: bool, json_output: bool) -> Result<i3
             }
         }
     }
-    
+
     // Determine exit code
     let exit_code = match health_check.status.as_str() {
         "healthy" => 0,
@@ -131,19 +135,27 @@ pub fn execute(check_only: bool, auto_fix: bool, json_output: bool) -> Result<i3
         "critical" => 3,
         _ => 1,
     };
-    
+
     Ok(exit_code)
 }
 
-fn analyze_environment(current: &Environment, stored_tools: &[String], config: &serde_json::Value) -> Result<HealthCheck> {
+fn analyze_environment(
+    current: &Environment,
+    stored_tools: &[String],
+    config: &serde_json::Value,
+) -> Result<HealthCheck> {
     let mut missing_tools = Vec::new();
     let mut new_tools = Vec::new();
     let version_changes = Vec::new();
     let mut recommendations = Vec::new();
-    
+
     // Check for missing tools
     for tool_name in stored_tools {
-        if !current.tools.get(tool_name).map_or(false, |info| info.available) {
+        if !current
+            .tools
+            .get(tool_name)
+            .is_some_and(|info| info.available)
+        {
             let required = is_tool_required(tool_name, config);
             missing_tools.push(ToolChange {
                 name: tool_name.clone(),
@@ -151,13 +163,16 @@ fn analyze_environment(current: &Environment, stored_tools: &[String], config: &
                 new_version: None,
                 required,
             });
-            
+
             if required {
-                recommendations.push(format!("Install {}: {}", tool_name, get_install_command(tool_name)));
+                recommendations.push(format!(
+                    "Install {tool_name}: {}",
+                    get_install_command(tool_name)
+                ));
             }
         }
     }
-    
+
     // Check for new tools
     for (name, info) in &current.tools {
         if info.available && !stored_tools.contains(name) {
@@ -169,7 +184,7 @@ fn analyze_environment(current: &Environment, stored_tools: &[String], config: &
             });
         }
     }
-    
+
     // Determine overall status
     let status = if missing_tools.iter().any(|t| t.required) {
         "critical".to_string()
@@ -178,7 +193,7 @@ fn analyze_environment(current: &Environment, stored_tools: &[String], config: &
     } else {
         "healthy".to_string()
     };
-    
+
     Ok(HealthCheck {
         status,
         environment_changes: EnvironmentChanges {
@@ -202,17 +217,17 @@ fn is_tool_required(tool: &str, config: &serde_json::Value) -> bool {
         "cargo" | "rust" => true, // Always required for Patina
         "docker" => {
             // Required if dev environment is docker or dagger
-            config.get("dev")
+            config
+                .get("dev")
                 .and_then(|d| d.as_str())
                 .map(|d| d == "docker" || d == "dagger")
                 .unwrap_or(false)
         }
-        "dagger" => {
-            config.get("dev")
-                .and_then(|d| d.as_str())
-                .map(|d| d == "dagger")
-                .unwrap_or(false)
-        }
+        "dagger" => config
+            .get("dev")
+            .and_then(|d| d.as_str())
+            .map(|d| d == "dagger")
+            .unwrap_or(false),
         _ => false,
     }
 }
@@ -233,8 +248,9 @@ fn count_patterns(layer_path: &std::path::Path) -> usize {
         for dir in ["core", "topics", "projects"] {
             let path = layer_path.join(dir);
             if let Ok(entries) = fs::read_dir(path) {
-                count += entries.filter_map(Result::ok)
-                    .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
+                count += entries
+                    .filter_map(Result::ok)
+                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
                     .count();
             }
         }
@@ -244,8 +260,9 @@ fn count_patterns(layer_path: &std::path::Path) -> usize {
 
 fn count_sessions(sessions_path: &std::path::Path) -> usize {
     if let Ok(entries) = fs::read_dir(sessions_path) {
-        entries.filter_map(Result::ok)
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
+        entries
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
             .count()
     } else {
         0
@@ -254,60 +271,67 @@ fn count_sessions(sessions_path: &std::path::Path) -> usize {
 
 fn display_health_check(health: &HealthCheck, _env: &Environment) -> Result<()> {
     println!("\nEnvironment Changes Since Init:");
-    
+
     // Display missing tools
     for tool in &health.environment_changes.missing_tools {
         let marker = if tool.required { "⚠️ " } else { "  " };
-        println!("  {} {}: {} → NOT FOUND{}", 
-            marker, 
-            tool.name, 
-            tool.old_version.as_ref().unwrap_or(&"unknown".to_string()),
-            if tool.required { " (required!)" } else { "" }
+        let old_version = tool.old_version.as_deref().unwrap_or("unknown");
+        let required_msg = if tool.required { " (required!)" } else { "" };
+        println!(
+            "  {marker} {}: {old_version} → NOT FOUND{required_msg}",
+            tool.name
         );
     }
-    
+
     // Display new tools
     for tool in &health.environment_changes.new_tools {
-        println!("  ✓ New tool: {} {}", 
-            tool.name, 
-            tool.new_version.as_ref().unwrap_or(&"detected".to_string())
-        );
+        let version = tool.new_version.as_deref().unwrap_or("detected");
+        println!("  ✓ New tool: {} {version}", tool.name);
     }
-    
+
     println!("\nProject Configuration:");
-    println!("  ✓ LLM: {} (adapter {})", 
-        health.project_config.llm,
-        health.project_config.adapter_version.as_ref().unwrap_or(&"unknown".to_string())
+    let adapter_version = health
+        .project_config
+        .adapter_version
+        .as_deref()
+        .unwrap_or("unknown");
+    println!(
+        "  ✓ LLM: {} (adapter {adapter_version})",
+        health.project_config.llm
     );
-    println!("  ✓ Layer: {} patterns stored", health.project_config.layer_patterns);
+    println!(
+        "  ✓ Layer: {} patterns stored",
+        health.project_config.layer_patterns
+    );
     println!("  ✓ Sessions: {} recorded", health.project_config.sessions);
-    
+
     if !health.recommendations.is_empty() {
         println!("\nRecommendations:");
         for (i, rec) in health.recommendations.iter().enumerate() {
-            println!("  {}. {}", i + 1, rec);
+            println!("  {}. {rec}", i + 1);
         }
     }
-    
+
     Ok(())
 }
 
 fn update_environment_snapshot(config_path: &std::path::Path, env: &Environment) -> Result<()> {
     // Read current config
     let mut config: serde_json::Value = serde_json::from_str(&fs::read_to_string(config_path)?)?;
-    
+
     // Update environment snapshot
     if let Some(snapshot) = config.get_mut("environment_snapshot") {
         snapshot["os"] = serde_json::Value::String(env.os.clone());
         snapshot["arch"] = serde_json::Value::String(env.arch.clone());
         snapshot["detected_tools"] = serde_json::Value::Array(
-            env.tools.iter()
+            env.tools
+                .iter()
                 .filter(|(_, info)| info.available)
                 .map(|(name, _)| serde_json::Value::String(name.clone()))
-                .collect()
+                .collect(),
         );
     }
-    
+
     // Write back
     fs::write(config_path, serde_json::to_string_pretty(&config)?)?;
     Ok(())

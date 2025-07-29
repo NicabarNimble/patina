@@ -27,6 +27,10 @@ uuid = { version = "1.10", features = ["v4", "serde"] }
 # Environment detection
 which = "7.0"
 
+[dev-dependencies]
+# Testing utilities
+tempfile = "3.14"
+
 [[bin]]
 name = "patina"
 path = "src/main.rs"

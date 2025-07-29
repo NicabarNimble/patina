@@ -1,5 +1,19 @@
 {
   "dev": "dagger",
+  "dev_manifest": {
+    "build_command": "cd pipelines && go run . build",
+    "files_created": [
+      "pipelines/main.go",
+      "pipelines/go.mod",
+      "pipelines/README.md",
+      "Dockerfile"
+    ],
+    "requirements": {
+      "docker": "20.10+",
+      "go": "1.21+"
+    },
+    "test_command": "cd pipelines && go run . test"
+  },
   "llm": "claude",
   "name": "patina"
 }

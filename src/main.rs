@@ -1,5 +1,5 @@
-use clap::{Parser, Subcommand};
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 
 mod commands;
 
@@ -16,101 +16,105 @@ enum Commands {
     Init {
         /// Project name
         name: String,
-        
+
         /// LLM to use (claude, gemini, local)
         #[arg(long)]
         llm: String,
-        
+
         /// Design document path
         #[arg(long)]
         design: String,
-        
+
         /// Development environment (docker, dagger, native)
         #[arg(long)]
         dev: Option<String>,
     },
-    
+
     /// Add a pattern to the current session
     Add {
         /// Pattern type (pattern, decision, etc)
         #[arg(value_enum)]
         type_: String,
-        
+
         /// Pattern name
         name: String,
     },
-    
+
     /// Commit session patterns to layer
     Commit {
         /// Commit message
         #[arg(short, long)]
         message: String,
     },
-    
+
     /// Generate context for LLM
     Push,
-    
+
     /// Check for and install adapter updates or modify project configuration
     Update {
         /// Only check for updates, don't install
         #[arg(short, long)]
         check: bool,
-        
+
         /// Automatically approve updates (non-interactive)
         #[arg(short, long, conflicts_with = "no")]
         yes: bool,
-        
+
         /// Automatically decline updates (non-interactive)
         #[arg(short, long, conflicts_with = "yes")]
         no: bool,
-        
+
         /// Output results as JSON
         #[arg(short, long)]
         json: bool,
-        
+
         /// Change or add LLM adapter (claude, gemini, local, openai)
         #[arg(long)]
         llm: Option<String>,
-        
+
         /// Change or add development environment (docker, dagger, nix)
         #[arg(long)]
         dev: Option<String>,
+
+        /// Force update even if versions match
+        #[arg(short, long)]
+        force: bool,
     },
-    
+
     /// Build project with Docker
     Build,
-    
+
     /// Run tests in configured environment
     Test,
-    
+
     /// Run agent workflows with Dagger
     Agent {
         /// Subcommand (workspace, test, shell)
         #[arg(value_name = "COMMAND")]
         command: Option<String>,
     },
-    
+
     /// Check project health and environment
     Doctor {
         /// Only check, don't fix anything
         #[arg(short, long)]
         check: bool,
-        
+
         /// Automatically fix issues (non-interactive)
         #[arg(short, long, conflicts_with = "check")]
         fix: bool,
-        
+
         /// Output results as JSON
         #[arg(short, long)]
         json: bool,
     },
-    
+
     /// Show version information
     Version {
         /// Output as JSON
         #[arg(short, long)]
         json: bool,
-        
+
         /// Show component versions
         #[arg(short, long)]
         components: bool,
@@ -119,9 +123,14 @@ enum Commands {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    
+
     match cli.command {
-        Commands::Init { name, llm, design, dev } => {
+        Commands::Init {
+            name,
+            llm,
+            design,
+            dev,
+        } => {
             commands::init::execute(name, llm, design, dev)?;
         }
         Commands::Add { type_, name } => {
@@ -133,8 +142,16 @@ fn main() -> Result<()> {
         Commands::Push => {
             commands::push::execute()?;
         }
-        Commands::Update { check, yes, no, json, llm, dev } => {
-            let exit_code = commands::update::execute(check, yes, no, json, llm, dev)?;
+        Commands::Update {
+            check,
+            yes,
+            no,
+            json,
+            llm,
+            dev,
+            force,
+        } => {
+            let exit_code = commands::update::execute(check, yes, no, json, llm, dev, force)?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
@@ -158,6 +175,6 @@ fn main() -> Result<()> {
             commands::version::execute(json, components)?;
         }
     }
-    
+
     Ok(())
 }
