@@ -17,13 +17,17 @@ pub fn start() -> Result<()> {
     let go_available = Command::new("go").arg("version").output().is_ok();
 
     if !go_available {
-        anyhow::bail!("Go is required to run the agent environment service. Please install Go first.");
+        anyhow::bail!(
+            "Go is required to run the agent environment service. Please install Go first."
+        );
     }
 
     // Check if workspace directory exists
     let workspace_dir = std::env::current_dir()?.join("workspace");
     if !workspace_dir.exists() {
-        anyhow::bail!("Agent environment service not found. Run 'patina init' in a Patina project.");
+        anyhow::bail!(
+            "Agent environment service not found. Run 'patina init' in a Patina project."
+        );
     }
 
     // Start the workspace service in the background
