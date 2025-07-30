@@ -1,3 +1,13 @@
+---
+id: patina-metaphor
+version: 1
+created_date: 2025-07-26
+confidence: medium
+oxidizer: nicabar
+tags: []
+promoted_from: projects/patina
+---
+
 # Patina: The Metaphor and Mission
 
 ## The Beautiful Layer That Forms Through Use

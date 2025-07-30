@@ -1,3 +1,13 @@
+---
+id: decisions
+version: 1
+created_date: 2025-07-15
+confidence: medium
+oxidizer: nicabar
+tags: []
+promoted_from: projects/patina
+---
+
 # Patina Architecture Decisions
 
 ## 2025-07-15: Initial Architecture

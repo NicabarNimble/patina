@@ -1,3 +1,12 @@
+---
+id: three-dimensions
+version: 1
+created_date: 2025-07-15
+confidence: medium
+oxidizer: nicabar
+tags: []
+---
+
 # Three Dimensions of Context
 
 ## Overview

@@ -1,3 +1,12 @@
+---
+id: container-first
+version: 1
+created_date: 2025-07-15
+confidence: medium
+oxidizer: nicabar
+tags: []
+---
+
 # Container-First Development Pattern
 
 ## Philosophy
