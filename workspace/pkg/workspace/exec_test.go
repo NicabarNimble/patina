@@ -3,6 +3,7 @@ package workspace
 import (
 	"bytes"
 	"context"
+	"os"
 	"testing"
 	"time"
 )
@@ -120,6 +121,10 @@ func Test_StreamingExecOptions_Callbacks(t *testing.T) {
 
 // Test workspace not ready for execution
 func Test_Execute_WorkspaceNotReady(t *testing.T) {
+	if os.Getenv("GITHUB_ACTIONS") == "true" {
+		t.Skip("Skipping Dagger integration test in CI")
+	}
+	
 	m := mustNewTestManagerWithDagger(t)
 	defer m.Close(context.Background())
 	
