@@ -34,33 +34,35 @@ impl DevEnvironment for DaggerEnvironment {
     fn build(&self, project_path: &Path) -> Result<()> {
         // Check if workspace service is running
         if !workspace_client::is_service_running(8080) {
-            anyhow::bail!("Workspace service is not running. Please run 'patina workspace start' first.");
+            anyhow::bail!(
+                "Workspace service is not running. Please run 'patina workspace start' first."
+            );
         }
 
         let client = WorkspaceClient::new("http://localhost:8080".to_string())?;
-        
+
         // Create a workspace for this build
         let project_name = project_path
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("build");
-            
+
         let workspace_name = format!("{}-build-{}", project_name, Uuid::new_v4());
-        
+
         println!("📦 Creating Dagger workspace: {}", workspace_name);
-        
+
         let request = CreateWorkspaceRequest {
             name: workspace_name.clone(),
             base_image: Some("rust:latest".to_string()),
             env: None,
         };
-        
+
         let workspace = client
             .create_workspace(request)
             .context("Failed to create workspace")?;
-            
+
         println!("✅ Workspace created: {}", workspace.id);
-        
+
         // Wait for workspace to be ready
         let mut retries = 0;
         loop {
@@ -77,20 +79,24 @@ impl DevEnvironment for DaggerEnvironment {
             std::thread::sleep(std::time::Duration::from_secs(1));
             retries += 1;
         }
-        
+
         println!("🔨 Building project in Dagger container...");
-        
+
         // Run cargo build in the workspace
         let exec_request = ExecRequest {
-            command: vec!["cargo".to_string(), "build".to_string(), "--release".to_string()],
+            command: vec![
+                "cargo".to_string(),
+                "build".to_string(),
+                "--release".to_string(),
+            ],
             work_dir: Some("/workspace/project".to_string()),
             env: None,
         };
-        
+
         let result = client
             .execute(&workspace.id, exec_request)
             .context("Failed to execute build command")?;
-            
+
         // Print output
         if !result.stdout.is_empty() {
             println!("{}", result.stdout);
@@ -98,46 +104,48 @@ impl DevEnvironment for DaggerEnvironment {
         if !result.stderr.is_empty() {
             eprintln!("{}", result.stderr);
         }
-        
+
         // Check exit code
         if result.exit_code != 0 {
             anyhow::bail!("Build failed with exit code {}", result.exit_code);
         }
-        
+
         println!("✅ Build completed successfully");
-        
+
         // Clean up workspace
         println!("🧹 Cleaning up workspace...");
         client.delete_workspace(&workspace.id)?;
-        
+
         Ok(())
     }
 
     fn test(&self, project_path: &Path) -> Result<()> {
         // Check if workspace service is running
         if !workspace_client::is_service_running(8080) {
-            anyhow::bail!("Workspace service is not running. Please run 'patina workspace start' first.");
+            anyhow::bail!(
+                "Workspace service is not running. Please run 'patina workspace start' first."
+            );
         }
 
         let client = WorkspaceClient::new("http://localhost:8080".to_string())?;
-        
+
         let project_name = project_path
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("test");
-            
+
         let workspace_name = format!("{}-test-{}", project_name, Uuid::new_v4());
-        
+
         println!("📦 Creating Dagger workspace: {}", workspace_name);
-        
+
         let request = CreateWorkspaceRequest {
             name: workspace_name.clone(),
             base_image: Some("rust:latest".to_string()),
             env: None,
         };
-        
+
         let workspace = client.create_workspace(request)?;
-        
+
         // Wait for ready
         let mut retries = 0;
         loop {
@@ -154,17 +162,17 @@ impl DevEnvironment for DaggerEnvironment {
             std::thread::sleep(std::time::Duration::from_secs(1));
             retries += 1;
         }
-        
+
         println!("🧪 Running tests in Dagger container...");
-        
+
         let exec_request = ExecRequest {
             command: vec!["cargo".to_string(), "test".to_string()],
             work_dir: Some("/workspace/project".to_string()),
             env: None,
         };
-        
+
         let result = client.execute(&workspace.id, exec_request)?;
-        
+
         // Print output
         if !result.stdout.is_empty() {
             println!("{}", result.stdout);
@@ -172,14 +180,14 @@ impl DevEnvironment for DaggerEnvironment {
         if !result.stderr.is_empty() {
             eprintln!("{}", result.stderr);
         }
-        
+
         // Clean up
         client.delete_workspace(&workspace.id)?;
-        
+
         if result.exit_code != 0 {
             anyhow::bail!("Tests failed with exit code {}", result.exit_code);
         }
-        
+
         println!("✅ All tests passed");
         Ok(())
     }
