@@ -23,6 +23,11 @@ jobs:
       with:
         components: clippy, rustfmt
         
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+        
     - name: Cache cargo registry
       uses: actions/cache@v4
       with:
@@ -34,14 +39,38 @@ jobs:
           target/
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         
-    - name: Check formatting
+    - name: Check Rust formatting
       run: cargo fmt --all -- --check
       
     - name: Run clippy
       run: cargo clippy --workspace -- -D warnings
       
-    - name: Run tests
+    - name: Run Rust tests
       run: cargo test --workspace
       
     - name: Build release
       run: cargo build --release
+      
+    # Go workspace tests (only if workspace directory exists)
+    - name: Check if workspace exists
+      id: check_workspace
+      run: |
+        if [ -d "workspace" ]; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Test Go workspace
+      if: steps.check_workspace.outputs.exists == 'true'
+      run: |
+        cd workspace
+        go mod download
+        go test -v ./...
+        
+    - name: Check Go formatting
+      if: steps.check_workspace.outputs.exists == 'true'
+      run: |
+        cd workspace
+        gofmt -l -s . | tee /tmp/gofmt.out
+        test -z "$(cat /tmp/gofmt.out)"

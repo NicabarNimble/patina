@@ -131,13 +131,13 @@ enum Commands {
 enum WorkspaceCommands {
     /// Start the workspace service
     Start,
-    
+
     /// Stop the workspace service
     Stop,
-    
+
     /// Show workspace service status
     Status,
-    
+
     /// List active workspaces
     List,
 }

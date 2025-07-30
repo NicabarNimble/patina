@@ -155,11 +155,7 @@ impl WorkspaceClient {
     }
 
     /// Execute a command in a workspace
-    pub fn execute(
-        &self,
-        workspace_id: &str,
-        request: ExecRequest,
-    ) -> Result<ExecResponse> {
+    pub fn execute(&self, workspace_id: &str, request: ExecRequest) -> Result<ExecResponse> {
         let url = format!("{}/workspaces/{}/exec", self.base_url, workspace_id);
         let response = self
             .client
@@ -192,16 +188,16 @@ impl WorkspaceClient {
     /// Create a git branch in a workspace
     pub fn create_branch(&self, workspace_id: &str, branch_name: &str) -> Result<()> {
         let url = format!("{}/workspaces/{}/git/branch", self.base_url, workspace_id);
-        
+
         #[derive(Serialize)]
         struct BranchRequest {
             branch_name: String,
         }
-        
+
         let request = BranchRequest {
             branch_name: branch_name.to_string(),
         };
-        
+
         let response = self.client.post(&url).json(&request).send()?;
 
         if response.status().is_success() || response.status() == 204 {
@@ -221,7 +217,7 @@ impl WorkspaceClient {
         email: Option<&str>,
     ) -> Result<()> {
         let url = format!("{}/workspaces/{}/git/commit", self.base_url, workspace_id);
-        
+
         #[derive(Serialize)]
         struct CommitRequest {
             message: String,
@@ -230,13 +226,13 @@ impl WorkspaceClient {
             #[serde(skip_serializing_if = "Option::is_none")]
             email: Option<String>,
         }
-        
+
         let request = CommitRequest {
             message: message.to_string(),
             author: author.map(|s| s.to_string()),
             email: email.map(|s| s.to_string()),
         };
-        
+
         let response = self.client.post(&url).json(&request).send()?;
 
         if response.status().is_success() || response.status() == 204 {
@@ -267,6 +263,6 @@ pub fn is_service_running(port: u16) -> bool {
         Ok(c) => c,
         Err(_) => return false,
     };
-    
+
     client.health_check().unwrap_or(false)
 }
