@@ -259,7 +259,7 @@ impl WorkspaceClient {
 
 /// Check if the workspace service is running
 pub fn is_service_running(port: u16) -> bool {
-    let client = match WorkspaceClient::new(format!("http://localhost:{}", port)) {
+    let client = match WorkspaceClient::new(format!("http://localhost:{port}")) {
         Ok(c) => c,
         Err(_) => return false,
     };

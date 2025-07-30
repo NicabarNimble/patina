@@ -26,7 +26,7 @@ impl DevEnvironment for DaggerEnvironment {
     ) -> Result<()> {
         // The new Dagger approach doesn't need template files
         // Everything runs through the workspace service
-        println!("🚀 Dagger environment ready for {}", project_name);
+        println!("🚀 Dagger environment ready for {project_name}");
         println!("   Build and test will use isolated workspace containers");
         Ok(())
     }
@@ -49,7 +49,7 @@ impl DevEnvironment for DaggerEnvironment {
 
         let workspace_name = format!("{}-build-{}", project_name, Uuid::new_v4());
 
-        println!("📦 Creating Dagger workspace: {}", workspace_name);
+        println!("📦 Creating Dagger workspace: {workspace_name}");
 
         let request = CreateWorkspaceRequest {
             name: workspace_name.clone(),
@@ -136,7 +136,7 @@ impl DevEnvironment for DaggerEnvironment {
 
         let workspace_name = format!("{}-test-{}", project_name, Uuid::new_v4());
 
-        println!("📦 Creating Dagger workspace: {}", workspace_name);
+        println!("📦 Creating Dagger workspace: {workspace_name}");
 
         let request = CreateWorkspaceRequest {
             name: workspace_name.clone(),
