@@ -40,14 +40,14 @@ func (h *Handlers) HandleWorkspace(w http.ResponseWriter, r *http.Request) {
 	// Extract workspace ID from path
 	path := strings.TrimPrefix(r.URL.Path, "/workspaces/")
 	parts := strings.Split(path, "/")
-	
+
 	if len(parts) < 1 || parts[0] == "" {
 		h.notFound(w, r)
 		return
 	}
-	
+
 	workspaceID := parts[0]
-	
+
 	// Route based on remaining path
 	if len(parts) == 1 {
 		switch r.Method {
@@ -93,13 +93,13 @@ func (h *Handlers) listWorkspaces(w http.ResponseWriter, r *http.Request) {
 		h.error(w, err, http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Convert to interface slice for response
 	items := make([]interface{}, len(workspaces))
 	for i, ws := range workspaces {
 		items[i] = ws
 	}
-	
+
 	h.json(w, ListWorkspacesResponse{Workspaces: items})
 }
 
@@ -110,26 +110,26 @@ func (h *Handlers) createWorkspace(w http.ResponseWriter, r *http.Request) {
 		h.error(w, err, http.StatusBadRequest)
 		return
 	}
-	
+
 	// Validate request
 	if req.Name == "" {
 		h.errorWithCode(w, "name is required", "INVALID_REQUEST", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Create workspace config
 	config := &workspace.Config{
 		BaseImage:   req.BaseImage,
 		Environment: req.Env,
 	}
-	
+
 	// Create workspace
 	ws, err := h.manager.CreateWorkspace(r.Context(), req.Name, config)
 	if err != nil {
 		h.error(w, err, http.StatusInternalServerError)
 		return
 	}
-	
+
 	h.json(w, CreateWorkspaceResponse{Workspace: ws})
 }
 
@@ -140,7 +140,7 @@ func (h *Handlers) getWorkspace(w http.ResponseWriter, r *http.Request, id strin
 		h.error(w, err, http.StatusNotFound)
 		return
 	}
-	
+
 	h.json(w, ws)
 }
 
@@ -150,7 +150,7 @@ func (h *Handlers) deleteWorkspace(w http.ResponseWriter, r *http.Request, id st
 		h.error(w, err, http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -161,20 +161,20 @@ func (h *Handlers) execInWorkspace(w http.ResponseWriter, r *http.Request, id st
 		h.error(w, err, http.StatusBadRequest)
 		return
 	}
-	
+
 	// Validate request
 	if len(req.Command) == 0 {
 		h.errorWithCode(w, "command is required", "INVALID_REQUEST", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Create exec options
 	opts := &workspace.ExecOptions{
 		Command:     req.Command,
 		WorkDir:     req.WorkDir,
 		Environment: req.Env,
 	}
-	
+
 	// Execute command
 	result, err := h.manager.Execute(r.Context(), id, opts)
 	if err != nil {
@@ -187,14 +187,14 @@ func (h *Handlers) execInWorkspace(w http.ResponseWriter, r *http.Request, id st
 		}
 		return
 	}
-	
+
 	// Convert to response
 	resp := ExecResponse{
 		ExitCode: result.ExitCode,
 		Stdout:   result.Stdout,
 		Stderr:   result.Stderr,
 	}
-	
+
 	h.json(w, resp)
 }
 
@@ -214,11 +214,11 @@ func (h *Handlers) error(w http.ResponseWriter, err interface{}, status int) {
 func (h *Handlers) errorWithCode(w http.ResponseWriter, err interface{}, code string, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	
+
 	resp := ErrorResponse{
 		Code: code,
 	}
-	
+
 	switch v := err.(type) {
 	case string:
 		resp.Error = v
@@ -227,7 +227,7 @@ func (h *Handlers) errorWithCode(w http.ResponseWriter, err interface{}, code st
 	default:
 		resp.Error = "unknown error"
 	}
-	
+
 	json.NewEncoder(w).Encode(resp)
 }
 
@@ -278,7 +278,7 @@ func (h *Handlers) getGitStatus(w http.ResponseWriter, r *http.Request, workspac
 		}
 		return
 	}
-	
+
 	h.json(w, status)
 }
 
@@ -288,12 +288,12 @@ func (h *Handlers) createBranch(w http.ResponseWriter, r *http.Request, workspac
 		h.error(w, err, http.StatusBadRequest)
 		return
 	}
-	
+
 	if req.BranchName == "" {
 		h.errorWithCode(w, "branch_name is required", "INVALID_REQUEST", http.StatusBadRequest)
 		return
 	}
-	
+
 	if err := h.manager.CreateBranch(r.Context(), workspaceID, req.BranchName); err != nil {
 		if workspace.IsNotFound(err) {
 			h.error(w, err, http.StatusNotFound)
@@ -302,7 +302,7 @@ func (h *Handlers) createBranch(w http.ResponseWriter, r *http.Request, workspac
 		}
 		return
 	}
-	
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -312,18 +312,18 @@ func (h *Handlers) commitChanges(w http.ResponseWriter, r *http.Request, workspa
 		h.error(w, err, http.StatusBadRequest)
 		return
 	}
-	
+
 	if req.Message == "" {
 		h.errorWithCode(w, "message is required", "INVALID_REQUEST", http.StatusBadRequest)
 		return
 	}
-	
+
 	opts := &workspace.GitOptions{
 		Message: req.Message,
 		Author:  req.Author,
 		Email:   req.Email,
 	}
-	
+
 	if err := h.manager.CommitChanges(r.Context(), workspaceID, opts); err != nil {
 		if workspace.IsNotFound(err) {
 			h.error(w, err, http.StatusNotFound)
@@ -332,7 +332,7 @@ func (h *Handlers) commitChanges(w http.ResponseWriter, r *http.Request, workspa
 		}
 		return
 	}
-	
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -345,6 +345,6 @@ func (h *Handlers) pushBranch(w http.ResponseWriter, r *http.Request, workspaceI
 		}
 		return
 	}
-	
+
 	w.WriteHeader(http.StatusNoContent)
 }

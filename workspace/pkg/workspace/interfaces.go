@@ -10,7 +10,7 @@ type WorkspaceManager interface {
 	DeleteWorkspace(ctx context.Context, id string) error
 	Execute(ctx context.Context, workspaceID string, opts *ExecOptions) (*ExecResult, error)
 	Close(ctx context.Context) error
-	
+
 	// Git operations
 	CreateBranch(ctx context.Context, workspaceID, branchName string) error
 	GetGitStatus(ctx context.Context, workspaceID string) (*GitStatus, error)

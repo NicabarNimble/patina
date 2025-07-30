@@ -85,10 +85,10 @@ func (m *Manager) GetGitStatus(ctx context.Context, workspaceID string) (*GitSta
 		if line == "" {
 			continue
 		}
-		
+
 		status := line[:2]
 		file := strings.TrimSpace(line[2:])
-		
+
 		if strings.Contains(status, "M") {
 			modified = append(modified, file)
 		} else if status == "??" {
@@ -140,7 +140,7 @@ func (m *Manager) CommitChanges(ctx context.Context, workspaceID string, opts *G
 
 	// Commit changes
 	commitCmd := []string{"git", "commit", "-m", opts.Message}
-	
+
 	// Add author if specified
 	if opts.Author != "" && opts.Email != "" {
 		commitCmd = append(commitCmd, "--author", fmt.Sprintf("%s <%s>", opts.Author, opts.Email))
