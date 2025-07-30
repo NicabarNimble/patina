@@ -1,178 +1,138 @@
 use anyhow::{Context, Result};
-use std::env;
-use std::path::Path;
-use std::process::Command;
+use patina::workspace_client;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::Duration;
 
-pub fn execute(command: Option<String>) -> Result<()> {
-    // Check if we have a Dagger pipeline
-    if !Path::new("pipelines/main.go").exists() {
-        anyhow::bail!("No Dagger pipeline found. Run 'patina init' with --dev=dagger first.");
+pub fn start() -> Result<()> {
+    // Check if already running
+    if workspace_client::is_service_running(8080) {
+        println!("✅ Agent environment service is already running on port 8080");
+        return Ok(());
     }
 
-    let subcommand = command.as_deref().unwrap_or("help");
+    println!("🚀 Starting agent environment service...");
 
-    match subcommand {
-        "test" => {
-            // Patina decides what to test
-            println!("🧪 Running tests in container...");
-            run_in_dagger(&["test"])?;
-        }
+    // Check if Go is available
+    let go_available = Command::new("go").arg("version").output().is_ok();
 
-        "exec" => {
-            // Allow arbitrary commands in container
-            println!("🔧 Executing in container...");
-            let args: Vec<String> = env::args().skip(3).collect();
-            if args.is_empty() {
-                anyhow::bail!("Usage: patina agent exec <command> [args...]");
-            }
-            let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            run_in_dagger_exec(&args_refs)?;
-        }
-
-        "improve" => {
-            // Patina orchestrates improvement workflow
-            println!("🤖 Running improvement workflow...");
-
-            // Get component from args
-            let component = env::args()
-                .nth(3)
-                .ok_or_else(|| anyhow::anyhow!("Usage: patina agent improve <component>"))?;
-
-            // Patina decides the steps:
-            println!("1. Testing {component} before changes...");
-            run_in_dagger_exec(&["cargo", "test", "--package", &component])?;
-
-            println!("2. Analyzing {component} for improvements...");
-            // Here Patina would coordinate with AI
-
-            println!("3. Testing {component} after changes...");
-            run_in_dagger_exec(&["cargo", "test", "--package", &component])?;
-
-            println!("✅ Improvement workflow complete");
-        }
-
-        "version" => {
-            // Patina handles version logic
-            println!("📦 Version management...");
-
-            let component = env::args()
-                .nth(3)
-                .ok_or_else(|| anyhow::anyhow!("Usage: patina agent version <component>"))?;
-
-            // Patina reads current version
-            let manifest = patina::version::VersionManifest::load(Path::new("."))?;
-            let current = manifest
-                .get_component_version(&component)
-                .unwrap_or("0.0.0");
-
-            println!("Current {component} version: {current}");
-
-            // Patina decides new version
-            // Then tells Dagger to run update commands
-        }
-
-        "explore" => {
-            // Patina orchestrates exploration workflow
-            println!("🔬 Starting exploration workflow...");
-
-            let feature = env::args()
-                .nth(3)
-                .ok_or_else(|| anyhow::anyhow!("Usage: patina agent explore <feature-name>"))?;
-
-            // Start a basic container
-            println!("Starting container...");
-            std::thread::spawn(|| {
-                let _ = run_in_dagger(&["container"]);
-            });
-
-            // Give container time to start
-            std::thread::sleep(std::time::Duration::from_secs(2));
-
-            // Now orchestrate the exploration setup
-            println!("Setting up exploration environment...");
-
-            // Configure git
-            run_in_dagger_exec(&[
-                "git",
-                "config",
-                "--global",
-                "user.email",
-                "explorer@patina.dev",
-            ])?;
-            run_in_dagger_exec(&["git", "config", "--global", "user.name", "Patina Explorer"])?;
-
-            // Create feature branch
-            println!("Creating feature branch: explore/{feature}...");
-            run_in_dagger_exec(&["git", "checkout", "-b", &format!("explore/{feature}")])?;
-
-            // Build to ensure everything works
-            println!("Building project in container...");
-            run_in_dagger_exec(&["cargo", "build"])?;
-
-            println!(
-                "
-✅ Exploration environment ready!"
-            );
-            println!("   Feature: {feature}");
-            println!("   Branch: explore/{feature}");
-            println!(
-                "
-💡 You can now:"
-            );
-            println!("   - Edit files (they're mounted from host)");
-            println!("   - Run: patina agent exec cargo test");
-            println!("   - Run: patina agent exec cargo build");
-            println!("   - Run: patina agent exec ./target/debug/patina --version");
-        }
-
-        "help" => {
-            println!("Available agent commands:");
-            println!("  explore <name>    - Start exploration environment");
-            println!("  test              - Run tests in container");
-            println!("  exec <cmd>        - Execute command in container");
-            println!("  improve <comp>    - Run improvement workflow");
-            println!("  version <comp>    - Manage component versions");
-        }
-        _ => {
-            println!("Available agent commands:");
-            println!("  explore <name>    - Start exploration environment");
-            println!("  test              - Run tests in container");
-            println!("  exec <cmd>        - Execute command in container");
-            println!("  improve <comp>    - Run improvement workflow");
-            println!("  version <comp>    - Manage component versions");
-        }
+    if !go_available {
+        anyhow::bail!("Go is required to run the agent environment service. Please install Go first.");
     }
 
-    Ok(())
-}
-
-// Simple wrapper to run commands in Dagger
-fn run_in_dagger(args: &[&str]) -> Result<()> {
-    let mut cmd = Command::new("go");
-    cmd.current_dir("pipelines").arg("run").arg(".").args(args);
-
-    let status = cmd.status().context("Failed to run Dagger pipeline")?;
-
-    if !status.success() {
-        anyhow::bail!("Dagger command failed");
+    // Check if workspace directory exists
+    let workspace_dir = std::env::current_dir()?.join("workspace");
+    if !workspace_dir.exists() {
+        anyhow::bail!("Agent environment service not found. Run 'patina init' in a Patina project.");
     }
 
-    Ok(())
-}
-
-// Run exec commands in Dagger
-fn run_in_dagger_exec(exec_args: &[&str]) -> Result<()> {
-    let mut cmd = Command::new("go");
-    cmd.current_dir("pipelines")
+    // Start the workspace service in the background
+    let mut child = Command::new("go")
         .arg("run")
-        .arg(".")
-        .arg("exec")
-        .args(exec_args);
+        .arg("./cmd/workspace-server")
+        .current_dir(&workspace_dir)
+        .env("PROJECT_ROOT", std::env::current_dir()?)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("Failed to start agent environment service")?;
 
-    let status = cmd.status().context("Failed to run Dagger pipeline")?;
+    // Wait for service to be ready
+    println!("⏳ Waiting for service to be ready...");
+    let mut retries = 0;
+    while retries < 30 {
+        if workspace_client::is_service_running(8080) {
+            println!("✅ Agent environment service is running on port 8080");
+            println!("   PID: {}", child.id());
+            println!("   Use 'patina agent stop' to stop the service");
 
-    if !status.success() {
-        anyhow::bail!("Dagger exec failed");
+            // Detach the process so it continues running
+            // In a real implementation, we'd save the PID to a file
+            std::mem::forget(child);
+
+            return Ok(());
+        }
+        thread::sleep(Duration::from_secs(1));
+        retries += 1;
+    }
+
+    // If we get here, service failed to start
+    let _ = child.kill();
+    anyhow::bail!("Failed to start agent environment service after 30 seconds")
+}
+
+pub fn stop() -> Result<()> {
+    if !workspace_client::is_service_running(8080) {
+        println!("ℹ️  Agent environment service is not running");
+        return Ok(());
+    }
+
+    println!("🛑 Stopping agent environment service...");
+
+    // In a real implementation, we'd read the PID from a file
+    // For now, we'll use pkill
+    let output = Command::new("pkill")
+        .arg("-f")
+        .arg("workspace-server")
+        .output()
+        .context("Failed to stop agent environment service")?;
+
+    if output.status.success() {
+        println!("✅ Agent environment service stopped");
+    } else {
+        println!("⚠️  Failed to stop agent environment service");
+        println!("   You may need to manually kill the process");
+    }
+
+    Ok(())
+}
+
+pub fn status() -> Result<()> {
+    if workspace_client::is_service_running(8080) {
+        println!("✅ Workspace service is running on port 8080");
+
+        // Try to get workspace list
+        if let Ok(client) =
+            patina::workspace_client::WorkspaceClient::new("http://localhost:8080".to_string())
+        {
+            match client.list_workspaces() {
+                Ok(workspaces) => {
+                    println!("   Active environments: {}", workspaces.len());
+                    for ws in workspaces {
+                        println!("   - {} ({})", ws.name, ws.status);
+                    }
+                }
+                Err(_) => {
+                    println!("   Could not retrieve environment list");
+                }
+            }
+        }
+    } else {
+        println!("❌ Agent environment service is not running");
+        println!("   Run 'patina agent start' to start the service");
+    }
+
+    Ok(())
+}
+
+pub fn list() -> Result<()> {
+    if !workspace_client::is_service_running(8080) {
+        anyhow::bail!("Agent environment service is not running. Run 'patina agent start' first.");
+    }
+
+    let client =
+        patina::workspace_client::WorkspaceClient::new("http://localhost:8080".to_string())?;
+    let workspaces = client.list_workspaces()?;
+
+    if workspaces.is_empty() {
+        println!("No active agent environments");
+    } else {
+        println!("Active agent environments:");
+        for ws in workspaces {
+            println!("  {} - {} ({})", ws.id, ws.name, ws.status);
+            println!("    Branch: {}", ws.branch_name);
+            println!("    Image: {}", ws.base_image);
+        }
     }
 
     Ok(())
