@@ -181,7 +181,7 @@ fn main() -> Result<()> {
             AgentCommands::Stop => commands::agent::stop()?,
             AgentCommands::Status => commands::agent::status()?,
             AgentCommands::List => commands::agent::list()?,
-        }
+        },
         Commands::Doctor { check, fix, json } => {
             let exit_code = commands::doctor::execute(check, fix, json)?;
             if exit_code != 0 {
