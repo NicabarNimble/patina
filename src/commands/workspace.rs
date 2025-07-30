@@ -92,7 +92,9 @@ pub fn status() -> Result<()> {
         println!("✅ Workspace service is running on port 8080");
 
         // Try to get workspace list
-        if let Ok(client) = patina::workspace_client::WorkspaceClient::new("http://localhost:8080".to_string()) {
+        if let Ok(client) =
+            patina::workspace_client::WorkspaceClient::new("http://localhost:8080".to_string())
+        {
             match client.list_workspaces() {
                 Ok(workspaces) => {
                     println!("   Active workspaces: {}", workspaces.len());
