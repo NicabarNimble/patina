@@ -19,6 +19,23 @@ See PROJECT_DESIGN.toml for detailed architecture and design decisions.
 - Patterns evolve from projects → topics → core
 - Always provide escape hatches
 
+## CI Requirements - IMPORTANT
+Before pushing, ALWAYS run these checks locally:
+```bash
+# Quick way - run all checks at once:
+.claude/bin/pre-push-checks.sh
+
+# Or run individually:
+cargo fmt --all           # Fix Rust formatting
+cargo clippy --workspace  # Check for warnings
+cargo test --workspace    # Run tests
+
+# Go checks (if workspace/ exists)
+cd workspace && go fmt ./... && go test -v ./... && cd ..
+```
+
+The CI will fail if any of these checks don't pass! The pre-push script runs all checks for you.
+
 ## Key Commands
 ```bash
 # Project lifecycle
