@@ -92,8 +92,8 @@ pub fn status() -> Result<()> {
         println!("✅ Workspace service is running on port 8080");
 
         // Try to get workspace list
-        match patina::workspace_client::WorkspaceClient::new("http://localhost:8080".to_string()) {
-            Ok(client) => match client.list_workspaces() {
+        if let Ok(client) = patina::workspace_client::WorkspaceClient::new("http://localhost:8080".to_string()) {
+            match client.list_workspaces() {
                 Ok(workspaces) => {
                     println!("   Active workspaces: {}", workspaces.len());
                     for ws in workspaces {
@@ -103,8 +103,7 @@ pub fn status() -> Result<()> {
                 Err(_) => {
                     println!("   Could not retrieve workspace list");
                 }
-            },
-            Err(_) => {}
+            }
         }
     } else {
         println!("❌ Workspace service is not running");
