@@ -1,3 +1,12 @@
+---
+id: golden-path
+version: 1
+created_date: 2025-07-15
+confidence: medium
+oxidizer: nicabar
+tags: []
+---
+
 # Golden Path: Claude + Dagger
 
 ## Overview

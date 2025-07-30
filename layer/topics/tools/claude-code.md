@@ -1,3 +1,12 @@
+---
+id: claude-code
+version: 1
+created_date: 2025-07-25
+confidence: medium
+oxidizer: nicabar
+tags: []
+---
+
 # Claude Code Reference
 
 **Current Version**: 1.0.60  

@@ -1,3 +1,12 @@
+---
+id: agent-workflows
+version: 1
+created_date: 2025-07-23
+confidence: medium
+oxidizer: nicabar
+tags: []
+---
+
 # Agent Workflows with Dagger
 
 ## Overview
