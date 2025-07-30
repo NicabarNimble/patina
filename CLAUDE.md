@@ -19,18 +19,34 @@ See PROJECT_DESIGN.toml for detailed architecture and design decisions.
 - Patterns evolve from projects → topics → core
 - Always provide escape hatches
 
+## CI Requirements - IMPORTANT
+Before pushing, ALWAYS run these checks locally:
+```bash
+# Quick way - run all checks at once:
+.claude/bin/pre-push-checks.sh
+
+# Or run individually:
+cargo fmt --all           # Fix Rust formatting
+cargo clippy --workspace  # Check for warnings
+cargo test --workspace    # Run tests
+
+# Go checks (if workspace/ exists)
+cd workspace && go fmt ./... && go test -v ./... && cd ..
+```
+
+The CI will fail if any of these checks don't pass! The pre-push script runs all checks for you.
+
 ## Key Commands
 ```bash
 # Project lifecycle
 patina init <name> --llm=claude --dev=dagger
-patina add <type> <name>     # Add pattern to session
-patina commit                # Commit patterns to layer
-patina push                  # Generate LLM context
+patina update               # Update adapter components
 
 # Development
 patina build                 # Smart build (Dagger or Docker)
 patina test                  # Run tests in container
-patina update               # Update adapter components
+patina doctor               # Check project health
+patina agent                # Manage agent environments
 ```
 
 ## Build System

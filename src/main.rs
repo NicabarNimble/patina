@@ -30,26 +30,6 @@ enum Commands {
         dev: Option<String>,
     },
 
-    /// Add a pattern to the current session
-    Add {
-        /// Pattern type (pattern, decision, etc)
-        #[arg(value_enum)]
-        type_: String,
-
-        /// Pattern name
-        name: String,
-    },
-
-    /// Commit session patterns to layer
-    Commit {
-        /// Commit message
-        #[arg(short, long)]
-        message: String,
-    },
-
-    /// Generate context for LLM
-    Push,
-
     /// Check for and install adapter updates or modify project configuration
     Update {
         /// Only check for updates, don't install
@@ -146,15 +126,6 @@ fn main() -> Result<()> {
             dev,
         } => {
             commands::init::execute(name, llm, design, dev)?;
-        }
-        Commands::Add { type_, name } => {
-            commands::add::execute(type_, name)?;
-        }
-        Commands::Commit { message } => {
-            commands::commit::execute(message)?;
-        }
-        Commands::Push => {
-            commands::push::execute()?;
         }
         Commands::Update {
             check,
