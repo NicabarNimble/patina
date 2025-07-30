@@ -1,3 +1,13 @@
+---
+id: no-liquid-for-core
+version: 1
+created_date: 2025-07-27
+confidence: medium
+oxidizer: nicabar
+tags: []
+promoted_from: projects/patina
+---
+
 # No Liquid Templating for Patina Core
 
 ## Decision

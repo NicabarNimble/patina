@@ -1,3 +1,13 @@
+---
+id: hook-session-architecture
+version: 1
+created_date: 2025-07-29
+confidence: medium
+oxidizer: nicabar
+tags: []
+promoted_from: projects/patina
+---
+
 # Hook-Based Session Architecture Decision
 
 **⚠️ DEPRECATED**: This complex hook-based approach was explored but not implemented. The current session system uses simple slash commands (/session-start, /session-update, /session-end) without hooks or automation. See `layer/topics/development/session-implementation.md` for the current implementation.

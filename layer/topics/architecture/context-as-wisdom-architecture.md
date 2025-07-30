@@ -1,3 +1,13 @@
+---
+id: context-as-wisdom-architecture
+version: 1
+created_date: 2025-07-29
+confidence: medium
+oxidizer: nicabar
+tags: []
+promoted_from: projects/patina
+---
+
 # Context as Wisdom Architecture
 
 ## Core Insight

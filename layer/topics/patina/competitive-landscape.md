@@ -1,3 +1,13 @@
+---
+id: competitive-landscape
+version: 1
+created_date: 2025-07-26
+confidence: medium
+oxidizer: nicabar
+tags: []
+promoted_from: projects/patina
+---
+
 # Competitive Landscape Analysis for Patina
 
 ## Executive Summary

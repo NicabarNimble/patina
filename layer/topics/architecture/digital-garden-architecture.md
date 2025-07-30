@@ -1,3 +1,13 @@
+---
+id: digital-garden-architecture
+version: 1
+created_date: 2025-07-26
+confidence: medium
+oxidizer: nicabar
+tags: []
+promoted_from: projects/patina
+---
+
 # Digital Garden Architecture - Patina MVP Plan
 
 ## Vision
