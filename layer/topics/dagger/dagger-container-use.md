@@ -1,3 +1,13 @@
+---
+id: dagger-container-use
+version: 1
+created_date: 2025-07-27
+confidence: medium
+oxidizer: nicabar
+tags: []
+promoted_from: projects/patina
+---
+
 # Dagger Container-Use Pattern for Patina
 
 ## Overview

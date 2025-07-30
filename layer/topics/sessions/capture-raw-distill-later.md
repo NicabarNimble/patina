@@ -1,17 +1,18 @@
 ---
-id: rails-based-design
+id: capture-raw-distill-later
 version: 1
 created_date: 2025-07-16
 confidence: medium
 oxidizer: nicabar
 tags: []
+promoted_from: projects/patina
 ---
 
-# rails-based-design
+# capture-raw-distill-later
 
 
 
 ## Metadata
-- Type: topic
-- Added: 2025-07-17T02:00:22.842229+00:00
+- Type: principle
+- Added: 2025-07-17T02:00:40.223831+00:00
 - Commit: Enhanced session management patterns
