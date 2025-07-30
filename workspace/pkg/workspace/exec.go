@@ -75,7 +75,7 @@ func (m *Manager) Execute(ctx context.Context, workspaceID string, opts *ExecOpt
 	if m.dag == nil {
 		return nil, ErrNoDaggerClient
 	}
-	
+
 	container := m.dag.Container().From(ws.BaseImage)
 
 	// Set working directory if specified

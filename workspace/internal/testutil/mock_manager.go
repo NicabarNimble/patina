@@ -31,13 +31,13 @@ func (m *MockManager) CreateWorkspace(ctx context.Context, name string, config *
 	if m.CreateErr != nil {
 		return nil, m.CreateErr
 	}
-	
+
 	ws := &workspace.Workspace{
 		ID:     "test-" + name,
 		Name:   name,
 		Status: workspace.StatusCreating,
 	}
-	
+
 	m.Workspaces[ws.ID] = ws
 	return ws, nil
 }
@@ -47,12 +47,12 @@ func (m *MockManager) GetWorkspace(id string) (*workspace.Workspace, error) {
 	if m.GetErr != nil {
 		return nil, m.GetErr
 	}
-	
+
 	ws, ok := m.Workspaces[id]
 	if !ok {
 		return nil, workspace.ErrWorkspaceNotFound
 	}
-	
+
 	return ws, nil
 }
 
@@ -61,12 +61,12 @@ func (m *MockManager) ListWorkspaces() ([]*workspace.Workspace, error) {
 	if m.ListErr != nil {
 		return nil, m.ListErr
 	}
-	
+
 	var list []*workspace.Workspace
 	for _, ws := range m.Workspaces {
 		list = append(list, ws)
 	}
-	
+
 	return list, nil
 }
 
@@ -75,11 +75,11 @@ func (m *MockManager) DeleteWorkspace(ctx context.Context, id string) error {
 	if m.DeleteErr != nil {
 		return m.DeleteErr
 	}
-	
+
 	if _, ok := m.Workspaces[id]; !ok {
 		return workspace.ErrWorkspaceNotFound
 	}
-	
+
 	delete(m.Workspaces, id)
 	return nil
 }
@@ -89,16 +89,16 @@ func (m *MockManager) Execute(ctx context.Context, workspaceID string, opts *wor
 	if m.ExecuteErr != nil {
 		return nil, m.ExecuteErr
 	}
-	
+
 	ws, err := m.GetWorkspace(workspaceID)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if ws.Status != workspace.StatusReady {
 		return nil, workspace.ErrContainerNotReady
 	}
-	
+
 	return &workspace.ExecResult{
 		ExitCode: 0,
 		Stdout:   "mock output",
@@ -120,7 +120,7 @@ func (m *MockManager) CreateBranch(ctx context.Context, workspaceID, branchName 
 	if err != nil {
 		return err
 	}
-	
+
 	ws.BranchName = branchName
 	return nil
 }
@@ -130,7 +130,7 @@ func (m *MockManager) GetGitStatus(ctx context.Context, workspaceID string) (*wo
 	if _, err := m.GetWorkspace(workspaceID); err != nil {
 		return nil, err
 	}
-	
+
 	return &workspace.GitStatus{
 		Branch:        "main",
 		Clean:         true,
@@ -145,7 +145,7 @@ func (m *MockManager) CommitChanges(ctx context.Context, workspaceID string, opt
 	if _, err := m.GetWorkspace(workspaceID); err != nil {
 		return err
 	}
-	
+
 	return nil
 }
 
@@ -154,6 +154,6 @@ func (m *MockManager) PushBranch(ctx context.Context, workspaceID string) error 
 	if _, err := m.GetWorkspace(workspaceID); err != nil {
 		return err
 	}
-	
+
 	return nil
 }

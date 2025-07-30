@@ -16,20 +16,20 @@ const (
 
 // Workspace represents an isolated development environment
 type Workspace struct {
-	ID           string            `json:"id"`
-	Name         string            `json:"name"`
-	ContainerID  string            `json:"container_id"`
-	BranchName   string            `json:"branch_name"`
-	BaseImage    string            `json:"base_image"`
-	CreatedAt    time.Time         `json:"created_at"`
-	UpdatedAt    time.Time         `json:"updated_at"`
-	Status       Status            `json:"status"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
-	
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	ContainerID string            `json:"container_id"`
+	BranchName  string            `json:"branch_name"`
+	BaseImage   string            `json:"base_image"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
+	Status      Status            `json:"status"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+
 	// Git integration fields
-	WorktreePath string            `json:"worktree_path,omitempty"`
-	BaseCommit   string            `json:"base_commit,omitempty"`
-	CurrentCommit string           `json:"current_commit,omitempty"`
+	WorktreePath  string `json:"worktree_path,omitempty"`
+	BaseCommit    string `json:"base_commit,omitempty"`
+	CurrentCommit string `json:"current_commit,omitempty"`
 }
 
 // Config holds configuration for workspace creation

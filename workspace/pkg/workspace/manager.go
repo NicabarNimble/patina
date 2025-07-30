@@ -23,9 +23,9 @@ type Manager struct {
 
 // ManagerConfig holds configuration for the workspace manager
 type ManagerConfig struct {
-	ProjectRoot   string
-	WorktreeRoot  string // Directory for git worktrees
-	DefaultImage  string
+	ProjectRoot  string
+	WorktreeRoot string // Directory for git worktrees
+	DefaultImage string
 }
 
 // NewManager creates a new workspace manager
@@ -33,35 +33,35 @@ func NewManager(dag *dagger.Client, config *ManagerConfig, logger *slog.Logger) 
 	if dag == nil {
 		return nil, ErrNoDaggerClient
 	}
-	
+
 	if config.DefaultImage == "" {
 		config.DefaultImage = "ubuntu:latest"
 	}
-	
+
 	m := &Manager{
 		dag:    dag,
 		config: config,
 		logger: logger,
 		closed: false,
 	}
-	
+
 	// Git is required - fail fast if not available
 	if config.ProjectRoot == "" {
 		return nil, fmt.Errorf("PROJECT_ROOT is required")
 	}
-	
+
 	if config.WorktreeRoot == "" {
 		return nil, fmt.Errorf("WORKTREE_ROOT is required")
 	}
-	
+
 	git, err := NewGitIntegration(config.ProjectRoot, config.WorktreeRoot)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize git integration: %w", err)
 	}
-	
+
 	m.git = git
 	logger.Info("git integration initialized", "worktree_root", config.WorktreeRoot)
-	
+
 	return m, nil
 }
 
@@ -73,57 +73,57 @@ func (m *Manager) CreateWorkspace(ctx context.Context, name string, config *Conf
 		return nil, ErrManagerClosed
 	}
 	m.mu.RUnlock()
-	
+
 	// Validate input
 	if name == "" {
 		return nil, ErrInvalidConfig
 	}
-	
+
 	if config == nil {
 		config = &Config{
 			BaseImage: m.config.DefaultImage,
 		}
 	}
-	
+
 	m.logger.Info("creating workspace", "name", name)
-	
+
 	// Create workspace instance
 	ws := NewWorkspace(name, config)
-	
+
 	// Create git worktree
 	worktreePath, err := m.git.CreateWorktree(ctx, ws.ID, ws.BranchName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create git worktree: %w", err)
 	}
-	
+
 	ws.WorktreePath = worktreePath
-	
+
 	// Get base commit
 	if commit, err := m.git.GetCurrentCommit(ctx, worktreePath); err == nil {
 		ws.BaseCommit = commit
 		ws.CurrentCommit = commit
 	}
-	
+
 	m.logger.Info("created git worktree", "workspace", ws.ID, "branch", ws.BranchName, "path", worktreePath)
-	
+
 	// Save initial workspace state to git notes
 	if err := m.git.SaveWorkspaceState(ctx, ws); err != nil {
 		m.logger.Error("failed to save workspace state", "error", err)
 		// Not fatal - continue without persistence
 	}
-	
+
 	// Add log entry
 	logEntry := fmt.Sprintf("Workspace created: %s (ID: %s)", ws.Name, ws.ID)
 	if err := m.git.AddWorkspaceLogEntry(ctx, ws.WorktreePath, logEntry); err != nil {
 		m.logger.Error("failed to add log entry", "error", err)
 	}
-	
+
 	// Store workspace
 	m.workspaces.Store(ws.ID, ws)
-	
+
 	// Create container in background
 	go m.initializeContainer(context.Background(), ws)
-	
+
 	return ws, nil
 }
 
@@ -133,26 +133,26 @@ func (m *Manager) GetWorkspace(id string) (*Workspace, error) {
 	if !ok {
 		return nil, ErrWorkspaceNotFound
 	}
-	
+
 	workspace, ok := value.(*Workspace)
 	if !ok {
 		return nil, fmt.Errorf("invalid workspace data for id %s", id)
 	}
-	
+
 	return workspace, nil
 }
 
 // ListWorkspaces returns all active workspaces
 func (m *Manager) ListWorkspaces() ([]*Workspace, error) {
 	var workspaces []*Workspace
-	
+
 	m.workspaces.Range(func(key, value interface{}) bool {
 		if ws, ok := value.(*Workspace); ok {
 			workspaces = append(workspaces, ws)
 		}
 		return true
 	})
-	
+
 	return workspaces, nil
 }
 
@@ -162,13 +162,13 @@ func (m *Manager) DeleteWorkspace(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	m.logger.Info("deleting workspace", "id", id, "name", ws.Name)
-	
+
 	// Update status
 	ws.Status = StatusDeleting
 	ws.UpdatedAt = time.Now()
-	
+
 	// Remove git worktree if present
 	if m.git != nil && ws.WorktreePath != "" {
 		m.logger.Info("removing git worktree", "workspace", id, "path", ws.WorktreePath)
@@ -177,27 +177,27 @@ func (m *Manager) DeleteWorkspace(ctx context.Context, id string) error {
 			// Continue with deletion even if worktree removal fails
 		}
 	}
-	
+
 	// Clean up container resources if Dagger is available
 	if m.dag != nil && ws.ContainerID != "" {
 		// Note: Dagger containers are ephemeral and cleaned up automatically
 		// but we should still remove any cache volumes
 		m.logger.Info("cleaning up workspace resources", "workspace", id)
-		
+
 		// Cache volumes are automatically cleaned up when no longer referenced
 		// In a real implementation, we might want to explicitly remove them
 	}
-	
+
 	// Remove from store
 	m.workspaces.Delete(id)
-	
+
 	return nil
 }
 
 // initializeContainer sets up the container for a workspace
 func (m *Manager) initializeContainer(ctx context.Context, ws *Workspace) {
 	m.logger.Info("initializing container", "workspace", ws.ID)
-	
+
 	// Skip if no Dagger client (for testing)
 	if m.dag == nil {
 		m.logger.Warn("no Dagger client available, skipping container initialization")
@@ -205,16 +205,16 @@ func (m *Manager) initializeContainer(ctx context.Context, ws *Workspace) {
 		ws.UpdatedAt = time.Now()
 		return
 	}
-	
+
 	// Create container with proper setup
 	container := m.dag.Container().
 		From(ws.BaseImage).
 		WithWorkdir("/workspace")
-	
+
 	// Install git if not present
 	container = container.
 		WithExec([]string{"sh", "-c", "which git || (apt-get update && apt-get install -y git)"})
-	
+
 	// Mount worktree or project directory
 	if ws.WorktreePath != "" {
 		// Use git worktree if available
@@ -222,7 +222,7 @@ func (m *Manager) initializeContainer(ctx context.Context, ws *Workspace) {
 		container = container.
 			WithMountedDirectory("/workspace/project", worktreeDir).
 			WithWorkdir("/workspace/project")
-		
+
 		m.logger.Info("mounted git worktree", "workspace", ws.ID, "path", ws.WorktreePath)
 	} else if m.config.ProjectRoot != "" {
 		// Fall back to project root
@@ -231,18 +231,18 @@ func (m *Manager) initializeContainer(ctx context.Context, ws *Workspace) {
 			WithMountedDirectory("/workspace/project", projectDir).
 			WithWorkdir("/workspace/project")
 	}
-	
+
 	// Initialize git config
 	container = container.
 		WithExec([]string{"git", "config", "--global", "user.email", "workspace@patina.dev"}).
 		WithExec([]string{"git", "config", "--global", "user.name", "Patina Workspace"}).
 		WithExec([]string{"git", "config", "--global", "init.defaultBranch", "main"}).
 		WithExec([]string{"git", "config", "--global", "safe.directory", "/workspace/project"})
-	
+
 	// Create a cache volume for better performance
 	cacheVolume := m.dag.CacheVolume("workspace-" + ws.ID)
 	container = container.WithMountedCache("/workspace/.cache", cacheVolume)
-	
+
 	// Get container ID
 	id, err := container.ID(ctx)
 	if err != nil {
@@ -251,52 +251,52 @@ func (m *Manager) initializeContainer(ctx context.Context, ws *Workspace) {
 		ws.UpdatedAt = time.Now()
 		return
 	}
-	
+
 	// Update workspace
 	ws.ContainerID = string(id)
 	ws.Status = StatusReady
 	ws.UpdatedAt = time.Now()
-	
+
 	// Save updated state to git notes
 	if err := m.git.SaveWorkspaceState(ctx, ws); err != nil {
 		m.logger.Error("failed to save workspace state", "error", err)
 	}
-	
+
 	// Add log entry
 	logEntry := fmt.Sprintf("Container initialized for workspace %s", ws.ID)
 	if err := m.git.AddWorkspaceLogEntry(ctx, ws.WorktreePath, logEntry); err != nil {
 		m.logger.Error("failed to add log entry", "error", err)
 	}
-	
+
 	m.logger.Info("container ready", "workspace", ws.ID, "container", id)
 }
 
 // LoadExistingWorkspaces loads workspace states from git notes on startup
 func (m *Manager) LoadExistingWorkspaces(ctx context.Context) error {
 	m.logger.Info("loading existing workspaces from git notes")
-	
+
 	workspaces, err := m.git.LoadAllWorkspaceStates(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load workspace states: %w", err)
 	}
-	
+
 	for _, ws := range workspaces {
 		m.logger.Info("loaded workspace", "id", ws.ID, "name", ws.Name, "status", ws.Status)
-		
+
 		// Store in memory
 		m.workspaces.Store(ws.ID, ws)
-		
+
 		// If container was ready, try to reconnect
 		if ws.Status == StatusReady && ws.ContainerID != "" {
 			// Update status to indicate reconnection needed
 			ws.Status = StatusCreating
 			ws.UpdatedAt = time.Now()
-			
+
 			// Reinitialize container in background
 			go m.initializeContainer(context.Background(), ws)
 		}
 	}
-	
+
 	m.logger.Info("loaded workspaces", "count", len(workspaces))
 	return nil
 }
@@ -310,9 +310,9 @@ func (m *Manager) Close(ctx context.Context) error {
 	}
 	m.closed = true
 	m.mu.Unlock()
-	
+
 	m.logger.Info("closing workspace manager")
-	
+
 	// Delete all workspaces
 	workspaces, _ := m.ListWorkspaces()
 	for _, ws := range workspaces {
@@ -320,6 +320,6 @@ func (m *Manager) Close(ctx context.Context) error {
 			m.logger.Error("failed to delete workspace on close", "id", ws.ID, "error", err)
 		}
 	}
-	
+
 	return nil
 }
