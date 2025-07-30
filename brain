@@ -1,9 +1,0 @@
-# Brain → Layer Migration
-
-The `brain/` directory has been renamed to `layer/` to better align with the Patina metaphor.
-
-**New location**: `layer/`
-
-The "layer" terminology better represents how wisdom accumulates like patina on metal - each session and pattern adds to your protective layer of knowledge.
-
-See `layer/` for all patterns and documentation.
