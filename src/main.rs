@@ -25,7 +25,7 @@ enum Commands {
         #[arg(long)]
         design: String,
 
-        /// Development environment (docker, dagger, workspace)
+        /// Development environment (docker, dagger, native)
         #[arg(long)]
         dev: Option<String>,
     },
@@ -72,7 +72,7 @@ enum Commands {
         #[arg(long)]
         llm: Option<String>,
 
-        /// Change or add development environment (docker, dagger, workspace)
+        /// Change or add development environment (docker, dagger, native)
         #[arg(long)]
         dev: Option<String>,
 
@@ -86,13 +86,6 @@ enum Commands {
 
     /// Run tests in configured environment
     Test,
-
-    /// Run agent workflows with Dagger
-    Agent {
-        /// Subcommand (workspace, test, shell)
-        #[arg(value_name = "COMMAND")]
-        command: Option<String>,
-    },
 
     /// Check project health and environment
     Doctor {
@@ -120,25 +113,25 @@ enum Commands {
         components: bool,
     },
 
-    /// Manage workspace service
-    Workspace {
+    /// Manage agent environments
+    Agent {
         #[command(subcommand)]
-        command: WorkspaceCommands,
+        command: AgentCommands,
     },
 }
 
 #[derive(Subcommand)]
-enum WorkspaceCommands {
-    /// Start the workspace service
+enum AgentCommands {
+    /// Start the agent environment service
     Start,
 
-    /// Stop the workspace service
+    /// Stop the agent environment service
     Stop,
 
-    /// Show workspace service status
+    /// Show agent service status
     Status,
 
-    /// List active workspaces
+    /// List active agent environments
     List,
 }
 
@@ -183,9 +176,12 @@ fn main() -> Result<()> {
         Commands::Test => {
             commands::test::execute()?;
         }
-        Commands::Agent { command } => {
-            commands::agent::execute(command)?;
-        }
+        Commands::Agent { command } => match command {
+            AgentCommands::Start => commands::agent::start()?,
+            AgentCommands::Stop => commands::agent::stop()?,
+            AgentCommands::Status => commands::agent::status()?,
+            AgentCommands::List => commands::agent::list()?,
+        },
         Commands::Doctor { check, fix, json } => {
             let exit_code = commands::doctor::execute(check, fix, json)?;
             if exit_code != 0 {
@@ -195,12 +191,6 @@ fn main() -> Result<()> {
         Commands::Version { json, components } => {
             commands::version::execute(json, components)?;
         }
-        Commands::Workspace { command } => match command {
-            WorkspaceCommands::Start => commands::workspace::start()?,
-            WorkspaceCommands::Stop => commands::workspace::stop()?,
-            WorkspaceCommands::Status => commands::workspace::status()?,
-            WorkspaceCommands::List => commands::workspace::list()?,
-        },
     }
 
     Ok(())
