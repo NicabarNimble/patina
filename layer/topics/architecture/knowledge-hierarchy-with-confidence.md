@@ -1,3 +1,12 @@
+---
+id: knowledge-hierarchy-with-confidence
+version: 1
+created_date: 2025-07-29
+confidence: medium
+oxidizer: nicabar
+tags: []
+---
+
 # Knowledge Hierarchy with Confidence
 
 ## Overview

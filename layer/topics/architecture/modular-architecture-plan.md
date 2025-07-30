@@ -1,3 +1,13 @@
+---
+id: modular-architecture-plan
+version: 1
+created_date: 2025-07-27
+confidence: medium
+oxidizer: nicabar
+tags: []
+promoted_from: projects/patina
+---
+
 # Modular Architecture Plan for Patina
 
 ## Overview

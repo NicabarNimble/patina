@@ -1,3 +1,13 @@
+---
+id: dagger-integration
+version: 1
+created_date: 2025-07-15
+confidence: high
+oxidizer: nicabar
+tags: [dagger, integration, templates, architecture]
+promoted_from: projects/patina
+---
+
 # Dagger Integration Pattern
 
 ## Overview

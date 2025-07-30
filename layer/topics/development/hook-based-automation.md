@@ -1,3 +1,12 @@
+---
+id: hook-based-automation
+version: 1
+created_date: 2025-07-29
+confidence: medium
+oxidizer: nicabar
+tags: []
+---
+
 # Hook-Based Automation Pattern
 
 ## Overview

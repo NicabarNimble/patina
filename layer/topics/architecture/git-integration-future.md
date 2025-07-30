@@ -1,3 +1,12 @@
+---
+id: git-integration-future
+version: 1
+created_date: 2025-07-16
+confidence: medium
+oxidizer: nicabar
+tags: []
+---
+
 # Future Git Integration for Patina Brain System
 
 ## Vision

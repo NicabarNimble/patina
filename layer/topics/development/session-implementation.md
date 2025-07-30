@@ -1,3 +1,12 @@
+---
+id: session-implementation
+version: 1
+created_date: 2025-07-29
+confidence: medium
+oxidizer: nicabar
+tags: []
+---
+
 # Session Implementation Pattern
 
 ## Overview
