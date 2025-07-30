@@ -8,3 +8,4 @@ pub mod push;
 pub mod test;
 pub mod update;
 pub mod version;
+pub mod workspace;
