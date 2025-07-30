@@ -1,3 +1,12 @@
+---
+id: deployment-strategy
+version: 1
+created_date: 2025-07-15
+confidence: medium
+oxidizer: nicabar
+tags: []
+---
+
 # Deployment Strategy
 
 ## Core Decision

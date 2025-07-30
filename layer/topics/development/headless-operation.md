@@ -1,3 +1,12 @@
+---
+id: headless-operation
+version: 1
+created_date: 2025-07-25
+confidence: medium
+oxidizer: nicabar
+tags: []
+---
+
 # Headless Operation Pattern
 
 ## Overview

@@ -1,3 +1,13 @@
+---
+id: smart-session-naming
+version: 1
+created_date: 2025-07-29
+confidence: medium
+oxidizer: nicabar
+tags: []
+promoted_from: projects/patina
+---
+
 # Smart Session Naming Pattern
 
 **⚠️ NOT IMPLEMENTED**: This smart naming approach was designed but not implemented. The current session system passes user input directly to the session file without pre-processing. Only the bash script sanitization layer exists. See `layer/topics/development/session-implementation.md` for the current implementation.

@@ -1,3 +1,13 @@
+---
+id: patterns
+version: 1
+created_date: 2025-07-22
+confidence: medium
+oxidizer: nicabar
+tags: []
+promoted_from: projects/patina
+---
+
 # Claude Adapter Patterns
 
 ## Overview

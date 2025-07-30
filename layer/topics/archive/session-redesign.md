@@ -1,3 +1,13 @@
+---
+id: session-redesign
+version: 1
+created_date: 2025-07-29
+confidence: medium
+oxidizer: nicabar
+tags: []
+promoted_from: projects/patina
+---
+
 # Session System Redesign
 
 **⚠️ DEPRECATED**: This design was explored but not implemented. The current session system uses a simpler approach without git integration and with `### HH:MM - Event Type` format instead of bracketed timestamps. See `layer/topics/development/session-implementation.md` for the current implementation.

@@ -1,3 +1,13 @@
+---
+id: versioning-strategy
+version: 1
+created_date: 2025-07-27
+confidence: medium
+oxidizer: nicabar
+tags: []
+promoted_from: projects/patina
+---
+
 # Git-Based Versioning Strategy for Patina
 
 ## Overview
