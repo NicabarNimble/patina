@@ -14,8 +14,8 @@ Patina accumulates knowledge like the protective layer that forms on metal - you
 See PROJECT_DESIGN.toml for detailed architecture and design decisions.
 
 ## Development Guidelines
-- Write Rust exclusively - let the compiler be your guard rail
-- Generate other languages through templates only
+- Rust for CLI and core logic - let the compiler be your guard rail
+- Go for Dagger integration - embrace Go idioms with solid testing
 - Patterns evolve from projects → topics → core
 - Always provide escape hatches
 

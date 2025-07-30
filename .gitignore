@@ -10,3 +10,10 @@ Cargo.lock
 *.iml
 .claude/
 pipelines/
+
+# Workspace reference repositories
+workspace/reference/container-use/
+workspace/reference/rqlite/
+
+# Build artifacts from workspace
+workspace/target/

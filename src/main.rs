@@ -25,7 +25,7 @@ enum Commands {
         #[arg(long)]
         design: String,
 
-        /// Development environment (docker, dagger, native)
+        /// Development environment (docker, dagger, workspace)
         #[arg(long)]
         dev: Option<String>,
     },
@@ -72,7 +72,7 @@ enum Commands {
         #[arg(long)]
         llm: Option<String>,
 
-        /// Change or add development environment (docker, dagger, nix)
+        /// Change or add development environment (docker, dagger, workspace)
         #[arg(long)]
         dev: Option<String>,
 
@@ -119,6 +119,27 @@ enum Commands {
         #[arg(short, long)]
         components: bool,
     },
+
+    /// Manage workspace service
+    Workspace {
+        #[command(subcommand)]
+        command: WorkspaceCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorkspaceCommands {
+    /// Start the workspace service
+    Start,
+    
+    /// Stop the workspace service
+    Stop,
+    
+    /// Show workspace service status
+    Status,
+    
+    /// List active workspaces
+    List,
 }
 
 fn main() -> Result<()> {
@@ -174,6 +195,12 @@ fn main() -> Result<()> {
         Commands::Version { json, components } => {
             commands::version::execute(json, components)?;
         }
+        Commands::Workspace { command } => match command {
+            WorkspaceCommands::Start => commands::workspace::start()?,
+            WorkspaceCommands::Stop => commands::workspace::stop()?,
+            WorkspaceCommands::Status => commands::workspace::status()?,
+            WorkspaceCommands::List => commands::workspace::list()?,
+        },
     }
 
     Ok(())
