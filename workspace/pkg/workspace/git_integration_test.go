@@ -30,13 +30,7 @@ func TestGitIntegration_CreateWorktree(t *testing.T) {
 		t.Fatalf("failed to init git repo: %v", err)
 	}
 	
-	// Create an initial commit
-	createFileCmd := exec.Command("sh", "-c", "cd "+repoDir+" && echo 'test' > README.md && git add . && git commit -m 'Initial commit'")
-	if err := createFileCmd.Run(); err != nil {
-		t.Fatalf("failed to create initial commit: %v", err)
-	}
-	
-	// Set up git config for the test repo
+	// Set up git config for the test repo (must be done before commits)
 	configEmailCmd := exec.Command("git", "-C", repoDir, "config", "user.email", "test@patina.dev")
 	if err := configEmailCmd.Run(); err != nil {
 		t.Fatalf("failed to set git email: %v", err)
@@ -45,6 +39,12 @@ func TestGitIntegration_CreateWorktree(t *testing.T) {
 	configNameCmd := exec.Command("git", "-C", repoDir, "config", "user.name", "Test User")
 	if err := configNameCmd.Run(); err != nil {
 		t.Fatalf("failed to set git name: %v", err)
+	}
+	
+	// Create an initial commit
+	createFileCmd := exec.Command("sh", "-c", "cd "+repoDir+" && echo 'test' > README.md && git add . && git commit -m 'Initial commit'")
+	if err := createFileCmd.Run(); err != nil {
+		t.Fatalf("failed to create initial commit: %v", err)
 	}
 	
 	// Create git integration
