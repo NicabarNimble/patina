@@ -64,12 +64,12 @@ dependencies = [
     "dirs - system directories"
 ]
 constraints = [
-    "Pure Rust implementation",
+    "Core CLI in Rust, container orchestration in Go",
     "Plugin architecture for adapters",
     "Zero network calls without consent",
     "Respect system boundaries",
-    "Templates for non-Rust code generation",
-    "LLMs write Rust, orchestrate anything"
+    "Comprehensive test coverage for all Go code",
+    "Clear boundaries between Rust and Go components"
 ]
 deployment = "Single binary distributed via cargo install"
 
