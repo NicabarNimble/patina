@@ -31,6 +31,16 @@ which = "7.0"
 reqwest = { version = "0.12", features = ["json", "blocking"] }
 tokio = { version = "1", features = ["full"] }
 
+# File watching
+notify = "6.1"
+
+# Database - decentralized pattern sharing
+rqlite-rs = { version = "0.6", features = ["macros"] }
+
+# Navigation command dependencies
+colored = "2"
+walkdir = "2"
+
 [dev-dependencies]
 # Testing utilities
 tempfile = "3.14"
