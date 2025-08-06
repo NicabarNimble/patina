@@ -22,56 +22,33 @@ fn main() {
     let arch = env::consts::ARCH;
     println!("📋 System: {} {}", os, arch);
     
-    // Define all available tools
+    // Define all available tools with logical categories
     let all_tools = vec![
-        // Essential
-        ("rust", "rustc", "essential", "Rust compiler"),
-        ("cargo", "cargo", "essential", "Rust package manager"),
-        ("git", "git", "essential", "Version control"),
-        // Recommended
-        ("docker", "docker", "recommended", "Container runtime"),
-        ("go", "go", "recommended", "Go language (for Dagger)"),
-        ("dagger", "dagger", "recommended", "CI/CD pipelines"),
-        // Optional
-        ("make", "make", "optional", "Build automation"),
-        ("jq", "jq", "optional", "JSON processing"),
+        // Core - absolutely required
+        ("rust", "rustc", "core", "Rust compiler"),
+        ("cargo", "cargo", "core", "Rust package manager"),
+        ("git", "git", "core", "Version control"),
+        
+        // Dev - development environments
+        ("docker", "docker", "dev", "Container runtime"),
+        ("go", "go", "dev", "Go language (for Dagger)"),
+        ("dagger", "dagger", "dev", "CI/CD pipelines"),
+        ("gh", "gh", "dev", "GitHub CLI for PRs"),
+        ("jq", "jq", "dev", "JSON processing"),
+        
+        // LLM - AI interfaces
+        ("claude", "claude", "llm", "Claude AI assistant"),
+        // ("gemini", "gemini", "llm", "Gemini AI assistant"), // Coming soon
     ];
     
-    // Filter tools based on mode
-    let tools: Vec<_> = if minimal {
-        all_tools.into_iter()
-            .filter(|(_, _, category, _)| *category == "essential")
-            .collect()
-    } else if full {
-        all_tools
-    } else {
-        // Interactive selection
-        println!("\n🔧 Tool Selection");
-        println!("Essential tools will be installed. Choose additional tools:\n");
-        
-        let mut selected = all_tools.iter()
-            .filter(|(_, _, category, _)| *category == "essential")
-            .cloned()
-            .collect::<Vec<_>>();
-            
-        print!("Install recommended tools (Docker, Go, Dagger)? [Y/n] ");
-        io::stdout().flush().unwrap();
-        let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
-        
-        if input.trim().is_empty() || input.trim().eq_ignore_ascii_case("y") {
-            selected.extend(all_tools.iter()
-                .filter(|(_, _, category, _)| *category == "recommended")
-                .cloned());
-        }
-        
-        selected
-    };
-    
+    // First, check what's actually installed
     println!("\n🔍 Checking installed tools:");
-    let mut to_install = Vec::new();
+    let mut missing_by_category = std::collections::HashMap::new();
+    missing_by_category.insert("core", Vec::new());
+    missing_by_category.insert("dev", Vec::new());
+    missing_by_category.insert("llm", Vec::new());
     
-    for (name, cmd, category, description) in &tools {
+    for (name, cmd, category, description) in &all_tools {
         let installed = Command::new("which")
             .arg(cmd)
             .output()
@@ -82,7 +59,46 @@ fn main() {
             println!("   ✓ {} - {}", name, description);
         } else {
             println!("   ✗ {} - {} ({})", name, description, category);
-            to_install.push((name, cmd, description));
+            if let Some(missing_list) = missing_by_category.get_mut(category) {
+                missing_list.push((name, cmd, description));
+            }
+        }
+    }
+    
+    // Determine what to install based on mode
+    let mut to_install = Vec::new();
+    
+    if minimal {
+        // Minimal: core + one LLM (claude for now) + native dev
+        if let Some(core_missing) = missing_by_category.get("core") {
+            to_install.extend(core_missing);
+        }
+        
+        // Add first available LLM
+        if let Some(llm_tools) = missing_by_category.get("llm") {
+            if !llm_tools.is_empty() {
+                to_install.push(llm_tools[0]); // Just claude for now
+            }
+        }
+        
+        // Native dev = gh and jq (skip docker/dagger/go)
+        if let Some(dev_tools) = missing_by_category.get("dev") {
+            for tool in dev_tools {
+                if tool.0 == &"gh" || tool.0 == &"jq" {
+                    to_install.push(*tool);
+                }
+            }
+        }
+    } else {
+        // Default/full: install everything that's missing
+        if let Some(core_missing) = missing_by_category.get("core") {
+            to_install.extend(core_missing);
+        }
+        if let Some(dev_missing) = missing_by_category.get("dev") {
+            to_install.extend(dev_missing);
+        }
+        if let Some(llm_missing) = missing_by_category.get("llm") {
+            to_install.extend(llm_missing);
         }
     }
     
@@ -99,8 +115,10 @@ fn main() {
         return;
     }
     
-    // Confirm installation
+    // Ask user if they want to install missing tools
     if !full {
+        let tool_names: Vec<&str> = to_install.iter().map(|t| *t.0).collect();
+        println!("\n🔧 {} missing tools: {}", to_install.len(), tool_names.join(", "));
         print!("\nInstall missing tools? [Y/n] ");
         io::stdout().flush().unwrap();
         
@@ -108,7 +126,8 @@ fn main() {
         io::stdin().read_line(&mut input).unwrap();
         
         if !input.trim().is_empty() && !input.trim().eq_ignore_ascii_case("y") {
-            println!("Installation cancelled.");
+            println!("\nInstallation cancelled.");
+            println!("Please install these tools manually and re-run setup.");
             return;
         }
     }
@@ -121,7 +140,7 @@ fn main() {
             "docker" => install_docker(os),
             "go" => install_go(os),
             "dagger" => install_dagger(os),
-            "make" => install_make(os),
+            "gh" => install_gh(os),
             "jq" => install_jq(os),
             _ => {
                 println!("   Don't know how to install {}", name);
@@ -221,22 +240,34 @@ fn install_dagger(os: &str) -> bool {
     }
 }
 
-fn install_make(os: &str) -> bool {
+fn install_gh(os: &str) -> bool {
     match os {
         "macos" => {
-            // Usually comes with Xcode Command Line Tools
-            println!("   Make usually comes with Xcode Command Line Tools");
-            true
-        }
-        "linux" => {
-            Command::new("sh")
-                .arg("-c")
-                .arg("command -v apt-get && sudo apt-get install -y build-essential || command -v yum && sudo yum install -y make")
+            Command::new("brew")
+                .args(&["install", "gh"])
                 .status()
                 .map(|s| s.success())
                 .unwrap_or(false)
         }
-        _ => false,
+        "linux" => {
+            println!("   Installing GitHub CLI...");
+            Command::new("sh")
+                .arg("-c")
+                .arg("(type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
+                  && sudo mkdir -p -m 755 /etc/apt/keyrings \
+                  && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+                  && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+                  && echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main\" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+                  && sudo apt update \
+                  && sudo apt install gh -y")
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        }
+        _ => {
+            println!("   Please install GitHub CLI manually from https://cli.github.com");
+            false
+        }
     }
 }
 
