@@ -17,7 +17,7 @@ pub fn execute(
     // Initialize indexer with HybridDatabase (SQLite + optional CRDT)
     let db_path = project_root.join(".patina/navigation.db");
     let enable_crdt = std::env::var("PATINA_ENABLE_CRDT").is_ok();
-    
+
     let indexer = if db_path.parent().map(|p| p.exists()).unwrap_or(false) {
         // Try HybridDatabase first
         match PatternIndexer::with_hybrid_database(&db_path, enable_crdt) {

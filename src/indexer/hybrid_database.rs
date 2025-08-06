@@ -65,22 +65,24 @@ impl NavigationCRDT {
     pub fn add_pattern(&mut self, pattern: &Pattern) -> Result<()> {
         // For simplicity, store patterns at the root level with a prefix
         let pattern_key = format!("pattern:{}", pattern.id);
-        
-        self.patterns_doc.transact(|tx| {
-            // Create pattern object at root with prefixed key
-            let pattern_obj = tx.put_object(ROOT, &pattern_key, ObjType::Map)?;
-            tx.put(&pattern_obj, "id", &pattern.id)?;
-            tx.put(&pattern_obj, "name", &pattern.name)?;
-            tx.put(&pattern_obj, "content", &pattern.content)?;
-            tx.put(&pattern_obj, "layer", &pattern.layer)?;
-            tx.put(&pattern_obj, "confidence", &pattern.confidence)?;
-            tx.put(
-                &pattern_obj,
-                "timestamp",
-                chrono::Utc::now().timestamp() as i64,
-            )?;
-            Ok::<(), automerge::AutomergeError>(())
-        }).map_err(|e| anyhow::anyhow!("Failed to add pattern to CRDT: {:?}", e))?;
+
+        self.patterns_doc
+            .transact(|tx| {
+                // Create pattern object at root with prefixed key
+                let pattern_obj = tx.put_object(ROOT, &pattern_key, ObjType::Map)?;
+                tx.put(&pattern_obj, "id", &pattern.id)?;
+                tx.put(&pattern_obj, "name", &pattern.name)?;
+                tx.put(&pattern_obj, "content", &pattern.content)?;
+                tx.put(&pattern_obj, "layer", &pattern.layer)?;
+                tx.put(&pattern_obj, "confidence", &pattern.confidence)?;
+                tx.put(
+                    &pattern_obj,
+                    "timestamp",
+                    chrono::Utc::now().timestamp() as i64,
+                )?;
+                Ok::<(), automerge::AutomergeError>(())
+            })
+            .map_err(|e| anyhow::anyhow!("Failed to add pattern to CRDT: {:?}", e))?;
 
         Ok(())
     }
@@ -89,30 +91,33 @@ impl NavigationCRDT {
     pub fn update_workspace_state(&mut self, state: &WorkspaceState) -> Result<()> {
         // For simplicity, store workspaces at the root level with a prefix
         let workspace_key = format!("workspace:{}", state.workspace_id);
-        
-        self.workspace_doc.transact(|tx| {
-            // Create or update workspace object at root with prefixed key
-            let workspace_obj = tx.put_object(ROOT, &workspace_key, ObjType::Map)?;
-            tx.put(&workspace_obj, "workspace_id", &state.workspace_id)?;
-            tx.put(&workspace_obj, "navigation_state", &state.navigation_state)?;
-            
-            if let Some(query) = &state.last_query {
-                tx.put(&workspace_obj, "last_query", query)?;
-            }
 
-            // Store active patterns as a list
-            let patterns_list = tx.put_object(&workspace_obj, "active_patterns", ObjType::List)?;
-            for (idx, pattern_id) in state.active_patterns.iter().enumerate() {
-                tx.insert(&patterns_list, idx, pattern_id)?;
-            }
+        self.workspace_doc
+            .transact(|tx| {
+                // Create or update workspace object at root with prefixed key
+                let workspace_obj = tx.put_object(ROOT, &workspace_key, ObjType::Map)?;
+                tx.put(&workspace_obj, "workspace_id", &state.workspace_id)?;
+                tx.put(&workspace_obj, "navigation_state", &state.navigation_state)?;
 
-            tx.put(
-                &workspace_obj,
-                "timestamp",
-                chrono::Utc::now().timestamp() as i64,
-            )?;
-            Ok::<(), automerge::AutomergeError>(())
-        }).map_err(|e| anyhow::anyhow!("Failed to update workspace state in CRDT: {:?}", e))?;
+                if let Some(query) = &state.last_query {
+                    tx.put(&workspace_obj, "last_query", query)?;
+                }
+
+                // Store active patterns as a list
+                let patterns_list =
+                    tx.put_object(&workspace_obj, "active_patterns", ObjType::List)?;
+                for (idx, pattern_id) in state.active_patterns.iter().enumerate() {
+                    tx.insert(&patterns_list, idx, pattern_id)?;
+                }
+
+                tx.put(
+                    &workspace_obj,
+                    "timestamp",
+                    chrono::Utc::now().timestamp() as i64,
+                )?;
+                Ok::<(), automerge::AutomergeError>(())
+            })
+            .map_err(|e| anyhow::anyhow!("Failed to update workspace state in CRDT: {:?}", e))?;
 
         Ok(())
     }
@@ -127,26 +132,36 @@ impl NavigationCRDT {
                 if let Some((pattern_value, pattern_obj_id)) = self.patterns_doc.get(ROOT, &key)? {
                     if let automerge::Value::Object(automerge::ObjType::Map) = pattern_value {
                         // Extract pattern fields
-                        let id = self.patterns_doc.get(&pattern_obj_id, "id")?
+                        let id = self
+                            .patterns_doc
+                            .get(&pattern_obj_id, "id")?
                             .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
                             .unwrap_or_default();
-                        
-                        let name = self.patterns_doc.get(&pattern_obj_id, "name")?
+
+                        let name = self
+                            .patterns_doc
+                            .get(&pattern_obj_id, "name")?
                             .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
                             .unwrap_or_default();
-                        
-                        let content = self.patterns_doc.get(&pattern_obj_id, "content")?
+
+                        let content = self
+                            .patterns_doc
+                            .get(&pattern_obj_id, "content")?
                             .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
                             .unwrap_or_default();
-                        
-                        let layer = self.patterns_doc.get(&pattern_obj_id, "layer")?
+
+                        let layer = self
+                            .patterns_doc
+                            .get(&pattern_obj_id, "layer")?
                             .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
                             .unwrap_or_default();
-                        
-                        let confidence = self.patterns_doc.get(&pattern_obj_id, "confidence")?
+
+                        let confidence = self
+                            .patterns_doc
+                            .get(&pattern_obj_id, "confidence")?
                             .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
                             .unwrap_or_default();
-                        
+
                         let pattern = Pattern {
                             id: id.clone(),
                             name,
@@ -154,7 +169,7 @@ impl NavigationCRDT {
                             layer,
                             confidence,
                         };
-                        
+
                         patterns.insert(id, pattern);
                     }
                 }
@@ -169,10 +184,10 @@ impl NavigationCRDT {
         // Parse the sync state to get last known heads
         let mut pattern_heads = Vec::new();
         let mut workspace_heads = Vec::new();
-        
+
         if !last_sync_state.is_empty() {
             let mut offset = 0;
-            
+
             // Read pattern heads count
             if offset + 4 <= last_sync_state.len() {
                 let count = u32::from_le_bytes([
@@ -182,7 +197,7 @@ impl NavigationCRDT {
                     last_sync_state[offset + 3],
                 ]) as usize;
                 offset += 4;
-                
+
                 // Read pattern heads
                 for _ in 0..count {
                     if offset + 32 <= last_sync_state.len() {
@@ -193,7 +208,7 @@ impl NavigationCRDT {
                     }
                 }
             }
-            
+
             // Read workspace heads count
             if offset + 4 <= last_sync_state.len() {
                 let count = u32::from_le_bytes([
@@ -203,7 +218,7 @@ impl NavigationCRDT {
                     last_sync_state[offset + 3],
                 ]) as usize;
                 offset += 4;
-                
+
                 // Read workspace heads
                 for _ in 0..count {
                     if offset + 32 <= last_sync_state.len() {
@@ -215,7 +230,7 @@ impl NavigationCRDT {
                 }
             }
         }
-        
+
         // Get changes since the last known heads
         let pattern_changes = self.patterns_doc.get_changes(&pattern_heads);
         let workspace_changes = self.workspace_doc.get_changes(&workspace_heads);
@@ -238,15 +253,15 @@ impl NavigationCRDT {
     pub fn apply_changes(&mut self, changes: &[u8]) -> Result<()> {
         // For simplicity, try to parse the entire buffer as changes
         // In a real implementation, you'd have a proper protocol for separating changes
-        
+
         // Try to load and apply changes to patterns document
         if let Ok(change) = automerge::Change::from_bytes(changes.to_vec()) {
             let _ = self.patterns_doc.apply_changes(vec![change]);
         }
-        
+
         // In practice, you'd need a way to separate pattern changes from workspace changes
         // For now, we'll just try to apply to both and ignore errors
-        
+
         Ok(())
     }
 
@@ -424,12 +439,7 @@ impl HybridDatabase {
             tx.execute(
                 "INSERT OR REPLACE INTO concepts (concept, document_id, relevance, confidence)
                  VALUES (?1, ?2, ?3, ?4)",
-                params![
-                    concept.to_lowercase(),
-                    &doc.id,
-                    "extracted",
-                    1.0
-                ],
+                params![concept.to_lowercase(), &doc.id, "extracted", 1.0],
             )?;
         }
 
@@ -470,7 +480,7 @@ impl HybridDatabase {
         // Always store in SQLite
         let conn = self.sqlite.lock();
         let active_patterns_json = serde_json::to_string(&state.active_patterns)?;
-        
+
         conn.execute(
             "INSERT OR REPLACE INTO workspace_states 
              (workspace_id, navigation_state, last_query, active_patterns, last_modified) 
@@ -533,7 +543,7 @@ impl HybridDatabase {
         if let Some(crdt) = &self.crdt {
             let mut crdt_lock = crdt.lock();
             crdt_lock.apply_changes(changes)?;
-            
+
             // Sync changes to SQLite
             drop(crdt_lock);
             self.sync_from_crdt()?;
@@ -605,11 +615,11 @@ mod tests {
     #[test]
     fn test_crdt_sync() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         // Create two databases with CRDT
         let db1 = HybridDatabase::new(&temp_dir.path().join("db1.db"), true).unwrap();
         let db2 = HybridDatabase::new(&temp_dir.path().join("db2.db"), true).unwrap();
-        
+
         db1.initialize_schema().unwrap();
         db2.initialize_schema().unwrap();
 
@@ -621,7 +631,7 @@ mod tests {
             layer: "surface".to_string(),
             confidence: "medium".to_string(),
         };
-        
+
         db1.add_pattern(&pattern).unwrap();
 
         // Get changes from db1
