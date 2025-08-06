@@ -49,8 +49,9 @@ fn main() {
         println!("\n🔧 Tool Selection");
         println!("Essential tools will be installed. Choose additional tools:\n");
         
-        let mut selected = all_tools.into_iter()
+        let mut selected = all_tools.iter()
             .filter(|(_, _, category, _)| *category == "essential")
+            .cloned()
             .collect::<Vec<_>>();
             
         print!("Install recommended tools (Docker, Go, Dagger)? [Y/n] ");
@@ -59,8 +60,9 @@ fn main() {
         io::stdin().read_line(&mut input).unwrap();
         
         if input.trim().is_empty() || input.trim().eq_ignore_ascii_case("y") {
-            selected.extend(all_tools.into_iter()
-                .filter(|(_, _, category, _)| *category == "recommended"));
+            selected.extend(all_tools.iter()
+                .filter(|(_, _, category, _)| *category == "recommended")
+                .cloned());
         }
         
         selected
@@ -91,7 +93,7 @@ fn main() {
     
     if dry_run {
         println!("\n--dry-run specified, would install:");
-        for (name, _) in &to_install {
+        for (name, _, _) in &to_install {
             println!("   - {}", name);
         }
         return;
@@ -112,13 +114,13 @@ fn main() {
     }
     
     // Install tools
-    for (name, cmd, description) in to_install {
+    for (name, _cmd, description) in to_install {
         println!("\n📦 Installing {} ({})...", name, description);
         
         let success = match *name {
             "docker" => install_docker(os),
             "go" => install_go(os),
-            "dagger" => install_dagger(),
+            "dagger" => install_dagger(os),
             "make" => install_make(os),
             "jq" => install_jq(os),
             _ => {
@@ -182,13 +184,41 @@ fn install_go(os: &str) -> bool {
     }
 }
 
-fn install_dagger() -> bool {
-    Command::new("sh")
-        .arg("-c")
-        .arg("curl -fsSL https://dl.dagger.io/dagger/install.sh | sh")
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+fn install_dagger(os: &str) -> bool {
+    match os {
+        "macos" => {
+            // Try brew first (cleaner)
+            if Command::new("brew")
+                .args(&["install", "dagger/tap/dagger"])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+            {
+                true
+            } else {
+                // Fallback to official installer
+                println!("   Brew failed, trying official installer...");
+                Command::new("sh")
+                    .arg("-c")
+                    .arg("curl -fsSL https://dl.dagger.io/dagger/install.sh | sh")
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false)
+            }
+        }
+        "linux" => {
+            Command::new("sh")
+                .arg("-c")
+                .arg("curl -fsSL https://dl.dagger.io/dagger/install.sh | sh")
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false)
+        }
+        _ => {
+            println!("   Please install Dagger manually from https://dagger.io");
+            false
+        }
+    }
 }
 
 fn install_make(os: &str) -> bool {

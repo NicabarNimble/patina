@@ -31,7 +31,18 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
         }
     }
 
-    // 2. Read and parse design.toml
+    // 2. Check if PROJECT_DESIGN.toml exists
+    if !Path::new(&design).exists() {
+        println!("\n❌ PROJECT_DESIGN.toml not found!");
+        println!("\nThis file defines your project's architecture and design.");
+        println!("To create one:");
+        println!("  • Run: cd setup && ./setup.sh");
+        println!("  • Or check the project repository for an existing file");
+        println!("\nCannot initialize without PROJECT_DESIGN.toml");
+        std::process::exit(1);
+    }
+
+    // Read and parse design.toml
     let design_content = fs::read_to_string(&design)
         .with_context(|| format!("Failed to read design file: {design}"))?;
 
@@ -61,18 +72,28 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
     }
 
     // 4. Create project directory
-    let project_path = PathBuf::from(&name);
-    if project_path.exists() {
-        anyhow::bail!("Project directory already exists: {}", name);
-    }
+    let project_path = if name == "." {
+        // Initialize in current directory
+        env::current_dir().context("Failed to get current directory")?
+    } else {
+        // Create new directory
+        let path = PathBuf::from(&name);
+        if path.exists() {
+            anyhow::bail!("Project directory already exists: {}", name);
+        }
+        fs::create_dir_all(&path)
+            .with_context(|| format!("Failed to create project directory: {name}"))?;
+        path
+    };
 
-    fs::create_dir_all(&project_path)
-        .with_context(|| format!("Failed to create project directory: {name}"))?;
-
-    // 5. Copy PROJECT_DESIGN.toml to project
+    // 5. Handle PROJECT_DESIGN.toml
     let project_design_path = project_path.join("PROJECT_DESIGN.toml");
-    fs::copy(&design, &project_design_path)
-        .with_context(|| "Failed to copy PROJECT_DESIGN.toml")?;
+
+    // Copy design file if source and destination are different
+    if fs::canonicalize(&design)? != fs::canonicalize(&project_design_path).unwrap_or_default() {
+        fs::copy(&design, &project_design_path)
+            .with_context(|| "Failed to copy PROJECT_DESIGN.toml")?;
+    }
 
     // 6. Set up layer directories
     let layer_path = project_path.join("layer");
@@ -251,8 +272,21 @@ fn validate_environment(env: &patina::Environment, design: &Value) -> Result<Opt
             if let Some(required) = env_section.get("required_tools").and_then(|v| v.as_array()) {
                 for tool in required {
                     if let Some(tool_name) = tool.as_str() {
-                        if !env.tools.get(tool_name).is_some_and(|info| info.available) {
-                            warnings.push(format!("⚠️  Required tool '{tool_name}' not found"));
+                        // Special handling for tools that are detected differently
+                        match tool_name {
+                            "rust" => {
+                                // Rust is detected as a language via rustc
+                                if !env.languages.get("rust").is_some_and(|info| info.available) {
+                                    warnings.push("⚠️  Required: Rust language not found (install via rustup)".to_string());
+                                }
+                            }
+                            _ => {
+                                // Standard tool check
+                                if !env.tools.get(tool_name).is_some_and(|info| info.available) {
+                                    warnings
+                                        .push(format!("⚠️  Required tool '{tool_name}' not found"));
+                                }
+                            }
                         }
                     }
                 }
@@ -265,8 +299,23 @@ fn validate_environment(env: &patina::Environment, design: &Value) -> Result<Opt
             {
                 for tool in recommended {
                     if let Some(tool_name) = tool.as_str() {
-                        if !env.tools.get(tool_name).is_some_and(|info| info.available) {
-                            warnings.push(format!("💡 Recommended tool '{tool_name}' not found"));
+                        // Skip validation for tools detected elsewhere
+                        match tool_name {
+                            "rust" => {
+                                // Already checked in required tools or languages
+                                if !env.languages.get("rust").is_some_and(|info| info.available) {
+                                    warnings.push(
+                                        "💡 Recommended: Rust language not found".to_string(),
+                                    );
+                                }
+                            }
+                            _ => {
+                                if !env.tools.get(tool_name).is_some_and(|info| info.available) {
+                                    warnings.push(format!(
+                                        "💡 Recommended tool '{tool_name}' not found"
+                                    ));
+                                }
+                            }
                         }
                     }
                 }

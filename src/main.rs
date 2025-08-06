@@ -22,7 +22,7 @@ enum Commands {
         llm: String,
 
         /// Design document path
-        #[arg(long)]
+        #[arg(long, default_value = "PROJECT_DESIGN.toml")]
         design: String,
 
         /// Development environment (docker, dagger, native)
