@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use patina::indexer::{Confidence, Layer, Location, NavigationResponse, PatternIndexer};
 use patina::session::SessionManager;
-use std::path::Path;
 
 /// Execute navigation query
 pub fn execute(
@@ -15,29 +14,52 @@ pub fn execute(
     let project_root = SessionManager::find_project_root()
         .context("Not in a Patina project directory. Run 'patina init' first.")?;
 
-    // Initialize indexer with database if available
-    let runtime = tokio::runtime::Runtime::new()?;
-    let indexer = runtime.block_on(async {
-        // Try to connect to rqlite first
-        let db_url = "http://localhost:4001";
-        match PatternIndexer::with_database(db_url).await {
+    // Initialize indexer with HybridDatabase (SQLite + optional CRDT)
+    let db_path = project_root.join(".patina/navigation.db");
+    let enable_crdt = std::env::var("PATINA_ENABLE_CRDT").is_ok();
+    
+    let indexer = if db_path.parent().map(|p| p.exists()).unwrap_or(false) {
+        // Try HybridDatabase first
+        match PatternIndexer::with_hybrid_database(&db_path, enable_crdt) {
             Ok(indexer) => {
                 if !json_output {
-                    println!("Connected to rqlite database at {}", db_url);
+                    println!(
+                        "Using HybridDatabase at {} (CRDT: {})",
+                        db_path.display(),
+                        if enable_crdt { "enabled" } else { "disabled" }
+                    );
                 }
-                Ok(indexer)
+                indexer
             }
             Err(e) => {
                 if !json_output {
-                    eprintln!("Warning: Could not connect to rqlite at {}: {}", db_url, e);
-                    eprintln!(
-                        "Using in-memory indexing only. Start rqlite with: docker-compose up -d"
-                    );
+                    eprintln!("Warning: Could not open HybridDatabase: {e}");
+                    eprintln!("Falling back to regular SQLite...");
                 }
-                PatternIndexer::new()
+                // Fall back to regular SQLite
+                match PatternIndexer::with_database(&db_path) {
+                    Ok(indexer) => {
+                        if !json_output {
+                            println!("Using regular SQLite database at {}", db_path.display());
+                        }
+                        indexer
+                    }
+                    Err(e2) => {
+                        if !json_output {
+                            eprintln!("Warning: Could not open any database: {e2}");
+                            eprintln!("Using in-memory indexing only.");
+                        }
+                        PatternIndexer::new()?
+                    }
+                }
             }
         }
-    })?;
+    } else {
+        if !json_output {
+            println!("Using in-memory indexing (no .patina directory found)");
+        }
+        PatternIndexer::new()?
+    };
 
     // For now, scan the layer directory to build index
     let layer_path = project_root.join("layer");
@@ -48,12 +70,12 @@ pub fn execute(
         return Ok(());
     }
 
-    // Index all markdown files in the layer directory
-    // With rqlite connected, this will persist to database
-    runtime.block_on(async { index_layer_directory(&indexer, &layer_path).await })?;
+    // Index all markdown files in the layer directory in parallel
+    // With SQLite connected, this will persist to database
+    indexer.index_directory(&layer_path)?;
 
     // Execute the navigation query
-    let response = runtime.block_on(async { indexer.navigate(query).await });
+    let response = indexer.navigate(query);
 
     // Filter by layer if specified
     let mut filtered_response = response;
@@ -80,33 +102,6 @@ pub fn execute(
         display_json_results(&filtered_response)?;
     } else {
         display_human_results(&filtered_response, query)?;
-    }
-
-    Ok(())
-}
-
-/// Index all markdown files in the layer directory
-async fn index_layer_directory(indexer: &PatternIndexer, layer_path: &Path) -> Result<()> {
-    use walkdir::WalkDir;
-
-    for entry in WalkDir::new(layer_path)
-        .follow_links(true)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        let path = entry.path();
-
-        // Only index markdown files
-        if path.extension().and_then(|s| s.to_str()) == Some("md") {
-            // Skip session files for now
-            if path.to_string_lossy().contains("/sessions/") {
-                continue;
-            }
-
-            if let Err(e) = indexer.index_document(path).await {
-                eprintln!("Warning: Failed to index {}: {}", path.display(), e);
-            }
-        }
     }
 
     Ok(())
@@ -212,14 +207,14 @@ fn display_location(location: &Location) {
     if let Some(git_state) = &location.git_state {
         let git_info = match git_state {
             patina::indexer::GitState::Merged { into_branch, .. } => {
-                format!("merged to {}", into_branch).green()
+                format!("merged to {into_branch}").green()
             }
             patina::indexer::GitState::Pushed { branch, .. } => {
-                format!("pushed to {}", branch).bright_green()
+                format!("pushed to {branch}").bright_green()
             }
             patina::indexer::GitState::Committed { message, .. } => {
                 let short_msg = message.lines().next().unwrap_or("");
-                format!("committed: {}", short_msg).yellow()
+                format!("committed: {short_msg}").yellow()
             }
             patina::indexer::GitState::Modified { .. } => "modified".bright_yellow(),
             patina::indexer::GitState::Untracked { .. } => "untracked".red(),
@@ -244,7 +239,7 @@ fn display_json_results(response: &NavigationResponse) -> Result<()> {
                 "layer": format!("{:?}", loc.layer),
                 "relevance": loc.relevance,
                 "confidence": format!("{:?}", loc.confidence),
-                "git_state": loc.git_state.as_ref().map(|gs| format!("{:?}", gs)),
+                "git_state": loc.git_state.as_ref().map(|gs| format!("{gs:?}")),
             })
         }).collect::<Vec<_>>(),
         "confidence_explanation": response.confidence_explanation,
