@@ -9,12 +9,12 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::sync::Mutex;
 
 /// State machine that processes git events and updates navigation state
 pub struct GitNavigationStateMachine {
     /// Navigation map to update
-    navigation_map: Arc<RwLock<GitAwareNavigationMap>>,
+    navigation_map: Arc<Mutex<GitAwareNavigationMap>>,
 
     /// Workspace client for git operations
     workspace_client: Option<WorkspaceClient>,
@@ -41,7 +41,7 @@ impl GitNavigationStateMachine {
     /// Create a new state machine
     pub fn new() -> Result<Self> {
         Ok(Self {
-            navigation_map: Arc::new(RwLock::new(GitAwareNavigationMap::new())),
+            navigation_map: Arc::new(Mutex::new(GitAwareNavigationMap::new())),
             workspace_client: None,
             state_transitions: Vec::new(),
             file_states: HashMap::new(),
@@ -49,7 +49,7 @@ impl GitNavigationStateMachine {
     }
 
     /// Create with shared navigation map
-    pub fn with_navigation_map(map: Arc<RwLock<GitAwareNavigationMap>>) -> Self {
+    pub fn with_navigation_map(map: Arc<Mutex<GitAwareNavigationMap>>) -> Self {
         Self {
             navigation_map: map,
             workspace_client: None,
@@ -64,19 +64,19 @@ impl GitNavigationStateMachine {
     }
 
     /// Process a git event and update navigation state
-    pub async fn process_event(&mut self, event: GitEvent) -> Result<()> {
+    pub fn process_event(&mut self, event: GitEvent) -> Result<()> {
         match event {
             GitEvent::FileCreated { path, workspace_id } => {
-                self.handle_file_created(path, workspace_id).await?;
+                self.handle_file_created(path, workspace_id)?;
             }
             GitEvent::FileModified { path, workspace_id } => {
-                self.handle_file_modified(path, workspace_id).await?;
+                self.handle_file_modified(path, workspace_id)?;
             }
             GitEvent::FileStaged {
                 files,
                 workspace_id,
             } => {
-                self.handle_files_staged(files, workspace_id).await?;
+                self.handle_files_staged(files, workspace_id)?;
             }
             GitEvent::Commit {
                 sha,
@@ -84,35 +84,34 @@ impl GitNavigationStateMachine {
                 files,
                 workspace_id,
             } => {
-                self.handle_commit(sha, message, files, workspace_id)
-                    .await?;
+                self.handle_commit(sha, message, files, workspace_id)?;
             }
             GitEvent::Push {
                 remote,
                 branch,
                 workspace_id,
             } => {
-                self.handle_push(remote, branch, workspace_id).await?;
+                self.handle_push(remote, branch, workspace_id)?;
             }
             GitEvent::PROpened {
                 number,
                 url,
                 workspace_id,
             } => {
-                self.handle_pr_opened(number, url, workspace_id).await?;
+                self.handle_pr_opened(number, url, workspace_id)?;
             }
             GitEvent::Merged {
                 into_branch,
                 workspace_id,
             } => {
-                self.handle_merge(into_branch, workspace_id).await?;
+                self.handle_merge(into_branch, workspace_id)?;
             }
         }
         Ok(())
     }
 
     /// Handle file creation
-    async fn handle_file_created(&mut self, path: PathBuf, workspace_id: String) -> Result<()> {
+    fn handle_file_created(&mut self, path: PathBuf, workspace_id: String) -> Result<()> {
         let new_state = GitState::Untracked {
             detected_at: Utc::now(),
             files: vec![path.clone()],
@@ -123,7 +122,7 @@ impl GitNavigationStateMachine {
 
         // Update navigation map
         {
-            let mut map = self.navigation_map.write().await;
+            let mut map = self.navigation_map.lock().unwrap();
             map.update_git_state(&path, new_state);
         } // Drop the lock here
 
@@ -140,7 +139,7 @@ impl GitNavigationStateMachine {
     }
 
     /// Handle file modification
-    async fn handle_file_modified(&mut self, path: PathBuf, workspace_id: String) -> Result<()> {
+    fn handle_file_modified(&mut self, path: PathBuf, workspace_id: String) -> Result<()> {
         let current_state = self.file_states.get(&path).cloned();
 
         let new_state = GitState::Modified {
@@ -154,7 +153,7 @@ impl GitNavigationStateMachine {
 
         // Update navigation map
         {
-            let mut map = self.navigation_map.write().await;
+            let mut map = self.navigation_map.lock().unwrap();
             map.update_git_state(&path, new_state);
         } // Drop the lock here
 
@@ -171,11 +170,7 @@ impl GitNavigationStateMachine {
     }
 
     /// Handle files being staged
-    async fn handle_files_staged(
-        &mut self,
-        files: Vec<PathBuf>,
-        workspace_id: String,
-    ) -> Result<()> {
+    fn handle_files_staged(&mut self, files: Vec<PathBuf>, workspace_id: String) -> Result<()> {
         let new_state = GitState::Staged {
             files: files.clone(),
             staged_at: Utc::now(),
@@ -185,7 +180,7 @@ impl GitNavigationStateMachine {
         let mut transitions = Vec::new();
 
         {
-            let mut map = self.navigation_map.write().await;
+            let mut map = self.navigation_map.lock().unwrap();
 
             for file in &files {
                 // Update state
@@ -215,7 +210,7 @@ impl GitNavigationStateMachine {
     }
 
     /// Handle commit
-    async fn handle_commit(
+    fn handle_commit(
         &mut self,
         sha: String,
         message: String,
@@ -236,7 +231,7 @@ impl GitNavigationStateMachine {
         let mut transitions = Vec::new();
 
         {
-            let mut map = self.navigation_map.write().await;
+            let mut map = self.navigation_map.lock().unwrap();
 
             for file in &files {
                 // Update state
@@ -269,12 +264,7 @@ impl GitNavigationStateMachine {
     }
 
     /// Handle push to remote
-    async fn handle_push(
-        &mut self,
-        remote: String,
-        branch: String,
-        workspace_id: String,
-    ) -> Result<()> {
+    fn handle_push(&mut self, remote: String, branch: String, workspace_id: String) -> Result<()> {
         // Get files in the current commit
         let files: Vec<PathBuf> = self
             .file_states
@@ -288,11 +278,11 @@ impl GitNavigationStateMachine {
         let new_state = GitState::Pushed {
             remote: remote.clone(),
             branch: branch.clone(),
-            sha: self.get_current_sha(&workspace_id).await?,
+            sha: self.get_current_sha(&workspace_id)?,
         };
 
         {
-            let mut map = self.navigation_map.write().await;
+            let mut map = self.navigation_map.lock().unwrap();
 
             for file in &files {
                 self.file_states.insert(file.clone(), new_state.clone());
@@ -318,12 +308,7 @@ impl GitNavigationStateMachine {
     }
 
     /// Handle pull request opening
-    async fn handle_pr_opened(
-        &mut self,
-        number: u32,
-        url: String,
-        workspace_id: String,
-    ) -> Result<()> {
+    fn handle_pr_opened(&mut self, number: u32, url: String, workspace_id: String) -> Result<()> {
         let new_state = GitState::PullRequest {
             number,
             url: url.clone(),
@@ -332,7 +317,7 @@ impl GitNavigationStateMachine {
         };
 
         {
-            let mut map = self.navigation_map.write().await;
+            let mut map = self.navigation_map.lock().unwrap();
 
             // Update all files in workspace
             for file in self.file_states.keys() {
@@ -355,15 +340,15 @@ impl GitNavigationStateMachine {
     }
 
     /// Handle merge
-    async fn handle_merge(&mut self, into_branch: String, workspace_id: String) -> Result<()> {
+    fn handle_merge(&mut self, into_branch: String, workspace_id: String) -> Result<()> {
         let new_state = GitState::Merged {
             into_branch: into_branch.clone(),
-            merge_sha: self.get_current_sha(&workspace_id).await?,
+            merge_sha: self.get_current_sha(&workspace_id)?,
             timestamp: Utc::now(),
         };
 
         {
-            let mut map = self.navigation_map.write().await;
+            let mut map = self.navigation_map.lock().unwrap();
 
             // Update all files and boost confidence
             for file in self.file_states.keys() {
@@ -443,7 +428,7 @@ impl GitNavigationStateMachine {
     }
 
     /// Get current SHA for workspace
-    async fn get_current_sha(&self, workspace_id: &str) -> Result<String> {
+    fn get_current_sha(&self, workspace_id: &str) -> Result<String> {
         if let Some(client) = &self.workspace_client {
             let status = client.get_git_status(workspace_id)?;
             Ok(status.current_commit)
@@ -509,8 +494,8 @@ impl GitNavigationStateMachine {
     }
 
     /// Process a git event (alias for process_event)
-    pub async fn process_git_event(&mut self, event: GitEvent) -> Result<()> {
-        self.process_event(event).await
+    pub fn process_git_event(&mut self, event: GitEvent) -> Result<()> {
+        self.process_event(event)
     }
 }
 
@@ -518,15 +503,15 @@ impl GitNavigationStateMachine {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_state_machine_creation() {
+    #[test]
+    fn test_state_machine_creation() {
         let machine = GitNavigationStateMachine::new().unwrap();
         assert_eq!(machine.get_transitions().len(), 0);
         assert_eq!(machine.get_file_states().len(), 0);
     }
 
-    #[tokio::test]
-    async fn test_file_created_event() {
+    #[test]
+    fn test_file_created_event() {
         let mut machine = GitNavigationStateMachine::new().unwrap();
 
         let event = GitEvent::FileCreated {
@@ -534,7 +519,7 @@ mod tests {
             workspace_id: "ws-123".to_string(),
         };
 
-        machine.process_event(event).await.unwrap();
+        machine.process_event(event).unwrap();
 
         assert_eq!(machine.get_transitions().len(), 1);
         assert_eq!(machine.get_file_states().len(), 1);

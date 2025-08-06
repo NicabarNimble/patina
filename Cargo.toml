@@ -34,12 +34,21 @@ tokio = { version = "1", features = ["full"] }
 # File watching
 notify = "6.1"
 
-# Database - decentralized pattern sharing
-rqlite-rs = { version = "0.6", features = ["macros"] }
+# Database - embedded SQLite for pattern storage
+rusqlite = { version = "0.32", features = ["bundled", "chrono", "serde_json", "load_extension"] }
+
+# Parallel processing (better than async for our use case)
+rayon = "1.10"
+
+# Simple synchronization
+parking_lot = "0.12"  # Faster mutexes
 
 # Navigation command dependencies
 colored = "2"
 walkdir = "2"
+
+# CRDT support
+automerge = "0.5"
 
 [dev-dependencies]
 # Testing utilities

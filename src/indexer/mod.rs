@@ -4,40 +4,57 @@
 //! pattern evolution through git states and provides confidence-based
 //! search results.
 
-pub mod database;
+// pub mod database; // rqlite - deprecated in favor of SQLite
+pub mod benchmark;
+// pub mod cr_sqlite_database; // Removed in favor of hybrid approach
 pub mod git_detection;
 pub mod git_state;
-pub mod monitoring;
+pub mod hybrid_database;
+// pub mod monitoring; // TODO: Update to synchronous
 pub mod navigation_state;
+pub mod sqlite_database;
 pub mod state_machine;
 
-pub use database::RqliteClient;
+// pub use database::RqliteClient; // rqlite - deprecated
+// pub use cr_sqlite_database::CrSqliteDatabase; // Removed in favor of hybrid approach
 pub use git_state::{Confidence, GitEvent, GitState};
-pub use monitoring::WorkspaceMonitor;
+pub use hybrid_database::{HybridDatabase, NavigationCRDT, Pattern, WorkspaceState};
+pub use sqlite_database::SqliteClient;
+// pub use monitoring::WorkspaceMonitor; // TODO: Update to synchronous
 pub use navigation_state::{DocumentInfo, GitAwareNavigationMap, WorkspaceNavigationState};
 pub use state_machine::GitNavigationStateMachine;
 
 use anyhow::{Context, Result};
+use parking_lot::Mutex as ParkingMutex;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+
+/// Database backend for the indexer
+enum DatabaseBackend {
+    /// SQLite embedded database
+    Sqlite(Arc<SqliteClient>),
+    /// Hybrid SQLite + optional Automerge CRDT
+    Hybrid(Arc<HybridDatabase>),
+}
 
 /// Main pattern indexer that coordinates navigation
 pub struct PatternIndexer {
     /// In-memory navigation cache for fast queries
-    cache: Arc<RwLock<GitAwareNavigationMap>>,
+    cache: Arc<Mutex<GitAwareNavigationMap>>,
     /// Database client for persistence
-    db: Option<RqliteClient>,
+    db: Option<DatabaseBackend>,
     /// Git state machine for tracking changes
-    state_machine: Arc<RwLock<GitNavigationStateMachine>>,
+    state_machine: Arc<Mutex<GitNavigationStateMachine>>,
 }
 
 impl PatternIndexer {
     /// Create a new pattern indexer without database
     pub fn new() -> Result<Self> {
-        let cache = Arc::new(RwLock::new(GitAwareNavigationMap::new()));
-        let state_machine = Arc::new(RwLock::new(GitNavigationStateMachine::new()?));
+        let cache = Arc::new(Mutex::new(GitAwareNavigationMap::new()));
+        let state_machine = Arc::new(Mutex::new(GitNavigationStateMachine::new()?));
 
         Ok(Self {
             cache,
@@ -46,51 +63,84 @@ impl PatternIndexer {
         })
     }
 
-    /// Create a new pattern indexer with database connection
-    pub async fn with_database(db_url: &str) -> Result<Self> {
-        let db = RqliteClient::new(db_url).await?;
-
-        // Initialize schema
-        db.initialize_schema()
-            .await
-            .context("Failed to initialize database schema")?;
+    /// Create a new pattern indexer with SQLite database
+    pub fn with_database(db_path: &Path) -> Result<Self> {
+        let db = SqliteClient::new(db_path)?;
+        db.initialize_schema()?;
 
         // Load existing data into cache
         let mut cache = GitAwareNavigationMap::new();
-        let state_machine = Arc::new(RwLock::new(GitNavigationStateMachine::new()?));
+        let state_machine = Arc::new(Mutex::new(GitNavigationStateMachine::new()?));
 
-        // Load documents and concepts from database
-        let (documents, _concept_mappings) = db
-            .load_cache_data()
-            .await
-            .context("Failed to load data from database")?;
+        // Load documents from database
+        let documents = db.get_all_documents()?;
+        let concepts = db.get_all_concepts()?;
 
         // Populate cache
-        for doc in documents {
-            cache.insert_document(doc);
+        for doc_record in documents {
+            // Convert from database record to DocumentInfo
+            let doc_id = doc_record.id.clone();
+            let doc_info = DocumentInfo {
+                id: doc_record.id,
+                path: PathBuf::from(doc_record.path),
+                layer: match doc_record.layer.as_str() {
+                    "Core" => Layer::Core,
+                    "Surface" => Layer::Surface,
+                    "Dust" => Layer::Dust,
+                    _ => Layer::Surface,
+                },
+                title: doc_record.title,
+                summary: doc_record.summary,
+                concepts: concepts
+                    .iter()
+                    .filter(|c| c.document_id == doc_id)
+                    .map(|c| c.concept.clone())
+                    .collect(),
+                metadata: serde_json::from_str(&doc_record.metadata).unwrap_or_default(),
+            };
+            cache.insert_document(doc_info);
         }
 
-        let cache = Arc::new(RwLock::new(cache));
+        let cache = Arc::new(Mutex::new(cache));
 
         Ok(Self {
             cache,
-            db: Some(db),
+            db: Some(DatabaseBackend::Sqlite(Arc::new(db))),
+            state_machine,
+        })
+    }
+
+    /// Create a new pattern indexer with hybrid database
+    pub fn with_hybrid_database(db_path: &Path, enable_crdt: bool) -> Result<Self> {
+        let db = HybridDatabase::new(db_path, enable_crdt)?;
+        db.initialize_schema()?;
+
+        // Load existing data into cache
+        let cache = GitAwareNavigationMap::new();
+        let state_machine = Arc::new(Mutex::new(GitNavigationStateMachine::new()?));
+
+        // TODO: Load existing patterns and documents from database into cache
+
+        let cache = Arc::new(Mutex::new(cache));
+
+        Ok(Self {
+            cache,
+            db: Some(DatabaseBackend::Hybrid(Arc::new(db))),
             state_machine,
         })
     }
 
     /// Navigate to find patterns matching a query (memory-first)
-    pub async fn navigate(&self, query: &str) -> NavigationResponse {
-        let cache = self.cache.read().await;
+    pub fn navigate(&self, query: &str) -> NavigationResponse {
+        let cache = self.cache.lock().unwrap();
         let mut response = cache.navigate(query);
 
         // Enrich with git states
-        let state_machine = self.state_machine.read().await;
+        let state_machine = self.state_machine.lock().unwrap();
         for location in &mut response.locations {
             if let Some(git_state) = state_machine.get_git_state(&location.path) {
                 location.git_state = Some(git_state.clone());
-                location.confidence =
-                    self.calculate_git_confidence(location.confidence, git_state);
+                location.confidence = self.calculate_git_confidence(location.confidence, git_state);
             }
         }
 
@@ -101,37 +151,135 @@ impl PatternIndexer {
     }
 
     /// Index a document for navigation
-    pub async fn index_document(&self, path: &Path) -> Result<()> {
+    pub fn index_document(&self, path: &Path) -> Result<()> {
         // 1. Analyze document
-        let doc_info = self.analyze_document(path).await?;
+        let doc_info = self.analyze_document(path)?;
 
         // 2. Update memory cache
         {
-            let mut cache = self.cache.write().await;
+            let mut cache = self.cache.lock().unwrap();
             cache.insert_document(doc_info.clone());
         }
 
         // 3. Persist to database if available
         if let Some(db) = &self.db {
-            db.insert_document(&doc_info)
-                .await
-                .context("Failed to persist document to database")?;
+            match db {
+                DatabaseBackend::Sqlite(sqlite_db) => {
+                    sqlite_db
+                        .store_document(&doc_info)
+                        .context("Failed to persist document to SQLite")?;
+                }
+                DatabaseBackend::Hybrid(hybrid_db) => {
+                    hybrid_db
+                        .store_document(&doc_info)
+                        .context("Failed to persist document to HybridDatabase")?;
+                }
+            }
         }
 
         // 4. Update git state machine
         {
-            let mut state_machine = self.state_machine.write().await;
+            let mut state_machine = self.state_machine.lock().unwrap();
             state_machine.track_document(&doc_info.path);
         }
 
         Ok(())
     }
 
+    /// Index all documents in a directory in parallel using Rayon
+    pub fn index_directory(&self, dir: &Path) -> Result<()> {
+        self.index_directory_with_threads(dir, None)
+    }
+
+    /// Index all documents in a directory with a specific number of threads
+    pub fn index_directory_with_threads(
+        &self,
+        dir: &Path,
+        num_threads: Option<usize>,
+    ) -> Result<()> {
+        // Configure thread pool if specified
+        let pool = if let Some(threads) = num_threads {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .context("Failed to create thread pool")?
+        } else {
+            // Use default thread pool
+            return self._index_directory_impl(dir);
+        };
+
+        // Run indexing in the custom thread pool
+        pool.install(|| self._index_directory_impl(dir))
+    }
+
+    /// Internal implementation of parallel directory indexing
+    fn _index_directory_impl(&self, dir: &Path) -> Result<()> {
+        use walkdir::WalkDir;
+
+        // Collect all markdown files first
+        let markdown_files: Vec<_> = WalkDir::new(dir)
+            .follow_links(true)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|entry| {
+                let path = entry.path();
+                // Only markdown files
+                path.extension().and_then(|s| s.to_str()) == Some("md") &&
+                // Skip session files
+                !path.to_string_lossy().contains("/sessions/")
+            })
+            .map(|entry| entry.path().to_path_buf())
+            .collect();
+
+        let total_files = markdown_files.len();
+        if total_files > 0 {
+            println!("Indexing {} markdown files in parallel...", total_files);
+        }
+
+        // Use atomic counter for thread-safe progress tracking
+        let processed_count = Arc::new(AtomicUsize::new(0));
+        let errors_mutex = Arc::new(ParkingMutex::new(Vec::new()));
+
+        // Use Rayon to index files in parallel
+        markdown_files.par_iter().for_each(|path| {
+            match self.index_document(path) {
+                Ok(_) => {
+                    let count = processed_count.fetch_add(1, Ordering::Relaxed) + 1;
+                    // Progress reporting every 10 files
+                    if count % 10 == 0 || count == total_files {
+                        println!("  Progress: {}/{} files indexed", count, total_files);
+                    }
+                }
+                Err(e) => {
+                    let mut errors = errors_mutex.lock();
+                    errors.push((path.clone(), e));
+                }
+            }
+        });
+
+        let errors = Arc::try_unwrap(errors_mutex)
+            .ok()
+            .map(|mutex| mutex.into_inner())
+            .unwrap_or_default();
+
+        // Report any errors
+        if !errors.is_empty() {
+            eprintln!("\nFailed to index {} files:", errors.len());
+            for (path, error) in errors.iter().take(5) {
+                eprintln!("  - {}: {:?}", path.display(), error);
+            }
+            if errors.len() > 5 {
+                eprintln!("  ... and {} more", errors.len() - 5);
+            }
+        }
+
+        println!("Indexing complete!");
+        Ok(())
+    }
+
     /// Analyze a document to extract metadata and concepts
-    async fn analyze_document(&self, path: &Path) -> Result<DocumentInfo> {
-        let content = tokio::fs::read_to_string(path)
-            .await
-            .context("Failed to read document")?;
+    fn analyze_document(&self, path: &Path) -> Result<DocumentInfo> {
+        let content = std::fs::read_to_string(path).context("Failed to read document")?;
 
         // Parse YAML frontmatter if present
         let (metadata, body) = self.parse_frontmatter(&content);
@@ -328,9 +476,9 @@ impl PatternIndexer {
     }
 
     /// Process git event from workspace
-    pub async fn process_git_event(&self, event: GitEvent) -> Result<()> {
-        let mut state_machine = self.state_machine.write().await;
-        state_machine.process_git_event(event).await?;
+    pub fn process_git_event(&self, event: GitEvent) -> Result<()> {
+        let mut state_machine = self.state_machine.lock().unwrap();
+        state_machine.process_git_event(event)?;
 
         // Update cache if needed
         // TODO: Implement cache updates based on git events
