@@ -35,7 +35,7 @@ impl DevEnvironment for DaggerEnvironment {
         // Check if workspace service is running
         if !workspace_client::is_service_running(8080) {
             anyhow::bail!(
-                "Workspace service is not running. Please run 'patina workspace start' first."
+                "Workspace service is not running. Please run 'patina agent start' first."
             );
         }
 
@@ -123,7 +123,7 @@ impl DevEnvironment for DaggerEnvironment {
         // Check if workspace service is running
         if !workspace_client::is_service_running(8080) {
             anyhow::bail!(
-                "Workspace service is not running. Please run 'patina workspace start' first."
+                "Workspace service is not running. Please run 'patina agent start' first."
             );
         }
 

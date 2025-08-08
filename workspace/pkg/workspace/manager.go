@@ -215,10 +215,83 @@ func (m *Manager) initializeContainer(ctx context.Context, ws *Workspace) {
 	container = container.
 		WithExec([]string{"sh", "-c", "which git || (apt-get update && apt-get install -y git)"})
 
+	// Define common excludes for Dagger directory uploads
+	excludes := []string{
+		"target/",           // Rust build artifacts
+		"node_modules/",     // JS dependencies
+		".git/",             // Git history
+		"dist/",             // Build outputs
+		"tmp/",              // Temporary files
+		"*.log",             // Log files
+		".dagger/",          // Dagger's own cache
+		"**/*.rs.bk",        // Rust backup files
+		".DS_Store",         // macOS files
+		"__pycache__/",      // Python cache
+		"*.pyc",             // Python compiled files
+		".pytest_cache/",    // Pytest cache
+		".coverage",         // Coverage files
+		"htmlcov/",          // Coverage HTML
+		".mypy_cache/",      // MyPy cache
+		".ruff_cache/",      // Ruff cache
+		"venv/",             // Python virtual env
+		"env/",              // Another venv name
+		".env",              // Environment files
+		".venv/",            // Yet another venv
+		"build/",            // General build dir
+		".gradle/",          // Gradle cache
+		".idea/",            // IntelliJ
+		".vscode/",          // VS Code
+		"*.swp",             // Vim swap files
+		"*.swo",             // Vim swap files
+		"*.swn",             // Vim swap files
+		".terraform/",       // Terraform
+		"*.tfstate*",        // Terraform state
+		".next/",            // Next.js
+		"out/",              // Next.js output
+		".nuxt/",            // Nuxt
+		".output/",          // Nuxt output
+		".parcel-cache/",    // Parcel
+		".turbo/",           // Turborepo
+		"coverage/",         // General coverage
+		".nyc_output/",      // NYC coverage
+		"*.tsbuildinfo",     // TypeScript
+		".angular/",         // Angular
+		".sass-cache/",      // Sass
+		"*.class",           // Java
+		"*.jar",             // Java archives
+		"*.war",             // Java web archives
+		"target/",           // Maven/Cargo
+		"Cargo.lock",        // For libraries
+		"package-lock.json", // For libraries
+		"yarn.lock",         // For libraries
+		"pnpm-lock.yaml",    // For libraries
+		"poetry.lock",       // For libraries
+		"Pipfile.lock",      // For libraries
+		"composer.lock",     // For libraries
+		"*.min.js",          // Minified files
+		"*.min.css",         // Minified files
+		"*.map",             // Source maps
+		".cache/",           // General cache
+		"*.tmp",             // Temp files
+		"*.temp",            // Temp files
+		"*.bak",             // Backup files
+		"*.backup",          // Backup files
+		"core",              // Core dumps
+		"core.*",            // Core dumps
+		"*.core",            // Core dumps
+		".patina/session.json", // Patina sessions
+		".claude/context/sessions/", // Claude sessions
+		"layer/sessions/",   // Layer sessions
+		"pipelines/target/", // Dagger repo clone
+		"workspace/target/", // Go build artifacts
+	}
+
 	// Mount worktree or project directory
 	if ws.WorktreePath != "" {
 		// Use git worktree if available
-		worktreeDir := m.dag.Host().Directory(ws.WorktreePath)
+		worktreeDir := m.dag.Host().Directory(ws.WorktreePath, dagger.HostDirectoryOpts{
+			Exclude: excludes,
+		})
 		container = container.
 			WithMountedDirectory("/workspace/project", worktreeDir).
 			WithWorkdir("/workspace/project")
@@ -226,7 +299,9 @@ func (m *Manager) initializeContainer(ctx context.Context, ws *Workspace) {
 		m.logger.Info("mounted git worktree", "workspace", ws.ID, "path", ws.WorktreePath)
 	} else if m.config.ProjectRoot != "" {
 		// Fall back to project root
-		projectDir := m.dag.Host().Directory(m.config.ProjectRoot)
+		projectDir := m.dag.Host().Directory(m.config.ProjectRoot, dagger.HostDirectoryOpts{
+			Exclude: excludes,
+		})
 		container = container.
 			WithMountedDirectory("/workspace/project", projectDir).
 			WithWorkdir("/workspace/project")

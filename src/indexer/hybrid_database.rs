@@ -48,11 +48,15 @@ pub struct NavigationCRDT {
 impl NavigationCRDT {
     /// Create a new CRDT instance
     pub fn new() -> Result<Self> {
-        let patterns_doc = Automerge::new();
-        let workspace_doc = Automerge::new();
-
-        // Generate unique site ID
+        // Generate unique site ID for this peer
         let site_id = Uuid::new_v4().as_bytes().to_vec();
+        
+        // Create Automerge documents with this peer's actor ID
+        let mut patterns_doc = Automerge::new();
+        patterns_doc.set_actor(automerge::ActorId::from(site_id.as_slice()));
+        
+        let mut workspace_doc = Automerge::new();
+        workspace_doc.set_actor(automerge::ActorId::from(site_id.as_slice()));
 
         Ok(Self {
             patterns_doc,
@@ -267,10 +271,11 @@ impl NavigationCRDT {
 
     /// Get current sync state
     pub fn get_sync_state(&self) -> Vec<u8> {
-        // For now, just return a simple version identifier
-        // In a real implementation, you'd track the actual sync state
+        // Return sync state including our site_id for peer identification
         let mut state = Vec::new();
         state.extend_from_slice(b"v1");
+        state.push(b':');
+        state.extend_from_slice(&self.site_id);
         state
     }
 }
