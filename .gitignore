@@ -17,3 +17,6 @@ workspace/reference/rqlite/
 
 # Build artifacts from workspace
 workspace/target/
+
+# Local development
+docker-compose.yml
