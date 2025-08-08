@@ -15,6 +15,8 @@ use self::design_wizard::{confirm, create_project_design_wizard};
 use self::tool_installer::{detect_missing_tools, get_available_tools, install_tools};
 
 pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -> Result<()> {
+    // Check if we're in JSON output mode (for init command, always false)
+    let json_output = false;
     // First, check if we're trying to create a nested project
     if name != "." {
         if Path::new(".patina").exists() || Path::new("PROJECT_DESIGN.toml").exists() {
@@ -363,7 +365,76 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
     // 12. Call adapter post_init for any additional setup
     adapter.post_init(&project_path, &design_toml, &dev)?;
 
-    // 13. Perform component updates if requested during re-init
+    // 13. Initialize navigation database
+    let navigation_db_path = patina_dir.join("navigation.db");
+    if !navigation_db_path.exists() {
+        println!("🔍 Initializing navigation database...");
+        
+        // Create navigation database using HybridDatabase or SqliteClient
+        let enable_crdt = std::env::var("PATINA_ENABLE_CRDT").is_ok();
+        
+        if enable_crdt {
+            match patina::indexer::HybridDatabase::new(&navigation_db_path, true) {
+                Ok(db) => {
+                    db.initialize_schema()?;
+                    println!("  ✓ Created navigation database with CRDT support");
+                }
+                Err(e) => {
+                    eprintln!("  ⚠️  Could not create HybridDatabase: {e}");
+                    eprintln!("     Falling back to regular SQLite...");
+                    
+                    let db = patina::indexer::SqliteClient::new(&navigation_db_path)?;
+                    db.initialize_schema()?;
+                    println!("  ✓ Created navigation database (SQLite only)");
+                }
+            }
+        } else {
+            let db = patina::indexer::SqliteClient::new(&navigation_db_path)?;
+            db.initialize_schema()?;
+            println!("  ✓ Created navigation database");
+        }
+    } else if is_reinit {
+        println!("🔍 Reindexing patterns for navigation...");
+    }
+    
+    // Index initial patterns
+    if layer_path.exists() {
+        let enable_crdt = std::env::var("PATINA_ENABLE_CRDT").is_ok();
+        let indexer = if enable_crdt {
+            patina::indexer::PatternIndexer::with_hybrid_database(&navigation_db_path, true)
+                .or_else(|_| patina::indexer::PatternIndexer::with_database(&navigation_db_path))?
+        } else {
+            patina::indexer::PatternIndexer::with_database(&navigation_db_path)?
+        };
+        
+        print!("  Indexing patterns... ");
+        std::io::stdout().flush()?;
+        
+        indexer.index_directory(&layer_path)?;
+        
+        // Query to see what was indexed
+        let results = indexer.navigate("");
+        let count = results.locations.len();
+        println!("✓ ({} patterns indexed)", count);
+        
+        // Show what was discovered
+        if count > 0 && !json_output {
+            println!("\n  Discovered patterns:");
+            let mut shown = 0;
+            for location in results.locations.iter().take(5) {
+                let path_str = location.path.to_string_lossy();
+                if let Some(pos) = path_str.rfind("layer/") {
+                    println!("    • {}", &path_str[pos + 6..]);
+                    shown += 1;
+                }
+            }
+            if count > shown {
+                println!("    ... and {} more", count - shown);
+            }
+        }
+    }
+    
+    // 14. Perform component updates if requested during re-init
     if should_update_components && !component_updates.is_empty() {
         println!("\n🔄 Updating components...");
         

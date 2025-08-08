@@ -35,12 +35,12 @@ struct ProjectStatus {
     sessions: usize,
 }
 
-pub fn execute(check_only: bool, auto_fix: bool, json_output: bool) -> Result<i32> {
+pub fn execute(json_output: bool) -> Result<i32> {
     // Find project root
     let project_root = SessionManager::find_project_root()
         .context("Not in a Patina project directory. Run 'patina init' first.")?;
 
-    let non_interactive = auto_fix || json_output || std::env::var("PATINA_NONINTERACTIVE").is_ok();
+    let _non_interactive = json_output || std::env::var("PATINA_NONINTERACTIVE").is_ok();
 
     if !json_output {
         println!("🏥 Checking project health...");
@@ -105,25 +105,10 @@ pub fn execute(check_only: bool, auto_fix: bool, json_output: bool) -> Result<i3
     } else {
         display_health_check(&health_check, &current_env)?;
 
-        if !health_check.environment_changes.missing_tools.is_empty() && !check_only {
-            if auto_fix {
-                if !json_output {
-                    println!("\n🔧 Auto-fixing environment...");
-                }
-                update_environment_snapshot(&config_path, &current_env)?;
-            } else if !non_interactive {
-                print!("\nUpdate environment snapshot? [Y/n] ");
-                use std::io::{self, Write};
-                io::stdout().flush()?;
-                let mut response = String::new();
-                io::stdin().read_line(&mut response)?;
-
-                if response.trim().is_empty() || response.trim().eq_ignore_ascii_case("y") {
-                    update_environment_snapshot(&config_path, &current_env)?;
-                    if !json_output {
-                        println!("✓ Environment snapshot updated");
-                    }
-                }
+        // Only provide recommendations, no auto-fixing
+        if !health_check.environment_changes.missing_tools.is_empty() {
+            if !json_output && !health_check.recommendations.is_empty() {
+                println!("\n💡 Run 'patina init .' to refresh your environment snapshot");
             }
         }
     }
@@ -315,24 +300,3 @@ fn display_health_check(health: &HealthCheck, _env: &Environment) -> Result<()> 
     Ok(())
 }
 
-fn update_environment_snapshot(config_path: &std::path::Path, env: &Environment) -> Result<()> {
-    // Read current config
-    let mut config: serde_json::Value = serde_json::from_str(&fs::read_to_string(config_path)?)?;
-
-    // Update environment snapshot
-    if let Some(snapshot) = config.get_mut("environment_snapshot") {
-        snapshot["os"] = serde_json::Value::String(env.os.clone());
-        snapshot["arch"] = serde_json::Value::String(env.arch.clone());
-        snapshot["detected_tools"] = serde_json::Value::Array(
-            env.tools
-                .iter()
-                .filter(|(_, info)| info.available)
-                .map(|(name, _)| serde_json::Value::String(name.clone()))
-                .collect(),
-        );
-    }
-
-    // Write back
-    fs::write(config_path, serde_json::to_string_pretty(&config)?)?;
-    Ok(())
-}
