@@ -37,13 +37,40 @@ Project patterns that prove successful can be promoted to topics, making them av
 # Initialize a new project
 patina init my-project
 
-# Add topic knowledge
-patina topic add blockchain starknet
+# Navigate your knowledge base
+patina navigate "authentication patterns"
+patina navigate "testing" --layer core
+patina navigate "docker" --json
 
-# Generate context for AI
-patina context generate
+# Add patterns to your session
+patina add pattern "jwt-refresh-tokens"
+
+# Commit patterns to your brain
+patina commit -m "Add JWT refresh token pattern"
+
+# Update context for AI
+patina update
 
 # Work with your AI assistant using consistent context
+```
+
+### Git-Aware Navigation
+
+Patina's navigation system understands your git workflow:
+- **Untracked** (?) - Experimental patterns
+- **Modified** (M) - Work in progress
+- **Committed** - Locally validated
+- **Pushed** (↑) - Shared with team
+- **Merged** - Production ready
+
+```bash
+# Start rqlite for persistence (currently manual)
+docker compose up -d
+
+# Navigate with git awareness
+patina navigate "pattern name"
+
+# Future: This will auto-start rqlite when needed
 ```
 
 ## Architecture
@@ -57,9 +84,39 @@ patina-llm/         # LLM adapter traits
 
 Each component does one thing well, following Unix philosophy.
 
+## Current Setup
+
+### Requirements
+- Rust toolchain
+- Git (for state detection)
+- Docker (optional, for rqlite persistence)
+
+### Quick Setup
+```bash
+# Clone and build
+git clone <repo>
+cd patina
+cargo build --release
+
+# Copy docker-compose.yml.example for rqlite
+cp docker-compose.yml.example docker-compose.yml
+docker compose up -d  # Optional: for persistence
+```
+
 ## Development Status
 
-Currently building the initial file-based layer system. SQLite storage coming next.
+✅ **Completed:**
+- Core layer system with pattern management
+- Git-aware navigation with confidence scoring
+- Real-time git state detection
+- rqlite persistence for decentralized sharing
+- Claude adapter with session commands
+
+🚧 **In Progress:**
+- Auto-management of rqlite process
+- Workspace integration for pattern exploration
+- Pattern promotion workflows
+- Additional LLM adapters
 
 ## Philosophy
 

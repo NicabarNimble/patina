@@ -3,6 +3,10 @@ name = "patina"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+dev = []  # Developer commands - not included in user builds
+
 [dependencies]
 # CLI framework
 clap = { version = "4.5", features = ["derive"] }
@@ -27,9 +31,27 @@ uuid = { version = "1.10", features = ["v4", "serde"] }
 # Environment detection
 which = "7.0"
 
-# HTTP client
-reqwest = { version = "0.12", features = ["json", "blocking"] }
-tokio = { version = "1", features = ["full"] }
+# HTTP client (blocking only - no async)
+reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false }
+
+# File watching
+notify = "6.1"
+
+# Database - embedded SQLite for pattern storage
+rusqlite = { version = "0.32", features = ["bundled", "chrono", "serde_json", "load_extension"] }
+
+# Parallel processing (better than async for our use case)
+rayon = "1.10"
+
+# Simple synchronization
+parking_lot = "0.12"  # Faster mutexes
+
+# Navigation command dependencies
+colored = "2"
+walkdir = "2"
+
+# CRDT support
+automerge = "0.5"
 
 [dev-dependencies]
 # Testing utilities
