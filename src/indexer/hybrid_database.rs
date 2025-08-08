@@ -50,11 +50,11 @@ impl NavigationCRDT {
     pub fn new() -> Result<Self> {
         // Generate unique site ID for this peer
         let site_id = Uuid::new_v4().as_bytes().to_vec();
-        
+
         // Create Automerge documents with this peer's actor ID
         let mut patterns_doc = Automerge::new();
         patterns_doc.set_actor(automerge::ActorId::from(site_id.as_slice()));
-        
+
         let mut workspace_doc = Automerge::new();
         workspace_doc.set_actor(automerge::ActorId::from(site_id.as_slice()));
 
@@ -79,11 +79,7 @@ impl NavigationCRDT {
                 tx.put(&pattern_obj, "content", &pattern.content)?;
                 tx.put(&pattern_obj, "layer", &pattern.layer)?;
                 tx.put(&pattern_obj, "confidence", &pattern.confidence)?;
-                tx.put(
-                    &pattern_obj,
-                    "timestamp",
-                    chrono::Utc::now().timestamp() as i64,
-                )?;
+                tx.put(&pattern_obj, "timestamp", chrono::Utc::now().timestamp())?;
                 Ok::<(), automerge::AutomergeError>(())
             })
             .map_err(|e| anyhow::anyhow!("Failed to add pattern to CRDT: {:?}", e))?;
@@ -114,11 +110,7 @@ impl NavigationCRDT {
                     tx.insert(&patterns_list, idx, pattern_id)?;
                 }
 
-                tx.put(
-                    &workspace_obj,
-                    "timestamp",
-                    chrono::Utc::now().timestamp() as i64,
-                )?;
+                tx.put(&workspace_obj, "timestamp", chrono::Utc::now().timestamp())?;
                 Ok::<(), automerge::AutomergeError>(())
             })
             .map_err(|e| anyhow::anyhow!("Failed to update workspace state in CRDT: {:?}", e))?;
@@ -133,49 +125,49 @@ impl NavigationCRDT {
         // Read all keys from the root
         for key in self.patterns_doc.keys(ROOT) {
             if key.starts_with("pattern:") {
-                if let Some((pattern_value, pattern_obj_id)) = self.patterns_doc.get(ROOT, &key)? {
-                    if let automerge::Value::Object(automerge::ObjType::Map) = pattern_value {
-                        // Extract pattern fields
-                        let id = self
-                            .patterns_doc
-                            .get(&pattern_obj_id, "id")?
-                            .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
-                            .unwrap_or_default();
+                if let Some((automerge::Value::Object(automerge::ObjType::Map), pattern_obj_id)) =
+                    self.patterns_doc.get(ROOT, &key)?
+                {
+                    // Extract pattern fields
+                    let id = self
+                        .patterns_doc
+                        .get(&pattern_obj_id, "id")?
+                        .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
+                        .unwrap_or_default();
 
-                        let name = self
-                            .patterns_doc
-                            .get(&pattern_obj_id, "name")?
-                            .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
-                            .unwrap_or_default();
+                    let name = self
+                        .patterns_doc
+                        .get(&pattern_obj_id, "name")?
+                        .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
+                        .unwrap_or_default();
 
-                        let content = self
-                            .patterns_doc
-                            .get(&pattern_obj_id, "content")?
-                            .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
-                            .unwrap_or_default();
+                    let content = self
+                        .patterns_doc
+                        .get(&pattern_obj_id, "content")?
+                        .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
+                        .unwrap_or_default();
 
-                        let layer = self
-                            .patterns_doc
-                            .get(&pattern_obj_id, "layer")?
-                            .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
-                            .unwrap_or_default();
+                    let layer = self
+                        .patterns_doc
+                        .get(&pattern_obj_id, "layer")?
+                        .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
+                        .unwrap_or_default();
 
-                        let confidence = self
-                            .patterns_doc
-                            .get(&pattern_obj_id, "confidence")?
-                            .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
-                            .unwrap_or_default();
+                    let confidence = self
+                        .patterns_doc
+                        .get(&pattern_obj_id, "confidence")?
+                        .and_then(|(v, _)| v.to_str().map(|s| s.to_string()))
+                        .unwrap_or_default();
 
-                        let pattern = Pattern {
-                            id: id.clone(),
-                            name,
-                            content,
-                            layer,
-                            confidence,
-                        };
+                    let pattern = Pattern {
+                        id: id.clone(),
+                        name,
+                        content,
+                        layer,
+                        confidence,
+                    };
 
-                        patterns.insert(id, pattern);
-                    }
+                    patterns.insert(id, pattern);
                 }
             }
         }
@@ -243,11 +235,11 @@ impl NavigationCRDT {
         let mut serialized = Vec::new();
         for change in pattern_changes {
             let bytes = change.raw_bytes();
-            serialized.extend_from_slice(&bytes);
+            serialized.extend_from_slice(bytes);
         }
         for change in workspace_changes {
             let bytes = change.raw_bytes();
-            serialized.extend_from_slice(&bytes);
+            serialized.extend_from_slice(bytes);
         }
 
         Ok(serialized)

@@ -6,6 +6,7 @@ use std::process::Command;
 pub struct Tool {
     pub name: &'static str,
     pub check_cmd: &'static str,
+    #[allow(dead_code)]
     pub required: bool,
 }
 
@@ -57,10 +58,10 @@ pub fn detect_missing_tools(tools: &[Tool]) -> Vec<&Tool> {
 /// Install a list of tools
 pub fn install_tools(tools: &[&Tool]) -> Result<()> {
     let os = std::env::consts::OS;
-    
+
     for tool in tools {
         println!("\n📦 Installing {}...", tool.name);
-        
+
         let result = match tool.name {
             "docker" => install_docker(os),
             "go" => install_go(os),
@@ -69,14 +70,14 @@ pub fn install_tools(tools: &[&Tool]) -> Result<()> {
             "jq" => install_jq(os),
             _ => Ok(false),
         };
-        
+
         match result {
             Ok(true) => println!("✅ {} installed successfully", tool.name),
             Ok(false) => println!("⚠️  {} installation skipped or failed", tool.name),
             Err(e) => println!("❌ Failed to install {}: {}", tool.name, e),
         }
     }
-    
+
     Ok(())
 }
 
@@ -87,7 +88,7 @@ fn install_docker(os: &str) -> Result<bool> {
         "macos" => {
             println!("Installing Docker Desktop via Homebrew...");
             Command::new("brew")
-                .args(&["install", "--cask", "docker"])
+                .args(["install", "--cask", "docker"])
                 .status()
                 .map(|s| s.success())
                 .context("Failed to run brew install docker")
@@ -95,7 +96,7 @@ fn install_docker(os: &str) -> Result<bool> {
         "linux" => {
             println!("Installing Docker via official script...");
             println!("This requires sudo access.");
-            
+
             // Download and run Docker install script
             let script_cmd = "curl -fsSL https://get.docker.com | sh";
             Command::new("sh")
@@ -114,13 +115,11 @@ fn install_docker(os: &str) -> Result<bool> {
 
 fn install_go(os: &str) -> Result<bool> {
     match os {
-        "macos" => {
-            Command::new("brew")
-                .args(&["install", "go"])
-                .status()
-                .map(|s| s.success())
-                .context("Failed to run brew install go")
-        }
+        "macos" => Command::new("brew")
+            .args(["install", "go"])
+            .status()
+            .map(|s| s.success())
+            .context("Failed to run brew install go"),
         "linux" => {
             println!("Installing Go...");
             let arch = std::env::consts::ARCH;
@@ -129,18 +128,12 @@ fn install_go(os: &str) -> Result<bool> {
                 "aarch64" => "arm64",
                 _ => return Ok(false),
             };
-            
-            let url = format!(
-                "https://go.dev/dl/go1.21.5.linux-{}.tar.gz",
-                go_arch
-            );
-            
+
+            let url = format!("https://go.dev/dl/go1.21.5.linux-{go_arch}.tar.gz");
+
             // Download and extract
-            let install_cmd = format!(
-                "curl -L {} | sudo tar -C /usr/local -xzf -",
-                url
-            );
-            
+            let install_cmd = format!("curl -L {url} | sudo tar -C /usr/local -xzf -");
+
             Command::new("sh")
                 .arg("-c")
                 .arg(&install_cmd)
@@ -163,16 +156,14 @@ fn install_dagger(os: &str) -> Result<bool> {
         println!("Dagger requires Go. Please install Go first.");
         return Ok(false);
     }
-    
+
     println!("Installing Dagger via official installer...");
-    
+
     let install_cmd = match os {
-        "macos" | "linux" => {
-            "curl -L https://dl.dagger.io/dagger/install.sh | sh"
-        }
+        "macos" | "linux" => "curl -L https://dl.dagger.io/dagger/install.sh | sh",
         _ => return Ok(false),
     };
-    
+
     Command::new("sh")
         .arg("-c")
         .arg(install_cmd)
@@ -183,16 +174,14 @@ fn install_dagger(os: &str) -> Result<bool> {
 
 fn install_gh(os: &str) -> Result<bool> {
     match os {
-        "macos" => {
-            Command::new("brew")
-                .args(&["install", "gh"])
-                .status()
-                .map(|s| s.success())
-                .context("Failed to run brew install gh")
-        }
+        "macos" => Command::new("brew")
+            .args(["install", "gh"])
+            .status()
+            .map(|s| s.success())
+            .context("Failed to run brew install gh"),
         "linux" => {
             println!("Installing GitHub CLI...");
-            
+
             // Add GitHub's package repository and install
             let install_cmds = vec![
                 "type -p curl >/dev/null || sudo apt install curl -y",
@@ -202,7 +191,7 @@ fn install_gh(os: &str) -> Result<bool> {
                 "sudo apt update",
                 "sudo apt install gh -y",
             ];
-            
+
             for cmd in install_cmds {
                 Command::new("sh")
                     .arg("-c")
@@ -210,7 +199,7 @@ fn install_gh(os: &str) -> Result<bool> {
                     .status()
                     .context("Failed to install GitHub CLI")?;
             }
-            
+
             Ok(true)
         }
         _ => Ok(false),
@@ -219,24 +208,32 @@ fn install_gh(os: &str) -> Result<bool> {
 
 fn install_jq(os: &str) -> Result<bool> {
     match os {
-        "macos" => {
-            Command::new("brew")
-                .args(&["install", "jq"])
-                .status()
-                .map(|s| s.success())
-                .context("Failed to run brew install jq")
-        }
+        "macos" => Command::new("brew")
+            .args(["install", "jq"])
+            .status()
+            .map(|s| s.success())
+            .context("Failed to run brew install jq"),
         "linux" => {
             // Try apt first, then yum
-            if Command::new("which").arg("apt").output().map(|o| o.status.success()).unwrap_or(false) {
+            if Command::new("which")
+                .arg("apt")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
                 Command::new("sudo")
-                    .args(&["apt", "install", "-y", "jq"])
+                    .args(["apt", "install", "-y", "jq"])
                     .status()
                     .map(|s| s.success())
                     .context("Failed to install jq")
-            } else if Command::new("which").arg("yum").output().map(|o| o.status.success()).unwrap_or(false) {
+            } else if Command::new("which")
+                .arg("yum")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+            {
                 Command::new("sudo")
-                    .args(&["yum", "install", "-y", "jq"])
+                    .args(["yum", "install", "-y", "jq"])
                     .status()
                     .map(|s| s.success())
                     .context("Failed to install jq")

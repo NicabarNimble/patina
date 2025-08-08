@@ -30,7 +30,7 @@ impl PatternIndexer {
         }
 
         let duration = start.elapsed();
-        println!("Sequential indexing: {} files in {:.2?}", count, duration);
+        println!("Sequential indexing: {count} files in {duration:.2?}");
 
         if !errors.is_empty() {
             println!("  {} errors occurred", errors.len());
@@ -69,8 +69,8 @@ impl PatternIndexer {
 
         // Results
         println!("\n=== Results ===");
-        println!("Sequential: {:.2?}", seq_duration);
-        println!("Parallel:   {:.2?}", par_duration);
+        println!("Sequential: {seq_duration:.2?}");
+        println!("Parallel:   {par_duration:.2?}");
         println!(
             "Speedup:    {:.2}x",
             seq_duration.as_secs_f64() / par_duration.as_secs_f64()

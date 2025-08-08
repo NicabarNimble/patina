@@ -106,10 +106,11 @@ pub fn execute(json_output: bool) -> Result<i32> {
         display_health_check(&health_check, &current_env)?;
 
         // Only provide recommendations, no auto-fixing
-        if !health_check.environment_changes.missing_tools.is_empty() {
-            if !json_output && !health_check.recommendations.is_empty() {
-                println!("\n💡 Run 'patina init .' to refresh your environment snapshot");
-            }
+        if !health_check.environment_changes.missing_tools.is_empty()
+            && !json_output
+            && !health_check.recommendations.is_empty()
+        {
+            println!("\n💡 Run 'patina init .' to refresh your environment snapshot");
         }
     }
 
@@ -299,4 +300,3 @@ fn display_health_check(health: &HealthCheck, _env: &Environment) -> Result<()> 
 
     Ok(())
 }
-
