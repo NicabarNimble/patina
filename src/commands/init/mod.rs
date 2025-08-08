@@ -18,16 +18,16 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
     // Check if we're in JSON output mode (for init command, always false)
     let json_output = false;
     // First, check if we're trying to create a nested project
-    if name != "." {
-        if Path::new(".patina").exists() || Path::new("PROJECT_DESIGN.toml").exists() {
-            println!("⚠️  You're already in a Patina project!");
-            println!("   Running 'patina init {}' would create: {}", 
-                     name, 
-                     env::current_dir()?.join(&name).display());
-            if !confirm("Continue anyway?")? {
-                println!("Initialization cancelled.");
-                return Ok(());
-            }
+    if name != "." && (Path::new(".patina").exists() || Path::new("PROJECT_DESIGN.toml").exists()) {
+        println!("⚠️  You're already in a Patina project!");
+        println!(
+            "   Running 'patina init {}' would create: {}",
+            name,
+            env::current_dir()?.join(&name).display()
+        );
+        if !confirm("Continue anyway?")? {
+            println!("Initialization cancelled.");
+            return Ok(());
         }
     }
 
@@ -36,9 +36,10 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
         Path::new(".patina").exists() || Path::new("PROJECT_DESIGN.toml").exists()
     } else {
         let path = PathBuf::from(&name);
-        path.exists() && (path.join(".patina").exists() || path.join("PROJECT_DESIGN.toml").exists())
+        path.exists()
+            && (path.join(".patina").exists() || path.join("PROJECT_DESIGN.toml").exists())
     };
-    
+
     if is_reinit {
         println!("🔄 Re-initializing Patina project...");
     } else {
@@ -68,23 +69,27 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
 
     // 2. Handle PROJECT_DESIGN.toml
     let design_path = PathBuf::from(&design);
-    
+
     // If user specified a non-default design file, inform them it will be copied
     if design != "PROJECT_DESIGN.toml" && design_path.exists() {
         println!("📄 Using design file: {}", design_path.display());
         println!("   (Will be copied to project as PROJECT_DESIGN.toml)");
     }
-    
+
     let design_content = if !design_path.exists() {
         println!("\n📋 No PROJECT_DESIGN.toml found.");
-        
+
         if confirm("Create one interactively?")? {
             let content = create_project_design_wizard(&name, &environment)?;
-            
+
             // Save it to the requested location
-            fs::write(&design_path, &content)
-                .with_context(|| format!("Failed to write PROJECT_DESIGN.toml to {}", design_path.display()))?;
-            
+            fs::write(&design_path, &content).with_context(|| {
+                format!(
+                    "Failed to write PROJECT_DESIGN.toml to {}",
+                    design_path.display()
+                )
+            })?;
+
             println!("✅ Created PROJECT_DESIGN.toml");
             content
         } else {
@@ -103,7 +108,7 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
     // Parse the design content
     let design_toml: Value = toml::from_str(&design_content)
         .with_context(|| format!("Failed to parse design file: {design}"))?;
-    
+
     // Validate TOML structure has minimum required fields
     validate_design_structure(&design_toml)?;
 
@@ -126,14 +131,14 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
     // 3.5 Check for missing tools and offer to install
     let available_tools = get_available_tools();
     let missing_tools = detect_missing_tools(&available_tools);
-    
+
     // Filter to only tools that make sense for the project type
     let project_type = design_toml
         .get("project")
         .and_then(|p| p.get("type"))
         .and_then(|t| t.as_str())
         .unwrap_or("app");
-    
+
     let recommended_missing: Vec<_> = missing_tools
         .into_iter()
         .filter(|tool| {
@@ -151,13 +156,13 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
             }
         })
         .collect();
-    
+
     if !recommended_missing.is_empty() {
         println!("\n🔧 Missing recommended tools:");
         for tool in &recommended_missing {
             println!("  • {}", tool.name);
         }
-        
+
         if confirm("\nInstall missing tools?")? {
             install_tools(&recommended_missing)?;
             println!();
@@ -175,7 +180,7 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
             // Check if it's a re-init scenario
             let has_patina = path.join(".patina").exists();
             let has_design = path.join("PROJECT_DESIGN.toml").exists();
-            
+
             if has_patina || has_design {
                 println!("  ℹ️  Found existing project at: {}", path.display());
                 if !confirm("Re-initialize this project?")? {
@@ -183,7 +188,10 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
                     return Ok(());
                 }
             } else {
-                anyhow::bail!("Directory already exists but is not a Patina project: {}", name);
+                anyhow::bail!(
+                    "Directory already exists but is not a Patina project: {}",
+                    name
+                );
             }
         } else {
             fs::create_dir_all(&path)
@@ -198,7 +206,7 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
     // Copy design file if source and destination are different
     let source_canonical = fs::canonicalize(&design_path)?;
     let dest_canonical = fs::canonicalize(&project_design_path).ok();
-    
+
     if dest_canonical.is_none() || source_canonical != dest_canonical.unwrap() {
         fs::copy(&design_path, &project_design_path)
             .with_context(|| "Failed to copy PROJECT_DESIGN.toml")?;
@@ -241,28 +249,32 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
     // Handle version manifest and check for updates in re-init scenarios
     let mut should_update_components = false;
     let mut component_updates = vec![];
-    
+
     let mut version_manifest = if is_reinit && project_path.join(".patina/versions.json").exists() {
         // Load existing config to get current LLM for re-init scenarios
         let reinit_llm = if project_path.join(".patina/config.json").exists() {
             let config_content = fs::read_to_string(project_path.join(".patina/config.json"))?;
             let config: serde_json::Value = serde_json::from_str(&config_content)?;
-            config.get("llm").and_then(|l| l.as_str()).unwrap_or(&llm).to_string()
+            config
+                .get("llm")
+                .and_then(|l| l.as_str())
+                .unwrap_or(&llm)
+                .to_string()
         } else {
             llm.clone()
         };
-        
+
         // Load existing manifest and check for updates
         println!("🔍 Checking for component updates...");
         let existing_manifest = VersionManifest::load(&project_path)?;
         let updates = UpdateChecker::check_for_updates(&existing_manifest);
-        
+
         if !updates.is_empty() {
             println!("\n📦 Component updates available:");
             for (component, current, available) in &updates {
-                println!("  • {}: {} → {}", component, current, available);
+                println!("  • {component}: {current} → {available}");
             }
-            
+
             // Show what's new in the updates
             for (component, current_version, _new_version) in &updates {
                 match component.as_str() {
@@ -272,21 +284,21 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
                         if !changelog.is_empty() {
                             println!("\n  What's new in Claude adapter:");
                             for change in changelog {
-                                println!("    {}", change);
+                                println!("    {change}");
                             }
                         }
                     }
                     _ => {}
                 }
             }
-            
+
             if confirm("\nUpdate components to latest versions?")? {
                 should_update_components = true;
                 component_updates = updates;
                 println!("  ✓ Components will be updated");
             }
         }
-        
+
         existing_manifest
     } else {
         // Create new manifest for first-time init
@@ -369,10 +381,10 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
     let navigation_db_path = patina_dir.join("navigation.db");
     if !navigation_db_path.exists() {
         println!("🔍 Initializing navigation database...");
-        
+
         // Create navigation database using HybridDatabase or SqliteClient
         let enable_crdt = std::env::var("PATINA_ENABLE_CRDT").is_ok();
-        
+
         if enable_crdt {
             match patina::indexer::HybridDatabase::new(&navigation_db_path, true) {
                 Ok(db) => {
@@ -382,7 +394,7 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
                 Err(e) => {
                     eprintln!("  ⚠️  Could not create HybridDatabase: {e}");
                     eprintln!("     Falling back to regular SQLite...");
-                    
+
                     let db = patina::indexer::SqliteClient::new(&navigation_db_path)?;
                     db.initialize_schema()?;
                     println!("  ✓ Created navigation database (SQLite only)");
@@ -396,7 +408,7 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
     } else if is_reinit {
         println!("🔍 Reindexing patterns for navigation...");
     }
-    
+
     // Index initial patterns
     if layer_path.exists() {
         let enable_crdt = std::env::var("PATINA_ENABLE_CRDT").is_ok();
@@ -406,17 +418,17 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
         } else {
             patina::indexer::PatternIndexer::with_database(&navigation_db_path)?
         };
-        
+
         print!("  Indexing patterns... ");
         std::io::stdout().flush()?;
-        
+
         indexer.index_directory(&layer_path)?;
-        
+
         // Query to see what was indexed
         let results = indexer.navigate("");
         let count = results.locations.len();
-        println!("✓ ({} patterns indexed)", count);
-        
+        println!("✓ ({count} patterns indexed)");
+
         // Show what was discovered
         if count > 0 && !json_output {
             println!("\n  Discovered patterns:");
@@ -433,17 +445,17 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
             }
         }
     }
-    
+
     // 14. Perform component updates if requested during re-init
     if should_update_components && !component_updates.is_empty() {
         println!("\n🔄 Updating components...");
-        
+
         for (component, _, new_version) in &component_updates {
             match component.as_str() {
                 "claude-adapter" if llm == "claude" => {
                     print!("  Updating Claude adapter... ");
                     std::io::stdout().flush()?;
-                    
+
                     // Re-initialize adapter files with latest version
                     adapter.init_project(&project_path, &design_toml, &environment)?;
                     version_manifest.update_component_version(component, new_version);
@@ -452,7 +464,7 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
                 "gemini-adapter" if llm == "gemini" => {
                     print!("  Updating Gemini adapter... ");
                     std::io::stdout().flush()?;
-                    
+
                     // Re-initialize adapter files with latest version
                     adapter.init_project(&project_path, &design_toml, &environment)?;
                     version_manifest.update_component_version(component, new_version);
@@ -462,34 +474,37 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
                     // Check if this project uses dagger
                     let config_content = fs::read_to_string(&config_path)?;
                     let config: serde_json::Value = serde_json::from_str(&config_content)?;
-                    let project_dev = config.get("dev").and_then(|d| d.as_str()).unwrap_or("docker");
-                    
+                    let project_dev = config
+                        .get("dev")
+                        .and_then(|d| d.as_str())
+                        .unwrap_or("docker");
+
                     if project_dev == "dagger" {
                         print!("  Updating Dagger templates... ");
                         std::io::stdout().flush()?;
-                        
+
                         // Re-create dagger files with latest templates
                         let dev_environment = patina::dev_env::get_dev_env("dagger");
                         dev_environment.init_project(&project_path, &name, project_type)?;
                         version_manifest.update_component_version(component, new_version);
                         println!("✓");
                     } else {
-                        println!("  Skipping {} (project uses {})", component, project_dev);
+                        println!("  Skipping {component} (project uses {project_dev})");
                     }
                 }
                 _ => {
-                    println!("  Skipping {} (not applicable to current config)", component);
+                    println!("  Skipping {component} (not applicable to current config)");
                 }
             }
         }
-        
+
         // Save updated manifest
         version_manifest.save(&project_path)?;
         println!("\n✅ All components updated successfully!");
     }
 
     println!("\n✨ Project '{name}' initialized successfully!");
-    
+
     if name != "." {
         println!("\nNext steps:");
         println!("  1. cd {name}");
@@ -531,14 +546,18 @@ fn validate_environment(env: &patina::Environment, design: &Value) -> Result<Opt
     let mut warnings = Vec::new();
 
     // For Patina projects, we always want Rust
-    let _project_type = design.get("project")
+    let _project_type = design
+        .get("project")
         .and_then(|p| p.get("type"))
         .and_then(|t| t.as_str())
         .unwrap_or("tool");
-    
+
     // All Patina project types benefit from Rust
     if !env.languages.get("rust").is_some_and(|info| info.available) {
-        warnings.push("⚠️  Rust not detected - Patina is built for Rust projects (install via rustup)".to_string());
+        warnings.push(
+            "⚠️  Rust not detected - Patina is built for Rust projects (install via rustup)"
+                .to_string(),
+        );
     }
 
     // Check development environment requirements
@@ -680,24 +699,34 @@ fn determine_dev_environment(environment: &patina::Environment) -> String {
 
 fn validate_design_structure(design: &Value) -> Result<()> {
     // Check for required top-level sections
-    let project = design.get("project")
+    let project = design
+        .get("project")
         .ok_or_else(|| anyhow::anyhow!("PROJECT_DESIGN.toml missing required [project] section"))?;
-    
+
     // Check for required project fields
-    project.get("name")
+    project
+        .get("name")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("PROJECT_DESIGN.toml missing required field: project.name"))?;
-    
-    project.get("type")
+        .ok_or_else(|| {
+            anyhow::anyhow!("PROJECT_DESIGN.toml missing required field: project.name")
+        })?;
+
+    project
+        .get("type")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("PROJECT_DESIGN.toml missing required field: project.type"))?;
-    
+        .ok_or_else(|| {
+            anyhow::anyhow!("PROJECT_DESIGN.toml missing required field: project.type")
+        })?;
+
     // Validate project type
     let project_type = project.get("type").and_then(|v| v.as_str()).unwrap();
     match project_type {
-        "app" | "tool" | "library" => {},
-        _ => anyhow::bail!("Invalid project.type: '{}'. Must be one of: app, tool, library", project_type),
+        "app" | "tool" | "library" => {}
+        _ => anyhow::bail!(
+            "Invalid project.type: '{}'. Must be one of: app, tool, library",
+            project_type
+        ),
     }
-    
+
     Ok(())
 }

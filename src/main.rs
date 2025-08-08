@@ -48,7 +48,6 @@ enum Commands {
         command: DevCommands,
     },
 
-
     /// Build project with Docker
     Build,
 
@@ -194,16 +193,23 @@ fn main() -> Result<()> {
                 commands::dev::validate::execute(json)?;
             }
             DevCommands::Release { bump, dry_run } => {
-                commands::dev::release::execute(bump.map(|b| match b {
-                    BumpType::Major => "major",
-                    BumpType::Minor => "minor",
-                    BumpType::Patch => "patch",
-                }), dry_run)?;
+                commands::dev::release::execute(
+                    bump.map(|b| match b {
+                        BumpType::Major => "major",
+                        BumpType::Minor => "minor",
+                        BumpType::Patch => "patch",
+                    }),
+                    dry_run,
+                )?;
             }
             DevCommands::SyncAdapters { adapter, dry_run } => {
                 commands::dev::sync_adapters::execute(adapter.as_deref(), dry_run)?;
             }
-            DevCommands::BumpVersion { component, bump_type, dry_run } => {
+            DevCommands::BumpVersion {
+                component,
+                bump_type,
+                dry_run,
+            } => {
                 let bump_str = match bump_type {
                     BumpType::Major => "major",
                     BumpType::Minor => "minor",

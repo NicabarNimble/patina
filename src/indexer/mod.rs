@@ -233,7 +233,7 @@ impl PatternIndexer {
 
         let total_files = markdown_files.len();
         if total_files > 0 {
-            println!("Indexing {} markdown files in parallel...", total_files);
+            println!("Indexing {total_files} markdown files in parallel...");
         }
 
         // Use atomic counter for thread-safe progress tracking
@@ -247,7 +247,7 @@ impl PatternIndexer {
                     let count = processed_count.fetch_add(1, Ordering::Relaxed) + 1;
                     // Progress reporting every 10 files
                     if count % 10 == 0 || count == total_files {
-                        println!("  Progress: {}/{} files indexed", count, total_files);
+                        println!("  Progress: {count}/{total_files} files indexed");
                     }
                 }
                 Err(e) => {
