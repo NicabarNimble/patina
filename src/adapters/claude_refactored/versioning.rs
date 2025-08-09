@@ -1,5 +1,5 @@
 //! Version management for Claude adapter
-//! 
+//!
 //! This module handles version tracking and changelog for the Claude adapter.
 //! It's separated from the main implementation to keep concerns isolated.
 

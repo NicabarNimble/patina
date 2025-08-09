@@ -1,5 +1,5 @@
 //! Claude Adapter Module - Black Box Implementation
-//! 
+//!
 //! This module provides Claude-specific LLM integration following Dependable Rust principles.
 //! The public interface is kept minimal (<150 lines) while implementation details are hidden.
 //!
@@ -17,7 +17,7 @@ mod templates;
 mod versioning;
 
 /// Creates a new Claude adapter instance
-/// 
+///
 /// This is the only way to create a ClaudeAdapter, ensuring the implementation
 /// stays hidden behind the trait boundary.
 pub fn create() -> Box<dyn LLMAdapter> {
