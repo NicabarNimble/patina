@@ -4,11 +4,12 @@
 
 ## Executive Summary
 
-This document presents an architectural philosophy for building large-scale, long-lived software systems in Rust. It synthesizes three key insights:
+This document presents an architectural philosophy for building large-scale, long-lived software systems in Rust. It synthesizes four key insights:
 
-1. **Single-person module ownership** - Every module should be small enough for one person to fully understand and maintain
-2. **Radical simplicity over clever abstractions** - APIs should be so simple they're impossible to misuse
-3. **Compile-time guarantees without runtime complexity** - Use Rust's safety without sacrificing debuggability or longevity
+1. **Single-person contract ownership** - Every public API should be small enough for one person to fully understand and maintain
+2. **Black-box boundaries** - Small, stable contracts with freedom inside the implementation
+3. **Radical simplicity over clever abstractions** - APIs should be so simple they're impossible to misuse
+4. **Compile-time guarantees without runtime complexity** - Use Rust's safety without sacrificing debuggability or longevity
 
 We call this approach "Dependable Rust" - a subset of Rust that prioritizes simplicity, longevity, and maintainability over showcasing language features.
 
@@ -19,41 +20,55 @@ We call this approach "Dependable Rust" - a subset of Rust that prioritizes simp
 
 Software for critical systems must work reliably for 20-50 years. Every clever abstraction, every external dependency, every async function is a future maintenance burden.
 
-### The Three Pillars
+### The Four Pillars
 
-#### 1. Single-Person Module Ownership
+#### 1. Single-Person Black-Box Ownership
 ```rust
-// BAD: Monolithic crate requiring multiple maintainers
-// video-editor/src/lib.rs (10,000+ lines)
-pub mod decoder;     // Alice maintains
-pub mod encoder;     // Bob maintains  
-pub mod timeline;    // Charlie maintains
-pub mod effects;     // Diana maintains
+// BAD: Large public surface area with no clear owner
+// patina/src/adapters/claude.rs (900+ lines, all public)
+pub struct Claude { ... }
+pub fn init_project(...) { ... }
+pub fn generate_context(...) { ... }
+pub fn create_session(...) { ... }
+// 50+ more public functions...
 
-// GOOD: Separate crates with single owners
-// timeline-core/src/lib.rs (500 lines)
-// One person can understand EVERYTHING in this crate
-pub struct Timeline { ... }
-pub fn add_clip(timeline: &mut Timeline, clip: Clip) -> Result<ClipId, Error> { ... }
-pub fn render_frame(timeline: &Timeline, time: f64) -> Frame { ... }
+// GOOD: One dev owns this black box (API + implementation)
+// patina/src/adapters/claude/mod.rs - The "header" (like .h in C)
+pub trait ClaudeAdapter: Send {
+    fn capability(&self) -> Capability;
+    fn init_project(&mut self, config: &Config) -> Result<(), Error>;
+    fn generate_context(&self) -> Result<Context, Error>;
+}
+
+// The trait IS the interface - the owner decides what belongs here
+// When someone needs a feature, they ask the owner
+// Owner decides: "yes, this fits" or "no, that should be a different box"
+
+// patina/src/adapters/claude/impl_claude.rs (900 lines - private)
+// Implementation is private - owner has complete freedom here
 ```
 
 #### 2. Black Box Abstractions
 ```rust
-// Users don't need to know storage implementation
-pub trait EventStore {
-    fn store_event(&self, event: Event) -> Result<EventId, Error>;
-    fn get_events(&self, filter: Filter) -> Result<Vec<Event>, Error>;
+// Patina's navigation system - users don't know if it's SQLite, CRDT, or both
+pub trait NavigationStore: Send {
+    fn capability(&self) -> Capability;
+    fn index(&mut self, path: &Path) -> Result<(), NavError>;
+    fn search(&self, query: &Query) -> Result<Vec<Match>, NavError>;
+    fn sync(&mut self) -> Result<(), NavError>;
 }
 
-// Implementation completely hidden - could be SQL, files, memory
-struct PostgresEventStore { ... }  // Private
-struct FileEventStore { ... }      // Private
-struct InMemoryEventStore { ... }  // Private
+// Implementation completely hidden - hybrid SQLite + CRDT
+mod impl_hybrid {  // Private module
+    struct HybridStore {
+        sqlite: SqliteBackend,  // Fast local queries
+        crdt: AutomergeBackend, // Distributed sync
+    }
+}
 
 // Public factory function
-pub fn create_event_store(config: &Config) -> Box<dyn EventStore> {
-    // Implementation choice hidden from users
+pub fn create_navigation() -> impl NavigationStore {
+    impl_hybrid::HybridStore::new()
 }
 ```
 
@@ -61,18 +76,78 @@ pub fn create_event_store(config: &Config) -> Box<dyn EventStore> {
 Define your data structures and APIs BEFORE implementation. The format is the contract.
 
 ```rust
-// Define the format first
-#[repr(C)]  // C-compatible for FFI
-pub struct GameEvent {
-    pub timestamp: i64,        // Always Unix timestamp UTC
-    pub event_id: [u8; 32],    // SHA256 hash
-    pub event_type: u32,       // Simple enum as integer
-    pub actor_id: [u8; 32],    // UUID as bytes
-    pub data_length: u32,      // Length of variable data
-    // Variable data follows
+// Patina's layer pattern format - defined before implementation
+#[derive(Serialize, Deserialize)]
+pub struct Pattern {
+    pub name: String,           // Human-readable identifier
+    pub layer: Layer,           // Core, Surface, or Dust
+    pub content: String,        // Markdown content
+    pub metadata: Metadata,     // Timestamps, oxidizer, etc.
+    pub domain: Option<String>, // e.g., "dagger", "testing"
+}
+
+#[derive(Serialize, Deserialize)]
+pub enum Layer {
+    Core,            // Actively used in codebase
+    Surface,         // Forming patterns, experiments
+    Dust,            // Archived wisdom, deprecated
 }
 
 // Implementation comes AFTER format design
+```
+
+#### 4. Contract Size Limits
+Keep public API surfaces small and comprehensible.
+
+```rust
+// The "150 Line Rule" for public contracts
+// patina/src/adapters/claude/api.rs
+pub trait ClaudeAdapter: Send {            // Line 1
+    fn capability(&self) -> Capability;    // Line 10
+    fn init_project(...) -> Result<()>;    // Line 20
+    fn generate_context(...) -> Result<Context>; // Line 30
+}                                           // Line 40
+
+pub struct Capability { ... }              // Lines 50-70
+pub struct Context { ... }                 // Lines 80-100
+pub enum ClaudeError { ... }              // Lines 110-140
+
+// Total: ~150 lines MAX for public API
+// Implementation can be 1000+ lines (private)
+```
+
+## The Rust Black-Box Pattern
+
+### Traits Define Boundaries
+In Rust, traits are the natural way to define what a black box can do:
+
+```rust
+// The trait IS the black box's public interface
+pub trait Decoder: Send {
+    fn decode(&mut self, data: &[u8]) -> Result<Frame, Error>;
+    fn seek(&mut self, timestamp: u64) -> Result<(), Error>;
+}
+
+// The module's public items define what's exposed
+pub use self::api::{Decoder, Frame, DecoderError};
+
+// Everything else is private implementation detail
+mod impl_ffmpeg;  // Hidden
+mod cache;        // Hidden
+```
+
+### Module Ownership
+Each black box module has one owner who:
+- Defines the public trait interface
+- Guards what belongs in their module
+- Has freedom to change private implementation
+- Decides feature boundaries
+
+When someone requests functionality:
+```rust
+// "Can your decoder handle subtitles?"
+// Decoder owner: "No, that should be a separate SubtitleExtractor trait"
+// Result: Each box stays focused on one responsibility
 ```
 
 ## The "Dependable Rust" Subset
@@ -135,6 +210,97 @@ pub fn fetch_resources(urls: &[Url]) -> Vec<Resource> {
 }
 ```
 
+## Black-Box Refactoring Methodology
+
+### The Core Principle
+> "You don't have to make files smaller to gain modularity. You have to make surfaces smaller."
+
+Large implementation files are acceptable when hidden behind small, stable trait definitions. This approach enables:
+- Single ownership (one black box ↔ one owner)
+- Implementation freedom (rewrite internals without breaking callers)
+- Better testing (surface tests at the boundary)
+- Lower risk over time (fewer call-site changes)
+
+### Black-Box Boundary Template
+
+```rust
+// mod.rs - The public interface (~150 lines max)
+use thiserror::Error;
+
+/// Public types (minimal fields)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Output { /* minimal public fields */ }
+
+/// Typed errors at the boundary
+#[derive(Error, Debug)]
+pub enum BoxError {
+    #[error("invalid input: {0}")] 
+    Invalid(String),
+    #[error("operation failed: {0}")] 
+    Failed(String),
+    #[error(transparent)] 
+    Io(#[from] std::io::Error),
+}
+
+/// Runtime capability discovery
+#[derive(Clone, Debug)]
+pub struct Capability {
+    pub id: &'static str,         // "patina.navigation"
+    pub version: (u16, u16, u16), // semver
+    pub features: u64,            // feature flags
+}
+
+/// The trait defines what this black box can do
+pub trait BlackBox: Send {
+    fn capability(&self) -> Capability;
+    fn execute(&mut self, input: Input) -> Result<Output, BoxError>;
+}
+
+// Hide the implementation
+mod impl_primary;  // 1000+ lines, private
+
+// Factory function exposes only the trait
+pub fn create() -> impl BlackBox { 
+    impl_primary::Implementation::new() 
+}
+```
+
+### Refactoring Large Files: The Patina Example
+
+```rust
+// BEFORE: src/adapters/claude.rs (902 lines, all public)
+pub struct Claude { 
+    templates: HashMap<String, String>,
+    version: String,
+    // ... many fields exposed
+}
+
+impl Claude {
+    pub fn new() -> Self { ... }
+    pub fn init_project(...) { ... }
+    pub fn generate_context(...) { ... }
+    // ... 50+ public methods
+}
+
+// AFTER: src/adapters/claude/
+// mod.rs (100 lines - only the public trait)
+pub trait ClaudeAdapter: Send {
+    fn capability(&self) -> Capability;
+    fn init_project(&mut self, name: &str) -> Result<(), ClaudeError>;
+    fn generate_context(&self) -> Result<Context, ClaudeError>;
+}
+
+// impl_claude.rs (900 lines - private, free to change)
+struct ClaudeImpl {
+    // All implementation details hidden
+}
+
+// Factory function in mod.rs
+pub fn create_claude() -> impl ClaudeAdapter {
+    impl_claude::ClaudeImpl::new()
+}
+```
+
 ## Architecture Patterns
 
 ### Pattern 1: Start Simple, Add Parallelism When Needed
@@ -186,46 +352,36 @@ pub fn fetch_multiple_resources(urls: &[Url]) -> Vec<Resource> {
 }
 ```
 
-### Pattern 3: Platform Layer Abstraction
+### Pattern 3: Development Environment Abstraction
 
-Every application needs a platform layer. Own yours.
+Patina's approach: abstract development environments behind traits.
 
 ```rust
-// platform/src/lib.rs - Your window/input abstraction
-pub struct Window {
-    #[cfg(target_os = "windows")]
-    handle: *mut std::ffi::c_void,
-    #[cfg(target_os = "linux")]
-    handle: u64,
-    #[cfg(target_os = "macos")]
-    handle: *mut std::ffi::c_void,
+// dev_env/api.rs - Development environment contract
+pub trait DevEnvironment: Send {
+    fn capability(&self) -> Capability;
+    fn build(&mut self, project: &Path) -> Result<(), BuildError>;
+    fn test(&mut self, args: &[String]) -> Result<TestResults, BuildError>;
+    fn package(&mut self) -> Result<PathBuf, BuildError>;
 }
 
-impl Window {
-    pub fn create(width: u32, height: u32, title: &str) -> Option<Window> {
-        #[cfg(target_os = "windows")]
-        return windows::create_window(width, height, title);
-        #[cfg(target_os = "linux")]
-        return linux::create_window(width, height, title);
-        #[cfg(target_os = "macos")]
-        return macos::create_window(width, height, title);
-    }
-    
-    pub fn poll_event(&mut self) -> Option<Event> {
-        // Platform-specific implementation
-    }
+// dev_env/impl_dagger.rs - Dagger implementation (private)
+struct DaggerEnv {
+    workspace_path: PathBuf,
+    config: DaggerConfig,
 }
 
-// Write a minimal test app FIRST
-// platform-test/src/main.rs
-fn main() {
-    let mut window = Window::create(800, 600, "Test").unwrap();
-    loop {
-        match window.poll_event() {
-            Some(Event::Closed) => break,
-            Some(Event::MouseMove(x, y)) => println!("Mouse: {},{}", x, y),
-            _ => {}
-        }
+// dev_env/impl_docker.rs - Docker fallback (private)
+struct DockerEnv {
+    dockerfile: PathBuf,
+}
+
+// Smart factory with fallback
+pub fn create_dev_env() -> impl DevEnvironment {
+    if has_dagger() && has_go() {
+        impl_dagger::DaggerEnv::new()
+    } else {
+        impl_docker::DockerEnv::new()  // Escape hatch
     }
 }
 ```
@@ -295,344 +451,270 @@ impl Timeline {
 }
 ```
 
-### Pattern 6: Async Quarantine
+### Pattern 6: Async Quarantine with Black-Box Boundaries
 
-When you're forced to use async (WebSockets, certain APIs), quarantine it completely:
+When you're forced to use async (file watching, database sync), quarantine it behind traits:
 
 ```rust
-// Keep async at the absolute boundary
-pub struct ApiClient {
-    runtime: tokio::runtime::Runtime,
+// monitoring/api.rs - Synchronous public contract
+pub trait Monitor: Send {
+    fn start(&mut self, path: &Path) -> Result<(), MonitorError>;
+    fn poll(&mut self) -> Result<Option<Event>, MonitorError>;
+    fn stop(&mut self) -> Result<(), MonitorError>;
 }
 
-impl ApiClient {
-    // Public API is synchronous
-    pub fn fetch_batch(&self, urls: &[Url]) -> Vec<Result<Data, Error>> {
-        // If we have many URLs, use Rayon for parallel fetching
-        use rayon::prelude::*;
-        
-        urls.par_iter()
-            .map(|url| self.fetch_one(url))
-            .collect()
-    }
-    
-    fn fetch_one(&self, url: &Url) -> Result<Data, Error> {
-        // Async hidden inside
+// monitoring/impl_async.rs - Async quarantined in private implementation
+struct AsyncMonitor {
+    runtime: tokio::runtime::Runtime,  // Hidden from callers
+    rx: Option<Receiver<Event>>,
+}
+
+impl Monitor for AsyncMonitor {
+    fn poll(&mut self) -> Result<Option<Event>, MonitorError> {
+        // Async complexity completely hidden
         self.runtime.block_on(async {
-            reqwest::get(url).await?.json().await
+            self.rx.as_mut()
+                .ok_or(MonitorError::NotStarted)?
+                .recv()
+                .await
+                .ok_or(MonitorError::Disconnected)
         })
     }
+}
+
+// Callers never see async - they just see Monitor trait
+let mut monitor = create_monitor();  // Returns impl Monitor
+monitor.start(&path)?;
+while let Some(event) = monitor.poll()? {
+    // Process synchronously
 }
 ```
 
 ## Practical Examples
 
-### Example 1: Immortal Game World
+### Example 1: Patina's Layer System - Knowledge That Oxidizes and Evolves
 
-Building a game that survives even if the company dies - players own their world.
+Building a knowledge system that naturally accumulates wisdom like patina on metal.
 
 ```rust
-// Game events as the primitive - deterministic and verifiable
-#[repr(C)]
-pub struct GameEvent {
-    pub event_hash: [u8; 32],      // SHA256 of event
-    pub previous: [u8; 32],        // Chain of events
-    pub actor_id: [u8; 32],        // Player who did this
-    pub action_type: u32,          // Move, Attack, Trade, etc.
-    pub action_data: Vec<u8>,      // Serialized action details
-    pub timestamp: i64,            // When it happened
-    pub signature: [u8; 64],       // Cryptographic proof
+// layer/mod.rs - The trait for pattern storage
+pub trait LayerSystem: Send {
+    fn capability(&self) -> Capability;
+    fn capture_raw(&mut self, session: RawSession) -> Result<SessionId, LayerError>;
+    fn extract_patterns(&mut self, session_id: SessionId) -> Result<Vec<Pattern>, LayerError>;
+    fn promote_to_core(&mut self, pattern: Pattern) -> Result<(), LayerError>;
+    fn scrape_to_dust(&mut self, pattern_id: PatternId) -> Result<(), LayerError>;
 }
 
-// Simple game state management - storage agnostic
-pub struct GameWorld {
-    state: WorldState,
-    pending_events: VecDeque<GameEvent>,
+// Pattern format with oxidation lifecycle
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Pattern {
+    pub id: PatternId,
+    pub content: String,           // Markdown, always
+    pub layer: Layer,              // Core, Surface, or Dust
+    pub domain: Option<String>,    // e.g., "dagger", "testing"
+    pub metadata: Metadata,
+    pub usage_count: u32,          // Track active use
+    pub last_accessed: DateTime,   // For oxidation
 }
 
-impl GameWorld {
-    // Process events deterministically - same result everywhere
-    pub fn process_event(&mut self, event: GameEvent) -> Result<(), Error> {
-        // Verify signature
-        if !verify_signature(&event) {
-            return Err(Error::InvalidSignature);
+#[derive(Serialize, Deserialize, Clone)]
+pub enum Layer {
+    Core,           // Active in codebase
+    Surface(String), // Forming (with domain)
+    Dust,           // Archived wisdom
+}
+
+// layer/impl_filesystem.rs - Current implementation (private)
+struct FileSystemLayers {
+    base_path: PathBuf,
+    index: HashMap<PatternId, PatternLocation>,
+}
+
+impl LayerSystem for FileSystemLayers {
+    fn promote_to_core(&mut self, pattern: Pattern) -> Result<(), LayerError> {
+        // Only promote patterns that are actively used
+        if pattern.usage_count < 3 {
+            return Err(LayerError::NotProven);
         }
         
-        // Apply deterministic game rules
-        match event.action_type {
-            ACTION_MOVE => self.process_move(&event)?,
-            ACTION_ATTACK => self.process_attack(&event)?,
-            ACTION_TRADE => self.process_trade(&event)?,
-            _ => return Err(Error::UnknownAction),
-        }
+        // Move from surface to core
+        let surface_path = self.base_path.join("surface").join(&pattern.domain);
+        let core_path = self.base_path.join("core").join(&pattern.name);
+        fs::rename(&surface_path, &core_path)?;
         
         Ok(())
     }
     
-    // Sync with other nodes - network agnostic
-    pub fn sync_events(&mut self, peer_events: Vec<GameEvent>) {
-        // Simple: Apply events we haven't seen
-        // Complex: Conflict resolution, consensus
-        // But the API stays the same
+    fn scrape_to_dust(&mut self, pattern_id: PatternId) -> Result<(), LayerError> {
+        // Move unused patterns to dust
+        let pattern = self.get_pattern(pattern_id)?;
         
-        let new_events = peer_events.into_iter()
-            .filter(|e| !self.has_event(&e.event_hash))
-            .collect::<Vec<_>>();
-            
-        // Process in timestamp order
-        for event in new_events {
-            self.pending_events.push_back(event);
+        // Check if pattern is stale
+        let days_unused = (Utc::now() - pattern.last_accessed).num_days();
+        if days_unused < 30 {
+            return Err(LayerError::StillActive);
         }
-    }
-    
-    // Only parallelize when it makes sense
-    pub fn validate_events(&self, events: &[GameEvent]) -> Vec<bool> {
-        if events.len() < 100 {
-            // Small batch - sequential is fine
-            events.iter().map(|e| verify_signature(e)).collect()
-        } else {
-            // Large batch - parallel validation
-            use rayon::prelude::*;
-            events.par_iter().map(|e| verify_signature(e)).collect()
-        }
+        
+        // Move to dust for archival
+        let current_path = self.pattern_to_path(&pattern);
+        let dust_path = self.base_path.join("dust").join(&pattern.name);
+        fs::rename(&current_path, &dust_path)?;
+        
+        Ok(())
     }
 }
 
-// Storage backend - completely hidden
-trait StorageBackend {
-    fn store_event(&mut self, event: &GameEvent) -> Result<(), Error>;
-    fn get_events_since(&self, timestamp: i64) -> Vec<GameEvent>;
-}
-
-// Can implement for PostgreSQL, SQLite, Blockchain, IPFS, etc.
-// Game logic doesn't change when backend changes
+// Future: dust can blow to database for cross-project wisdom
+// But the LayerSystem trait remains stable
 ```
 
-### Example 2: Unkillable Knowledge Network
-
-A Wikipedia that can't be burned - knowledge that survives censorship.
+### Example 2: Patina's Navigation System - Git-Aware Code Intelligence
 
 ```rust
-// Knowledge fragments as content-addressed primitives
-#[repr(C)]
-pub struct KnowledgeFragment {
-    pub content_hash: [u8; 32],     // IPFS-style addressing
-    pub parent_hashes: Vec<[u8; 32]>, // Builds on previous knowledge
-    pub author_id: [u8; 32],        // Cryptographic identity
-    pub topic_path: Vec<u32>,       // Hierarchical categorization
-    pub language: u32,              // ISO language code
-    pub timestamp: i64,
-    pub endorsements: Vec<[u8; 64]>, // Community validation
+// navigation/mod.rs - Git-aware navigation trait
+pub trait NavigationSystem: Send {
+    fn capability(&self) -> Capability;
+    fn index(&mut self, repo: &Path) -> Result<IndexStats, NavError>;
+    fn search(&self, query: &SearchQuery) -> Result<Vec<CodeMatch>, NavError>;
+    fn get_context(&self, file: &Path, line: u32) -> Result<Context, NavError>;
+    fn track_change(&mut self, change: FileChange) -> Result<(), NavError>;
 }
 
-// Knowledge store - works offline or online
-pub struct KnowledgeBase {
-    fragments: HashMap<[u8; 32], KnowledgeFragment>,
-    index: TopicIndex,
+// Git-aware code location
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeMatch {
+    pub file: PathBuf,
+    pub line: u32,
+    pub column: u32,
+    pub symbol: String,
+    pub kind: SymbolKind,
+    pub git_status: GitStatus,  // Modified, staged, committed
 }
 
-impl KnowledgeBase {
-    // Add knowledge - automatically content-addressed
-    pub fn add_fragment(&mut self, content: &str, metadata: Metadata) -> [u8; 32] {
-        let hash = sha256(content.as_bytes());
+// navigation/impl_hybrid.rs - SQLite + CRDT implementation (private)
+struct HybridNavigation {
+    sqlite: SqliteBackend,      // Fast local queries
+    crdt: Option<AutomergeCrdt>, // Distributed sync when needed
+    git_cache: GitStateCache,    // Track git state
+}
+
+impl NavigationSystem for HybridNavigation {
+    fn index(&mut self, repo: &Path) -> Result<IndexStats, NavError> {
+        // Detect git repository
+        let git_info = self.git_cache.analyze(repo)?;
         
-        let fragment = KnowledgeFragment {
-            content_hash: hash,
-            parent_hashes: metadata.references.clone(),
-            author_id: metadata.author,
-            topic_path: metadata.topics,
-            language: metadata.language,
-            timestamp: current_timestamp(),
-            endorsements: vec![],
-        };
+        // Index based on file count
+        let files = self.find_source_files(repo)?;
         
-        self.fragments.insert(hash, fragment);
-        self.index.add(hash, &metadata.topics);
-        
-        hash
-    }
-    
-    // Query knowledge - works even with partial data
-    pub fn search(&self, query: &Query) -> Vec<KnowledgeFragment> {
-        let candidates = self.index.search(&query.topics);
-        
-        candidates.into_iter()
-            .filter_map(|hash| self.fragments.get(&hash))
-            .filter(|f| f.language == query.language)
-            .filter(|f| f.endorsements.len() >= query.min_endorsements)
-            .take(query.limit)
-            .cloned()
-            .collect()
-    }
-    
-    // Sync with peers - protocol agnostic
-    pub fn sync_with_peer(&mut self, peer: &mut dyn KnowledgePeer) {
-        // Exchange what we have
-        let our_hashes = self.fragments.keys().cloned().collect();
-        let their_hashes = peer.list_fragments();
-        
-        // Get what we're missing
-        let missing: Vec<_> = their_hashes.difference(&our_hashes).collect();
-        
-        if missing.len() < 100 {
-            // Few fragments - sequential fetch
-            for hash in missing {
-                if let Some(fragment) = peer.get_fragment(hash) {
-                    // Verify content matches hash
-                    if sha256(&fragment.content) == *hash {
-                        self.fragments.insert(*hash, fragment);
-                    }
-                }
+        if files.len() < 1000 {
+            // Small repo - sequential indexing
+            for file in files {
+                self.index_file(&file, &git_info)?;
             }
         } else {
-            // Many fragments - parallel fetch
+            // Large repo - parallel with Rayon
             use rayon::prelude::*;
-            let new_fragments: Vec<_> = missing.par_iter()
-                .filter_map(|hash| {
-                    peer.get_fragment(hash)
-                        .filter(|f| sha256(&f.content) == **hash)
-                        .map(|f| (*hash, f))
-                })
-                .collect();
-                
-            for (hash, fragment) in new_fragments {
-                self.fragments.insert(hash, fragment);
-            }
+            files.par_iter()
+                .try_for_each(|file| {
+                    self.index_file(file, &git_info)
+                })?;
         }
+        
+        Ok(IndexStats { 
+            files_indexed: files.len(),
+            symbols_found: self.sqlite.symbol_count()?,
+        })
     }
-}
-
-// Peer interface - can be HTTP, IPFS, Bluetooth, Sneakernet
-trait KnowledgePeer {
-    fn list_fragments(&self) -> HashSet<[u8; 32]>;
-    fn get_fragment(&self, hash: &[u8; 32]) -> Option<KnowledgeFragment>;
-}
-```
-
-### Example 3: Unstoppable Market Observer
-
-See all markets forever - financial transparency that can't be hidden.
-
-```rust
-// Normalized market events across all chains
-#[repr(C)]
-pub struct MarketEvent {
-    pub event_id: [u8; 32],         // Universal unique ID
-    pub source_chain: u32,          // ETH, BTC, SOL, etc.
-    pub source_proof: Vec<u8>,      // Chain-specific proof
-    pub event_type: u32,            // Swap, Transfer, Mint, etc.
-    pub actor: [u8; 32],            // Normalized address
-    pub asset_in: AssetAmount,      // What went in
-    pub asset_out: AssetAmount,     // What came out
-    pub timestamp: i64,
-    pub observer_sig: [u8; 64],     // Who witnessed this
-}
-
-#[repr(C)]
-pub struct AssetAmount {
-    pub asset_id: [u8; 32],         // Normalized asset identifier
-    pub amount: u128,               // Amount in base units
-}
-
-// Market observer - chain agnostic
-pub struct MarketObserver {
-    events: VecDeque<MarketEvent>,
-    validators: Vec<ValidatorNode>,
-    max_events: usize,
-}
-
-impl MarketObserver {
-    // Ingest from any chain - adapters handle specifics
-    pub fn ingest_event(&mut self, raw_event: &[u8], chain: u32) -> Result<(), Error> {
-        let adapter = get_chain_adapter(chain)?;
-        let event = adapter.parse_event(raw_event)?;
+    
+    fn track_change(&mut self, change: FileChange) -> Result<(), NavError> {
+        // Update SQLite immediately for local performance
+        self.sqlite.update_file(&change)?;
         
-        // Normalize to our format
-        let market_event = MarketEvent {
-            event_id: sha256(&[&event.tx_hash, &event.log_index.to_le_bytes()].concat()),
-            source_chain: chain,
-            source_proof: raw_event.to_vec(),
-            event_type: classify_event(&event),
-            actor: normalize_address(&event.from, chain),
-            asset_in: normalize_asset(&event.input, chain),
-            asset_out: normalize_asset(&event.output, chain),
-            timestamp: event.block_timestamp,
-            observer_sig: sign_observation(&event),
-        };
-        
-        self.events.push_back(market_event);
-        if self.events.len() > self.max_events {
-            self.events.pop_front();
+        // Queue for CRDT sync if distributed
+        if let Some(ref mut crdt) = self.crdt {
+            crdt.queue_change(change)?;
         }
         
         Ok(())
     }
-    
-    // Query across all chains with simple API
-    pub fn query_activity(&self, filter: &Filter) -> Vec<MarketEvent> {
-        self.events.iter()
-            .filter(|e| filter.chains.is_empty() || filter.chains.contains(&e.source_chain))
-            .filter(|e| filter.actors.is_empty() || filter.actors.contains(&e.actor))
-            .filter(|e| e.timestamp >= filter.from_time)
-            .filter(|e| e.timestamp <= filter.to_time)
-            .cloned()
-            .collect()
-    }
-    
-    // Validate with peers - consensus without blockchain
-    pub fn validate_observations(&mut self) -> Vec<MarketEvent> {
-        let mut validated = Vec::new();
-        
-        for event in &self.events {
-            let confirmations = self.validators.iter()
-                .filter(|v| v.has_observed(&event.event_id))
-                .count();
-                
-            // Simple majority consensus
-            if confirmations > self.validators.len() / 2 {
-                validated.push(event.clone());
-            }
-        }
-        
-        validated
-    }
-    
-    // Analyze with parallelism when appropriate
-    pub fn analyze_volume(&self, window: Duration) -> TotalVolume {
-        let cutoff = current_timestamp() - window.as_secs() as i64;
-        let events: Vec<_> = self.events.iter()
-            .filter(|e| e.timestamp > cutoff)
-            .cloned()
-            .collect();
-        
-        // Choose approach based on data size
-        let total = if events.len() > 1000 {
-            // Large dataset - parallelize
-            use rayon::prelude::*;
-            events.par_iter()
-                .filter(|e| e.event_type == EVENT_SWAP)
-                .map(|e| extract_volume(e))
-                .sum()
-        } else {
-            // Small dataset - sequential is fine
-            events.iter()
-                .filter(|e| e.event_type == EVENT_SWAP)
-                .map(|e| extract_volume(e))
-                .sum()
+}
+
+// The implementation complexity (SQLite + CRDT) is hidden
+// Callers just see a simple NavigationSystem trait
+```
+
+### Example 3: Patina's LLM Adapter System - Future-Proof AI Integration
+
+```rust
+// adapters/mod.rs - Stable trait for all LLMs
+pub trait LLMAdapter: Send {
+    fn capability(&self) -> Capability;
+    fn init_project(&mut self, config: ProjectConfig) -> Result<(), AdapterError>;
+    fn generate_context(&self) -> Result<ContextFile, AdapterError>;
+    fn create_session(&mut self, name: &str) -> Result<SessionId, AdapterError>;
+}
+
+// Normalized context format - works across all LLMs
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextFile {
+    pub format: ContextFormat,  // Claude.md, Gemini.yaml, etc.
+    pub sections: Vec<Section>,
+    pub metadata: Metadata,
+}
+
+// adapters/claude/impl_claude.rs - Claude-specific (private)
+struct ClaudeAdapter {
+    templates: TemplateEngine,
+    session_manager: SessionManager,
+    mcp_support: Option<McpConfig>,
+}
+
+impl LLMAdapter for ClaudeAdapter {
+    fn generate_context(&self) -> Result<ContextFile, AdapterError> {
+        // Claude generates CLAUDE.md format
+        let mut context = ContextFile {
+            format: ContextFormat::ClaudeMarkdown,
+            sections: vec![],
+            metadata: self.create_metadata(),
         };
         
-        TotalVolume { amount: total, event_count: events.len() }
+        // Add Claude-specific sections
+        context.sections.push(self.generate_environment_section()?);
+        context.sections.push(self.generate_brain_patterns()?);
+        context.sections.push(self.generate_session_commands()?);
+        
+        Ok(context)
     }
 }
 
-// Chain adapter interface - new chains without changing core
-trait ChainAdapter {
-    fn parse_event(&self, raw: &[u8]) -> Result<ChainEvent, Error>;
-    fn verify_proof(&self, event: &MarketEvent) -> bool;
+// adapters/gemini/impl_gemini.rs - Gemini-specific (private)
+struct GeminiAdapter {
+    config: GeminiConfig,
+    formatter: YamlFormatter,
 }
 
-// Can observe Ethereum, StarkNet, Solana, even CEX APIs
-// Core logic doesn't care about chain specifics
+// adapters/local/impl_ollama.rs - Local LLM (private)
+struct OllamaAdapter {
+    model: String,
+    context_window: usize,
+}
+
+// Factory functions hide implementation choice
+pub fn create_adapter(llm_type: &str) -> Result<Box<dyn LLMAdapter>, Error> {
+    match llm_type {
+        "claude" => Ok(Box::new(ClaudeAdapter::new())),
+        "gemini" => Ok(Box::new(GeminiAdapter::new())),
+        "ollama" => Ok(Box::new(OllamaAdapter::new())),
+        _ => Err(Error::UnknownLLM),
+    }
+}
+
+// The adapter system ensures Patina works with:
+// - Today's LLMs (Claude, GPT, Gemini)
+// - Tomorrow's LLMs (unknown)
+// - Local models (Ollama, llama.cpp)
+// - Future protocols (MCP evolution)
 ```
 
 ## Testing Strategy
@@ -684,51 +766,76 @@ impl EventRecorder {
 }
 ```
 
-### 3. Property-Based Testing for Invariants
+### 3. Surface Testing at Trait Boundaries
 ```rust
 #[test]
-fn game_events_maintain_consistency() {
-    let mut world = GameWorld::new();
+fn navigation_sync_is_idempotent() {
+    // Test only through the public trait
+    let mut nav: Box<dyn NavigationSystem> = create_navigation();
     
-    // Add random events
-    for _ in 0..1000 {
-        let event = generate_random_event();
-        let _ = world.process_event(event);
-    }
+    nav.index(&test_repo).unwrap();
+    let before = nav.search(&query).unwrap();
     
-    // Check invariants
-    assert!(world.validate_state());
-    assert!(world.all_players_valid());
-    assert!(world.no_duplicate_events());
+    nav.sync().unwrap();
+    let after = nav.search(&query).unwrap();
+    
+    // Verify invariant: sync doesn't change local state
+    assert_eq!(before, after);
 }
 ```
 
-## Migration Strategy
+## Migration Strategy: Black-Box Refactoring Path
 
-### From Existing Systems
-Never do a "big bang" migration. Run both systems in parallel:
+### From Large Files to Black Boxes (Gradual)
+Never rewrite everything. Wrap existing code behind traits first:
 
 ```rust
-pub struct MigrationBridge {
-    old_system: OldSystemAPI,
-    new_system: NewSystemAPI,
+// Step 1: Define the trait (mod.rs)
+pub trait NavigationStore: Send {
+    fn index(&mut self, path: &Path) -> Result<(), Error>;
+    fn search(&self, query: &Query) -> Result<Vec<Match>, Error>;
 }
 
-impl MigrationBridge {
-    pub fn sync(&mut self) -> Result<(), Error> {
-        // Copy new events to old system
-        for event in self.new_system.get_unsynced()? {
-            self.old_system.store(convert_to_old(event))?;
+// Step 2: Wrap existing code (impl_legacy.rs)
+mod impl_legacy {
+    use super::*;
+    
+    // Your existing 600+ line implementation
+    pub struct LegacyNavigation {
+        // Existing fields...
+    }
+    
+    impl NavigationStore for LegacyNavigation {
+        // Wrap existing methods
+        fn index(&mut self, path: &Path) -> Result<(), Error> {
+            self.existing_index_method(path) // Just delegate
         }
-        
-        // Copy old events to new system
-        for event in self.old_system.get_unsynced()? {
-            self.new_system.store(convert_to_new(event))?;
-        }
-        
-        Ok(())
     }
 }
+
+// Step 3: Use trait at call sites
+fn process_repo(nav: &mut impl NavigationStore) {
+    nav.index(&repo_path)?;
+}
+
+// Step 4: Now you can refactor internals freely
+// The 600+ lines can stay in one file or be split
+// Callers don't care - they use the trait
+```
+
+### Applying to Patina's Current Violations
+
+```rust
+// Week 1: Define traits for each large module
+// patina/src/adapters/claude/mod.rs - Add trait definition
+// patina/src/commands/init/mod.rs - Add trait definition
+// patina/src/indexer/navigation/mod.rs - Add trait definition
+
+// Week 2: Move implementations behind traits
+// Just wrap existing code - no rewriting yet
+
+// Week 3: Refactor internals as needed
+// Now you can split, optimize, or rewrite freely
 ```
 
 ## Tooling Requirements
@@ -935,33 +1042,48 @@ rayon = "1.0"     # Parallelism when measured
 
 Building software that lasts decades requires pragmatic choices. The principles are:
 
-1. **Start simple, add parallelism when measured** - Profile before parallelizing
-2. **Use Rayon for CPU-intensive work on large datasets** - Not for everything
-3. **Write boring code** - Clever code is hard to maintain
-4. **Own your dependencies** - External changes shouldn't break your system
-5. **Design formats first** - The data structure is the API
-6. **Keep modules small** - One person should understand everything
-7. **Test with minimal examples** - If a minimal test is hard, the API is too complex
-8. **Build extensive tooling** - Recording, playback, inspection, simulation
+1. **Single ownership of black boxes** - One dev owns each module (trait + implementation)
+2. **Small trait surfaces, not small files** - Keep public APIs under 150 lines; implementations can be larger
+3. **Black-box boundaries** - Hide complexity behind stable traits
+4. **Start simple, add parallelism when measured** - Profile before parallelizing
+5. **Use Rayon for CPU-intensive work on large datasets** - Not for everything
+6. **Quarantine async behind traits** - Never let it infect core logic
+7. **Write boring code** - Clever code is hard to maintain
+8. **Own your dependencies** - External changes shouldn't break your system
+9. **Design formats first** - The data structure is the API
+10. **Test at trait boundaries** - Surface tests matter more than unit tests
+11. **Build extensive tooling** - Recording, playback, inspection, simulation
 
-Remember: **Performance comes from using the right tool for each job.** 
+Remember: **Modularity comes from small trait surfaces, not small files.**
+
+The Black-Box methodology shows us how to achieve Dependable Rust:
+- Each black box has one owner (who owns both trait and implementation)
+- Owner guards what belongs in their box vs elsewhere
+- Trait definitions in mod.rs serve as the public interface
+- Implementation freedom inside, stability outside
+- Async/complex dependencies stay hidden in private modules
+
+**Performance comes from using the right tool for each job:** 
 - Sequential for most things (default)
 - Rayon for heavy CPU work on large datasets
 - Thread::scope for I/O operations
 - Channels for decoupling components
-- Async only when forced, quarantined at boundaries
+- Async only when forced, quarantined in black boxes
 
 ## Key Takeaways
 
+- **Trait surface size matters, not file size** - 150-line public APIs, any size private implementation
+- **One owner per black box** - Single dev owns trait definition and implementation
+- **Black-box refactoring enables gradual improvement** - Wrap first, refactor later
 - **Default to sequential** - Most code doesn't need parallelism
 - **Measure before optimizing** - Use profiling to guide decisions
 - **Rayon when appropriate** - Large datasets (>1000 items) with expensive operations (>10ms per item)
 - **Threads for I/O** - Network, disk, and database operations
-- **Quarantine async** - Only at system boundaries, never in core logic
-- **Content-addressed data** - Makes systems unkillable and verifiable
-- **Storage agnostic** - Can move from SQL to blockchain without changing logic
+- **Quarantine async in black boxes** - Hide behind traits, never in public APIs
+- **Test at trait boundaries** - Surface tests catch real issues
+- **Implementation freedom** - Change internals without breaking callers
 
-This is Dependable Rust: pragmatic performance with the simplicity to last decades.
+This is Dependable Rust: small trait surfaces with implementation freedom, pragmatic performance with the simplicity to last decades.
 
 ## Resources
 
@@ -971,30 +1093,44 @@ This is Dependable Rust: pragmatic performance with the simplicity to last decad
 - [Casey Muratori's Handmade Hero](https://handmadehero.org/) - Building from scratch
 - [Jonathan Blow on Software Quality](https://www.youtube.com/watch?v=pW-SOdj4Kkk) - Deep engineering
 
-## Appendix: Example Module Structure
+## Appendix: Black-Box Module Structure for Patina
 
 ```
-project/
-├── core/               # No external dependencies
-│   ├── Cargo.toml     # [dependencies] is empty
-│   └── src/
-│       └── lib.rs     # Pure business logic
-├── platform/          # Platform abstraction
-│   ├── Cargo.toml     # Only libc
-│   └── src/
-│       └── lib.rs     # Window, input, etc.
-├── plugins/           # Optional plugins
-│   ├── plugin-api/    # C-compatible API
-│   └── effects/       # Individual effect plugins
-├── tools/             # Development tools
-│   ├── recorder/      # Record system state
-│   ├── player/        # Playback recordings
-│   └── inspector/     # Inspect state
-└── app/               # Final application
-    ├── cli/           # Command-line interface
-    └── gui/           # Graphical interface
+patina/
+├── layer/                    # Knowledge accumulation system
+│   ├── core/                # Active patterns in use
+│   ├── surface/             # Forming patterns & experiments
+│   │   ├── raw/            # Unprocessed sessions
+│   │   └── */              # Domain-specific patterns
+│   └── dust/               # Archived wisdom
+├── src/
+│   ├── adapters/
+│   │   ├── mod.rs           # Public traits for all adapters
+│   │   ├── claude/
+│   │   │   ├── mod.rs       # ClaudeAdapter trait (100 lines PUBLIC)
+│   │   │   └── impl.rs      # Implementation (900 lines PRIVATE)
+│   │   └── gemini/
+│   │       ├── mod.rs       # GeminiAdapter trait (100 lines PUBLIC)
+│   │       └── impl.rs      # Implementation (PRIVATE)
+│   ├── layer/
+│   │   ├── mod.rs           # LayerSystem trait (150 lines PUBLIC)
+│   │   └── impl_fs.rs       # FileSystem implementation (PRIVATE)
+│   ├── navigation/
+│   │   ├── mod.rs           # NavigationSystem trait (150 lines PUBLIC)
+│   │   ├── impl_hybrid.rs   # SQLite+CRDT (600 lines PRIVATE)
+│   │   └── impl_simple.rs   # Simple alternative (PRIVATE)
+│   └── dev_env/
+│       ├── mod.rs           # DevEnvironment trait (100 lines PUBLIC)
+│       ├── impl_dagger.rs   # Dagger implementation (PRIVATE)
+│       └── impl_docker.rs   # Docker fallback (PRIVATE)
 ```
 
-Each directory is owned by one person. Each can be understood completely by that person. The system can run with any subset of plugins. Tools are built before the app. Platform works on all targets.
+**Key Points:**
+- Each `mod.rs` defines the public trait (the black box's interface)
+- One dev owns each module (trait + implementation)
+- Implementation files can be large (hidden complexity)
+- Async code quarantined in `impl_*.rs` files
+- Public trait surface < 150 lines per module
+- Test at the trait boundary (through mod.rs interface)
 
-This is Dependable Rust.
+This structure achieves Dependable Rust through Black-Box boundaries while patterns naturally oxidize through the layer system.
