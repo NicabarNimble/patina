@@ -3,7 +3,7 @@ id: adapter-pattern
 status: verified
 verification_date: 2025-08-02
 oxidizer: nicabar
-references: [core/constraints.md, topics/architecture/three-dimensions.md]
+references: [core/constraints.md, topics/architecture/three-dimensions.md, core/black-box-boundaries.md]
 tags: [architecture, patterns, adapters]
 ---
 
