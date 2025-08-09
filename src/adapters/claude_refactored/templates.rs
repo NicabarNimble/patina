@@ -1,11 +1,11 @@
 //! Template management for Claude adapter
-//! 
+//!
 //! This module handles all template generation and file creation for Claude integration.
 //! Templates are embedded in the binary for easy distribution.
 
 use anyhow::Result;
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 /// Path constants for Claude adapter
 pub(super) mod paths {
@@ -43,7 +43,7 @@ impl SessionScripts {
 /// Creates a file with the given content and makes it executable on Unix
 pub(super) fn create_executable_script(path: &Path, content: &str) -> Result<()> {
     fs::write(path, content)?;
-    
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -51,7 +51,7 @@ pub(super) fn create_executable_script(path: &Path, content: &str) -> Result<()>
         perms.set_mode(0o755);
         fs::set_permissions(path, perms)?;
     }
-    
+
     Ok(())
 }
 
