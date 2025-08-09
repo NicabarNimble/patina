@@ -69,7 +69,7 @@ impl ClaudeImpl {
     fn create_session_scripts(&self, project_path: &Path) -> Result<()> {
         let bin_path = self.get_bin_path(project_path);
         let commands_path = self.get_commands_path(project_path);
-        
+
         fs::create_dir_all(&bin_path)?;
         fs::create_dir_all(&commands_path)?;
 
@@ -99,17 +99,17 @@ impl ClaudeImpl {
             commands_path.join("session-start.md"),
             include_str!("../../../resources/claude/session-start.md"),
         )?;
-        
+
         fs::write(
             commands_path.join("session-update.md"),
             include_str!("../../../resources/claude/session-update.md"),
         )?;
-        
+
         fs::write(
             commands_path.join("session-note.md"),
             include_str!("../../../resources/claude/session-note.md"),
         )?;
-        
+
         fs::write(
             commands_path.join("session-end.md"),
             include_str!("../../../resources/claude/session-end.md"),
@@ -187,10 +187,14 @@ impl ClaudeImpl {
     fn format_pattern_section(&self, pattern_type: &str, patterns: &[Pattern]) -> String {
         let filtered: Vec<_> = patterns
             .iter()
-            .filter(|p| matches!((&p.pattern_type, pattern_type), 
-                (PatternType::Core, "core") | 
-                (PatternType::Topic(_), "topic") | 
-                (PatternType::Project(_), "project")))
+            .filter(|p| {
+                matches!(
+                    (&p.pattern_type, pattern_type),
+                    (PatternType::Core, "core")
+                        | (PatternType::Topic(_), "topic")
+                        | (PatternType::Project(_), "project")
+                )
+            })
             .collect();
 
         if filtered.is_empty() {
