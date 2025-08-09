@@ -182,7 +182,12 @@ fn main() -> Result<()> {
             design,
             dev,
         } => {
-            commands::init::execute(name, llm, design, dev)?;
+            // Use refactored version if environment variable is set
+            if std::env::var("PATINA_USE_REFACTORED_INIT").is_ok() {
+                commands::init_refactored::execute(name, llm, design, dev)?;
+            } else {
+                commands::init::execute(name, llm, design, dev)?;
+            }
         }
         Commands::Upgrade { check, json } => {
             commands::upgrade::execute(check, json)?;
