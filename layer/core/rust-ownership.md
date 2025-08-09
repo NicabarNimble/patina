@@ -3,7 +3,7 @@ id: rust-ownership
 status: verified
 verification_date: 2025-08-02
 oxidizer: nicabar
-references: [core/principles.md]
+references: [core/principles.md, core/black-box-boundaries.md]
 tags: [rust, architecture, ownership]
 ---
 
