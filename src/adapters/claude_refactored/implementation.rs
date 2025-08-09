@@ -4,9 +4,9 @@
 //! It's hidden behind the trait boundary, allowing us to refactor freely.
 
 use crate::adapters::LLMAdapter;
-use crate::environment::{Environment, LanguageInfo};
+use crate::environment::Environment;
 use crate::layer::{Pattern, PatternType};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -68,9 +68,12 @@ impl ClaudeImpl {
     /// Create session management scripts
     fn create_session_scripts(&self, project_path: &Path) -> Result<()> {
         let bin_path = self.get_bin_path(project_path);
+        let commands_path = self.get_commands_path(project_path);
+        
         fs::create_dir_all(&bin_path)?;
+        fs::create_dir_all(&commands_path)?;
 
-        // Create each script
+        // Create executable scripts in bin/
         templates::create_executable_script(
             &bin_path.join("session-start.sh"),
             SessionScripts::session_start(),
@@ -89,6 +92,27 @@ impl ClaudeImpl {
         templates::create_executable_script(
             &bin_path.join("session-end.sh"),
             SessionScripts::session_end(),
+        )?;
+
+        // Create command markdown files in commands/ for MCP discovery
+        fs::write(
+            commands_path.join("session-start.md"),
+            include_str!("../../../resources/claude/session-start.md"),
+        )?;
+        
+        fs::write(
+            commands_path.join("session-update.md"),
+            include_str!("../../../resources/claude/session-update.md"),
+        )?;
+        
+        fs::write(
+            commands_path.join("session-note.md"),
+            include_str!("../../../resources/claude/session-note.md"),
+        )?;
+        
+        fs::write(
+            commands_path.join("session-end.md"),
+            include_str!("../../../resources/claude/session-end.md"),
         )?;
 
         Ok(())
@@ -128,11 +152,11 @@ impl ClaudeImpl {
         for (tool, info) in &environment.tools {
             let status = if info.available { "✓" } else { "✗" };
             let version_info = if let Some(ref version) = info.version {
-                format!(" ({})", version)
+                format!(" ({version})")
             } else {
                 String::new()
             };
-            section.push_str(&format!("- **{}**: {}{}\n", tool, status, version_info));
+            section.push_str(&format!("- **{tool}**: {status}{version_info}\n"));
         }
 
         section
@@ -149,10 +173,10 @@ impl ClaudeImpl {
             ("java", "Java"),
         ];
 
-        for (key, name) in languages {
+        for (key, _name) in languages {
             if let Some(info) = environment.languages.get(key) {
                 if let Some(ref version) = info.version {
-                    section.push_str(&format!("- **{}**: {}\n", key, version));
+                    section.push_str(&format!("- **{key}**: {version}\n"));
                 }
             }
         }
@@ -163,12 +187,10 @@ impl ClaudeImpl {
     fn format_pattern_section(&self, pattern_type: &str, patterns: &[Pattern]) -> String {
         let filtered: Vec<_> = patterns
             .iter()
-            .filter(|p| match (&p.pattern_type, pattern_type) {
-                (PatternType::Core, "core") => true,
-                (PatternType::Topic(topic), "topic") => true,
-                (PatternType::Project(_), "project") => true,
-                _ => false,
-            })
+            .filter(|p| matches!((&p.pattern_type, pattern_type), 
+                (PatternType::Core, "core") | 
+                (PatternType::Topic(_), "topic") | 
+                (PatternType::Project(_), "project")))
             .collect();
 
         if filtered.is_empty() {
@@ -192,7 +214,7 @@ impl ClaudeImpl {
             }
 
             for (topic, patterns) in by_topic {
-                section.push_str(&format!("#### Topic: {}\n\n", topic));
+                section.push_str(&format!("#### Topic: {topic}\n\n"));
                 for pattern in patterns {
                     section.push_str(&format!(
                         "##### {}\n\n{}\n---\n\n",
@@ -279,7 +301,7 @@ impl LLMAdapter for ClaudeImpl {
         let mut content = String::new();
 
         // Header
-        content.push_str(&format!("# {} - Claude Context\n\n", project_name));
+        content.push_str(&format!("# {project_name} - Claude Context\n\n"));
         content.push_str("This context is maintained by Patina and provides comprehensive project understanding.\n\n");
 
         // Table of Contents
@@ -308,10 +330,10 @@ impl LLMAdapter for ClaudeImpl {
             "- **Working Directory**: {}\n",
             project_path.display()
         ));
-        content.push_str("\n");
+        content.push('\n');
 
         content.push_str(&self.format_development_section(environment));
-        content.push_str("\n");
+        content.push('\n');
         content.push_str(&self.format_languages_section(environment));
 
         // Key environment variables
@@ -320,13 +342,13 @@ impl LLMAdapter for ClaudeImpl {
             if key == "PATH" || key.starts_with("RUST") || key.starts_with("CARGO") {
                 continue; // Skip noisy vars
             }
-            content.push_str(&format!("- **{}**: {}\n", key, value));
+            content.push_str(&format!("- **{key}**: {value}\n"));
         }
 
         // Project Design section
         content.push_str("\n## Project Design\n\n");
-        content.push_str(&design_content);
-        content.push_str("\n");
+        content.push_str(design_content);
+        content.push('\n');
 
         // Brain Patterns section (if patterns exist)
         if !patterns.is_empty() {
@@ -390,7 +412,7 @@ impl LLMAdapter for ClaudeImpl {
         content.push_str("Patina uses a two-phase session workflow: **Capture** (during work) → **Distill** (at session end)\n\n");
         content.push_str("### Available Commands\n\n");
         for (cmd, desc) in self.get_custom_commands() {
-            content.push_str(&format!("- `{}` - {}\n", cmd, desc));
+            content.push_str(&format!("- `{cmd}` - {desc}\n"));
         }
 
         content.push_str("\n### Session Workflow\n\n");

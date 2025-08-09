@@ -78,7 +78,7 @@ pub(super) fn get_changelog_since(from_version: &str) -> Vec<String> {
             break;
         }
         for change in *version_changes {
-            changes.push(format!("{}: {}", version, change));
+            changes.push(format!("{version}: {change}"));
         }
     }
 
@@ -87,7 +87,7 @@ pub(super) fn get_changelog_since(from_version: &str) -> Vec<String> {
         changes.clear();
         for (version, version_changes) in VERSION_CHANGES {
             for change in *version_changes {
-                changes.push(format!("{}: {}", version, change));
+                changes.push(format!("{version}: {change}"));
             }
         }
     }

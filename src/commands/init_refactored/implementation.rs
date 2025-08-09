@@ -1,8 +1,8 @@
 // Private implementation - this file can be as large as needed
 // It's completely hidden behind the black-box boundary in mod.rs
 
-mod design_wizard;
-mod tool_installer;
+use super::design_wizard;
+use super::tool_installer;
 
 use anyhow::{Context, Result};
 use std::env;

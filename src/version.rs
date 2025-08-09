@@ -4,11 +4,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-// Import from refactored module if available, otherwise from old module
-#[cfg(not(feature = "refactored"))]
+// Import from the regular module
 use crate::adapters::claude::CLAUDE_ADAPTER_VERSION;
-#[cfg(feature = "refactored")]
-use crate::adapters::claude_refactored::CLAUDE_ADAPTER_VERSION;
 use crate::adapters::gemini::GEMINI_ADAPTER_VERSION;
 use crate::dev_env::dagger::DAGGER_VERSION;
 use crate::dev_env::docker::DOCKER_VERSION;
