@@ -11,3 +11,5 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
 
 // Everything below here is private
 mod implementation;
+mod design_wizard;
+mod tool_installer;
