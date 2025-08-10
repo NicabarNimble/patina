@@ -9,14 +9,15 @@ Cargo.lock
 .vscode/
 *.iml
 .claude/
-pipelines/
 
-# Workspace reference repositories
-workspace/reference/container-use/
-workspace/reference/rqlite/
+# Patina Dust
+layer/dust/
 
-# Build artifacts from workspace
-workspace/target/
+# Workspace Go Artifacts
+workspace/workspace-server
+workspace/**/*.exe
+workspace/**/*.test
+workspace/vendor/
 
 # Local development
 docker-compose.yml
