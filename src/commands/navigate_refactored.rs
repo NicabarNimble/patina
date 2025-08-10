@@ -15,7 +15,7 @@ pub fn execute(
 
 // Everything else is private
 mod implementation {
-    use anyhow::Result;
+    use anyhow::{Context, Result};
     use colored::Colorize;
     use patina::indexer_refactored::{Confidence, Layer, Location, NavigationResponse, PatternIndexer};
     use patina::session::SessionManager;
