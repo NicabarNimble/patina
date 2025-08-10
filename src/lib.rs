@@ -1,8 +1,9 @@
 pub mod adapters;
+pub mod config;
 pub mod dev_env;
 pub mod environment;
 pub mod indexer;
-pub mod indexer_refactored;
+pub mod indexer_refactored; // Proper black-box wrapper for indexer
 pub mod layer;
 pub mod session;
 pub mod version;

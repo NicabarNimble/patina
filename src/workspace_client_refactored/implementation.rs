@@ -179,7 +179,12 @@ impl WorkspaceClientImpl {
             env: None,
         };
         let response = self.execute_full(workspace_id, request)?;
-        Ok(response.output)
+        // Combine stdout and stderr like the original does
+        if response.exit_code != 0 {
+            Ok(format!("{}\n{}", response.stdout, response.stderr))
+        } else {
+            Ok(response.stdout)
+        }
     }
 
     /// Execute a command in a workspace (full)
@@ -286,8 +291,8 @@ impl WorkspaceClientImpl {
 }
 
 /// Check if the workspace service is running
-pub fn is_service_running(port: u16) -> bool {
-    let client = match WorkspaceClient::new(format!("http://localhost:{port}")) {
+pub(super) fn is_service_running(port: u16) -> bool {
+    let client = match WorkspaceClientImpl::new(format!("http://localhost:{port}")) {
         Ok(c) => c,
         Err(_) => return false,
     };
