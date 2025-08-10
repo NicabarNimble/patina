@@ -17,7 +17,7 @@ pub fn execute(
 mod implementation {
     use anyhow::{Context, Result};
     use colored::Colorize;
-    use patina::indexer::{Confidence, Layer, Location, NavigationResponse, PatternIndexer};
+    use patina::indexer_refactored::{Confidence, GitState, Layer, Location, NavigationResponse, PatternIndexer};
     use patina::session::SessionManager;
     use serde_json::json;
 

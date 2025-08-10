@@ -2,6 +2,7 @@
 // Minimal public interface - all structs and implementation hidden
 
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Client for workspace operations
@@ -41,6 +42,35 @@ impl WorkspaceClient {
     pub fn health_check(&self) -> Result<bool> {
         self.inner.health_check()
     }
+}
+
+// TEMPORARY EXPORTS - These will be removed once commands are black-boxed
+// TODO: Remove these exports after black-boxing agent.rs and dev_env/dagger.rs
+
+/// Request to create a workspace (DEPRECATED - will be removed)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[deprecated(note = "Will be removed after black-boxing. Use WorkspaceClient methods instead")]
+pub struct CreateWorkspaceRequest {
+    pub name: String,
+    pub image: String,
+    pub command: Vec<String>,
+    pub env: HashMap<String, String>,
+    pub mounts: Vec<String>,
+}
+
+/// Request to execute command in workspace (DEPRECATED - will be removed)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[deprecated(note = "Will be removed after black-boxing. Use WorkspaceClient::exec instead")]
+pub struct ExecRequest {
+    pub command: Vec<String>,
+    pub env: HashMap<String, String>,
+    pub working_dir: Option<String>,
+}
+
+/// Check if the workspace service is running (DEPRECATED - will be removed)
+#[deprecated(note = "Will be removed after black-boxing. Use WorkspaceClient::health_check instead")]
+pub fn is_service_running(port: u16) -> bool {
+    implementation::is_service_running(port)
 }
 
 // Everything else is private

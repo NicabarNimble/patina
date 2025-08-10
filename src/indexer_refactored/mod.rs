@@ -1,27 +1,22 @@
 // Dependable Rust: Black-box boundary for indexer
-// This is the ONLY public interface - all 17 exports are now hidden
+// Exposes domain primitives (Pattern, Location, Confidence, Layer)
+// Hides implementation mechanisms (GitState internals, SqliteClient, HybridDatabase)
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-/// Navigation result from pattern search
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NavigationResult {
-    pub query: String,
-    pub locations: Vec<LocationInfo>,
-}
+// Re-export ONLY the domain primitives that consumers need
+// These are the "format" - the language we speak about patterns
+pub use crate::indexer::{
+    Confidence,     // Domain primitive: How confident are we?
+    GitState,       // Domain primitive: What's the git status?
+    Layer,          // Domain primitive: Which layer (Core/Surface/Dust)?
+    Location,       // Domain primitive: Where is the pattern?
+    NavigationResponse, // Domain primitive: Navigation results
+    Pattern,        // Domain primitive: The pattern itself
+};
 
-/// Location information for a pattern
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LocationInfo {
-    pub path: PathBuf,
-    pub line: Option<usize>,
-    pub confidence: f32,
-    pub preview: Option<String>,
-}
-
-/// Main pattern indexer facade - hides all complexity
+/// Pattern indexer facade - hides all implementation complexity
 pub struct PatternIndexer {
     inner: Box<implementation::IndexerImpl>,
 }
@@ -52,23 +47,53 @@ impl PatternIndexer {
     }
 
     /// Index a directory of patterns
-    pub fn index_directory(&self, path: &Path) -> Result<()> {
-        self.inner.index_directory(path)
+    pub fn index_directory(&self, dir: &Path) -> Result<()> {
+        self.inner.index_directory(dir)
     }
 
-    /// Navigate to find patterns
-    pub fn navigate(&self, query: &str) -> NavigationResult {
+    /// Navigate to find patterns matching a query
+    pub fn navigate(&self, query: &str) -> NavigationResponse {
         self.inner.navigate(query)
-    }
-
-    /// Clear the index
-    pub fn clear(&mut self) -> Result<()> {
-        self.inner.clear()
     }
 }
 
-// Everything else is private - all submodules hidden
-mod implementation;
+// Everything else is private - all implementation hidden
+mod implementation {
+    use super::*;
+    use crate::indexer as original;
 
-// Re-export the implementation module as the entire indexer 
-pub(super) use implementation::*;
+    pub(super) struct IndexerImpl {
+        // We just delegate to the original indexer
+        // This allows us to completely rewrite the implementation later
+        // without changing the public API
+        indexer: original::PatternIndexer,
+    }
+
+    impl IndexerImpl {
+        pub(super) fn new() -> Result<Self> {
+            Ok(Self {
+                indexer: original::PatternIndexer::new()?,
+            })
+        }
+
+        pub(super) fn with_database(db_path: &Path) -> Result<Self> {
+            Ok(Self {
+                indexer: original::PatternIndexer::with_database(db_path)?,
+            })
+        }
+
+        pub(super) fn with_hybrid_database(db_path: &Path, enable_crdt: bool) -> Result<Self> {
+            Ok(Self {
+                indexer: original::PatternIndexer::with_hybrid_database(db_path, enable_crdt)?,
+            })
+        }
+
+        pub(super) fn index_directory(&self, dir: &Path) -> Result<()> {
+            self.indexer.index_directory(dir)
+        }
+
+        pub(super) fn navigate(&self, query: &str) -> NavigationResponse {
+            self.indexer.navigate(query)
+        }
+    }
+}
