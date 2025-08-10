@@ -1,7 +1,7 @@
 // Dependable Rust: Black-box boundary for navigate command
 // This hides all indexer implementation details
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 
 /// Execute navigation query with clean interface
 pub fn execute(
@@ -15,9 +15,9 @@ pub fn execute(
 
 // Everything else is private
 mod implementation {
-    use anyhow::{Context, Result};
+    use anyhow::Result;
     use colored::Colorize;
-    use patina::indexer_refactored::{Confidence, GitState, Layer, Location, NavigationResponse, PatternIndexer};
+    use patina::indexer_refactored::{Confidence, Layer, Location, NavigationResponse, PatternIndexer};
     use patina::session::SessionManager;
     use serde_json::json;
 

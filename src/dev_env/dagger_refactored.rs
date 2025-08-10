@@ -47,7 +47,7 @@ impl DevEnvironment for DaggerEnvironment {
 
 // Everything else is private
 mod implementation {
-    use anyhow::{Context, Result};
+    use anyhow::Result;
     use std::path::Path;
     use std::process::Command;
     use uuid::Uuid;
@@ -184,7 +184,7 @@ mod implementation {
             // For refactored version, we'll use the simplified API when it's ready
             // For now, still use the deprecated exports
             #[allow(deprecated)]
-            let request = CreateWorkspaceRequest {
+            let _request = CreateWorkspaceRequest {
                 name: name.to_string(),
                 image: "rust:latest".to_string(),
                 command: vec![],
@@ -227,10 +227,9 @@ mod implementation {
         work_dir: Option<&str>,
     ) -> Result<String> {
         // This hides the ExecRequest struct
-        use std::collections::HashMap;
         
         if crate::config::use_refactored_workspace() {
-            use crate::workspace_client_refactored::{ExecRequest, WorkspaceClient};
+            use crate::workspace_client_refactored::WorkspaceClient;
             let client = WorkspaceClient::new("http://localhost:8080".to_string())?;
             
             // Use the simplified exec API
