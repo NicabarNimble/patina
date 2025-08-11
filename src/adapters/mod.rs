@@ -91,7 +91,6 @@ pub fn get_adapter(llm_name: &str) -> Box<dyn LLMAdapter> {
     match llm_name.to_lowercase().as_str() {
         "claude" => Box::new(claude::ClaudeAdapter),
         "gemini" => Box::new(gemini::GeminiAdapter),
-        _ => Box::new(claude::ClaudeAdapter)
-        }
+        _ => Box::new(claude::ClaudeAdapter),
     }
 }
