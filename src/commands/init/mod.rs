@@ -386,7 +386,7 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
         let enable_crdt = std::env::var("PATINA_ENABLE_CRDT").is_ok();
 
         if enable_crdt {
-            match patina::indexer::HybridDatabase::new(&navigation_db_path, true) {
+            match patina::indexer::advanced::HybridDatabase::new(&navigation_db_path, true) {
                 Ok(db) => {
                     db.initialize_schema()?;
                     println!("  ✓ Created navigation database with CRDT support");
@@ -395,13 +395,13 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
                     eprintln!("  ⚠️  Could not create HybridDatabase: {e}");
                     eprintln!("     Falling back to regular SQLite...");
 
-                    let db = patina::indexer::SqliteClient::new(&navigation_db_path)?;
+                    let db = patina::indexer::advanced::SqliteClient::new(&navigation_db_path)?;
                     db.initialize_schema()?;
                     println!("  ✓ Created navigation database (SQLite only)");
                 }
             }
         } else {
-            let db = patina::indexer::SqliteClient::new(&navigation_db_path)?;
+            let db = patina::indexer::advanced::SqliteClient::new(&navigation_db_path)?;
             db.initialize_schema()?;
             println!("  ✓ Created navigation database");
         }
