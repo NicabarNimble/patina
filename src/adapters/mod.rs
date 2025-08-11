@@ -1,5 +1,4 @@
 pub mod claude;
-pub mod claude_refactored;
 pub mod gemini;
 
 use crate::environment::Environment;
@@ -90,22 +89,9 @@ pub trait LLMAdapter {
 /// Get an LLM adapter by name
 pub fn get_adapter(llm_name: &str) -> Box<dyn LLMAdapter> {
     match llm_name.to_lowercase().as_str() {
-        "claude" => {
-            // Use refactored version if environment variable is set
-            if crate::config::use_refactored_claude() {
-                claude_refactored::create()
-            } else {
-                Box::new(claude::ClaudeAdapter)
-            }
-        }
+        "claude" => Box::new(claude::ClaudeAdapter),
         "gemini" => Box::new(gemini::GeminiAdapter),
-        _ => {
-            // Default to claude, respecting the refactored flag
-            if crate::config::use_refactored_claude() {
-                claude_refactored::create()
-            } else {
-                Box::new(claude::ClaudeAdapter)
-            }
+        _ => Box::new(claude::ClaudeAdapter)
         }
     }
 }
