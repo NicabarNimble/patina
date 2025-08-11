@@ -11,34 +11,6 @@ tags: [architecture, context, core-function]
 
 Patina's core function: orchestrate context between users, LLMs, and accumulated wisdom.
 
-## Verification
-
-```bash
-#!/bin/bash
-# Verify context orchestration flow:
-
-echo "Checking context orchestration..."
-
-# Environment detection feeds context
-grep -q "pub struct Environment" src/environment.rs || exit 1
-grep -q "pub fn detect()" src/environment.rs || exit 1
-
-# Layer provides patterns for context
-grep -q "pub fn get_patterns" src/layer/mod.rs || exit 1
-grep -q "PatternType" src/layer/mod.rs || exit 1
-
-# Adapters consume environment + patterns
-grep -q "generate_context.*patterns.*Environment" src/adapters/mod.rs || exit 1
-
-# Context files are generated
-test -f CLAUDE.md || echo "⚠ CLAUDE.md not found (run patina init first)"
-
-# Update command refreshes context
-cargo run -- update --help 2>/dev/null | grep -q "context" || exit 1
-
-echo "✓ Context orchestration verified"
-```
-
 ## The Pattern
 
 Context flows through Patina:

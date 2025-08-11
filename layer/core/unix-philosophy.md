@@ -11,30 +11,6 @@ tags: [architecture, philosophy, core-principle]
 
 Patina follows Unix philosophy: one tool, one job, done well.
 
-## Verification
-
-```bash
-#!/bin/bash
-# Verify single-purpose design:
-
-# Each module has one clear responsibility
-grep -q "mod layer;" src/lib.rs || exit 1      # Layer management
-grep -q "mod adapters;" src/lib.rs || exit 1   # LLM adapters
-grep -q "mod commands;" src/lib.rs || exit 1   # CLI commands
-grep -q "mod environment;" src/lib.rs || exit 1 # Environment detection
-
-# Commands do one thing
-cargo run -- --help 2>/dev/null | grep -q "init.*Initialize" || exit 1
-cargo run -- --help 2>/dev/null | grep -q "update.*Update" || exit 1
-cargo run -- --help 2>/dev/null | grep -q "doctor.*Check" || exit 1
-
-# Clean separation - no cross-module imports
-! grep -r "use crate::commands" src/adapters/ 2>/dev/null || exit 1
-! grep -r "use crate::adapters" src/layer/ 2>/dev/null || exit 1
-
-echo "✓ Unix philosophy verified"
-```
-
 ## The Pattern
 
 Each Patina component has a single, clear responsibility:
