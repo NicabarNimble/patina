@@ -23,12 +23,6 @@ pub fn use_refactored_claude() -> bool {
         .unwrap_or(false)
 }
 
-/// Check if we should use the refactored agent command
-pub fn use_refactored_agent() -> bool {
-    env::var("PATINA_USE_REFACTORED_AGENT")
-        .map(|v| v == "1" || v.to_lowercase() == "true")
-        .unwrap_or(false)
-}
 
 /// Check if we should use the refactored dagger environment
 pub fn use_refactored_dagger() -> bool {
@@ -43,6 +37,5 @@ pub fn print_refactor_config() {
     eprintln!("  Workspace: {}", if use_refactored_workspace() { "refactored" } else { "original" });
     eprintln!("  Init: {}", if use_refactored_init() { "refactored" } else { "original" });
     eprintln!("  Claude: {}", if use_refactored_claude() { "refactored" } else { "original" });
-    eprintln!("  Agent: {}", if use_refactored_agent() { "refactored" } else { "original" });
     eprintln!("  Dagger: {}", if use_refactored_dagger() { "refactored" } else { "original" });
 }
