@@ -78,7 +78,9 @@ impl GitAwareNavigationMap {
 
     /// Navigate to find patterns matching a query
     pub fn navigate(&self, query: &str) -> NavigationResponse {
+        use std::collections::HashSet;
         let mut locations = Vec::new();
+        let mut seen_paths = HashSet::new();
 
         // Find concepts matching the query
         let concepts = self.extract_concepts(query);
@@ -86,6 +88,11 @@ impl GitAwareNavigationMap {
         for concept in &concepts {
             if let Some(concept_locations) = self.concepts.get(concept) {
                 for loc in concept_locations {
+                    // Skip if we've already added this path
+                    if !seen_paths.insert(loc.path.clone()) {
+                        continue;
+                    }
+
                     let mut location = loc.clone();
 
                     // Enrich with git state
