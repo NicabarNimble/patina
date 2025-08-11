@@ -235,14 +235,12 @@ fn main() -> Result<()> {
         } => {
             commands::navigate::execute(&query, all_branches, layer, json)?;
         }
-        Commands::Agent { command } => {
-            match command {
-                AgentCommands::Start => commands::agent::start()?,
-                AgentCommands::Stop => commands::agent::stop()?,
-                AgentCommands::Status => commands::agent::status()?,
-                AgentCommands::List => commands::agent::list()?,
-            }
-        }
+        Commands::Agent { command } => match command {
+            AgentCommands::Start => commands::agent::start()?,
+            AgentCommands::Stop => commands::agent::stop()?,
+            AgentCommands::Status => commands::agent::status()?,
+            AgentCommands::List => commands::agent::list()?,
+        },
         Commands::Doctor { json } => {
             let exit_code = commands::doctor::execute(json)?;
             if exit_code != 0 {

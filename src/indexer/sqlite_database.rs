@@ -329,7 +329,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
 
-        let client = SqliteClient::new(&db_path).unwrap();
+        let _client = SqliteClient::new(&db_path).unwrap();
         assert!(db_path.exists());
     }
 

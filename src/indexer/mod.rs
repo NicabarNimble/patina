@@ -13,8 +13,8 @@ pub mod state_machine;
 
 pub use git_state::{Confidence, GitEvent, GitState};
 pub use hybrid_database::{HybridDatabase, NavigationCRDT, Pattern, WorkspaceState};
-pub use sqlite_database::SqliteClient;
 pub use navigation_state::{DocumentInfo, GitAwareNavigationMap, WorkspaceNavigationState};
+pub use sqlite_database::SqliteClient;
 pub use state_machine::GitNavigationStateMachine;
 
 use anyhow::{Context, Result};
