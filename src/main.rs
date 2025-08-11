@@ -182,12 +182,7 @@ fn main() -> Result<()> {
             design,
             dev,
         } => {
-            // Use refactored version if environment variable is set
-            if patina::config::use_refactored_init() {
-                commands::init_refactored::execute(name, llm, design, dev)?;
-            } else {
-                commands::init::execute(name, llm, design, dev)?;
-            }
+            commands::init::execute(name, llm, design, dev)?;
         }
         Commands::Upgrade { check, json } => {
             commands::upgrade::execute(check, json)?;
