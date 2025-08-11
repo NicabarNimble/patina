@@ -5,7 +5,7 @@
 //! search results.
 
 // pub mod database; // rqlite - deprecated in favor of SQLite
-pub mod benchmark;
+// pub mod benchmark; // Removed - development tool
 // pub mod cr_sqlite_database; // Removed in favor of hybrid approach
 pub mod git_detection;
 pub mod git_state;

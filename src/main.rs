@@ -238,12 +238,7 @@ fn main() -> Result<()> {
             layer,
             json,
         } => {
-            // Use refactored version if environment variable is set
-            if patina::config::use_refactored_navigate() {
-                commands::navigate_refactored::execute(&query, all_branches, layer, json)?;
-            } else {
-                commands::navigate::execute(&query, all_branches, layer, json)?;
-            }
+            commands::navigate::execute(&query, all_branches, layer, json)?;
         }
         Commands::Agent { command } => {
             // Use refactored version if environment variable is set
