@@ -11,39 +11,6 @@ tags: [rust, architecture, ownership]
 
 Patina uses Rust's ownership system to enforce clear data responsibilities and prevent runtime errors.
 
-## Verification
-
-```bash
-#!/bin/bash
-# Verify ownership patterns are followed:
-
-echo "Checking ownership patterns..."
-
-# No unnecessary cloning - prefer borrowing
-if grep -r "\.clone()" src/ | grep -v "test" | grep -v "// TODO" | wc -l | grep -q "^0"; then
-    echo "✓ No unnecessary cloning found"
-else
-    echo "⚠ Some cloning detected (may be necessary)"
-fi
-
-# Layer owns its patterns
-grep -q "pub struct Layer {" src/layer/mod.rs || exit 1
-grep -q "patterns: Vec<Pattern>" src/layer/mod.rs || exit 1
-
-# Session manager owns sessions
-grep -q "pub struct SessionManager" src/session.rs || exit 1
-
-# Proper use of references in function signatures
-grep -q "fn.*(&self" src/layer/mod.rs || exit 1
-grep -q "fn.*(&mut self" src/layer/mod.rs || exit 1
-
-# Result types for error handling
-grep -q "Result<" src/layer/mod.rs || exit 1
-grep -q "use anyhow::Result" src/ -r || exit 1
-
-echo "✓ Rust ownership patterns verified"
-```
-
 ## The Pattern
 
 Ownership in Patina follows these principles:
