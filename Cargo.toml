@@ -6,9 +6,6 @@ edition = "2021"
 [features]
 default = []
 dev = []  # Developer commands - not included in user builds
-# Refactoring features - enable with environment variables or cargo flags
-use_refactored_indexer = []
-use_refactored_workspace = []
 
 [dependencies]
 # CLI framework
