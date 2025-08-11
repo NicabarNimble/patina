@@ -1,5 +1,4 @@
 pub mod adapters;
-pub mod config;
 pub mod dev_env;
 pub mod environment;
 pub mod indexer;

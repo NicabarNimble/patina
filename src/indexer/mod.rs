@@ -4,23 +4,16 @@
 //! pattern evolution through git states and provides confidence-based
 //! search results.
 
-// pub mod database; // rqlite - deprecated in favor of SQLite
-// pub mod benchmark; // Removed - development tool
-// pub mod cr_sqlite_database; // Removed in favor of hybrid approach
 pub mod git_detection;
 pub mod git_state;
 pub mod hybrid_database;
-// pub mod monitoring; // TODO: Update to synchronous
 pub mod navigation_state;
 pub mod sqlite_database;
 pub mod state_machine;
 
-// pub use database::RqliteClient; // rqlite - deprecated
-// pub use cr_sqlite_database::CrSqliteDatabase; // Removed in favor of hybrid approach
 pub use git_state::{Confidence, GitEvent, GitState};
 pub use hybrid_database::{HybridDatabase, NavigationCRDT, Pattern, WorkspaceState};
 pub use sqlite_database::SqliteClient;
-// pub use monitoring::WorkspaceMonitor; // TODO: Update to synchronous
 pub use navigation_state::{DocumentInfo, GitAwareNavigationMap, WorkspaceNavigationState};
 pub use state_machine::GitNavigationStateMachine;
 
