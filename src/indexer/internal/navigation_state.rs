@@ -285,7 +285,10 @@ mod tests {
 
         // Query for it
         let response = map.navigate("how to implement JWT authentication");
-        assert_eq!(response.locations.len(), 2); // Should find both concepts
+        assert_eq!(response.locations.len(), 1); // Should find document once (deduped)
         assert_eq!(response.query, "how to implement JWT authentication");
+        
+        // Verify it's the right document
+        assert_eq!(response.locations[0].path, PathBuf::from("auth.md"));
     }
 }
