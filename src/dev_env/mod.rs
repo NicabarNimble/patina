@@ -1,5 +1,4 @@
 pub mod dagger;
-pub mod dagger_refactored;
 pub mod docker;
 
 use anyhow::Result;
@@ -39,14 +38,7 @@ pub trait DevEnvironment {
 /// Get a development environment by name
 pub fn get_dev_env(name: &str) -> Box<dyn DevEnvironment> {
     match name.to_lowercase().as_str() {
-        "dagger" => {
-            // Use refactored version if environment variable is set
-            if crate::config::use_refactored_dagger() {
-                Box::new(dagger_refactored::DaggerEnvironment)
-            } else {
-                Box::new(dagger::DaggerEnvironment)
-            }
-        }
+        "dagger" => Box::new(dagger::DaggerEnvironment),
         "docker" => Box::new(docker::DockerEnvironment),
         _ => Box::new(docker::DockerEnvironment), // Default to Docker
     }
