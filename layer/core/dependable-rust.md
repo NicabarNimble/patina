@@ -1,5 +1,5 @@
 ---
-id: dependable-rust-structure
+id: dependable-rust
 status: active
 created: 2025-08-11
 references: []
