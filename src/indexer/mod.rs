@@ -21,28 +21,37 @@ mod internal;
 
 // Core public API - minimal surface
 pub use internal::{
-    // Main indexer
-    PatternIndexer,
-    
-    // Response types
-    NavigationResponse, Location, Layer, Confidence, WorkspaceHint,
-    
+    Confidence,
     // Git state (needed for confidence scoring)
     GitState,
+    Layer,
+    Location,
+    // Response types
+    NavigationResponse,
+    // Main indexer
+    PatternIndexer,
+
+    WorkspaceHint,
 };
 
 // Advanced API - for specialized use cases
 pub mod advanced {
     pub use super::internal::{
-        // Database types
-        HybridDatabase, NavigationCRDT, Pattern, WorkspaceState,
+        // Git modules
+        git_detection,
+        git_state,
         // Navigation internals
-        DocumentInfo, GitAwareNavigationMap, WorkspaceNavigationState,
-        // Database client
-        SqliteClient,
+        DocumentInfo,
+        GitAwareNavigationMap,
         // State machine
         GitNavigationStateMachine,
-        // Git modules
-        git_detection, git_state,
+        // Database types
+        HybridDatabase,
+        NavigationCRDT,
+        Pattern,
+        // Database client
+        SqliteClient,
+        WorkspaceNavigationState,
+        WorkspaceState,
     };
 }
