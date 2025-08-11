@@ -241,23 +241,11 @@ fn main() -> Result<()> {
             commands::navigate::execute(&query, all_branches, layer, json)?;
         }
         Commands::Agent { command } => {
-            // Use refactored version if environment variable is set
-            if patina::config::use_refactored_agent() {
-                use commands::agent_refactored::AgentSubcommand;
-                let subcommand = match command {
-                    AgentCommands::Start => AgentSubcommand::Start,
-                    AgentCommands::Stop => AgentSubcommand::Stop,
-                    AgentCommands::Status => AgentSubcommand::Status,
-                    AgentCommands::List => AgentSubcommand::List,
-                };
-                commands::agent_refactored::execute(subcommand)?;
-            } else {
-                match command {
-                    AgentCommands::Start => commands::agent::start()?,
-                    AgentCommands::Stop => commands::agent::stop()?,
-                    AgentCommands::Status => commands::agent::status()?,
-                    AgentCommands::List => commands::agent::list()?,
-                }
+            match command {
+                AgentCommands::Start => commands::agent::start()?,
+                AgentCommands::Stop => commands::agent::stop()?,
+                AgentCommands::Status => commands::agent::status()?,
+                AgentCommands::List => commands::agent::list()?,
             }
         }
         Commands::Doctor { json } => {
