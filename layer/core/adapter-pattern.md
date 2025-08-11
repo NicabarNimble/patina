@@ -11,37 +11,6 @@ tags: [architecture, patterns, adapters]
 
 Patina uses trait-based adapters to remain LLM-agnostic while providing rich integrations.
 
-## Verification
-
-```bash
-#!/bin/bash
-# Verify adapter pattern implementation:
-
-echo "Checking adapter pattern..."
-
-# Core adapter trait exists
-grep -q "pub trait LLMAdapter" src/adapters/mod.rs || exit 1
-
-# Required adapter methods
-grep -q "fn name(&self)" src/adapters/mod.rs || exit 1
-grep -q "fn init_project" src/adapters/mod.rs || exit 1
-grep -q "fn generate_context" src/adapters/mod.rs || exit 1
-
-# Concrete adapters implement the trait
-grep -q "impl LLMAdapter for ClaudeAdapter" src/adapters/claude.rs || exit 1
-grep -q "impl LLMAdapter for GeminiAdapter" src/adapters/gemini.rs || exit 1
-
-# No adapter-specific code in core commands
-if grep -r "ClaudeAdapter" src/commands/ 2>/dev/null | grep -v "test"; then
-    echo "✗ Adapter-specific code found in commands"
-    exit 1
-fi
-
-# Trait objects used for dynamic dispatch
-grep -q "Box<dyn LLMAdapter>" src/ -r || grep -q "&dyn LLMAdapter" src/ -r || exit 1
-
-echo "✓ Adapter pattern verified"
-```
 
 ## The Pattern
 
