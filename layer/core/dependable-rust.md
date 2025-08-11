@@ -2,7 +2,7 @@
 id: dependable-rust
 status: active
 created: 2025-08-11
-references: []
+references: [dependable-go]
 tags: [architecture, rust, black-box, dependable, core]
 ---
 
