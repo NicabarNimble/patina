@@ -14,7 +14,7 @@ use toml::Value;
 use patina::environment::Environment;
 use patina::layer::Layer;
 
-use self::backup::backup_gitignored_dirs;
+use self::backup::{backup_gitignored_dirs, restore_session_files};
 use self::config::{create_project_config, handle_version_manifest};
 use self::patterns::copy_core_patterns_safe;
 use self::validation::{determine_dev_environment, validate_environment};
@@ -110,6 +110,9 @@ pub fn execute_init(
     let adapter = patina::adapters::get_adapter(&llm);
     adapter.init_project(&project_path, &design_toml, &environment)?;
     println!("  ✓ Created {} integration files", llm);
+    
+    // Restore preserved session files if any
+    restore_session_files()?;
     
     // Initialize dev environment
     dev_env.init_project(&project_path, &name, "app")?;
