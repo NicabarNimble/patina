@@ -9,6 +9,7 @@ Cargo.lock
 .vscode/
 *.iml
 .claude/
+.backup/
 
 # Patina Dust
 layer/dust/
@@ -20,4 +21,4 @@ workspace/**/*.test
 workspace/vendor/
 
 # Local development
-docker-compose.yml
+docker-compose.yml.backup/
