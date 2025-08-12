@@ -8,7 +8,6 @@ use std::path::{Path, PathBuf};
 use toml::Value;
 
 use crate::environment::Environment;
-use crate::layer::Pattern;
 
 // Re-export version info
 pub use self::manifest::CLAUDE_ADAPTER_VERSION;
@@ -42,26 +41,8 @@ pub fn post_init(_project_path: &Path, _design: &Value, _dev_env: &str) -> Resul
     Ok(())
 }
 
-pub fn generate_context(
-    project_path: &Path,
-    project_name: &str,
-    _design_content: &str,
-    patterns: &[Pattern],
-    environment: &Environment,
-) -> Result<()> {
-    context_generation::write_context_file(project_path, project_name, patterns, environment)
-}
-
-pub fn update_context(
-    project_path: &Path,
-    project_name: &str,
-    _design: &Value,
-    patterns: &[Pattern],
-    environment: &Environment,
-) -> Result<()> {
-    // For now, update just regenerates the context
-    context_generation::write_context_file(project_path, project_name, patterns, environment)
-}
+// Removed pattern-based context generation methods
+// TODO: Implement real pattern extraction and context generation
 
 pub fn get_context_file_path(project_path: &Path) -> PathBuf {
     paths::get_context_file_path(project_path)

@@ -8,7 +8,6 @@
 
 use crate::adapters::LLMAdapter;
 use crate::environment::Environment;
-use crate::layer::Pattern;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use toml::Value;
@@ -50,34 +49,6 @@ impl LLMAdapter for ClaudeAdapter {
 
     fn post_init(&self, project_path: &Path, design: &Value, dev_env: &str) -> Result<()> {
         internal::post_init(project_path, design, dev_env)
-    }
-
-    fn generate_context(
-        &self,
-        project_path: &Path,
-        project_name: &str,
-        design_content: &str,
-        patterns: &[Pattern],
-        environment: &Environment,
-    ) -> Result<()> {
-        internal::generate_context(
-            project_path,
-            project_name,
-            design_content,
-            patterns,
-            environment,
-        )
-    }
-
-    fn update_context(
-        &self,
-        project_path: &Path,
-        project_name: &str,
-        design: &Value,
-        patterns: &[Pattern],
-        environment: &Environment,
-    ) -> Result<()> {
-        internal::update_context(project_path, project_name, design, patterns, environment)
     }
 
     fn get_custom_commands(&self) -> Vec<(&'static str, &'static str)> {

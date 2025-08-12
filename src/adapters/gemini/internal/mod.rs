@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use toml::Value;
 
 use crate::environment::Environment;
-use crate::layer::{Pattern, PatternType};
 
 /// Path constants for Gemini adapter
 const ADAPTER_DIR: &str = ".gemini";
@@ -26,34 +25,14 @@ pub fn init_project(project_path: &Path, design: &Value, environment: &Environme
         .unwrap_or("project");
     
     // Generate initial context
-    let content = generate_minimal_context(project_name, &[], environment);
+    let content = generate_minimal_context(project_name, environment);
     fs::write(gemini_path.join(CONTEXT_FILE), content)?;
     
     Ok(())
 }
 
-/// Generate context file
-pub fn generate_context(
-    project_path: &Path,
-    project_name: &str,
-    patterns: &[Pattern],
-    environment: &Environment,
-) -> Result<()> {
-    let content = generate_minimal_context(project_name, patterns, environment);
-    let output_path = get_context_file_path(project_path);
-    fs::write(output_path, content)?;
-    Ok(())
-}
-
-/// Update context file
-pub fn update_context(
-    project_path: &Path,
-    project_name: &str,
-    patterns: &[Pattern],
-    environment: &Environment,
-) -> Result<()> {
-    generate_context(project_path, project_name, patterns, environment)
-}
+// Removed pattern-based context generation
+// TODO: Implement real pattern extraction
 
 /// Get context file path
 pub fn get_context_file_path(project_path: &Path) -> PathBuf {
@@ -63,7 +42,6 @@ pub fn get_context_file_path(project_path: &Path) -> PathBuf {
 /// Generate minimal context for Gemini
 fn generate_minimal_context(
     project_name: &str,
-    patterns: &[Pattern],
     environment: &Environment,
 ) -> String {
     let mut content = String::new();
@@ -94,19 +72,9 @@ fn generate_minimal_context(
     }
     content.push('\n');
     
-    // Core patterns reference
-    let core_patterns: Vec<_> = patterns
-        .iter()
-        .filter(|p| matches!(p.pattern_type, PatternType::Core))
-        .collect();
-    
-    if !core_patterns.is_empty() {
-        content.push_str("## Patterns\n\n");
-        for pattern in core_patterns {
-            content.push_str(&format!("- `layer/core/{}.md`\n", pattern.name));
-        }
-        content.push('\n');
-    }
+    // TODO: Implement real pattern discovery
+    content.push_str("## Patterns\n\n");
+    content.push_str("See files in `layer/` directory for patterns and documentation.\n\n");
     
     // Footer
     content.push_str(&format!(

@@ -9,5 +9,5 @@ pub mod workspace_client;
 
 // Re-export commonly used types
 pub use environment::Environment;
-pub use layer::{Layer, Pattern, PatternType};
+pub use layer::Layer;
 pub use session::SessionManager;

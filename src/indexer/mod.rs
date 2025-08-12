@@ -5,8 +5,12 @@
 //!
 //! # Example
 //! ```no_run
+//! # use anyhow::Result;
+//! # fn main() -> Result<()> {
 //! use patina::indexer::{PatternIndexer, Layer};
+//! use std::path::Path;
 //!
+//! let layer_path = Path::new("layer");
 //! let indexer = PatternIndexer::new()?;
 //! indexer.index_directory(&layer_path)?;
 //! let results = indexer.navigate("session management");
@@ -15,6 +19,8 @@
 //! let core_results = results.locations.iter()
 //!     .filter(|loc| loc.layer == Layer::Core)
 //!     .collect::<Vec<_>>();
+//! # Ok(())
+//! # }
 //! ```
 
 mod internal;
