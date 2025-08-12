@@ -8,7 +8,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use toml::Value;
 
-use patina::layer::{Layer, Pattern, PatternType};
+use patina::layer::Layer;
 use patina::version::{UpdateChecker, VersionManifest};
 
 use self::design_wizard::{confirm, create_project_design_wizard};
@@ -353,26 +353,25 @@ pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -
         }
     }
 
-    // 11. Create initial project pattern
-    let project_pattern = Pattern {
-        name: "initialization".to_string(),
-        pattern_type: PatternType::Project(name.clone()),
-        content: format!(
-            "# {} Initialization\n\n\
-            Initialized on: {}\n\
-            LLM: {}\n\
-            Dev Environment: {}\n\n\
-            ## Design Source\n\
-            {}\n",
-            name,
-            chrono::Utc::now().to_rfc3339(),
-            llm,
-            dev,
-            design_content
-        ),
-    };
-
-    layer.store_pattern(&project_pattern)?;
+    // 11. Create initial session record
+    let session_filename = format!("{}-init.md", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
+    let session_content = format!(
+        "# {} Initialization\n\n\
+        Initialized on: {}\n\
+        LLM: {}\n\
+        Dev Environment: {}\n\n\
+        ## Design Source\n\
+        {}\n",
+        name,
+        chrono::Utc::now().to_rfc3339(),
+        llm,
+        dev,
+        design_content
+    );
+    
+    let session_path = layer.sessions_path().join(&session_filename);
+    fs::write(&session_path, &session_content)
+        .with_context(|| format!("Failed to write initialization session to: {}", session_path.display()))?;
 
     // 12. Call adapter post_init for any additional setup
     adapter.post_init(&project_path, &design_toml, &dev)?;

@@ -5,7 +5,6 @@
 
 use crate::adapters::LLMAdapter;
 use crate::environment::Environment;
-use crate::layer::Pattern;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 use toml::Value;
@@ -47,28 +46,6 @@ impl LLMAdapter for GeminiAdapter {
 
     fn post_init(&self, _project_path: &Path, _design: &Value, _dev_env: &str) -> Result<()> {
         Ok(())
-    }
-
-    fn generate_context(
-        &self,
-        project_path: &Path,
-        project_name: &str,
-        _design_content: &str,
-        patterns: &[Pattern],
-        environment: &Environment,
-    ) -> Result<()> {
-        internal::generate_context(project_path, project_name, patterns, environment)
-    }
-
-    fn update_context(
-        &self,
-        project_path: &Path,
-        project_name: &str,
-        _design: &Value,
-        patterns: &[Pattern],
-        environment: &Environment,
-    ) -> Result<()> {
-        internal::update_context(project_path, project_name, patterns, environment)
     }
 
     fn get_custom_commands(&self) -> Vec<(&'static str, &'static str)> {

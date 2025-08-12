@@ -2,7 +2,6 @@ pub mod claude;
 pub mod gemini;
 
 use crate::environment::Environment;
-use crate::layer::Pattern;
 use anyhow::Result;
 use std::path::Path;
 use toml::Value;
@@ -26,25 +25,8 @@ pub trait LLMAdapter {
         Ok(()) // Default: no-op
     }
 
-    /// Generate LLM-specific context from patterns and environment
-    fn generate_context(
-        &self,
-        project_path: &Path,
-        project_name: &str,
-        design_content: &str,
-        patterns: &[Pattern],
-        environment: &Environment,
-    ) -> Result<()>;
-
-    /// Update existing context with latest information
-    fn update_context(
-        &self,
-        project_path: &Path,
-        project_name: &str,
-        design: &Value,
-        patterns: &[Pattern],
-        environment: &Environment,
-    ) -> Result<()>;
+    // TODO: Figure out actual pattern extraction and context generation
+    // For now, removing the broken pattern-based approach
 
     /// Get custom commands for this LLM
     fn get_custom_commands(&self) -> Vec<(&'static str, &'static str)> {
