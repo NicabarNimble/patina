@@ -1,17 +1,90 @@
 use anyhow::{Context, Result};
 use patina::workspace_client;
+use std::fs;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
+
+fn get_pid_file_path() -> Result<PathBuf> {
+    let project_root = std::env::current_dir()?;
+    let pid_dir = project_root.join(".patina");
+    
+    // Ensure .patina directory exists
+    if !pid_dir.exists() {
+        fs::create_dir_all(&pid_dir)?;
+    }
+    
+    let use_modular = std::env::var("PATINA_USE_MODULAR").unwrap_or_default() == "true";
+    let pid_file = if use_modular {
+        pid_dir.join("agent-modular.pid")
+    } else {
+        pid_dir.join("agent.pid")
+    };
+    
+    Ok(pid_file)
+}
+
+fn write_pid(pid: u32) -> Result<()> {
+    let pid_file = get_pid_file_path()?;
+    fs::write(&pid_file, pid.to_string())
+        .with_context(|| format!("Failed to write PID file: {:?}", pid_file))
+}
+
+fn read_pid() -> Result<Option<u32>> {
+    let pid_file = get_pid_file_path()?;
+    
+    if !pid_file.exists() {
+        return Ok(None);
+    }
+    
+    let pid_str = fs::read_to_string(&pid_file)?;
+    let pid = pid_str.trim().parse::<u32>()
+        .with_context(|| format!("Invalid PID in file: {}", pid_str))?;
+    
+    Ok(Some(pid))
+}
+
+fn remove_pid_file() -> Result<()> {
+    let pid_file = get_pid_file_path()?;
+    if pid_file.exists() {
+        fs::remove_file(&pid_file)?;
+    }
+    Ok(())
+}
+
+fn is_process_running(pid: u32) -> bool {
+    // On Unix, we can check if process exists by sending signal 0
+    Command::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
 
 pub fn start() -> Result<()> {
     // Check if using modular system
     let use_modular = std::env::var("PATINA_USE_MODULAR").unwrap_or_default() == "true";
     let port = if use_modular { 8091 } else { 8080 };
     
-    // Check if already running
+    // Check if already running via PID file
+    if let Some(pid) = read_pid()? {
+        if is_process_running(pid) {
+            println!("✅ Agent environment service is already running on port {}", port);
+            println!("   PID: {}", pid);
+            return Ok(());
+        } else {
+            // Process died but PID file remains, clean it up
+            println!("⚠️  Found stale PID file, cleaning up...");
+            remove_pid_file()?;
+        }
+    }
+    
+    // Also check if service is running on the port (fallback)
     if workspace_client::is_service_running(port) {
         println!("✅ Agent environment service is already running on port {}", port);
+        println!("   (Started outside of patina agent)");
         return Ok(());
     }
 
@@ -67,20 +140,24 @@ pub fn start() -> Result<()> {
             .context("Failed to start agent environment service")?
     };
 
+    let pid = child.id();
+
     // Wait for service to be ready
     println!("⏳ Waiting for service to be ready...");
     let mut retries = 0;
     while retries < 30 {
         if workspace_client::is_service_running(port) {
+            // Save PID to file
+            write_pid(pid)?;
+            
             println!("✅ Agent environment service is running on port {}", port);
-            println!("   PID: {}", child.id());
+            println!("   PID: {}", pid);
             println!("   Use 'patina agent stop' to stop the service");
             if use_modular {
                 println!("   Using modular architecture");
             }
 
             // Detach the process so it continues running
-            // In a real implementation, we'd save the PID to a file
             std::mem::forget(child);
 
             return Ok(());
@@ -98,32 +175,72 @@ pub fn stop() -> Result<()> {
     let use_modular = std::env::var("PATINA_USE_MODULAR").unwrap_or_default() == "true";
     let port = if use_modular { 8091 } else { 8080 };
     
+    // Try to stop via PID file first
+    if let Some(pid) = read_pid()? {
+        if is_process_running(pid) {
+            println!("🛑 Stopping agent environment service (PID: {})...", pid);
+            
+            // Try graceful shutdown with SIGTERM
+            let output = Command::new("kill")
+                .arg(pid.to_string())
+                .output()
+                .context("Failed to send stop signal")?;
+            
+            if output.status.success() {
+                // Wait a bit for graceful shutdown
+                thread::sleep(Duration::from_secs(2));
+                
+                // Check if it stopped
+                if !is_process_running(pid) {
+                    println!("✅ Agent environment service stopped");
+                    remove_pid_file()?;
+                    return Ok(());
+                }
+                
+                // Force kill if still running
+                println!("⚠️  Service didn't stop gracefully, forcing...");
+                Command::new("kill")
+                    .arg("-9")
+                    .arg(pid.to_string())
+                    .output()?;
+                
+                println!("✅ Agent environment service stopped (forced)");
+                remove_pid_file()?;
+                return Ok(());
+            }
+        } else {
+            println!("ℹ️  PID file exists but process is not running");
+            remove_pid_file()?;
+        }
+    }
+    
+    // Fallback: Check if service is running without our PID
     if !workspace_client::is_service_running(port) {
         println!("ℹ️  Agent environment service is not running");
         return Ok(());
     }
 
-    println!("🛑 Stopping agent environment service...");
-
-    // In a real implementation, we'd read the PID from a file
-    // For now, we'll use pkill
+    println!("⚠️  Service is running but not managed by patina agent");
+    println!("   You may need to manually kill the process");
+    
+    // Last resort: try pkill
     let pattern = if use_modular {
         "api-gateway/server"
     } else {
         "workspace-server"
     };
     
+    println!("   Attempting to stop via pkill...");
     let output = Command::new("pkill")
         .arg("-f")
         .arg(pattern)
         .output()
-        .context("Failed to stop agent environment service")?;
+        .context("Failed to run pkill")?;
 
     if output.status.success() {
         println!("✅ Agent environment service stopped");
     } else {
         println!("⚠️  Failed to stop agent environment service");
-        println!("   You may need to manually kill the process");
     }
 
     Ok(())
@@ -133,10 +250,29 @@ pub fn status() -> Result<()> {
     let use_modular = std::env::var("PATINA_USE_MODULAR").unwrap_or_default() == "true";
     let port = if use_modular { 8091 } else { 8080 };
     
+    // Check PID file first
+    if let Some(pid) = read_pid()? {
+        if is_process_running(pid) {
+            println!("✅ Workspace service is running on port {}", port);
+            println!("   PID: {}", pid);
+            if use_modular {
+                println!("   Using modular architecture");
+            }
+        } else {
+            println!("⚠️  PID file exists but process {} is not running", pid);
+            println!("   Cleaning up stale PID file...");
+            remove_pid_file()?;
+        }
+    }
+    
+    // Also check if service is accessible
     if workspace_client::is_service_running(port) {
-        println!("✅ Workspace service is running on port {}", port);
-        if use_modular {
-            println!("   Using modular architecture");
+        if read_pid()?.is_none() {
+            println!("✅ Workspace service is running on port {}", port);
+            println!("   (Started outside of patina agent)");
+            if use_modular {
+                println!("   Using modular architecture");
+            }
         }
 
         // Try to get workspace list
@@ -158,29 +294,6 @@ pub fn status() -> Result<()> {
     } else {
         println!("❌ Agent environment service is not running");
         println!("   Run 'patina agent start' to start the service");
-    }
-
-    Ok(())
-}
-
-pub fn list() -> Result<()> {
-    if !workspace_client::is_service_running(8080) {
-        anyhow::bail!("Agent environment service is not running. Run 'patina agent start' first.");
-    }
-
-    let client =
-        patina::workspace_client::WorkspaceClient::new("http://localhost:8080".to_string())?;
-    let workspaces = client.list_workspaces()?;
-
-    if workspaces.is_empty() {
-        println!("No active agent environments");
-    } else {
-        println!("Active agent environments:");
-        for ws in workspaces {
-            println!("  {} - {} ({})", ws.id, ws.name, ws.status);
-            println!("    Branch: {}", ws.branch_name);
-            println!("    Image: {}", ws.base_image);
-        }
     }
 
     Ok(())
