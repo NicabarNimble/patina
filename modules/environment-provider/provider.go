@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"dagger.io/dagger"
@@ -50,6 +51,13 @@ func (p *Provider) Create(ctx context.Context, config *Config) (*Environment, er
 
 	// Create base container
 	container := p.client.Container().From(config.BaseImage)
+	
+	// Install git if using ubuntu/debian base
+	if strings.Contains(config.BaseImage, "ubuntu") || strings.Contains(config.BaseImage, "debian") {
+		container = container.
+			WithExec([]string{"apt-get", "update"}).
+			WithExec([]string{"apt-get", "install", "-y", "git"})
+	}
 
 	// Apply environment variables
 	for key, value := range config.EnvVars {
