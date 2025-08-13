@@ -116,6 +116,74 @@ func (g *Gateway) ListWorkspaces() ([]*registry.Environment, error) {
 	return g.registry.List()
 }
 
+// DeleteWorkspace removes a workspace and cleans up resources
+func (g *Gateway) DeleteWorkspace(ctx context.Context, id string) error {
+	// Check if exists
+	exists, err := g.registry.Exists(id)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("workspace not found: %s", id)
+	}
+
+	// Remove from storage
+	g.environments.Delete(id)
+	
+	// Remove container reference
+	g.mu.Lock()
+	delete(g.containers, id)
+	g.mu.Unlock()
+
+	// Remove git worktree
+	if err := g.git.RemoveWorktree(ctx, id); err != nil {
+		// Log but don't fail - worktree might already be gone
+		fmt.Printf("warning: failed to remove worktree: %v\n", err)
+	}
+
+	return nil
+}
+
+// GetGitStatus returns git status for a workspace
+func (g *Gateway) GetGitStatus(ctx context.Context, workspaceID string) (*gitmanager.Status, error) {
+	env, err := g.registry.Get(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	
+	return g.git.GetStatus(ctx, env.WorktreePath)
+}
+
+// CreateBranch creates a new branch in a workspace
+func (g *Gateway) CreateBranch(ctx context.Context, workspaceID, branchName string) error {
+	env, err := g.registry.Get(workspaceID)
+	if err != nil {
+		return err
+	}
+	
+	return g.git.CreateBranch(ctx, env.WorktreePath, branchName)
+}
+
+// CommitChanges commits changes in a workspace
+func (g *Gateway) CommitChanges(ctx context.Context, workspaceID, message, author, email string) error {
+	env, err := g.registry.Get(workspaceID)
+	if err != nil {
+		return err
+	}
+	
+	return g.git.Commit(ctx, env.WorktreePath, message, author, email)
+}
+
+// PushBranch pushes the current branch
+func (g *Gateway) PushBranch(ctx context.Context, workspaceID string) error {
+	env, err := g.registry.Get(workspaceID)
+	if err != nil {
+		return err
+	}
+	
+	return g.git.Push(ctx, env.WorktreePath)
+}
+
 // Adapter to make our environment compatible with registry
 type workspaceAdapter struct {
 	id           string
