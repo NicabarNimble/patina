@@ -150,8 +150,8 @@ pub fn status() -> Result<()> {
                         println!("   - {} ({})", ws.name, ws.status);
                     }
                 }
-                Err(_) => {
-                    println!("   Could not retrieve environment list");
+                Err(e) => {
+                    println!("   Could not retrieve environment list: {}", e);
                 }
             }
         }
