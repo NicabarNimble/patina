@@ -58,11 +58,11 @@ func (g *Gateway) CreateWorkspace(ctx context.Context, name, branch string) (str
 		return "", fmt.Errorf("failed to create worktree: %w", err)
 	}
 
-	// Create environment
+	// Create environment with copied worktree (writable)
 	env, err := g.provider.Create(ctx, &provider.Config{
 		Name:      name,
 		BaseImage: "ubuntu:latest",
-		Mounts: map[string]string{
+		Copies: map[string]string{
 			worktreePath: "/workspace/project",
 		},
 	})
