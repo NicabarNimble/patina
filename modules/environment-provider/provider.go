@@ -12,7 +12,8 @@ import (
 type Config struct {
 	Name      string
 	BaseImage string
-	Mounts    map[string]string
+	Mounts    map[string]string  // Read-only mounts
+	Copies    map[string]string  // Copy directories (writable)
 	EnvVars   map[string]string
 }
 
@@ -55,10 +56,20 @@ func (p *Provider) Create(ctx context.Context, config *Config) (*Environment, er
 		container = container.WithEnvVariable(key, value)
 	}
 
-	// Apply mounts
+	// Apply read-only mounts
 	for source, target := range config.Mounts {
-		dir := p.client.Host().Directory(source)
+		dir := p.client.Host().Directory(source, dagger.HostDirectoryOpts{
+			Exclude: []string{".git"},
+		})
 		container = container.WithMountedDirectory(target, dir)
+	}
+
+	// Apply copied directories (writable)
+	for source, target := range config.Copies {
+		dir := p.client.Host().Directory(source, dagger.HostDirectoryOpts{
+			Exclude: []string{".git"},
+		})
+		container = container.WithDirectory(target, dir)
 	}
 
 	// Set working directory

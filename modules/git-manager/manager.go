@@ -64,19 +64,25 @@ func (m *Manager) CreateWorktree(ctx context.Context, id, branch string) (string
 func (m *Manager) RemoveWorktree(ctx context.Context, id string) error {
 	worktreePath := filepath.Join(m.worktreeRoot, id)
 
-	// Remove worktree
+	// First try to remove via git
 	cmd := exec.CommandContext(ctx, "git", "-C", m.repoPath, 
 		"worktree", "remove", "--force", worktreePath)
 	
-	if output, err := cmd.CombinedOutput(); err != nil {
-		// If already removed, don't error
-		if strings.Contains(string(output), "is not a working tree") {
-			return nil
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// If not a working tree, might be partially cleaned
+		if !strings.Contains(string(output), "is not a working tree") {
+			// Log the error but continue with cleanup
+			fmt.Printf("git worktree remove warning: %s\n", output)
 		}
-		return fmt.Errorf("failed to remove worktree: %w\nOutput: %s", err, output)
 	}
 
-	// Prune worktree list
+	// Ensure physical directory is removed
+	if err := os.RemoveAll(worktreePath); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("warning: failed to remove directory %s: %v\n", worktreePath, err)
+	}
+
+	// Prune worktree list to clean up any stale entries
 	pruneCmd := exec.CommandContext(ctx, "git", "-C", m.repoPath, "worktree", "prune")
 	pruneCmd.Run() // Best effort
 
