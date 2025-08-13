@@ -150,12 +150,28 @@ impl WorkspaceClient {
         let response = self.client.get(&url).send()?;
 
         if response.status().is_success() {
+            let body = response.text()?;
+            
+            // Handle null/empty response
+            if body == "null" || body.is_empty() {
+                return Ok(Vec::new());
+            }
+            
+            // Try new API format first (direct array)
+            if let Ok(workspaces) = serde_json::from_str::<Vec<Workspace>>(&body) {
+                return Ok(workspaces);
+            }
+            
+            // Fall back to old API format {workspaces: [...]}
             #[derive(Deserialize)]
             struct ListResponse {
                 workspaces: Vec<Workspace>,
             }
-            let resp: ListResponse = response.json()?;
-            Ok(resp.workspaces)
+            if let Ok(resp) = serde_json::from_str::<ListResponse>(&body) {
+                return Ok(resp.workspaces);
+            }
+            
+            anyhow::bail!("Unexpected response format from workspace service")
         } else {
             let error: ErrorResponse = response.json()?;
             anyhow::bail!("Failed to list workspaces: {}", error.error)

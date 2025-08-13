@@ -78,6 +78,11 @@ func (h *HTTPHandlers) HandleListWorkspaces(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Ensure we return empty array instead of null
+	if envs == nil {
+		envs = []*registry.Environment{}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(envs)
 }
