@@ -143,3 +143,63 @@ type Status struct {
 	Untracked     []string
 	CurrentCommit string
 }
+
+// CreateBranch creates and checks out a new branch in a worktree
+func (m *Manager) CreateBranch(ctx context.Context, worktreePath, branchName string) error {
+	cmd := exec.CommandContext(ctx, "git", "-C", worktreePath, 
+		"checkout", "-b", branchName)
+	
+	if output, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to create branch: %w\nOutput: %s", err, output)
+	}
+	
+	return nil
+}
+
+// Commit creates a commit in a worktree
+func (m *Manager) Commit(ctx context.Context, worktreePath, message, author, email string) error {
+	// Stage all changes
+	addCmd := exec.CommandContext(ctx, "git", "-C", worktreePath, "add", "-A")
+	if output, err := addCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to stage changes: %w\nOutput: %s", err, output)
+	}
+
+	// Build commit command
+	args := []string{"-C", worktreePath, "commit", "-m", message}
+	if author != "" && email != "" {
+		args = append(args, "--author", fmt.Sprintf("%s <%s>", author, email))
+	}
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		// Check if there's nothing to commit
+		if strings.Contains(string(output), "nothing to commit") {
+			return nil
+		}
+		return fmt.Errorf("failed to commit: %w\nOutput: %s", err, output)
+	}
+
+	return nil
+}
+
+// Push pushes the current branch to origin
+func (m *Manager) Push(ctx context.Context, worktreePath string) error {
+	// Get current branch
+	branchCmd := exec.CommandContext(ctx, "git", "-C", worktreePath, 
+		"branch", "--show-current")
+	branchOut, err := branchCmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to get current branch: %w", err)
+	}
+	branch := strings.TrimSpace(string(branchOut))
+
+	// Push to origin
+	pushCmd := exec.CommandContext(ctx, "git", "-C", worktreePath, 
+		"push", "-u", "origin", branch)
+	
+	if output, err := pushCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to push: %w\nOutput: %s", err, output)
+	}
+
+	return nil
+}
