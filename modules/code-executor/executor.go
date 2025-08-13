@@ -85,11 +85,10 @@ func (e *Executor) Execute(ctx context.Context, container *dagger.Container, opt
 
 	stderr, _ := execContainer.Stderr(ctx)
 	
-	// Get exit code
-	exitCode, err := execContainer.ExitCode(ctx)
+	// Get exit code (Dagger doesn't expose this directly, infer from error)
+	exitCode := 0
 	if err != nil {
-		// If we can't get exit code, assume failure
-		exitCode = -1
+		exitCode = 1
 	}
 
 	endTime := time.Now()

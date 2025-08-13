@@ -1,12 +1,9 @@
 package gateway
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
-
-	executor "github.com/your-org/patina/modules/code-executor"
 )
 
 // HTTPHandlers provides HTTP API for the gateway
