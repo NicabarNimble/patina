@@ -29,7 +29,9 @@ pub fn backup_gitignored_dirs() -> Result<()> {
         let mut preserved_files = Vec::new();
         for file in &session_files_to_preserve {
             if Path::new(file).exists() {
-                let temp_path = format!("{file}.preserve");
+                // Create preserve files OUTSIDE .claude directory
+                let filename = Path::new(file).file_name().unwrap().to_str().unwrap();
+                let temp_path = format!(".{filename}.preserve");
                 fs::copy(file, &temp_path)?;
                 preserved_files.push((file.to_string(), temp_path));
             }
@@ -55,14 +57,14 @@ pub fn restore_session_files() -> Result<()> {
         // Ensure context directory exists
         fs::create_dir_all(".claude/context")?;
 
-        // Restore preserved files
+        // Restore preserved files (they were saved outside .claude)
         let files_to_restore = vec![
             (
-                ".claude/context/active-session.md.preserve",
+                ".active-session.md.preserve",
                 ".claude/context/active-session.md",
             ),
             (
-                ".claude/context/last-session.md.preserve",
+                ".last-session.md.preserve",
                 ".claude/context/last-session.md",
             ),
         ];
