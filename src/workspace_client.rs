@@ -12,12 +12,20 @@ pub struct WorkspaceClient {
 /// Workspace represents an isolated development environment
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Workspace {
+    #[serde(alias = "ID")]
     pub id: String,
+    #[serde(alias = "Name")]
     pub name: String,
-    pub container_id: String,
+    #[serde(default)]
+    pub container_id: String, // Old API only
+    #[serde(alias = "BranchName")]
     pub branch_name: String,
+    #[serde(alias = "BaseImage")]
     pub base_image: String,
+    #[serde(alias = "Status")]
     pub status: String,
+    #[serde(alias = "WorktreePath", default)]
+    pub worktree_path: Option<String>, // New API field
 }
 
 /// Request to create a new workspace
@@ -100,8 +108,21 @@ impl WorkspaceClient {
             .context("Failed to create workspace")?;
 
         if response.status().is_success() {
-            let resp: CreateWorkspaceResponse = response.json()?;
-            Ok(resp.workspace)
+            // Try new API format first (just returns {id: "..."})
+            let body = response.text()?;
+            if let Ok(simple_resp) = serde_json::from_str::<serde_json::Value>(&body) {
+                if let Some(id) = simple_resp.get("id").and_then(|v| v.as_str()) {
+                    // New API - need to fetch the full workspace
+                    return self.get_workspace(id);
+                }
+            }
+
+            // Fall back to old API format {workspace: {...}}
+            if let Ok(resp) = serde_json::from_str::<CreateWorkspaceResponse>(&body) {
+                return Ok(resp.workspace);
+            }
+
+            anyhow::bail!("Unexpected response format from workspace service")
         } else {
             let error: ErrorResponse = response.json()?;
             anyhow::bail!("Failed to create workspace: {}", error.error)
@@ -129,12 +150,28 @@ impl WorkspaceClient {
         let response = self.client.get(&url).send()?;
 
         if response.status().is_success() {
+            let body = response.text()?;
+
+            // Handle null/empty response
+            if body == "null" || body.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            // Try new API format first (direct array)
+            if let Ok(workspaces) = serde_json::from_str::<Vec<Workspace>>(&body) {
+                return Ok(workspaces);
+            }
+
+            // Fall back to old API format {workspaces: [...]}
             #[derive(Deserialize)]
             struct ListResponse {
                 workspaces: Vec<Workspace>,
             }
-            let resp: ListResponse = response.json()?;
-            Ok(resp.workspaces)
+            if let Ok(resp) = serde_json::from_str::<ListResponse>(&body) {
+                return Ok(resp.workspaces);
+            }
+
+            anyhow::bail!("Unexpected response format from workspace service")
         } else {
             let error: ErrorResponse = response.json()?;
             anyhow::bail!("Failed to list workspaces: {}", error.error)

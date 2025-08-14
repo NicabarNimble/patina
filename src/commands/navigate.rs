@@ -10,6 +10,19 @@ pub fn execute(
     layer: Option<String>,
     json_output: bool,
 ) -> Result<()> {
+    // Validate layer filter early if provided
+    if let Some(ref layer_filter) = layer {
+        match layer_filter.to_lowercase().as_str() {
+            "core" | "surface" | "dust" => {}
+            _ => {
+                anyhow::bail!(
+                    "Invalid layer: {}. Must be one of: core, surface, dust",
+                    layer_filter
+                );
+            }
+        }
+    }
+
     // Find project root
     let project_root = SessionManager::find_project_root()
         .context("Not in a Patina project directory. Run 'patina init' first.")?;

@@ -1,9 +1,7 @@
 pub mod claude;
-pub mod claude_refactored; // New black-box implementation
 pub mod gemini;
 
 use crate::environment::Environment;
-use crate::layer::Pattern;
 use anyhow::Result;
 use std::path::Path;
 use toml::Value;
@@ -27,25 +25,8 @@ pub trait LLMAdapter {
         Ok(()) // Default: no-op
     }
 
-    /// Generate LLM-specific context from patterns and environment
-    fn generate_context(
-        &self,
-        project_path: &Path,
-        project_name: &str,
-        design_content: &str,
-        patterns: &[Pattern],
-        environment: &Environment,
-    ) -> Result<()>;
-
-    /// Update existing context with latest information
-    fn update_context(
-        &self,
-        project_path: &Path,
-        project_name: &str,
-        design: &Value,
-        patterns: &[Pattern],
-        environment: &Environment,
-    ) -> Result<()>;
+    // TODO: Figure out actual pattern extraction and context generation
+    // For now, removing the broken pattern-based approach
 
     /// Get custom commands for this LLM
     fn get_custom_commands(&self) -> Vec<(&'static str, &'static str)> {
@@ -89,24 +70,9 @@ pub trait LLMAdapter {
 
 /// Get an LLM adapter by name
 pub fn get_adapter(llm_name: &str) -> Box<dyn LLMAdapter> {
-    // Use environment variable to switch between implementations during refactoring
-    let use_refactored = std::env::var("PATINA_USE_REFACTORED").is_ok();
-
     match llm_name.to_lowercase().as_str() {
-        "claude" => {
-            if use_refactored {
-                claude_refactored::create()
-            } else {
-                Box::new(claude::ClaudeAdapter)
-            }
-        }
-        "gemini" => Box::new(gemini::GeminiAdapter),
-        _ => {
-            if use_refactored {
-                claude_refactored::create()
-            } else {
-                Box::new(claude::ClaudeAdapter)
-            }
-        }
+        "claude" => Box::new(claude::ClaudeAdapter),
+        "gemini" => Box::new(gemini::GeminiAdapter::new()),
+        _ => Box::new(claude::ClaudeAdapter),
     }
 }

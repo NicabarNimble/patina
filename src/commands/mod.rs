@@ -2,7 +2,6 @@ pub mod agent;
 pub mod build;
 pub mod doctor;
 pub mod init;
-pub mod init_refactored;
 pub mod navigate;
 pub mod test;
 pub mod upgrade;

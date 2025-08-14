@@ -9,15 +9,16 @@ Cargo.lock
 .vscode/
 *.iml
 .claude/
+.backup/
 
 # Patina Dust
 layer/dust/
 
-# Workspace Go Artifacts
-workspace/workspace-server
-workspace/**/*.exe
-workspace/**/*.test
-workspace/vendor/
+# Module Go Artifacts
+modules/*/server
+modules/**/*.exe
+modules/**/*.test
+modules/*/vendor/
 
 # Local development
-docker-compose.yml
+docker-compose.yml.backup/
