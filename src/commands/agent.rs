@@ -252,3 +252,38 @@ pub fn status() -> Result<()> {
 
     Ok(())
 }
+
+pub fn list() -> Result<()> {
+    const PORT: u16 = 8091;
+    
+    if !workspace_client::is_service_running(PORT) {
+        println!("❌ Agent environment service is not running");
+        println!("   Run 'patina agent start' to start the service");
+        return Ok(());
+    }
+    
+    // Get workspace list
+    let client = patina::workspace_client::WorkspaceClient::new(format!("http://localhost:{}", PORT))?;
+    
+    match client.list_workspaces() {
+        Ok(workspaces) => {
+            if workspaces.is_empty() {
+                println!("No active environments");
+            } else {
+                println!("Active environments ({}):", workspaces.len());
+                for ws in workspaces {
+                    println!("  {} - {} ({})", ws.id, ws.name, ws.status);
+                    if let Some(path) = ws.worktree_path {
+                        println!("    Worktree: {}", path);
+                    }
+                    println!("    Branch: {}", ws.branch_name);
+                }
+            }
+        }
+        Err(e) => {
+            println!("❌ Failed to retrieve environment list: {}", e);
+        }
+    }
+    
+    Ok(())
+}
