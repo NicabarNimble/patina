@@ -1,5 +1,5 @@
 //! Claude adapter for Patina
-//! 
+//!
 //! Provides Claude-specific integration including:
 //! - Session management scripts
 //! - Context file generation (.claude/CLAUDE.md)
@@ -56,7 +56,10 @@ impl LLMAdapter for ClaudeAdapter {
             ("/session-start [name]", "Start a new development session"),
             ("/session-update", "Update session with rich context"),
             ("/session-note [insight]", "Add human insight to session"),
-            ("/session-end", "End session with comprehensive distillation"),
+            (
+                "/session-end",
+                "End session with comprehensive distillation",
+            ),
         ]
     }
 

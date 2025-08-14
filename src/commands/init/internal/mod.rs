@@ -22,19 +22,14 @@ use self::validation::{determine_dev_environment, validate_environment};
 use super::design_wizard::{confirm, create_project_design_wizard};
 
 /// Main execution logic for init command
-pub fn execute_init(
-    name: String,
-    llm: String,
-    design: String,
-    dev: Option<String>,
-) -> Result<()> {
+pub fn execute_init(name: String, llm: String, design: String, dev: Option<String>) -> Result<()> {
     let json_output = false; // For init command, always false
-    
+
     // Backup gitignored directories if re-initializing
     if name == "." && Path::new(".claude").exists() {
         backup_gitignored_dirs()?;
     }
-    
+
     // Check for nested project
     if name != "." && (Path::new(".patina").exists() || Path::new("PROJECT_DESIGN.toml").exists()) {
         println!("⚠️  You're already in a Patina project!");
@@ -48,7 +43,7 @@ pub fn execute_init(
             return Ok(());
         }
     }
-    
+
     // Check if re-initializing
     let is_reinit = if name == "." {
         Path::new(".patina").exists() || Path::new("PROJECT_DESIGN.toml").exists()
@@ -57,104 +52,113 @@ pub fn execute_init(
         path.exists()
             && (path.join(".patina").exists() || path.join("PROJECT_DESIGN.toml").exists())
     };
-    
+
     if is_reinit {
         println!("🔄 Re-initializing Patina project...");
     } else {
         println!("🎨 Initializing Patina project: {name}");
     }
-    
+
     // Detect environment
     println!("🔍 Detecting environment...");
     let environment = Environment::detect()?;
     let dev = dev.unwrap_or_else(|| determine_dev_environment(&environment));
-    
+
     // Display environment info
     display_environment_info(&environment);
-    
+
     // Handle PROJECT_DESIGN.toml
     let design_content = handle_project_design(&name, &design, &environment)?;
     let design_toml: Value = toml::from_str(&design_content)?;
-    
+
     // Create or determine project path
     let project_path = setup_project_path(&name)?;
-    
+
     // Copy design file if needed
     copy_design_file_if_needed(&design, &project_path)?;
-    
+
     // Initialize layer structure
     let layer_path = project_path.join("layer");
     let layer = Layer::new(&layer_path);
-    layer.init().context("Failed to initialize layer structure")?;
+    layer
+        .init()
+        .context("Failed to initialize layer structure")?;
     println!("  ✓ Created layer structure");
-    
+
     // Create project configuration
     let dev_env = patina::dev_env::get_dev_env(&dev);
-    create_project_config(&project_path, &name, &llm, &dev, &environment, dev_env.as_ref())?;
-    
+    create_project_config(
+        &project_path,
+        &name,
+        &llm,
+        &dev,
+        &environment,
+        dev_env.as_ref(),
+    )?;
+
     // Handle version manifest and updates
     let updates = handle_version_manifest(&project_path, &llm, &dev, is_reinit, json_output)?;
-    
+
     // Process updates if needed
     let should_update = if let Some(ref _updates_list) = updates {
         should_update_components(json_output)?
     } else {
         false
     };
-    
+
     if should_update {
         println!("  ✓ Components will be updated");
     }
-    
+
     // Initialize LLM adapter
     let adapter = patina::adapters::get_adapter(&llm);
     adapter.init_project(&project_path, &design_toml, &environment)?;
-    println!("  ✓ Created {} integration files", llm);
-    
+    println!("  ✓ Created {llm} integration files");
+
     // Restore preserved session files if any
     restore_session_files()?;
-    
+
     // Initialize dev environment
     dev_env.init_project(&project_path, &name, "app")?;
-    println!("  ✓ Created {} environment files", dev);
-    
+    println!("  ✓ Created {dev} environment files");
+
     // Copy core patterns
     let patterns_copied = copy_core_patterns_safe(&project_path, &layer_path)?;
     if patterns_copied {
         println!("  ✓ Copied core patterns from Patina");
     }
-    
+
     // Create initial session record
     create_init_session(&layer_path, &name, &llm, &dev, &design_content)?;
-    
+
     // Initialize navigation index
     initialize_navigation(&project_path)?;
-    
+
     // Run post-init for adapter
     adapter.post_init(&project_path, &design_toml, &dev)?;
-    
+
     // Update components if needed
     if should_update {
         update_components(&project_path, &llm)?;
     }
-    
+
     // Validate environment
     if let Some(warnings) = validate_environment(&environment, &design_toml)? {
         println!("\n⚠️  Environment warnings:");
         for warning in warnings {
-            println!("   {}", warning);
+            println!("   {warning}");
         }
     }
-    
+
     // Suggest tool installation if needed
     suggest_missing_tools(&environment, &design_toml)?;
-    
-    println!("\n✨ Project '{}' initialized successfully!", name);
+
+    println!("\n✨ Project '{name}' initialized successfully!");
     println!("\nNext steps:");
     println!("  1. patina add <type> <name>  # Add patterns to session");
     println!("  2. patina commit             # Commit patterns to layer");
     println!("  3. patina push               # Generate LLM context");
-    
+
     Ok(())
 }
 
@@ -173,15 +177,15 @@ fn display_environment_info(environment: &Environment) {
 
 fn handle_project_design(name: &str, design: &str, environment: &Environment) -> Result<String> {
     let design_path = PathBuf::from(design);
-    
+
     if design != "PROJECT_DESIGN.toml" && design_path.exists() {
         println!("📄 Using design file: {}", design_path.display());
         println!("   (Will be copied to project as PROJECT_DESIGN.toml)");
     }
-    
+
     if !design_path.exists() {
         println!("\n📋 No PROJECT_DESIGN.toml found.");
-        
+
         if confirm("Create one interactively?")? {
             let content = create_project_design_wizard(name, environment)?;
             fs::write(&design_path, &content)?;
@@ -211,10 +215,10 @@ fn setup_project_path(name: &str) -> Result<PathBuf> {
 fn copy_design_file_if_needed(design: &str, project_path: &Path) -> Result<()> {
     let design_path = PathBuf::from(design);
     let project_design_path = project_path.join("PROJECT_DESIGN.toml");
-    
+
     let source_canonical = fs::canonicalize(&design_path)?;
     let dest_canonical = fs::canonicalize(&project_design_path).ok();
-    
+
     if dest_canonical.is_none() || source_canonical != dest_canonical.unwrap() {
         fs::copy(&design_path, &project_design_path)?;
         println!("  ✓ Copied PROJECT_DESIGN.toml to project");
@@ -238,11 +242,11 @@ fn create_init_session(
         dev,
         design_content
     );
-    
+
     let sessions_path = layer_path.join("sessions");
     fs::create_dir_all(&sessions_path)?;
     fs::write(sessions_path.join(session_filename), session_content)?;
-    
+
     Ok(())
 }
 
@@ -264,24 +268,24 @@ fn should_update_components(json_output: bool) -> Result<bool> {
     if json_output {
         return Ok(true);
     }
-    
+
     print!("Update components to latest versions? [Y/n]: ");
     std::io::stdout().flush()?;
-    
+
     let mut input = String::new();
     std::io::stdin().read_line(&mut input)?;
     let input = input.trim().to_lowercase();
-    
+
     Ok(input.is_empty() || input == "y" || input == "yes")
 }
 
 fn update_components(project_path: &Path, llm: &str) -> Result<()> {
     println!("\n🔄 Updating components...");
-    
+
     // Update LLM adapter
     print!("  Updating {} adapter... ", llm.to_title_case());
     std::io::stdout().flush()?;
-    
+
     let adapter = patina::adapters::get_adapter(llm);
     if let Some((_current_ver, _new_ver)) = adapter.check_for_updates(project_path)? {
         adapter.update_adapter_files(project_path)?;
@@ -289,14 +293,38 @@ fn update_components(project_path: &Path, llm: &str) -> Result<()> {
     } else {
         println!("already up to date");
     }
-    
+
     println!("\n✅ All components updated successfully!");
     Ok(())
 }
 
-fn suggest_missing_tools(_environment: &Environment, _design: &Value) -> Result<()> {
-    // TODO: Re-implement tool suggestion after refactoring tool_installer module
-    // The tool_installer module needs updating to work with Environment struct
+fn suggest_missing_tools(environment: &Environment, _design: &Value) -> Result<()> {
+    use crate::commands::init::tool_installer;
+
+    // Get list of tools we can help install
+    let available_tools = tool_installer::get_available_tools();
+
+    // Check which ones are missing from the environment
+    let missing: Vec<_> = available_tools
+        .iter()
+        .filter(|tool| {
+            !environment
+                .tools
+                .get(tool.name)
+                .map(|info| info.available)
+                .unwrap_or(false)
+        })
+        .collect();
+
+    if !missing.is_empty() {
+        println!("\n💡 Missing optional tools that can enhance your Patina experience:");
+        for tool in &missing {
+            println!("   - {}", tool.name);
+        }
+        println!("\n   Run 'patina init --install-tools' to install them automatically");
+        println!("   (Note: --install-tools flag is not yet implemented)");
+    }
+
     Ok(())
 }
 

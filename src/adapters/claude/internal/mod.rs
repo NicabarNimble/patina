@@ -23,16 +23,16 @@ mod session_scripts;
 pub fn init_project(project_path: &Path, design: &Value, environment: &Environment) -> Result<()> {
     // Create directory structure
     paths::create_directory_structure(project_path)?;
-    
+
     // Create session scripts
     session_scripts::create_session_scripts(project_path)?;
-    
+
     // Generate initial context
     context_generation::generate_initial_context(project_path, design, environment)?;
-    
+
     // Create adapter manifest
     manifest::create_adapter_manifest(project_path)?;
-    
+
     Ok(())
 }
 
@@ -59,10 +59,10 @@ pub fn check_for_updates(project_path: &Path) -> Result<Option<(String, String)>
 pub fn update_adapter_files(project_path: &Path) -> Result<()> {
     // Update session scripts
     session_scripts::create_session_scripts(project_path)?;
-    
+
     // Update manifest
     manifest::create_adapter_manifest(project_path)?;
-    
+
     Ok(())
 }
 

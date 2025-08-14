@@ -17,7 +17,7 @@ pub struct Workspace {
     #[serde(alias = "Name")]
     pub name: String,
     #[serde(default)]
-    pub container_id: String,  // Old API only
+    pub container_id: String, // Old API only
     #[serde(alias = "BranchName")]
     pub branch_name: String,
     #[serde(alias = "BaseImage")]
@@ -25,7 +25,7 @@ pub struct Workspace {
     #[serde(alias = "Status")]
     pub status: String,
     #[serde(alias = "WorktreePath", default)]
-    pub worktree_path: Option<String>,  // New API field
+    pub worktree_path: Option<String>, // New API field
 }
 
 /// Request to create a new workspace
@@ -116,12 +116,12 @@ impl WorkspaceClient {
                     return self.get_workspace(id);
                 }
             }
-            
+
             // Fall back to old API format {workspace: {...}}
             if let Ok(resp) = serde_json::from_str::<CreateWorkspaceResponse>(&body) {
                 return Ok(resp.workspace);
             }
-            
+
             anyhow::bail!("Unexpected response format from workspace service")
         } else {
             let error: ErrorResponse = response.json()?;
@@ -151,17 +151,17 @@ impl WorkspaceClient {
 
         if response.status().is_success() {
             let body = response.text()?;
-            
+
             // Handle null/empty response
             if body == "null" || body.is_empty() {
                 return Ok(Vec::new());
             }
-            
+
             // Try new API format first (direct array)
             if let Ok(workspaces) = serde_json::from_str::<Vec<Workspace>>(&body) {
                 return Ok(workspaces);
             }
-            
+
             // Fall back to old API format {workspaces: [...]}
             #[derive(Deserialize)]
             struct ListResponse {
@@ -170,7 +170,7 @@ impl WorkspaceClient {
             if let Ok(resp) = serde_json::from_str::<ListResponse>(&body) {
                 return Ok(resp.workspaces);
             }
-            
+
             anyhow::bail!("Unexpected response format from workspace service")
         } else {
             let error: ErrorResponse = response.json()?;

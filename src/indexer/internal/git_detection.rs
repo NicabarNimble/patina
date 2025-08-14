@@ -281,6 +281,6 @@ mod tests {
     fn test_git_available() {
         // This test might fail in CI without git
         let available = is_git_available();
-        println!("Git available: {}", available);
+        println!("Git available: {available}");
     }
 }

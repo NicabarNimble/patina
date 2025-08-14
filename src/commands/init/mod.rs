@@ -19,8 +19,8 @@
 //! ```
 
 pub mod design_wizard;
-pub mod tool_installer;
 mod internal;
+pub mod tool_installer;
 
 use anyhow::Result;
 
@@ -76,8 +76,8 @@ mod tests {
     #[test]
     fn test_init_creates_structure() -> Result<()> {
         let temp = TempDir::new()?;
-        let project_path = temp.path().join("test-project");
-        
+        let _project_path = temp.path().join("test-project");
+
         // Create a minimal PROJECT_DESIGN.toml
         let design_content = r#"
 [project]
@@ -93,15 +93,15 @@ value = "Ensures init works"
 "#;
         let design_path = temp.path().join("design.toml");
         fs::write(&design_path, design_content)?;
-        
+
         // Note: This would need mocking for full test
         // as it tries to detect real environment and copy patterns
-        
+
         // Verify structure would be created
         // assert!(project_path.join(".patina").exists());
         // assert!(project_path.join("layer").exists());
         // assert!(project_path.join(".claude").exists());
-        
+
         Ok(())
     }
 }

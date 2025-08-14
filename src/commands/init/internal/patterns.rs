@@ -7,34 +7,36 @@ use std::path::{Path, PathBuf};
 /// Copy core patterns from Patina to a new project, safely
 pub fn copy_core_patterns_safe(project_path: &Path, target_layer: &Path) -> Result<bool> {
     let target_core = target_layer.join("core");
-    
+
     // Don't copy if we're already in the Patina source directory
     // (prevents self-overwriting when running init . in root)
     if is_patina_source(project_path)? {
         return Ok(false);
     }
-    
+
     // Try to find source patterns
     let source_core = find_patina_core_patterns()?;
-    
+
     if let Some(source_core) = source_core {
         // Prevent copying to self
-        if let (Ok(source_canonical), Ok(target_canonical)) = 
-            (fs::canonicalize(&source_core), fs::canonicalize(&target_core)) {
+        if let (Ok(source_canonical), Ok(target_canonical)) = (
+            fs::canonicalize(&source_core),
+            fs::canonicalize(&target_core),
+        ) {
             if source_canonical == target_canonical {
                 return Ok(false);
             }
         }
-        
+
         fs::create_dir_all(&target_core)?;
-        
+
         for entry in fs::read_dir(&source_core)? {
             let entry = entry?;
             let source_file = entry.path();
             if source_file.is_file() && source_file.extension().is_some_and(|ext| ext == "md") {
                 let file_name = source_file.file_name().unwrap();
                 let target_file = target_core.join(file_name);
-                
+
                 // Only copy if target doesn't exist or is empty (from failed copy)
                 if !target_file.exists() || fs::metadata(&target_file)?.len() == 0 {
                     fs::copy(&source_file, &target_file)?;
@@ -66,7 +68,7 @@ fn find_patina_core_patterns() -> Result<Option<PathBuf>> {
             return Ok(Some(core_path));
         }
     }
-    
+
     // Strategy 2: Relative to executable
     if let Ok(exe_path) = std::env::current_exe() {
         if let Some(patina_root) = exe_path
@@ -80,14 +82,17 @@ fn find_patina_core_patterns() -> Result<Option<PathBuf>> {
             }
         }
     }
-    
+
     // Strategy 3: Future - installed Patina in HOME
     if let Ok(home) = std::env::var("HOME") {
-        let core_path = PathBuf::from(home).join(".patina").join("layer").join("core");
+        let core_path = PathBuf::from(home)
+            .join(".patina")
+            .join("layer")
+            .join("core");
         if core_path.exists() {
             return Ok(Some(core_path));
         }
     }
-    
+
     Ok(None)
 }

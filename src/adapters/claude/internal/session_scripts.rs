@@ -20,27 +20,27 @@ const SESSION_END_MD: &str = include_str!("../../../../resources/claude/session-
 pub fn create_session_scripts(project_path: &Path) -> Result<()> {
     let commands_path = paths::get_commands_path(project_path);
     let bin_path = paths::get_bin_path(project_path);
-    
+
     // Ensure directories exist
     fs::create_dir_all(&commands_path)?;
     fs::create_dir_all(&bin_path)?;
-    
+
     // Create session-start
     write_script(&bin_path.join("session-start.sh"), SESSION_START_SH)?;
     fs::write(commands_path.join("session-start.md"), SESSION_START_MD)?;
-    
+
     // Create session-update
     write_script(&bin_path.join("session-update.sh"), SESSION_UPDATE_SH)?;
     fs::write(commands_path.join("session-update.md"), SESSION_UPDATE_MD)?;
-    
+
     // Create session-note
     write_script(&bin_path.join("session-note.sh"), SESSION_NOTE_SH)?;
     fs::write(commands_path.join("session-note.md"), SESSION_NOTE_MD)?;
-    
+
     // Create session-end
     write_script(&bin_path.join("session-end.sh"), SESSION_END_SH)?;
     fs::write(commands_path.join("session-end.md"), SESSION_END_MD)?;
-    
+
     Ok(())
 }
 

@@ -30,8 +30,6 @@ impl Layer {
         Ok(())
     }
 
-
-
     /// Get the sessions directory path
     pub fn sessions_path(&self) -> PathBuf {
         self.root_path.join("sessions")
