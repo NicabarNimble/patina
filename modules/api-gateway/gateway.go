@@ -19,8 +19,7 @@ type Gateway struct {
 	executor *executor.Executor
 	git      *gitmanager.Manager
 	
-	// Storage for environments (will be replaced by proper storage)
-	environments *sync.Map
+	// Container storage (registry owns environment data)
 	containers   map[string]*dagger.Container
 	mu           sync.RWMutex
 }
@@ -38,14 +37,11 @@ func New(client *dagger.Client, config *Config) (*Gateway, error) {
 		return nil, fmt.Errorf("failed to create git manager: %w", err)
 	}
 
-	envStore := &sync.Map{}
-
 	return &Gateway{
 		provider:     provider.New(client),
-		registry:     registry.NewRegistry(envStore),
+		registry:     registry.NewRegistry(),
 		executor:     executor.New(client),
 		git:          gitMgr,
-		environments: envStore,
 		containers:   make(map[string]*dagger.Container),
 	}, nil
 }
@@ -72,16 +68,21 @@ func (g *Gateway) CreateWorkspace(ctx context.Context, name, branch string) (str
 		return "", fmt.Errorf("failed to create environment: %w", err)
 	}
 
-	// Store environment (temporary - will use proper storage)
-	g.environments.Store(env.ID, &workspaceAdapter{
-		id:           env.ID,
-		name:         env.Name,
-		status:       "ready",
-		branchName:   branch,
-		worktreePath: worktreePath,
-		baseImage:    env.Config.BaseImage,
-		createdAt:    env.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	// Register environment in the registry
+	err = g.registry.Register(&registry.Environment{
+		ID:           env.ID,
+		Name:         env.Name,
+		Status:       "ready",
+		BranchName:   branch,
+		WorktreePath: worktreePath,
+		BaseImage:    env.Config.BaseImage,
+		CreatedAt:    env.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	})
+	if err != nil {
+		// Clean up on failure
+		g.git.RemoveWorktree(ctx, name)
+		return "", fmt.Errorf("failed to register environment: %w", err)
+	}
 
 	// Store container reference
 	g.mu.Lock()
@@ -127,8 +128,10 @@ func (g *Gateway) DeleteWorkspace(ctx context.Context, id string) error {
 		return fmt.Errorf("workspace not found: %s", id)
 	}
 
-	// Remove from storage
-	g.environments.Delete(id)
+	// Deregister from registry
+	if err := g.registry.Deregister(id); err != nil {
+		return fmt.Errorf("failed to deregister environment: %w", err)
+	}
 	
 	// Remove container reference
 	g.mu.Lock()
