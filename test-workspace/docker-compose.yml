@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  .:
+    build: .
+    image: .:latest
+    container_name: .
+    restart: unless-stopped
+    environment:
+      - RUST_LOG=info
+    # Add your service-specific configuration here
+    # ports:
+    #   - "8080:8080"
+    # volumes:
+    #   - ./data:/app/data
