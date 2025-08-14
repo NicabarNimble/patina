@@ -15,14 +15,7 @@ fn get_pid_file_path() -> Result<PathBuf> {
         fs::create_dir_all(&pid_dir)?;
     }
     
-    let use_modular = std::env::var("PATINA_USE_MODULAR").unwrap_or_default() == "true";
-    let pid_file = if use_modular {
-        pid_dir.join("agent-modular.pid")
-    } else {
-        pid_dir.join("agent.pid")
-    };
-    
-    Ok(pid_file)
+    Ok(pid_dir.join("agent.pid"))
 }
 
 fn write_pid(pid: u32) -> Result<()> {
@@ -64,14 +57,12 @@ fn is_process_running(pid: u32) -> bool {
 }
 
 pub fn start() -> Result<()> {
-    // Check if using modular system
-    let use_modular = std::env::var("PATINA_USE_MODULAR").unwrap_or_default() == "true";
-    let port = if use_modular { 8091 } else { 8080 };
+    const PORT: u16 = 8091;
     
     // Check if already running via PID file
     if let Some(pid) = read_pid()? {
         if is_process_running(pid) {
-            println!("✅ Agent environment service is already running on port {}", port);
+            println!("✅ Agent environment service is already running on port {}", PORT);
             println!("   PID: {}", pid);
             return Ok(());
         } else {
@@ -82,14 +73,13 @@ pub fn start() -> Result<()> {
     }
     
     // Also check if service is running on the port (fallback)
-    if workspace_client::is_service_running(port) {
-        println!("✅ Agent environment service is already running on port {}", port);
+    if workspace_client::is_service_running(PORT) {
+        println!("✅ Agent environment service is already running on port {}", PORT);
         println!("   (Started outside of patina agent)");
         return Ok(());
     }
 
-    println!("🚀 Starting agent environment service{}...", 
-        if use_modular { " (modular)" } else { "" });
+    println!("🚀 Starting agent environment service...");
 
     // Check if Go is available
     let go_available = Command::new("go").arg("version").output().is_ok();
@@ -100,45 +90,26 @@ pub fn start() -> Result<()> {
         );
     }
 
-    let mut child = if use_modular {
-        // Start modular gateway
-        let modules_dir = std::env::current_dir()?.join("modules/api-gateway");
-        if !modules_dir.exists() {
-            anyhow::bail!(
-                "Modular gateway not found. The modules/ directory is missing."
-            );
-        }
-        
-        Command::new("go")
-            .arg("run")
-            .arg("./cmd/server")
-            .current_dir(&modules_dir)
-            .env("PROJECT_ROOT", std::env::current_dir()?)
-            .env("WORKTREE_ROOT", "/tmp/patina-worktrees")
-            .env("PORT", port.to_string())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("Failed to start modular gateway")?
-    } else {
-        // Start old workspace service
-        let workspace_dir = std::env::current_dir()?.join("workspace");
-        if !workspace_dir.exists() {
-            anyhow::bail!(
-                "Agent environment service not found. Run 'patina init' in a Patina project."
-            );
-        }
-        
-        Command::new("go")
-            .arg("run")
-            .arg("./cmd/workspace-server")
-            .current_dir(&workspace_dir)
-            .env("PROJECT_ROOT", std::env::current_dir()?)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("Failed to start agent environment service")?
-    };
+    // Start modular gateway
+    let modules_dir = std::env::current_dir()?.join("modules/api-gateway");
+    if !modules_dir.exists() {
+        anyhow::bail!(
+            "Agent environment service not found. The modules/ directory is missing.\n\
+             Run 'patina init' in a Patina project."
+        );
+    }
+    
+    let mut child = Command::new("go")
+        .arg("run")
+        .arg("./cmd/server")
+        .current_dir(&modules_dir)
+        .env("PROJECT_ROOT", std::env::current_dir()?)
+        .env("WORKTREE_ROOT", "/tmp/patina-worktrees")
+        .env("PORT", PORT.to_string())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("Failed to start agent environment service")?;
 
     let pid = child.id();
 
@@ -146,16 +117,13 @@ pub fn start() -> Result<()> {
     println!("⏳ Waiting for service to be ready...");
     let mut retries = 0;
     while retries < 30 {
-        if workspace_client::is_service_running(port) {
+        if workspace_client::is_service_running(PORT) {
             // Save PID to file
             write_pid(pid)?;
             
-            println!("✅ Agent environment service is running on port {}", port);
+            println!("✅ Agent environment service is running on port {}", PORT);
             println!("   PID: {}", pid);
             println!("   Use 'patina agent stop' to stop the service");
-            if use_modular {
-                println!("   Using modular architecture");
-            }
 
             // Detach the process so it continues running
             std::mem::forget(child);
@@ -172,8 +140,7 @@ pub fn start() -> Result<()> {
 }
 
 pub fn stop() -> Result<()> {
-    let use_modular = std::env::var("PATINA_USE_MODULAR").unwrap_or_default() == "true";
-    let port = if use_modular { 8091 } else { 8080 };
+    const PORT: u16 = 8091;
     
     // Try to stop via PID file first
     if let Some(pid) = read_pid()? {
@@ -215,7 +182,7 @@ pub fn stop() -> Result<()> {
     }
     
     // Fallback: Check if service is running without our PID
-    if !workspace_client::is_service_running(port) {
+    if !workspace_client::is_service_running(PORT) {
         println!("ℹ️  Agent environment service is not running");
         return Ok(());
     }
@@ -224,16 +191,10 @@ pub fn stop() -> Result<()> {
     println!("   You may need to manually kill the process");
     
     // Last resort: try pkill
-    let pattern = if use_modular {
-        "api-gateway/server"
-    } else {
-        "workspace-server"
-    };
-    
     println!("   Attempting to stop via pkill...");
     let output = Command::new("pkill")
         .arg("-f")
-        .arg(pattern)
+        .arg("api-gateway/server")
         .output()
         .context("Failed to run pkill")?;
 
@@ -247,17 +208,13 @@ pub fn stop() -> Result<()> {
 }
 
 pub fn status() -> Result<()> {
-    let use_modular = std::env::var("PATINA_USE_MODULAR").unwrap_or_default() == "true";
-    let port = if use_modular { 8091 } else { 8080 };
+    const PORT: u16 = 8091;
     
     // Check PID file first
     if let Some(pid) = read_pid()? {
         if is_process_running(pid) {
-            println!("✅ Workspace service is running on port {}", port);
+            println!("✅ Workspace service is running on port {}", PORT);
             println!("   PID: {}", pid);
-            if use_modular {
-                println!("   Using modular architecture");
-            }
         } else {
             println!("⚠️  PID file exists but process {} is not running", pid);
             println!("   Cleaning up stale PID file...");
@@ -266,18 +223,15 @@ pub fn status() -> Result<()> {
     }
     
     // Also check if service is accessible
-    if workspace_client::is_service_running(port) {
+    if workspace_client::is_service_running(PORT) {
         if read_pid()?.is_none() {
-            println!("✅ Workspace service is running on port {}", port);
+            println!("✅ Workspace service is running on port {}", PORT);
             println!("   (Started outside of patina agent)");
-            if use_modular {
-                println!("   Using modular architecture");
-            }
         }
 
         // Try to get workspace list
         if let Ok(client) =
-            patina::workspace_client::WorkspaceClient::new(format!("http://localhost:{}", port))
+            patina::workspace_client::WorkspaceClient::new(format!("http://localhost:{}", PORT))
         {
             match client.list_workspaces() {
                 Ok(workspaces) => {
