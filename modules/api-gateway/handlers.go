@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	
+	registry "github.com/your-org/patina/modules/environment-registry"
 )
 
 // HTTPHandlers provides HTTP API for the gateway
