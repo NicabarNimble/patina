@@ -58,12 +58,12 @@ pub fn get_manifest_path(project_path: &Path) -> PathBuf {
 pub fn create_directory_structure(project_path: &Path) -> Result<()> {
     // Create main .claude directory
     fs::create_dir_all(get_claude_path(project_path))?;
-    
+
     // Create subdirectories
     fs::create_dir_all(get_mcp_path(project_path))?;
     fs::create_dir_all(get_commands_path(project_path))?;
     fs::create_dir_all(get_bin_path(project_path))?;
     fs::create_dir_all(get_sessions_path(project_path))?;
-    
+
     Ok(())
 }

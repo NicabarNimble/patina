@@ -1,5 +1,5 @@
 //! Gemini adapter for Patina (stub implementation)
-//! 
+//!
 //! Placeholder for future Gemini AI integration.
 //! Creates basic `.gemini/` structure with context file.
 

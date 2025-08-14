@@ -424,7 +424,7 @@ mod tests {
         assert!(rust_info.version.is_some());
 
         // If rustup is available, should have toolchain info
-        if env.tools.get("rustup").map_or(false, |t| t.available) {
+        if env.tools.get("rustup").is_some_and(|t| t.available) {
             assert!(rust_info.toolchain.is_some());
         }
     }

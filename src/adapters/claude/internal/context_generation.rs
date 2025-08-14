@@ -1,5 +1,5 @@
 //! Context file generation for Claude adapter
-//! 
+//!
 //! Generates minimal .claude/CLAUDE.md files (~50-100 lines)
 //! instead of the previous 1000+ line monsters.
 
@@ -20,44 +20,48 @@ pub fn generate_initial_context(
 ) -> Result<()> {
     let project_name = extract_project_name(design);
     let content = generate_minimal_context(&project_name, environment);
-    
+
     let output_path = paths::get_context_file_path(project_path);
     fs::write(output_path, content)?;
-    
+
     Ok(())
 }
 
 /// Generate minimal context content
-fn generate_minimal_context(
-    project_name: &str,
-    environment: &Environment,
-) -> String {
+fn generate_minimal_context(project_name: &str, environment: &Environment) -> String {
     let mut content = String::new();
 
     // Header
     content.push_str(&format!("# {project_name} - Local Context\n\n"));
     content.push_str("Auto-generated context for this development environment.\n");
     content.push_str("See root `CLAUDE.md` for project instructions.\n\n");
-    
+
     // Note about CLAUDE.local.md
-    content.push_str("💡 **Tip**: Create `CLAUDE.local.md` in project root for your personal notes.\n\n");
+    content.push_str(
+        "💡 **Tip**: Create `CLAUDE.local.md` in project root for your personal notes.\n\n",
+    );
 
     // Environment Summary (minimal)
     content.push_str("## Environment\n\n");
-    content.push_str(&format!("- **Platform**: {} ({})\n", environment.os, environment.arch));
+    content.push_str(&format!(
+        "- **Platform**: {} ({})\n",
+        environment.os, environment.arch
+    ));
     content.push_str(&format!("- **Directory**: {}\n", environment.current_dir));
-    
+
     // Only show critical tools that are available
     let critical_tools = ["cargo", "git", "docker", "go", "dagger"];
     let available: Vec<_> = critical_tools
         .iter()
         .filter_map(|&tool| {
-            environment.tools.get(tool)
+            environment
+                .tools
+                .get(tool)
                 .filter(|info| info.available)
                 .map(|_| tool)
         })
         .collect();
-    
+
     if !available.is_empty() {
         content.push_str(&format!("- **Available**: {}\n", available.join(", ")));
     }
@@ -83,7 +87,6 @@ fn generate_minimal_context(
 
     content
 }
-
 
 /// Extract project name from design TOML
 fn extract_project_name(design: &Value) -> String {

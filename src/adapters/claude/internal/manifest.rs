@@ -68,7 +68,7 @@ pub fn create_adapter_manifest(project_path: &Path) -> Result<()> {
 
     let manifest_path = paths::get_manifest_path(project_path);
     fs::write(manifest_path, serde_json::to_string_pretty(&manifest)?)?;
-    
+
     Ok(())
 }
 
