@@ -60,7 +60,10 @@ impl LLMAdapter for ClaudeAdapter {
                 "/session-end",
                 "End session with comprehensive distillation",
             ),
-            ("/git-start [branch]", "Begin Git-aware work with survival insights"),
+            (
+                "/git-start [branch]",
+                "Begin Git-aware work with survival insights",
+            ),
             ("/git-update", "Track progress and co-modification patterns"),
             ("/git-note [insight]", "Capture Git-specific insights"),
             ("/git-end", "Classify work and preserve failed experiments"),
