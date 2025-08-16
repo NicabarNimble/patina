@@ -1,14 +1,6 @@
 {
   "patina": "0.1.0",
   "components": {
-    "gemini-adapter": {
-      "version": "0.1.0",
-      "description": "Gemini AI context file generation"
-    },
-    "claude-adapter": {
-      "version": "0.6.0",
-      "description": "Claude AI session management and context generation"
-    },
     "docker": {
       "version": "0.1.0",
       "description": "Docker containerization templates and integration"
@@ -16,6 +8,14 @@
     "dagger": {
       "version": "2.0.0",
       "description": "Dagger CI/CD pipeline integration"
+    },
+    "gemini-adapter": {
+      "version": "0.1.0",
+      "description": "Gemini AI context file generation"
+    },
+    "claude-adapter": {
+      "version": "0.6.0",
+      "description": "Claude AI session management and context generation"
     }
   }
 }
