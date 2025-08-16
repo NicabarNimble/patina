@@ -60,6 +60,13 @@ impl LLMAdapter for ClaudeAdapter {
                 "/session-end",
                 "End session with comprehensive distillation",
             ),
+            (
+                "/git-start [branch]",
+                "Begin Git-aware work with survival insights",
+            ),
+            ("/git-update", "Track progress and co-modification patterns"),
+            ("/git-note [insight]", "Capture Git-specific insights"),
+            ("/git-end", "Classify work and preserve failed experiments"),
         ]
     }
 
@@ -106,8 +113,9 @@ mod tests {
     fn test_custom_commands() {
         let adapter = ClaudeAdapter::new();
         let commands = adapter.get_custom_commands();
-        assert_eq!(commands.len(), 4);
+        assert_eq!(commands.len(), 8);
         assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/session-")));
+        assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/git-")));
     }
 }
 
