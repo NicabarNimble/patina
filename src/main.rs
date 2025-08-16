@@ -95,6 +95,12 @@ enum Commands {
         #[command(subcommand)]
         command: AgentCommands,
     },
+
+    /// Process hooks from LLMs (Claude, Gemini, etc)
+    Hook {
+        /// Hook event name (on-stop, on-modified, on-before-edit, on-session-start)
+        event: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -241,6 +247,9 @@ fn main() -> Result<()> {
             AgentCommands::Status => commands::agent::status()?,
             AgentCommands::List => commands::agent::list()?,
         },
+        Commands::Hook { event } => {
+            commands::hook::process_hook(&event)?;
+        }
         Commands::Doctor { json } => {
             let exit_code = commands::doctor::execute(json)?;
             if exit_code != 0 {
