@@ -1,5 +1,5 @@
 {
-  "created": "2025-08-14T14:10:15.399073+00:00",
+  "created": "2025-08-16T00:01:18.244983+00:00",
   "dev": "dagger",
   "dev_manifest": {
     "available": true,
@@ -9,22 +9,22 @@
   "environment_snapshot": {
     "arch": "aarch64",
     "detected_tools": [
-      "brew",
       "git",
-      "claude",
-      "go",
-      "docker",
+      "gh",
       "vim",
-      "nvim",
-      "jq",
-      "dagger",
+      "claude",
+      "brew",
       "cargo-clippy",
-      "cargo-fmt",
+      "dagger",
       "cargo",
-      "gh"
+      "cargo-fmt",
+      "docker",
+      "jq",
+      "go",
+      "nvim"
     ],
     "os": "macos"
   },
   "llm": "claude",
-  "name": "patina"
+  "name": "."
 }
