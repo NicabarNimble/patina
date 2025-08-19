@@ -2,6 +2,8 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use patina::indexer::{Confidence, Layer, Location, NavigationResponse, PatternIndexer};
 use patina::session::SessionManager;
+use std::path::Path;
+use std::process::Command;
 
 /// Execute navigation query
 pub fn execute(
@@ -78,19 +80,25 @@ pub fn execute(
     let layer_path = project_root.join("layer");
     if !layer_path.exists() {
         if !json_output {
-            println!("No layer directory found. No patterns to navigate.");
+            println!("No 'layer' directory found. Creating one...");
         }
-        return Ok(());
+        std::fs::create_dir_all(&layer_path)?;
     }
 
-    // Index all markdown files in the layer directory in parallel
-    // With SQLite connected, this will persist to database
+    // Index the patterns
     indexer.index_directory(&layer_path)?;
 
-    // Execute the navigation query
-    let response = indexer.navigate(query);
+    // Navigate and get results
+    let mut response = indexer.navigate(query);
 
-    // Filter by layer if specified
+    // Update confidence based on Git file age (NEW!)
+    for location in &mut response.locations {
+        if let Some(age_confidence) = calculate_git_age_confidence(&location.path) {
+            location.confidence = age_confidence;
+        }
+    }
+
+    // Apply layer filter if specified
     let mut filtered_response = response;
     if let Some(layer_filter) = layer {
         let target_layer = match layer_filter.to_lowercase().as_str() {
@@ -118,6 +126,67 @@ pub fn execute(
     }
 
     Ok(())
+}
+
+/// Calculate confidence based on file age in Git
+fn calculate_git_age_confidence(file_path: &Path) -> Option<Confidence> {
+    // Get the file's age in days using git log
+    let output = Command::new("git")
+        .args([
+            "log",
+            "-1",
+            "--format=%ct", // Commit timestamp
+            "--",
+            file_path.to_str()?,
+        ])
+        .output()
+        .ok()?;
+
+    if output.stdout.is_empty() {
+        // File not in Git yet
+        return Some(Confidence::Experimental);
+    }
+
+    // Parse timestamp
+    let timestamp_str = String::from_utf8_lossy(&output.stdout);
+    let timestamp: i64 = timestamp_str.trim().parse().ok()?;
+    
+    // Calculate age in days
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs() as i64;
+    let age_days = (now - timestamp) / 86400; // seconds per day
+
+    // Also check if file has been modified recently
+    let modified_output = Command::new("git")
+        .args([
+            "diff",
+            "--name-only",
+            "HEAD",
+            "--",
+            file_path.to_str()?,
+        ])
+        .output()
+        .ok()?;
+    
+    let is_modified = !modified_output.stdout.is_empty();
+
+    // Calculate confidence based on age and modification status
+    let confidence = if is_modified {
+        // Recently modified files have lower confidence
+        Confidence::Low
+    } else {
+        match age_days {
+            0..=7 => Confidence::Experimental,   // Very new
+            8..=30 => Confidence::Low,          // New, settling
+            31..=90 => Confidence::Medium,      // Established
+            91..=180 => Confidence::High,       // Proven
+            _ => Confidence::Verified,          // Battle-tested (6+ months)
+        }
+    };
+
+    Some(confidence)
 }
 
 /// Display results in human-readable format
@@ -186,6 +255,10 @@ fn display_human_results(response: &NavigationResponse, query: &str) -> Result<(
     if !response.confidence_explanation.is_empty() {
         println!("{}", "Confidence Scoring:".blue());
         println!("  {}", response.confidence_explanation.dimmed());
+    } else {
+        // Add our own confidence explanation
+        println!("{}", "Confidence Scoring:".blue());
+        println!("  {}", "Based on Git history age and modification status".dimmed());
     }
 
     Ok(())
@@ -198,66 +271,32 @@ fn display_location(location: &Location) {
         Confidence::High => "↑".bright_green(),
         Confidence::Medium => "→".yellow(),
         Confidence::Low => "↓".bright_yellow(),
-        Confidence::Experimental => "?".red(),
+        Confidence::Experimental => "?".bright_magenta(),
         Confidence::Historical => "⌛".dimmed(),
     };
 
-    let path_display = location.path.to_string_lossy();
-    let short_path = if let Some(pos) = path_display.rfind("layer/") {
-        &path_display[pos + 6..]
+    let path_display = location.path.display().to_string();
+    let shortened_path = if path_display.len() > 50 {
+        format!("...{}", &path_display[path_display.len() - 47..])
     } else {
-        &path_display
+        path_display
     };
 
     println!(
-        "  {} {} - {}",
+        "  {} {} {}",
         confidence_indicator,
-        short_path.bright_white(),
-        location.relevance.dimmed()
+        shortened_path.bright_blue(),
+        format!("({})", location.relevance).dimmed()
     );
 
-    // Display git state if available
-    if let Some(git_state) = &location.git_state {
-        let git_info = match git_state {
-            patina::indexer::GitState::Merged { into_branch, .. } => {
-                format!("merged to {into_branch}").green()
-            }
-            patina::indexer::GitState::Pushed { branch, .. } => {
-                format!("pushed to {branch}").bright_green()
-            }
-            patina::indexer::GitState::Committed { message, .. } => {
-                let short_msg = message.lines().next().unwrap_or("");
-                format!("committed: {short_msg}").yellow()
-            }
-            patina::indexer::GitState::Modified { .. } => "modified".bright_yellow(),
-            patina::indexer::GitState::Untracked { .. } => "untracked".red(),
-            _ => String::new().normal(),
-        };
-
-        if !git_info.is_empty() {
-            println!("      {}", git_info.dimmed());
-        }
+    // Show Git state if available
+    if let Some(ref git_state) = location.git_state {
+        println!("      Git: {}", format!("{git_state:?}").dimmed());
     }
 }
 
 /// Display results in JSON format
 fn display_json_results(response: &NavigationResponse) -> Result<()> {
-    // Convert to a JSON-serializable structure
-    let json_response = serde_json::json!({
-        "query": response.query,
-        "total_results": response.locations.len(),
-        "locations": response.locations.iter().map(|loc| {
-            serde_json::json!({
-                "path": loc.path.to_string_lossy(),
-                "layer": format!("{:?}", loc.layer),
-                "relevance": loc.relevance,
-                "confidence": format!("{:?}", loc.confidence),
-                "git_state": loc.git_state.as_ref().map(|gs| format!("{gs:?}")),
-            })
-        }).collect::<Vec<_>>(),
-        "confidence_explanation": response.confidence_explanation,
-    });
-
-    println!("{}", serde_json::to_string_pretty(&json_response)?);
+    println!("{}", serde_json::to_string_pretty(response)?);
     Ok(())
 }

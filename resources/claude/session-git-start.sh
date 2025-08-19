@@ -1,6 +1,6 @@
 #!/bin/bash
 # Start a new Patina development session with Git integration
-# Testing version - will replace session-start once validated
+# Uses work branch + tags instead of creating session branches
 
 # Check for active session first
 ACTIVE_SESSION=".claude/context/active-session.md"
@@ -24,10 +24,10 @@ SESSION_ID="$(date +%Y%m%d-%H%M%S)"
 SESSION_TITLE="${1:-untitled}"
 SAFE_TITLE=$(echo "$SESSION_TITLE" | tr ' ' '-' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]//g')
 
-# Git integration: Create session branch
-BRANCH_NAME="session/${SESSION_ID}-${SAFE_TITLE}"
-PARENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
+# Git integration: Use work branch + tags (not session branches!)
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "none")
 STARTING_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "none")
+SESSION_TAG="session-${SESSION_ID}-start"
 
 # Check for uncommitted changes
 if [[ -n $(git status --porcelain 2>/dev/null) ]]; then
@@ -36,13 +36,45 @@ if [[ -n $(git status --porcelain 2>/dev/null) ]]; then
     echo ""
 fi
 
-# Create branch (don't fail if git isn't available)
+# Switch to work branch if not already there (don't create session branches!)
 if command -v git &> /dev/null && [ -d .git ]; then
-    git checkout -b "$BRANCH_NAME" 2>/dev/null && \
-    echo "✅ Memory branch created: $BRANCH_NAME" || \
-    echo "⚠️  Could not create branch (may already exist or not in git repo)"
+    if [[ "$CURRENT_BRANCH" != "work" ]]; then
+        # Create work branch if it doesn't exist, or switch to it
+        git checkout -b work 2>/dev/null || git checkout work
+        echo "✅ Switched to work branch"
+    fi
+    
+    # Tag the session start point
+    git tag -a "$SESSION_TAG" -m "Session start: ${SESSION_TITLE}" 2>/dev/null && \
+        echo "✅ Session tagged: $SESSION_TAG" || \
+        echo "⚠️  Could not create tag (may already exist)"
+    
+    CURRENT_BRANCH=$(git branch --show-current)
 else
     echo "📝 Not a git repository - session tracking only"
+fi
+
+# Track in SQLite if database exists
+DB_PATH=".patina/navigation.db"
+if [ -f "$DB_PATH" ] && command -v sqlite3 &> /dev/null; then
+    sqlite3 "$DB_PATH" "
+        INSERT INTO state_transitions (
+            workspace_id,
+            to_state,
+            transition_reason,
+            metadata
+        ) VALUES (
+            '${SESSION_TAG}',
+            'SessionStart',
+            'Session: ${SESSION_TITLE}',
+            json_object(
+                'session_id', '${SESSION_ID}',
+                'title', '${SESSION_TITLE}',
+                'branch', '${CURRENT_BRANCH}',
+                'parent_commit', '${STARTING_COMMIT}'
+            )
+        );
+    " 2>/dev/null && echo "✅ Session tracked in database" || echo "⚠️  Could not update database"
 fi
 
 # Create active session file
@@ -57,8 +89,8 @@ cat > "$ACTIVE_SESSION" << EOF
 **ID**: ${SESSION_ID}
 **Started**: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 **LLM**: ${LLM_NAME}
-**Git Branch**: ${BRANCH_NAME}
-**Parent Branch**: ${PARENT_BRANCH}
+**Git Branch**: ${CURRENT_BRANCH}
+**Session Tag**: ${SESSION_TAG}
 **Starting Commit**: ${STARTING_COMMIT}
 
 ## Previous Session Context
@@ -70,7 +102,8 @@ cat > "$ACTIVE_SESSION" << EOF
 ## Activity Log
 ### $(date +"%H:%M") - Session Start
 Session initialized with goal: ${SESSION_TITLE}
-Git branch created: ${BRANCH_NAME}
+Working on branch: ${CURRENT_BRANCH}
+Tagged as: ${SESSION_TAG}
 
 EOF
 
@@ -79,23 +112,23 @@ echo "$(date +"%H:%M")" > .claude/context/.last-update
 
 echo "✓ Session started: ${SESSION_TITLE}"
 echo "  ID: ${SESSION_ID}"
+echo "  Branch: ${CURRENT_BRANCH}"
+echo "  Tag: ${SESSION_TAG}"
 
-# Git coaching for LLM
+# Git coaching for LLM (updated for work branch strategy)
 if [ -d .git ]; then
     echo ""
     echo "📍 Session Strategy:"
-    echo "- You're now on branch: ${BRANCH_NAME}"
-    echo "- This is YOUR exploration space - experiment freely"
-    echo "- Commit early and often - git remembers everything"
-    echo "- Failed attempts are valuable - they become memory"
-    echo "- Think of commits as checkpoints in a game"
-    echo "- The messier the exploration, the more we learn"
+    echo "- You're on the 'work' branch - all sessions happen here"
+    echo "- Session tagged as: ${SESSION_TAG}"
+    echo "- Commit early and often - each commit is a checkpoint"
+    echo "- Failed attempts are valuable memory"
+    echo "- No need to create branches for sessions"
     echo ""
     echo "Remember to:"
-    echo "- Make small, focused commits (scalpel not shotgun)"
-    echo "- Commit working code before major changes"
+    echo "- Make small, focused commits"
     echo "- Use descriptive commit messages"
-    echo "- This is an exploration branch - failed experiments are valuable"
+    echo "- Tags mark session boundaries, commits mark progress"
 fi
 
 # Prompt AI to read last-session.md and provide context

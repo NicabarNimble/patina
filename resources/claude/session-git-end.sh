@@ -1,6 +1,6 @@
 #!/bin/bash
 # Archive current Patina session with Git work classification
-# Testing version - will replace session-end once validated
+# Works with work branch + tags strategy
 
 ACTIVE_SESSION=".claude/context/active-session.md"
 LAST_SESSION_FILE=".claude/context/last-session.md"
@@ -27,6 +27,7 @@ fi
 SESSION_ID=$(grep "\*\*ID\*\*:" "$ACTIVE_SESSION" | cut -d' ' -f2)
 SESSION_TITLE=$(grep "# Session:" "$ACTIVE_SESSION" | cut -d: -f2- | xargs)
 SESSION_START=$(grep "\*\*Started\*\*:" "$ACTIVE_SESSION" | cut -d' ' -f2-)
+SESSION_TAG=$(grep "\*\*Session Tag\*\*:" "$ACTIVE_SESSION" | cut -d' ' -f2- || echo "none")
 GIT_BRANCH=$(grep "\*\*Git Branch\*\*:" "$ACTIVE_SESSION" | cut -d' ' -f2- || echo "none")
 
 # Debug: Check if SESSION_ID is empty
@@ -35,16 +36,28 @@ if [ -z "$SESSION_ID" ]; then
     SESSION_ID=$(date +"%Y%m%d-%H%M%S")
 fi
 
+# Create end session tag
+SESSION_END_TAG="session-${SESSION_ID}-end"
+
 # Git integration: Check and classify work
-if command -v git &> /dev/null && [ -d .git ] && [ "$GIT_BRANCH" != "none" ]; then
+if command -v git &> /dev/null && [ -d .git ] && [ "$SESSION_TAG" != "none" ]; then
+    # Tag the session end point
+    git tag -a "$SESSION_END_TAG" -m "Session end: ${SESSION_TITLE}" 2>/dev/null && \
+        [ "$SILENT_MODE" = false ] && echo "✅ Session end tagged: $SESSION_END_TAG"
+    
+    # Calculate session metrics
+    FILES_CHANGED=$(git diff --name-only ${SESSION_TAG}..HEAD 2>/dev/null | wc -l)
+    COMMITS_MADE=$(git log --oneline ${SESSION_TAG}..HEAD 2>/dev/null | wc -l)
+    PATTERNS_TOUCHED=$(git diff --name-only ${SESSION_TAG}..HEAD 2>/dev/null | grep -E "layer/|\.md" | wc -l)
+    
     if [ "$SILENT_MODE" = false ]; then
-        echo -e "${BLUE}═══ Git Work Classification ═══${NC}"
+        echo -e "${BLUE}═══ Session Summary ═══${NC}"
         echo ""
         
         # Check current branch
         CURRENT_BRANCH=$(git branch --show-current)
-        echo "Session branch: $GIT_BRANCH"
-        echo "Current branch: $CURRENT_BRANCH"
+        echo "Working branch: $CURRENT_BRANCH"
+        echo "Session range: ${SESSION_TAG}..${SESSION_END_TAG}"
         
         # Check for uncommitted changes
         UNCOMMITTED=$(git status --porcelain | wc -l)
@@ -57,49 +70,93 @@ if command -v git &> /dev/null && [ -d .git ] && [ "$GIT_BRANCH" != "none" ]; th
             echo "   Options:"
             echo "   1. Commit: git commit -am \"session-end: final checkpoint\""
             echo "   2. Stash: git stash -m \"session $SESSION_ID work\""
-            echo "   3. Discard: git reset --hard (DESTRUCTIVE)"
             echo ""
             read -p "Press Enter to continue anyway, or Ctrl+C to go back and commit... "
         fi
         
         # Analyze session commits
         echo ""
-        echo "Session Analysis:"
-        COMMIT_COUNT=$(git log --oneline $GIT_BRANCH --not main 2>/dev/null | wc -l)
-        echo "- Commits on branch: $COMMIT_COUNT"
+        echo "Session Metrics:"
+        echo "- Files changed: $FILES_CHANGED"
+        echo "- Commits made: $COMMITS_MADE"
+        echo "- Patterns touched: $PATTERNS_TOUCHED"
         
-        if [ $COMMIT_COUNT -eq 0 ]; then
+        # Classify based on actual work
+        if [ $COMMITS_MADE -eq 0 ]; then
             echo "- Classification: 🧪 EXPLORATION (no commits)"
             CLASSIFICATION="exploration"
-        elif [ $COMMIT_COUNT -lt 3 ]; then
+        elif [ $PATTERNS_TOUCHED -gt 0 ]; then
+            echo "- Classification: 📚 PATTERN-WORK (modified patterns)"
+            CLASSIFICATION="pattern-work"
+        elif [ $FILES_CHANGED -gt 10 ]; then
+            echo "- Classification: 🚀 MAJOR-FEATURE (many files)"
+            CLASSIFICATION="major-feature"
+        elif [ $COMMITS_MADE -lt 3 ]; then
             echo "- Classification: 🔬 EXPERIMENT (few commits)"
             CLASSIFICATION="experiment"
         else
-            echo "- Classification: 🚀 FEATURE (substantial work)"
+            echo "- Classification: ✨ FEATURE (normal work)"
             CLASSIFICATION="feature"
         fi
         
-        # Branch preservation options
+        # Session history preserved through tags
         echo ""
-        echo -e "${GREEN}Branch Preservation:${NC}"
-        echo "Your session branch '$GIT_BRANCH' will be preserved as memory."
-        echo ""
-        echo "Future options:"
-        echo "1. Merge to main: git checkout main && git merge $GIT_BRANCH"
-        echo "2. Create PR: gh pr create --base main --head $GIT_BRANCH"
-        echo "3. Keep as experiment: git branch -m $GIT_BRANCH exp/$SESSION_TITLE"
-        echo "4. Archive: Leave as-is (becomes searchable memory)"
-        echo ""
-        echo "The branch will remain for future reference - failed experiments are valuable!"
+        echo -e "${GREEN}Session Preserved:${NC}"
+        echo "View session work: git log ${SESSION_TAG}..${SESSION_END_TAG}"
+        echo "Diff session: git diff ${SESSION_TAG}..${SESSION_END_TAG}"
+        echo "Cherry-pick to main: git cherry-pick ${SESSION_TAG}..${SESSION_END_TAG}"
     fi
     
     # Add classification to session file
     echo "" >> "$ACTIVE_SESSION"
     echo "## Session Classification" >> "$ACTIVE_SESSION"
     echo "- Work Type: ${CLASSIFICATION:-unknown}" >> "$ACTIVE_SESSION"
-    echo "- Commits: $COMMIT_COUNT" >> "$ACTIVE_SESSION"
-    echo "- Branch Preserved: $GIT_BRANCH" >> "$ACTIVE_SESSION"
-    echo "- Final Status: $([ $UNCOMMITTED -gt 0 ] && echo 'uncommitted changes' || echo 'clean')" >> "$ACTIVE_SESSION"
+    echo "- Files Changed: $FILES_CHANGED" >> "$ACTIVE_SESSION"
+    echo "- Commits: $COMMITS_MADE" >> "$ACTIVE_SESSION"
+    echo "- Patterns Modified: $PATTERNS_TOUCHED" >> "$ACTIVE_SESSION"
+    echo "- Session Tags: ${SESSION_TAG}..${SESSION_END_TAG}" >> "$ACTIVE_SESSION"
+else
+    CLASSIFICATION="unclassified"
+    FILES_CHANGED=0
+    COMMITS_MADE=0
+    PATTERNS_TOUCHED=0
+fi
+
+# Track in SQLite if database exists
+DB_PATH=".patina/navigation.db"
+if [ -f "$DB_PATH" ] && command -v sqlite3 &> /dev/null; then
+    # Calculate session duration in minutes
+    START_TIME=$(grep "\*\*Started\*\*:" "$ACTIVE_SESSION" | cut -d' ' -f2-)
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS date command
+        DURATION=$(( ($(date +%s) - $(date -j -f "%Y-%m-%dT%H:%M:%SZ" "$START_TIME" +%s)) / 60 ))
+    else
+        # Linux date command
+        DURATION=$(( ($(date +%s) - $(date -d "$START_TIME" +%s)) / 60 ))
+    fi
+    
+    sqlite3 "$DB_PATH" "
+        INSERT INTO state_transitions (
+            workspace_id,
+            to_state,
+            transition_reason,
+            metadata
+        ) VALUES (
+            '${SESSION_TAG}',
+            'SessionEnd',
+            'Session completed: ${SESSION_TITLE}',
+            json_object(
+                'session_id', '${SESSION_ID}',
+                'end_tag', '${SESSION_END_TAG}',
+                'classification', '${CLASSIFICATION}',
+                'files_changed', ${FILES_CHANGED},
+                'commits_made', ${COMMITS_MADE},
+                'patterns_touched', ${PATTERNS_TOUCHED},
+                'duration_minutes', ${DURATION:-0}
+            )
+        );
+    " 2>/dev/null && [ "$SILENT_MODE" = false ] && echo "✅ Session end tracked in database" || \
+        [ "$SILENT_MODE" = false ] && echo "⚠️  Could not update database"
 fi
 
 # Archive the session
@@ -115,7 +172,7 @@ cat > "$LAST_SESSION_FILE" << EOF
 # Last Session: ${SESSION_TITLE}
 
 See: layer/sessions/${SESSION_ID}.md
-Branch: ${GIT_BRANCH}
+Tags: ${SESSION_TAG}..${SESSION_END_TAG}
 Classification: ${CLASSIFICATION:-unclassified}
 
 Quick start: /session-git-start "continue from ${SESSION_TITLE}"
@@ -132,17 +189,16 @@ if [ "$SILENT_MODE" = false ]; then
     echo "  - layer/sessions/${SESSION_ID}.md"
     echo "  - Updated last-session.md"
     
-    if [ "$GIT_BRANCH" != "none" ]; then
+    if [ "$SESSION_TAG" != "none" ]; then
         echo ""
-        echo "✓ Git branch preserved: $GIT_BRANCH"
-        echo "  This branch is now permanent memory - it will never be deleted"
-        echo "  Failed experiments and successful features are equally valuable!"
+        echo "✓ Session preserved via tags: ${SESSION_TAG}..${SESSION_END_TAG}"
+        echo "  View work: git log ${SESSION_TAG}..${SESSION_END_TAG}"
     fi
     
     echo ""
     echo "💭 Session Memory:"
     echo "  Your work is preserved in Git history and can be found by:"
     echo "  - git log --grep=\"$SESSION_TITLE\""
-    echo "  - git branch | grep session"
+    echo "  - git tag | grep session"
     echo "  - patina navigate \"$SESSION_TITLE\""
 fi
