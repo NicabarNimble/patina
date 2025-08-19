@@ -164,7 +164,7 @@ fn calculate_git_age_confidence(file_path: &Path) -> Option<Confidence> {
     // Parse timestamp
     let timestamp_str = String::from_utf8_lossy(&output.stdout);
     let timestamp: i64 = timestamp_str.trim().parse().ok()?;
-    
+
     // Calculate age in days
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -174,16 +174,10 @@ fn calculate_git_age_confidence(file_path: &Path) -> Option<Confidence> {
 
     // Also check if file has been modified recently
     let modified_output = Command::new("git")
-        .args([
-            "diff",
-            "--name-only",
-            "HEAD",
-            "--",
-            file_path.to_str()?,
-        ])
+        .args(["diff", "--name-only", "HEAD", "--", file_path.to_str()?])
         .output()
         .ok()?;
-    
+
     let is_modified = !modified_output.stdout.is_empty();
 
     // Calculate confidence based on age and modification status
@@ -192,11 +186,11 @@ fn calculate_git_age_confidence(file_path: &Path) -> Option<Confidence> {
         Confidence::Low
     } else {
         match age_days {
-            0..=7 => Confidence::Experimental,   // Very new
-            8..=30 => Confidence::Low,          // New, settling
-            31..=90 => Confidence::Medium,      // Established
-            91..=180 => Confidence::High,       // Proven
-            _ => Confidence::Verified,          // Battle-tested (6+ months)
+            0..=7 => Confidence::Experimental, // Very new
+            8..=30 => Confidence::Low,         // New, settling
+            31..=90 => Confidence::Medium,     // Established
+            91..=180 => Confidence::High,      // Proven
+            _ => Confidence::Verified,         // Battle-tested (6+ months)
         }
     };
 
@@ -272,7 +266,10 @@ fn display_human_results(response: &NavigationResponse, query: &str) -> Result<(
     } else {
         // Add our own confidence explanation
         println!("{}", "Confidence Scoring:".blue());
-        println!("  {}", "Based on Git history age and modification status".dimmed());
+        println!(
+            "  {}",
+            "Based on Git history age and modification status".dimmed()
+        );
     }
 
     Ok(())
@@ -319,28 +316,29 @@ fn display_json_results(response: &NavigationResponse) -> Result<()> {
 fn track_pattern_usage(response: &NavigationResponse, project_root: &Path) {
     // Get current session ID from Git tags
     let session_id = get_current_session_id().unwrap_or_else(|| "no-session".to_string());
-    
+
     // Skip if no patterns found
     if response.locations.is_empty() {
         return;
     }
-    
+
     // Open SQLite connection
     let db_path = project_root.join(".patina/navigation.db");
     if !db_path.exists() {
         return;
     }
-    
+
     // Use rusqlite to track usage
     if let Ok(conn) = rusqlite::Connection::open(&db_path) {
         for location in &response.locations {
             // Extract pattern ID from path (file name without extension)
-            let pattern_id = location.path
+            let pattern_id = location
+                .path
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("unknown")
                 .to_string();
-            
+
             // Insert usage record (ignore errors silently)
             let _ = conn.execute(
                 "INSERT INTO pattern_usage (pattern_id, session_id, domain) 
@@ -355,10 +353,16 @@ fn track_pattern_usage(response: &NavigationResponse, project_root: &Path) {
 fn get_current_session_id() -> Option<String> {
     // Look for most recent session-*-start tag
     let output = Command::new("git")
-        .args(["describe", "--tags", "--match", "session-*-start", "--abbrev=0"])
+        .args([
+            "describe",
+            "--tags",
+            "--match",
+            "session-*-start",
+            "--abbrev=0",
+        ])
         .output()
         .ok()?;
-    
+
     if output.status.success() {
         let tag = String::from_utf8_lossy(&output.stdout).trim().to_string();
         // Extract session ID from tag (session-YYYYMMDD-HHMMSS-start)
@@ -377,12 +381,12 @@ fn should_reindex(layer_path: &Path, json_output: bool) -> Result<bool> {
         .parent()
         .ok_or_else(|| anyhow::anyhow!("Invalid layer path"))?
         .join(".patina/navigation.db");
-    
+
     // If database doesn't exist, we need to index
     if !db_path.exists() {
         return Ok(true);
     }
-    
+
     // Get the last index time from the database
     let conn = rusqlite::Connection::open(&db_path)?;
     let last_index_time: Option<i64> = conn
@@ -392,23 +396,23 @@ fn should_reindex(layer_path: &Path, json_output: bool) -> Result<bool> {
             |row| row.get(0),
         )
         .ok();
-    
+
     // If no documents indexed yet, need to index
     let Some(last_index_timestamp) = last_index_time else {
         return Ok(true);
     };
-    
+
     // Check if any markdown files in layer directory are newer than last index
     let needs_reindex = check_directory_modified_since(layer_path, last_index_timestamp)?;
-    
+
     if needs_reindex && !json_output {
         // Count how many files changed
         let changed_count = count_modified_files(layer_path, last_index_timestamp)?;
         if changed_count > 0 {
-            println!("Found {} modified files since last index", changed_count);
+            println!("Found {changed_count} modified files since last index");
         }
     }
-    
+
     Ok(needs_reindex)
 }
 
@@ -418,17 +422,18 @@ fn check_directory_modified_since(dir: &Path, timestamp: i64) -> Result<bool> {
         let entry = entry?;
         let path = entry.path();
         let metadata = entry.metadata()?;
-        
+
         if metadata.is_dir() {
             // Skip .git and other hidden directories
-            if path.file_name()
+            if path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .map(|n| n.starts_with('.'))
                 .unwrap_or(false)
             {
                 continue;
             }
-            
+
             if check_directory_modified_since(&path, timestamp)? {
                 return Ok(true);
             }
@@ -443,29 +448,30 @@ fn check_directory_modified_since(dir: &Path, timestamp: i64) -> Result<bool> {
             }
         }
     }
-    
+
     Ok(false)
 }
 
 /// Count how many files were modified since timestamp
 fn count_modified_files(dir: &Path, timestamp: i64) -> Result<usize> {
     let mut count = 0;
-    
+
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         let metadata = entry.metadata()?;
-        
+
         if metadata.is_dir() {
             // Skip hidden directories
-            if path.file_name()
+            if path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .map(|n| n.starts_with('.'))
                 .unwrap_or(false)
             {
                 continue;
             }
-            
+
             count += count_modified_files(&path, timestamp)?;
         } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
             // Check if markdown file was modified
@@ -478,6 +484,6 @@ fn count_modified_files(dir: &Path, timestamp: i64) -> Result<usize> {
             }
         }
     }
-    
+
     Ok(count)
 }

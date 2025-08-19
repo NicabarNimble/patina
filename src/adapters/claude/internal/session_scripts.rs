@@ -17,10 +17,14 @@ const SESSION_END_SH: &str = include_str!("../../../../resources/claude/session-
 const SESSION_END_MD: &str = include_str!("../../../../resources/claude/session-end.md");
 
 // Embed git-integrated session scripts from resources
-const SESSION_GIT_START_SH: &str = include_str!("../../../../resources/claude/session-git-start.sh");
-const SESSION_GIT_START_MD: &str = include_str!("../../../../resources/claude/session-git-start.md");
-const SESSION_GIT_UPDATE_SH: &str = include_str!("../../../../resources/claude/session-git-update.sh");
-const SESSION_GIT_UPDATE_MD: &str = include_str!("../../../../resources/claude/session-git-update.md");
+const SESSION_GIT_START_SH: &str =
+    include_str!("../../../../resources/claude/session-git-start.sh");
+const SESSION_GIT_START_MD: &str =
+    include_str!("../../../../resources/claude/session-git-start.md");
+const SESSION_GIT_UPDATE_SH: &str =
+    include_str!("../../../../resources/claude/session-git-update.sh");
+const SESSION_GIT_UPDATE_MD: &str =
+    include_str!("../../../../resources/claude/session-git-update.md");
 const SESSION_GIT_NOTE_SH: &str = include_str!("../../../../resources/claude/session-git-note.sh");
 const SESSION_GIT_NOTE_MD: &str = include_str!("../../../../resources/claude/session-git-note.md");
 const SESSION_GIT_END_SH: &str = include_str!("../../../../resources/claude/session-git-end.sh");
@@ -54,15 +58,27 @@ pub fn create_session_scripts(project_path: &Path) -> Result<()> {
     // Create git-integrated session commands (testing versions)
     // session-git-start
     write_script(&bin_path.join("session-git-start.sh"), SESSION_GIT_START_SH)?;
-    fs::write(commands_path.join("session-git-start.md"), SESSION_GIT_START_MD)?;
+    fs::write(
+        commands_path.join("session-git-start.md"),
+        SESSION_GIT_START_MD,
+    )?;
 
     // session-git-update
-    write_script(&bin_path.join("session-git-update.sh"), SESSION_GIT_UPDATE_SH)?;
-    fs::write(commands_path.join("session-git-update.md"), SESSION_GIT_UPDATE_MD)?;
+    write_script(
+        &bin_path.join("session-git-update.sh"),
+        SESSION_GIT_UPDATE_SH,
+    )?;
+    fs::write(
+        commands_path.join("session-git-update.md"),
+        SESSION_GIT_UPDATE_MD,
+    )?;
 
     // session-git-note
     write_script(&bin_path.join("session-git-note.sh"), SESSION_GIT_NOTE_SH)?;
-    fs::write(commands_path.join("session-git-note.md"), SESSION_GIT_NOTE_MD)?;
+    fs::write(
+        commands_path.join("session-git-note.md"),
+        SESSION_GIT_NOTE_MD,
+    )?;
 
     // session-git-end
     write_script(&bin_path.join("session-git-end.sh"), SESSION_GIT_END_SH)?;
