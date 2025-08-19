@@ -6,6 +6,7 @@ pub mod init;
 pub mod navigate;
 pub mod organize;
 pub mod organize_v2;
+pub mod session_analyze;
 pub mod test;
 pub mod upgrade;
 pub mod version;

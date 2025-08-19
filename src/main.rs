@@ -97,6 +97,9 @@ enum Commands {
     
     /// Organize patterns using Git history (v2)
     OrganizeV2(commands::organize_v2::OrganizeArgs),
+    
+    /// Analyze session activity and patterns
+    SessionAnalyze(commands::session_analyze::SessionAnalyzeArgs),
 
     /// Manage agent environments
     Agent {
@@ -255,6 +258,9 @@ fn main() -> Result<()> {
         }
         Commands::OrganizeV2(args) => {
             commands::organize_v2::execute(args)?;
+        }
+        Commands::SessionAnalyze(args) => {
+            commands::session_analyze::execute(args)?;
         }
         Commands::Agent { command } => match command {
             AgentCommands::Start => commands::agent::start()?,
