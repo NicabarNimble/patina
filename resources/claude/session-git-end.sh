@@ -27,8 +27,8 @@ fi
 SESSION_ID=$(grep "\*\*ID\*\*:" "$ACTIVE_SESSION" | cut -d' ' -f2)
 SESSION_TITLE=$(grep "# Session:" "$ACTIVE_SESSION" | cut -d: -f2- | xargs)
 SESSION_START=$(grep "\*\*Started\*\*:" "$ACTIVE_SESSION" | cut -d' ' -f2-)
-SESSION_TAG=$(grep "\*\*Session Tag\*\*:" "$ACTIVE_SESSION" | sed 's/.*: //' || echo "none")
-GIT_BRANCH=$(grep "\*\*Git Branch\*\*:" "$ACTIVE_SESSION" | cut -d' ' -f2- || echo "none")
+SESSION_TAG=$(grep "\*\*Session Tag\*\*:" "$ACTIVE_SESSION" | sed 's/.*\*\*Session Tag\*\*: *//' || echo "none")
+GIT_BRANCH=$(grep "\*\*Git Branch\*\*:" "$ACTIVE_SESSION" | sed 's/.*\*\*Git Branch\*\*: *//' || echo "none")
 
 # Debug: Check if SESSION_ID is empty
 if [ -z "$SESSION_ID" ]; then
