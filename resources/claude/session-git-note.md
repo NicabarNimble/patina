@@ -1,64 +1,21 @@
-# /session-git-note
+Add a human note to the current Patina session with Git context:
 
-Capture insights and discoveries with Git context for searchable memory.
+1. Run the session note script with your insight:
+   - Execute: `.claude/bin/session-git-note.sh "$ARGUMENTS"`
+   - Example: `.claude/bin/session-git-note.sh "discovered dual session architecture is key"`
 
-**Testing Version**: This command will eventually replace `/session-note` once validated.
+2. The script will add Git context [branch@sha] to the note
 
-## Usage
+3. Confirm the note was added:
+   - Say: "Note added [branch@sha]: [what user said]"
 
-```
-/session-git-note <insight text>
-```
+4. If the note contains keywords (breakthrough, discovered, solved, fixed):
+   - The script will suggest a checkpoint commit
+   - Consider: `git commit -am "checkpoint: [discovery]"`
 
-## Description
+5. Purpose of Git-linked notes:
+   - Create searchable memory tied to specific code states
+   - Enable future queries like "when did we solve X?"
+   - Build knowledge graph through Git history
 
-Records human insights with automatic Git context (branch and commit SHA). This creates searchable memory that future sessions can reference.
-
-## Git Integration Features
-
-- Adds Git context: `[branch@sha]` to every note
-- Detects important insights (breakthrough, discovered, solved, fixed)
-- Suggests commits for significant discoveries
-- Creates searchable memory through Git history
-
-## Smart Detection
-
-The command detects important insights containing keywords:
-- "breakthrough"
-- "discovered"
-- "solved"
-- "fixed"
-- "important"
-
-When detected, it suggests creating a checkpoint commit to preserve the context.
-
-## Philosophy
-
-**Notes as Memory**: Every insight tied to a specific Git state becomes searchable knowledge. Future sessions can ask "when did we solve the auth problem?" and find the exact commit.
-
-## Examples
-
-```
-/session-git-note "discovered the memory leak is in the connection pool"
-→ 💡 Important insight detected!
-→ Consider committing: git commit -am "checkpoint: discovered the memory leak..."
-
-/session-git-note "TODO: refactor this later"
-→ ✓ Note added [session/20250818-auth@abc123f]
-
-/session-git-note "the async approach isn't working, trying sync instead"
-→ ✓ Note added [session/20250818-auth@def456a]
-```
-
-## Memory Building
-
-Notes with Git context enable powerful queries:
-- "What branch did we fix the race condition on?"
-- "Show all insights from authentication work"
-- "What experiments failed last month?"
-
-## Related Commands
-
-- `/session-git-start` - Begin session with Git branch
-- `/session-git-update` - Track progress with Git awareness  
-- `/session-git-end` - Conclude and classify work
+Note: These notes are prioritized during session-end distillation and become searchable through Git.

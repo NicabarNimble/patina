@@ -1,66 +1,22 @@
-# /session-git-update
+Update the current Patina session with Git-aware progress tracking:
 
-Update current session with Git-aware progress tracking and commit coaching.
+1. Execute the session update script:
+   `.claude/bin/session-git-update.sh`
 
-**Testing Version**: This command will eventually replace `/session-update` once validated.
+2. The script will show what time period to document (e.g., "14:15 → 14:45")
 
-## Usage
+3. Note the Git status shown (uncommitted changes, last commit time)
 
-```
-/session-git-update
-```
+4. Read `.claude/context/active-session.md` and find the new update section
 
-## Description
+5. Fill in the update section with what happened during that time period:
+   - **Work completed**: Code written, files modified, problems solved
+   - **Key decisions**: Design choices, trade-offs, reasoning behind changes
+   - **Challenges faced**: Errors encountered, debugging steps, solutions found
+   - **Patterns observed**: Reusable insights, things that worked well
 
-Captures session progress with integrated Git status awareness. This command:
+6. If the script suggests a commit (30+ minutes or 100+ lines changed), consider:
+   - Creating a checkpoint: `git commit -am "checkpoint: [description]"`
+   - Breaking large changes into smaller logical commits
 
-1. **Shows Git status** - Current branch, changes, last commit
-2. **Provides smart reminders** - Based on time and change volume
-3. **Tracks session health** - Visual indicator of commit hygiene
-4. **Coaches best practices** - Gentle reminders about small commits
-
-## Git Integration Features
-
-- Shows uncommitted changes count and line volume
-- Displays recent commits (last 5)
-- Time-based commit reminders (30+ minutes)
-- Volume-based suggestions (100+ lines)
-- Session health indicator (🟢 🟡 🔴)
-
-## Smart Reminders
-
-### Based on Time
-- **< 30 minutes**: Continue working
-- **30-60 minutes**: Gentle checkpoint reminder
-- **> 1 hour**: Strong recommendation to commit
-
-### Based on Changes
-- **< 50 lines**: Small changes, commit when ready
-- **50-100 lines**: Consider committing soon
-- **> 100 lines**: Break into smaller commits
-
-## Philosophy
-
-**Checkpoint Culture**: Commits are free, lost work is expensive. Every checkpoint is a save point in your exploration game.
-
-## Examples
-
-Clean working tree:
-```
-✅ Git status: Clean
-Last commit: 5 minutes ago
-Session Health: 🟢 Excellent
-```
-
-Large uncommitted changes:
-```
-⚠️ Git status: 12 files modified (500+ lines)
-Last commit: 45 minutes ago
-Session Health: 🟡 Good (commit recommended)
-```
-
-## Related Commands
-
-- `/session-git-start` - Begin session with Git branch
-- `/session-git-note` - Capture insights with Git context
-- `/session-git-end` - Conclude and classify work
+Note: Each update creates a time-stamped checkpoint with Git context for future reference.
