@@ -481,7 +481,7 @@ impl PatternIndexer {
 }
 
 /// Response from a navigation query
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NavigationResponse {
     pub query: String,
     pub locations: Vec<Location>,
@@ -490,7 +490,7 @@ pub struct NavigationResponse {
 }
 
 /// A location in the pattern hierarchy
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Location {
     pub layer: Layer,
     pub path: PathBuf,
@@ -508,7 +508,7 @@ pub enum Layer {
 }
 
 /// Hint about an active workspace exploration
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WorkspaceHint {
     pub workspace_id: String,
     pub branch: String,
