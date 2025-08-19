@@ -65,10 +65,7 @@ impl LLMAdapter for ClaudeAdapter {
                 "/session-git-start [name]",
                 "Start session with Git branch (testing)",
             ),
-            (
-                "/session-git-update",
-                "Update with Git awareness (testing)",
-            ),
+            ("/session-git-update", "Update with Git awareness (testing)"),
             (
                 "/session-git-note [insight]",
                 "Note with Git context (testing)",
@@ -125,7 +122,9 @@ mod tests {
         let commands = adapter.get_custom_commands();
         assert_eq!(commands.len(), 8);
         assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/session-")));
-        assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/session-git-")));
+        assert!(commands
+            .iter()
+            .any(|(cmd, _)| cmd.starts_with("/session-git-")));
     }
 }
 
