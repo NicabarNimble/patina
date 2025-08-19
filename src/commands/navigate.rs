@@ -3,8 +3,10 @@ use colored::Colorize;
 use patina::indexer::{Confidence, Layer, Location, NavigationResponse, PatternIndexer};
 use patina::session::SessionManager;
 use rusqlite;
+use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::time::SystemTime;
 
 /// Execute navigation query
 pub fn execute(
@@ -86,8 +88,16 @@ pub fn execute(
         std::fs::create_dir_all(&layer_path)?;
     }
 
-    // Index the patterns
-    indexer.index_directory(&layer_path)?;
+    // Check if index is stale before re-indexing
+    if should_reindex(&layer_path, json_output)? {
+        if !json_output {
+            println!("Index is stale, refreshing...");
+        }
+        indexer.index_directory(&layer_path)?;
+    } else if !json_output {
+        // Skip the verbose message for clean output
+        // println!("Index is current, skipping re-index");
+    }
 
     // Navigate and get results
     let mut response = indexer.navigate(query);
@@ -358,4 +368,116 @@ fn get_current_session_id() -> Option<String> {
     } else {
         None
     }
+}
+
+/// Check if the index needs to be refreshed
+fn should_reindex(layer_path: &Path, json_output: bool) -> Result<bool> {
+    // Get the project root to find the database
+    let db_path = layer_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Invalid layer path"))?
+        .join(".patina/navigation.db");
+    
+    // If database doesn't exist, we need to index
+    if !db_path.exists() {
+        return Ok(true);
+    }
+    
+    // Get the last index time from the database
+    let conn = rusqlite::Connection::open(&db_path)?;
+    let last_index_time: Option<i64> = conn
+        .query_row(
+            "SELECT CAST(strftime('%s', MAX(last_indexed)) AS INTEGER) FROM documents",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+    
+    // If no documents indexed yet, need to index
+    let Some(last_index_timestamp) = last_index_time else {
+        return Ok(true);
+    };
+    
+    // Check if any markdown files in layer directory are newer than last index
+    let needs_reindex = check_directory_modified_since(layer_path, last_index_timestamp)?;
+    
+    if needs_reindex && !json_output {
+        // Count how many files changed
+        let changed_count = count_modified_files(layer_path, last_index_timestamp)?;
+        if changed_count > 0 {
+            println!("Found {} modified files since last index", changed_count);
+        }
+    }
+    
+    Ok(needs_reindex)
+}
+
+/// Recursively check if any files in directory were modified after timestamp
+fn check_directory_modified_since(dir: &Path, timestamp: i64) -> Result<bool> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let metadata = entry.metadata()?;
+        
+        if metadata.is_dir() {
+            // Skip .git and other hidden directories
+            if path.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with('.'))
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            
+            if check_directory_modified_since(&path, timestamp)? {
+                return Ok(true);
+            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            // Check if markdown file was modified
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(duration) = modified.duration_since(SystemTime::UNIX_EPOCH) {
+                    if duration.as_secs() as i64 > timestamp {
+                        return Ok(true);
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(false)
+}
+
+/// Count how many files were modified since timestamp
+fn count_modified_files(dir: &Path, timestamp: i64) -> Result<usize> {
+    let mut count = 0;
+    
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let metadata = entry.metadata()?;
+        
+        if metadata.is_dir() {
+            // Skip hidden directories
+            if path.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.starts_with('.'))
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            
+            count += count_modified_files(&path, timestamp)?;
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            // Check if markdown file was modified
+            if let Ok(modified) = metadata.modified() {
+                if let Ok(duration) = modified.duration_since(SystemTime::UNIX_EPOCH) {
+                    if duration.as_secs() as i64 > timestamp {
+                        count += 1;
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(count)
 }
