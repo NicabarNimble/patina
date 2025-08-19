@@ -2,7 +2,6 @@
 //!
 //! This module provides semantic search and navigation across the layer hierarchy,
 //! with git-aware confidence scoring and workspace state tracking.
-//!
 //! # Example
 //! ```no_run
 //! # use anyhow::Result;

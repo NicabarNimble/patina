@@ -4,6 +4,7 @@ pub mod doctor;
 pub mod hook;
 pub mod init;
 pub mod navigate;
+pub mod organize;
 pub mod test;
 pub mod upgrade;
 pub mod version;
