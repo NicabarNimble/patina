@@ -91,7 +91,7 @@ fn discover_patterns(layer_filter: &Option<String>) -> Result<Vec<PathBuf>> {
     
     let layers = match layer_filter {
         Some(l) => vec![l.as_str()],
-        None => vec!["core", "surface", "dust"],
+        None => vec!["core", "surface"], // Don't analyze dust - it's already archived
     };
     
     for layer in layers {
@@ -302,54 +302,50 @@ fn recommend_action(
     survival_rate: f32,
     unique_authors: u32,
 ) -> (PatternAction, String) {
-    // Core layer patterns
+    // Core layer patterns - should be stable
     if layer == "core" {
+        // Core patterns with lots of changes might need to move to surface
+        if change_count > 10 && days_since_last_change < 30 {
+            return (PatternAction::DemoteToDust,  // Actually demote to surface but using dust action
+                format!("Too volatile for core ({} recent changes) - move to surface", change_count));
+        }
+        
+        // Dead core patterns -> dust
         if days_since_last_change > 180 && change_count == 0 {
-            return (PatternAction::Archive, "No activity in 6+ months".to_string());
+            return (PatternAction::DemoteToDust, 
+                "No activity in 6+ months - archive to dust".to_string());
         }
-        if change_count > 10 {
-            return (PatternAction::ExtractInsights, 
-                format!("High change rate ({} changes) - extract patterns", change_count));
-        }
+        
         // Core should be stable
         return (PatternAction::NoAction, "Stable core pattern".to_string());
     }
     
-    // Surface layer patterns
+    // Surface layer patterns - active development
     if layer == "surface" {
-        // High activity with good survival = promote
-        if change_count < 3 && days_since_last_change > 30 && survival_rate > 90.0 {
+        // Stable with high survival = ready for core
+        if change_count <= 3 && days_since_last_change > 30 && survival_rate > 90.0 {
             return (PatternAction::PromoteToCore, 
-                "Stable pattern with high survival rate".to_string());
+                "Mature pattern ready for core (stable + high survival)".to_string());
         }
         
-        // Dead pattern
-        if days_since_last_change > 90 && change_count == 0 {
+        // Dead surface pattern -> dust
+        if days_since_last_change > 90 {
             return (PatternAction::DemoteToDust, 
-                "No activity in 3+ months".to_string());
+                "No activity in 3+ months - archive to dust".to_string());
         }
         
-        // High churn needs investigation
+        // High churn = needs splitting
         if change_count > 20 && survival_rate < 70.0 {
             return (PatternAction::ExtractInsights,
-                format!("High churn ({} changes, {:.0}% survival) - needs pattern extraction", 
+                format!("High churn ({} changes, {:.0}% survival) - needs splitting", 
                     change_count, survival_rate));
         }
         
-        // Active development
+        // Active development stays in surface
         if change_count > 0 && days_since_last_change < 30 {
             return (PatternAction::KeepInSurface,
                 "Active development pattern".to_string());
         }
-    }
-    
-    // Dust layer
-    if layer == "dust" {
-        if days_since_last_change > 365 {
-            return (PatternAction::Archive, "Dead for over a year".to_string());
-        }
-        // Dust can stay dust
-        return (PatternAction::NoAction, "Historical reference".to_string());
     }
     
     (PatternAction::NoAction, "No clear action".to_string())
