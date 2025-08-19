@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use patina::indexer::{Confidence, Layer, Location, NavigationResponse, PatternIndexer};
 use patina::session::SessionManager;
+use rusqlite;
 use std::path::Path;
 use std::process::Command;
 
@@ -117,6 +118,9 @@ pub fn execute(
             .locations
             .retain(|loc| loc.layer == target_layer);
     }
+
+    // Track pattern usage in SQLite
+    track_pattern_usage(&filtered_response, &project_root);
 
     // Display results
     if json_output {
@@ -299,4 +303,59 @@ fn display_location(location: &Location) {
 fn display_json_results(response: &NavigationResponse) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(response)?);
     Ok(())
+}
+
+/// Track pattern usage in SQLite for evolution tracking
+fn track_pattern_usage(response: &NavigationResponse, project_root: &Path) {
+    // Get current session ID from Git tags
+    let session_id = get_current_session_id().unwrap_or_else(|| "no-session".to_string());
+    
+    // Skip if no patterns found
+    if response.locations.is_empty() {
+        return;
+    }
+    
+    // Open SQLite connection
+    let db_path = project_root.join(".patina/navigation.db");
+    if !db_path.exists() {
+        return;
+    }
+    
+    // Use rusqlite to track usage
+    if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+        for location in &response.locations {
+            // Extract pattern ID from path (file name without extension)
+            let pattern_id = location.path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+            
+            // Insert usage record (ignore errors silently)
+            let _ = conn.execute(
+                "INSERT INTO pattern_usage (pattern_id, session_id, domain) 
+                 VALUES (?1, ?2, 'general')",
+                rusqlite::params![pattern_id, session_id],
+            );
+        }
+    }
+}
+
+/// Get current session ID from Git tags
+fn get_current_session_id() -> Option<String> {
+    // Look for most recent session-*-start tag
+    let output = Command::new("git")
+        .args(["describe", "--tags", "--match", "session-*-start", "--abbrev=0"])
+        .output()
+        .ok()?;
+    
+    if output.status.success() {
+        let tag = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        // Extract session ID from tag (session-YYYYMMDD-HHMMSS-start)
+        tag.strip_prefix("session-")
+            .and_then(|s| s.strip_suffix("-start"))
+            .map(|s| s.to_string())
+    } else {
+        None
+    }
 }
