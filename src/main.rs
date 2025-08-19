@@ -94,6 +94,9 @@ enum Commands {
 
     /// Organize and clean up patterns
     Organize(commands::organize::OrganizeArgs),
+    
+    /// Organize patterns using Git history (v2)
+    OrganizeV2(commands::organize_v2::OrganizeArgs),
 
     /// Manage agent environments
     Agent {
@@ -249,6 +252,9 @@ fn main() -> Result<()> {
         Commands::Organize(args) => {
             let config = config::Config::load()?;
             commands::organize::execute(&config, args)?;
+        }
+        Commands::OrganizeV2(args) => {
+            commands::organize_v2::execute(args)?;
         }
         Commands::Agent { command } => match command {
             AgentCommands::Start => commands::agent::start()?,
