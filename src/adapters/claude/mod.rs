@@ -60,13 +60,20 @@ impl LLMAdapter for ClaudeAdapter {
                 "/session-end",
                 "End session with comprehensive distillation",
             ),
+            // Git-integrated testing versions
             (
-                "/git-start [branch]",
-                "Begin Git-aware work with survival insights",
+                "/session-git-start [name]",
+                "Start session with Git branch (testing)",
             ),
-            ("/git-update", "Track progress and co-modification patterns"),
-            ("/git-note [insight]", "Capture Git-specific insights"),
-            ("/git-end", "Classify work and preserve failed experiments"),
+            ("/session-git-update", "Update with Git awareness (testing)"),
+            (
+                "/session-git-note [insight]",
+                "Note with Git context (testing)",
+            ),
+            (
+                "/session-git-end",
+                "End session with Git classification (testing)",
+            ),
         ]
     }
 
@@ -115,7 +122,9 @@ mod tests {
         let commands = adapter.get_custom_commands();
         assert_eq!(commands.len(), 8);
         assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/session-")));
-        assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/git-")));
+        assert!(commands
+            .iter()
+            .any(|(cmd, _)| cmd.starts_with("/session-git-")));
     }
 }
 

@@ -1,5 +1,5 @@
 {
-  "created": "2025-08-16T00:01:18.244983+00:00",
+  "created": "2025-08-19T13:12:49.169125+00:00",
   "dev": "dagger",
   "dev_manifest": {
     "available": true,
@@ -9,19 +9,19 @@
   "environment_snapshot": {
     "arch": "aarch64",
     "detected_tools": [
-      "git",
-      "gh",
       "vim",
-      "claude",
       "brew",
       "cargo-clippy",
+      "claude",
+      "git",
+      "go",
       "dagger",
-      "cargo",
+      "jq",
+      "gh",
+      "nvim",
       "cargo-fmt",
       "docker",
-      "jq",
-      "go",
-      "nvim"
+      "cargo"
     ],
     "os": "macos"
   },
