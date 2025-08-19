@@ -1,7 +1,9 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use patina::indexer;
 
 mod commands;
+mod config;
 
 #[derive(Parser)]
 #[command(author, version = env!("CARGO_PKG_VERSION"), about = "Context management for AI-assisted development", long_about = None)]
@@ -89,6 +91,9 @@ enum Commands {
         #[arg(short, long)]
         json: bool,
     },
+
+    /// Organize and clean up patterns
+    Organize(commands::organize::OrganizeArgs),
 
     /// Manage agent environments
     Agent {
@@ -240,6 +245,10 @@ fn main() -> Result<()> {
             json,
         } => {
             commands::navigate::execute(&query, all_branches, layer, json)?;
+        }
+        Commands::Organize(args) => {
+            let config = config::Config::load()?;
+            commands::organize::execute(&config, args)?;
         }
         Commands::Agent { command } => match command {
             AgentCommands::Start => commands::agent::start()?,

@@ -1,8 +1,8 @@
 //! Git navigation state machine for tracking pattern lifecycle
 
+use crate::workspace_client::WorkspaceClient;
 use super::git_state::PRState;
 use super::{GitAwareNavigationMap, GitEvent, GitState};
-use crate::workspace_client::WorkspaceClient;
 use anyhow::Result;
 use chrono::Utc;
 use serde_json::json;
