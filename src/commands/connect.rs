@@ -130,8 +130,8 @@ fn find_implementations(ideas: &[Idea]) -> Result<Vec<Implementation>> {
         let mut file_count = 0;
         
         for term in search_terms {
-            let output = Command::new("rg")
-                .args(&["-l", term, "src/", "modules/"])
+            let output = Command::new("grep")
+                .args(&["-r", "-l", term, "src/", "modules/"])
                 .output()
                 .context("Failed to search code")?;
             
