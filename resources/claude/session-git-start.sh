@@ -36,12 +36,27 @@ if [[ -n $(git status --porcelain 2>/dev/null) ]]; then
     echo ""
 fi
 
-# Switch to work branch if not already there (don't create session branches!)
+# Smart branch handling: respect work and its sub-branches
 if command -v git &> /dev/null && [ -d .git ]; then
-    if [[ "$CURRENT_BRANCH" != "work" ]]; then
-        # Create work branch if it doesn't exist, or switch to it
-        git checkout -b work 2>/dev/null || git checkout work
-        echo "✅ Switched to work branch"
+    # Check if current branch is work or descended from work
+    IS_WORK_RELATED=false
+    if [[ "$CURRENT_BRANCH" == "work" ]]; then
+        IS_WORK_RELATED=true
+    elif git merge-base --is-ancestor work HEAD 2>/dev/null; then
+        IS_WORK_RELATED=true
+        echo "📌 Staying on work sub-branch: $CURRENT_BRANCH"
+    fi
+    
+    # Only switch to work if we're on main/master or unrelated branch
+    if [[ "$IS_WORK_RELATED" == "false" ]]; then
+        if [[ "$CURRENT_BRANCH" == "main" ]] || [[ "$CURRENT_BRANCH" == "master" ]]; then
+            # Create work branch if it doesn't exist, or switch to it
+            git checkout -b work 2>/dev/null || git checkout work
+            echo "✅ Switched to work branch from $CURRENT_BRANCH"
+        else
+            echo "⚠️  On unrelated branch: $CURRENT_BRANCH"
+            echo "   Consider: git checkout work or git checkout -b work/$CURRENT_BRANCH"
+        fi
     fi
     
     # Tag the session start point
@@ -119,7 +134,11 @@ echo "  Tag: ${SESSION_TAG}"
 if [ -d .git ]; then
     echo ""
     echo "📍 Session Strategy:"
-    echo "- You're on the 'work' branch - all sessions happen here"
+    if [[ "$CURRENT_BRANCH" == "work" ]]; then
+        echo "- You're on the 'work' branch - all sessions happen here"
+    else
+        echo "- You're on '$CURRENT_BRANCH' (work sub-branch) - perfect for isolated experiments"
+    fi
     echo "- Session tagged as: ${SESSION_TAG}"
     echo "- Commit early and often - each commit is a checkpoint"
     echo "- Failed attempts are valuable memory"

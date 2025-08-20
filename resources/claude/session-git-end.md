@@ -14,16 +14,16 @@ End the current Patina session with Git work classification:
    - Archive session to layer/sessions/<ID>.md  
    - Update last-session.md pointer
    - Clean up active-session.md
-   - Preserve the session branch (never deleted)
+   - Tag the session end point for preservation
 
 3. The script will show:
    - "✓ Session archived: <ID>.md"
    - Work classification (🧪 Exploration, 🔬 Experiment, or 🚀 Feature)
-   - Branch preserved: session/[timestamp]-[name]
+   - Session tags: session-[timestamp]-start..session-[timestamp]-end
 
 4. After archiving, you can:
-   - Merge to main: `git checkout main && git merge [branch]`
-   - Create PR: `gh pr create --base main --head [branch]`
-   - Leave branch as permanent memory
+   - View session work: `git log session-[timestamp]-start..session-[timestamp]-end`
+   - Cherry-pick commits: `git cherry-pick session-[timestamp]-start..session-[timestamp]-end`
+   - Continue on current branch or switch as needed
 
-Note: All session branches are preserved as searchable memory - failed experiments prevent future mistakes.
+Note: All sessions are preserved via tags as searchable memory - failed experiments prevent future mistakes.
