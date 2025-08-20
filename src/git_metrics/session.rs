@@ -1,7 +1,7 @@
 //! Session-specific metrics for tracking development sessions
 
 use anyhow::Result;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc, Timelike};
 use std::collections::HashMap;
 
 use crate::git_metrics::{CommitMetrics, SessionMetrics};
