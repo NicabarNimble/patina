@@ -53,6 +53,9 @@ walkdir = "2"
 # CRDT support
 automerge = "0.5"
 
+# Text processing
+regex = "1.10"
+
 [dev-dependencies]
 # Testing utilities
 tempfile = "3.14"

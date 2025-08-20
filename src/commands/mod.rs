@@ -4,6 +4,7 @@ pub mod connect;
 pub mod doctor;
 pub mod hook;
 pub mod init;
+pub mod metrics;
 pub mod navigate;
 pub mod organize;
 pub mod organize_v2;
