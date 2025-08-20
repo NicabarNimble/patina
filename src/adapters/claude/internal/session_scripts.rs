@@ -30,6 +30,10 @@ const SESSION_GIT_NOTE_MD: &str = include_str!("../../../../resources/claude/ses
 const SESSION_GIT_END_SH: &str = include_str!("../../../../resources/claude/session-git-end.sh");
 const SESSION_GIT_END_MD: &str = include_str!("../../../../resources/claude/session-git-end.md");
 
+// Embed launch command from resources
+const LAUNCH_SH: &str = include_str!("../../../../resources/claude/launch.sh");
+const LAUNCH_MD: &str = include_str!("../../../../resources/claude/launch.md");
+
 /// Create all session scripts and command definitions
 pub fn create_session_scripts(project_path: &Path) -> Result<()> {
     let commands_path = paths::get_commands_path(project_path);
@@ -83,6 +87,10 @@ pub fn create_session_scripts(project_path: &Path) -> Result<()> {
     // session-git-end
     write_script(&bin_path.join("session-git-end.sh"), SESSION_GIT_END_SH)?;
     fs::write(commands_path.join("session-git-end.md"), SESSION_GIT_END_MD)?;
+
+    // launch command
+    write_script(&bin_path.join("launch.sh"), LAUNCH_SH)?;
+    fs::write(commands_path.join("launch.md"), LAUNCH_MD)?;
 
     Ok(())
 }
