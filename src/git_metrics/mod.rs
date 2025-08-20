@@ -160,7 +160,7 @@ impl GitMetrics {
     }
     
     /// Get commit metrics from Git log
-    fn get_commit_metrics(&self) -> Result<Vec<CommitMetrics>> {
+    pub fn get_commit_metrics(&self) -> Result<Vec<CommitMetrics>> {
         let output = Command::new("git")
             .arg("log")
             .arg("--format=%H|%an|%aI|%s")
@@ -229,7 +229,7 @@ impl GitMetrics {
     }
     
     /// Analyze file-level metrics
-    fn analyze_file_metrics(&self, commits: &[CommitMetrics]) -> Result<HashMap<PathBuf, FileMetrics>> {
+    pub fn analyze_file_metrics(&self, commits: &[CommitMetrics]) -> Result<HashMap<PathBuf, FileMetrics>> {
         let mut file_metrics = HashMap::new();
         
         for commit in commits {
@@ -266,17 +266,17 @@ impl GitMetrics {
     }
     
     /// Find files that frequently change together
-    fn find_comodification_clusters(&self, commits: &[CommitMetrics]) -> Result<Vec<ComodificationCluster>> {
+    pub fn find_comodification_clusters(&self, commits: &[CommitMetrics]) -> Result<Vec<ComodificationCluster>> {
         comodification::find_clusters(commits)
     }
     
     /// Track pattern evolution over time
-    fn track_pattern_evolution(&self) -> Result<HashMap<String, PatternEvolution>> {
+    pub fn track_pattern_evolution(&self) -> Result<HashMap<String, PatternEvolution>> {
         evolution::track_patterns(&self.repo_path)
     }
     
     /// Analyze session-specific metrics
-    fn analyze_session_metrics(&self, commits: &[CommitMetrics]) -> Result<SessionMetrics> {
+    pub fn analyze_session_metrics(&self, commits: &[CommitMetrics]) -> Result<SessionMetrics> {
         session::analyze_sessions(commits)
     }
 }

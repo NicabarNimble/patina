@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
 
-use crate::git_metrics::{GitMetrics, survival, comodification, evolution};
+use patina::git_metrics::{GitMetrics, survival, comodification, evolution};
 
 #[derive(Debug, Args)]
 pub struct MetricsArgs {
@@ -227,7 +227,7 @@ fn analyze_sessions(repo_path: &PathBuf, detailed: bool, format: &str) -> Result
     
     let mut metrics = GitMetrics::new(repo_path)?;
     let commits = metrics.get_commit_metrics()?;
-    let session_metrics = crate::git_metrics::session::analyze_sessions(&commits)?;
+    let session_metrics = patina::git_metrics::session::analyze_sessions(&commits)?;
     
     match format {
         "json" => {
@@ -273,7 +273,7 @@ fn generate_report(repo_path: &PathBuf, output: Option<PathBuf>, all: bool) -> R
         let pattern_evolution = metrics.track_pattern_evolution()?;
         let session_metrics = metrics.analyze_session_metrics(&commits)?;
         
-        crate::git_metrics::MetricsReport {
+        patina::git_metrics::MetricsReport {
             timestamp: chrono::Utc::now(),
             total_commits: commits.len(),
             file_metrics,
@@ -321,29 +321,3 @@ fn truncate_path(path: &str, max_len: usize) -> String {
     }
 }
 
-// Add these methods to GitMetrics impl
-impl GitMetrics {
-    pub fn get_commit_metrics(&self) -> Result<Vec<crate::git_metrics::CommitMetrics>> {
-        self.get_commit_metrics()
-    }
-    
-    pub fn analyze_file_metrics(&self, commits: &[crate::git_metrics::CommitMetrics]) 
-        -> Result<std::collections::HashMap<PathBuf, crate::git_metrics::FileMetrics>> {
-        self.analyze_file_metrics(commits)
-    }
-    
-    pub fn find_comodification_clusters(&self, commits: &[crate::git_metrics::CommitMetrics]) 
-        -> Result<Vec<crate::git_metrics::ComodificationCluster>> {
-        self.find_comodification_clusters(commits)
-    }
-    
-    pub fn track_pattern_evolution(&self) 
-        -> Result<std::collections::HashMap<String, crate::git_metrics::PatternEvolution>> {
-        self.track_pattern_evolution()
-    }
-    
-    pub fn analyze_session_metrics(&self, commits: &[crate::git_metrics::CommitMetrics]) 
-        -> Result<crate::git_metrics::SessionMetrics> {
-        self.analyze_session_metrics(commits)
-    }
-}
