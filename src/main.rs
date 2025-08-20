@@ -124,6 +124,9 @@ enum Commands {
 
     /// Connect ideas to their implementations
     Connect,
+    
+    /// Analyze Git metrics and code evolution
+    Metrics(commands::metrics::MetricsArgs),
 }
 
 #[derive(Subcommand)]
@@ -291,6 +294,9 @@ fn main() -> Result<()> {
         }
         Commands::Connect => {
             commands::connect::execute()?;
+        }
+        Commands::Metrics(args) => {
+            commands::metrics::execute(args)?;
         }
         Commands::Doctor { json } => {
             let exit_code = commands::doctor::execute(json)?;
