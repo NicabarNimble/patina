@@ -7,7 +7,10 @@ Start a new Patina development session with Git branch creation:
 
 3. Read the newly created `.claude/context/active-session.md` file
 
-4. Note the Git branch created: `session/[timestamp]-[name]`
+4. Note the session tracking:
+   - If on work or work sub-branch: stays on current branch
+   - If on main/master: switches to work branch
+   - Session tagged as: `session-[timestamp]-start`
 
 5. If we've been discussing work already in this conversation:
    - Update the Goals section with specific tasks we've identified
