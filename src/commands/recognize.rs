@@ -8,8 +8,8 @@ use std::process::Command;
 pub fn execute() -> Result<()> {
     println!("{}", "\n🔬 Recognizing patterns in surviving code...".bright_cyan());
     
-    // Find files with good survival (30 days for testing, normally 180)
-    let survivors = find_surviving_files(30)?;
+    // Find files with good survival (1 day for testing, normally 180)
+    let survivors = find_surviving_files(1)?;
     
     // Analyze patterns in these files
     let patterns = analyze_patterns(&survivors)?;

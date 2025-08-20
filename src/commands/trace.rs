@@ -67,8 +67,8 @@ fn trace_in_docs(pattern: &str) -> Result<Vec<TimelineEntry>> {
     }
     
     // Also search for pattern in current docs
-    let grep_output = Command::new("rg")
-        .args(&["-l", pattern, "layer/"])
+    let grep_output = Command::new("grep")
+        .args(&["-r", "-l", pattern, "layer/"])
         .output()
         .context("Failed to search current docs")?;
     
@@ -139,8 +139,8 @@ fn trace_in_code(pattern: &str) -> Result<Vec<TimelineEntry>> {
 
 fn analyze_survival(pattern: &str) -> Result<SurvivalStats> {
     // Find current files mentioning the pattern
-    let grep_output = Command::new("rg")
-        .args(&["-l", pattern, "src/", "modules/"])
+    let grep_output = Command::new("grep")
+        .args(&["-r", "-l", pattern, "src/", "modules/"])
         .output()
         .context("Failed to search current code")?;
     
