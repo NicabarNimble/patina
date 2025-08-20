@@ -112,6 +112,18 @@ enum Commands {
         /// Hook event name (on-stop, on-modified, on-before-edit, on-session-start)
         event: String,
     },
+
+    /// Trace ideas through their implementation lifecycle
+    Trace {
+        /// Pattern/idea name to trace
+        pattern: String,
+    },
+
+    /// Recognize patterns in surviving code
+    Recognize,
+
+    /// Connect ideas to their implementations
+    Connect,
 }
 
 #[derive(Subcommand)]
@@ -270,6 +282,15 @@ fn main() -> Result<()> {
         },
         Commands::Hook { event } => {
             commands::hook::process_hook(&event)?;
+        }
+        Commands::Trace { pattern } => {
+            commands::trace::execute(&pattern)?;
+        }
+        Commands::Recognize => {
+            commands::recognize::execute()?;
+        }
+        Commands::Connect => {
+            commands::connect::execute()?;
         }
         Commands::Doctor { json } => {
             let exit_code = commands::doctor::execute(json)?;
