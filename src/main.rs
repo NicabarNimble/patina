@@ -127,6 +127,34 @@ enum Commands {
     
     /// Analyze Git metrics and code evolution
     Metrics(commands::metrics::MetricsArgs),
+    
+    /// Manage pattern pointers and compliance
+    Pattern(commands::pattern_audit::PatternCommand),
+    
+    /// Show memory from previous sessions (what LLM needs to know)
+    Remember,
+    
+    /// Get context about a specific topic
+    Context {
+        /// Topic to get context for
+        topic: String,
+    },
+    
+    /// Record a lesson learned
+    Learn {
+        /// The lesson learned
+        lesson: String,
+    },
+    
+    /// Record a design decision
+    Decide {
+        /// The decision made
+        decision: String,
+        
+        /// Why this decision was made
+        #[arg(short, long)]
+        reasoning: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -297,6 +325,21 @@ fn main() -> Result<()> {
         }
         Commands::Metrics(args) => {
             commands::metrics::execute(args)?;
+        }
+        Commands::Pattern(args) => {
+            commands::pattern_audit::execute(args)?;
+        }
+        Commands::Remember => {
+            patina::memory::RememberCommand::execute()?;
+        }
+        Commands::Context { topic } => {
+            patina::memory::ContextCommand::execute(&topic)?;
+        }
+        Commands::Learn { lesson } => {
+            patina::memory::LearnCommand::execute(&lesson)?;
+        }
+        Commands::Decide { decision, reasoning } => {
+            patina::memory::LearnCommand::execute_decision(&decision, &reasoning)?;
         }
         Commands::Doctor { json } => {
             let exit_code = commands::doctor::execute(json)?;

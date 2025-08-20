@@ -8,6 +8,7 @@ pub mod metrics;
 pub mod navigate;
 pub mod organize;
 pub mod organize_v2;
+pub mod pattern_audit;
 pub mod recognize;
 pub mod session_analyze;
 pub mod test;
