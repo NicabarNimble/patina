@@ -2,125 +2,55 @@ use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::Command;
 
-/// Execute the scrape command to extract reality from code
-pub fn execute(init: bool, reconcile: bool, query: Option<String>) -> Result<()> {
+/// Execute the scrape command to build semantic knowledge database
+pub fn execute(init: bool, query: Option<String>) -> Result<()> {
     if init {
         initialize_database()?;
-    } else if reconcile {
-        reconcile_patterns()?;
     } else if let Some(q) = query {
         run_query(&q)?;
     } else {
-        extract_reality()?;
+        extract_and_index()?;
     }
-
     Ok(())
 }
 
-/// Initialize DuckDB database with semantic reality schema
+/// Initialize DuckDB database with lean schema
 fn initialize_database() -> Result<()> {
-    println!("🗄️  Initializing semantic reality database...");
-
-    // Create .patina directory if it doesn't exist
+    println!("🗄️  Initializing knowledge database...");
+    
     std::fs::create_dir_all(".patina")?;
-
-    // Get the fingerprint schema
-    let fingerprint_schema = patina::semantic::fingerprint::generate_schema();
-
-    // Initialize DuckDB with combined schema
-    let schema = format!("{}
-{}", fingerprint_schema, r#"
--- Code symbols extracted from AST
-CREATE TABLE IF NOT EXISTS code_symbols (
-    file TEXT NOT NULL,
-    symbol TEXT NOT NULL,
-    type TEXT NOT NULL,  -- function, struct, trait, impl
-    line_count INTEGER,
-    ast_hash TEXT,
-    git_commit TEXT,
-    first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    survival_days INTEGER DEFAULT 0,
-    PRIMARY KEY (file, symbol)
-);
-
--- Pattern implementations found in code
-CREATE TABLE IF NOT EXISTS pattern_implementations (
-    pattern_id TEXT NOT NULL,
-    file TEXT NOT NULL,
-    symbol TEXT NOT NULL,
-    compliance REAL CHECK (compliance >= 0 AND compliance <= 1),
-    evidence TEXT,  -- Why we think this implements the pattern
-    verified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (pattern_id, file, symbol)
-);
-
--- References between patterns
-CREATE TABLE IF NOT EXISTS pattern_references (
-    from_pattern TEXT NOT NULL,
-    to_pattern TEXT NOT NULL,
-    reference_type TEXT NOT NULL,  -- extends, implements, contradicts, mentions
-    context TEXT,
-    discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (from_pattern, to_pattern, reference_type)
-);
-
--- Git survival metrics
+    
+    // Get the fingerprint schema (includes code_fingerprints, code_search, index_state)
+    let schema = patina::semantic::fingerprint::generate_schema();
+    
+    // Add Git metrics and pattern references
+    let full_schema = format!("{}\n{}", schema, r#"
+-- Git survival metrics for quality assessment
 CREATE TABLE IF NOT EXISTS git_metrics (
-    file TEXT PRIMARY KEY,
-    first_commit TEXT,
-    last_commit TEXT,
+    file VARCHAR PRIMARY KEY,
+    first_commit VARCHAR,
+    last_commit VARCHAR,
     commit_count INTEGER,
     survival_days INTEGER,
-    churn_rate REAL,  -- Lines changed / total lines
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Pattern documentation vs reality
-CREATE TABLE IF NOT EXISTS pattern_claims (
-    pattern_id TEXT NOT NULL,
-    claim_type TEXT NOT NULL,  -- line_limit, structure, dependency
-    claimed_value TEXT,
-    actual_value TEXT,
-    violations INTEGER DEFAULT 0,
-    last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (pattern_id, claim_type)
-);
-
--- Semantic symbols from AST analysis
-CREATE TABLE IF NOT EXISTS semantic_symbols (
-    file TEXT NOT NULL,
-    name TEXT NOT NULL,
-    kind TEXT NOT NULL,  -- function, struct, trait, impl, module
-    line INTEGER,
-    complexity INTEGER DEFAULT 1,
-    PRIMARY KEY (file, name, kind)
-);
-
--- Semantic patterns detected in code
-CREATE TABLE IF NOT EXISTS semantic_patterns (
-    file TEXT NOT NULL,
-    symbol TEXT NOT NULL,
-    pattern TEXT NOT NULL,
-    confidence REAL CHECK (confidence >= 0 AND confidence <= 1),
-    evidence TEXT,
-    PRIMARY KEY (file, symbol, pattern)
-);
-
--- Semantic relationships between symbols
-CREATE TABLE IF NOT EXISTS semantic_relationships (
-    from_symbol TEXT NOT NULL,
-    to_symbol TEXT NOT NULL,
-    relationship_type TEXT NOT NULL,  -- implements, depends_on, calls
-    PRIMARY KEY (from_symbol, to_symbol, relationship_type)
+-- Pattern references extracted from documentation
+CREATE TABLE IF NOT EXISTS pattern_references (
+    from_pattern VARCHAR NOT NULL,
+    to_pattern VARCHAR NOT NULL,
+    reference_type VARCHAR NOT NULL,  -- extends, implements, mentions
+    context VARCHAR,
+    discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (from_pattern, to_pattern, reference_type)
 );
 "#);
 
     // Execute schema creation
     let output = Command::new("duckdb")
-        .arg(".patina/semantic_reality.db")
+        .arg(".patina/knowledge.db")
         .arg("-c")
-        .arg(schema)
+        .arg(&full_schema)
         .output()
         .context("Failed to initialize DuckDB. Is duckdb installed?")?;
 
@@ -131,104 +61,88 @@ CREATE TABLE IF NOT EXISTS semantic_relationships (
         );
     }
 
-    println!("✅ Database initialized at .patina/semantic_reality.db");
+    println!("✅ Database initialized at .patina/knowledge.db");
     println!("\nNext steps:");
-    println!("  1. Run 'patina scrape' to extract reality from code");
-    println!("  2. Run 'patina scrape --reconcile' to compare docs vs reality");
-    println!("  3. Run 'patina scrape --query \"SELECT ...\"' to explore data");
-
+    println!("  1. Run 'patina scrape' to index your codebase");
+    println!("  2. Run 'patina scrape --query \"SELECT ...\"' to explore");
+    
     Ok(())
 }
 
-/// Extract facts from Git history and code structure
-fn extract_reality() -> Result<()> {
-    println!("🔍 Extracting reality from code...\n");
-
-    // Step 1: Extract Git survival metrics
+/// Extract and index code with fingerprints + Git metrics
+fn extract_and_index() -> Result<()> {
+    println!("🔍 Indexing codebase...\n");
+    
+    // Step 1: Git metrics for quality signals
     extract_git_metrics()?;
-
-    // Step 2: Extract pattern references from markdown
+    
+    // Step 2: Pattern references from docs
     extract_pattern_references()?;
-
-    // Step 3: Analyze code structure (basic for now, tree-sitter later)
-    analyze_code_structure()?;
-
-    // Step 4: Semantic analysis with tree-sitter
-    analyze_semantic_patterns()?;
-
-    // Step 5: Show summary
-    show_extraction_summary()?;
-
+    
+    // Step 3: Semantic fingerprints with tree-sitter
+    extract_fingerprints()?;
+    
+    // Step 4: Show summary
+    show_summary()?;
+    
     Ok(())
 }
 
-/// Extract Git survival metrics for quality assessment
+/// Extract Git survival metrics
 fn extract_git_metrics() -> Result<()> {
     println!("📊 Analyzing Git history...");
-
-    // Get all Rust files with their history
+    
     let rust_files = Command::new("git")
         .args(["ls-files", "*.rs", "src/**/*.rs"])
         .output()
         .context("Failed to list Git files")?;
-
+        
     if !rust_files.status.success() {
         anyhow::bail!("Failed to get file list from Git");
     }
-
+    
     let files = String::from_utf8_lossy(&rust_files.stdout);
     let file_count = files.lines().count();
-
-    // For each file, get survival metrics
+    
     let mut metrics_sql = String::from("BEGIN TRANSACTION;\n");
     metrics_sql.push_str("DELETE FROM git_metrics;\n");
-
+    
     for file in files.lines() {
         if file.is_empty() {
             continue;
         }
-
-        // Get first and last commit for this file
+        
+        // Get commit history for this file
         let log_output = Command::new("git")
             .args(["log", "--format=%H %ai", "--follow", "--", file])
             .output()?;
-
+            
         if log_output.status.success() {
             let log = String::from_utf8_lossy(&log_output.stdout);
             let commits: Vec<&str> = log.lines().collect();
-
+            
             if !commits.is_empty() {
-                let first = commits
-                    .last()
-                    .unwrap_or(&"")
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("");
-                let last = commits
-                    .first()
-                    .unwrap_or(&"")
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("");
+                let first = commits.last().unwrap_or(&"").split_whitespace().next().unwrap_or("");
+                let last = commits.first().unwrap_or(&"").split_whitespace().next().unwrap_or("");
                 let count = commits.len();
-
+                
                 // Calculate survival days
                 let first_date = Command::new("git")
                     .args(["show", "-s", "--format=%at", first])
                     .output()?;
-
+                    
                 if first_date.status.success() {
                     let timestamp = String::from_utf8_lossy(&first_date.stdout)
                         .trim()
                         .parse::<i64>()
                         .unwrap_or(0);
-
+                        
                     let now = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)?
                         .as_secs() as i64;
-
+                        
                     let survival_days = (now - timestamp) / 86400;
-
+                    
                     metrics_sql.push_str(&format!(
                         "INSERT INTO git_metrics (file, first_commit, last_commit, commit_count, survival_days) VALUES ('{}', '{}', '{}', {}, {});\n",
                         file, first, last, count, survival_days
@@ -237,54 +151,49 @@ fn extract_git_metrics() -> Result<()> {
             }
         }
     }
-
+    
     metrics_sql.push_str("COMMIT;\n");
-
-    // Execute the SQL
+    
     Command::new("duckdb")
-        .arg(".patina/semantic_reality.db")
+        .arg(".patina/knowledge.db")
         .arg("-c")
         .arg(&metrics_sql)
         .output()
         .context("Failed to insert Git metrics")?;
-
+        
     println!("  ✓ Analyzed {} files", file_count);
-
     Ok(())
 }
 
-/// Extract references between patterns from markdown files
+/// Extract pattern references from markdown
 fn extract_pattern_references() -> Result<()> {
     println!("🔗 Extracting pattern references...");
-
-    // Find all pattern markdown files
+    
     let pattern_files = Command::new("find")
         .args(["layer", "-name", "*.md", "-type", "f"])
         .output()
         .context("Failed to find pattern files")?;
-
+        
     if !pattern_files.status.success() {
         anyhow::bail!("Failed to list pattern files");
     }
-
+    
     let files = String::from_utf8_lossy(&pattern_files.stdout);
     let mut references_sql = String::from("BEGIN TRANSACTION;\n");
     references_sql.push_str("DELETE FROM pattern_references;\n");
-
+    
     for file in files.lines() {
         if file.is_empty() {
             continue;
         }
-
-        // Extract pattern ID from filename
+        
         let pattern_id = Path::new(file)
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
-
-        // Read file and look for references
+            
         if let Ok(content) = std::fs::read_to_string(file) {
-            // Look for explicit references in YAML frontmatter
+            // Look for references in YAML frontmatter
             if let Some(refs_line) = content.lines().find(|l| l.starts_with("references:")) {
                 if let Some(refs) = refs_line.strip_prefix("references:") {
                     let refs = refs.trim().trim_start_matches('[').trim_end_matches(']');
@@ -292,123 +201,97 @@ fn extract_pattern_references() -> Result<()> {
                         let reference = reference.trim().trim_matches('"').trim_matches('\'');
                         if !reference.is_empty() {
                             references_sql.push_str(&format!(
-                                "INSERT INTO pattern_references (from_pattern, to_pattern, reference_type, context) VALUES ('{}', '{}', 'references', 'explicit reference in frontmatter');\n",
+                                "INSERT INTO pattern_references (from_pattern, to_pattern, reference_type, context) VALUES ('{}', '{}', 'references', 'frontmatter');\n",
                                 pattern_id, reference
                             ));
                         }
                     }
                 }
             }
-
-            // Look for mentions in content
-            for mentioned in &[
-                "dependable-rust",
-                "eternal-tool",
-                "pattern-selection",
-                "modular-architecture",
-            ] {
-                if content.contains(mentioned) && mentioned != &pattern_id {
-                    references_sql.push_str(&format!(
-                        "INSERT OR IGNORE INTO pattern_references (from_pattern, to_pattern, reference_type, context) VALUES ('{}', '{}', 'mentions', 'mentioned in content');\n",
-                        pattern_id, mentioned
-                    ));
-                }
-            }
         }
     }
-
+    
     references_sql.push_str("COMMIT;\n");
-
-    // Execute the SQL
+    
     Command::new("duckdb")
-        .arg(".patina/semantic_reality.db")
+        .arg(".patina/knowledge.db")
         .arg("-c")
         .arg(&references_sql)
         .output()
         .context("Failed to insert pattern references")?;
-
-    println!(
-        "  ✓ Extracted references from {} patterns",
-        files.lines().count()
-    );
-
+        
+    println!("  ✓ Extracted references from {} patterns", files.lines().count());
     Ok(())
 }
 
-/// Semantic pattern analysis using tree-sitter AST with fingerprints
-fn analyze_semantic_patterns() -> Result<()> {
-    println!("🧠 Analyzing semantic patterns with fingerprints...");
-
-    use patina::semantic::{fingerprint::Fingerprint, init_parser};
+/// Extract semantic fingerprints with tree-sitter
+fn extract_fingerprints() -> Result<()> {
+    println!("🧠 Generating semantic fingerprints...");
+    
+    use patina::semantic::init_parser;
     use std::time::SystemTime;
-
-    // Get all Rust files
+    
     let rust_files = Command::new("find")
         .args(["src", "-name", "*.rs", "-type", "f"])
         .output()
         .context("Failed to find Rust files")?;
-
+        
     if !rust_files.status.success() {
         anyhow::bail!("Failed to list Rust files");
     }
-
+    
     let files = String::from_utf8_lossy(&rust_files.stdout);
     let mut parser = init_parser()?;
-    let mut fingerprints_sql = String::from("BEGIN TRANSACTION;\n");
-    fingerprints_sql.push_str("DELETE FROM code_fingerprints;\n");
-    fingerprints_sql.push_str("DELETE FROM code_search;\n");
-    fingerprints_sql.push_str("DELETE FROM index_state;\n");
-
-    let mut processed_count = 0;
-    let mut function_count = 0;
+    
+    // Start transaction
+    let mut sql = String::from("BEGIN TRANSACTION;\n");
+    sql.push_str("DELETE FROM code_fingerprints;\n");
+    sql.push_str("DELETE FROM code_search;\n");
+    sql.push_str("DELETE FROM index_state;\n");
+    
+    let mut symbol_count = 0;
     for file in files.lines() {
         if file.is_empty() {
             continue;
         }
-
-        // Get file modification time
+        
+        // Check if file needs reindexing (mtime-based incremental)
         let metadata = std::fs::metadata(file)?;
         let mtime = metadata.modified()?
             .duration_since(SystemTime::UNIX_EPOCH)?
             .as_secs() as i64;
-
-        // Read and parse file
+            
+        // TODO: Check index_state to skip unchanged files
+        
+        // Parse and fingerprint
         let content = std::fs::read_to_string(file)?;
         if let Some(tree) = parser.parse(&content, None) {
             let mut cursor = tree.walk();
-            let initial_len = fingerprints_sql.len();
-            process_ast_node(&mut cursor, content.as_bytes(), file, &mut fingerprints_sql);
-            
-            // Check if we added any fingerprints
-            if fingerprints_sql.len() > initial_len {
-                let new_functions = fingerprints_sql[initial_len..].matches("INSERT INTO code_fingerprints").count();
-                function_count += new_functions;
-            }
+            symbol_count += process_ast_node(&mut cursor, content.as_bytes(), file, &mut sql);
             
             // Record index state
-            fingerprints_sql.push_str(&format!(
+            sql.push_str(&format!(
                 "INSERT INTO index_state (path, mtime) VALUES ('{}', {});\n",
                 file, mtime
             ));
-            processed_count += 1;
         }
     }
-
-    fingerprints_sql.push_str("COMMIT;\n");
-
-    // Execute the SQL
+    
+    sql.push_str("COMMIT;\n");
+    
+    // Execute
     let output = Command::new("duckdb")
-        .arg(".patina/semantic_reality.db")
+        .arg(".patina/knowledge.db")
         .arg("-c")
-        .arg(&fingerprints_sql)
+        .arg(&sql)
         .output()
         .context("Failed to insert fingerprints")?;
-    
+        
     if !output.status.success() {
         eprintln!("DuckDB error: {}", String::from_utf8_lossy(&output.stderr));
     }
-
-    println!("  ✓ Processed {} files, found {} symbols with fingerprints", processed_count, function_count);
+    
+    println!("  ✓ Fingerprinted {} symbols", symbol_count);
     Ok(())
 }
 
@@ -418,30 +301,33 @@ fn process_ast_node(
     source: &[u8],
     file_path: &str,
     sql: &mut String,
-) {
+) -> usize {
     use patina::semantic::fingerprint::Fingerprint;
     
     let node = cursor.node();
+    let mut count = 0;
+    
+    // Check if this is a symbol we want to fingerprint
     let kind = match node.kind() {
         "function_item" => "function",
         "struct_item" => "struct",
         "trait_item" => "trait",
         "impl_item" => "impl",
         _ => {
-            // Recurse into children for other node types
+            // Recurse into children
             if cursor.goto_first_child() {
                 loop {
-                    process_ast_node(cursor, source, file_path, sql);
+                    count += process_ast_node(cursor, source, file_path, sql);
                     if !cursor.goto_next_sibling() {
                         break;
                     }
                 }
                 cursor.goto_parent();
             }
-            return;
+            return count;
         }
     };
-
+    
     // Extract name and generate fingerprint
     if let Some(name_node) = node.child_by_field_name("name") {
         let name = name_node.utf8_text(source).unwrap_or("<unknown>");
@@ -453,294 +339,91 @@ fn process_ast_node(
             .lines()
             .next()
             .unwrap_or("")
-            .to_string();
-
-        // Insert fingerprint (use INSERT OR REPLACE to handle duplicates)
+            .replace('\'', "''");
+            
+        // Insert fingerprint
         sql.push_str(&format!(
             "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
-            file_path, name, kind, 
+            file_path, name, kind,
             fingerprint.pattern, fingerprint.imports,
             fingerprint.complexity, fingerprint.flags
         ));
-
+        
         // Insert search data
         sql.push_str(&format!(
             "INSERT OR REPLACE INTO code_search (path, name, signature) VALUES ('{}', '{}', '{}');\n",
-            file_path, name, signature.replace("'", "''")
+            file_path, name, signature
         ));
         
-        // Don't recurse into the function/struct body - we've already processed it
-        return;
+        count += 1;
     }
-
-    // Continue recursion for other nodes
-    if cursor.goto_first_child() {
-        loop {
-            process_ast_node(cursor, source, file_path, sql);
-            if !cursor.goto_next_sibling() {
-                break;
-            }
-        }
-        cursor.goto_parent();
-    }
+    
+    count
 }
 
-/// Basic code structure analysis (will be enhanced with tree-sitter)
-fn analyze_code_structure() -> Result<()> {
-    println!("🏗️  Analyzing code structure...");
-
-    // For now, do basic line counting and function detection
-    let rust_files = Command::new("find")
-        .args(["src", "-name", "*.rs", "-type", "f"])
-        .output()
-        .context("Failed to find Rust files")?;
-
-    if !rust_files.status.success() {
-        anyhow::bail!("Failed to list Rust files");
-    }
-
-    let files = String::from_utf8_lossy(&rust_files.stdout);
-    let mut symbols_sql = String::from("BEGIN TRANSACTION;\n");
-    symbols_sql.push_str("DELETE FROM code_symbols;\n");
-
-    for file in files.lines() {
-        if file.is_empty() {
-            continue;
-        }
-
-        if let Ok(content) = std::fs::read_to_string(file) {
-            let line_count = content.lines().count();
-
-            // Basic function detection (will be replaced with tree-sitter)
-            for line in content.lines() {
-                if let Some(fn_match) = extract_function_name(line) {
-                    symbols_sql.push_str(&format!(
-                        "INSERT OR REPLACE INTO code_symbols (file, symbol, type, line_count) VALUES ('{}', '{}', 'function', {});\n",
-                        file, fn_match, line_count
-                    ));
-                } else if let Some(struct_match) = extract_struct_name(line) {
-                    symbols_sql.push_str(&format!(
-                        "INSERT OR REPLACE INTO code_symbols (file, symbol, type, line_count) VALUES ('{}', '{}', 'struct', {});\n",
-                        file, struct_match, line_count
-                    ));
-                }
-            }
-        }
-    }
-
-    symbols_sql.push_str("COMMIT;\n");
-
-    // Execute the SQL
-    Command::new("duckdb")
-        .arg(".patina/semantic_reality.db")
-        .arg("-c")
-        .arg(&symbols_sql)
-        .output()
-        .context("Failed to insert code symbols")?;
-
-    // Update survival days in symbols from git_metrics
-    let update_sql = r#"
-UPDATE code_symbols 
-SET survival_days = (
-    SELECT survival_days 
-    FROM git_metrics 
-    WHERE git_metrics.file = code_symbols.file
-)
-WHERE EXISTS (
-    SELECT 1 FROM git_metrics 
-    WHERE git_metrics.file = code_symbols.file
-);
-"#;
-
-    Command::new("duckdb")
-        .arg(".patina/semantic_reality.db")
-        .arg("-c")
-        .arg(update_sql)
-        .output()
-        .context("Failed to update survival days")?;
-
-    println!("  ✓ Analyzed {} Rust files", files.lines().count());
-
-    Ok(())
-}
-
-/// Extract function name from a line of Rust code
-fn extract_function_name(line: &str) -> Option<String> {
-    let trimmed = line.trim();
-    if trimmed.starts_with("pub fn ") {
-        trimmed
-            .strip_prefix("pub fn ")
-            .and_then(|s| s.split('(').next())
-            .map(|s| s.trim().to_string())
-    } else if trimmed.starts_with("fn ") {
-        trimmed
-            .strip_prefix("fn ")
-            .and_then(|s| s.split('(').next())
-            .map(|s| s.trim().to_string())
-    } else {
-        None
-    }
-}
-
-/// Extract struct name from a line of Rust code
-fn extract_struct_name(line: &str) -> Option<String> {
-    let trimmed = line.trim();
-    if trimmed.starts_with("pub struct ") {
-        trimmed
-            .strip_prefix("pub struct ")
-            .and_then(|s| {
-                s.split(|c: char| c.is_whitespace() || c == '{' || c == '<')
-                    .next()
-            })
-            .map(|s| s.trim().to_string())
-    } else if trimmed.starts_with("struct ") {
-        trimmed
-            .strip_prefix("struct ")
-            .and_then(|s| {
-                s.split(|c: char| c.is_whitespace() || c == '{' || c == '<')
-                    .next()
-            })
-            .map(|s| s.trim().to_string())
-    } else {
-        None
-    }
-}
-
-/// Show summary of extracted data
-fn show_extraction_summary() -> Result<()> {
-    println!("\n📈 Extraction Summary:");
-
-    // Query summary statistics - focus on actual metrics not time
+/// Show extraction summary
+fn show_summary() -> Result<()> {
+    println!("\n📈 Summary:");
+    
     let summary_query = r#"
 SELECT 
-    'Total files analyzed' as metric,
-    COUNT(DISTINCT file) as value
-FROM git_metrics
-UNION ALL
-SELECT 
-    'Files with 10+ commits' as metric,
-    COUNT(*) as value
-FROM git_metrics
-WHERE commit_count >= 10
-UNION ALL
-SELECT 
-    'Functions fingerprinted' as metric,
+    'Functions indexed' as metric,
     COUNT(*) as value
 FROM code_fingerprints
 WHERE kind = 'function'
 UNION ALL
 SELECT 
-    'Low complexity functions' as metric,
-    COUNT(*) as value
-FROM code_fingerprints
-WHERE kind = 'function' AND complexity <= 5
-UNION ALL
-SELECT 
-    'Async functions' as metric,
-    COUNT(*) as value
-FROM code_fingerprints
-WHERE kind = 'function' AND (flags & 1) = 1
-UNION ALL
-SELECT 
-    'Unsafe code blocks' as metric,
-    COUNT(*) as value
-FROM code_fingerprints
-WHERE (flags & 2) = 2
-UNION ALL
-SELECT 
-    'Pattern references' as metric,
-    COUNT(*) as value
-FROM pattern_references
-UNION ALL
-SELECT 
-    'Avg function complexity' as metric,
+    'Average complexity' as metric,
     CAST(AVG(complexity) AS INTEGER) as value
 FROM code_fingerprints
 WHERE kind = 'function'
 UNION ALL
 SELECT 
-    'Unique AST patterns' as metric,
+    'Unique patterns' as metric,
     COUNT(DISTINCT pattern) as value
-FROM code_fingerprints;
+FROM code_fingerprints
+UNION ALL
+SELECT 
+    'Files with 10+ commits' as metric,
+    COUNT(*) as value
+FROM git_metrics
+WHERE commit_count >= 10;
 "#;
 
     let output = Command::new("duckdb")
-        .arg(".patina/semantic_reality.db")
+        .arg(".patina/knowledge.db")
         .arg("-c")
         .arg(summary_query)
         .output()
         .context("Failed to query summary")?;
-
+        
     if output.status.success() {
         println!("{}", String::from_utf8_lossy(&output.stdout));
     }
-
-    Ok(())
-}
-
-/// Reconcile documented patterns with code reality
-fn reconcile_patterns() -> Result<()> {
-    println!("🔍 Reconciling documentation with reality...\n");
-
-    // Check line count claims vs reality - focus on commit frequency not age
-    let line_check_query = r#"
-SELECT 
-    cs.file,
-    cs.symbol,
-    cs.line_count,
-    gm.commit_count
-FROM code_symbols cs
-JOIN git_metrics gm ON cs.file = gm.file
-WHERE cs.line_count > 150
-  AND cs.type = 'function'
-  AND gm.commit_count > 5  -- Files that have been modified multiple times
-ORDER BY cs.line_count DESC
-LIMIT 10;
-"#;
-
-    let output = Command::new("duckdb")
-        .arg(".patina/semantic_reality.db")
-        .arg("-c")
-        .arg(line_check_query)
-        .output()
-        .context("Failed to query line violations")?;
-
-    if output.status.success() {
-        let results = String::from_utf8_lossy(&output.stdout);
-        if results.trim().lines().count() > 1 {
-            // Has header + data
-            println!("⚠️  CONFLICT: dependable-rust.md claims '≤150 lines'");
-            println!("📊 REALITY: These functions exceed 150 lines but are frequently modified:\n");
-            println!("{}", results);
-
-            println!("\n❓ How should we reconcile this?");
-            println!("  1. Update pattern to match reality (~300 lines OK for commands)");
-            println!("  2. Mark pattern as 'aspirational' not 'enforced'");
-            println!("  3. Mark violating files for refactoring");
-            println!("  4. Deprecate this pattern constraint");
-            println!("\n(In a real implementation, this would be interactive)");
-        } else {
-            println!("✅ No conflicts found between documentation and reality!");
-        }
+    
+    // Show database size
+    if let Ok(metadata) = std::fs::metadata(".patina/knowledge.db") {
+        let size_kb = metadata.len() / 1024;
+        println!("\n💾 Database size: {}KB", size_kb);
     }
-
+    
     Ok(())
 }
 
-/// Run a custom query against the semantic reality database
+/// Run a custom query
 fn run_query(query: &str) -> Result<()> {
     let output = Command::new("duckdb")
-        .arg(".patina/semantic_reality.db")
+        .arg(".patina/knowledge.db")
         .arg("-c")
         .arg(query)
         .output()
         .context("Failed to execute query")?;
-
+        
     if output.status.success() {
         println!("{}", String::from_utf8_lossy(&output.stdout));
     } else {
         anyhow::bail!("Query failed: {}", String::from_utf8_lossy(&output.stderr));
     }
-
+    
     Ok(())
 }
