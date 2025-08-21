@@ -48,6 +48,10 @@ parking_lot = "0.12"  # Faster mutexes
 
 # Navigation command dependencies
 colored = "2"
+
+# Semantic analysis
+tree-sitter = "0.24"
+tree-sitter-rust = "0.23"
 walkdir = "2"
 
 # CRDT support

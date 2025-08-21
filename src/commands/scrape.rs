@@ -82,6 +82,34 @@ CREATE TABLE IF NOT EXISTS pattern_claims (
     last_checked TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (pattern_id, claim_type)
 );
+
+-- Semantic symbols from AST analysis
+CREATE TABLE IF NOT EXISTS semantic_symbols (
+    file TEXT NOT NULL,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,  -- function, struct, trait, impl, module
+    line INTEGER,
+    complexity INTEGER DEFAULT 1,
+    PRIMARY KEY (file, name, kind)
+);
+
+-- Semantic patterns detected in code
+CREATE TABLE IF NOT EXISTS semantic_patterns (
+    file TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    pattern TEXT NOT NULL,
+    confidence REAL CHECK (confidence >= 0 AND confidence <= 1),
+    evidence TEXT,
+    PRIMARY KEY (file, symbol, pattern)
+);
+
+-- Semantic relationships between symbols
+CREATE TABLE IF NOT EXISTS semantic_relationships (
+    from_symbol TEXT NOT NULL,
+    to_symbol TEXT NOT NULL,
+    relationship_type TEXT NOT NULL,  -- implements, depends_on, calls
+    PRIMARY KEY (from_symbol, to_symbol, relationship_type)
+);
 "#;
 
     // Execute schema creation
@@ -121,7 +149,10 @@ fn extract_reality() -> Result<()> {
     // Step 3: Analyze code structure (basic for now, tree-sitter later)
     analyze_code_structure()?;
 
-    // Step 4: Show summary
+    // Step 4: Semantic analysis with tree-sitter
+    analyze_semantic_patterns()?;
+
+    // Step 5: Show summary
     show_extraction_summary()?;
 
     Ok(())
@@ -300,6 +331,17 @@ fn extract_pattern_references() -> Result<()> {
     Ok(())
 }
 
+/// Semantic pattern analysis using tree-sitter AST
+fn analyze_semantic_patterns() -> Result<()> {
+    println!("🧠 Analyzing semantic patterns...");
+
+    // For now, just indicate it's a planned enhancement
+    println!("  ⚠️  Tree-sitter semantic analysis coming soon!");
+    println!("  📝 Will detect: error patterns, trait implementations, complexity");
+
+    Ok(())
+}
+
 /// Basic code structure analysis (will be enhanced with tree-sitter)
 fn analyze_code_structure() -> Result<()> {
     println!("🏗️  Analyzing code structure...");
@@ -458,7 +500,18 @@ UNION ALL
 SELECT 
     'Avg commits per file' as metric,
     CAST(AVG(commit_count) AS INTEGER) as value
-FROM git_metrics;
+FROM git_metrics
+UNION ALL
+SELECT 
+    'Semantic patterns found' as metric,
+    COUNT(DISTINCT pattern) as value
+FROM semantic_patterns
+UNION ALL
+SELECT 
+    'Functions with low complexity' as metric,
+    COUNT(*) as value
+FROM semantic_symbols
+WHERE kind = 'function' AND complexity <= 5;
 "#;
 
     let output = Command::new("duckdb")
