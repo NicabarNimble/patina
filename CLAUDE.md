@@ -22,11 +22,16 @@ Patina accumulates knowledge like the protective layer that forms on metal - you
 - Patterns evolve from projects → topics → core
 - Always provide escape hatches
 
+## Git Commit Guidelines
+- NEVER add "🤖 Generated with Claude Code" or "Co-Authored-By: Claude" to commit messages
+- Keep commit messages clean and professional without AI attribution
+- Focus on what changed and why, not who/what wrote it
+
 ## CI Requirements - IMPORTANT
 Before pushing, ALWAYS run these checks locally:
 ```bash
 # Quick way - run all checks at once:
-.claude/bin/pre-push-checks.sh
+./resources/git/pre-push-checks.sh
 
 # Or run individually:
 cargo fmt --all           # Fix Rust formatting
@@ -56,16 +61,11 @@ patina navigate <pattern>   # Search patterns with Git awareness
 patina agent <command>      # Manage modular workspace environments
 
 # Session Management (Claude adapter)
-/session-start <name>       # Begin development session
-/session-update             # Track progress
-/session-note <insight>     # Capture insights
-/session-end                # Distill learnings
+/session-git-start <name>       # Begin development session
+/session-git-update             # Track progress
+/session-git-note <insight>     # Capture insights
+/session-git-end                # Distill learnings
 
-# Git Memory (Claude adapter) 
-/git-start <work>           # Track Git work with survival metrics
-/git-update                 # Monitor co-modification patterns
-/git-note <insight>         # Capture Git-specific insights
-/git-end                    # Classify work and preserve experiments
 ```
 
 ## Build System
@@ -106,15 +106,25 @@ patina/
 3. **Container Native**: Reproducible everywhere
 4. **Escape Hatches**: Never lock users in
 
+## Git Discipline
+
+**Commit often, and use a scalpel not a shotgun.**
+
+- Commit after completing each logical change
+- One commit = one purpose (fix one bug, add one feature, refactor one function)
+- Run `/session-git-update` frequently to monitor uncommitted changes
+- If warned about old uncommitted changes, commit immediately
+- Prefer `git add -p` for surgical staging when files have multiple changes
+
 ## Recent Developments
 
-### Git Memory Integration (August 2025)
-- Implemented Git memory commands (`/git-*`) for LLM work tracking
-- Focus on "Information over Automation" - provide context, don't force workflows
-- Track code survival metrics and co-modification patterns
-- Preserve failed experiments as valuable memory
+### Session-Git Commands
+- Integrated Git workflow into session tracking
+- Automatic tagging at session boundaries
+- Work classification based on Git metrics
+- Failed experiments preserved as memory
 
-### Modular Workspace Architecture (August 2025)
+### Modular Workspace Architecture
 - Decomposed monolithic workspace into focused modules
 - Each module is a tool with single responsibility
 - Clear input → output transformations
@@ -125,9 +135,3 @@ patina/
 - Apply different patterns based on code characteristics
 - Tool-based decomposition for LLM-friendly development
 - See `layer/surface/pattern-selection-framework.md`
-
-## Current Focus
-- Git as memory system for LLM development
-- Modular architecture implementation
-- Pattern survival tracking and evolution
-- Check `layer/surface/` for active architectural work

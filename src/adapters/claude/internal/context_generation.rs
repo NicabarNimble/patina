@@ -71,12 +71,13 @@ fn generate_minimal_context(project_name: &str, environment: &Environment) -> St
     content.push_str("## Patterns\n\n");
     content.push_str("See files in `layer/` directory for patterns and documentation.\n\n");
 
-    // Session Commands (ultra-minimal)
+    // Session Commands (Git-integrated)
     content.push_str("## Session Commands\n\n");
-    content.push_str("- `/session-start [name]` - Begin session\n");
-    content.push_str("- `/session-update` - Mark progress\n");
-    content.push_str("- `/session-note` - Capture insight\n");
-    content.push_str("- `/session-end` - End & distill\n\n");
+    content.push_str("- `/session-start [name]` - Start session with Git tracking\n");
+    content.push_str("- `/session-update` - Update progress with Git context\n");
+    content.push_str("- `/session-note [insight]` - Capture insight\n");
+    content.push_str("- `/session-end` - End session & distill learnings\n");
+    content.push_str("- `/launch [branch]` - Create experimental branch\n\n");
 
     // Footer
     content.push_str(&format!(
