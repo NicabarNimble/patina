@@ -14,54 +14,68 @@ pub fn execute(init: bool, query: Option<String>) -> Result<()> {
     Ok(())
 }
 
-/// Initialize DuckDB database with lean schema
+/// Initialize DuckDB database with lean schema and optimal settings for small size
 fn initialize_database() -> Result<()> {
-    println!("🗄️  Initializing knowledge database...");
+    println!("🗄️  Initializing optimized knowledge database...");
     
     std::fs::create_dir_all(".patina")?;
     
-    // Get the fingerprint schema (includes code_fingerprints, code_search, index_state)
-    let schema = patina::semantic::fingerprint::generate_schema();
+    // Remove old database if exists
+    let db_path = ".patina/knowledge.db";
+    if Path::new(db_path).exists() {
+        std::fs::remove_file(db_path)?;
+    }
     
-    // Add Git metrics and pattern references
-    let full_schema = format!("{}\n{}", schema, r#"
+    // Create with 16KB block size for minimal overhead
+    let init_script = format!(r#"
+-- Attach with minimal block size (16KB instead of default 256KB)
+ATTACH '{db_path}' AS knowledge (BLOCK_SIZE 16384);
+USE knowledge;
+
+{}
+
 -- Git survival metrics for quality assessment
 CREATE TABLE IF NOT EXISTS git_metrics (
     file VARCHAR PRIMARY KEY,
     first_commit VARCHAR,
     last_commit VARCHAR,
     commit_count INTEGER,
-    survival_days INTEGER,
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    survival_days INTEGER
 );
 
 -- Pattern references extracted from documentation
 CREATE TABLE IF NOT EXISTS pattern_references (
     from_pattern VARCHAR NOT NULL,
     to_pattern VARCHAR NOT NULL,
-    reference_type VARCHAR NOT NULL,  -- extends, implements, mentions
+    reference_type VARCHAR NOT NULL,
     context VARCHAR,
-    discovered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (from_pattern, to_pattern, reference_type)
 );
-"#);
+"#, patina::semantic::fingerprint::generate_schema(), db_path=db_path);
 
-    // Execute schema creation
-    let output = Command::new("duckdb")
-        .arg(".patina/knowledge.db")
-        .arg("-c")
-        .arg(&full_schema)
-        .output()
-        .context("Failed to initialize DuckDB. Is duckdb installed?")?;
-
+    // Execute via stdin to avoid command line escaping issues
+    let mut child = Command::new("duckdb")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("Failed to start DuckDB. Is duckdb installed?")?;
+        
+    if let Some(stdin) = child.stdin.as_mut() {
+        use std::io::Write;
+        stdin.write_all(init_script.as_bytes())?;
+    }
+    
+    let output = child.wait_with_output()?;
+    
     if !output.status.success() {
         anyhow::bail!(
-            "Failed to create database schema: {}",
+            "Failed to create database: {}",
             String::from_utf8_lossy(&output.stderr)
         );
     }
 
-    println!("✅ Database initialized at .patina/knowledge.db");
+    println!("✅ Database initialized with 16KB blocks at {}", db_path);
     println!("\nNext steps:");
     println!("  1. Run 'patina scrape' to index your codebase");
     println!("  2. Run 'patina scrape --query \"SELECT ...\"' to explore");
@@ -401,10 +415,23 @@ WHERE commit_count >= 10;
         println!("{}", String::from_utf8_lossy(&output.stdout));
     }
     
-    // Show database size
+    // Show database size and block info
+    let size_query = "PRAGMA database_size;";
+    let size_output = Command::new("duckdb")
+        .arg(".patina/knowledge.db")
+        .arg("-c")
+        .arg(size_query)
+        .output()?;
+        
+    if size_output.status.success() {
+        println!("\n💾 Database info:");
+        println!("{}", String::from_utf8_lossy(&size_output.stdout));
+    }
+    
+    // Also show file size
     if let Ok(metadata) = std::fs::metadata(".patina/knowledge.db") {
         let size_kb = metadata.len() / 1024;
-        println!("\n💾 Database size: {}KB", size_kb);
+        println!("📁 File size: {}KB", size_kb);
     }
     
     Ok(())
