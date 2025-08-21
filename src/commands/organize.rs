@@ -128,19 +128,17 @@ impl<'a> PatternAnalyzer<'a> {
                             Ok((pattern_id, count, last_access))
                         })
                         .map(|mapped| {
-                            for result in mapped {
-                                if let Ok((id, count, last)) = result {
-                                    usage_map.insert(
-                                        id,
-                                        UsageInfo {
-                                            access_count: count,
-                                            last_accessed: last
-                                                .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
-                                                .map(|dt| dt.with_timezone(&Utc)),
-                                            _references: vec![],
-                                        },
-                                    );
-                                }
+                            for (id, count, last) in mapped.flatten() {
+                                usage_map.insert(
+                                    id,
+                                    UsageInfo {
+                                        access_count: count,
+                                        last_accessed: last
+                                            .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+                                            .map(|dt| dt.with_timezone(&Utc)),
+                                        _references: vec![],
+                                    },
+                                );
                             }
                         });
                 }
@@ -276,8 +274,8 @@ impl<'a> PatternAnalyzer<'a> {
         }
 
         // Look for explicit references in metadata
-        if content.starts_with("---") {
-            if let Some(end) = content[3..].find("---") {
+        if let Some(stripped) = content.strip_prefix("---") {
+            if let Some(end) = stripped.find("---") {
                 let metadata = &content[3..end + 3];
                 if let Some(refs_line) = metadata.lines().find(|l| l.starts_with("references:")) {
                     // Parse YAML array of references
@@ -298,7 +296,7 @@ impl<'a> PatternAnalyzer<'a> {
         refs
     }
 
-    fn analyze_references(&self, metrics: &mut Vec<PatternMetrics>) -> Result<()> {
+    fn analyze_references(&self, metrics: &mut [PatternMetrics]) -> Result<()> {
         // Build reference map
         let mut reference_map: HashMap<String, Vec<String>> = HashMap::new();
 
