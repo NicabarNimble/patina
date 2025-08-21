@@ -330,12 +330,12 @@ fn analyze_code_structure() -> Result<()> {
             for line in content.lines() {
                 if let Some(fn_match) = extract_function_name(line) {
                     symbols_sql.push_str(&format!(
-                        "INSERT INTO code_symbols (file, symbol, type, line_count) VALUES ('{}', '{}', 'function', {});\n",
+                        "INSERT OR REPLACE INTO code_symbols (file, symbol, type, line_count) VALUES ('{}', '{}', 'function', {});\n",
                         file, fn_match, line_count
                     ));
                 } else if let Some(struct_match) = extract_struct_name(line) {
                     symbols_sql.push_str(&format!(
-                        "INSERT INTO code_symbols (file, symbol, type, line_count) VALUES ('{}', '{}', 'struct', {});\n",
+                        "INSERT OR REPLACE INTO code_symbols (file, symbol, type, line_count) VALUES ('{}', '{}', 'struct', {});\n",
                         file, struct_match, line_count
                     ));
                 }
@@ -425,13 +425,18 @@ fn extract_struct_name(line: &str) -> Option<String> {
 fn show_extraction_summary() -> Result<()> {
     println!("\n📈 Extraction Summary:");
 
-    // Query summary statistics
+    // Query summary statistics - focus on actual metrics not time
     let summary_query = r#"
 SELECT 
-    'Files with >6 months survival' as metric,
+    'Total files analyzed' as metric,
     COUNT(DISTINCT file) as value
 FROM git_metrics
-WHERE survival_days > 180
+UNION ALL
+SELECT 
+    'Files with 10+ commits' as metric,
+    COUNT(*) as value
+FROM git_metrics
+WHERE commit_count >= 10
 UNION ALL
 SELECT 
     'Total functions found' as metric,
@@ -448,7 +453,12 @@ UNION ALL
 SELECT 
     'Pattern references' as metric,
     COUNT(*) as value
-FROM pattern_references;
+FROM pattern_references
+UNION ALL
+SELECT 
+    'Avg commits per file' as metric,
+    CAST(AVG(commit_count) AS INTEGER) as value
+FROM git_metrics;
 "#;
 
     let output = Command::new("duckdb")
@@ -469,18 +479,18 @@ FROM pattern_references;
 fn reconcile_patterns() -> Result<()> {
     println!("🔍 Reconciling documentation with reality...\n");
 
-    // Check line count claims vs reality
+    // Check line count claims vs reality - focus on commit frequency not age
     let line_check_query = r#"
 SELECT 
     cs.file,
     cs.symbol,
     cs.line_count,
-    gm.survival_days
+    gm.commit_count
 FROM code_symbols cs
 JOIN git_metrics gm ON cs.file = gm.file
 WHERE cs.line_count > 150
   AND cs.type = 'function'
-  AND gm.survival_days > 180
+  AND gm.commit_count > 5  -- Files that have been modified multiple times
 ORDER BY cs.line_count DESC
 LIMIT 10;
 "#;
@@ -497,7 +507,7 @@ LIMIT 10;
         if results.trim().lines().count() > 1 {
             // Has header + data
             println!("⚠️  CONFLICT: dependable-rust.md claims '≤150 lines'");
-            println!("📊 REALITY: These functions exceed 150 lines but survived 180+ days:\n");
+            println!("📊 REALITY: These functions exceed 150 lines but are frequently modified:\n");
             println!("{}", results);
 
             println!("\n❓ How should we reconcile this?");
