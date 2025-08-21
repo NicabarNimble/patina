@@ -17,7 +17,7 @@ const SESSION_END_SH: &str = include_str!("../../../../resources/claude/session-
 const SESSION_END_MD: &str = include_str!("../../../../resources/claude/session-end.md");
 
 // Embed launch command from resources
-const LAUNCH_SH: &str = include_str!("../../../../resources/claude/.claude/bin/launch.sh");
+const LAUNCH_SH: &str = include_str!("../../../../resources/claude/launch.sh");
 const LAUNCH_MD: &str = include_str!("../../../../resources/claude/launch.md");
 
 /// Create all session scripts and command definitions
