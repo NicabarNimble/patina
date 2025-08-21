@@ -26,7 +26,7 @@ pub fn execute() -> Result<()> {
 struct SurvivingFile {
     path: String,
     days_unchanged: i64,
-    last_modified: String,
+    _last_modified: String,
     language: String,
 }
 
@@ -86,7 +86,7 @@ fn find_surviving_files(min_days: i64) -> Result<Vec<SurvivingFile>> {
                 survivors.push(SurvivingFile {
                     path: file.to_string(),
                     days_unchanged,
-                    last_modified: last_modified_str.to_string(),
+                    _last_modified: last_modified_str.to_string(),
                     language,
                 });
             }

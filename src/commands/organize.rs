@@ -81,7 +81,7 @@ pub fn execute(config: &Config, args: OrganizeArgs) -> Result<()> {
 }
 
 struct PatternAnalyzer<'a> {
-    indexer: &'a PatternIndexer,
+    _indexer: &'a PatternIndexer,
     args: &'a OrganizeArgs,
     usage_data: HashMap<String, UsageInfo>,
 }
@@ -90,14 +90,14 @@ struct PatternAnalyzer<'a> {
 struct UsageInfo {
     access_count: u32,
     last_accessed: Option<DateTime<Utc>>,
-    references: Vec<String>,
+    _references: Vec<String>,
 }
 
 impl<'a> PatternAnalyzer<'a> {
     fn new(indexer: &'a PatternIndexer, args: &'a OrganizeArgs) -> Result<Self> {
         let usage_data = Self::load_usage_data(indexer)?;
         Ok(Self {
-            indexer,
+            _indexer: indexer,
             args,
             usage_data,
         })
@@ -137,7 +137,7 @@ impl<'a> PatternAnalyzer<'a> {
                                             last_accessed: last
                                                 .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
                                                 .map(|dt| dt.with_timezone(&Utc)),
-                                            references: vec![],
+                                            _references: vec![],
                                         },
                                     );
                                 }
@@ -542,9 +542,7 @@ fn update_pattern_metadata(path: &Path) -> Result<()> {
 }
 
 fn clean_database(config: &Config, days_old: u32) -> Result<()> {
-    println!(
-        "\n🗑️  Cleaning database entries older than {days_old} days..."
-    );
+    println!("\n🗑️  Cleaning database entries older than {days_old} days...");
 
     let db_path = config.cache_dir.join("patina.db");
     if !db_path.exists() {

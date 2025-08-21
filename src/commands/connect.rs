@@ -30,7 +30,7 @@ pub fn execute() -> Result<()> {
 struct Idea {
     name: String,
     file: String,
-    content_snippet: String,
+    _content_snippet: String,
     last_updated: String,
 }
 
@@ -107,7 +107,7 @@ fn find_ideas() -> Result<Vec<Idea>> {
         ideas.push(Idea {
             name: idea_name,
             file: file.to_string(),
-            content_snippet: snippet,
+            _content_snippet: snippet,
             last_updated,
         });
     }

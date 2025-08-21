@@ -291,7 +291,7 @@ fn recommend_action(
     change_count: u32,
     days_since_last_change: i64,
     survival_rate: f32,
-    unique_authors: u32,
+    _unique_authors: u32,
 ) -> (PatternAction, String) {
     // Core layer patterns - should be stable
     if layer == "core" {
@@ -299,9 +299,7 @@ fn recommend_action(
         if change_count > 10 && days_since_last_change < 30 {
             return (
                 PatternAction::DemoteToDust, // Actually demote to surface but using dust action
-                format!(
-                    "Too volatile for core ({change_count} recent changes) - move to surface"
-                ),
+                format!("Too volatile for core ({change_count} recent changes) - move to surface"),
             );
         }
 
