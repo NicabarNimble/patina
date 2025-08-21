@@ -123,6 +123,21 @@ enum Commands {
 
     /// Connect ideas to their implementations
     Connect,
+
+    /// Extract reality from code using semantic analysis
+    Scrape {
+        /// Initialize the semantic reality database
+        #[arg(long)]
+        init: bool,
+
+        /// Reconcile documented patterns with code reality
+        #[arg(long)]
+        reconcile: bool,
+
+        /// Run a custom SQL query against the database
+        #[arg(long)]
+        query: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -290,6 +305,13 @@ fn main() -> Result<()> {
         }
         Commands::Connect => {
             commands::connect::execute()?;
+        }
+        Commands::Scrape {
+            init,
+            reconcile,
+            query,
+        } => {
+            commands::scrape::execute(init, reconcile, query)?;
         }
         Commands::Doctor { json } => {
             let exit_code = commands::doctor::execute(json)?;
