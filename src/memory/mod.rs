@@ -4,17 +4,16 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-pub mod database;
-pub mod remember;
 pub mod context;
+pub mod database;
 pub mod learn;
+pub mod remember;
 
-pub use remember::RememberCommand;
 pub use context::ContextCommand;
 pub use learn::LearnCommand;
+pub use remember::RememberCommand;
 
 // What LLMs actually need to remember
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,14 +66,14 @@ pub struct Decision {
 }
 
 pub struct MemorySystem {
-    db_path: PathBuf,
+    _db_path: PathBuf,
 }
 
 impl MemorySystem {
     pub fn new() -> Result<Self> {
         let db_path = PathBuf::from(".patina/memory.db");
         std::fs::create_dir_all(".patina")?;
-        Ok(Self { db_path })
+        Ok(Self { _db_path: db_path })
     }
 
     // Core function: What does the LLM need to know RIGHT NOW?
@@ -109,12 +108,17 @@ impl MemorySystem {
             tags: self.extract_tags(lesson),
             prevent_repeat: true,
         };
-        
+
         self.save_lesson(lesson)
     }
 
     // Record a decision and why
-    pub fn decide(&mut self, decision: &str, reasoning: &str, alternatives: Vec<String>) -> Result<()> {
+    pub fn decide(
+        &mut self,
+        decision: &str,
+        reasoning: &str,
+        alternatives: Vec<String>,
+    ) -> Result<()> {
         let decision = Decision {
             id: format!("{}", Utc::now().timestamp()),
             made_at: Utc::now(),
@@ -123,7 +127,7 @@ impl MemorySystem {
             alternatives_rejected: alternatives,
             still_valid: true,
         };
-        
+
         self.save_decision(decision)
     }
 
@@ -149,22 +153,22 @@ impl MemorySystem {
         Ok(vec![]) // TODO: Implement
     }
 
-    fn find_context(&self, topic: &str) -> Result<Vec<ContextItem>> {
+    fn find_context(&self, _topic: &str) -> Result<Vec<ContextItem>> {
         // Smart context search - not just text matching
         Ok(vec![]) // TODO: Implement
     }
 
-    fn save_lesson(&mut self, lesson: Lesson) -> Result<()> {
+    fn save_lesson(&mut self, _lesson: Lesson) -> Result<()> {
         // Save to simple database
         Ok(()) // TODO: Implement
     }
 
-    fn save_decision(&mut self, decision: Decision) -> Result<()> {
+    fn save_decision(&mut self, _decision: Decision) -> Result<()> {
         // Save to simple database
         Ok(()) // TODO: Implement
     }
 
-    fn extract_tags(&self, text: &str) -> Vec<String> {
+    fn extract_tags(&self, _text: &str) -> Vec<String> {
         // Extract meaningful tags from text
         vec![] // TODO: Implement
     }
@@ -174,40 +178,43 @@ impl MemorySystem {
 impl Memory {
     pub fn format_for_llm(&self) -> String {
         let mut output = String::new();
-        
+
         if let Some(session) = &self.last_session {
             output.push_str(&format!("## Last Session ({})\n", session.id));
             output.push_str(&format!("What we did: {}\n", session.what_we_did));
-            
+
             if !session.what_failed.is_empty() {
                 output.push_str("\n⚠️ What failed:\n");
                 for failure in &session.what_failed {
-                    output.push_str(&format!("- {}\n", failure));
+                    output.push_str(&format!("- {failure}\n"));
                 }
             }
-            
+
             if !session.next_steps.is_empty() {
                 output.push_str("\n📍 Next steps:\n");
                 for step in &session.next_steps {
-                    output.push_str(&format!("- {}\n", step));
+                    output.push_str(&format!("- {step}\n"));
                 }
             }
         }
-        
+
         if !self.lessons_learned.is_empty() {
             output.push_str("\n## Relevant Lessons\n");
             for lesson in &self.lessons_learned {
                 output.push_str(&format!("- {}\n", lesson.lesson));
             }
         }
-        
+
         if !self.active_decisions.is_empty() {
             output.push_str("\n## Active Decisions\n");
             for decision in &self.active_decisions {
-                output.push_str(&format!("- {}: {}\n", decision.decision, decision.reasoning));
+                output.push_str(&format!(
+                    "- {}: {}\n",
+                    decision.decision, decision.reasoning
+                ));
             }
         }
-        
+
         output
     }
 }

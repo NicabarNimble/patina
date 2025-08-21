@@ -1,8 +1,8 @@
 use crate::config::Config;
-use patina::indexer::PatternIndexer;
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use clap::Args;
+use patina::indexer::PatternIndexer;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -362,7 +362,8 @@ impl<'a> PatternAnalyzer<'a> {
             }
 
             // Patterns with only metadata issues just need updating
-            if metric.quality_score >= 70.0 && metric.issues.iter().any(|i| i.contains("metadata")) {
+            if metric.quality_score >= 70.0 && metric.issues.iter().any(|i| i.contains("metadata"))
+            {
                 return PatternAction::UpdateMetadata;
             }
         }
@@ -376,10 +377,7 @@ fn display_analysis(metrics: &[PatternMetrics], verbose: bool) {
     let mut by_action: HashMap<String, Vec<&PatternMetrics>> = HashMap::new();
     for metric in metrics {
         let action_key = format!("{:?}", metric.recommendation);
-        by_action
-            .entry(action_key)
-            .or_default()
-            .push(metric);
+        by_action.entry(action_key).or_default().push(metric);
     }
 
     // Summary
@@ -388,7 +386,7 @@ fn display_analysis(metrics: &[PatternMetrics], verbose: bool) {
     println!("Total patterns analyzed: {}", metrics.len());
 
     let avg_quality = metrics.iter().map(|m| m.quality_score).sum::<f32>() / metrics.len() as f32;
-    println!("Average quality score: {:.1}%", avg_quality);
+    println!("Average quality score: {avg_quality:.1}%");
 
     // Recommendations summary
     println!("\n🎯 Recommended Actions:");
@@ -424,7 +422,7 @@ fn display_analysis(metrics: &[PatternMetrics], verbose: bool) {
 
                 if !pattern.issues.is_empty() {
                     for issue in &pattern.issues {
-                        println!("      ⚠️  {}", issue);
+                        println!("      ⚠️  {issue}");
                     }
                 }
             }
@@ -477,10 +475,10 @@ fn apply_recommendations(metrics: &[PatternMetrics], _config: &Config) -> Result
     }
 
     if moved_count > 0 {
-        println!("✓ Moved {} patterns", moved_count);
+        println!("✓ Moved {moved_count} patterns");
     }
     if updated_count > 0 {
-        println!("✓ Updated {} pattern metadata", updated_count);
+        println!("✓ Updated {updated_count} pattern metadata");
     }
 
     Ok(())
@@ -499,7 +497,7 @@ fn promote_pattern(from: &Path, to_layer: &str) -> Result<()> {
 
     // Move the file
     fs::rename(from, &to_path)
-        .with_context(|| format!("Failed to move {:?} to {:?}", from, to_path))?;
+        .with_context(|| format!("Failed to move {from:?} to {to_path:?}"))?;
 
     println!("  Moved {} to {}", from.display(), to_layer);
     Ok(())
@@ -545,8 +543,7 @@ fn update_pattern_metadata(path: &Path) -> Result<()> {
 
 fn clean_database(config: &Config, days_old: u32) -> Result<()> {
     println!(
-        "\n🗑️  Cleaning database entries older than {} days...",
-        days_old
+        "\n🗑️  Cleaning database entries older than {days_old} days..."
     );
 
     let db_path = config.cache_dir.join("patina.db");
@@ -565,7 +562,7 @@ fn clean_database(config: &Config, days_old: u32) -> Result<()> {
     )?;
 
     if deleted > 0 {
-        println!("  Removed {} old state transitions", deleted);
+        println!("  Removed {deleted} old state transitions");
     }
 
     // Clean orphaned documents
@@ -579,7 +576,7 @@ fn clean_database(config: &Config, days_old: u32) -> Result<()> {
     )?;
 
     if orphaned > 0 {
-        println!("  Removed {} orphaned documents", orphaned);
+        println!("  Removed {orphaned} orphaned documents");
     }
 
     // Vacuum to reclaim space
