@@ -53,26 +53,16 @@ impl LLMAdapter for ClaudeAdapter {
 
     fn get_custom_commands(&self) -> Vec<(&'static str, &'static str)> {
         vec![
-            ("/session-start [name]", "Start a new development session"),
-            ("/session-update", "Update session with rich context"),
-            ("/session-note [insight]", "Add human insight to session"),
             (
-                "/session-end",
-                "End session with comprehensive distillation",
+                "/session-start [name]",
+                "Start session with Git branch creation",
             ),
-            // Git-integrated testing versions
+            ("/session-update", "Update session with Git awareness"),
+            ("/session-note [insight]", "Add insight with Git context"),
+            ("/session-end", "End session with Git classification"),
             (
-                "/session-git-start [name]",
-                "Start session with Git branch (testing)",
-            ),
-            ("/session-git-update", "Update with Git awareness (testing)"),
-            (
-                "/session-git-note [insight]",
-                "Note with Git context (testing)",
-            ),
-            (
-                "/session-git-end",
-                "End session with Git classification (testing)",
+                "/launch [branch]",
+                "Create experimental branch for testing ideas",
             ),
         ]
     }
@@ -120,11 +110,9 @@ mod tests {
     fn test_custom_commands() {
         let adapter = ClaudeAdapter::new();
         let commands = adapter.get_custom_commands();
-        assert_eq!(commands.len(), 8);
+        assert_eq!(commands.len(), 5);
         assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/session-")));
-        assert!(commands
-            .iter()
-            .any(|(cmd, _)| cmd.starts_with("/session-git-")));
+        assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/launch")));
     }
 }
 

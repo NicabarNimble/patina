@@ -26,7 +26,7 @@ Patina accumulates knowledge like the protective layer that forms on metal - you
 Before pushing, ALWAYS run these checks locally:
 ```bash
 # Quick way - run all checks at once:
-.claude/bin/pre-push-checks.sh
+./resources/git/pre-push-checks.sh
 
 # Or run individually:
 cargo fmt --all           # Fix Rust formatting

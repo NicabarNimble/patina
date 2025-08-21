@@ -1,6 +1,5 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use patina::indexer;
 
 mod commands;
 mod config;
@@ -94,10 +93,10 @@ enum Commands {
 
     /// Organize and clean up patterns
     Organize(commands::organize::OrganizeArgs),
-    
+
     /// Organize patterns using Git history (v2)
     OrganizeV2(commands::organize_v2::OrganizeArgs),
-    
+
     /// Analyze session activity and patterns
     SessionAnalyze(commands::session_analyze::SessionAnalyzeArgs),
 
