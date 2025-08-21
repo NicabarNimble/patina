@@ -24,8 +24,12 @@ fn initialize_database() -> Result<()> {
     // Create .patina directory if it doesn't exist
     std::fs::create_dir_all(".patina")?;
 
-    // Initialize DuckDB with schema
-    let schema = r#"
+    // Get the fingerprint schema
+    let fingerprint_schema = patina::semantic::fingerprint::generate_schema();
+
+    // Initialize DuckDB with combined schema
+    let schema = format!("{}
+{}", fingerprint_schema, r#"
 -- Code symbols extracted from AST
 CREATE TABLE IF NOT EXISTS code_symbols (
     file TEXT NOT NULL,
@@ -110,7 +114,7 @@ CREATE TABLE IF NOT EXISTS semantic_relationships (
     relationship_type TEXT NOT NULL,  -- implements, depends_on, calls
     PRIMARY KEY (from_symbol, to_symbol, relationship_type)
 );
-"#;
+"#);
 
     // Execute schema creation
     let output = Command::new("duckdb")
@@ -331,15 +335,154 @@ fn extract_pattern_references() -> Result<()> {
     Ok(())
 }
 
-/// Semantic pattern analysis using tree-sitter AST
+/// Semantic pattern analysis using tree-sitter AST with fingerprints
 fn analyze_semantic_patterns() -> Result<()> {
-    println!("🧠 Analyzing semantic patterns...");
+    println!("🧠 Analyzing semantic patterns with fingerprints...");
 
-    // For now, just indicate it's a planned enhancement
-    println!("  ⚠️  Tree-sitter semantic analysis coming soon!");
-    println!("  📝 Will detect: error patterns, trait implementations, complexity");
+    use patina::semantic::{fingerprint::Fingerprint, init_parser};
+    use std::time::SystemTime;
 
+    // Get all Rust files
+    let rust_files = Command::new("find")
+        .args(["src", "-name", "*.rs", "-type", "f"])
+        .output()
+        .context("Failed to find Rust files")?;
+
+    if !rust_files.status.success() {
+        anyhow::bail!("Failed to list Rust files");
+    }
+
+    let files = String::from_utf8_lossy(&rust_files.stdout);
+    let mut parser = init_parser()?;
+    let mut fingerprints_sql = String::from("BEGIN TRANSACTION;\n");
+    fingerprints_sql.push_str("DELETE FROM code_fingerprints;\n");
+    fingerprints_sql.push_str("DELETE FROM code_search;\n");
+    fingerprints_sql.push_str("DELETE FROM index_state;\n");
+
+    let mut processed_count = 0;
+    let mut function_count = 0;
+    for file in files.lines() {
+        if file.is_empty() {
+            continue;
+        }
+
+        // Get file modification time
+        let metadata = std::fs::metadata(file)?;
+        let mtime = metadata.modified()?
+            .duration_since(SystemTime::UNIX_EPOCH)?
+            .as_secs() as i64;
+
+        // Read and parse file
+        let content = std::fs::read_to_string(file)?;
+        if let Some(tree) = parser.parse(&content, None) {
+            let mut cursor = tree.walk();
+            let initial_len = fingerprints_sql.len();
+            process_ast_node(&mut cursor, content.as_bytes(), file, &mut fingerprints_sql);
+            
+            // Check if we added any fingerprints
+            if fingerprints_sql.len() > initial_len {
+                let new_functions = fingerprints_sql[initial_len..].matches("INSERT INTO code_fingerprints").count();
+                function_count += new_functions;
+            }
+            
+            // Record index state
+            fingerprints_sql.push_str(&format!(
+                "INSERT INTO index_state (path, mtime) VALUES ('{}', {});\n",
+                file, mtime
+            ));
+            processed_count += 1;
+        }
+    }
+
+    fingerprints_sql.push_str("COMMIT;\n");
+
+    // Execute the SQL
+    let output = Command::new("duckdb")
+        .arg(".patina/semantic_reality.db")
+        .arg("-c")
+        .arg(&fingerprints_sql)
+        .output()
+        .context("Failed to insert fingerprints")?;
+    
+    if !output.status.success() {
+        eprintln!("DuckDB error: {}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    println!("  ✓ Processed {} files, found {} symbols with fingerprints", processed_count, function_count);
     Ok(())
+}
+
+/// Process AST nodes and generate fingerprints
+fn process_ast_node(
+    cursor: &mut tree_sitter::TreeCursor,
+    source: &[u8],
+    file_path: &str,
+    sql: &mut String,
+) {
+    use patina::semantic::fingerprint::Fingerprint;
+    
+    let node = cursor.node();
+    let kind = match node.kind() {
+        "function_item" => "function",
+        "struct_item" => "struct",
+        "trait_item" => "trait",
+        "impl_item" => "impl",
+        _ => {
+            // Recurse into children for other node types
+            if cursor.goto_first_child() {
+                loop {
+                    process_ast_node(cursor, source, file_path, sql);
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+                cursor.goto_parent();
+            }
+            return;
+        }
+    };
+
+    // Extract name and generate fingerprint
+    if let Some(name_node) = node.child_by_field_name("name") {
+        let name = name_node.utf8_text(source).unwrap_or("<unknown>");
+        let fingerprint = Fingerprint::from_ast(node, source);
+        
+        // Get signature for search
+        let signature = node.utf8_text(source)
+            .unwrap_or("")
+            .lines()
+            .next()
+            .unwrap_or("")
+            .to_string();
+
+        // Insert fingerprint (use INSERT OR REPLACE to handle duplicates)
+        sql.push_str(&format!(
+            "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
+            file_path, name, kind, 
+            fingerprint.pattern, fingerprint.imports,
+            fingerprint.complexity, fingerprint.flags
+        ));
+
+        // Insert search data
+        sql.push_str(&format!(
+            "INSERT OR REPLACE INTO code_search (path, name, signature) VALUES ('{}', '{}', '{}');\n",
+            file_path, name, signature.replace("'", "''")
+        ));
+        
+        // Don't recurse into the function/struct body - we've already processed it
+        return;
+    }
+
+    // Continue recursion for other nodes
+    if cursor.goto_first_child() {
+        loop {
+            process_ast_node(cursor, source, file_path, sql);
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+        cursor.goto_parent();
+    }
 }
 
 /// Basic code structure analysis (will be enhanced with tree-sitter)
@@ -481,16 +624,28 @@ FROM git_metrics
 WHERE commit_count >= 10
 UNION ALL
 SELECT 
-    'Total functions found' as metric,
+    'Functions fingerprinted' as metric,
     COUNT(*) as value
-FROM code_symbols
-WHERE type = 'function'
+FROM code_fingerprints
+WHERE kind = 'function'
 UNION ALL
 SELECT 
-    'Total structs found' as metric,
+    'Low complexity functions' as metric,
     COUNT(*) as value
-FROM code_symbols
-WHERE type = 'struct'
+FROM code_fingerprints
+WHERE kind = 'function' AND complexity <= 5
+UNION ALL
+SELECT 
+    'Async functions' as metric,
+    COUNT(*) as value
+FROM code_fingerprints
+WHERE kind = 'function' AND (flags & 1) = 1
+UNION ALL
+SELECT 
+    'Unsafe code blocks' as metric,
+    COUNT(*) as value
+FROM code_fingerprints
+WHERE (flags & 2) = 2
 UNION ALL
 SELECT 
     'Pattern references' as metric,
@@ -498,20 +653,15 @@ SELECT
 FROM pattern_references
 UNION ALL
 SELECT 
-    'Avg commits per file' as metric,
-    CAST(AVG(commit_count) AS INTEGER) as value
-FROM git_metrics
+    'Avg function complexity' as metric,
+    CAST(AVG(complexity) AS INTEGER) as value
+FROM code_fingerprints
+WHERE kind = 'function'
 UNION ALL
 SELECT 
-    'Semantic patterns found' as metric,
+    'Unique AST patterns' as metric,
     COUNT(DISTINCT pattern) as value
-FROM semantic_patterns
-UNION ALL
-SELECT 
-    'Functions with low complexity' as metric,
-    COUNT(*) as value
-FROM semantic_symbols
-WHERE kind = 'function' AND complexity <= 5;
+FROM code_fingerprints;
 "#;
 
     let output = Command::new("duckdb")

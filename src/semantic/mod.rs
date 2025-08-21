@@ -4,6 +4,9 @@ use tree_sitter::{Language, Parser, Query, QueryCursor};
 
 pub mod analyzer;
 pub mod patterns;
+pub mod queries;
+pub mod deep_analyzer;
+pub mod fingerprint;
 
 /// Semantic information extracted from code
 #[derive(Debug, Clone)]
