@@ -3,6 +3,7 @@ pub mod dev_env;
 pub mod environment;
 pub mod indexer;
 pub mod layer;
+pub mod memory;
 pub mod session;
 pub mod version;
 pub mod workspace_client;

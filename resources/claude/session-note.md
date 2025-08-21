@@ -1,22 +1,21 @@
-Add a human note to the current Patina session:
+Add a human note to the current Patina session with Git context:
 
 1. Run the session note script with your insight:
    - Execute: `.claude/bin/session-note.sh "$ARGUMENTS"`
    - Example: `.claude/bin/session-note.sh "discovered dual session architecture is key"`
 
-2. Confirm the note was added:
-   - Say: "Note added: [what user said]"
+2. The script will add Git context [branch@sha] to the note
 
-3. Purpose of notes:
-   - Capture human insights and "aha moments"
-   - Mark important decisions or discoveries
-   - Add context that might be missed in updates
-   - High-signal input for session distillation
+3. Confirm the note was added:
+   - Say: "Note added [branch@sha]: [what user said]"
 
-4. Note types (optional):
-   - Simple: "great pattern found"
-   - Question: "why does X do Y?"
-   - Decision: "we should keep sessions git-aware"
-   - Discovery: "dual architecture solves the problem"
+4. If the note contains keywords (breakthrough, discovered, solved, fixed):
+   - The script will suggest a checkpoint commit
+   - Consider: `git commit -am "checkpoint: [discovery]"`
 
-Note: These notes are prioritized during session-end distillation as they represent human judgment and insight.
+5. Purpose of Git-linked notes:
+   - Create searchable memory tied to specific code states
+   - Enable future queries like "when did we solve X?"
+   - Build knowledge graph through Git history
+
+Note: These notes are prioritized during session-end distillation and become searchable through Git.
