@@ -270,9 +270,10 @@ fn analyze_patterns(created: &[String], modified: &[String]) -> Result<(Vec<Stri
     // Check for DEPENDABLE_RUST pattern
     for file in created.iter().chain(modified.iter()) {
         if (file.contains("/internal/") || file.ends_with("/internal.rs"))
-            && !implemented.contains(&"dependable-rust".to_string()) {
-                implemented.push("dependable-rust".to_string());
-            }
+            && !implemented.contains(&"dependable-rust".to_string())
+        {
+            implemented.push("dependable-rust".to_string());
+        }
 
         // Check for organize pattern discovery
         if file.contains("organize") {
@@ -347,7 +348,7 @@ fn count_refactors(start_tag: &str) -> Result<u32> {
 
 fn extract_insights(
     created: &[String],
-    modified: &[String],
+    _modified: &[String],
     lines_added: u32,
     refactor_count: u32,
     survival_rate: f32,

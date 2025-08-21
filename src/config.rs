@@ -7,7 +7,7 @@ pub struct Config {
     /// Cache directory for databases and indexes
     pub cache_dir: PathBuf,
     /// Project root directory
-    pub project_root: PathBuf,
+    pub _project_root: PathBuf,
 }
 
 impl Config {
@@ -21,7 +21,7 @@ impl Config {
 
         Ok(Self {
             cache_dir,
-            project_root,
+            _project_root: project_root,
         })
     }
 }
