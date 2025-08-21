@@ -22,6 +22,11 @@ Patina accumulates knowledge like the protective layer that forms on metal - you
 - Patterns evolve from projects → topics → core
 - Always provide escape hatches
 
+## Git Commit Guidelines
+- NEVER add "🤖 Generated with Claude Code" or "Co-Authored-By: Claude" to commit messages
+- Keep commit messages clean and professional without AI attribution
+- Focus on what changed and why, not who/what wrote it
+
 ## CI Requirements - IMPORTANT
 Before pushing, ALWAYS run these checks locally:
 ```bash
