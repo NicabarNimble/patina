@@ -7,6 +7,7 @@ pub mod patterns;
 pub mod queries;
 pub mod deep_analyzer;
 pub mod fingerprint;
+pub mod languages;
 
 /// Semantic information extracted from code
 #[derive(Debug, Clone)]

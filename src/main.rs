@@ -133,6 +133,10 @@ enum Commands {
         /// Run a custom SQL query against the database
         #[arg(long)]
         query: Option<String>,
+        
+        /// Scrape a reference repo from layer/dust/repos/<name>
+        #[arg(long)]
+        repo: Option<String>,
     },
 }
 
@@ -302,8 +306,8 @@ fn main() -> Result<()> {
         Commands::Connect => {
             commands::connect::execute()?;
         }
-        Commands::Scrape { init, query } => {
-            commands::scrape::execute(init, query)?;
+        Commands::Scrape { init, query, repo } => {
+            commands::scrape::execute(init, query, repo)?;
         }
         Commands::Doctor { json } => {
             let exit_code = commands::doctor::execute(json)?;

@@ -1,27 +1,64 @@
 use anyhow::{Context, Result};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Execute the scrape command to build semantic knowledge database
-pub fn execute(init: bool, query: Option<String>) -> Result<()> {
-    if init {
-        initialize_database()?;
-    } else if let Some(q) = query {
-        run_query(&q)?;
+pub fn execute(init: bool, query: Option<String>, repo: Option<String>) -> Result<()> {
+    // Determine paths based on whether we're scraping a repo
+    let (db_path, work_dir) = if let Some(repo_name) = &repo {
+        validate_repo_path(&repo_name)?
     } else {
-        extract_and_index()?;
+        (".patina/knowledge.db".into(), std::env::current_dir()?)
+    };
+    
+    if init {
+        initialize_database(&db_path)?;
+    } else if let Some(q) = query {
+        run_query(&q, &db_path)?;
+    } else {
+        extract_and_index(&db_path, &work_dir)?;
     }
     Ok(())
 }
 
+/// Validate repo exists and return database path and working directory
+fn validate_repo_path(repo_name: &str) -> Result<(String, PathBuf)> {
+    let repo_dir = PathBuf::from("layer/dust/repos").join(repo_name);
+    
+    if !repo_dir.exists() {
+        anyhow::bail!(
+            "Repository '{}' not found in layer/dust/repos/\n\
+             Please clone the repository first:\n\
+             mkdir -p layer/dust/repos && cd layer/dust/repos\n\
+             git clone <url> {}",
+            repo_name, repo_name
+        );
+    }
+    
+    if !repo_dir.is_dir() {
+        anyhow::bail!("'{}' exists but is not a directory", repo_dir.display());
+    }
+    
+    let db_path = format!("layer/dust/repos/{}.db", repo_name);
+    let work_dir = std::env::current_dir()?.join(repo_dir);
+    
+    println!("📦 Scraping repository: {}", repo_name);
+    println!("📁 Source: {}", work_dir.display());
+    println!("💾 Database: {}", db_path);
+    
+    Ok((db_path, work_dir))
+}
+
 /// Initialize DuckDB database with lean schema and optimal settings for small size
-fn initialize_database() -> Result<()> {
+fn initialize_database(db_path: &str) -> Result<()> {
     println!("🗄️  Initializing optimized knowledge database...");
     
-    std::fs::create_dir_all(".patina")?;
+    // Create parent directory if needed
+    if let Some(parent) = Path::new(db_path).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     
     // Remove old database if exists
-    let db_path = ".patina/knowledge.db";
     if Path::new(db_path).exists() {
         std::fs::remove_file(db_path)?;
     }
@@ -84,29 +121,32 @@ CREATE TABLE IF NOT EXISTS pattern_references (
 }
 
 /// Extract and index code with fingerprints + Git metrics
-fn extract_and_index() -> Result<()> {
+fn extract_and_index(db_path: &str, work_dir: &Path) -> Result<()> {
     println!("🔍 Indexing codebase...\n");
     
     // Step 1: Git metrics for quality signals
-    extract_git_metrics()?;
+    extract_git_metrics(db_path, work_dir)?;
     
-    // Step 2: Pattern references from docs
-    extract_pattern_references()?;
+    // Step 2: Pattern references from docs (only for main repo)
+    if db_path.contains(".patina/") {
+        extract_pattern_references(db_path, work_dir)?;
+    }
     
     // Step 3: Semantic fingerprints with tree-sitter
-    extract_fingerprints()?;
+    extract_fingerprints(db_path, work_dir)?;
     
     // Step 4: Show summary
-    show_summary()?;
+    show_summary(db_path)?;
     
     Ok(())
 }
 
 /// Extract Git survival metrics
-fn extract_git_metrics() -> Result<()> {
+fn extract_git_metrics(db_path: &str, work_dir: &Path) -> Result<()> {
     println!("📊 Analyzing Git history...");
     
     let rust_files = Command::new("git")
+        .current_dir(work_dir)
         .args(["ls-files", "*.rs", "src/**/*.rs"])
         .output()
         .context("Failed to list Git files")?;
@@ -128,6 +168,7 @@ fn extract_git_metrics() -> Result<()> {
         
         // Get commit history for this file
         let log_output = Command::new("git")
+            .current_dir(work_dir)
             .args(["log", "--format=%H %ai", "--follow", "--", file])
             .output()?;
             
@@ -142,6 +183,7 @@ fn extract_git_metrics() -> Result<()> {
                 
                 // Calculate survival days
                 let first_date = Command::new("git")
+                    .current_dir(work_dir)
                     .args(["show", "-s", "--format=%at", first])
                     .output()?;
                     
@@ -169,7 +211,7 @@ fn extract_git_metrics() -> Result<()> {
     metrics_sql.push_str("COMMIT;\n");
     
     Command::new("duckdb")
-        .arg(".patina/knowledge.db")
+        .arg(db_path)
         .arg("-c")
         .arg(&metrics_sql)
         .output()
@@ -180,10 +222,11 @@ fn extract_git_metrics() -> Result<()> {
 }
 
 /// Extract pattern references from markdown
-fn extract_pattern_references() -> Result<()> {
+fn extract_pattern_references(db_path: &str, work_dir: &Path) -> Result<()> {
     println!("🔗 Extracting pattern references...");
     
     let pattern_files = Command::new("find")
+        .current_dir(work_dir)
         .args(["layer", "-name", "*.md", "-type", "f"])
         .output()
         .context("Failed to find pattern files")?;
@@ -206,7 +249,8 @@ fn extract_pattern_references() -> Result<()> {
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
             
-        if let Ok(content) = std::fs::read_to_string(file) {
+        let file_path = work_dir.join(file);
+        if let Ok(content) = std::fs::read_to_string(&file_path) {
             // Look for references in YAML frontmatter
             if let Some(refs_line) = content.lines().find(|l| l.starts_with("references:")) {
                 if let Some(refs) = refs_line.strip_prefix("references:") {
@@ -228,7 +272,7 @@ fn extract_pattern_references() -> Result<()> {
     references_sql.push_str("COMMIT;\n");
     
     Command::new("duckdb")
-        .arg(".patina/knowledge.db")
+        .arg(db_path)
         .arg("-c")
         .arg(&references_sql)
         .output()
@@ -239,38 +283,75 @@ fn extract_pattern_references() -> Result<()> {
 }
 
 /// Extract semantic fingerprints with tree-sitter
-fn extract_fingerprints() -> Result<()> {
+fn extract_fingerprints(db_path: &str, work_dir: &Path) -> Result<()> {
     println!("🧠 Generating semantic fingerprints...");
     
-    use patina::semantic::init_parser;
+    use patina::semantic::languages::{Language, create_parser};
     use std::time::SystemTime;
     
+    // Find all supported language files
+    let mut all_files = Vec::new();
+    
+    // Find Rust files
     let rust_files = Command::new("find")
-        .args(["src", "-name", "*.rs", "-type", "f"])
-        .output()
-        .context("Failed to find Rust files")?;
-        
-    if !rust_files.status.success() {
-        anyhow::bail!("Failed to list Rust files");
+        .current_dir(work_dir)
+        .args([".", "-name", "*.rs", "-type", "f"])
+        .output()?;
+    if rust_files.status.success() {
+        for file in String::from_utf8_lossy(&rust_files.stdout).lines() {
+            if !file.is_empty() {
+                all_files.push((file.to_string(), Language::Rust));
+            }
+        }
     }
     
-    let files = String::from_utf8_lossy(&rust_files.stdout);
-    let mut parser = init_parser()?;
+    // Find Go files
+    let go_files = Command::new("find")
+        .current_dir(work_dir)
+        .args([".", "-name", "*.go", "-type", "f"])
+        .output()?;
+    if go_files.status.success() {
+        for file in String::from_utf8_lossy(&go_files.stdout).lines() {
+            if !file.is_empty() {
+                all_files.push((file.to_string(), Language::Go));
+            }
+        }
+    }
     
-    // Start transaction
+    if all_files.is_empty() {
+        println!("  ⚠️  No supported language files found");
+        return Ok(());
+    }
+    
+    println!("  📂 Found {} files ({} Rust, {} Go)", 
+        all_files.len(),
+        all_files.iter().filter(|(_, l)| *l == Language::Rust).count(),
+        all_files.iter().filter(|(_, l)| *l == Language::Go).count()
+    );
+    
+    // Clear existing data first
+    Command::new("duckdb")
+        .arg(db_path)
+        .arg("-c")
+        .arg("DELETE FROM code_fingerprints; DELETE FROM code_search; DELETE FROM index_state;")
+        .output()?;
+    
     let mut sql = String::from("BEGIN TRANSACTION;\n");
-    sql.push_str("DELETE FROM code_fingerprints;\n");
-    sql.push_str("DELETE FROM code_search;\n");
-    sql.push_str("DELETE FROM index_state;\n");
-    
     let mut symbol_count = 0;
-    for file in files.lines() {
-        if file.is_empty() {
-            continue;
+    let mut current_lang = Language::Unknown;
+    let mut parser: Option<tree_sitter::Parser> = None;
+    let mut batch_count = 0;
+    
+    for (file, language) in all_files {
+        // Switch parser if language changed
+        if language != current_lang {
+            parser = Some(create_parser(language)?);
+            current_lang = language;
         }
         
         // Check if file needs reindexing (mtime-based incremental)
-        let metadata = std::fs::metadata(file)?;
+        let file_path = work_dir.join(&file);
+        let metadata = std::fs::metadata(&file_path)?;
         let mtime = metadata.modified()?
             .duration_since(SystemTime::UNIX_EPOCH)?
             .as_secs() as i64;
@@ -278,31 +359,48 @@ fn extract_fingerprints() -> Result<()> {
         // TODO: Check index_state to skip unchanged files
         
         // Parse and fingerprint
-        let content = std::fs::read_to_string(file)?;
-        if let Some(tree) = parser.parse(&content, None) {
-            let mut cursor = tree.walk();
-            symbol_count += process_ast_node(&mut cursor, content.as_bytes(), file, &mut sql);
-            
-            // Record index state
-            sql.push_str(&format!(
-                "INSERT INTO index_state (path, mtime) VALUES ('{}', {});\n",
-                file, mtime
-            ));
+        let content = std::fs::read_to_string(&file_path)?;
+        if let Some(ref mut p) = parser {
+            if let Some(tree) = p.parse(&content, None) {
+                let mut cursor = tree.walk();
+                symbol_count += process_ast_node(&mut cursor, content.as_bytes(), &file, &mut sql, language);
+                
+                // Record index state
+                sql.push_str(&format!(
+                    "INSERT INTO index_state (path, mtime) VALUES ('{}', {});\n",
+                    file, mtime
+                ));
+            }
+        }
+        
+        // Batch execute every 100 files to avoid command line limits
+        batch_count += 1;
+        if batch_count >= 100 {
+            sql.push_str("COMMIT;\n");
+            Command::new("duckdb")
+                .arg(db_path)
+                .arg("-c")
+                .arg(&sql)
+                .output()
+                .context("Failed to insert batch")?;
+            sql = String::from("BEGIN TRANSACTION;\n");
+            batch_count = 0;
         }
     }
     
-    sql.push_str("COMMIT;\n");
-    
-    // Execute
-    let output = Command::new("duckdb")
-        .arg(".patina/knowledge.db")
-        .arg("-c")
-        .arg(&sql)
-        .output()
-        .context("Failed to insert fingerprints")?;
+    // Execute final batch
+    if batch_count > 0 {
+        sql.push_str("COMMIT;\n");
+        let output = Command::new("duckdb")
+            .arg(db_path)
+            .arg("-c")
+            .arg(&sql)
+            .output()
+            .context("Failed to insert final batch")?;
         
-    if !output.status.success() {
-        eprintln!("DuckDB error: {}", String::from_utf8_lossy(&output.stderr));
+        if !output.status.success() {
+            eprintln!("DuckDB error: {}", String::from_utf8_lossy(&output.stderr));
+        }
     }
     
     println!("  ✓ Fingerprinted {} symbols", symbol_count);
@@ -315,23 +413,39 @@ fn process_ast_node(
     source: &[u8],
     file_path: &str,
     sql: &mut String,
+    language: patina::semantic::languages::Language,
 ) -> usize {
     use patina::semantic::fingerprint::Fingerprint;
+    use patina::semantic::languages::Language;
     
     let node = cursor.node();
     let mut count = 0;
     
     // Check if this is a symbol we want to fingerprint
-    let kind = match node.kind() {
-        "function_item" => "function",
-        "struct_item" => "struct",
-        "trait_item" => "trait",
-        "impl_item" => "impl",
+    let kind = match (language, node.kind()) {
+        // Rust mappings
+        (Language::Rust, "function_item") => "function",
+        (Language::Rust, "struct_item") => "struct",
+        (Language::Rust, "trait_item") => "trait",
+        (Language::Rust, "impl_item") => "impl",
+        // Go mappings
+        (Language::Go, "function_declaration") => "function",
+        (Language::Go, "method_declaration") => "function",
+        (Language::Go, "type_spec") => {
+            // Check if it's a struct or interface
+            if node.child_by_field_name("type").map_or(false, |n| n.kind() == "struct_type") {
+                "struct"
+            } else if node.child_by_field_name("type").map_or(false, |n| n.kind() == "interface_type") {
+                "trait"
+            } else {
+                ""
+            }
+        },
         _ => {
             // Recurse into children
             if cursor.goto_first_child() {
                 loop {
-                    count += process_ast_node(cursor, source, file_path, sql);
+                    count += process_ast_node(cursor, source, file_path, sql, language);
                     if !cursor.goto_next_sibling() {
                         break;
                     }
@@ -342,8 +456,20 @@ fn process_ast_node(
         }
     };
     
+    // Skip empty kinds
+    if kind.is_empty() {
+        return count;
+    }
+    
     // Extract name and generate fingerprint
-    if let Some(name_node) = node.child_by_field_name("name") {
+    let name_node = if language == Language::Go && node.kind() == "type_spec" {
+        // Go type specs have name directly in the node
+        node.child_by_field_name("name")
+    } else {
+        node.child_by_field_name("name")
+    };
+    
+    if let Some(name_node) = name_node {
         let name = name_node.utf8_text(source).unwrap_or("<unknown>");
         let fingerprint = Fingerprint::from_ast(node, source);
         
@@ -376,7 +502,7 @@ fn process_ast_node(
 }
 
 /// Show extraction summary
-fn show_summary() -> Result<()> {
+fn show_summary(db_path: &str) -> Result<()> {
     println!("\n📈 Summary:");
     
     let summary_query = r#"
@@ -405,7 +531,7 @@ WHERE commit_count >= 10;
 "#;
 
     let output = Command::new("duckdb")
-        .arg(".patina/knowledge.db")
+        .arg(db_path)
         .arg("-c")
         .arg(summary_query)
         .output()
@@ -418,7 +544,7 @@ WHERE commit_count >= 10;
     // Show database size and block info
     let size_query = "PRAGMA database_size;";
     let size_output = Command::new("duckdb")
-        .arg(".patina/knowledge.db")
+        .arg(db_path)
         .arg("-c")
         .arg(size_query)
         .output()?;
@@ -429,7 +555,7 @@ WHERE commit_count >= 10;
     }
     
     // Also show file size
-    if let Ok(metadata) = std::fs::metadata(".patina/knowledge.db") {
+    if let Ok(metadata) = std::fs::metadata(db_path) {
         let size_kb = metadata.len() / 1024;
         println!("📁 File size: {}KB", size_kb);
     }
@@ -438,9 +564,9 @@ WHERE commit_count >= 10;
 }
 
 /// Run a custom query
-fn run_query(query: &str) -> Result<()> {
+fn run_query(query: &str, db_path: &str) -> Result<()> {
     let output = Command::new("duckdb")
-        .arg(".patina/knowledge.db")
+        .arg(db_path)
         .arg("-c")
         .arg(query)
         .output()
