@@ -82,29 +82,17 @@ impl Language {
     }
 }
 
-/// Create a parser for the given language using patina-metal for better version management
+/// Create a parser for the given language
 pub fn create_parser(language: Language) -> Result<Parser> {
-    use patina_metal::Metal;
+    let mut parser = Parser::new();
     
-    // Map our Language enum to patina-metal's Metal enum
-    let metal = match language {
-        Language::Rust => Metal::Rust,
-        Language::Go => Metal::Go,
-        Language::Solidity => Metal::Solidity,
-        Language::Unknown => anyhow::bail!("Unknown language"),
-    };
-    
-    // Get the tree-sitter language from patina-metal ONLY
-    // If patina-metal says it's not available, we trust that decision
-    if let Some(ts_lang) = metal.tree_sitter_language() {
-        let mut parser = Parser::new();
+    if let Some(ts_lang) = language.tree_sitter_language() {
         parser
             .set_language(&ts_lang)
-            .context(format!("Failed to set language for {:?}", language))?;
+            .context("Failed to set language")?;
         Ok(parser)
     } else {
-        // Don't fall back - patina-metal knows best about parser availability
-        anyhow::bail!("Parser not available for {:?} (patina-metal: version conflict or missing)", language)
+        anyhow::bail!("Unsupported language: {:?}", language)
     }
 }
 

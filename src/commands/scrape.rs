@@ -359,23 +359,8 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path) -> Result<()> {
     for (file, language) in all_files {
         // Switch parser if language changed
         if language != current_lang {
-            match create_parser(language) {
-                Ok(p) => {
-                    parser = Some(p);
-                    current_lang = language;
-                }
-                Err(e) => {
-                    // Skip files for languages without working parsers
-                    eprintln!("  ⚠️  Skipping {} files: {}", 
-                        match language {
-                            Language::Rust => "Rust",
-                            Language::Go => "Go", 
-                            Language::Solidity => "Solidity",
-                            Language::Unknown => "Unknown",
-                        }, e);
-                    continue;
-                }
-            }
+            parser = Some(create_parser(language)?);
+            current_lang = language;
         }
         
         // Check if file needs reindexing (mtime-based incremental)
