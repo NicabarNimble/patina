@@ -57,6 +57,12 @@ colored = "2"
 patina-metal = { path = "patina-metal" }
 walkdir = "2"
 
+# Tree-sitter dependencies (kept for legacy semantic module - to be removed)
+tree-sitter = "0.23"
+tree-sitter-rust = "0.23"
+tree-sitter-go = "0.23"
+tree-sitter-solidity = { git = "https://github.com/JoranHonig/tree-sitter-solidity", tag = "v1.2.13" }
+
 # CRDT support
 automerge = "0.5"
 
