@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::collections::HashMap;
 use tree_sitter::Query;
 use crate::{Metal, QueryType};
 
@@ -6,13 +7,29 @@ use crate::{Metal, QueryType};
 pub struct QueryLoader;
 
 impl QueryLoader {
-    /// Load a query for a specific metal and type
+    /// Load all queries for available metals
+    pub fn load_all_queries() -> HashMap<(Metal, QueryType), String> {
+        let mut queries = HashMap::new();
+        
+        // Rust queries
+        queries.insert((Metal::Rust, QueryType::Symbols), include_str!("../queries/rust/symbols.scm").to_string());
+        queries.insert((Metal::Rust, QueryType::Complexity), include_str!("../queries/rust/complexity.scm").to_string());
+        queries.insert((Metal::Rust, QueryType::Patterns), include_str!("../queries/rust/patterns.scm").to_string());
+        
+        // Go queries
+        queries.insert((Metal::Go, QueryType::Symbols), include_str!("../queries/go/symbols.scm").to_string());
+        queries.insert((Metal::Go, QueryType::Complexity), include_str!("../queries/go/complexity.scm").to_string());
+        queries.insert((Metal::Go, QueryType::Patterns), include_str!("../queries/go/patterns.scm").to_string());
+        
+        queries
+    }
+    
+    /// Load a specific query for a metal and type
     pub fn load_query(metal: Metal, query_type: QueryType) -> Result<Query> {
-        let query_text = match (metal, query_type) {
-            (Metal::Rust, QueryType::Symbols) => RUST_SYMBOLS_QUERY,
-            (Metal::Solidity, QueryType::Symbols) => SOLIDITY_SYMBOLS_QUERY,
-            _ => DEFAULT_QUERY,
-        };
+        let queries = Self::load_all_queries();
+        
+        let query_text = queries.get(&(metal, query_type))
+            .ok_or_else(|| anyhow::anyhow!("No query for {:?} {:?}", metal, query_type))?;
         
         let language = metal.tree_sitter_language()
             .ok_or_else(|| anyhow::anyhow!("No language for {:?}", metal))?;
@@ -20,39 +37,13 @@ impl QueryLoader {
         Query::new(&language, query_text)
             .map_err(|e| anyhow::anyhow!("Failed to create query: {}", e))
     }
+    
+    /// Create a query directly from text
+    pub fn create_query(metal: Metal, query_text: &str) -> Result<Query> {
+        let language = metal.tree_sitter_language()
+            .ok_or_else(|| anyhow::anyhow!("No language for {:?}", metal))?;
+            
+        Query::new(&language, query_text)
+            .map_err(|e| anyhow::anyhow!("Failed to create query: {}", e))
+    }
 }
-
-// Default queries embedded for now (later we'll load from .scm files)
-
-const RUST_SYMBOLS_QUERY: &str = r#"
-(function_item
-  name: (identifier) @function.name) @function
-
-(struct_item
-  name: (type_identifier) @struct.name) @struct
-
-(trait_item
-  name: (type_identifier) @trait.name) @trait
-
-(impl_item
-  trait: (type_identifier)? @impl.trait
-  type: (type_identifier) @impl.type) @impl
-"#;
-
-const SOLIDITY_SYMBOLS_QUERY: &str = r#"
-(contract_declaration
-  name: (identifier) @contract.name) @contract
-
-(function_definition
-  name: (identifier) @function.name) @function
-
-(event_definition
-  name: (identifier) @event.name) @event
-
-(modifier_definition
-  name: (identifier) @modifier.name) @modifier
-"#;
-
-const DEFAULT_QUERY: &str = r#"
-(identifier) @name
-"#;

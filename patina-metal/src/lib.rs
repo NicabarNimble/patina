@@ -1,6 +1,6 @@
 use anyhow::Result;
 use std::collections::HashMap;
-use tree_sitter::{Node, Parser, Query, Tree};
+use tree_sitter::{Node, Parser, Query, QueryCursor, Tree};
 
 pub mod metal;
 pub mod parser;
@@ -51,6 +51,15 @@ pub enum SymbolKind {
     Modifier,
 }
 
+/// Result from running a tree-sitter query
+#[derive(Debug, Clone)]
+pub struct QueryMatch {
+    pub capture_name: String,
+    pub text: String,
+    pub start_line: usize,
+    pub end_line: usize,
+}
+
 impl Analyzer {
     /// Create a new analyzer with all supported languages
     pub fn new() -> Result<Self> {
@@ -80,8 +89,21 @@ impl Analyzer {
             return Err(anyhow::anyhow!("No working parsers available"));
         }
         
-        // Load queries (for now, empty - we'll add .scm files later)
-        let queries = HashMap::new();
+        // Load queries for available parsers
+        let mut queries = HashMap::new();
+        for metal in parsers.keys() {
+            // Try to load each query type, skip if fails
+            for query_type in &[QueryType::Symbols, QueryType::Complexity, QueryType::Patterns] {
+                match queries::QueryLoader::load_query(*metal, *query_type) {
+                    Ok(query) => {
+                        queries.insert((*metal, *query_type), query);
+                    }
+                    Err(e) => {
+                        eprintln!("Warning: Failed to load {:?} query for {:?}: {}", query_type, metal, e);
+                    }
+                }
+            }
+        }
         
         Ok(Self { parsers, queries })
     }
@@ -130,6 +152,34 @@ impl Analyzer {
         let mut cursor = file.tree.walk();
         self.count_branches(&mut cursor, file.metal, &mut complexity);
         complexity
+    }
+    
+    /// Run a query on a parsed file
+    pub fn run_query(&self, file: &ParsedFile, query_type: QueryType) -> Result<Vec<QueryMatch>> {
+        let query = self.queries.get(&(file.metal, query_type))
+            .ok_or_else(|| anyhow::anyhow!("No {:?} query for {:?}", query_type, file.metal))?;
+        
+        let mut cursor = QueryCursor::new();
+        let matches = cursor.matches(query, file.tree.root_node(), file.source.as_bytes());
+        
+        let mut results = Vec::new();
+        for m in matches {
+            for capture in m.captures {
+                let text = capture.node.utf8_text(file.source.as_bytes())
+                    .unwrap_or_default()
+                    .to_string();
+                let capture_name = query.capture_names()[capture.index as usize].to_string();
+                
+                results.push(QueryMatch {
+                    capture_name,
+                    text,
+                    start_line: capture.node.start_position().row,
+                    end_line: capture.node.end_position().row,
+                });
+            }
+        }
+        
+        Ok(results)
     }
     
     /// Generate fingerprint for pattern matching
