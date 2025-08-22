@@ -318,15 +318,29 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path) -> Result<()> {
         }
     }
     
+    // Find Solidity files
+    let sol_files = Command::new("find")
+        .current_dir(work_dir)
+        .args([".", "-name", "*.sol", "-type", "f"])
+        .output()?;
+    if sol_files.status.success() {
+        for file in String::from_utf8_lossy(&sol_files.stdout).lines() {
+            if !file.is_empty() {
+                all_files.push((file.to_string(), Language::Solidity));
+            }
+        }
+    }
+    
     if all_files.is_empty() {
         println!("  ⚠️  No supported language files found");
         return Ok(());
     }
     
-    println!("  📂 Found {} files ({} Rust, {} Go)", 
+    println!("  📂 Found {} files ({} Rust, {} Go, {} Solidity)", 
         all_files.len(),
         all_files.iter().filter(|(_, l)| *l == Language::Rust).count(),
-        all_files.iter().filter(|(_, l)| *l == Language::Go).count()
+        all_files.iter().filter(|(_, l)| *l == Language::Go).count(),
+        all_files.iter().filter(|(_, l)| *l == Language::Solidity).count()
     );
     
     // Clear existing data first
@@ -441,6 +455,13 @@ fn process_ast_node(
                 ""
             }
         },
+        // Solidity mappings
+        (Language::Solidity, "function_definition") => "function",
+        (Language::Solidity, "contract_declaration") => "struct",
+        (Language::Solidity, "interface_declaration") => "trait",
+        (Language::Solidity, "library_declaration") => "impl",
+        (Language::Solidity, "modifier_definition") => "function",
+        (Language::Solidity, "event_definition") => "function",
         _ => {
             // Recurse into children
             if cursor.goto_first_child() {
@@ -462,11 +483,17 @@ fn process_ast_node(
     }
     
     // Extract name and generate fingerprint
-    let name_node = if language == Language::Go && node.kind() == "type_spec" {
-        // Go type specs have name directly in the node
-        node.child_by_field_name("name")
-    } else {
-        node.child_by_field_name("name")
+    let name_node = match language {
+        Language::Go if node.kind() == "type_spec" => {
+            // Go type specs have name directly in the node
+            node.child_by_field_name("name")
+        },
+        Language::Solidity => {
+            // Solidity has name or identifier field
+            node.child_by_field_name("name")
+                .or_else(|| node.child_by_field_name("identifier"))
+        },
+        _ => node.child_by_field_name("name")
     };
     
     if let Some(name_node) = name_node {

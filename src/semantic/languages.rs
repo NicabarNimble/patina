@@ -7,6 +7,7 @@ use tree_sitter::{Language as TSLanguage, Parser};
 pub enum Language {
     Rust,
     Go,
+    Solidity,
     Unknown,
 }
 
@@ -16,6 +17,7 @@ impl Language {
         match path.extension().and_then(|ext| ext.to_str()) {
             Some("rs") => Language::Rust,
             Some("go") => Language::Go,
+            Some("sol") => Language::Solidity,
             _ => Language::Unknown,
         }
     }
@@ -25,6 +27,7 @@ impl Language {
         match self {
             Language::Rust => Some(tree_sitter_rust::LANGUAGE.into()),
             Language::Go => Some(tree_sitter_go::LANGUAGE.into()),
+            Language::Solidity => Some(tree_sitter_solidity::LANGUAGE.into()),
             Language::Unknown => None,
         }
     }
@@ -34,6 +37,7 @@ impl Language {
         match self {
             Language::Rust => "*.rs",
             Language::Go => "*.go",
+            Language::Solidity => "*.sol",
             Language::Unknown => "*",
         }
     }
@@ -59,6 +63,18 @@ impl Language {
                 "if_statement" => "if",
                 "switch_statement" => "switch",
                 "for_statement" => "for",
+                _ => node_kind,
+            },
+            Language::Solidity => match node_kind {
+                "function_definition" => "function",
+                "contract_declaration" => "struct",  // Contracts are like structs
+                "interface_declaration" => "trait",   // Interfaces are like traits
+                "library_declaration" => "impl",      // Libraries are like impl blocks
+                "modifier_definition" => "function",  // Modifiers are special functions
+                "event_definition" => "function",     // Events are like functions
+                "if_statement" => "if",
+                "for_statement" => "for",
+                "while_statement" => "while",
                 _ => node_kind,
             },
             Language::Unknown => node_kind,
@@ -99,6 +115,7 @@ pub fn detect_languages(dir: &Path) -> Result<Vec<Language>> {
     Ok(languages.into_iter().map(|l| match l {
         0 => Language::Rust,
         1 => Language::Go,
+        2 => Language::Solidity,
         _ => Language::Unknown,
     }).collect())
 }
