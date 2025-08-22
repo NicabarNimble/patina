@@ -1,7 +1,6 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::collections::HashMap;
-use std::path::Path;
-use tree_sitter::{Node, Parser, Query, QueryCursor, Tree};
+use tree_sitter::{Node, Parser, Query, Tree};
 
 pub mod metal;
 pub mod parser;
@@ -13,6 +12,7 @@ pub use parser::MetalParser;
 /// Unified interface for parsing different languages
 pub struct Analyzer {
     parsers: HashMap<Metal, Parser>,
+    #[allow(dead_code)]
     queries: HashMap<(Metal, QueryType), Query>,
 }
 
@@ -56,14 +56,28 @@ impl Analyzer {
     pub fn new() -> Result<Self> {
         let mut parsers = HashMap::new();
         
-        // Initialize parsers for each metal
+        // Initialize parsers for each metal, but skip broken ones
         for metal in Metal::all() {
+            // Try to get the language, skip if not available
+            let Some(language) = metal.tree_sitter_language() else {
+                eprintln!("Warning: No tree-sitter language available for {:?}", metal);
+                continue;
+            };
+            
             let mut parser = Parser::new();
-            let language = metal.tree_sitter_language()
-                .ok_or_else(|| anyhow::anyhow!("No tree-sitter language for {:?}", metal))?;
-            parser.set_language(&language)
-                .context(format!("Failed to set language for {:?}", metal))?;
+            
+            // Try to set the language, skip if incompatible
+            if let Err(e) = parser.set_language(&language) {
+                eprintln!("Warning: Failed to set language for {:?}: {}", metal, e);
+                continue;
+            }
+            
             parsers.insert(metal, parser);
+        }
+        
+        // Make sure we have at least one working parser
+        if parsers.is_empty() {
+            return Err(anyhow::anyhow!("No working parsers available"));
         }
         
         // Load queries (for now, empty - we'll add .scm files later)
@@ -72,10 +86,25 @@ impl Analyzer {
         Ok(Self { parsers, queries })
     }
     
+    /// Check if a parser is available for a given metal
+    pub fn has_parser(&self, metal: Metal) -> bool {
+        self.parsers.contains_key(&metal)
+    }
+    
+    /// Get all available metals (ones with working parsers)
+    pub fn available_metals(&self) -> Vec<Metal> {
+        self.parsers.keys().copied().collect()
+    }
+    
     /// Parse source code into an AST
     pub fn parse(&mut self, source: &str, metal: Metal) -> Result<ParsedFile> {
-        let parser = self.parsers.get_mut(&metal)
-            .ok_or_else(|| anyhow::anyhow!("No parser for {:?}", metal))?;
+        // Check availability first to avoid borrow issues
+        if !self.parsers.contains_key(&metal) {
+            return Err(anyhow::anyhow!("No parser available for {:?}. Available: {:?}", 
+                metal, self.available_metals()));
+        }
+        
+        let parser = self.parsers.get_mut(&metal).unwrap();
             
         let tree = parser.parse(source, None)
             .ok_or_else(|| anyhow::anyhow!("Failed to parse source"))?;
@@ -104,7 +133,7 @@ impl Analyzer {
     }
     
     /// Generate fingerprint for pattern matching
-    pub fn generate_fingerprint(&self, node: Node, source: &[u8]) -> u64 {
+    pub fn generate_fingerprint(&self, node: Node, _source: &[u8]) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::Hasher;
         

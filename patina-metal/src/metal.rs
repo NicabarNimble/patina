@@ -52,6 +52,7 @@ impl Metal {
                 // Cairo might not be available yet
                 None
             },
+            #[allow(unreachable_patterns)]
             _ => None,
         }
     }
