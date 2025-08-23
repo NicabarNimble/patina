@@ -10,7 +10,9 @@ pub enum Language {
     Solidity,
     Python,
     JavaScript,
+    JavaScriptJSX,  // .jsx files
     TypeScript,
+    TypeScriptTSX,  // .tsx files  
     Unknown,
 }
 
@@ -22,8 +24,10 @@ impl Language {
             Some("go") => Language::Go,
             Some("sol") => Language::Solidity,
             Some("py") => Language::Python,
-            Some("js") | Some("jsx") | Some("mjs") => Language::JavaScript,
-            Some("ts") | Some("tsx") => Language::TypeScript,
+            Some("js") | Some("mjs") => Language::JavaScript,
+            Some("jsx") => Language::JavaScriptJSX,
+            Some("ts") => Language::TypeScript,
+            Some("tsx") => Language::TypeScriptTSX,
             _ => Language::Unknown,
         }
     }
@@ -35,8 +39,8 @@ impl Language {
             Language::Go => Some(patina_metal::Metal::Go),
             Language::Solidity => Some(patina_metal::Metal::Solidity),
             Language::Python => Some(patina_metal::Metal::Python),
-            Language::JavaScript => Some(patina_metal::Metal::JavaScript),
-            Language::TypeScript => Some(patina_metal::Metal::TypeScript),
+            Language::JavaScript | Language::JavaScriptJSX => Some(patina_metal::Metal::JavaScript),
+            Language::TypeScript | Language::TypeScriptTSX => Some(patina_metal::Metal::TypeScript),
             Language::Unknown => None,
         }
     }
@@ -49,7 +53,9 @@ impl Language {
             Language::Solidity => "*.sol",
             Language::Python => "*.py",
             Language::JavaScript => "*.js",
+            Language::JavaScriptJSX => "*.jsx",
             Language::TypeScript => "*.ts",
+            Language::TypeScriptTSX => "*.tsx",
             Language::Unknown => "*",
         }
     }
@@ -98,7 +104,7 @@ impl Language {
                 "while_statement" => "while",
                 _ => node_kind,
             },
-            Language::JavaScript | Language::TypeScript => match node_kind {
+            Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => match node_kind {
                 "function_declaration" | "function_expression" | "arrow_function" => "function",
                 "method_definition" => "function",
                 "class_declaration" => "struct",
