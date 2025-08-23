@@ -137,6 +137,10 @@ enum Commands {
         /// Scrape a reference repo from layer/dust/repos/<name>
         #[arg(long)]
         repo: Option<String>,
+        
+        /// Force full re-index (ignore incremental updates)
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -306,8 +310,8 @@ fn main() -> Result<()> {
         Commands::Connect => {
             commands::connect::execute()?;
         }
-        Commands::Scrape { init, query, repo } => {
-            commands::scrape::execute(init, query, repo)?;
+        Commands::Scrape { init, query, repo, force } => {
+            commands::scrape::execute(init, query, repo, force)?;
         }
         Commands::Doctor { json } => {
             let exit_code = commands::doctor::execute(json)?;

@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use crate::commands::incremental;
 
 /// Execute the scrape command to build semantic knowledge database
-pub fn execute(init: bool, query: Option<String>, repo: Option<String>) -> Result<()> {
+pub fn execute(init: bool, query: Option<String>, repo: Option<String>, force: bool) -> Result<()> {
     // Determine paths based on whether we're scraping a repo
     let (db_path, work_dir) = if let Some(repo_name) = &repo {
         validate_repo_path(&repo_name)?
@@ -16,7 +17,7 @@ pub fn execute(init: bool, query: Option<String>, repo: Option<String>) -> Resul
     } else if let Some(q) = query {
         run_query(&q, &db_path)?;
     } else {
-        extract_and_index(&db_path, &work_dir)?;
+        extract_and_index(&db_path, &work_dir, force)?;
     }
     Ok(())
 }
@@ -121,7 +122,7 @@ CREATE TABLE IF NOT EXISTS pattern_references (
 }
 
 /// Extract and index code with fingerprints + Git metrics
-fn extract_and_index(db_path: &str, work_dir: &Path) -> Result<()> {
+fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
     println!("🔍 Indexing codebase...\n");
     
     // Step 1: Git metrics for quality signals
@@ -133,7 +134,7 @@ fn extract_and_index(db_path: &str, work_dir: &Path) -> Result<()> {
     }
     
     // Step 3: Semantic fingerprints with tree-sitter
-    extract_fingerprints(db_path, work_dir)?;
+    extract_fingerprints(db_path, work_dir, force)?;
     
     // Step 4: Show summary
     show_summary(db_path)?;
@@ -283,11 +284,12 @@ fn extract_pattern_references(db_path: &str, work_dir: &Path) -> Result<()> {
 }
 
 /// Extract semantic fingerprints with tree-sitter
-fn extract_fingerprints(db_path: &str, work_dir: &Path) -> Result<()> {
+fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
     println!("🧠 Generating semantic fingerprints...");
     
     use patina::semantic::languages::{Language, create_parser};
     use std::time::SystemTime;
+    use std::collections::HashMap;
     
     // Find all supported language files
     let mut all_files = Vec::new();
@@ -343,12 +345,55 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path) -> Result<()> {
         all_files.iter().filter(|(_, l)| *l == Language::Solidity).count()
     );
     
-    // Clear existing data first
-    Command::new("duckdb")
-        .arg(db_path)
-        .arg("-c")
-        .arg("DELETE FROM code_fingerprints; DELETE FROM code_search; DELETE FROM index_state;")
-        .output()?;
+    // Build map of current files with mtimes
+    let mut current_files = HashMap::new();
+    for (file_str, _) in &all_files {
+        let file_path = work_dir.join(file_str);
+        if let Ok(metadata) = std::fs::metadata(&file_path) {
+            if let Ok(modified) = metadata.modified() {
+                let mtime = modified.duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                current_files.insert(PathBuf::from(file_str), mtime);
+            }
+        }
+    }
+    
+    // Handle incremental vs full index
+    let files_to_process = if force {
+        println!("  ⚡ Force flag set - performing full re-index");
+        
+        // Clear all existing data for full re-index
+        Command::new("duckdb")
+            .arg(db_path)
+            .arg("-c")
+            .arg("DELETE FROM code_fingerprints; DELETE FROM code_search; DELETE FROM index_state;")
+            .output()?;
+        
+        all_files
+    } else {
+        // Detect changes for incremental update
+        let changes = incremental::detect_changes(db_path, &current_files)?;
+        incremental::print_change_summary(&changes);
+        
+        // If no changes, we're done!
+        if changes.is_empty() {
+            return Ok(());
+        }
+        
+        // Clean up changed files
+        incremental::cleanup_changed_files(db_path, &changes)?;
+        
+        // Build list of files to process
+        let mut files_to_process = Vec::new();
+        for path in changes.new_files.iter().chain(changes.modified_files.iter()) {
+            let path_str = path.to_string_lossy().to_string();
+            if let Some((_, lang)) = all_files.iter().find(|(f, _)| f == &path_str) {
+                files_to_process.push((path_str, *lang));
+            }
+        }
+        files_to_process
+    };
     
     let mut sql = String::from("BEGIN TRANSACTION;\n");
     let mut symbol_count = 0;
@@ -356,7 +401,8 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path) -> Result<()> {
     let mut parser: Option<tree_sitter::Parser> = None;
     let mut batch_count = 0;
     
-    for (file, language) in all_files {
+    // Process only new and modified files
+    for (file, language) in files_to_process {
         // Switch parser if language changed
         if language != current_lang {
             parser = Some(create_parser(language)?);
@@ -387,16 +433,30 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path) -> Result<()> {
             }
         }
         
-        // Batch execute every 100 files to avoid command line limits
+        // Batch execute every 10 files to avoid command line limits
         batch_count += 1;
-        if batch_count >= 100 {
+        if batch_count >= 10 {
             sql.push_str("COMMIT;\n");
-            Command::new("duckdb")
+            
+            // Use stdin to avoid command line length limits
+            let mut child = Command::new("duckdb")
                 .arg(db_path)
-                .arg("-c")
-                .arg(&sql)
-                .output()
-                .context("Failed to insert batch")?;
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .context("Failed to start DuckDB")?;
+            
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                stdin.write_all(sql.as_bytes()).context("Failed to write SQL")?;
+            }
+            
+            let output = child.wait_with_output().context("Failed to execute batch")?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                anyhow::bail!("DuckDB error: {}", stderr);
+            }
             sql = String::from("BEGIN TRANSACTION;\n");
             batch_count = 0;
         }
@@ -405,12 +465,22 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path) -> Result<()> {
     // Execute final batch
     if batch_count > 0 {
         sql.push_str("COMMIT;\n");
-        let output = Command::new("duckdb")
+        
+        // Use stdin to avoid command line length limits
+        let mut child = Command::new("duckdb")
             .arg(db_path)
-            .arg("-c")
-            .arg(&sql)
-            .output()
-            .context("Failed to insert final batch")?;
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .context("Failed to start DuckDB")?;
+        
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            stdin.write_all(sql.as_bytes()).context("Failed to write SQL")?;
+        }
+        
+        let output = child.wait_with_output().context("Failed to insert final batch")?;
         
         if !output.status.success() {
             eprintln!("DuckDB error: {}", String::from_utf8_lossy(&output.stderr));

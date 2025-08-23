@@ -3,6 +3,7 @@ pub mod build;
 pub mod connect;
 pub mod doctor;
 pub mod hook;
+pub mod incremental;
 pub mod init;
 pub mod navigate;
 pub mod organize;
