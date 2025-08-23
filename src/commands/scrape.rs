@@ -557,9 +557,14 @@ fn process_ast_node(
         (Language::Rust, "struct_item") => "struct",
         (Language::Rust, "trait_item") => "trait",
         (Language::Rust, "impl_item") => "impl",
+        (Language::Rust, "type_alias") => "type_alias",
+        (Language::Rust, "const_item") => "const",
+        (Language::Rust, "use_declaration") => "import",
         // Go mappings
         (Language::Go, "function_declaration") => "function",
         (Language::Go, "method_declaration") => "function",
+        (Language::Go, "const_declaration") => "const",
+        (Language::Go, "import_declaration") => "import",
         (Language::Go, "type_spec") => {
             // Check if it's a struct or interface
             if node
@@ -573,7 +578,7 @@ fn process_ast_node(
             {
                 "trait"
             } else {
-                ""
+                "type_alias"  // Type aliases in Go
             }
         }
         // Solidity mappings
@@ -619,30 +624,66 @@ fn process_ast_node(
 
     if let Some(name_node) = name_node {
         let name = name_node.utf8_text(source).unwrap_or("<unknown>");
-        let fingerprint = Fingerprint::from_ast(node, source);
+        
+        // Extract based on kind
+        match kind {
+            "function" => {
+                // Extract function facts
+                extract_function_facts(node, source, file_path, name, sql, language);
+                
+                // Also generate fingerprint for functions
+                let fingerprint = Fingerprint::from_ast(node, source);
+                let signature = node
+                    .utf8_text(source)
+                    .unwrap_or("")
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .replace('\'', "''");
 
-        // Get signature for search
-        let signature = node
-            .utf8_text(source)
-            .unwrap_or("")
-            .lines()
-            .next()
-            .unwrap_or("")
-            .replace('\'', "''");
+                sql.push_str(&format!(
+                    "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
+                    file_path, name, kind,
+                    fingerprint.pattern, fingerprint.imports,
+                    fingerprint.complexity, fingerprint.flags
+                ));
 
-        // Insert fingerprint
-        sql.push_str(&format!(
-            "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
-            file_path, name, kind,
-            fingerprint.pattern, fingerprint.imports,
-            fingerprint.complexity, fingerprint.flags
-        ));
-
-        // Insert search data
-        sql.push_str(&format!(
-            "INSERT OR REPLACE INTO code_search (path, name, signature) VALUES ('{}', '{}', '{}');\n",
-            file_path, name, signature
-        ));
+                sql.push_str(&format!(
+                    "INSERT OR REPLACE INTO code_search (path, name, signature) VALUES ('{}', '{}', '{}');\n",
+                    file_path, name, signature
+                ));
+            }
+            "type_alias" | "struct" | "trait" | "const" => {
+                // Extract type vocabulary
+                extract_type_definition(node, source, file_path, name, kind, sql, language);
+                
+                // Also generate fingerprint for structs/traits
+                if kind == "struct" || kind == "trait" {
+                    let fingerprint = Fingerprint::from_ast(node, source);
+                    sql.push_str(&format!(
+                        "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
+                        file_path, name, kind,
+                        fingerprint.pattern, fingerprint.imports,
+                        fingerprint.complexity, fingerprint.flags
+                    ));
+                }
+            }
+            "import" => {
+                // Extract import facts
+                extract_import_fact(node, source, file_path, sql, language);
+            }
+            "impl" => {
+                // Keep fingerprinting for impl blocks
+                let fingerprint = Fingerprint::from_ast(node, source);
+                sql.push_str(&format!(
+                    "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
+                    file_path, name, kind,
+                    fingerprint.pattern, fingerprint.imports,
+                    fingerprint.complexity, fingerprint.flags
+                ));
+            }
+            _ => {}
+        }
 
         count += 1;
     }
@@ -728,4 +769,363 @@ fn run_query(query: &str, db_path: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Extract function facts (truth data only)
+fn extract_function_facts(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    sql: &mut String,
+    language: patina::semantic::languages::Language,
+) {
+    use patina::semantic::languages::Language;
+    
+    // Extract visibility
+    let is_public = match language {
+        Language::Rust => {
+            // Check for pub keyword
+            node.children(&mut node.walk())
+                .any(|child| child.kind() == "visibility_modifier")
+        }
+        Language::Go => {
+            // In Go, uppercase first letter = public
+            name.chars().next().map_or(false, |c| c.is_uppercase())
+        }
+        Language::Solidity => {
+            // Solidity defaults to public
+            !node.utf8_text(source).unwrap_or("").contains("private")
+        }
+        Language::Unknown => false,
+    };
+    
+    // Extract async
+    let is_async = match language {
+        Language::Rust => {
+            node.children(&mut node.walk())
+                .any(|child| child.kind() == "async")
+        }
+        _ => false, // Go and Solidity don't have async keyword
+    };
+    
+    // Extract unsafe
+    let is_unsafe = match language {
+        Language::Rust => {
+            node.children(&mut node.walk())
+                .any(|child| child.kind() == "unsafe")
+        }
+        _ => false,
+    };
+    
+    // Extract parameters
+    let params_node = node.child_by_field_name("parameters");
+    let (takes_mut_self, takes_mut_params, parameter_count) = if let Some(params) = params_node {
+        let mut has_mut_self = false;
+        let mut has_mut_params = false;
+        let mut param_count = 0;
+        
+        let params_text = params.utf8_text(source).unwrap_or("");
+        
+        match language {
+            Language::Rust => {
+                // Check for &mut self
+                if params_text.contains("&mut self") {
+                    has_mut_self = true;
+                }
+                // Check for other mut params
+                if params_text.contains("mut ") && !params_text.contains("&mut self") {
+                    has_mut_params = true;
+                }
+                // Count parameters
+                for child in params.children(&mut params.walk()) {
+                    if child.kind() == "parameter" || child.kind() == "self_parameter" {
+                        param_count += 1;
+                    }
+                }
+            }
+            Language::Go => {
+                // Count parameters
+                for child in params.children(&mut params.walk()) {
+                    if child.kind() == "parameter_declaration" {
+                        param_count += 1;
+                    }
+                }
+            }
+            Language::Solidity => {
+                // Count parameters
+                for child in params.children(&mut params.walk()) {
+                    if child.kind() == "parameter" {
+                        param_count += 1;
+                    }
+                }
+            }
+            Language::Unknown => {} // Skip for unknown languages
+        }
+        
+        (has_mut_self, has_mut_params, param_count)
+    } else {
+        (false, false, 0)
+    };
+    
+    // Extract return type
+    let (returns_result, returns_option) = match language {
+        Language::Rust => {
+            if let Some(return_type) = node.child_by_field_name("return_type") {
+                let ret_text = return_type.utf8_text(source).unwrap_or("");
+                (ret_text.contains("Result"), ret_text.contains("Option"))
+            } else {
+                (false, false)
+            }
+        }
+        Language::Go => {
+            if let Some(result) = node.child_by_field_name("result") {
+                let ret_text = result.utf8_text(source).unwrap_or("");
+                (ret_text.contains("error"), false) // Go uses error, not Result/Option
+            } else {
+                (false, false)
+            }
+        }
+        _ => (false, false),
+    };
+    
+    // Count generics
+    let generic_count = match language {
+        Language::Rust => {
+            node.child_by_field_name("type_parameters")
+                .map(|tp| {
+                    tp.children(&mut tp.walk())
+                        .filter(|c| c.kind() == "type_identifier" || c.kind() == "lifetime")
+                        .count()
+                })
+                .unwrap_or(0)
+        }
+        _ => 0, // Go doesn't have generics (until recently), Solidity doesn't
+    };
+    
+    // Insert function facts
+    sql.push_str(&format!(
+        "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {}, {}, {});\n",
+        escape_sql(file_path),
+        escape_sql(name),
+        takes_mut_self,
+        takes_mut_params,
+        returns_result,
+        returns_option,
+        is_async,
+        is_unsafe,
+        is_public,
+        parameter_count,
+        generic_count
+    ));
+    
+    // Extract behavioral hints
+    if language == Language::Rust {
+        extract_behavioral_hints(node, source, file_path, name, sql);
+    }
+}
+
+/// Extract type definitions for vocabulary
+fn extract_type_definition(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    kind: &str,
+    sql: &mut String,
+    language: patina::semantic::languages::Language,
+) {
+    use patina::semantic::languages::Language;
+    
+    // Get the full definition (first line for brevity)
+    let definition = node.utf8_text(source)
+        .unwrap_or("")
+        .lines()
+        .next()
+        .unwrap_or("")
+        .replace('\'', "''");
+    
+    // Determine visibility
+    let visibility = match language {
+        Language::Rust => {
+            if node.children(&mut node.walk()).any(|child| {
+                if child.kind() == "visibility_modifier" {
+                    let vis_text = child.utf8_text(source).unwrap_or("");
+                    vis_text.contains("pub(crate)")
+                } else {
+                    false
+                }
+            }) {
+                "pub(crate)"
+            } else if node.children(&mut node.walk()).any(|child| child.kind() == "visibility_modifier") {
+                "pub"
+            } else {
+                "private"
+            }
+        }
+        Language::Go => {
+            // In Go, uppercase = public
+            if name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                "pub"
+            } else {
+                "private"
+            }
+        }
+        Language::Solidity => "pub", // Most things in Solidity are public by default
+        Language::Unknown => "private",
+    };
+    
+    // Insert type vocabulary
+    sql.push_str(&format!(
+        "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', '{}', '{}', '{}');\n",
+        escape_sql(file_path),
+        escape_sql(name),
+        escape_sql(&definition),
+        kind,
+        visibility
+    ));
+}
+
+/// Extract import facts
+fn extract_import_fact(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    sql: &mut String,
+    language: patina::semantic::languages::Language,
+) {
+    use patina::semantic::languages::Language;
+    
+    let import_text = node.utf8_text(source).unwrap_or("");
+    
+    match language {
+        Language::Rust => {
+            // Parse Rust use statements
+            let import_clean = import_text
+                .trim_start_matches("use ")
+                .trim_end_matches(';');
+            
+            // Determine if external
+            let is_external = !import_clean.starts_with("crate::")
+                && !import_clean.starts_with("super::")
+                && !import_clean.starts_with("self::");
+            
+            // Extract the imported item (last part after ::)
+            let imported_item = import_clean
+                .split("::")
+                .last()
+                .unwrap_or(import_clean);
+            
+            // Extract the source module
+            let imported_from = if import_clean.contains("::") {
+                import_clean
+                    .rsplit_once("::")
+                    .map(|(from, _)| from)
+                    .unwrap_or(import_clean)
+            } else {
+                import_clean
+            };
+            
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');\n",
+                escape_sql(file_path),
+                escape_sql(imported_item),
+                escape_sql(imported_from),
+                is_external
+            ));
+        }
+        Language::Go => {
+            // Parse Go imports
+            let import_clean = import_text
+                .trim_start_matches("import ")
+                .trim()
+                .trim_matches('"');
+            
+            let is_external = !import_clean.starts_with(".");
+            
+            let imported_item = import_clean
+                .split('/')
+                .last()
+                .unwrap_or(import_clean);
+            
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
+                escape_sql(file_path),
+                escape_sql(imported_item),
+                escape_sql(import_clean),
+                is_external
+            ));
+        }
+        Language::Solidity => {
+            // Parse Solidity imports
+            if let Some(path_match) = import_text.split('"').nth(1) {
+                let is_external = path_match.starts_with('@') || path_match.starts_with("http");
+                
+                sql.push_str(&format!(
+                    "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
+                    escape_sql(file_path),
+                    escape_sql(path_match),
+                    escape_sql(path_match),
+                    is_external
+                ));
+            }
+        }
+        Language::Unknown => {}, // Skip unknown languages
+    }
+}
+
+/// Extract behavioral hints (code smells as facts)
+fn extract_behavioral_hints(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    function_name: &str,
+    sql: &mut String,
+) {
+    // Only extract for function bodies
+    if let Some(body) = node.child_by_field_name("body") {
+        let body_text = body.utf8_text(source).unwrap_or("");
+        
+        // Count unwrap calls
+        let calls_unwrap = body_text.matches(".unwrap()").count();
+        
+        // Count expect calls
+        let calls_expect = body_text.matches(".expect(").count();
+        
+        // Check for panic! macro
+        let has_panic_macro = body_text.contains("panic!");
+        
+        // Check for todo! macro
+        let has_todo_macro = body_text.contains("todo!");
+        
+        // Check for unsafe blocks
+        let has_unsafe_block = body_text.contains("unsafe {");
+        
+        // Check for Mutex usage
+        let has_mutex = body_text.contains("Mutex");
+        
+        // Check for Arc usage
+        let has_arc = body_text.contains("Arc<") || body_text.contains("Arc::");
+        
+        // Only insert if there are any behavioral hints
+        if calls_unwrap > 0 || calls_expect > 0 || has_panic_macro || has_todo_macro || has_unsafe_block || has_mutex || has_arc {
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO behavioral_hints (file, function, calls_unwrap, calls_expect, has_panic_macro, has_todo_macro, has_unsafe_block, has_mutex, has_arc) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
+                escape_sql(file_path),
+                escape_sql(function_name),
+                calls_unwrap,
+                calls_expect,
+                has_panic_macro,
+                has_todo_macro,
+                has_unsafe_block,
+                has_mutex,
+                has_arc
+            ));
+        }
+    }
+}
+
+/// Escape SQL strings
+fn escape_sql(s: &str) -> String {
+    s.replace('\'', "''")
 }
