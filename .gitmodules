@@ -1,0 +1,9 @@
+[submodule "patina-metal/grammars/rust"]
+	path = patina-metal/grammars/rust
+	url = https://github.com/tree-sitter/tree-sitter-rust
+[submodule "patina-metal/grammars/go"]
+	path = patina-metal/grammars/go
+	url = https://github.com/tree-sitter/tree-sitter-go
+[submodule "patina-metal/grammars/solidity"]
+	path = patina-metal/grammars/solidity
+	url = https://github.com/JoranHonig/tree-sitter-solidity
