@@ -262,6 +262,15 @@ CREATE TABLE IF NOT EXISTS index_state (
     indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Track files we skipped due to missing language support
+CREATE TABLE IF NOT EXISTS skipped_files (
+    extension VARCHAR PRIMARY KEY,
+    file_count INTEGER DEFAULT 0,
+    total_bytes INTEGER DEFAULT 0,
+    example_path VARCHAR,
+    common_name VARCHAR     -- e.g., "Python", "TypeScript"
+);
+
 -- Create indexes for fast lookups
 CREATE INDEX IF NOT EXISTS idx_fingerprint_pattern ON code_fingerprints(pattern);
 CREATE INDEX IF NOT EXISTS idx_fingerprint_complexity ON code_fingerprints(complexity);
