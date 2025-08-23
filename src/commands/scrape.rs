@@ -130,6 +130,11 @@ CREATE TABLE IF NOT EXISTS pattern_references (
 fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
     println!("🔍 Indexing codebase...\n");
 
+    // If force flag is set, reinitialize database to ensure clean state
+    if force {
+        initialize_database(db_path)?;
+    }
+
     // Step 1: Git metrics for quality signals
     extract_git_metrics(db_path, work_dir)?;
 
