@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use std::path::Path;
-use tree_sitter::{Language as TSLanguage, Parser};
+use tree_sitter::Parser;
 
 /// Supported programming languages
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -22,12 +22,12 @@ impl Language {
         }
     }
     
-    /// Get the tree-sitter language
-    pub fn tree_sitter_language(&self) -> Option<TSLanguage> {
+    /// Convert to patina_metal::Metal enum
+    pub fn to_metal(&self) -> Option<patina_metal::Metal> {
         match self {
-            Language::Rust => Some(tree_sitter_rust::LANGUAGE.into()),
-            Language::Go => Some(tree_sitter_go::LANGUAGE.into()),
-            Language::Solidity => Some(tree_sitter_solidity::LANGUAGE.into()),
+            Language::Rust => Some(patina_metal::Metal::Rust),
+            Language::Go => Some(patina_metal::Metal::Go),
+            Language::Solidity => Some(patina_metal::Metal::Solidity),
             Language::Unknown => None,
         }
     }
@@ -82,18 +82,20 @@ impl Language {
     }
 }
 
-/// Create a parser for the given language
+/// Create a parser for the given language using patina-metal
 pub fn create_parser(language: Language) -> Result<Parser> {
-    let mut parser = Parser::new();
+    let metal = language.to_metal()
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {:?}", language))?;
     
-    if let Some(ts_lang) = language.tree_sitter_language() {
-        parser
-            .set_language(&ts_lang)
-            .context("Failed to set language")?;
-        Ok(parser)
-    } else {
-        anyhow::bail!("Unsupported language: {:?}", language)
-    }
+    let ts_lang = metal.tree_sitter_language()
+        .ok_or_else(|| anyhow::anyhow!("No parser available for {:?}", language))?;
+    
+    let mut parser = Parser::new();
+    parser
+        .set_language(&ts_lang)
+        .context("Failed to set language")?;
+    
+    Ok(parser)
 }
 
 /// Detect all languages in a directory

@@ -41,7 +41,8 @@ pub struct PatternMatch {
 /// Initialize tree-sitter parser for Rust
 pub fn init_parser() -> Result<Parser> {
     let mut parser = Parser::new();
-    let language = tree_sitter_rust::LANGUAGE.into();
+    let language = patina_metal::Metal::Rust.tree_sitter_language()
+        .ok_or_else(|| anyhow::anyhow!("Rust parser not available"))?;
     parser
         .set_language(&language)
         .context("Failed to set Rust language")?;
