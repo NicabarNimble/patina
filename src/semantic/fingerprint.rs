@@ -1,4 +1,3 @@
-use anyhow::Result;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use tree_sitter::Node;
@@ -6,10 +5,10 @@ use tree_sitter::Node;
 /// Compact 16-byte fingerprint for code patterns
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fingerprint {
-    pub pattern: u32,     // AST shape hash
-    pub imports: u32,     // Dependency hash
-    pub complexity: u16,  // Cyclomatic complexity
-    pub flags: u16,       // Feature flags
+    pub pattern: u32,    // AST shape hash
+    pub imports: u32,    // Dependency hash
+    pub complexity: u16, // Cyclomatic complexity
+    pub flags: u16,      // Feature flags
 }
 
 impl Fingerprint {
@@ -60,7 +59,7 @@ fn hash_ast_shape(node: Node, _source: &[u8]) -> u32 {
 fn hash_node_shape(hasher: &mut impl Hasher, node: Node) {
     // Hash node type (structure, not content)
     node.kind().hash(hasher);
-    
+
     // Hash child structure recursively
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
@@ -77,20 +76,20 @@ fn hash_node_shape(hasher: &mut impl Hasher, node: Node) {
 fn hash_imports(node: Node, source: &[u8]) -> u32 {
     let mut hasher = DefaultHasher::new();
     let mut cursor = node.walk();
-    
+
     find_imports(&mut cursor, source, &mut hasher);
     (hasher.finish() & 0xFFFFFFFF) as u32
 }
 
 fn find_imports(cursor: &mut tree_sitter::TreeCursor, source: &[u8], hasher: &mut impl Hasher) {
     let node = cursor.node();
-    
+
     if node.kind() == "use_declaration" {
         if let Ok(text) = node.utf8_text(source) {
             text.hash(hasher);
         }
     }
-    
+
     if cursor.goto_first_child() {
         loop {
             find_imports(cursor, source, hasher);
@@ -106,14 +105,14 @@ fn find_imports(cursor: &mut tree_sitter::TreeCursor, source: &[u8], hasher: &mu
 fn calculate_complexity(node: Node) -> usize {
     let mut complexity = 1; // Base complexity
     let mut cursor = node.walk();
-    
+
     count_branches(&mut cursor, &mut complexity);
     complexity
 }
 
 fn count_branches(cursor: &mut tree_sitter::TreeCursor, complexity: &mut usize) {
     let node = cursor.node();
-    
+
     match node.kind() {
         "if_expression" | "match_expression" | "while_expression" | "for_expression" => {
             *complexity += 1;
@@ -124,7 +123,7 @@ fn count_branches(cursor: &mut tree_sitter::TreeCursor, complexity: &mut usize) 
         }
         _ => {}
     }
-    
+
     if cursor.goto_first_child() {
         loop {
             count_branches(cursor, complexity);
@@ -140,35 +139,35 @@ fn count_branches(cursor: &mut tree_sitter::TreeCursor, complexity: &mut usize) 
 fn detect_features(node: Node, source: &[u8]) -> u16 {
     let mut flags = 0u16;
     let mut cursor = node.walk();
-    
+
     detect_features_recursive(&mut cursor, source, &mut flags);
     flags
 }
 
 fn detect_features_recursive(cursor: &mut tree_sitter::TreeCursor, source: &[u8], flags: &mut u16) {
     let node = cursor.node();
-    
+
     // Check for various features
     match node.kind() {
-        "async" => *flags |= 0x0001,  // Bit 0: async
-        "unsafe_block" | "unsafe" => *flags |= 0x0002,  // Bit 1: unsafe
+        "async" => *flags |= 0x0001,                   // Bit 0: async
+        "unsafe_block" | "unsafe" => *flags |= 0x0002, // Bit 1: unsafe
         "macro_invocation" => {
             if let Ok(text) = node.utf8_text(source) {
                 if text.starts_with("panic!") || text.starts_with("unreachable!") {
-                    *flags |= 0x0004;  // Bit 2: has panic
+                    *flags |= 0x0004; // Bit 2: has panic
                 }
                 if text.starts_with("todo!") || text.starts_with("unimplemented!") {
-                    *flags |= 0x0008;  // Bit 3: has todo
+                    *flags |= 0x0008; // Bit 3: has todo
                 }
             }
         }
-        "question_mark" => *flags |= 0x0010,  // Bit 4: uses ?
-        "generic_type" | "generic_function" => *flags |= 0x0020,  // Bit 5: generic
+        "question_mark" => *flags |= 0x0010, // Bit 4: uses ?
+        "generic_type" | "generic_function" => *flags |= 0x0020, // Bit 5: generic
         "trait_bounds" => *flags |= 0x0040,  // Bit 6: has trait bounds
-        "lifetime" => *flags |= 0x0080,  // Bit 7: has lifetimes
+        "lifetime" => *flags |= 0x0080,      // Bit 7: has lifetimes
         _ => {}
     }
-    
+
     if cursor.goto_first_child() {
         loop {
             detect_features_recursive(cursor, source, flags);
@@ -243,7 +242,7 @@ mod tests {
         // Bit meanings:
         // 0: async, 1: unsafe, 2: panic, 3: todo
         // 4: ?, 5: generic, 6: trait bounds, 7: lifetimes
-        
+
         let flags = 0b0001_0001; // async + uses ?
         assert_eq!(flags & 0x0001, 0x0001); // has async
         assert_eq!(flags & 0x0010, 0x0010); // has ?

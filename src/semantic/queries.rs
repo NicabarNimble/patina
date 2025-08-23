@@ -1,5 +1,5 @@
-use tree_sitter::{Query, Node};
 use anyhow::Result;
+use tree_sitter::{Node, Query};
 
 /// Tree-sitter queries for semantic pattern detection
 /// These are like SQL for AST - they find structural patterns
@@ -34,9 +34,9 @@ impl SemanticQueries {
                 (#eq? @return_type "Result")
               )
             ) @function
-            "#
+            "#,
         )?;
-        
+
         let error_context = Query::new(
             &language,
             r#"
@@ -48,9 +48,9 @@ impl SemanticQueries {
                 (string_literal) @context_msg
               )
             ) @error_handling
-            "#
+            "#,
         )?;
-        
+
         let api_boundary = Query::new(
             &language,
             r#"
@@ -63,9 +63,9 @@ impl SemanticQueries {
                 (#eq? @return_type "Result")
               )
             ) @api_function
-            "#
+            "#,
         )?;
-        
+
         let state_machine = Query::new(
             &language,
             r#"
@@ -78,9 +78,9 @@ impl SemanticQueries {
                 (match_arm)+ @arms
               )
             ) @state_machine
-            "#
+            "#,
         )?;
-        
+
         let dependency_injection = Query::new(
             &language,
             r#"
@@ -96,9 +96,9 @@ impl SemanticQueries {
                 )
               )
             ) @injected_function
-            "#
+            "#,
         )?;
-        
+
         Ok(Self {
             error_propagation,
             error_context,
@@ -118,26 +118,26 @@ pub enum SemanticPattern {
         adds_context: bool,
         error_types: Vec<String>,
     },
-    
+
     /// Function is an API boundary
     ApiBoundary {
         is_public: bool,
         returns_result: bool,
         has_documentation: bool,
     },
-    
+
     /// Code implements state machine
     StateMachine {
         states: Vec<String>,
         transitions: usize,
     },
-    
+
     /// Function uses dependency injection
     DependencyInjection {
         trait_params: Vec<String>,
         mock_testable: bool,
     },
-    
+
     /// Resource management pattern
     ResourceManagement {
         has_drop_impl: bool,
@@ -149,11 +149,11 @@ pub enum SemanticPattern {
 /// Extract semantic meaning from AST node
 pub fn extract_semantic_meaning(node: Node, source: &str) -> Vec<SemanticPattern> {
     let mut patterns = Vec::new();
-    
+
     // Walk the node and extract patterns
     let mut cursor = node.walk();
     extract_patterns_recursive(&mut cursor, source, &mut patterns);
-    
+
     patterns
 }
 
@@ -163,7 +163,7 @@ fn extract_patterns_recursive(
     patterns: &mut Vec<SemanticPattern>,
 ) {
     let node = cursor.node();
-    
+
     match node.kind() {
         "function_item" => {
             // Check if it's an API boundary
@@ -173,7 +173,7 @@ fn extract_patterns_recursive(
                 .and_then(|rt| rt.utf8_text(source.as_bytes()).ok())
                 .map(|s| s.contains("Result"))
                 .unwrap_or(false);
-            
+
             if is_public && returns_result {
                 patterns.push(SemanticPattern::ApiBoundary {
                     is_public: true,
@@ -181,7 +181,7 @@ fn extract_patterns_recursive(
                     has_documentation: check_has_docs(&node, source),
                 });
             }
-            
+
             // Check error handling
             let body = node.child_by_field_name("body");
             if let Some(body) = body {
@@ -195,13 +195,13 @@ fn extract_patterns_recursive(
                 }
             }
         }
-        
+
         "impl_item" => {
             // Check for Drop implementation
             let trait_name = node
                 .child_by_field_name("trait")
                 .and_then(|t| t.utf8_text(source.as_bytes()).ok());
-            
+
             if trait_name == Some("Drop") {
                 patterns.push(SemanticPattern::ResourceManagement {
                     has_drop_impl: true,
@@ -210,7 +210,7 @@ fn extract_patterns_recursive(
                 });
             }
         }
-        
+
         "match_expression" => {
             // Check for state machine pattern
             if let Some(value) = node.child_by_field_name("value") {
@@ -224,10 +224,10 @@ fn extract_patterns_recursive(
                 }
             }
         }
-        
+
         _ => {}
     }
-    
+
     // Recurse to children
     if cursor.goto_first_child() {
         loop {
@@ -270,12 +270,15 @@ fn check_cleanup_in_drop(node: &Node, source: &str) -> bool {
 fn extract_match_arms(node: &Node, source: &str) -> Vec<String> {
     let mut arms = Vec::new();
     let mut cursor = node.walk();
-    
+
     if cursor.goto_first_child() {
         loop {
             if cursor.node().kind() == "match_arm" {
                 if let Some(pattern) = cursor.node().child_by_field_name("pattern") {
-                    let arm_text = pattern.utf8_text(source.as_bytes()).unwrap_or("").to_string();
+                    let arm_text = pattern
+                        .utf8_text(source.as_bytes())
+                        .unwrap_or("")
+                        .to_string();
                     arms.push(arm_text);
                 }
             }
@@ -284,6 +287,6 @@ fn extract_match_arms(node: &Node, source: &str) -> Vec<String> {
             }
         }
     }
-    
+
     arms
 }

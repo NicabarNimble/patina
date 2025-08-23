@@ -133,11 +133,11 @@ enum Commands {
         /// Run a custom SQL query against the database
         #[arg(long)]
         query: Option<String>,
-        
+
         /// Scrape a reference repo from layer/dust/repos/<name>
         #[arg(long)]
         repo: Option<String>,
-        
+
         /// Force full re-index (ignore incremental updates)
         #[arg(long)]
         force: bool,
@@ -310,7 +310,12 @@ fn main() -> Result<()> {
         Commands::Connect => {
             commands::connect::execute()?;
         }
-        Commands::Scrape { init, query, repo, force } => {
+        Commands::Scrape {
+            init,
+            query,
+            repo,
+            force,
+        } => {
             commands::scrape::execute(init, query, repo, force)?;
         }
         Commands::Doctor { json } => {
