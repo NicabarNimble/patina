@@ -203,6 +203,57 @@ CREATE TABLE IF NOT EXISTS code_search (
     PRIMARY KEY (path, name)
 );
 
+-- Type vocabulary: The domain language (compiler-verified truth)
+CREATE TABLE IF NOT EXISTS type_vocabulary (
+    file VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    definition TEXT,        -- 'type NodeId = u32' or 'struct User { ... }'
+    kind VARCHAR,          -- 'type_alias', 'struct', 'enum', 'const'
+    visibility VARCHAR,     -- 'pub', 'pub(crate)', 'private'
+    usage_count INTEGER DEFAULT 0,
+    PRIMARY KEY (file, name)
+);
+
+-- Function facts: Behavioral signals without interpretation
+CREATE TABLE IF NOT EXISTS function_facts (
+    file VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    takes_mut_self BOOLEAN,     -- Thread safety signal
+    takes_mut_params BOOLEAN,   -- Mutation indicator
+    returns_result BOOLEAN,     -- Error handling
+    returns_option BOOLEAN,     -- Nullability
+    is_async BOOLEAN,          -- Concurrency
+    is_unsafe BOOLEAN,         -- Safety requirements
+    is_public BOOLEAN,         -- API surface
+    parameter_count INTEGER,
+    generic_count INTEGER,      -- Complexity indicator
+    PRIMARY KEY (file, name)
+);
+
+-- Import facts: Navigation and dependencies
+CREATE TABLE IF NOT EXISTS import_facts (
+    importer_file VARCHAR NOT NULL,
+    imported_item VARCHAR NOT NULL,
+    imported_from VARCHAR,      -- Source module/crate
+    is_external BOOLEAN,       -- External crate?
+    import_kind VARCHAR,        -- 'use', 'mod', 'extern'
+    PRIMARY KEY (importer_file, imported_item)
+);
+
+-- Behavioral hints: Code smell detection (facts only)
+CREATE TABLE IF NOT EXISTS behavioral_hints (
+    file VARCHAR NOT NULL,
+    function VARCHAR NOT NULL,
+    calls_unwrap INTEGER DEFAULT 0,     -- Count of .unwrap()
+    calls_expect INTEGER DEFAULT 0,     -- Count of .expect()
+    has_panic_macro BOOLEAN,           -- Contains panic!()
+    has_todo_macro BOOLEAN,            -- Contains todo!()
+    has_unsafe_block BOOLEAN,          -- Contains unsafe {}
+    has_mutex BOOLEAN,                 -- Thread synchronization
+    has_arc BOOLEAN,                   -- Shared ownership
+    PRIMARY KEY (file, function)
+);
+
 -- Index metadata for incremental updates
 CREATE TABLE IF NOT EXISTS index_state (
     path VARCHAR PRIMARY KEY,
@@ -215,6 +266,9 @@ CREATE TABLE IF NOT EXISTS index_state (
 CREATE INDEX IF NOT EXISTS idx_fingerprint_pattern ON code_fingerprints(pattern);
 CREATE INDEX IF NOT EXISTS idx_fingerprint_complexity ON code_fingerprints(complexity);
 CREATE INDEX IF NOT EXISTS idx_fingerprint_flags ON code_fingerprints(flags);
+CREATE INDEX IF NOT EXISTS idx_type_vocabulary_kind ON type_vocabulary(kind);
+CREATE INDEX IF NOT EXISTS idx_function_facts_public ON function_facts(is_public);
+CREATE INDEX IF NOT EXISTS idx_import_facts_external ON import_facts(is_external);
 "#
 }
 
