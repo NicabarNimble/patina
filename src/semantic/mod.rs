@@ -1,13 +1,12 @@
 use anyhow::{Context, Result};
-use std::collections::HashMap;
-use tree_sitter::{Language, Parser, Query, QueryCursor};
+use tree_sitter::Parser;
 
 pub mod analyzer;
-pub mod patterns;
-pub mod queries;
 pub mod deep_analyzer;
 pub mod fingerprint;
 pub mod languages;
+pub mod patterns;
+pub mod queries;
 
 /// Semantic information extracted from code
 #[derive(Debug, Clone)]
@@ -41,7 +40,8 @@ pub struct PatternMatch {
 /// Initialize tree-sitter parser for Rust
 pub fn init_parser() -> Result<Parser> {
     let mut parser = Parser::new();
-    let language = patina_metal::Metal::Rust.tree_sitter_language()
+    let language = patina_metal::Metal::Rust
+        .tree_sitter_language()
         .ok_or_else(|| anyhow::anyhow!("Rust parser not available"))?;
     parser
         .set_language(&language)

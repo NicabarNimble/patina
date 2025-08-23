@@ -10,6 +10,12 @@ trait PatternMatcher: Send + Sync {
     fn matches(&self, symbol: &SemanticSymbol, context: &[SemanticSymbol]) -> Option<PatternMatch>;
 }
 
+impl Default for PatternDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PatternDetector {
     pub fn new() -> Self {
         let mut patterns: HashMap<String, Box<dyn PatternMatcher>> = HashMap::new();

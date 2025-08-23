@@ -16,20 +16,15 @@ pub enum Metal {
 impl Metal {
     /// Get all supported metals
     pub fn all() -> Vec<Metal> {
-        vec![
-            Metal::Rust,
-            Metal::Go,
-            Metal::Solidity,
-            Metal::Cairo,
-        ]
+        vec![Metal::Rust, Metal::Go, Metal::Solidity, Metal::Cairo]
     }
-    
+
     /// Detect metal from file extension
     pub fn from_path(path: &Path) -> Option<Self> {
         let ext = path.extension()?.to_str()?;
         Self::from_extension(ext)
     }
-    
+
     /// Detect metal from extension string
     pub fn from_extension(ext: &str) -> Option<Self> {
         match ext {
@@ -40,7 +35,7 @@ impl Metal {
             _ => None,
         }
     }
-    
+
     /// Get the tree-sitter language for this metal
     pub fn tree_sitter_language(&self) -> Option<TSLanguage> {
         match self {
@@ -50,10 +45,10 @@ impl Metal {
             Metal::Cairo => {
                 // Cairo not implemented yet
                 None
-            },
+            }
         }
     }
-    
+
     /// Get file extension pattern for finding files
     pub fn file_pattern(&self) -> &'static str {
         match self {
@@ -63,7 +58,7 @@ impl Metal {
             Metal::Cairo => "*.cairo",
         }
     }
-    
+
     /// Map language-specific node types to generic categories
     pub fn normalize_node_kind<'a>(&self, node_kind: &'a str) -> &'a str {
         match self {

@@ -21,7 +21,7 @@ impl Language {
             _ => Language::Unknown,
         }
     }
-    
+
     /// Convert to patina_metal::Metal enum
     pub fn to_metal(&self) -> Option<patina_metal::Metal> {
         match self {
@@ -31,7 +31,7 @@ impl Language {
             Language::Unknown => None,
         }
     }
-    
+
     /// Get file extension pattern for finding files
     pub fn file_pattern(&self) -> &'static str {
         match self {
@@ -41,7 +41,7 @@ impl Language {
             Language::Unknown => "*",
         }
     }
-    
+
     /// Map language-specific node types to generic categories
     pub fn normalize_node_kind<'a>(&self, node_kind: &'a str) -> &'a str {
         match self {
@@ -67,11 +67,11 @@ impl Language {
             },
             Language::Solidity => match node_kind {
                 "function_definition" => "function",
-                "contract_declaration" => "struct",  // Contracts are like structs
-                "interface_declaration" => "trait",   // Interfaces are like traits
-                "library_declaration" => "impl",      // Libraries are like impl blocks
-                "modifier_definition" => "function",  // Modifiers are special functions
-                "event_definition" => "function",     // Events are like functions
+                "contract_declaration" => "struct", // Contracts are like structs
+                "interface_declaration" => "trait", // Interfaces are like traits
+                "library_declaration" => "impl",    // Libraries are like impl blocks
+                "modifier_definition" => "function", // Modifiers are special functions
+                "event_definition" => "function",   // Events are like functions
                 "if_statement" => "if",
                 "for_statement" => "for",
                 "while_statement" => "while",
@@ -84,17 +84,19 @@ impl Language {
 
 /// Create a parser for the given language using patina-metal
 pub fn create_parser(language: Language) -> Result<Parser> {
-    let metal = language.to_metal()
+    let metal = language
+        .to_metal()
         .ok_or_else(|| anyhow::anyhow!("Unsupported language: {:?}", language))?;
-    
-    let ts_lang = metal.tree_sitter_language()
+
+    let ts_lang = metal
+        .tree_sitter_language()
         .ok_or_else(|| anyhow::anyhow!("No parser available for {:?}", language))?;
-    
+
     let mut parser = Parser::new();
     parser
         .set_language(&ts_lang)
         .context("Failed to set language")?;
-    
+
     Ok(parser)
 }
 
@@ -102,7 +104,7 @@ pub fn create_parser(language: Language) -> Result<Parser> {
 pub fn detect_languages(dir: &Path) -> Result<Vec<Language>> {
     use std::collections::HashSet;
     let mut languages = HashSet::new();
-    
+
     for entry in walkdir::WalkDir::new(dir)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -113,11 +115,14 @@ pub fn detect_languages(dir: &Path) -> Result<Vec<Language>> {
             languages.insert(lang as u8);
         }
     }
-    
-    Ok(languages.into_iter().map(|l| match l {
-        0 => Language::Rust,
-        1 => Language::Go,
-        2 => Language::Solidity,
-        _ => Language::Unknown,
-    }).collect())
+
+    Ok(languages
+        .into_iter()
+        .map(|l| match l {
+            0 => Language::Rust,
+            1 => Language::Go,
+            2 => Language::Solidity,
+            _ => Language::Unknown,
+        })
+        .collect())
 }

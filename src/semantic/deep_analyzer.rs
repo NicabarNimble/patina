@@ -1,8 +1,8 @@
 use anyhow::Result;
 use std::collections::HashMap;
-use tree_sitter::{Parser, Node};
+use tree_sitter::{Node, Parser};
 
-use super::queries::{SemanticQueries, SemanticPattern, extract_semantic_meaning};
+use super::queries::{extract_semantic_meaning, SemanticPattern, SemanticQueries};
 
 /// Deep semantic analysis that understands code behavior
 pub struct DeepAnalyzer {
@@ -29,7 +29,7 @@ pub struct FunctionSemantics {
     pub calls: Vec<String>,
     pub called_by: Vec<String>,
     pub error_flow: Option<ErrorFlow>,
-    pub actual_line_count: usize,  // Real function size, not file size!
+    pub actual_line_count: usize, // Real function size, not file size!
     pub cognitive_complexity: usize,
     pub test_coverage: bool,
 }
@@ -37,10 +37,11 @@ pub struct FunctionSemantics {
 impl DeepAnalyzer {
     pub fn new() -> Result<Self> {
         let mut parser = Parser::new();
-        let language = patina_metal::Metal::Rust.tree_sitter_language()
+        let language = patina_metal::Metal::Rust
+            .tree_sitter_language()
             .ok_or_else(|| anyhow::anyhow!("Rust parser not available"))?;
         parser.set_language(&language)?;
-        
+
         Ok(Self {
             queries: SemanticQueries::new(language)?,
             parser,
@@ -48,22 +49,24 @@ impl DeepAnalyzer {
             error_flows: HashMap::new(),
         })
     }
-    
+
     /// Analyze a function's actual behavior
     pub fn analyze_function(&mut self, source: &str, file: &str) -> Result<Vec<FunctionSemantics>> {
-        let tree = self.parser.parse(source, None)
+        let tree = self
+            .parser
+            .parse(source, None)
             .ok_or_else(|| anyhow::anyhow!("Failed to parse"))?;
-        
+
         let mut functions = Vec::new();
         let mut cursor = tree.root_node().walk();
-        
+
         self.extract_functions(&mut cursor, source, file, &mut functions);
         self.build_call_graph(&functions);
         self.trace_error_flows(&functions);
-        
+
         Ok(functions)
     }
-    
+
     fn extract_functions(
         &self,
         cursor: &mut tree_sitter::TreeCursor,
@@ -72,28 +75,31 @@ impl DeepAnalyzer {
         functions: &mut Vec<FunctionSemantics>,
     ) {
         let node = cursor.node();
-        
+
         if node.kind() == "function_item" {
             if let Some(name_node) = node.child_by_field_name("name") {
-                let name = name_node.utf8_text(source.as_bytes()).unwrap_or("").to_string();
-                
+                let name = name_node
+                    .utf8_text(source.as_bytes())
+                    .unwrap_or("")
+                    .to_string();
+
                 // Get ACTUAL function line count
                 let start_line = node.start_position().row;
                 let end_line = node.end_position().row;
                 let actual_line_count = end_line - start_line + 1;
-                
+
                 // Extract semantic patterns
                 let patterns = extract_semantic_meaning(node, source);
-                
+
                 // Extract function calls
                 let calls = self.extract_function_calls(&node, source);
-                
+
                 // Calculate cognitive complexity (not just cyclomatic)
                 let cognitive_complexity = self.calculate_cognitive_complexity(&node, source);
-                
+
                 // Check if this is a test
                 let is_test = self.is_test_function(&node, source);
-                
+
                 functions.push(FunctionSemantics {
                     name: name.clone(),
                     file: file.to_string(),
@@ -107,7 +113,7 @@ impl DeepAnalyzer {
                 });
             }
         }
-        
+
         // Recurse to children
         if cursor.goto_first_child() {
             loop {
@@ -119,15 +125,15 @@ impl DeepAnalyzer {
             cursor.goto_parent();
         }
     }
-    
+
     fn extract_function_calls(&self, node: &Node, source: &str) -> Vec<String> {
         let mut calls = Vec::new();
         let mut cursor = node.walk();
-        
+
         self.find_calls_recursive(&mut cursor, source, &mut calls);
         calls
     }
-    
+
     fn find_calls_recursive(
         &self,
         cursor: &mut tree_sitter::TreeCursor,
@@ -135,7 +141,7 @@ impl DeepAnalyzer {
         calls: &mut Vec<String>,
     ) {
         let node = cursor.node();
-        
+
         match node.kind() {
             "call_expression" => {
                 if let Some(function) = node.child_by_field_name("function") {
@@ -151,7 +157,7 @@ impl DeepAnalyzer {
             }
             _ => {}
         }
-        
+
         if cursor.goto_first_child() {
             loop {
                 self.find_calls_recursive(cursor, source, calls);
@@ -162,16 +168,16 @@ impl DeepAnalyzer {
             cursor.goto_parent();
         }
     }
-    
+
     fn calculate_cognitive_complexity(&self, node: &Node, source: &str) -> usize {
         let mut complexity = 0;
         let mut nesting_level = 0;
         let mut cursor = node.walk();
-        
+
         self.calculate_complexity_recursive(&mut cursor, &mut complexity, &mut nesting_level);
         complexity
     }
-    
+
     fn calculate_complexity_recursive(
         &self,
         cursor: &mut tree_sitter::TreeCursor,
@@ -179,7 +185,7 @@ impl DeepAnalyzer {
         nesting_level: &mut usize,
     ) {
         let node = cursor.node();
-        
+
         // Cognitive complexity considers nesting depth
         match node.kind() {
             "if_expression" | "match_expression" => {
@@ -205,7 +211,7 @@ impl DeepAnalyzer {
             }
             _ => {}
         }
-        
+
         if cursor.goto_first_child() {
             loop {
                 self.calculate_complexity_recursive(cursor, complexity, nesting_level);
@@ -214,18 +220,18 @@ impl DeepAnalyzer {
                 }
             }
             cursor.goto_parent();
-            
+
             // Decrease nesting when leaving a block
             match node.kind() {
-                "if_expression" | "match_expression" | 
-                "while_expression" | "for_expression" | "loop_expression" => {
+                "if_expression" | "match_expression" | "while_expression" | "for_expression"
+                | "loop_expression" => {
                     *nesting_level = nesting_level.saturating_sub(1);
                 }
                 _ => {}
             }
         }
     }
-    
+
     fn is_test_function(&self, node: &Node, source: &str) -> bool {
         // Check for #[test] attribute
         if let Some(prev) = node.prev_sibling() {
@@ -234,28 +240,28 @@ impl DeepAnalyzer {
                 return attr_text.contains("#[test]") || attr_text.contains("#[tokio::test]");
             }
         }
-        
+
         // Check if function name starts with test_
         if let Some(name) = node.child_by_field_name("name") {
             let name_text = name.utf8_text(source.as_bytes()).unwrap_or("");
             return name_text.starts_with("test_");
         }
-        
+
         false
     }
-    
+
     fn build_call_graph(&mut self, functions: &[FunctionSemantics]) {
         // Build reverse mapping: who calls whom
         for func in functions {
             for called in &func.calls {
                 self.call_graph
                     .entry(called.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(func.name.clone());
             }
         }
     }
-    
+
     fn trace_error_flows(&mut self, functions: &[FunctionSemantics]) {
         for func in functions {
             let mut flow = ErrorFlow {
@@ -265,60 +271,83 @@ impl DeepAnalyzer {
                 error_sources: Vec::new(),
                 error_sinks: Vec::new(),
             };
-            
+
             // Check patterns for error handling
             for pattern in &func.patterns {
-                if let SemanticPattern::ErrorPropagation { propagates, adds_context, .. } = pattern {
+                if let SemanticPattern::ErrorPropagation {
+                    propagates,
+                    adds_context,
+                    ..
+                } = pattern
+                {
                     flow.propagates_errors = *propagates;
                     if *adds_context {
                         flow.adds_context.push("context".to_string());
                     }
                 }
             }
-            
+
             // Track error sources (functions that might return errors)
             for call in &func.calls {
                 if call.ends_with("?") || call.contains("unwrap") || call.contains("expect") {
                     flow.error_sources.push(call.clone());
                 }
             }
-            
+
             self.error_flows.insert(func.name.clone(), flow);
         }
     }
-    
+
     /// Generate insights about the code
     pub fn generate_insights(&self, functions: &[FunctionSemantics]) -> SemanticInsights {
         let total_functions = functions.len();
-        
-        let complex_functions: Vec<_> = functions.iter()
+
+        let complex_functions: Vec<_> = functions
+            .iter()
             .filter(|f| f.cognitive_complexity > 10)
             .map(|f| (f.name.clone(), f.cognitive_complexity))
             .collect();
-        
-        let large_functions: Vec<_> = functions.iter()
+
+        let large_functions: Vec<_> = functions
+            .iter()
             .filter(|f| f.actual_line_count > 50)
             .map(|f| (f.name.clone(), f.actual_line_count))
             .collect();
-        
-        let api_boundaries: Vec<_> = functions.iter()
-            .filter(|f| f.patterns.iter().any(|p| {
-                matches!(p, SemanticPattern::ApiBoundary { is_public: true, .. })
-            }))
+
+        let api_boundaries: Vec<_> = functions
+            .iter()
+            .filter(|f| {
+                f.patterns.iter().any(|p| {
+                    matches!(
+                        p,
+                        SemanticPattern::ApiBoundary {
+                            is_public: true,
+                            ..
+                        }
+                    )
+                })
+            })
             .map(|f| f.name.clone())
             .collect();
-        
-        let error_handlers: Vec<_> = functions.iter()
-            .filter(|f| f.patterns.iter().any(|p| {
-                matches!(p, SemanticPattern::ErrorPropagation { adds_context: true, .. })
-            }))
+
+        let error_handlers: Vec<_> = functions
+            .iter()
+            .filter(|f| {
+                f.patterns.iter().any(|p| {
+                    matches!(
+                        p,
+                        SemanticPattern::ErrorPropagation {
+                            adds_context: true,
+                            ..
+                        }
+                    )
+                })
+            })
             .map(|f| f.name.clone())
             .collect();
-        
-        let test_functions = functions.iter()
-            .filter(|f| f.test_coverage)
-            .count();
-        
+
+        let test_functions = functions.iter().filter(|f| f.test_coverage).count();
+
         SemanticInsights {
             total_functions,
             complex_functions,
