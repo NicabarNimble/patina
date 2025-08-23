@@ -526,6 +526,120 @@ process_node(node, content.as_bytes());  // Use same bytes
 -- INTERPRETATION: "Important function" ❌ (could be misleading)
 ```
 
+## Doc Drift Detection: Verifying Documentation Truth (2025-08-23 Session)
+
+### The Insight: Facts Can Expose Documentation Lies
+
+Since we extract only facts that cannot lie, we can use them to verify documentation claims. This creates a powerful doc drift detection system where:
+- **Doc comments** = Claims to verify
+- **Extracted facts** = Ground truth
+- **Contradictions** = Doc drift
+
+### Verification Capabilities
+
+With our current fact extraction, we can verify:
+
+#### 1. **Thread Safety Claims**
+```sql
+-- If docs claim "thread-safe" but function takes &mut self → LIES!
+SELECT * FROM function_facts WHERE takes_mut_self = true OR takes_mut_params = true;
+```
+
+#### 2. **Error Handling Claims**
+```sql
+-- "Never fails" but returns Result → LIES!
+SELECT * FROM function_facts WHERE returns_result = true;
+-- "Handles all errors" but uses unwrap → LIES!
+SELECT * FROM behavioral_hints WHERE calls_unwrap > 0;
+-- "Never returns null" but returns Option → LIES!
+SELECT * FROM function_facts WHERE returns_option = true;
+```
+
+#### 3. **Completeness Claims**
+```sql
+-- "Fully implemented" but has todo!() → LIES!
+SELECT * FROM behavioral_hints WHERE has_todo_macro = true;
+-- "Production-ready" but panics → LIES!
+SELECT * FROM behavioral_hints WHERE has_panic_macro = true;
+```
+
+#### 4. **Safety Claims**
+```sql
+-- "Safe to use" but marked unsafe → LIES!
+SELECT * FROM function_facts WHERE is_unsafe = true;
+-- "No unsafe code" but has unsafe blocks → LIES!
+SELECT * FROM behavioral_hints WHERE has_unsafe_block = true;
+```
+
+#### 5. **Performance Claims**
+```sql
+-- "Zero-cost" but is async (runtime overhead) → LIES!
+SELECT * FROM function_facts WHERE is_async = true;
+-- "Lightweight" but high complexity → SUSPICIOUS!
+SELECT * FROM code_fingerprints WHERE complexity > 10;
+```
+
+### The Doc Drift Risk Score
+
+We can create a scoring system to identify functions with high doc drift risk:
+
+```sql
+CREATE VIEW doc_drift_risk AS
+SELECT 
+    file, name,
+    SUM(
+        CASE WHEN takes_mut_self THEN 3 ELSE 0 END +      -- Thread safety risk
+        CASE WHEN returns_result THEN 2 ELSE 0 END +      -- Error handling risk
+        CASE WHEN returns_option THEN 1 ELSE 0 END +      -- Null safety risk
+        CASE WHEN is_async THEN 1 ELSE 0 END +            -- Sync/async risk
+        CASE WHEN is_unsafe THEN 5 ELSE 0 END +           -- Safety risk
+        CASE WHEN has_panic_macro THEN 4 ELSE 0 END +     -- Stability risk
+        CASE WHEN has_todo_macro THEN 5 ELSE 0 END        -- Completeness risk
+    ) as drift_risk_score
+FROM function_facts ff
+LEFT JOIN behavioral_hints bh ON ff.file = bh.file AND ff.name = bh.function
+WHERE is_public = true
+ORDER BY drift_risk_score DESC;
+```
+
+### Implementation Vision
+
+To complete doc drift detection, we would:
+
+1. **Extract doc comments as claims** (not as truth):
+```sql
+CREATE TABLE doc_claims (
+    file VARCHAR,
+    symbol VARCHAR,
+    claim_type VARCHAR,  -- 'thread_safe', 'never_fails', etc.
+    claim_text VARCHAR,
+    line_number INTEGER
+);
+```
+
+2. **Build verification rules** that compare claims against facts
+3. **Generate drift reports** showing which docs lie
+4. **Suggest corrections** based on actual facts
+
+### The Value Proposition
+
+This approach enables:
+- **Automated doc audits** - Find all lying documentation
+- **Trust scoring** - Rate documentation reliability
+- **Doc generation** - Create accurate docs from facts
+- **Migration safety** - Verify upgrade guides are truthful
+- **API validation** - Ensure public APIs match their promises
+
+### Real-World Impact
+
+Testing on Dagger repository revealed:
+- **1,896 type definitions** for vocabulary verification
+- **6,420 function facts** for behavioral verification
+- **887 import facts** for dependency verification
+- **24 behavioral hints** identifying risky patterns
+
+An LLM using this data could instantly identify documentation that claims "thread-safe" for a function taking `&mut self`, or "never fails" for a function returning `Result`. This transforms documentation from a source of potential lies into verified, trustworthy guidance.
+
 ## Conclusion
 
 `patina-metal` successfully achieves its vision: a unified parser system that builds from source, giving us complete control over tree-sitter versions and parser compatibility. By treating languages as different "metals" with unique properties, we maintain the Patina metaphor while providing a robust, extensible foundation for multi-language code analysis.
@@ -533,3 +647,5 @@ process_node(node, content.as_bytes());  // Use same bytes
 The system now handles Rust, Go, and Solidity code reliably, with incremental updates making it practical for continuous use during development. The architecture is clean, maintainable, and ready for expansion to additional languages.
 
 Most importantly, we've evolved our understanding: **Patina's role is to be a fact extractor that provides token-efficient context for LLMs, not a semantic analyzer**. The LLM is the intelligence; Patina is the efficient memory. By focusing on facts that cannot lie rather than interpretations that might mislead, we create a trustworthy foundation for LLM-assisted code understanding.
+
+The addition of doc drift detection capabilities shows how powerful this "facts-only" approach is: by extracting undeniable truths from code, we can verify or refute any claim made in documentation, creating a system where LLMs can trust the context they receive and make accurate decisions based on reality rather than potentially outdated or incorrect documentation.
