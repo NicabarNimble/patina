@@ -11,12 +11,23 @@ pub enum Metal {
     Go,
     Solidity,
     Cairo,
+    Python,
+    JavaScript,  // .js, .jsx
+    TypeScript,  // .ts, .tsx (internally uses typescript or tsx parser)
 }
 
 impl Metal {
     /// Get all supported metals
     pub fn all() -> Vec<Metal> {
-        vec![Metal::Rust, Metal::Go, Metal::Solidity, Metal::Cairo]
+        vec![
+            Metal::Rust,
+            Metal::Go,
+            Metal::Solidity,
+            Metal::Cairo,
+            Metal::Python,
+            Metal::JavaScript,
+            Metal::TypeScript,
+        ]
     }
 
     /// Detect metal from file extension
@@ -32,6 +43,9 @@ impl Metal {
             "go" => Some(Metal::Go),
             "sol" => Some(Metal::Solidity),
             "cairo" => Some(Metal::Cairo),
+            "py" => Some(Metal::Python),
+            "js" | "jsx" | "mjs" => Some(Metal::JavaScript),
+            "ts" | "tsx" => Some(Metal::TypeScript),
             _ => None,
         }
     }
@@ -46,6 +60,21 @@ impl Metal {
                 // Cairo not implemented yet
                 None
             }
+            Metal::Python => Some(grammars::language_python()),
+            Metal::JavaScript => Some(grammars::language_javascript()),
+            Metal::TypeScript => Some(grammars::language_typescript()),
+        }
+    }
+
+    /// Get the tree-sitter language for a specific file extension
+    /// This handles TypeScript's dual parser situation (typescript vs tsx)
+    pub fn tree_sitter_language_for_ext(&self, ext: &str) -> Option<TSLanguage> {
+        match self {
+            Metal::TypeScript => match ext {
+                "tsx" => Some(grammars::language_tsx()),
+                _ => Some(grammars::language_typescript()),
+            },
+            _ => self.tree_sitter_language(),
         }
     }
 
@@ -56,6 +85,9 @@ impl Metal {
             Metal::Go => "*.go",
             Metal::Solidity => "*.sol",
             Metal::Cairo => "*.cairo",
+            Metal::Python => "*.py",
+            Metal::JavaScript => "*.js",  // Note: also handles .jsx, .mjs
+            Metal::TypeScript => "*.ts",   // Note: also handles .tsx
         }
     }
 
@@ -102,6 +134,27 @@ impl Metal {
                 "struct_definition" => "struct",
                 "if_expression" => "if",
                 "loop_expression" => "while",
+                _ => node_kind,
+            },
+            Metal::Python => match node_kind {
+                "function_definition" => "function",
+                "class_definition" => "struct",
+                "decorated_definition" => "function", // Decorators often mark special functions
+                "if_statement" => "if",
+                "for_statement" => "for",
+                "while_statement" => "while",
+                _ => node_kind,
+            },
+            Metal::JavaScript | Metal::TypeScript => match node_kind {
+                "function_declaration" | "function_expression" | "arrow_function" => "function",
+                "method_definition" => "function",
+                "class_declaration" => "struct",
+                "interface_declaration" => "trait", // TypeScript only
+                "type_alias_declaration" => "type_alias", // TypeScript only
+                "if_statement" => "if",
+                "for_statement" | "for_in_statement" | "for_of_statement" => "for",
+                "while_statement" | "do_statement" => "while",
+                "switch_statement" => "switch",
                 _ => node_kind,
             },
         }

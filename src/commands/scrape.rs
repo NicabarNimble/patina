@@ -1,5 +1,6 @@
 use crate::commands::incremental;
 use anyhow::{Context, Result};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -316,42 +317,47 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
 
     // Find all supported language files
     let mut all_files = Vec::new();
+    
+    // Track skipped files by extension
+    let mut skipped_files: HashMap<String, (usize, usize, String)> = HashMap::new(); // ext -> (count, bytes, example_path)
 
-    // Find Rust files
-    let rust_files = Command::new("find")
+    // Find ALL files in the repository (excluding .git and other hidden directories)
+    let find_all = Command::new("find")
         .current_dir(work_dir)
-        .args([".", "-name", "*.rs", "-type", "f"])
+        .args([".", "-type", "f", "-not", "-path", "*/.*", "-not", "-path", "*/target/*", "-not", "-path", "*/node_modules/*"])
         .output()?;
-    if rust_files.status.success() {
-        for file in String::from_utf8_lossy(&rust_files.stdout).lines() {
-            if !file.is_empty() {
-                all_files.push((file.to_string(), Language::Rust));
+    
+    if find_all.status.success() {
+        for file_path in String::from_utf8_lossy(&find_all.stdout).lines() {
+            if file_path.is_empty() {
+                continue;
             }
-        }
-    }
-
-    // Find Go files
-    let go_files = Command::new("find")
-        .current_dir(work_dir)
-        .args([".", "-name", "*.go", "-type", "f"])
-        .output()?;
-    if go_files.status.success() {
-        for file in String::from_utf8_lossy(&go_files.stdout).lines() {
-            if !file.is_empty() {
-                all_files.push((file.to_string(), Language::Go));
-            }
-        }
-    }
-
-    // Find Solidity files
-    let sol_files = Command::new("find")
-        .current_dir(work_dir)
-        .args([".", "-name", "*.sol", "-type", "f"])
-        .output()?;
-    if sol_files.status.success() {
-        for file in String::from_utf8_lossy(&sol_files.stdout).lines() {
-            if !file.is_empty() {
-                all_files.push((file.to_string(), Language::Solidity));
+            
+            // Determine language from extension
+            let path = Path::new(file_path);
+            let language = Language::from_path(path);
+            
+            match language {
+                Language::Rust | Language::Go | Language::Solidity | 
+                Language::Python | Language::JavaScript | Language::TypeScript => {
+                    // Supported language - add to processing list
+                    all_files.push((file_path.to_string(), language));
+                }
+                Language::Unknown => {
+                    // Track skipped file
+                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                        // Get file size
+                        let file_size = work_dir.join(file_path)
+                            .metadata()
+                            .map(|m| m.len() as usize)
+                            .unwrap_or(0);
+                        
+                        let entry = skipped_files.entry(ext.to_string()).or_insert((0, 0, file_path.to_string()));
+                        entry.0 += 1; // count
+                        entry.1 += file_size; // bytes
+                        // Keep first example path
+                    }
+                }
             }
         }
     }
@@ -362,7 +368,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
     }
 
     println!(
-        "  📂 Found {} files ({} Rust, {} Go, {} Solidity)",
+        "  📂 Found {} files ({} Rust, {} Go, {} Solidity, {} Python, {} JS, {} TS)",
         all_files.len(),
         all_files
             .iter()
@@ -372,6 +378,18 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
         all_files
             .iter()
             .filter(|(_, l)| *l == Language::Solidity)
+            .count(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::Python)
+            .count(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::JavaScript)
+            .count(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::TypeScript)
             .count()
     );
 
@@ -533,7 +551,133 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
     }
 
     println!("  ✓ Fingerprinted {} symbols", symbol_count);
+    
+    // Save and report skipped files
+    if !skipped_files.is_empty() {
+        save_skipped_files(db_path, &skipped_files)?;
+        report_skipped_files(&skipped_files);
+    }
+    
     Ok(())
+}
+
+/// Save skipped files to database
+fn save_skipped_files(db_path: &str, skipped: &HashMap<String, (usize, usize, String)>) -> Result<()> {
+    use std::process::Command;
+    
+    let mut sql = String::from("BEGIN TRANSACTION;\n");
+    sql.push_str("DELETE FROM skipped_files;\n");
+    
+    for (ext, (count, bytes, example)) in skipped {
+        // Map common extensions to language names
+        let lang_name = match ext.as_str() {
+            "py" => "Python",
+            "js" => "JavaScript",
+            "ts" => "TypeScript",
+            "jsx" => "React JSX",
+            "tsx" => "React TSX",
+            "java" => "Java",
+            "c" => "C",
+            "cpp" | "cc" | "cxx" => "C++",
+            "h" | "hpp" => "C/C++ Header",
+            "cs" => "C#",
+            "rb" => "Ruby",
+            "php" => "PHP",
+            "swift" => "Swift",
+            "kt" => "Kotlin",
+            "scala" => "Scala",
+            "ml" => "OCaml",
+            "hs" => "Haskell",
+            "ex" | "exs" => "Elixir",
+            "clj" => "Clojure",
+            "vue" => "Vue",
+            "svelte" => "Svelte",
+            "lua" => "Lua",
+            "r" => "R",
+            "jl" => "Julia",
+            "zig" => "Zig",
+            "nim" => "Nim",
+            "dart" => "Dart",
+            "sh" | "bash" => "Shell",
+            "yaml" | "yml" => "YAML",
+            "json" => "JSON",
+            "toml" => "TOML",
+            "xml" => "XML",
+            "md" => "Markdown",
+            _ => "",
+        };
+        
+        sql.push_str(&format!(
+            "INSERT INTO skipped_files (extension, file_count, total_bytes, example_path, common_name) VALUES ('{}', {}, {}, '{}', '{}');\n",
+            ext, count, bytes, example.replace('\'', "''"), lang_name
+        ));
+    }
+    
+    sql.push_str("COMMIT;\n");
+    
+    // Execute via stdin
+    let mut child = Command::new("duckdb")
+        .arg(db_path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("Failed to start DuckDB")?;
+    
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin.write_all(sql.as_bytes()).context("Failed to write SQL")?;
+    }
+    
+    let output = child.wait_with_output().context("Failed to save skipped files")?;
+    if !output.status.success() {
+        eprintln!("Warning: Failed to save skipped files stats");
+    }
+    
+    Ok(())
+}
+
+/// Report skipped files to user
+fn report_skipped_files(skipped: &HashMap<String, (usize, usize, String)>) {
+    // Sort by file count descending
+    let mut sorted: Vec<_> = skipped.iter().collect();
+    sorted.sort_by(|a, b| b.1.0.cmp(&a.1.0));
+    
+    println!("\n⚠️  Skipped files (no parser available):");
+    
+    // Show top 5 most common extensions
+    for (ext, (count, bytes, _)) in sorted.iter().take(5) {
+        let size_mb = *bytes as f64 / 1_048_576.0;
+        println!("   {} .{} files ({:.1} MB)", count, ext, size_mb);
+    }
+    
+    if sorted.len() > 5 {
+        let remaining: usize = sorted.iter().skip(5).map(|(_, (c, _, _))| c).sum();
+        println!("   {} files with other extensions", remaining);
+    }
+    
+    // Suggest adding parsers for common languages
+    let suggestions: Vec<&str> = sorted.iter()
+        .filter_map(|(ext, (count, _, _))| {
+            if *count > 10 {
+                match ext.as_str() {
+                    "py" => Some("Python"),
+                    "js" | "ts" | "jsx" | "tsx" => Some("JavaScript/TypeScript"),
+                    "java" => Some("Java"),
+                    "c" | "cpp" | "h" => Some("C/C++"),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        })
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    
+    if !suggestions.is_empty() {
+        println!("\n💡 Consider adding parsers for: {}", suggestions.join(", "));
+    }
 }
 
 /// Process AST nodes and generate fingerprints
@@ -608,7 +752,14 @@ fn process_ast_node(
         return count;
     }
 
-    // Extract name and generate fingerprint
+    // Handle imports separately (they don't have a name field)
+    if kind == "import" {
+        extract_import_fact(node, source, file_path, sql, language);
+        count += 1;
+        return count;
+    }
+
+    // Extract name for other symbols
     let name_node = match language {
         Language::Go if node.kind() == "type_spec" => {
             // Go type specs have name directly in the node
@@ -668,10 +819,6 @@ fn process_ast_node(
                     ));
                 }
             }
-            "import" => {
-                // Extract import facts
-                extract_import_fact(node, source, file_path, sql, language);
-            }
             "impl" => {
                 // Keep fingerprinting for impl blocks
                 let fingerprint = Fingerprint::from_ast(node, source);
@@ -717,7 +864,13 @@ SELECT
     'Files with 10+ commits' as metric,
     COUNT(*) as value
 FROM git_metrics
-WHERE commit_count >= 10;
+WHERE commit_count >= 10
+UNION ALL
+SELECT
+    'Languages skipped' as metric,
+    COUNT(*) as value
+FROM skipped_files
+WHERE file_count > 0;
 "#;
 
     let output = Command::new("duckdb")
@@ -797,6 +950,15 @@ fn extract_function_facts(
             // Solidity defaults to public
             !node.utf8_text(source).unwrap_or("").contains("private")
         }
+        Language::Python => {
+            // Python uses convention: _ prefix = private
+            !name.starts_with('_')
+        }
+        Language::JavaScript | Language::TypeScript => {
+            // JS/TS: export = public, TypeScript can have public/private keywords
+            let text = node.utf8_text(source).unwrap_or("");
+            text.contains("export") || text.contains("public")
+        }
         Language::Unknown => false,
     };
     
@@ -805,6 +967,16 @@ fn extract_function_facts(
         Language::Rust => {
             node.children(&mut node.walk())
                 .any(|child| child.kind() == "async")
+        }
+        Language::JavaScript | Language::TypeScript => {
+            // JS/TS have async functions
+            let text = node.utf8_text(source).unwrap_or("");
+            text.starts_with("async ") || text.contains(" async ")
+        }
+        Language::Python => {
+            // Python uses async def
+            node.kind() == "async_function_definition" || 
+            node.utf8_text(source).unwrap_or("").starts_with("async def")
         }
         _ => false, // Go and Solidity don't have async keyword
     };
@@ -856,6 +1028,22 @@ fn extract_function_facts(
                 // Count parameters
                 for child in params.children(&mut params.walk()) {
                     if child.kind() == "parameter" {
+                        param_count += 1;
+                    }
+                }
+            }
+            Language::Python => {
+                // Count parameters
+                for child in params.children(&mut params.walk()) {
+                    if child.kind() == "parameter" || child.kind() == "identifier" {
+                        param_count += 1;
+                    }
+                }
+            }
+            Language::JavaScript | Language::TypeScript => {
+                // Count parameters
+                for child in params.children(&mut params.walk()) {
+                    if child.kind() == "formal_parameter" || child.kind() == "identifier" {
                         param_count += 1;
                     }
                 }
@@ -972,6 +1160,23 @@ fn extract_type_definition(
             }
         }
         Language::Solidity => "pub", // Most things in Solidity are public by default
+        Language::Python => {
+            // Python convention: _ prefix = private
+            if name.starts_with('_') {
+                "private"
+            } else {
+                "pub"
+            }
+        }
+        Language::JavaScript | Language::TypeScript => {
+            // JS/TS: look for export keyword
+            let text = node.utf8_text(source).unwrap_or("");
+            if text.contains("export") {
+                "pub"
+            } else {
+                "private"
+            }
+        }
         Language::Unknown => "private",
     };
     
@@ -1066,6 +1271,35 @@ fn extract_import_fact(
                     escape_sql(file_path),
                     escape_sql(path_match),
                     escape_sql(path_match),
+                    is_external
+                ));
+            }
+        }
+        Language::Python => {
+            // Python imports: import x or from x import y
+            // Simple extraction - just store the whole import for now
+            let import_clean = import_text.trim();
+            let is_external = !import_clean.contains("from .");
+            
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
+                escape_sql(file_path),
+                escape_sql(import_clean),
+                escape_sql(import_clean),
+                is_external
+            ));
+        }
+        Language::JavaScript | Language::TypeScript => {
+            // JS/TS imports: import x from 'y'
+            // Simple extraction - just store the module path
+            if let Some(module_match) = import_text.split('\'').nth(1).or_else(|| import_text.split('"').nth(1)) {
+                let is_external = !module_match.starts_with('.');
+                
+                sql.push_str(&format!(
+                    "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
+                    escape_sql(file_path),
+                    escape_sql(module_match),
+                    escape_sql(module_match),
                     is_external
                 ));
             }

@@ -8,6 +8,9 @@ pub enum Language {
     Rust,
     Go,
     Solidity,
+    Python,
+    JavaScript,
+    TypeScript,
     Unknown,
 }
 
@@ -18,6 +21,9 @@ impl Language {
             Some("rs") => Language::Rust,
             Some("go") => Language::Go,
             Some("sol") => Language::Solidity,
+            Some("py") => Language::Python,
+            Some("js") | Some("jsx") | Some("mjs") => Language::JavaScript,
+            Some("ts") | Some("tsx") => Language::TypeScript,
             _ => Language::Unknown,
         }
     }
@@ -28,6 +34,9 @@ impl Language {
             Language::Rust => Some(patina_metal::Metal::Rust),
             Language::Go => Some(patina_metal::Metal::Go),
             Language::Solidity => Some(patina_metal::Metal::Solidity),
+            Language::Python => Some(patina_metal::Metal::Python),
+            Language::JavaScript => Some(patina_metal::Metal::JavaScript),
+            Language::TypeScript => Some(patina_metal::Metal::TypeScript),
             Language::Unknown => None,
         }
     }
@@ -38,6 +47,9 @@ impl Language {
             Language::Rust => "*.rs",
             Language::Go => "*.go",
             Language::Solidity => "*.sol",
+            Language::Python => "*.py",
+            Language::JavaScript => "*.js",
+            Language::TypeScript => "*.ts",
             Language::Unknown => "*",
         }
     }
@@ -77,6 +89,27 @@ impl Language {
                 "while_statement" => "while",
                 _ => node_kind,
             },
+            Language::Python => match node_kind {
+                "function_definition" => "function",
+                "class_definition" => "struct",
+                "decorated_definition" => "function",
+                "if_statement" => "if",
+                "for_statement" => "for",
+                "while_statement" => "while",
+                _ => node_kind,
+            },
+            Language::JavaScript | Language::TypeScript => match node_kind {
+                "function_declaration" | "function_expression" | "arrow_function" => "function",
+                "method_definition" => "function",
+                "class_declaration" => "struct",
+                "interface_declaration" => "trait",
+                "type_alias_declaration" => "type_alias",
+                "if_statement" => "if",
+                "for_statement" | "for_in_statement" | "for_of_statement" => "for",
+                "while_statement" | "do_statement" => "while",
+                "switch_statement" => "switch",
+                _ => node_kind,
+            },
             Language::Unknown => node_kind,
         }
     }
@@ -90,6 +123,27 @@ pub fn create_parser(language: Language) -> Result<Parser> {
 
     let ts_lang = metal
         .tree_sitter_language()
+        .ok_or_else(|| anyhow::anyhow!("No parser available for {:?}", language))?;
+
+    let mut parser = Parser::new();
+    parser
+        .set_language(&ts_lang)
+        .context("Failed to set language")?;
+
+    Ok(parser)
+}
+
+/// Create a parser for a specific file path, handling TypeScript's tsx vs ts distinction
+pub fn create_parser_for_path(path: &Path) -> Result<Parser> {
+    let language = Language::from_path(path);
+    let metal = language
+        .to_metal()
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {:?}", language))?;
+
+    // Use the extension-aware method for TypeScript to get the right parser
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let ts_lang = metal
+        .tree_sitter_language_for_ext(ext)
         .ok_or_else(|| anyhow::anyhow!("No parser available for {:?}", language))?;
 
     let mut parser = Parser::new();
@@ -122,6 +176,9 @@ pub fn detect_languages(dir: &Path) -> Result<Vec<Language>> {
             0 => Language::Rust,
             1 => Language::Go,
             2 => Language::Solidity,
+            3 => Language::Python,
+            4 => Language::JavaScript,
+            5 => Language::TypeScript,
             _ => Language::Unknown,
         })
         .collect())
