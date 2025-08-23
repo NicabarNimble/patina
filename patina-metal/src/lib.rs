@@ -1,7 +1,9 @@
 use anyhow::Result;
 use std::collections::HashMap;
 use tree_sitter::{Node, Parser, Query, QueryCursor, Tree};
+use streaming_iterator::StreamingIterator;
 
+pub mod grammars;
 pub mod metal;
 pub mod parser;
 pub mod queries;
@@ -160,10 +162,10 @@ impl Analyzer {
             .ok_or_else(|| anyhow::anyhow!("No {:?} query for {:?}", query_type, file.metal))?;
         
         let mut cursor = QueryCursor::new();
-        let matches = cursor.matches(query, file.tree.root_node(), file.source.as_bytes());
+        let mut matches = cursor.matches(query, file.tree.root_node(), file.source.as_bytes());
         
         let mut results = Vec::new();
-        for m in matches {
+        while let Some(m) = matches.next() {
             for capture in m.captures {
                 let text = capture.node.utf8_text(file.source.as_bytes())
                     .unwrap_or_default()

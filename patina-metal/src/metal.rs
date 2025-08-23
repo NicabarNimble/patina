@@ -1,6 +1,9 @@
 use std::path::Path;
 use tree_sitter::Language as TSLanguage;
 
+// Import our self-built grammars
+use crate::grammars;
+
 /// Supported programming languages (metals)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Metal {
@@ -41,19 +44,13 @@ impl Metal {
     /// Get the tree-sitter language for this metal
     pub fn tree_sitter_language(&self) -> Option<TSLanguage> {
         match self {
-            #[cfg(feature = "rust")]
-            Metal::Rust => Some(tree_sitter_rust::LANGUAGE.into()),
-            #[cfg(feature = "go")]
-            Metal::Go => Some(tree_sitter_go::LANGUAGE.into()),
-            #[cfg(feature = "solidity")]
-            Metal::Solidity => Some(tree_sitter_solidity::LANGUAGE.into()),
-            #[cfg(feature = "cairo")]
+            Metal::Rust => Some(grammars::language_rust()),
+            Metal::Go => Some(grammars::language_go()),
+            Metal::Solidity => Some(grammars::language_solidity()),
             Metal::Cairo => {
-                // Cairo might not be available yet
+                // Cairo not implemented yet
                 None
             },
-            #[allow(unreachable_patterns)]
-            _ => None,
         }
     }
     
