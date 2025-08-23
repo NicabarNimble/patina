@@ -339,7 +339,8 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
             
             match language {
                 Language::Rust | Language::Go | Language::Solidity | 
-                Language::Python | Language::JavaScript | Language::TypeScript => {
+                Language::Python | Language::JavaScript | Language::JavaScriptJSX |
+                Language::TypeScript | Language::TypeScriptTSX => {
                     // Supported language - add to processing list
                     all_files.push((file_path.to_string(), language));
                 }
@@ -368,7 +369,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
     }
 
     println!(
-        "  📂 Found {} files ({} Rust, {} Go, {} Solidity, {} Python, {} JS, {} TS)",
+        "  📂 Found {} files ({} Rust, {} Go, {} Solidity, {} Python, {} JS, {} JSX, {} TS, {} TSX)",
         all_files.len(),
         all_files
             .iter()
@@ -389,7 +390,15 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
             .count(),
         all_files
             .iter()
+            .filter(|(_, l)| *l == Language::JavaScriptJSX)
+            .count(),
+        all_files
+            .iter()
             .filter(|(_, l)| *l == Language::TypeScript)
+            .count(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::TypeScriptTSX)
             .count()
     );
 
@@ -954,7 +963,7 @@ fn extract_function_facts(
             // Python uses convention: _ prefix = private
             !name.starts_with('_')
         }
-        Language::JavaScript | Language::TypeScript => {
+        Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => {
             // JS/TS: export = public, TypeScript can have public/private keywords
             let text = node.utf8_text(source).unwrap_or("");
             text.contains("export") || text.contains("public")
@@ -968,7 +977,7 @@ fn extract_function_facts(
             node.children(&mut node.walk())
                 .any(|child| child.kind() == "async")
         }
-        Language::JavaScript | Language::TypeScript => {
+        Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => {
             // JS/TS have async functions
             let text = node.utf8_text(source).unwrap_or("");
             text.starts_with("async ") || text.contains(" async ")
@@ -1040,7 +1049,7 @@ fn extract_function_facts(
                     }
                 }
             }
-            Language::JavaScript | Language::TypeScript => {
+            Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => {
                 // Count parameters
                 for child in params.children(&mut params.walk()) {
                     if child.kind() == "formal_parameter" || child.kind() == "identifier" {
@@ -1168,7 +1177,7 @@ fn extract_type_definition(
                 "pub"
             }
         }
-        Language::JavaScript | Language::TypeScript => {
+        Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => {
             // JS/TS: look for export keyword
             let text = node.utf8_text(source).unwrap_or("");
             if text.contains("export") {
@@ -1289,7 +1298,7 @@ fn extract_import_fact(
                 is_external
             ));
         }
-        Language::JavaScript | Language::TypeScript => {
+        Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => {
             // JS/TS imports: import x from 'y'
             // Simple extraction - just store the module path
             if let Some(module_match) = import_text.split('\'').nth(1).or_else(|| import_text.split('"').nth(1)) {
