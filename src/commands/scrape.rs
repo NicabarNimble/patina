@@ -308,7 +308,7 @@ fn extract_pattern_references(db_path: &str, work_dir: &Path) -> Result<()> {
 
 /// Extract semantic fingerprints with tree-sitter
 fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
-    println!("🧠 Generating semantic fingerprints...");
+    println!("🧠 Generating semantic fingerprints and extracting truth data...");
 
     use patina::semantic::languages::{create_parser, Language};
     use std::collections::HashMap;
