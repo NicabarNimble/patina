@@ -8,7 +8,8 @@ fn main() -> Result<()> {
     println!("🔍 Simple Semantic Analysis of Patina\n");
     
     let mut parser = Parser::new();
-    let language = tree_sitter_rust::LANGUAGE.into();
+    let language = patina_metal::Metal::Rust.tree_sitter_language()
+        .ok_or_else(|| anyhow::anyhow!("Rust parser not available"))?;
     parser.set_language(&language)?;
     
     let mut total_functions = 0;

@@ -37,7 +37,8 @@ pub struct FunctionSemantics {
 impl DeepAnalyzer {
     pub fn new() -> Result<Self> {
         let mut parser = Parser::new();
-        let language = tree_sitter_rust::LANGUAGE.into();
+        let language = patina_metal::Metal::Rust.tree_sitter_language()
+            .ok_or_else(|| anyhow::anyhow!("Rust parser not available"))?;
         parser.set_language(&language)?;
         
         Ok(Self {
