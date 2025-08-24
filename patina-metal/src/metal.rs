@@ -12,8 +12,8 @@ pub enum Metal {
     Solidity,
     Cairo,
     Python,
-    JavaScript,  // .js, .jsx
-    TypeScript,  // .ts, .tsx (internally uses typescript or tsx parser)
+    JavaScript, // .js, .jsx
+    TypeScript, // .ts, .tsx (internally uses typescript or tsx parser)
 }
 
 impl Metal {
@@ -86,8 +86,8 @@ impl Metal {
             Metal::Solidity => "*.sol",
             Metal::Cairo => "*.cairo",
             Metal::Python => "*.py",
-            Metal::JavaScript => "*.js",  // Note: also handles .jsx, .mjs
-            Metal::TypeScript => "*.ts",   // Note: also handles .tsx
+            Metal::JavaScript => "*.js", // Note: also handles .jsx, .mjs
+            Metal::TypeScript => "*.ts", // Note: also handles .tsx
         }
     }
 

@@ -2,7 +2,7 @@ use patina::semantic::languages::{create_parser, Language};
 
 fn main() -> anyhow::Result<()> {
     println!("Testing parser creation...");
-    
+
     // Test each language
     let languages = vec![
         Language::Rust,
@@ -12,7 +12,7 @@ fn main() -> anyhow::Result<()> {
         Language::JavaScript,
         Language::TypeScript,
     ];
-    
+
     for lang in languages {
         print!("Testing {:?}... ", lang);
         match create_parser(lang) {
@@ -28,9 +28,12 @@ fn main() -> anyhow::Result<()> {
                     Language::TypeScript => "function main(): void {}",
                     _ => "",
                 };
-                
+
                 match parser.parse(code, None) {
-                    Some(tree) => println!("  ✅ Parsed sample code (root: {})", tree.root_node().kind()),
+                    Some(tree) => println!(
+                        "  ✅ Parsed sample code (root: {})",
+                        tree.root_node().kind()
+                    ),
                     None => println!("  ❌ Failed to parse sample code"),
                 }
             }
@@ -39,6 +42,6 @@ fn main() -> anyhow::Result<()> {
             }
         }
     }
-    
+
     Ok(())
 }

@@ -163,7 +163,7 @@ impl Analyzer {
     pub fn calculate_complexity(&self, file: &ParsedFile) -> usize {
         let mut complexity = 1;
         let mut cursor = file.tree.walk();
-        self.count_branches(&mut cursor, file.metal, &mut complexity);
+        Self::count_branches(&mut cursor, file.metal, &mut complexity);
         complexity
     }
 
@@ -205,7 +205,7 @@ impl Analyzer {
         use std::hash::Hasher;
 
         let mut hasher = DefaultHasher::new();
-        self.hash_node_structure(&mut hasher, node);
+        Self::hash_node_structure(&mut hasher, node);
         hasher.finish()
     }
 
@@ -276,7 +276,6 @@ impl Analyzer {
     }
 
     fn count_branches(
-        &self,
         cursor: &mut tree_sitter::TreeCursor,
         metal: Metal,
         complexity: &mut usize,
@@ -293,7 +292,7 @@ impl Analyzer {
         // Recurse
         if cursor.goto_first_child() {
             loop {
-                self.count_branches(cursor, metal, complexity);
+                Self::count_branches(cursor, metal, complexity);
                 if !cursor.goto_next_sibling() {
                     break;
                 }
@@ -302,14 +301,14 @@ impl Analyzer {
         }
     }
 
-    fn hash_node_structure(&self, hasher: &mut impl std::hash::Hasher, node: Node) {
+    fn hash_node_structure(hasher: &mut impl std::hash::Hasher, node: Node) {
         use std::hash::Hash;
         node.kind().hash(hasher);
 
         let mut cursor = node.walk();
         if cursor.goto_first_child() {
             loop {
-                self.hash_node_structure(hasher, cursor.node());
+                Self::hash_node_structure(hasher, cursor.node());
                 if !cursor.goto_next_sibling() {
                     break;
                 }

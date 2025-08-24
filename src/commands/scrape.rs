@@ -311,51 +311,56 @@ fn extract_pattern_references(db_path: &str, work_dir: &Path) -> Result<()> {
 fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
     println!("🧠 Generating semantic fingerprints and extracting truth data...");
 
+    use ignore::WalkBuilder;
     use patina::semantic::languages::{create_parser, Language};
     use std::collections::HashMap;
     use std::time::SystemTime;
-    use ignore::WalkBuilder;
 
     // Find all supported language files
     let mut all_files = Vec::new();
-    
+
     // Track skipped files by extension
     let mut skipped_files: HashMap<String, (usize, usize, String)> = HashMap::new(); // ext -> (count, bytes, example_path)
 
     // Use ignore crate to walk files, respecting .gitignore
     let walker = WalkBuilder::new(work_dir)
-        .hidden(false)  // Don't process hidden files
-        .git_ignore(true)  // Respect .gitignore
-        .git_global(true)  // Respect global gitignore
-        .git_exclude(true)  // Respect .git/info/exclude
-        .ignore(true)  // Respect .ignore files
+        .hidden(false) // Don't process hidden files
+        .git_ignore(true) // Respect .gitignore
+        .git_global(true) // Respect global gitignore
+        .git_exclude(true) // Respect .git/info/exclude
+        .ignore(true) // Respect .ignore files
         .build();
-    
+
     for entry in walker {
         let entry = entry?;
         let path = entry.path();
-        
+
         // Skip directories
-        if entry.file_type().map_or(false, |ft| ft.is_dir()) {
+        if entry.file_type().is_some_and(|ft| ft.is_dir()) {
             continue;
         }
-        
+
         // Get relative path for storage
         let relative_path = path.strip_prefix(work_dir).unwrap_or(path);
         let relative_path_str = relative_path.to_string_lossy();
-        
+
         // Skip if path starts with dot (hidden)
         if relative_path_str.starts_with('.') {
             continue;
         }
-        
+
         // Determine language from extension
         let language = Language::from_path(path);
-        
+
         match language {
-            Language::Rust | Language::Go | Language::Solidity | 
-            Language::Python | Language::JavaScript | Language::JavaScriptJSX |
-            Language::TypeScript | Language::TypeScriptTSX => {
+            Language::Rust
+            | Language::Go
+            | Language::Solidity
+            | Language::Python
+            | Language::JavaScript
+            | Language::JavaScriptJSX
+            | Language::TypeScript
+            | Language::TypeScriptTSX => {
                 // Supported language - add to processing list with relative path
                 all_files.push((format!("./{}", relative_path_str), language));
             }
@@ -363,15 +368,16 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
                 // Track skipped file
                 if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                     // Get file size
-                    let file_size = entry.metadata()
-                        .ok()
-                        .map(|m| m.len() as usize)
-                        .unwrap_or(0);
-                    
-                    let entry = skipped_files.entry(ext.to_string()).or_insert((0, 0, relative_path_str.to_string()));
+                    let file_size = entry.metadata().ok().map(|m| m.len() as usize).unwrap_or(0);
+
+                    let entry = skipped_files.entry(ext.to_string()).or_insert((
+                        0,
+                        0,
+                        relative_path_str.to_string(),
+                    ));
                     entry.0 += 1; // count
                     entry.1 += file_size; // bytes
-                    // Keep first example path
+                                          // Keep first example path
                 }
             }
         }
@@ -574,23 +580,26 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
     }
 
     println!("  ✓ Fingerprinted {} symbols", symbol_count);
-    
+
     // Save and report skipped files
     if !skipped_files.is_empty() {
         save_skipped_files(db_path, &skipped_files)?;
         report_skipped_files(&skipped_files);
     }
-    
+
     Ok(())
 }
 
 /// Save skipped files to database
-fn save_skipped_files(db_path: &str, skipped: &HashMap<String, (usize, usize, String)>) -> Result<()> {
+fn save_skipped_files(
+    db_path: &str,
+    skipped: &HashMap<String, (usize, usize, String)>,
+) -> Result<()> {
     use std::process::Command;
-    
+
     let mut sql = String::from("BEGIN TRANSACTION;\n");
     sql.push_str("DELETE FROM skipped_files;\n");
-    
+
     for (ext, (count, bytes, example)) in skipped {
         // Map common extensions to language names
         let lang_name = match ext.as_str() {
@@ -629,15 +638,15 @@ fn save_skipped_files(db_path: &str, skipped: &HashMap<String, (usize, usize, St
             "md" => "Markdown",
             _ => "",
         };
-        
+
         sql.push_str(&format!(
             "INSERT INTO skipped_files (extension, file_count, total_bytes, example_path, common_name) VALUES ('{}', {}, {}, '{}', '{}');\n",
             ext, count, bytes, example.replace('\'', "''"), lang_name
         ));
     }
-    
+
     sql.push_str("COMMIT;\n");
-    
+
     // Execute via stdin
     let mut child = Command::new("duckdb")
         .arg(db_path)
@@ -646,17 +655,21 @@ fn save_skipped_files(db_path: &str, skipped: &HashMap<String, (usize, usize, St
         .stderr(std::process::Stdio::piped())
         .spawn()
         .context("Failed to start DuckDB")?;
-    
+
     if let Some(mut stdin) = child.stdin.take() {
         use std::io::Write;
-        stdin.write_all(sql.as_bytes()).context("Failed to write SQL")?;
+        stdin
+            .write_all(sql.as_bytes())
+            .context("Failed to write SQL")?;
     }
-    
-    let output = child.wait_with_output().context("Failed to save skipped files")?;
+
+    let output = child
+        .wait_with_output()
+        .context("Failed to save skipped files")?;
     if !output.status.success() {
         eprintln!("Warning: Failed to save skipped files stats");
     }
-    
+
     Ok(())
 }
 
@@ -664,23 +677,24 @@ fn save_skipped_files(db_path: &str, skipped: &HashMap<String, (usize, usize, St
 fn report_skipped_files(skipped: &HashMap<String, (usize, usize, String)>) {
     // Sort by file count descending
     let mut sorted: Vec<_> = skipped.iter().collect();
-    sorted.sort_by(|a, b| b.1.0.cmp(&a.1.0));
-    
+    sorted.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+
     println!("\n⚠️  Skipped files (no parser available):");
-    
+
     // Show top 5 most common extensions
     for (ext, (count, bytes, _)) in sorted.iter().take(5) {
         let size_mb = *bytes as f64 / 1_048_576.0;
         println!("   {} .{} files ({:.1} MB)", count, ext, size_mb);
     }
-    
+
     if sorted.len() > 5 {
         let remaining: usize = sorted.iter().skip(5).map(|(_, (c, _, _))| c).sum();
         println!("   {} files with other extensions", remaining);
     }
-    
+
     // Suggest adding parsers for common languages
-    let suggestions: Vec<&str> = sorted.iter()
+    let suggestions: Vec<&str> = sorted
+        .iter()
         .filter_map(|(ext, (count, _, _))| {
             if *count > 10 {
                 match ext.as_str() {
@@ -697,9 +711,12 @@ fn report_skipped_files(skipped: &HashMap<String, (usize, usize, String)>) {
         .collect::<std::collections::HashSet<_>>()
         .into_iter()
         .collect();
-    
+
     if !suggestions.is_empty() {
-        println!("\n💡 Consider adding parsers for: {}", suggestions.join(", "));
+        println!(
+            "\n💡 Consider adding parsers for: {}",
+            suggestions.join(", ")
+        );
     }
 }
 
@@ -745,7 +762,7 @@ fn process_ast_node(
             {
                 "trait"
             } else {
-                "type_alias"  // Type aliases in Go
+                "type_alias" // Type aliases in Go
             }
         }
         // Solidity mappings
@@ -760,11 +777,15 @@ fn process_ast_node(
         (Language::Python, "class_definition") => "struct",
         (Language::Python, "decorated_definition") => {
             // Check if it's a decorated function or class
-            if node.child_by_field_name("definition")
-                .is_some_and(|n| n.kind() == "function_definition") {
+            if node
+                .child_by_field_name("definition")
+                .is_some_and(|n| n.kind() == "function_definition")
+            {
                 "function"
-            } else if node.child_by_field_name("definition")
-                .is_some_and(|n| n.kind() == "class_definition") {
+            } else if node
+                .child_by_field_name("definition")
+                .is_some_and(|n| n.kind() == "class_definition")
+            {
                 "struct"
             } else {
                 ""
@@ -781,11 +802,15 @@ fn process_ast_node(
         (Language::JavaScript | Language::JavaScriptJSX, "import_statement") => "import",
         (Language::JavaScript | Language::JavaScriptJSX, "variable_declarator") => {
             // Check if it's a const/let/var with a function value
-            if node.child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression") {
+            if node
+                .child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression")
+            {
                 "function"
-            } else if node.child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "class_expression") {
+            } else if node
+                .child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "class_expression")
+            {
                 "struct"
             } else {
                 ""
@@ -793,7 +818,7 @@ fn process_ast_node(
         }
         // TypeScript/TSX mappings
         (Language::TypeScript | Language::TypeScriptTSX, "function_declaration") => "function",
-        (Language::TypeScript | Language::TypeScriptTSX, "function_expression") => "function", 
+        (Language::TypeScript | Language::TypeScriptTSX, "function_expression") => "function",
         (Language::TypeScript | Language::TypeScriptTSX, "arrow_function") => "function",
         (Language::TypeScript | Language::TypeScriptTSX, "method_definition") => "function",
         (Language::TypeScript | Language::TypeScriptTSX, "class_declaration") => "struct",
@@ -803,11 +828,15 @@ fn process_ast_node(
         (Language::TypeScript | Language::TypeScriptTSX, "import_statement") => "import",
         (Language::TypeScript | Language::TypeScriptTSX, "variable_declarator") => {
             // Check if it's a const/let/var with a function value
-            if node.child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression") {
+            if node
+                .child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression")
+            {
                 "function"
-            } else if node.child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "class_expression") {
+            } else if node
+                .child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "class_expression")
+            {
                 "struct"
             } else {
                 ""
@@ -861,7 +890,10 @@ fn process_ast_node(
                 node.child_by_field_name("name")
             }
         }
-        Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => {
+        Language::JavaScript
+        | Language::JavaScriptJSX
+        | Language::TypeScript
+        | Language::TypeScriptTSX => {
             // JS/TS uses different field names depending on context
             if node.kind() == "variable_declarator" {
                 // For const/let/var declarations, name is in the 'name' field
@@ -879,13 +911,13 @@ fn process_ast_node(
 
     if let Some(name_node) = name_node {
         let name = name_node.utf8_text(source).unwrap_or("<unknown>");
-        
+
         // Extract based on kind
         match kind {
             "function" => {
                 // Extract function facts
                 extract_function_facts(node, source, file_path, name, sql, language);
-                
+
                 // Also generate fingerprint for functions
                 let fingerprint = Fingerprint::from_ast(node, source);
                 let signature = node
@@ -911,7 +943,7 @@ fn process_ast_node(
             "type_alias" | "struct" | "trait" | "const" => {
                 // Extract type vocabulary
                 extract_type_definition(node, source, file_path, name, kind, sql, language);
-                
+
                 // Also generate fingerprint for structs/traits
                 if kind == "struct" || kind == "trait" {
                     let fingerprint = Fingerprint::from_ast(node, source);
@@ -1038,7 +1070,7 @@ fn extract_function_facts(
     language: patina::semantic::languages::Language,
 ) {
     use patina::semantic::languages::Language;
-    
+
     // Extract visibility
     let is_public = match language {
         Language::Rust => {
@@ -1048,7 +1080,7 @@ fn extract_function_facts(
         }
         Language::Go => {
             // In Go, uppercase first letter = public
-            name.chars().next().map_or(false, |c| c.is_uppercase())
+            name.chars().next().is_some_and(|c| c.is_uppercase())
         }
         Language::Solidity => {
             // Solidity defaults to public
@@ -1058,42 +1090,49 @@ fn extract_function_facts(
             // Python uses convention: _ prefix = private
             !name.starts_with('_')
         }
-        Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => {
+        Language::JavaScript
+        | Language::JavaScriptJSX
+        | Language::TypeScript
+        | Language::TypeScriptTSX => {
             // JS/TS: export = public, TypeScript can have public/private keywords
             let text = node.utf8_text(source).unwrap_or("");
             text.contains("export") || text.contains("public")
         }
         Language::Unknown => false,
     };
-    
+
     // Extract async
     let is_async = match language {
-        Language::Rust => {
-            node.children(&mut node.walk())
-                .any(|child| child.kind() == "async")
-        }
-        Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => {
+        Language::Rust => node
+            .children(&mut node.walk())
+            .any(|child| child.kind() == "async"),
+        Language::JavaScript
+        | Language::JavaScriptJSX
+        | Language::TypeScript
+        | Language::TypeScriptTSX => {
             // JS/TS have async functions
             let text = node.utf8_text(source).unwrap_or("");
             text.starts_with("async ") || text.contains(" async ")
         }
         Language::Python => {
             // Python uses async def
-            node.kind() == "async_function_definition" || 
-            node.utf8_text(source).unwrap_or("").starts_with("async def")
+            node.kind() == "async_function_definition"
+                || node
+                    .utf8_text(source)
+                    .unwrap_or("")
+                    .starts_with("async def")
         }
         _ => false, // Go and Solidity don't have async keyword
     };
-    
+
     // Extract unsafe
     let is_unsafe = match language {
-        Language::Rust => {
-            node.children(&mut node.walk())
-                .any(|child| child.kind() == "unsafe")
-        }
+        Language::Rust => node
+            .children(&mut node.walk())
+            .any(|child| child.kind() == "unsafe"),
         _ => false,
     };
-    
+
     // Extract parameters with details
     // Note: Solidity doesn't have a "parameters" field, parameters are direct children
     let params_node = if language != Language::Solidity {
@@ -1101,12 +1140,14 @@ fn extract_function_facts(
     } else {
         None
     };
-    
-    let (takes_mut_self, takes_mut_params, parameter_count, parameter_list) = if language == Language::Solidity {
+
+    let (takes_mut_self, takes_mut_params, parameter_count, parameter_list) = if language
+        == Language::Solidity
+    {
         // Special handling for Solidity - parameters are direct children of type "parameter"
         let mut param_count = 0;
         let mut param_details = Vec::new();
-        
+
         for child in node.children(&mut node.walk()) {
             if child.kind() == "parameter" {
                 let param_text = child.utf8_text(source).unwrap_or("").to_string();
@@ -1114,22 +1155,22 @@ fn extract_function_facts(
                 param_count += 1;
             }
         }
-        
+
         let param_list = if param_details.is_empty() {
             "[]".to_string()
         } else {
             serde_json::to_string(&param_details).unwrap_or_else(|_| "[]".to_string())
         };
-        
+
         (false, false, param_count, param_list)
     } else if let Some(params) = params_node {
         let mut has_mut_self = false;
         let mut has_mut_params = false;
         let mut param_count = 0;
         let mut param_details = Vec::new();
-        
+
         let params_text = params.utf8_text(source).unwrap_or("");
-        
+
         match language {
             Language::Rust => {
                 // Check for &mut self
@@ -1146,7 +1187,8 @@ fn extract_function_facts(
                         // Get parameter name and type
                         if let Some(pattern) = child.child_by_field_name("pattern") {
                             let param_name = pattern.utf8_text(source).unwrap_or("").to_string();
-                            let param_type = child.child_by_field_name("type")
+                            let param_type = child
+                                .child_by_field_name("type")
                                 .and_then(|t| t.utf8_text(source).ok())
                                 .unwrap_or("")
                                 .to_string();
@@ -1176,27 +1218,31 @@ fn extract_function_facts(
                     if child.kind() == "," || child.kind() == "(" || child.kind() == ")" {
                         continue;
                     }
-                    
+
                     // Get any parameter-like text
                     if child.kind().contains("parameter") || child.kind() == "identifier" {
                         let param_text = child.utf8_text(source).unwrap_or("").trim().to_string();
                         if !param_text.is_empty() {
                             param_count += 1;
-                            if param_text != "self" { // Skip 'self' in param list but count it
+                            if param_text != "self" {
+                                // Skip 'self' in param list but count it
                                 param_details.push(param_text);
                             }
                         }
                     }
                 }
             }
-            Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => {
+            Language::JavaScript
+            | Language::JavaScriptJSX
+            | Language::TypeScript
+            | Language::TypeScriptTSX => {
                 // Extract JS/TS parameters - they can be formal_parameter, required_parameter, optional_parameter, or just identifier
                 for child in params.children(&mut params.walk()) {
                     // Skip punctuation like commas and parentheses
                     if child.kind() == "," || child.kind() == "(" || child.kind() == ")" {
                         continue;
                     }
-                    
+
                     // Get the parameter text for any parameter-like node
                     if child.kind().contains("parameter") || child.kind() == "identifier" {
                         let param_text = child.utf8_text(source).unwrap_or("").trim().to_string();
@@ -1209,26 +1255,30 @@ fn extract_function_facts(
             }
             Language::Solidity | Language::Unknown => {} // Solidity handled earlier, Unknown skipped
         }
-        
+
         // Create parameter list string (escape for SQL)
         let param_list = if !param_details.is_empty() {
             param_details.join(", ").replace('\'', "''")
         } else {
             String::new()
         };
-        
+
         (has_mut_self, has_mut_params, param_count, param_list)
     } else {
         (false, false, 0, String::new())
     };
-    
+
     // Extract return type with full details
     let (returns_result, returns_option, return_type) = match language {
         Language::Rust => {
             if let Some(return_type_node) = node.child_by_field_name("return_type") {
                 let ret_text = return_type_node.utf8_text(source).unwrap_or("");
                 let ret_clean = ret_text.replace('\'', "''");
-                (ret_text.contains("Result"), ret_text.contains("Option"), ret_clean)
+                (
+                    ret_text.contains("Result"),
+                    ret_text.contains("Option"),
+                    ret_clean,
+                )
             } else {
                 (false, false, String::new())
             }
@@ -1253,21 +1303,20 @@ fn extract_function_facts(
         }
         _ => (false, false, String::new()),
     };
-    
+
     // Count generics
     let generic_count = match language {
-        Language::Rust => {
-            node.child_by_field_name("type_parameters")
-                .map(|tp| {
-                    tp.children(&mut tp.walk())
-                        .filter(|c| c.kind() == "type_identifier" || c.kind() == "lifetime")
-                        .count()
-                })
-                .unwrap_or(0)
-        }
+        Language::Rust => node
+            .child_by_field_name("type_parameters")
+            .map(|tp| {
+                tp.children(&mut tp.walk())
+                    .filter(|c| c.kind() == "type_identifier" || c.kind() == "lifetime")
+                    .count()
+            })
+            .unwrap_or(0),
         _ => 0, // Go doesn't have generics (until recently), Solidity doesn't
     };
-    
+
     // Insert function facts with parameter and return type details
     sql.push_str(&format!(
         "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, '{}', '{}');\n",
@@ -1285,7 +1334,7 @@ fn extract_function_facts(
         parameter_list,  // Already escaped with '' replacement
         return_type      // Already escaped with '' replacement
     ));
-    
+
     // Extract behavioral hints
     if language == Language::Rust {
         extract_behavioral_hints(node, source, file_path, name, sql);
@@ -1303,15 +1352,16 @@ fn extract_type_definition(
     language: patina::semantic::languages::Language,
 ) {
     use patina::semantic::languages::Language;
-    
+
     // Get the full definition (first line for brevity)
-    let definition = node.utf8_text(source)
+    let definition = node
+        .utf8_text(source)
         .unwrap_or("")
         .lines()
         .next()
         .unwrap_or("")
         .replace('\'', "''");
-    
+
     // Determine visibility
     let visibility = match language {
         Language::Rust => {
@@ -1324,7 +1374,10 @@ fn extract_type_definition(
                 }
             }) {
                 "pub(crate)"
-            } else if node.children(&mut node.walk()).any(|child| child.kind() == "visibility_modifier") {
+            } else if node
+                .children(&mut node.walk())
+                .any(|child| child.kind() == "visibility_modifier")
+            {
                 "pub"
             } else {
                 "private"
@@ -1332,7 +1385,7 @@ fn extract_type_definition(
         }
         Language::Go => {
             // In Go, uppercase = public
-            if name.chars().next().map_or(false, |c| c.is_uppercase()) {
+            if name.chars().next().is_some_and(|c| c.is_uppercase()) {
                 "pub"
             } else {
                 "private"
@@ -1347,7 +1400,10 @@ fn extract_type_definition(
                 "pub"
             }
         }
-        Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => {
+        Language::JavaScript
+        | Language::JavaScriptJSX
+        | Language::TypeScript
+        | Language::TypeScriptTSX => {
             // JS/TS: look for export keyword
             let text = node.utf8_text(source).unwrap_or("");
             if text.contains("export") {
@@ -1358,7 +1414,7 @@ fn extract_type_definition(
         }
         Language::Unknown => "private",
     };
-    
+
     // Insert type vocabulary
     sql.push_str(&format!(
         "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', '{}', '{}', '{}');\n",
@@ -1379,27 +1435,22 @@ fn extract_import_fact(
     language: patina::semantic::languages::Language,
 ) {
     use patina::semantic::languages::Language;
-    
+
     let import_text = node.utf8_text(source).unwrap_or("");
-    
+
     match language {
         Language::Rust => {
             // Parse Rust use statements
-            let import_clean = import_text
-                .trim_start_matches("use ")
-                .trim_end_matches(';');
-            
+            let import_clean = import_text.trim_start_matches("use ").trim_end_matches(';');
+
             // Determine if external
             let is_external = !import_clean.starts_with("crate::")
                 && !import_clean.starts_with("super::")
                 && !import_clean.starts_with("self::");
-            
+
             // Extract the imported item (last part after ::)
-            let imported_item = import_clean
-                .split("::")
-                .last()
-                .unwrap_or(import_clean);
-            
+            let imported_item = import_clean.split("::").last().unwrap_or(import_clean);
+
             // Extract the source module
             let imported_from = if import_clean.contains("::") {
                 import_clean
@@ -1409,7 +1460,7 @@ fn extract_import_fact(
             } else {
                 import_clean
             };
-            
+
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');\n",
                 escape_sql(file_path),
@@ -1424,14 +1475,11 @@ fn extract_import_fact(
                 .trim_start_matches("import ")
                 .trim()
                 .trim_matches('"');
-            
+
             let is_external = !import_clean.starts_with(".");
-            
-            let imported_item = import_clean
-                .split('/')
-                .last()
-                .unwrap_or(import_clean);
-            
+
+            let imported_item = import_clean.split('/').next_back().unwrap_or(import_clean);
+
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
                 escape_sql(file_path),
@@ -1444,7 +1492,7 @@ fn extract_import_fact(
             // Parse Solidity imports
             if let Some(path_match) = import_text.split('"').nth(1) {
                 let is_external = path_match.starts_with('@') || path_match.starts_with("http");
-                
+
                 sql.push_str(&format!(
                     "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
                     escape_sql(file_path),
@@ -1459,7 +1507,7 @@ fn extract_import_fact(
             // Simple extraction - just store the whole import for now
             let import_clean = import_text.trim();
             let is_external = !import_clean.contains("from .");
-            
+
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
                 escape_sql(file_path),
@@ -1468,12 +1516,19 @@ fn extract_import_fact(
                 is_external
             ));
         }
-        Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => {
+        Language::JavaScript
+        | Language::JavaScriptJSX
+        | Language::TypeScript
+        | Language::TypeScriptTSX => {
             // JS/TS imports: import x from 'y'
             // Simple extraction - just store the module path
-            if let Some(module_match) = import_text.split('\'').nth(1).or_else(|| import_text.split('"').nth(1)) {
+            if let Some(module_match) = import_text
+                .split('\'')
+                .nth(1)
+                .or_else(|| import_text.split('"').nth(1))
+            {
                 let is_external = !module_match.starts_with('.');
-                
+
                 sql.push_str(&format!(
                     "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
                     escape_sql(file_path),
@@ -1483,7 +1538,7 @@ fn extract_import_fact(
                 ));
             }
         }
-        Language::Unknown => {}, // Skip unknown languages
+        Language::Unknown => {} // Skip unknown languages
     }
 }
 
@@ -1498,30 +1553,37 @@ fn extract_behavioral_hints(
     // Only extract for function bodies
     if let Some(body) = node.child_by_field_name("body") {
         let body_text = body.utf8_text(source).unwrap_or("");
-        
+
         // Count unwrap calls
         let calls_unwrap = body_text.matches(".unwrap()").count();
-        
+
         // Count expect calls
         let calls_expect = body_text.matches(".expect(").count();
-        
+
         // Check for panic! macro
         let has_panic_macro = body_text.contains("panic!");
-        
+
         // Check for todo! macro
         let has_todo_macro = body_text.contains("todo!");
-        
+
         // Check for unsafe blocks
         let has_unsafe_block = body_text.contains("unsafe {");
-        
+
         // Check for Mutex usage
         let has_mutex = body_text.contains("Mutex");
-        
+
         // Check for Arc usage
         let has_arc = body_text.contains("Arc<") || body_text.contains("Arc::");
-        
+
         // Only insert if there are any behavioral hints
-        if calls_unwrap > 0 || calls_expect > 0 || has_panic_macro || has_todo_macro || has_unsafe_block || has_mutex || has_arc {
+        if calls_unwrap > 0
+            || calls_expect > 0
+            || has_panic_macro
+            || has_todo_macro
+            || has_unsafe_block
+            || has_mutex
+            || has_arc
+        {
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO behavioral_hints (file, function, calls_unwrap, calls_expect, has_panic_macro, has_todo_macro, has_unsafe_block, has_mutex, has_arc) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
                 escape_sql(file_path),
