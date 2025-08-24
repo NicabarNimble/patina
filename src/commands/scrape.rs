@@ -1095,8 +1095,34 @@ fn extract_function_facts(
     };
     
     // Extract parameters with details
-    let params_node = node.child_by_field_name("parameters");
-    let (takes_mut_self, takes_mut_params, parameter_count, parameter_list) = if let Some(params) = params_node {
+    // Note: Solidity doesn't have a "parameters" field, parameters are direct children
+    let params_node = if language != Language::Solidity {
+        node.child_by_field_name("parameters")
+    } else {
+        None
+    };
+    
+    let (takes_mut_self, takes_mut_params, parameter_count, parameter_list) = if language == Language::Solidity {
+        // Special handling for Solidity - parameters are direct children of type "parameter"
+        let mut param_count = 0;
+        let mut param_details = Vec::new();
+        
+        for child in node.children(&mut node.walk()) {
+            if child.kind() == "parameter" {
+                let param_text = child.utf8_text(source).unwrap_or("").to_string();
+                param_details.push(param_text);
+                param_count += 1;
+            }
+        }
+        
+        let param_list = if param_details.is_empty() {
+            "[]".to_string()
+        } else {
+            serde_json::to_string(&param_details).unwrap_or_else(|_| "[]".to_string())
+        };
+        
+        (false, false, param_count, param_list)
+    } else if let Some(params) = params_node {
         let mut has_mut_self = false;
         let mut has_mut_params = false;
         let mut param_count = 0;
@@ -1143,16 +1169,6 @@ fn extract_function_facts(
                     }
                 }
             }
-            Language::Solidity => {
-                // Extract Solidity parameters
-                for child in params.children(&mut params.walk()) {
-                    if child.kind() == "parameter" {
-                        let param_text = child.utf8_text(source).unwrap_or("").to_string();
-                        param_details.push(param_text);
-                        param_count += 1;
-                    }
-                }
-            }
             Language::Python => {
                 // Extract Python parameters - simpler approach
                 for child in params.children(&mut params.walk()) {
@@ -1191,7 +1207,7 @@ fn extract_function_facts(
                     }
                 }
             }
-            Language::Unknown => {} // Skip for unknown languages
+            Language::Solidity | Language::Unknown => {} // Solidity handled earlier, Unknown skipped
         }
         
         // Create parameter list string (escape for SQL)
