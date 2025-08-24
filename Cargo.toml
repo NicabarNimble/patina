@@ -56,6 +56,7 @@ colored = "2"
 # Semantic analysis - moved to patina-metal
 patina-metal = { path = "patina-metal" }
 walkdir = "2"
+ignore = "0.4"
 
 # Tree-sitter dependencies (kept for legacy semantic module - to be removed)
 tree-sitter = "0.24"
