@@ -10,9 +10,9 @@ pub enum Language {
     Solidity,
     Python,
     JavaScript,
-    JavaScriptJSX,  // .jsx files
+    JavaScriptJSX, // .jsx files
     TypeScript,
-    TypeScriptTSX,  // .tsx files  
+    TypeScriptTSX, // .tsx files
     Unknown,
 }
 
@@ -104,7 +104,10 @@ impl Language {
                 "while_statement" => "while",
                 _ => node_kind,
             },
-            Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => match node_kind {
+            Language::JavaScript
+            | Language::JavaScriptJSX
+            | Language::TypeScript
+            | Language::TypeScriptTSX => match node_kind {
                 "function_declaration" | "function_expression" | "arrow_function" => "function",
                 "method_definition" => "function",
                 "class_declaration" => "struct",

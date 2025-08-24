@@ -3,7 +3,6 @@ use tree_sitter::{Node, Query};
 
 /// Tree-sitter queries for semantic pattern detection
 /// These are like SQL for AST - they find structural patterns
-
 pub struct SemanticQueries {
     pub error_propagation: Query,
     pub error_context: Query,
