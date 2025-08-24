@@ -73,28 +73,27 @@ Fits the Patina metaphor perfectly:
   - `contract_declaration` (Solidity) → `struct`
 - Normalize complexity calculation across languages
 
-### Phase 3: Query System (In Progress)
-- Add `.scm` query files for pattern matching
-- Support tree-sitter's powerful query syntax
-- Enable language-specific and cross-language queries
-
-### Phase 4: Git Submodules (Planned)
+### Phase 3: Git Submodules ✅ COMPLETED
 ```bash
 patina-metal/
-├── metals/           # Git submodules
+├── grammars/         # Git submodules (implemented)
 │   ├── rust/        # → github.com/tree-sitter/tree-sitter-rust
 │   ├── go/          # → github.com/tree-sitter/tree-sitter-go
 │   ├── solidity/    # → github.com/JoranHonig/tree-sitter-solidity
-│   └── cairo/       # → github.com/JoranHonig/tree-sitter-cairo
-└── queries/         # .scm files
+│   ├── python/      # → github.com/tree-sitter/tree-sitter-python
+│   ├── javascript/  # → github.com/tree-sitter/tree-sitter-javascript
+│   └── typescript/  # → github.com/tree-sitter/tree-sitter-typescript
+└── queries/         # .scm files (structure in place)
     ├── rust/
-    │   ├── symbols.scm
-    │   ├── complexity.scm
-    │   └── patterns.scm
-    └── solidity/
-        ├── contracts.scm
-        └── security.scm
+    │   └── symbols.scm
+    └── go/
+        └── symbols.scm
 ```
+
+### Phase 4: Query System (Future Enhancement)
+- Improve `.scm` query files for better pattern matching
+- Fix syntax issues in complex queries
+- Enable cross-language pattern detection
 
 ## Technical Decisions
 
@@ -147,16 +146,22 @@ let fingerprint = analyzer.generate_fingerprint(node, source);
 - Tree-sitter query system with .scm files (with some syntax issues)
 - Graceful handling of parser failures
 
-### In Progress 🔄
-- Solidity parser (version conflicts with tree-sitter-solidity v15 vs expected v13-14)
-- Cairo parser (missing LANGUAGE export)
+### Parser Status 🔄
+- Solidity parser ✅ (working, 200+ files processed successfully)
+- Python parser ✅ (working)
+- JavaScript/JSX parser ✅ (working) 
+- TypeScript/TSX parser ✅ (working)
+- Cairo parser ❌ (not implemented - no stable tree-sitter grammar yet)
 
-### Planned 📋
-- Python, JavaScript, TypeScript support
+### Completed Since Initial Design ✅
+- Python, JavaScript, TypeScript support (all working)
+- Git submodules for exact grammar versions
+- Incremental parsing optimization
+
+### Future Enhancements 📋
 - Custom query builder
 - Cross-language pattern detection
-- Incremental parsing optimization
-- Git submodules for exact grammar versions
+- Enhanced extraction (see "Future Extraction Improvements" section)
 
 ## Integration Issues (2024-08-22 Session)
 
@@ -219,16 +224,16 @@ patina scrape --repo=dust    # Solidity
 patina scrape               # Rust (patina itself)
 ```
 
-## Known Issues
+## Known Issues (Historical - Now Resolved)
 
-1. **tree-sitter-solidity**: Crates.io version has wrong ABI version
-   - Solution: Use Git dependency or rebuild from source
+1. ~~**tree-sitter-solidity**: Crates.io version has wrong ABI version~~
+   - ✅ Resolved: Building from source via submodules
    
-2. **tree-sitter-cairo**: Missing LANGUAGE export
-   - Solution: Fork and fix, or use cairo-lang-parser
+2. ~~**tree-sitter-cairo**: Missing LANGUAGE export~~
+   - ⚠️ Deferred: Cairo support not critical, no stable grammar yet
 
-3. **Version conflicts**: Different parsers want different tree-sitter versions
-   - Solution: Standardize on tree-sitter 0.23 for now
+3. ~~**Version conflicts**: Different parsers want different tree-sitter versions~~
+   - ✅ Resolved: All parsers now built against tree-sitter 0.24
 
 ## Solution Implemented (2025-08-22 Sessions #2-3)
 
@@ -524,6 +529,99 @@ process_node(node, content.as_bytes());  // Use same bytes
 -- FACT: Modified 5 times last month ✅
 -- INTERPRETATION: "Calculates price" ❌ (could be lying)
 -- INTERPRETATION: "Important function" ❌ (could be misleading)
+```
+
+## Recent Improvements (2025-08-23 Session #4)
+
+### Fixed Python/JS/TS Extraction
+The extraction was detecting files but not processing them due to missing AST node mappings.
+
+**The Fix:**
+- Added language-specific node mappings for Python, JavaScript, TypeScript
+- Added proper name extraction for different field names
+- Handled special cases (decorated functions, variable declarators)
+
+**Results:**
+- Before: 12,538 symbols (only Rust, Go, Solidity)
+- After: 19,928 symbols (+59% increase!)
+- Python: 1,328 functions extracted
+- TypeScript: 513 functions extracted
+- JavaScript: 212 functions extracted
+
+### Implemented .gitignore and .ignore Support
+Using the `ignore` crate to respect both `.gitignore` and `.ignore` files.
+
+**Why Both:**
+- `.gitignore`: Files that shouldn't be in Git
+- `.ignore`: Files IN Git but shouldn't be indexed (submodule tests)
+
+**Impact:**
+- Before: 2,272 files including grammar tests
+- After: 118 actual source files
+- Cleaner, more accurate extraction
+
+## Future Extraction Improvements
+
+### Priority 1: Function Signatures
+Currently we only extract function names, not parameters or return types.
+
+```sql
+-- Current:
+name: "transferEnergy"
+
+-- Future:
+name: "transferEnergy"
+parameters: "[{\"name\": \"amount\", \"type\": \"u256\"}, {\"name\": \"target\", \"type\": \"EntityId\"}]"
+return_type: "Result<(), EnergyError>"
+```
+
+### Priority 2: Full Type Definitions
+We only capture the first line of type definitions.
+
+```sql
+-- Current:
+definition: "type Vec3 = {"
+
+-- Future:
+definition: "type Vec3 = { x: number, y: number, z: number }"
+fields: "[{\"name\": \"x\", \"type\": \"number\"}, ...]"
+```
+
+### Priority 3: Constants and Configuration
+Game parameters, addresses, and magic numbers are critical truth.
+
+```sql
+CREATE TABLE constants (
+    file VARCHAR,
+    name VARCHAR,
+    value TEXT,
+    type VARCHAR,
+    is_exported BOOLEAN
+);
+```
+
+### Priority 4: Call Graph
+Understanding who calls what provides critical context.
+
+```sql
+CREATE TABLE call_graph (
+    caller_file VARCHAR,
+    caller_function VARCHAR,
+    called_function VARCHAR,
+    is_external BOOLEAN
+);
+```
+
+### Priority 5: Error Types
+What can go wrong is essential truth.
+
+```sql
+CREATE TABLE error_types (
+    file VARCHAR,
+    name VARCHAR,
+    fields TEXT,  -- JSON array of error data
+    used_by TEXT  -- Functions that throw this error
+);
 ```
 
 ## Doc Drift Detection: Verifying Documentation Truth (2025-08-23 Session)
