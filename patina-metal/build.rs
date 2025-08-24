@@ -1,6 +1,15 @@
 use std::path::PathBuf;
 
 fn main() {
+    // Record grammar commits in the binary for reproducibility
+    println!("cargo:rustc-env=RUST_GRAMMAR_COMMIT=6b7d1fc73ded57f73b1619bcf4371618212208b1");
+    println!("cargo:rustc-env=GO_GRAMMAR_COMMIT=81a11f8252998ee6b98d59e6da91fc307491e53d");
+    println!("cargo:rustc-env=PYTHON_GRAMMAR_COMMIT=710796b8b877a970297106e5bbc8e2afa47f86ec");
+    println!("cargo:rustc-env=JAVASCRIPT_GRAMMAR_COMMIT=6fbef40512dcd9f0a61ce03a4c9ae7597b36ab5c");
+    println!("cargo:rustc-env=TYPESCRIPT_GRAMMAR_COMMIT=75b3874edb2dc714fb1fd77a32013d0f8699989f");
+    println!("cargo:rustc-env=SOLIDITY_GRAMMAR_COMMIT=c3da7d989747679305ec1c84b68082f01089d49f");
+    println!("cargo:rustc-env=GRAMMAR_PACK_VERSION=1.0.0");
+    
     // Build Rust grammar
     let rust_dir = PathBuf::from("grammars/rust");
     let rust_src = rust_dir.join("src");
