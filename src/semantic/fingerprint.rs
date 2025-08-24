@@ -227,6 +227,8 @@ CREATE TABLE IF NOT EXISTS function_facts (
     is_public BOOLEAN,         -- API surface
     parameter_count INTEGER,
     generic_count INTEGER,      -- Complexity indicator
+    parameters TEXT,            -- Parameter names and types
+    return_type TEXT,           -- Return type signature
     PRIMARY KEY (file, name)
 );
 
