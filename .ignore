@@ -1,0 +1,5 @@
+# Exclude grammar test files from indexing
+patina-metal/grammars/*/test/
+patina-metal/grammars/*/tests/
+patina-metal/grammars/*/examples/
+patina-metal/grammars/*/bindings/
