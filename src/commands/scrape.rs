@@ -314,6 +314,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
     use patina::semantic::languages::{create_parser, Language};
     use std::collections::HashMap;
     use std::time::SystemTime;
+    use ignore::WalkBuilder;
 
     // Find all supported language files
     let mut all_files = Vec::new();
@@ -321,43 +322,56 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
     // Track skipped files by extension
     let mut skipped_files: HashMap<String, (usize, usize, String)> = HashMap::new(); // ext -> (count, bytes, example_path)
 
-    // Find ALL files in the repository (excluding .git and other hidden directories)
-    let find_all = Command::new("find")
-        .current_dir(work_dir)
-        .args([".", "-type", "f", "-not", "-path", "*/.*", "-not", "-path", "*/target/*", "-not", "-path", "*/node_modules/*"])
-        .output()?;
+    // Use ignore crate to walk files, respecting .gitignore
+    let walker = WalkBuilder::new(work_dir)
+        .hidden(false)  // Don't process hidden files
+        .git_ignore(true)  // Respect .gitignore
+        .git_global(true)  // Respect global gitignore
+        .git_exclude(true)  // Respect .git/info/exclude
+        .ignore(true)  // Respect .ignore files
+        .build();
     
-    if find_all.status.success() {
-        for file_path in String::from_utf8_lossy(&find_all.stdout).lines() {
-            if file_path.is_empty() {
-                continue;
+    for entry in walker {
+        let entry = entry?;
+        let path = entry.path();
+        
+        // Skip directories
+        if entry.file_type().map_or(false, |ft| ft.is_dir()) {
+            continue;
+        }
+        
+        // Get relative path for storage
+        let relative_path = path.strip_prefix(work_dir).unwrap_or(path);
+        let relative_path_str = relative_path.to_string_lossy();
+        
+        // Skip if path starts with dot (hidden)
+        if relative_path_str.starts_with('.') {
+            continue;
+        }
+        
+        // Determine language from extension
+        let language = Language::from_path(path);
+        
+        match language {
+            Language::Rust | Language::Go | Language::Solidity | 
+            Language::Python | Language::JavaScript | Language::JavaScriptJSX |
+            Language::TypeScript | Language::TypeScriptTSX => {
+                // Supported language - add to processing list with relative path
+                all_files.push((format!("./{}", relative_path_str), language));
             }
-            
-            // Determine language from extension
-            let path = Path::new(file_path);
-            let language = Language::from_path(path);
-            
-            match language {
-                Language::Rust | Language::Go | Language::Solidity | 
-                Language::Python | Language::JavaScript | Language::JavaScriptJSX |
-                Language::TypeScript | Language::TypeScriptTSX => {
-                    // Supported language - add to processing list
-                    all_files.push((file_path.to_string(), language));
-                }
-                Language::Unknown => {
-                    // Track skipped file
-                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                        // Get file size
-                        let file_size = work_dir.join(file_path)
-                            .metadata()
-                            .map(|m| m.len() as usize)
-                            .unwrap_or(0);
-                        
-                        let entry = skipped_files.entry(ext.to_string()).or_insert((0, 0, file_path.to_string()));
-                        entry.0 += 1; // count
-                        entry.1 += file_size; // bytes
-                        // Keep first example path
-                    }
+            Language::Unknown => {
+                // Track skipped file
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    // Get file size
+                    let file_size = entry.metadata()
+                        .ok()
+                        .map(|m| m.len() as usize)
+                        .unwrap_or(0);
+                    
+                    let entry = skipped_files.entry(ext.to_string()).or_insert((0, 0, relative_path_str.to_string()));
+                    entry.0 += 1; // count
+                    entry.1 += file_size; // bytes
+                    // Keep first example path
                 }
             }
         }
@@ -741,6 +755,64 @@ fn process_ast_node(
         (Language::Solidity, "library_declaration") => "impl",
         (Language::Solidity, "modifier_definition") => "function",
         (Language::Solidity, "event_definition") => "function",
+        // Python mappings
+        (Language::Python, "function_definition") => "function",
+        (Language::Python, "class_definition") => "struct",
+        (Language::Python, "decorated_definition") => {
+            // Check if it's a decorated function or class
+            if node.child_by_field_name("definition")
+                .is_some_and(|n| n.kind() == "function_definition") {
+                "function"
+            } else if node.child_by_field_name("definition")
+                .is_some_and(|n| n.kind() == "class_definition") {
+                "struct"
+            } else {
+                ""
+            }
+        }
+        (Language::Python, "import_statement") => "import",
+        (Language::Python, "import_from_statement") => "import",
+        // JavaScript/JSX mappings
+        (Language::JavaScript | Language::JavaScriptJSX, "function_declaration") => "function",
+        (Language::JavaScript | Language::JavaScriptJSX, "function_expression") => "function",
+        (Language::JavaScript | Language::JavaScriptJSX, "arrow_function") => "function",
+        (Language::JavaScript | Language::JavaScriptJSX, "method_definition") => "function",
+        (Language::JavaScript | Language::JavaScriptJSX, "class_declaration") => "struct",
+        (Language::JavaScript | Language::JavaScriptJSX, "import_statement") => "import",
+        (Language::JavaScript | Language::JavaScriptJSX, "variable_declarator") => {
+            // Check if it's a const/let/var with a function value
+            if node.child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression") {
+                "function"
+            } else if node.child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "class_expression") {
+                "struct"
+            } else {
+                ""
+            }
+        }
+        // TypeScript/TSX mappings
+        (Language::TypeScript | Language::TypeScriptTSX, "function_declaration") => "function",
+        (Language::TypeScript | Language::TypeScriptTSX, "function_expression") => "function", 
+        (Language::TypeScript | Language::TypeScriptTSX, "arrow_function") => "function",
+        (Language::TypeScript | Language::TypeScriptTSX, "method_definition") => "function",
+        (Language::TypeScript | Language::TypeScriptTSX, "class_declaration") => "struct",
+        (Language::TypeScript | Language::TypeScriptTSX, "interface_declaration") => "trait",
+        (Language::TypeScript | Language::TypeScriptTSX, "type_alias_declaration") => "type_alias",
+        (Language::TypeScript | Language::TypeScriptTSX, "enum_declaration") => "struct",
+        (Language::TypeScript | Language::TypeScriptTSX, "import_statement") => "import",
+        (Language::TypeScript | Language::TypeScriptTSX, "variable_declarator") => {
+            // Check if it's a const/let/var with a function value
+            if node.child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression") {
+                "function"
+            } else if node.child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "class_expression") {
+                "struct"
+            } else {
+                ""
+            }
+        }
         _ => {
             // Recurse into children
             if cursor.goto_first_child() {
@@ -778,6 +850,29 @@ fn process_ast_node(
             // Solidity has name or identifier field
             node.child_by_field_name("name")
                 .or_else(|| node.child_by_field_name("identifier"))
+        }
+        Language::Python => {
+            // Python uses name field for functions/classes
+            if node.kind() == "decorated_definition" {
+                // For decorated definitions, get the name from the inner definition
+                node.child_by_field_name("definition")
+                    .and_then(|def| def.child_by_field_name("name"))
+            } else {
+                node.child_by_field_name("name")
+            }
+        }
+        Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => {
+            // JS/TS uses different field names depending on context
+            if node.kind() == "variable_declarator" {
+                // For const/let/var declarations, name is in the 'name' field
+                node.child_by_field_name("name")
+            } else if node.kind() == "method_definition" {
+                // Methods have name in 'name' field
+                node.child_by_field_name("name")
+            } else {
+                // Functions, classes use 'name' field
+                node.child_by_field_name("name")
+            }
         }
         _ => node.child_by_field_name("name"),
     };
@@ -999,12 +1094,13 @@ fn extract_function_facts(
         _ => false,
     };
     
-    // Extract parameters
+    // Extract parameters with details
     let params_node = node.child_by_field_name("parameters");
-    let (takes_mut_self, takes_mut_params, parameter_count) = if let Some(params) = params_node {
+    let (takes_mut_self, takes_mut_params, parameter_count, parameter_list) = if let Some(params) = params_node {
         let mut has_mut_self = false;
         let mut has_mut_params = false;
         let mut param_count = 0;
+        let mut param_details = Vec::new();
         
         let params_text = params.utf8_text(source).unwrap_or("");
         
@@ -1018,72 +1114,128 @@ fn extract_function_facts(
                 if params_text.contains("mut ") && !params_text.contains("&mut self") {
                     has_mut_params = true;
                 }
-                // Count parameters
+                // Extract each parameter
                 for child in params.children(&mut params.walk()) {
-                    if child.kind() == "parameter" || child.kind() == "self_parameter" {
+                    if child.kind() == "parameter" {
+                        // Get parameter name and type
+                        if let Some(pattern) = child.child_by_field_name("pattern") {
+                            let param_name = pattern.utf8_text(source).unwrap_or("").to_string();
+                            let param_type = child.child_by_field_name("type")
+                                .and_then(|t| t.utf8_text(source).ok())
+                                .unwrap_or("")
+                                .to_string();
+                            param_details.push(format!("{}:{}", param_name, param_type));
+                        }
+                        param_count += 1;
+                    } else if child.kind() == "self_parameter" {
+                        param_details.push("self".to_string());
                         param_count += 1;
                     }
                 }
             }
             Language::Go => {
-                // Count parameters
+                // Extract Go parameters
                 for child in params.children(&mut params.walk()) {
                     if child.kind() == "parameter_declaration" {
+                        let param_text = child.utf8_text(source).unwrap_or("").to_string();
+                        param_details.push(param_text);
                         param_count += 1;
                     }
                 }
             }
             Language::Solidity => {
-                // Count parameters
+                // Extract Solidity parameters
                 for child in params.children(&mut params.walk()) {
                     if child.kind() == "parameter" {
+                        let param_text = child.utf8_text(source).unwrap_or("").to_string();
+                        param_details.push(param_text);
                         param_count += 1;
                     }
                 }
             }
             Language::Python => {
-                // Count parameters
+                // Extract Python parameters - simpler approach
                 for child in params.children(&mut params.walk()) {
-                    if child.kind() == "parameter" || child.kind() == "identifier" {
-                        param_count += 1;
+                    // Skip punctuation
+                    if child.kind() == "," || child.kind() == "(" || child.kind() == ")" {
+                        continue;
+                    }
+                    
+                    // Get any parameter-like text
+                    if child.kind().contains("parameter") || child.kind() == "identifier" {
+                        let param_text = child.utf8_text(source).unwrap_or("").trim().to_string();
+                        if !param_text.is_empty() {
+                            param_count += 1;
+                            if param_text != "self" { // Skip 'self' in param list but count it
+                                param_details.push(param_text);
+                            }
+                        }
                     }
                 }
             }
             Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX => {
-                // Count parameters
+                // Extract JS/TS parameters - they can be formal_parameter, required_parameter, optional_parameter, or just identifier
                 for child in params.children(&mut params.walk()) {
-                    if child.kind() == "formal_parameter" || child.kind() == "identifier" {
-                        param_count += 1;
+                    // Skip punctuation like commas and parentheses
+                    if child.kind() == "," || child.kind() == "(" || child.kind() == ")" {
+                        continue;
+                    }
+                    
+                    // Get the parameter text for any parameter-like node
+                    if child.kind().contains("parameter") || child.kind() == "identifier" {
+                        let param_text = child.utf8_text(source).unwrap_or("").trim().to_string();
+                        if !param_text.is_empty() {
+                            param_details.push(param_text);
+                            param_count += 1;
+                        }
                     }
                 }
             }
             Language::Unknown => {} // Skip for unknown languages
         }
         
-        (has_mut_self, has_mut_params, param_count)
+        // Create parameter list string (escape for SQL)
+        let param_list = if !param_details.is_empty() {
+            param_details.join(", ").replace('\'', "''")
+        } else {
+            String::new()
+        };
+        
+        (has_mut_self, has_mut_params, param_count, param_list)
     } else {
-        (false, false, 0)
+        (false, false, 0, String::new())
     };
     
-    // Extract return type
-    let (returns_result, returns_option) = match language {
+    // Extract return type with full details
+    let (returns_result, returns_option, return_type) = match language {
         Language::Rust => {
-            if let Some(return_type) = node.child_by_field_name("return_type") {
-                let ret_text = return_type.utf8_text(source).unwrap_or("");
-                (ret_text.contains("Result"), ret_text.contains("Option"))
+            if let Some(return_type_node) = node.child_by_field_name("return_type") {
+                let ret_text = return_type_node.utf8_text(source).unwrap_or("");
+                let ret_clean = ret_text.replace('\'', "''");
+                (ret_text.contains("Result"), ret_text.contains("Option"), ret_clean)
             } else {
-                (false, false)
+                (false, false, String::new())
             }
         }
         Language::Go => {
             if let Some(result) = node.child_by_field_name("result") {
                 let ret_text = result.utf8_text(source).unwrap_or("");
-                (ret_text.contains("error"), false) // Go uses error, not Result/Option
+                let ret_clean = ret_text.replace('\'', "''");
+                (ret_text.contains("error"), false, ret_clean) // Go uses error, not Result/Option
             } else {
-                (false, false)
+                (false, false, String::new())
             }
         }
-        _ => (false, false),
+        Language::TypeScript | Language::TypeScriptTSX => {
+            if let Some(return_type_node) = node.child_by_field_name("return_type") {
+                let ret_text = return_type_node.utf8_text(source).unwrap_or("");
+                let ret_clean = ret_text.replace('\'', "''");
+                (false, false, ret_clean) // TypeScript has explicit return types
+            } else {
+                (false, false, String::new())
+            }
+        }
+        _ => (false, false, String::new()),
     };
     
     // Count generics
@@ -1100,9 +1252,9 @@ fn extract_function_facts(
         _ => 0, // Go doesn't have generics (until recently), Solidity doesn't
     };
     
-    // Insert function facts
+    // Insert function facts with parameter and return type details
     sql.push_str(&format!(
-        "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {}, {}, {});\n",
+        "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, '{}', '{}');\n",
         escape_sql(file_path),
         escape_sql(name),
         takes_mut_self,
@@ -1113,7 +1265,9 @@ fn extract_function_facts(
         is_unsafe,
         is_public,
         parameter_count,
-        generic_count
+        generic_count,
+        parameter_list,  // Already escaped with '' replacement
+        return_type      // Already escaped with '' replacement
     ));
     
     // Extract behavioral hints
