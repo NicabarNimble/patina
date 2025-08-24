@@ -738,11 +738,49 @@ Testing on Dagger repository revealed:
 
 An LLM using this data could instantly identify documentation that claims "thread-safe" for a function taking `&mut self`, or "never fails" for a function returning `Result`. This transforms documentation from a source of potential lies into verified, trustworthy guidance.
 
+## Language-Specific Grammar Differences (2025-08-24 Session)
+
+### The Solidity Parameter Issue
+
+**Problem:** Solidity functions weren't extracting parameters (0 out of 48 functions showed parameters).
+
+**Root Cause:** Different tree-sitter grammars structure their ASTs differently:
+- **TypeScript/Rust/Go**: Use a named field `parameters` that contains parameter nodes
+- **Solidity**: Parameters are direct children of `function_definition` with type `"parameter"` - no named field
+
+**Discovery Process:**
+1. Checked `node-types.json` for Solidity's `function_definition`
+2. Found it only has fields: `name`, `body`, `return_type` - NO `parameters` field
+3. Found parameters listed as children with type `"parameter"`
+
+**Solution:** Special-case Solidity to iterate through children looking for `"parameter"` nodes instead of using `child_by_field_name("parameters")`.
+
+```rust
+// Clean approach - not a hack
+if language == Language::Solidity {
+    // Parameters are direct children
+    for child in node.children(&mut node.walk()) {
+        if child.kind() == "parameter" {
+            // Extract parameter
+        }
+    }
+} else {
+    // Parameters in named field
+    if let Some(params) = node.child_by_field_name("parameters") {
+        // Extract from params node
+    }
+}
+```
+
+**Results:** After fix, 42 out of 48 Solidity functions correctly show parameters (87.5% have params, which is realistic).
+
+**Lesson:** When working with tree-sitter across multiple languages, always check the actual grammar structure via `node-types.json`. Different language grammars make different design choices about fields vs. children.
+
 ## Conclusion
 
 `patina-metal` successfully achieves its vision: a unified parser system that builds from source, giving us complete control over tree-sitter versions and parser compatibility. By treating languages as different "metals" with unique properties, we maintain the Patina metaphor while providing a robust, extensible foundation for multi-language code analysis.
 
-The system now handles Rust, Go, and Solidity code reliably, with incremental updates making it practical for continuous use during development. The architecture is clean, maintainable, and ready for expansion to additional languages.
+The system now handles Rust, Go, Python, JavaScript, TypeScript, and Solidity code reliably, with incremental updates making it practical for continuous use during development. The architecture is clean, maintainable, and ready for expansion to additional languages.
 
 Most importantly, we've evolved our understanding: **Patina's role is to be a fact extractor that provides token-efficient context for LLMs, not a semantic analyzer**. The LLM is the intelligence; Patina is the efficient memory. By focusing on facts that cannot lie rather than interpretations that might mislead, we create a trustworthy foundation for LLM-assisted code understanding.
 
