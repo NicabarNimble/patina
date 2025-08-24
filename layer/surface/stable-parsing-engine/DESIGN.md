@@ -27,10 +27,10 @@ By treating parsers as pinned, vendored assets and focusing on git-driven increm
 │  │ Detection    │ (blob_sha tracking)  │   │
 │  └──────────────┴──────────────────────┘   │
 ├─────────────────────────────────────────────┤
-│          Language Registry                  │
+│       Vendored Grammar Registry             │
 │  ┌──────────┬──────────┬──────────────┐   │
 │  │ Rust     │ Go       │ Solidity     │   │
-│  │ @7c1e3ad │ @b42ab11 │ @fallback    │   │
+│  │ @6b7d1fc │ @81a11f8 │ @c3da7d9    │   │
 │  └──────────┴──────────┴──────────────┘   │
 ├─────────────────────────────────────────────┤
 │           Fallback Chain                    │
@@ -43,22 +43,32 @@ By treating parsers as pinned, vendored assets and focusing on git-driven increm
 
 ## Key Design Decisions
 
-### 1. Vendored Language Packs
+### 1. Vendored Grammars
 
-```toml
-# language-packs.toml
-[rust]
-source = "https://github.com/tree-sitter/tree-sitter-rust"
-commit = "7c1e3ad"
-queries = "queries/rust/"
-
-[solidity]
-source = "forks/tree-sitter-solidity"  
-commit = "d9f1f0b"
-fallback = "micro-cst"
+Structure:
+```
+patina-metal/
+├── grammars/                 # Vendored grammars (not submodules)
+│   ├── rust/                
+│   │   ├── src/             # Parser C files
+│   │   ├── queries/         # Tree-sitter queries
+│   │   └── metadata.toml   # Version tracking
+│   └── ...
+├── grammar-pack.toml        # Central registry
+└── build.rs                 # Compiles & records versions
 ```
 
-**Rationale**: Complete control over parser versions eliminates external dependency failures.
+Example metadata.toml:
+```toml
+[grammar]
+name = "rust"
+source = "https://github.com/tree-sitter/tree-sitter-rust"
+commit = "6b7d1fc73ded57f73b1619bcf4371618212208b1"
+version = "0.23.0"
+vendored_date = "2024-08-24"
+```
+
+**Rationale**: Complete control over parser versions eliminates external dependency failures while keeping the existing clean structure.
 
 ### 2. Blob SHA Change Detection
 

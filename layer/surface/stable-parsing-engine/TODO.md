@@ -1,10 +1,12 @@
 # Stable Parsing Engine - TODO
 
-## Phase 1: Foundation (Vendor & Pin)
-- [ ] Create `language-packs.toml` configuration
-- [ ] Vendor existing tree-sitter grammars as C artifacts
-- [ ] Build system to compile vendored C via cc crate
-- [ ] Record grammar commits in binary (env vars)
+## Phase 1: Foundation (Vendor & Pin) ✅ IN PROGRESS
+- [x] Create `grammar-pack.toml` configuration
+- [x] Add metadata.toml for Rust grammar version tracking
+- [x] Build system already compiles C via cc crate
+- [x] Record grammar commits in binary via build.rs
+- [ ] Vendor remaining grammars (go, python, js, ts, solidity)
+- [ ] Remove git submodule references from .gitmodules
 - [ ] Create `Lang` trait abstraction
 - [ ] Implement basic file cache table (path, blob_sha, grammar_commit)
 
@@ -15,12 +17,13 @@
 - [ ] Create query contract tests
 - [ ] Build golden corpus test suite per language
 
-## Phase 3: Incremental Indexing
-- [ ] Implement git diff-based change detection
-- [ ] Build blob SHA comparison logic
-- [ ] Create "repo-change only" reindex algorithm
+## Phase 3: Incremental Indexing (HIGH PRIORITY)
+- [ ] Implement git blob SHA retrieval (`git hash-object`)
+- [ ] Build FileCache with blob_sha tracking
+- [ ] Create "changed files only" reindex algorithm
 - [ ] Add grammar_commit change detection
 - [ ] Implement single-transaction DuckDB updates
+- [ ] Target: 30x speedup for incremental updates
 
 ## Phase 4: Fallback Chain
 - [ ] Design Micro-CST trait for lightweight parsing
