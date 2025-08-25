@@ -73,7 +73,7 @@ fn extract_keywords(doc: &str) -> Vec<String> {
 }
 ```
 
-## Phase 2: Call Graph Extraction
+## Phase 2: Call Graph Extraction ✅ COMPLETE
 
 ### Schema Addition
 ```sql
@@ -89,12 +89,14 @@ CREATE INDEX idx_callee ON call_graph(callee);
 ```
 
 ### Parser Changes
-- [ ] Track current function context during parsing
-- [ ] Identify call expressions:
+- [x] Track current function context during parsing
+- [x] Identify call expressions:
   - Direct calls: `foo()`
   - Method calls: `obj.method()`
   - Async calls: `foo().await`
-- [ ] Store caller → callee relationships
+  - Constructor calls: `new Class()`
+- [x] Store caller → callee relationships
+- [x] Extract 5,368 call relationships from Patina codebase
 
 ### Call Detection Patterns
 ```rust
