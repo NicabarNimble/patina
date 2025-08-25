@@ -11,6 +11,7 @@ pub use ast_processor::{
     BehavioralHint,
     FingerprintFact,
     DocumentationFact,
+    CodeSearchFact,
     process_tree,
 };
 
