@@ -720,6 +720,194 @@ fn report_skipped_files(skipped: &HashMap<String, (usize, usize, String)>) {
     }
 }
 
+/// Extract documentation comment for a node
+fn extract_doc_comment(
+    node: tree_sitter::Node,
+    source: &[u8],
+    language: patina::semantic::languages::Language,
+) -> Option<(String, String, Vec<String>)> {
+    use patina::semantic::languages::Language;
+    
+    // Look for doc comment in previous sibling
+    if let Some(prev) = node.prev_sibling() {
+        let is_doc = match language {
+            Language::Rust => prev.kind() == "line_comment" && {
+                prev.utf8_text(source)
+                    .unwrap_or("")
+                    .trim_start()
+                    .starts_with("///")
+            },
+            Language::Go => prev.kind() == "comment" && {
+                prev.utf8_text(source)
+                    .unwrap_or("")
+                    .trim_start()
+                    .starts_with("//")
+            },
+            Language::Python => {
+                // Python docstrings are the first string in the function body
+                if node.kind() == "function_definition" || node.kind() == "class_definition" {
+                    if let Some(body) = node.child_by_field_name("body") {
+                        if let Some(first_stmt) = body.children(&mut body.walk()).nth(1) {
+                            if first_stmt.kind() == "expression_statement" {
+                                if let Some(string) = first_stmt.child(0) {
+                                    return if string.kind() == "string" {
+                                        let raw = string.utf8_text(source).unwrap_or("");
+                                        let clean = clean_doc_text(raw, language);
+                                        let keywords = extract_keywords(&clean);
+                                        Some((raw.to_string(), clean, keywords))
+                                    } else {
+                                        None
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                false
+            },
+            Language::JavaScript | Language::JavaScriptJSX | 
+            Language::TypeScript | Language::TypeScriptTSX => {
+                prev.kind() == "comment" && {
+                    let text = prev.utf8_text(source).unwrap_or("");
+                    text.starts_with("/**") || text.starts_with("//")
+                }
+            },
+            Language::Solidity => prev.kind() == "comment" && {
+                let text = prev.utf8_text(source).unwrap_or("");
+                text.starts_with("///") || text.starts_with("/**")
+            },
+            _ => false,
+        };
+        
+        if is_doc {
+            let raw = prev.utf8_text(source).unwrap_or("").to_string();
+            let clean = clean_doc_text(&raw, language);
+            let keywords = extract_keywords(&clean);
+            return Some((raw, clean, keywords));
+        }
+    }
+    
+    // For languages other than Python, also check block comments above
+    if language != Language::Python {
+        // Walk up to find doc comments that might be separated by whitespace
+        let mut cursor = node.walk();
+        if let Some(parent) = node.parent() {
+            for child in parent.children(&mut cursor) {
+                if child.end_byte() > node.start_byte() {
+                    break;
+                }
+                if child.kind() == "comment" || child.kind() == "line_comment" || child.kind() == "block_comment" {
+                    let text = child.utf8_text(source).unwrap_or("");
+                    let is_doc = match language {
+                        Language::Rust => text.starts_with("///") || text.starts_with("//!"),
+                        _ => text.starts_with("/**") || text.starts_with("///"),
+                    };
+                    if is_doc {
+                        let raw = text.to_string();
+                        let clean = clean_doc_text(&raw, language);
+                        let keywords = extract_keywords(&clean);
+                        return Some((raw, clean, keywords));
+                    }
+                }
+            }
+        }
+    }
+    
+    None
+}
+
+/// Clean doc text by removing comment markers
+fn clean_doc_text(raw: &str, language: patina::semantic::languages::Language) -> String {
+    use patina::semantic::languages::Language;
+    
+    match language {
+        Language::Rust => {
+            raw.lines()
+                .map(|line| {
+                    line.trim_start()
+                        .strip_prefix("///")
+                        .or_else(|| line.strip_prefix("//!"))
+                        .unwrap_or(line)
+                        .trim()
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        },
+        Language::Go | Language::Solidity => {
+            raw.lines()
+                .map(|line| {
+                    line.trim_start()
+                        .strip_prefix("//")
+                        .unwrap_or(line)
+                        .trim()
+                })
+                .filter(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ")
+        },
+        Language::Python => {
+            // Remove triple quotes
+            raw.trim()
+                .strip_prefix("\"\"\"")
+                .and_then(|s| s.strip_suffix("\"\"\""))
+                .or_else(|| raw.trim().strip_prefix("'''").and_then(|s| s.strip_suffix("'''")))
+                .unwrap_or(raw)
+                .trim()
+                .to_string()
+        },
+        Language::JavaScript | Language::JavaScriptJSX | 
+        Language::TypeScript | Language::TypeScriptTSX => {
+            if raw.starts_with("/**") {
+                raw.strip_prefix("/**")
+                    .and_then(|s| s.strip_suffix("*/"))
+                    .map(|s| {
+                        s.lines()
+                            .map(|line| line.trim().strip_prefix("*").unwrap_or(line).trim())
+                            .filter(|line| !line.is_empty())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    })
+                    .unwrap_or_else(|| raw.to_string())
+            } else {
+                raw.lines()
+                    .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            }
+        },
+        _ => raw.to_string(),
+    }
+}
+
+/// Extract first sentence as summary
+fn extract_summary(doc: &str) -> String {
+    doc.split('.')
+        .next()
+        .unwrap_or(doc)
+        .trim()
+        .to_string()
+}
+
+/// Extract keywords from documentation
+fn extract_keywords(doc: &str) -> Vec<String> {
+    const STOP_WORDS: &[&str] = &[
+        "the", "and", "for", "with", "this", "that", "from", "into", 
+        "will", "can", "may", "must", "should", "would", "could",
+        "has", "have", "had", "does", "did", "are", "was", "were", "been",
+        "being", "get", "set", "new", "all", "some", "any", "each", "every"
+    ];
+    
+    let words: std::collections::HashSet<String> = doc
+        .split_whitespace()
+        .flat_map(|word| word.split(|c: char| !c.is_alphanumeric()))
+        .filter(|w| w.len() > 3)
+        .map(|w| w.to_lowercase())
+        .filter(|w| !STOP_WORDS.contains(&w.as_str()))
+        .collect();
+    
+    words.into_iter().collect()
+}
+
 /// Process AST nodes and generate fingerprints
 fn process_ast_node(
     cursor: &mut tree_sitter::TreeCursor,
@@ -911,6 +1099,44 @@ fn process_ast_node(
 
     if let Some(name_node) = name_node {
         let name = name_node.utf8_text(source).unwrap_or("<unknown>");
+
+        // Extract documentation if present
+        let doc_info = extract_doc_comment(node, source, language);
+        if let Some((doc_raw, doc_clean, keywords)) = doc_info {
+            // Store documentation in database
+            let line_number = node.start_position().row + 1;
+            let doc_summary = extract_summary(&doc_clean);
+            let doc_length = doc_clean.len() as i32;
+            let has_examples = doc_raw.contains("```") || doc_raw.contains("Example:") || doc_raw.contains("example:");
+            let has_params = doc_raw.contains("@param") || doc_raw.contains("Args:") || doc_raw.contains("Parameters:");
+            
+            // Format keywords as DuckDB array
+            let keywords_str = if keywords.is_empty() {
+                "ARRAY[]::VARCHAR[]".to_string()
+            } else {
+                format!("ARRAY[{}]", 
+                    keywords.iter()
+                        .map(|k| format!("'{}'", k.replace('\'', "''")))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            };
+            
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO documentation (file, symbol_name, symbol_type, line_number, doc_raw, doc_clean, doc_summary, keywords, doc_length, has_examples, has_params) VALUES ('{}', '{}', '{}', {}, '{}', '{}', '{}', {}, {}, {}, {});\n",
+                file_path,
+                name.replace('\'', "''"),
+                kind,
+                line_number,
+                doc_raw.replace('\'', "''"),
+                doc_clean.replace('\'', "''"),
+                doc_summary.replace('\'', "''"),
+                keywords_str,
+                doc_length,
+                has_examples,
+                has_params
+            ));
+        }
 
         // Extract based on kind
         match kind {
