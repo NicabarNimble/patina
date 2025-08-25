@@ -86,16 +86,27 @@ impl KnowledgeStore for DuckDbStore {
     fn store_results(&self, results: &ProcessingResult, file_path: &str) -> Result<()> {
         let mut sql = String::from("BEGIN TRANSACTION;\n");
         
-        // Store functions
+        // Store functions - note the order matches the actual table schema
         for func in &results.functions {
             sql.push_str(&format!(
-                "INSERT OR REPLACE INTO function_facts VALUES ('{}', '{}', {}, '{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
-                func.file, func.name, func.line_number,
+                "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, '{}', '{}');\n",
+                func.file, func.name, 
+                func.takes_mut_self, func.takes_mut_params,
+                func.returns_result, func.returns_option,
+                func.is_async, func.is_unsafe, func.is_public,
+                func.parameter_count, func.generics_count,
                 func.parameters.replace('\'', "''"),
-                func.return_type.replace('\'', "''"),
-                func.is_async, func.is_public, func.is_unsafe,
-                func.generics_count, func.takes_mut_self,
-                func.returns_result, func.returns_option
+                func.return_type.replace('\'', "''")
+            ));
+        }
+        
+        // Store code_search entries
+        for search in &results.code_search {
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO code_search (path, name, signature, context) VALUES ('{}', '{}', '{}', '{}');\n",
+                search.file, search.name,
+                search.signature.replace('\'', "''"),
+                search.context.replace('\'', "''")
             ));
         }
         
@@ -129,28 +140,36 @@ impl KnowledgeStore for DuckDbStore {
             ));
         }
         
-        // Store types
+        // Store types with all fields
         for typ in &results.types {
             sql.push_str(&format!(
-                "INSERT OR REPLACE INTO type_vocabulary VALUES ('{}', '{}', {}, '{}', {});\n",
-                typ.file, typ.name, typ.line_number, typ.kind, typ.is_public
+                "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', '{}', '{}', '{}');\n",
+                typ.file, typ.name, 
+                typ.definition.replace('\'', "''"),
+                typ.kind, typ.visibility
             ));
         }
         
-        // Store imports
+        // Store imports with all fields
         for import in &results.imports {
             sql.push_str(&format!(
-                "INSERT INTO import_facts VALUES ('{}', '{}', {});\n",
-                import.file, import.import_path.replace('\'', "''"), import.is_external
+                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, '{}');\n",
+                import.file, 
+                import.imported_item.replace('\'', "''"),
+                import.imported_from.replace('\'', "''"),
+                import.is_external,
+                import.import_kind
             ));
         }
         
-        // Store behavioral hints
+        // Store behavioral hints with all fields
         for hint in &results.behavioral_hints {
             sql.push_str(&format!(
-                "INSERT INTO behavioral_hints VALUES ('{}', '{}', '{}', '{}');\n",
-                hint.file, hint.hint_type, hint.location, 
-                hint.context.replace('\'', "''")
+                "INSERT OR REPLACE INTO behavioral_hints (file, function, calls_unwrap, calls_expect, has_panic_macro, has_todo_macro, has_unsafe_block, has_mutex, has_arc) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
+                hint.file, hint.function,
+                hint.calls_unwrap, hint.calls_expect,
+                hint.has_panic_macro, hint.has_todo_macro,
+                hint.has_unsafe_block, hint.has_mutex, hint.has_arc
             ));
         }
         
@@ -325,9 +344,9 @@ impl KnowledgeStore for DuckDbStore {
     
     fn get_function_facts(&self, symbol: &str) -> Result<Option<FunctionFact>> {
         let query = format!(
-            "SELECT file, name, line_number, parameters, return_type,
-                    is_async, is_public, is_unsafe, generics_count,
-                    takes_mut_self, returns_result, returns_option
+            "SELECT file, name, takes_mut_self, takes_mut_params, returns_result, 
+                    returns_option, is_async, is_unsafe, is_public, parameter_count,
+                    generic_count, parameters, return_type
             FROM function_facts
             WHERE name = '{}'
             LIMIT 1",
@@ -337,21 +356,32 @@ impl KnowledgeStore for DuckDbStore {
         let output = self.execute_sql(&query)?;
         
         for line in output.lines().skip(1) {
-            let parts: Vec<&str> = line.splitn(12, ',').collect();
-            if parts.len() >= 12 {
+            let parts: Vec<&str> = line.splitn(13, ',').collect();
+            if parts.len() >= 13 {
+                let parameters = parts[11].to_string();
+                let return_type = parts[12].to_string();
+                let signature = format!("{}({}){}", 
+                    parts[1], // name
+                    &parameters,
+                    if !return_type.is_empty() { format!(" -> {}", return_type) } else { String::new() }
+                );
+                
                 return Ok(Some(FunctionFact {
                     file: parts[0].to_string(),
                     name: parts[1].to_string(),
-                    line_number: parts[2].parse().unwrap_or(0),
-                    parameters: parts[3].to_string(),
-                    return_type: parts[4].to_string(),
-                    is_async: parts[5] == "true",
-                    is_public: parts[6] == "true",
+                    line_number: 0, // Not stored in database currently
+                    takes_mut_self: parts[2] == "true",
+                    takes_mut_params: parts[3] == "true",
+                    returns_result: parts[4] == "true",
+                    returns_option: parts[5] == "true",
+                    is_async: parts[6] == "true",
                     is_unsafe: parts[7] == "true",
-                    generics_count: parts[8].parse().unwrap_or(0),
-                    takes_mut_self: parts[9] == "true",
-                    returns_result: parts[10] == "true",
-                    returns_option: parts[11] == "true",
+                    is_public: parts[8] == "true",
+                    parameter_count: parts[9].parse().unwrap_or(0),
+                    generics_count: parts[10].parse().unwrap_or(0),
+                    parameters,
+                    return_type,
+                    signature,
                 }));
             }
         }
