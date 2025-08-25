@@ -133,14 +133,22 @@ authenticate_user → validate_credentials → check_password → hash_compare
 | Our system | 2,000-5,000 | High (validated facts) | High (graph traversal) |
 | Grep + context | 10,000-20,000 | Medium | Low (misses relationships) |
 
-## Implementation Phases
+## Implementation Status
 
-### Phase 1: Documentation Extraction
-- Parse doc comments above symbols
-- Extract keywords for search
-- Store in documentation table
+### Phase 1: Documentation Extraction ✅ COMPLETE
+- ✅ Parse doc comments for all languages (Rust, Go, Python, JS/TS, Solidity)
+- ✅ Extract keywords with stop-word filtering
+- ✅ Store in documentation table with DuckDB arrays
+- ✅ Successfully extracted 259 docs from Patina codebase
+- ✅ Keyword search working: `list_contains(keywords, 'parser')`
 
-### Phase 2: Call Graph Building
+**Results:**
+- Clean doc text by removing comment markers (///, /**, etc.)
+- Extract first sentence as summary for quick preview
+- Track metadata: has_examples, has_params, doc_length
+- Format keywords as DuckDB arrays for efficient search
+
+### Phase 2: Call Graph Building 🚧 NEXT
 - Track function calls during parsing
 - Build caller → callee relationships
 - Store in call_graph table
@@ -175,3 +183,40 @@ authenticate_user → validate_credentials → check_password → hash_compare
 - **Array columns** for keyword search (no FTS5 needed)
 - **Analytical queries** for pattern detection
 - **Single file** deployment stays simple
+
+## Working Examples (Phase 1)
+
+### Search by Keywords
+```sql
+-- Find all parser-related functions
+SELECT symbol_name, doc_summary 
+FROM documentation 
+WHERE list_contains(keywords, 'parse') 
+   OR list_contains(keywords, 'parser');
+```
+
+### Find Well-Documented Functions
+```sql
+-- Functions with comprehensive docs
+SELECT f.name, d.doc_summary, d.doc_length
+FROM function_facts f
+JOIN documentation d ON f.name = d.symbol_name
+WHERE d.has_examples = true 
+  AND d.has_params = true
+ORDER BY d.doc_length DESC;
+```
+
+### Coverage Analysis
+```sql
+-- Documentation coverage by file
+SELECT 
+    f.file,
+    COUNT(DISTINCT f.name) as total_functions,
+    COUNT(DISTINCT d.symbol_name) as documented,
+    ROUND(100.0 * COUNT(DISTINCT d.symbol_name) / COUNT(DISTINCT f.name), 1) as coverage_pct
+FROM function_facts f
+LEFT JOIN documentation d ON f.name = d.symbol_name AND f.file = d.file
+WHERE f.is_public = true
+GROUP BY f.file
+ORDER BY coverage_pct DESC;
+```
