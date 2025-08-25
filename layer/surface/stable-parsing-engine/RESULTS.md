@@ -122,6 +122,47 @@ patina scrape --query "SELECT * FROM documentation WHERE list_contains(keywords,
 patina scrape --query "SELECT COUNT(*) FROM documentation"
 ```
 
+## Phase 2: Call Graph Extraction Complete ✅
+
+Successfully implemented call graph extraction to track function relationships across the codebase.
+
+### Metrics
+- **5,368 call relationships** extracted
+- **4,988 direct calls** identified
+- **380 method calls** tracked
+- **All 6 languages** supported with language-specific call patterns
+
+### Technical Implementation
+- Tracks current function context during AST traversal
+- Identifies multiple call types: direct, method, async, constructor
+- Stores caller → callee relationships with line numbers
+- Supports recursive CTE queries for graph traversal
+
+### Working Example: Recursive Call Chain
+```sql
+WITH RECURSIVE call_chain AS (
+    SELECT 'execute' as func
+    UNION
+    SELECT DISTINCT callee 
+    FROM call_graph 
+    JOIN call_chain ON caller = func
+    WHERE file LIKE '%scrape.rs'
+)
+SELECT func FROM call_chain;
+-- Returns: All functions transitively called by 'execute'
+```
+
+### Combined Power: Docs + Call Graph
+Now we can:
+1. Find entry points via keyword search in documentation
+2. Expand context via call graph traversal
+3. Build complete, focused context for LLMs
+
 ## Conclusion
 
-Phase 1 successfully demonstrates that structured documentation extraction with keyword search provides a solid foundation for LLM context retrieval. The 100x token reduction achieved with just documentation search validates the approach, and combining this with call graphs in Phase 2 will further improve context relevance and completeness.
+Phase 1 (documentation extraction) and Phase 2 (call graph) are now complete. Together they provide:
+- **100x token reduction** from documentation search
+- **Complete context** via call graph traversal
+- **Query-driven retrieval** instead of file dumping
+
+Next: Phase 3 will combine these for intelligent context assembly.
