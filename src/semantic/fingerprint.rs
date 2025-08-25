@@ -259,6 +259,18 @@ CREATE TABLE IF NOT EXISTS documentation (
     PRIMARY KEY (file, symbol_name)
 );
 
+-- Call graph: Function relationships for context traversal
+CREATE TABLE IF NOT EXISTS call_graph (
+    caller VARCHAR NOT NULL,
+    callee VARCHAR NOT NULL,
+    file VARCHAR NOT NULL,
+    call_type VARCHAR,         -- 'direct', 'method', 'async', 'callback'
+    line_number INTEGER        -- Where the call happens
+);
+
+CREATE INDEX IF NOT EXISTS idx_caller ON call_graph(caller);
+CREATE INDEX IF NOT EXISTS idx_callee ON call_graph(callee);
+
 -- Behavioral hints: Code smell detection (facts only)
 CREATE TABLE IF NOT EXISTS behavioral_hints (
     file VARCHAR NOT NULL,

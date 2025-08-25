@@ -506,8 +506,12 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
         if let Some(ref mut p) = parser {
             if let Some(tree) = p.parse(&content, None) {
                 let mut cursor = tree.walk();
+                let mut context = ParseContext::new();
                 symbol_count +=
-                    process_ast_node(&mut cursor, content.as_bytes(), &file, &mut sql, language);
+                    process_ast_node(&mut cursor, content.as_bytes(), &file, &mut sql, language, &mut context);
+
+                // Flush call graph entries for this file
+                context.flush_to_sql(&file, &mut sql);
 
                 // Record index state
                 sql.push_str(&format!(
@@ -909,12 +913,177 @@ fn extract_keywords(doc: &str) -> Vec<String> {
 }
 
 /// Process AST nodes and generate fingerprints
+/// Extract call expressions from AST nodes
+fn extract_call_expressions(
+    node: tree_sitter::Node,
+    source: &[u8],
+    language: patina::semantic::languages::Language,
+    context: &mut ParseContext,
+) {
+    use patina::semantic::languages::Language;
+    
+    let line_number = (node.start_position().row + 1) as i32;
+    
+    match (language, node.kind()) {
+        // Rust call expressions
+        (Language::Rust, "call_expression") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                let callee = func_node.utf8_text(source).unwrap_or("").to_string();
+                context.add_call(callee, "direct".to_string(), line_number);
+            }
+        }
+        (Language::Rust, "method_call_expression") => {
+            if let Some(method_node) = node.child_by_field_name("name") {
+                let callee = method_node.utf8_text(source).unwrap_or("").to_string();
+                context.add_call(callee, "method".to_string(), line_number);
+            }
+        }
+        
+        // Go call expressions
+        (Language::Go, "call_expression") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                let callee = func_node.utf8_text(source).unwrap_or("").to_string();
+                let call_type = if callee.contains("go ") { "async" } else { "direct" };
+                context.add_call(callee.replace("go ", ""), call_type.to_string(), line_number);
+            }
+        }
+        (Language::Go, "selector_expression") => {
+            // Go method calls are selector expressions followed by call_expression
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "call_expression" {
+                    if let Some(field_node) = node.child_by_field_name("field") {
+                        let callee = field_node.utf8_text(source).unwrap_or("").to_string();
+                        context.add_call(callee, "method".to_string(), line_number);
+                    }
+                }
+            }
+        }
+        
+        // Python call expressions
+        (Language::Python, "call") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                let callee = func_node.utf8_text(source).unwrap_or("").to_string();
+                let call_type = if callee.starts_with("await ") { "async" } else { "direct" };
+                context.add_call(callee.replace("await ", ""), call_type.to_string(), line_number);
+            }
+        }
+        (Language::Python, "attribute") => {
+            // Python method calls via attribute access
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "call" {
+                    if let Some(attr_node) = node.child_by_field_name("attribute") {
+                        let callee = attr_node.utf8_text(source).unwrap_or("").to_string();
+                        context.add_call(callee, "method".to_string(), line_number);
+                    }
+                }
+            }
+        }
+        
+        // JavaScript/TypeScript call expressions
+        (Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX, "call_expression") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                let callee_text = func_node.utf8_text(source).unwrap_or("");
+                
+                // Check if it's an async call (await keyword)
+                let call_type = if node.parent().is_some_and(|p| p.kind() == "await_expression") {
+                    "async"
+                } else if callee_text.contains('.') {
+                    "method"
+                } else {
+                    "direct"
+                };
+                
+                // Extract just the function name
+                let callee = if let Some(last_part) = callee_text.split('.').last() {
+                    last_part.to_string()
+                } else {
+                    callee_text.to_string()
+                };
+                
+                context.add_call(callee, call_type.to_string(), line_number);
+            }
+        }
+        (Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX, "new_expression") => {
+            // Constructor calls
+            if let Some(constructor_node) = node.child_by_field_name("constructor") {
+                let callee = constructor_node.utf8_text(source).unwrap_or("").to_string();
+                context.add_call(callee, "constructor".to_string(), line_number);
+            }
+        }
+        
+        // Solidity call expressions
+        (Language::Solidity, "call_expression") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                let callee = func_node.utf8_text(source).unwrap_or("").to_string();
+                context.add_call(callee, "direct".to_string(), line_number);
+            }
+        }
+        (Language::Solidity, "member_access") => {
+            // Solidity method calls
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "call_expression" {
+                    if let Some(member_node) = node.child_by_field_name("property") {
+                        let callee = member_node.utf8_text(source).unwrap_or("").to_string();
+                        context.add_call(callee, "method".to_string(), line_number);
+                    }
+                }
+            }
+        }
+        
+        _ => {}
+    }
+}
+
+/// Context for tracking state during AST traversal
+struct ParseContext {
+    current_function: Option<String>,
+    call_graph_entries: Vec<(String, String, String, i32)>, // (caller, callee, call_type, line)
+}
+
+impl ParseContext {
+    fn new() -> Self {
+        Self {
+            current_function: None,
+            call_graph_entries: Vec::new(),
+        }
+    }
+    
+    fn enter_function(&mut self, name: String) {
+        self.current_function = Some(name);
+    }
+    
+    fn exit_function(&mut self) {
+        self.current_function = None;
+    }
+    
+    fn add_call(&mut self, callee: String, call_type: String, line: i32) {
+        if let Some(ref caller) = self.current_function {
+            self.call_graph_entries.push((caller.clone(), callee, call_type, line));
+        }
+    }
+    
+    fn flush_to_sql(&mut self, file_path: &str, sql: &mut String) {
+        for (caller, callee, call_type, line) in &self.call_graph_entries {
+            sql.push_str(&format!(
+                "INSERT INTO call_graph (caller, callee, file, call_type, line_number) VALUES ('{}', '{}', '{}', '{}', {});\n",
+                caller.replace('\'', "''"),
+                callee.replace('\'', "''"),
+                file_path,
+                call_type,
+                line
+            ));
+        }
+        self.call_graph_entries.clear();
+    }
+}
+
 fn process_ast_node(
     cursor: &mut tree_sitter::TreeCursor,
     source: &[u8],
     file_path: &str,
     sql: &mut String,
     language: patina::semantic::languages::Language,
+    context: &mut ParseContext,
 ) -> usize {
     use patina::semantic::fingerprint::Fingerprint;
     use patina::semantic::languages::Language;
@@ -1031,10 +1200,13 @@ fn process_ast_node(
             }
         }
         _ => {
+            // Check for call expressions before recursing
+            extract_call_expressions(node, source, language, context);
+            
             // Recurse into children
             if cursor.goto_first_child() {
                 loop {
-                    count += process_ast_node(cursor, source, file_path, sql, language);
+                    count += process_ast_node(cursor, source, file_path, sql, language, context);
                     if !cursor.goto_next_sibling() {
                         break;
                     }
@@ -1099,6 +1271,25 @@ fn process_ast_node(
 
     if let Some(name_node) = name_node {
         let name = name_node.utf8_text(source).unwrap_or("<unknown>");
+
+        // Track function context for call graph
+        if kind == "function" {
+            context.enter_function(name.to_string());
+            
+            // Process function body to extract calls
+            if cursor.goto_first_child() {
+                loop {
+                    count += process_ast_node(cursor, source, file_path, sql, language, context);
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+                cursor.goto_parent();
+            }
+            
+            // Exit function context
+            context.exit_function();
+        }
 
         // Extract documentation if present
         let doc_info = extract_doc_comment(node, source, language);
