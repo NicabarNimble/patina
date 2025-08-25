@@ -242,6 +242,23 @@ CREATE TABLE IF NOT EXISTS import_facts (
     PRIMARY KEY (importer_file, imported_item)
 );
 
+-- Documentation: Searchable docs with keywords for LLM context retrieval
+CREATE TABLE IF NOT EXISTS documentation (
+    file VARCHAR NOT NULL,
+    symbol_name VARCHAR NOT NULL,
+    symbol_type VARCHAR,        -- 'function', 'struct', 'module', 'field'
+    line_number INTEGER,
+    doc_raw TEXT,              -- Original with comment markers
+    doc_clean TEXT,            -- Cleaned text for display
+    doc_summary VARCHAR,       -- First sentence (fast preview)
+    keywords VARCHAR[],        -- Extracted keywords for search
+    doc_length INTEGER,        -- Character count
+    has_examples BOOLEAN,      -- Contains code blocks
+    has_params BOOLEAN,        -- Documents parameters
+    parent_symbol VARCHAR,     -- For nested items (methods in impl blocks)
+    PRIMARY KEY (file, symbol_name)
+);
+
 -- Behavioral hints: Code smell detection (facts only)
 CREATE TABLE IF NOT EXISTS behavioral_hints (
     file VARCHAR NOT NULL,
@@ -280,6 +297,8 @@ CREATE INDEX IF NOT EXISTS idx_fingerprint_flags ON code_fingerprints(flags);
 CREATE INDEX IF NOT EXISTS idx_type_vocabulary_kind ON type_vocabulary(kind);
 CREATE INDEX IF NOT EXISTS idx_function_facts_public ON function_facts(is_public);
 CREATE INDEX IF NOT EXISTS idx_import_facts_external ON import_facts(is_external);
+CREATE INDEX IF NOT EXISTS idx_documentation_symbol ON documentation(symbol_name);
+CREATE INDEX IF NOT EXISTS idx_documentation_type ON documentation(symbol_type);
 "#
 }
 
