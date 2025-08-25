@@ -132,11 +132,11 @@ impl KnowledgeStore for DuckDbStore {
             ));
         }
         
-        // Store call graph
+        // Store call graph with line numbers
         for call in &results.call_graph {
             sql.push_str(&format!(
-                "INSERT INTO call_graph VALUES ('{}', '{}', '{}', '{}');\n",
-                call.caller, call.callee, file_path, call.call_type.as_str()
+                "INSERT INTO call_graph (caller, callee, file, call_type, line_number) VALUES ('{}', '{}', '{}', '{}', {});\n",
+                call.caller, call.callee, file_path, call.call_type.as_str(), call.line_number
             ));
         }
         
@@ -238,7 +238,7 @@ impl KnowledgeStore for DuckDbStore {
     
     fn get_call_graph(&self, symbol: &str) -> Result<Vec<CallRelation>> {
         let query = format!(
-            "SELECT caller, callee, file, call_type 
+            "SELECT caller, callee, file, call_type, line_number 
             FROM call_graph 
             WHERE caller = '{}'",
             symbol
@@ -249,7 +249,7 @@ impl KnowledgeStore for DuckDbStore {
         
         for line in output.lines().skip(1) {
             let parts: Vec<&str> = line.split(',').collect();
-            if parts.len() >= 4 {
+            if parts.len() >= 5 {
                 relations.push(CallRelation {
                     caller: parts[0].to_string(),
                     callee: parts[1].to_string(),
@@ -260,7 +260,7 @@ impl KnowledgeStore for DuckDbStore {
                         "callback" => CallType::Callback,
                         _ => CallType::Direct,
                     },
-                    line_number: 0, // Not stored in DB currently
+                    line_number: parts[4].parse().unwrap_or(0),
                 });
             }
         }
