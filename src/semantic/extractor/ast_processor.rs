@@ -102,6 +102,7 @@ impl Default for BehavioralHint {
 pub struct FingerprintFact {
     pub file: String,
     pub symbol: String,
+    pub kind: String,  // function, struct, trait, impl
     pub fingerprint: Fingerprint,
 }
 
@@ -160,6 +161,9 @@ fn process_node_recursive(
         },
         "enum" => {
             process_type(node, source, file_path, "enum", language, result);
+        },
+        "impl" => {
+            process_impl(node, source, file_path, result);
         },
         _ => {
             if is_import_node(node.kind(), language) {
@@ -271,6 +275,7 @@ fn process_function(
     result.fingerprints.push(FingerprintFact {
         file: file_path.to_string(),
         symbol: name.clone(),
+        kind: "function".to_string(),
         fingerprint,
     });
     
@@ -298,12 +303,47 @@ fn process_type(
     
     result.types.push(TypeFact {
         file: file_path.to_string(),
-        name,
+        name: name.clone(),
         line_number,
         kind: kind.to_string(),
         is_public,
         definition,
         visibility,
+    });
+    
+    // Generate fingerprint for structs and traits (matching original behavior)
+    if kind == "struct" || kind == "trait" {
+        let fingerprint = Fingerprint::from_ast(node, source);
+        result.fingerprints.push(FingerprintFact {
+            file: file_path.to_string(),
+            symbol: name,
+            kind: kind.to_string(),
+            fingerprint,
+        });
+    }
+}
+
+fn process_impl(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    result: &mut ProcessingResult,
+) {
+    // Extract impl name (e.g., "impl Foo" or "impl Trait for Foo")
+    let name = node.utf8_text(source)
+        .unwrap_or("")
+        .lines()
+        .next()
+        .unwrap_or("impl")
+        .to_string();
+    
+    // Generate fingerprint for impl blocks (matching original behavior)
+    let fingerprint = Fingerprint::from_ast(node, source);
+    result.fingerprints.push(FingerprintFact {
+        file: file_path.to_string(),
+        symbol: name,
+        kind: "impl".to_string(),
+        fingerprint,
     });
 }
 

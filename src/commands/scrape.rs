@@ -245,7 +245,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool, store: &Duc
                     .as_secs() as i64;
                     
                 let update_sql = format!(
-                    "INSERT OR REPLACE INTO index_state (file, mtime) VALUES ('{}', {})",
+                    "INSERT OR REPLACE INTO index_state (path, mtime) VALUES ('{}', {})",
                     file, mtime
                 );
                 store.execute_query(&update_sql)?;

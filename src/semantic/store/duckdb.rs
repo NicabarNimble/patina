@@ -74,12 +74,9 @@ impl KnowledgeStore for DuckDbStore {
         // Initialize schema (delegating to fingerprint module for now)
         let schema = crate::semantic::fingerprint::generate_schema();
         
-        let init_sql = format!(
-            "ATTACH '{}' AS knowledge (BLOCK_SIZE 16384);\nUSE knowledge;\n{}",
-            self.db_path, schema
-        );
-        
-        self.execute_sql_stdin(&init_sql)?;
+        // Just run the schema directly on the database file
+        // DuckDB will create the file if it doesn't exist
+        self.execute_sql_stdin(schema)?;
         Ok(())
     }
     
@@ -132,11 +129,15 @@ impl KnowledgeStore for DuckDbStore {
             ));
         }
         
-        // Store call graph with line numbers
+        // Store call graph with line numbers (escape single quotes for SQL)
         for call in &results.call_graph {
             sql.push_str(&format!(
                 "INSERT INTO call_graph (caller, callee, file, call_type, line_number) VALUES ('{}', '{}', '{}', '{}', {});\n",
-                call.caller, call.callee, file_path, call.call_type.as_str(), call.line_number
+                call.caller.replace('\'', "''"), 
+                call.callee.replace('\'', "''"), 
+                file_path.replace('\'', "''"), 
+                call.call_type.as_str(), 
+                call.line_number
             ));
         }
         
@@ -173,16 +174,15 @@ impl KnowledgeStore for DuckDbStore {
             ));
         }
         
-        // Store fingerprints
+        // Store fingerprints with individual fields (matching original, with SQL escaping)
         for fp in &results.fingerprints {
-            let bytes = fp.fingerprint.to_bytes();
-            let hex = bytes.iter()
-                .map(|b| format!("{:02x}", b))
-                .collect::<String>();
-            
             sql.push_str(&format!(
-                "INSERT OR REPLACE INTO code_fingerprints VALUES ('{}', '{}', '\\x{}');\n",
-                fp.file, fp.symbol, hex
+                "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
+                fp.file.replace('\'', "''"), 
+                fp.symbol.replace('\'', "''"), 
+                fp.kind,
+                fp.fingerprint.pattern, fp.fingerprint.imports,
+                fp.fingerprint.complexity, fp.fingerprint.flags
             ));
         }
         
