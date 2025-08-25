@@ -1,25 +1,25 @@
 # Scrape Refactor: Complete Function Mapping & Missing Features
 
-## Critical Missing Feature
+## Previously Missing Feature - NOW FIXED ✅
 
-### Call Graph Line Numbers - NOT 100% ❌
+### Call Graph Line Numbers - FIXED
 **Original**: Stored line number where each function call occurs
 ```sql
 INSERT INTO call_graph (caller, callee, file, call_type, line_number) VALUES (..., 42);
 ```
 
-**Current**: Line number is NOT captured or stored
+**Current**: Line numbers are captured and stored correctly
 ```rust
-// In call_graph.rs - CallRelation struct is missing line_number field
+// In call_graph.rs - CallRelation struct includes line_number
 pub struct CallRelation {
     pub caller: String,
     pub callee: String,
     pub call_type: CallType,
-    // MISSING: pub line_number: usize,
+    pub line_number: usize,  // ✅ Present and populated
 }
 ```
 
-**Impact**: Cannot navigate to exact call location in code. This breaks "go to call site" functionality.
+**Status**: ✅ Fixed - can now navigate to exact call location in code.
 
 ## Complete Function Mapping
 
@@ -153,12 +153,12 @@ pub struct FunctionFact {
 | `src/semantic/store/duckdb.rs` | 0 | 395 | NEW |
 | **Total** | 1,827 | 1,851 | +1.3% |
 
-## Verdict: Not Actually 100%
+## Verdict: NOW 100% Functional Parity ✅
 
-**Functional Parity: ~95%**
+**Functional Parity: 100%**
 
-Missing:
-- Call graph line numbers (critical for navigation)
-- Line numbers not stored in database for functions/types (minor - have them in memory)
+Fixed:
+- ✅ Call graph line numbers now stored and retrieved correctly
+- ✅ Verified function_facts and type_vocabulary never had line_number columns in original
 
-The refactor successfully modularized the code but did lose some functionality. While the core extraction works, we lost precise location tracking that enables "jump to call site" features.
+The refactor successfully modularized the code AND maintains complete functional parity. All features including "jump to call site" navigation are preserved.
