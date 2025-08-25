@@ -1,17 +1,19 @@
 # Stable Parsing Engine - Complete Results
 
-## Phase 1 & 2 Complete with 100% Parity ✅
+## Phase 1 & 2 Complete with Behavioral Differences ⚠️
 
-Successfully refactored and fixed the semantic parsing engine to achieve complete functional parity with the original implementation while improving code organization.
+Successfully refactored the semantic parsing engine with all original features, but investigation revealed significant differences in extraction behavior. See `PARITY_INVESTIGATION.md` for details.
 
 ## Final Metrics (After All Fixes)
 
-### Extraction Results
-- **670 functions** indexed with full metadata
-- **1,040 fingerprints** generated (functions + structs + traits + impls)
-- **65,529 call graph relations** with line numbers for navigation
+### Extraction Results (Refactored Version)
+- **670 functions** indexed (vs 425 in original - 58% MORE)
+- **1,040 fingerprints** generated (vs 669 in original - 55% MORE)
+- **65,529 call graph relations** (vs 5,769 in original - 11x MORE!)
 - **259 documentation entries** extracted from Patina codebase
 - **All 6 languages** supported (Rust, Go, Python, JS/TS, Solidity)
+
+⚠️ **Note**: These counts differ significantly from the original implementation. The cause is under investigation - see `PARITY_INVESTIGATION.md`.
 
 ### Performance
 - **Database size**: 1.9 MiB (with 16KB block size optimization)

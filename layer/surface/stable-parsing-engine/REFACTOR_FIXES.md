@@ -212,10 +212,12 @@ Despite the fixes needed, the refactor achieved its goals:
 
 ## Conclusion
 
-The refactor now achieves true 100% functional parity while improving:
+The refactor successfully restored all missing features and capabilities, achieving feature parity while improving:
 - Code maintainability (modular design)
 - Type safety (structured types vs strings)
 - Testability (trait-based interfaces)
 - Performance (unchanged from original)
 
-The effort to fix these issues was worth it to maintain the principle: **a refactor must preserve ALL functionality, not just the obvious parts**.
+However, a subsequent investigation revealed the refactor produces significantly different output counts (see `PARITY_INVESTIGATION.md`). This teaches us an important lesson: **feature parity ≠ behavioral parity**.
+
+The effort to fix these issues was valuable, but incomplete. True parity requires not just preserving features, but preserving exact behavior - something we failed to verify until questioned about our certainty.

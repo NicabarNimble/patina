@@ -1,8 +1,8 @@
-# Scrape Refactor: Complete Function Mapping & Parity Achievement
+# Scrape Refactor: Complete Function Mapping & Behavioral Differences
 
-## Status: 100% Functional Parity Achieved ✅
+## Status: Feature Complete, Behavioral Differences Discovered ⚠️
 
-After fixing multiple issues discovered during testing, the refactor now achieves complete functional parity with the original implementation while improving code organization and maintainability.
+After fixing multiple issues discovered during testing, the refactor includes all original features but produces significantly different output counts. See `PARITY_INVESTIGATION.md` for detailed analysis.
 
 ### Critical Fixes Applied
 
