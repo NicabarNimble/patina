@@ -1,228 +1,177 @@
-# Stable Parsing Engine Design
+# LLM-Optimized Code Intelligence System
 
-## Problem Statement
+## Core Philosophy
 
-Language parsing ecosystems are inherently unstable:
-- Tree-sitter grammars update and break
-- Crates.io versions lag behind git repositories  
-- Abandoned parsers (tree-sitter-solidity) leave gaps
-- Grammar changes invalidate queries
-- Full AST parsing is token-expensive for LLMs
+**Extract facts, build relationships, retrieve context efficiently.**
 
-## Core Insight
+We're not just storing code and docs - we're building a graph of knowledge that LLMs can query intelligently. 10-50x more token-efficient than crawling raw files.
 
-**Unit of change should be repository commits, not language specifications.**
-
-By treating parsers as pinned, vendored assets and focusing on git-driven incremental updates, we can achieve both stability and performance.
-
-## Architecture Overview
+## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│            User Commands                    │
-├─────────────────────────────────────────────┤
-│          IndexEngine                        │
-│  ┌──────────────┬──────────────────────┐   │
-│  │ Git Diff     │   FileCache          │   │
-│  │ Detection    │ (blob_sha tracking)  │   │
-│  └──────────────┴──────────────────────┘   │
-├─────────────────────────────────────────────┤
-│       Vendored Grammar Registry             │
-│  ┌──────────┬──────────┬──────────────┐   │
-│  │ Rust     │ Go       │ Solidity     │   │
-│  │ @6b7d1fc │ @81a11f8 │ @c3da7d9    │   │
-│  └──────────┴──────────┴──────────────┘   │
-├─────────────────────────────────────────────┤
-│           Fallback Chain                    │
-│  tree-sitter → Micro-CST → text outline    │
-├─────────────────────────────────────────────┤
-│           DuckDB Storage                    │
-│  (language-agnostic schema)                 │
-└─────────────────────────────────────────────┘
+Code Files → Tree-sitter Parse → Extract Facts → DuckDB Storage
+                     ↓                                ↓
+            [Documentation]                   [Call Graph]
+            [Function Facts]                  [Import Graph]
+                     ↓                                ↓
+                     └────────────────────────────────┘
+                                    ↓
+                          Context Retrieval Engine
+                                    ↓
+                        Focused LLM Context (2-5K tokens)
 ```
 
-## Key Design Decisions
+## Storage Design
 
-### 1. Vendored Grammars
-
-Structure:
-```
-patina-metal/
-├── grammars/                 # Vendored grammars (not submodules)
-│   ├── rust/                
-│   │   ├── src/             # Parser C files
-│   │   ├── queries/         # Tree-sitter queries
-│   │   └── metadata.toml   # Version tracking
-│   └── ...
-├── grammar-pack.toml        # Central registry
-└── build.rs                 # Compiles & records versions
-```
-
-Example metadata.toml:
-```toml
-[grammar]
-name = "rust"
-source = "https://github.com/tree-sitter/tree-sitter-rust"
-commit = "6b7d1fc73ded57f73b1619bcf4371618212208b1"
-version = "0.23.0"
-vendored_date = "2024-08-24"
-```
-
-**Rationale**: Complete control over parser versions eliminates external dependency failures while keeping the existing clean structure.
-
-### 2. Blob SHA Change Detection
-
-```rust
-pub struct FileCache {
-    // (repo_id, path, blob_sha, grammar_commit, parse_rev)
-    entries: HashMap<PathBuf, CacheEntry>,
-}
-
-impl FileCache {
-    fn needs_reparse(&self, path: &Path, blob_sha: &str) -> bool {
-        match self.entries.get(path) {
-            None => true,
-            Some(entry) => {
-                entry.blob_sha != blob_sha || 
-                entry.grammar_commit != current_grammar_commit()
-            }
-        }
-    }
-}
-```
-
-**Rationale**: Git's content-addressable storage provides perfect change detection.
-
-### 3. Outline-First Extraction
-
-```rust
-pub struct Symbol {
-    pub kind: &'static str,     // "function" | "class" | "contract"
-    pub name: String,
-    pub span: (usize, usize),
-    pub signature: Option<String>,
-    pub doc: Option<String>,
-}
-```
-
-**Rationale**: LLMs need structure, not full ASTs. 10-100x token reduction.
-
-### 4. Fallback Chain
-
-```rust
-pub trait Lang {
-    fn parse_outline(&self, src: &str) -> Result<Vec<Symbol>> {
-        self.tree_sitter_parse(src)
-            .or_else(|_| self.micro_cst_parse(src))
-            .or_else(|_| self.text_outline_parse(src))
-    }
-}
-```
-
-**Rationale**: Always produce usable output, even with broken parsers.
-
-### 5. Language-Agnostic Schema
-
+### 1. Documentation Table (New)
 ```sql
--- Core tables (always populated)
-CREATE TABLE file(
-    repo_id TEXT,
-    path TEXT,
-    lang TEXT,
-    bytes INTEGER,
-    blob_sha TEXT,
-    grammar_commit TEXT,
-    parsed_at TIMESTAMP,
-    PRIMARY KEY (repo_id, path)
-);
-
-CREATE TABLE symbol(
-    repo_id TEXT,
-    path TEXT,
-    kind TEXT,
-    name TEXT,
-    start_byte INTEGER,
-    end_byte INTEGER,
-    signature TEXT,
-    doc_excerpt TEXT,
-    exported BOOLEAN
-);
-
--- Optional tables (for hot files)
-CREATE TABLE cst_node(
-    repo_id TEXT,
-    path TEXT,
-    node_id INTEGER,
-    parent_id INTEGER,
-    kind TEXT,
-    name TEXT
+CREATE TABLE documentation (
+    -- Identity
+    file VARCHAR,
+    symbol_name VARCHAR,
+    symbol_type VARCHAR,  -- 'function', 'struct', 'module', 'field'
+    line_number INTEGER,
+    
+    -- Raw content
+    doc_raw TEXT,         -- Original with comment markers
+    doc_clean TEXT,       -- Cleaned text for display
+    
+    -- Search/retrieval optimization
+    doc_summary VARCHAR,  -- First sentence (fast preview)
+    keywords VARCHAR[],   -- Extracted: ['auth', 'token', 'validate']
+    
+    -- Quality signals
+    doc_length INTEGER,   -- Character count
+    has_examples BOOLEAN, -- Contains code blocks
+    has_params BOOLEAN,   -- Documents parameters
+    
+    -- Relationships
+    parent_symbol VARCHAR, -- For nested items
+    
+    PRIMARY KEY (file, symbol_name)
 );
 ```
 
-**Rationale**: Schema stability across grammar changes.
+### 2. Call Graph Table (New)
+```sql
+CREATE TABLE call_graph (
+    caller VARCHAR,
+    callee VARCHAR,
+    file VARCHAR,
+    call_type VARCHAR  -- 'direct', 'method', 'callback'
+);
+```
 
-## Implementation Strategy
+### 3. Existing Tables (Enhanced)
+- `function_facts` - Already captures signatures, parameters, return types
+- `import_facts` - Already tracks module dependencies
+- `type_vocabulary` - Already has type definitions
+- `code_fingerprints` - Already has complexity metrics
 
-### Phase 1: Minimal Viable Parser
-- Vendor Rust grammar only
-- Simple blob SHA tracking
-- Outline extraction
-- Prove incremental works
+## Context Retrieval Strategy
 
-### Phase 2: Multi-Language
-- Add Go, Python, TypeScript
-- Query standardization
-- Fallback for Solidity
+### For Questions Like "How does auth work?"
 
-### Phase 3: Production Features
-- Shallow CST for hot files
-- Pattern mining
-- Dagger pipeline
+1. **Keyword Search** - Find relevant symbols via doc keywords
+```sql
+SELECT symbol_name FROM documentation
+WHERE list_contains(keywords, 'auth')
+   OR symbol_name ILIKE '%auth%';
+```
 
-## Performance Targets
+2. **Graph Expansion** - Find related code via call graph
+```sql
+WITH RECURSIVE auth_context AS (
+    -- Entry points
+    SELECT symbol_name FROM matches
+    UNION
+    -- What they call
+    SELECT callee FROM call_graph
+    JOIN auth_context ON caller = symbol_name
+)
+SELECT * FROM auth_context;
+```
 
-| Metric | Current | Target | Method |
-|--------|---------|--------|--------|
-| Full index (10K files) | 60s | 60s | Same baseline |
-| Incremental (100 files) | 60s | 2s | Blob SHA cache |
-| Token usage per file | 5KB | 500B | Outline only |
-| Grammar update downtime | Hours | 0 | Vendored |
-| Parse failure rate | 5% | 0% | Fallback chain |
+3. **Fact Assembly** - Combine docs + code facts + relationships
+```sql
+SELECT 
+    d.symbol_name,
+    d.doc_summary,
+    f.parameters,
+    f.return_type,
+    cg.calls
+FROM documentation d
+JOIN function_facts f ON d.symbol_name = f.name
+LEFT JOIN (
+    SELECT caller, array_agg(callee) as calls
+    FROM call_graph GROUP BY caller
+) cg ON d.symbol_name = cg.caller;
+```
 
-## Migration Path
+4. **Format for LLM** - Structured, focused context
+```
+## Authentication System
 
-1. Build as `patina-metal-v2` module
-2. Run both parsers in parallel, compare outputs
-3. Gradually migrate commands to v2
-4. Deprecate v1 after validation
+### Entry Points
+- `authenticate_user(credentials: Credentials) -> Result<Token>`
+  "Validates user credentials and returns JWT token"
+  Calls: validate_credentials, generate_token
 
-## Risk Mitigation
+### Core Types
+- `struct Token { ... }`
+  "JWT token with expiration and claims"
 
-| Risk | Mitigation |
-|------|------------|
-| Vendored grammars get stale | Annual review cycle, automated PR |
-| Micro-CST misses symbols | Test against golden corpus |
-| Blob SHA computation slow | Use git hash-object |
-| Schema migration complex | Dual-write period |
+### Implementation Chain
+authenticate_user → validate_credentials → check_password → hash_compare
+```
 
-## Success Criteria
+## Token Efficiency Comparison
 
-1. **Stability**: Zero parsing failures in production
-2. **Performance**: 30x faster incremental updates  
-3. **Efficiency**: 90% token reduction for LLM context
-4. **Reproducibility**: Identical output from same inputs
-5. **Maintainability**: Adding new language < 1 hour
+| Approach | Tokens | Accuracy | Completeness |
+|----------|--------|----------|--------------|
+| Raw file crawling | 50,000-100,000 | Low (too much noise) | High (sees everything) |
+| Our system | 2,000-5,000 | High (validated facts) | High (graph traversal) |
+| Grep + context | 10,000-20,000 | Medium | Low (misses relationships) |
 
-## Open Questions
+## Implementation Phases
 
-1. Should we embed grammars in binary or load dynamically?
-2. How deep should shallow CST go for pattern mining?
-3. Should Micro-CST be regex-based or simple recursive descent?
-4. Version queries independently or with grammars?
+### Phase 1: Documentation Extraction
+- Parse doc comments above symbols
+- Extract keywords for search
+- Store in documentation table
 
-## References
+### Phase 2: Call Graph Building
+- Track function calls during parsing
+- Build caller → callee relationships
+- Store in call_graph table
 
-- Tree-sitter ecosystem issues: #1234, #5678
-- Git blob SHA performance: https://git-scm.com/book/en/v2/Git-Internals-Git-Objects
-- DuckDB incremental updates: https://duckdb.org/docs/data/appender
-- Comparable systems: rust-analyzer (vendored grammars), Sourcegraph (fallback chains)
+### Phase 3: Context Retrieval
+- Implement keyword → symbol search
+- Add recursive graph traversal
+- Build context assembly queries
+
+### Phase 4: LLM Integration
+- Format context for different LLMs
+- Implement token budget management
+- Add relevance ranking
+
+## Key Insights
+
+1. **Docs as Search Signals** - Documentation isn't truth, it's a map to find truth in code
+2. **Graph Relationships Matter** - Auth isn't one function, it's a web of connected code
+3. **Progressive Detail** - Start with summaries, expand to full context as needed
+4. **Token Budget Awareness** - Rank and filter by relevance to fit context windows
+
+## Why This Works
+
+- **10-50x fewer tokens** than feeding raw files to LLMs
+- **More accurate** because we validate docs against code facts
+- **More complete** because we follow relationships
+- **Query-driven** rather than dump-everything approach
+
+## DuckDB Advantages
+
+- **Recursive CTEs** for graph traversal (no graph DB needed)
+- **Array columns** for keyword search (no FTS5 needed)
+- **Analytical queries** for pattern detection
+- **Single file** deployment stays simple

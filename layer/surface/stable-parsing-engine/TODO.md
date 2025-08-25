@@ -1,89 +1,228 @@
-# Stable Parsing Engine - TODO
+# LLM-Optimized Code Intelligence - Implementation Plan
 
-## Phase 1: Foundation (Vendor & Pin) ✅ IN PROGRESS
-- [x] Create `grammar-pack.toml` configuration
-- [x] Add metadata.toml for Rust grammar version tracking
-- [x] Build system already compiles C via cc crate
-- [x] Record grammar commits in binary via build.rs
-- [ ] Vendor remaining grammars (go, python, js, ts, solidity)
-- [ ] Remove git submodule references from .gitmodules
-- [ ] Create `Lang` trait abstraction
-- [ ] Implement basic file cache table (path, blob_sha, grammar_commit)
+## Current Status ✅
+- Vendored grammars working
+- Basic fact extraction into DuckDB
+- mtime-based incremental updates
+- Import tracking exists
+- Function facts and complexity metrics captured
 
-## Phase 2: Query System
-- [ ] Co-locate queries with vendored grammars
-- [ ] Define stable capture set (@decl, @name, @doc, @export)
-- [ ] Version queries with grammar commits
-- [ ] Create query contract tests
-- [ ] Build golden corpus test suite per language
+## What We Need 🔧
+- Documentation extraction and storage
+- Call graph tracking
+- Context retrieval engine
+- LLM formatting layer
 
-## Phase 3: Incremental Indexing (HIGH PRIORITY)
-- [ ] Implement git blob SHA retrieval (`git hash-object`)
-- [ ] Build FileCache with blob_sha tracking
-- [ ] Create "changed files only" reindex algorithm
-- [ ] Add grammar_commit change detection
-- [ ] Implement single-transaction DuckDB updates
-- [ ] Target: 30x speedup for incremental updates
+## Phase 1: Documentation Extraction 🚀 PRIORITY
 
-## Phase 4: Fallback Chain
-- [ ] Design Micro-CST trait for lightweight parsing
-- [ ] Implement Micro-CST for problematic languages (Solidity)
-- [ ] Create text outline fallback
-- [ ] Build fallback orchestration (tree-sitter → micro → text)
-- [ ] Ensure output shape consistency across tiers
+### Schema Addition
+```sql
+CREATE TABLE documentation (
+    file VARCHAR,
+    symbol_name VARCHAR,
+    symbol_type VARCHAR,
+    line_number INTEGER,
+    doc_raw TEXT,
+    doc_clean TEXT,
+    doc_summary VARCHAR,
+    keywords VARCHAR[],
+    doc_length INTEGER,
+    has_examples BOOLEAN,
+    has_params BOOLEAN,
+    parent_symbol VARCHAR,
+    PRIMARY KEY (file, symbol_name)
+);
+```
 
-## Phase 5: Outline-First Strategy
-- [ ] Default to outline-only extraction
-- [ ] Define "hot file" heuristics (recent/large/complex)
-- [ ] Implement shallow CST extraction (depth ≤ 3)
-- [ ] Add node count caps per file
-- [ ] Measure token reduction (target: 10-100x)
+### Parser Changes
+- [ ] Add `extract_doc_comment()` to `process_ast_node()`
+- [ ] Look for comment nodes before symbol nodes
+- [ ] Implement language-specific cleaning:
+  - Rust: Strip `///` and `//!`
+  - Python: Extract docstrings
+  - TypeScript: Clean JSDoc `/** */`
+  - Go: Strip `//`
 
-## Phase 6: DuckDB Schema
-- [ ] Design language-agnostic schema
-- [ ] Create file tracking table
-- [ ] Create symbol table
-- [ ] Optional: CST node table
-- [ ] Optional: Pattern mining table
-- [ ] Build migration from current schema
+### Keyword Extraction
+```rust
+fn extract_keywords(doc: &str) -> Vec<String> {
+    const STOP_WORDS: &[&str] = &["the", "and", "for", "with", "this"];
+    
+    doc.split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
+        .filter(|w| w.len() > 3)
+        .filter(|w| !STOP_WORDS.contains(&w.to_lowercase().as_str()))
+        .map(|w| w.to_lowercase())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect()
+}
+```
 
-## Phase 7: Dagger/Docker Pipeline
-- [ ] Create Dockerfile with vendored grammars
-- [ ] Build deterministic pipeline
-- [ ] Add LANGUAGE_PACKS_SHA environment
-- [ ] Tag artifacts with repo@commit+packs-hash
-- [ ] Create reproducible build tests
+## Phase 2: Call Graph Extraction
 
-## Phase 8: Testing Infrastructure
-- [ ] Golden corpus collection (real files per language)
-- [ ] Symbol snapshot tests
-- [ ] Query contract validation
-- [ ] Grammar upgrade workflow
-- [ ] Performance benchmarks vs current system
+### Schema Addition
+```sql
+CREATE TABLE call_graph (
+    caller VARCHAR,
+    callee VARCHAR,
+    file VARCHAR,
+    call_type VARCHAR
+);
 
-## Phase 9: Migration & Integration
-- [ ] Create migration path from current patina-metal
-- [ ] Build compatibility layer for existing code
-- [ ] Update CLI commands
-- [ ] Document breaking changes
-- [ ] Create upgrade guide
+CREATE INDEX idx_caller ON call_graph(caller);
+CREATE INDEX idx_callee ON call_graph(callee);
+```
 
-## Phase 10: Production Hardening
-- [ ] Handle large repositories efficiently
-- [ ] Add progress reporting
-- [ ] Implement error recovery
-- [ ] Add telemetry/metrics
-- [ ] Create debugging tools
+### Parser Changes
+- [ ] Track current function context during parsing
+- [ ] Identify call expressions:
+  - Direct calls: `foo()`
+  - Method calls: `obj.method()`
+  - Async calls: `foo().await`
+- [ ] Store caller → callee relationships
 
-## Research Questions
-- [ ] Optimal blob SHA strategy (git vs custom)
-- [ ] Query schema versioning approach
-- [ ] Most valuable CST patterns for LLMs
-- [ ] Migration strategy (parallel vs in-place)
+### Call Detection Patterns
+```rust
+match node.kind() {
+    "call_expression" => {
+        let function_name = extract_function_name(node);
+        store_call(current_function, function_name, "direct");
+    }
+    "method_call_expression" => {
+        let method_name = extract_method_name(node);
+        store_call(current_function, method_name, "method");
+    }
+    _ => {}
+}
+```
 
-## Success Metrics
-- [ ] 10x faster incremental indexing
-- [ ] Zero grammar-related runtime failures
-- [ ] 90% reduction in token usage for outlines
-- [ ] Reproducible builds across time
-- [ ] Support for "dead" languages via fallback
+## Phase 3: Context Retrieval Engine
+
+### Create `src/context/` module
+- [ ] `keyword_search.rs` - Find symbols by keywords
+- [ ] `graph_traversal.rs` - Recursive CTE queries
+- [ ] `context_builder.rs` - Assemble relevant facts
+- [ ] `formatter.rs` - Format for different LLMs
+
+### Core Queries
+
+```rust
+// Find entry points
+pub fn find_symbols_by_keyword(keyword: &str) -> String {
+    format!(
+        "SELECT DISTINCT symbol_name, doc_summary, file, line_number
+         FROM documentation
+         WHERE list_contains(keywords, '{}')
+            OR symbol_name ILIKE '%{}%'
+         ORDER BY doc_length DESC
+         LIMIT 20",
+        keyword, keyword
+    )
+}
+
+// Expand via call graph
+pub fn expand_context(symbols: Vec<String>) -> String {
+    format!(
+        "WITH RECURSIVE context AS (
+            SELECT '{}' as symbol
+            UNION
+            SELECT callee
+            FROM call_graph cg
+            JOIN context c ON cg.caller = c.symbol
+         )
+         SELECT * FROM context",
+        symbols.join("' as symbol UNION SELECT '")
+    )
+}
+```
+
+## Phase 4: LLM Formatter
+
+### Token Budget Management
+```rust
+pub struct ContextBudget {
+    max_tokens: usize,
+    used_tokens: usize,
+    priority_queue: BinaryHeap<RankedSymbol>,
+}
+
+impl ContextBudget {
+    pub fn add_symbol(&mut self, symbol: Symbol, relevance: f32) {
+        let tokens = estimate_tokens(&symbol);
+        if self.used_tokens + tokens <= self.max_tokens {
+            self.priority_queue.push(RankedSymbol { symbol, relevance });
+            self.used_tokens += tokens;
+        }
+    }
+}
+```
+
+### Output Format
+```rust
+pub fn format_for_llm(context: Context) -> String {
+    let mut output = String::new();
+    
+    // Entry points first
+    output.push_str("## Entry Points\n");
+    for func in context.entry_points {
+        output.push_str(&format!(
+            "- `{}({}) -> {}`\n  {}\n  File: {}:{}\n",
+            func.name, func.params, func.return_type,
+            func.doc_summary, func.file, func.line
+        ));
+    }
+    
+    // Core types
+    output.push_str("\n## Core Types\n");
+    // ...
+    
+    // Call chains
+    output.push_str("\n## Call Chains\n");
+    // ...
+    
+    output
+}
+```
+
+## Phase 5: Integration
+
+### CLI Commands
+- [ ] Add `patina context <question>` command
+- [ ] Add `--max-tokens` flag for budget control
+- [ ] Add `--format` flag for different LLM formats
+
+### Example Usage
+```bash
+# Get context for a question
+patina context "How does authentication work?"
+
+# With token limit
+patina context "What's the build system?" --max-tokens 3000
+
+# Format for specific LLM
+patina context "Error handling patterns" --format claude
+```
+
+## Testing Strategy
+
+### Test Queries
+1. "How does authentication work?"
+2. "What's the error handling strategy?"
+3. "Where is database access implemented?"
+4. "Can you build a caching module?"
+
+### Success Metrics
+- Context fits in 2-5K tokens (vs 50-100K for raw files)
+- Includes all relevant symbols (via graph traversal)
+- Docs validate against code facts
+- Response time < 1 second
+
+## Migration Path
+
+1. **Week 1**: Doc extraction (ship immediately)
+2. **Week 2**: Call graph (adds completeness)
+3. **Week 3**: Context retrieval (makes it useful)
+4. **Week 4**: LLM formatting (makes it production-ready)
+
+Each phase delivers value independently - no big bang required!
