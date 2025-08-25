@@ -6,14 +6,20 @@
 - mtime-based incremental updates
 - Import tracking exists
 - Function facts and complexity metrics captured
+- **Documentation extraction COMPLETE** ✅
 
-## What We Need 🔧
-- Documentation extraction and storage
+## Completed ✅
+- Phase 1: Documentation extraction with keyword search
+- 259 docs extracted from Patina codebase
+- DuckDB array-based keyword search working
+- Clean text extraction for all supported languages
+
+## What We Need Next 🔧
 - Call graph tracking
 - Context retrieval engine
 - LLM formatting layer
 
-## Phase 1: Documentation Extraction 🚀 PRIORITY
+## Phase 1: Documentation Extraction ✅ COMPLETE
 
 ### Schema Addition
 ```sql
@@ -35,13 +41,21 @@ CREATE TABLE documentation (
 ```
 
 ### Parser Changes
-- [ ] Add `extract_doc_comment()` to `process_ast_node()`
-- [ ] Look for comment nodes before symbol nodes
-- [ ] Implement language-specific cleaning:
+- [x] Add `extract_doc_comment()` to `process_ast_node()`
+- [x] Look for comment nodes before symbol nodes
+- [x] Implement language-specific cleaning:
   - Rust: Strip `///` and `//!`
   - Python: Extract docstrings
   - TypeScript: Clean JSDoc `/** */`
   - Go: Strip `//`
+  - Solidity: Handle `///` and `/**` comments
+  
+### Results
+- Successfully extracts doc comments for all node types
+- Handles both line and block comments
+- Python docstrings extracted from function bodies
+- Keywords extracted with stop-word filtering
+- Metadata tracked: has_examples, has_params
 
 ### Keyword Extraction
 ```rust
