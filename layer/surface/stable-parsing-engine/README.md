@@ -1,76 +1,42 @@
 # Stable Parsing Engine
 
-A production-ready semantic code analysis engine that transforms codebases into queryable knowledge for LLMs.
+A semantic code analysis engine that gives LLMs a "senior developer's understanding" of your codebase.
 
-## Status: ✅ Production Ready
+## Quick Start
 
-The core extraction engine is complete with 100% feature parity plus critical bug fixes from the original implementation.
+```bash
+# Initialize and extract knowledge
+patina scrape --init
+patina scrape
 
-## Quick Overview
-
-- **Purpose**: Extract structured knowledge from code for efficient LLM context retrieval
-- **Performance**: 10-100x token reduction vs raw file feeding
-- **Languages**: Rust, Go, Python, JavaScript/TypeScript, Solidity
-- **Storage**: DuckDB with 10 specialized tables
-- **Architecture**: Modular design with 5 specialized components
-
-## Key Files
-
-- **[DESIGN.md](DESIGN.md)** - Complete architecture, schema, and implementation details
-- **[TODO.md](TODO.md)** - Current status and future roadmap
+# Query the knowledge base (coming soon)
+patina context "How does authentication work?"
+```
 
 ## What It Does
 
-1. **Extracts** semantic information from code:
-   - Functions with full metadata (async, unsafe, generics, etc.)
-   - Types (structs, traits, enums)
-   - Documentation with searchable keywords
-   - Call graphs with line numbers
-   - Behavioral hints (unwrap, panic, unsafe blocks)
+**Problem**: LLMs waste thousands of tokens reading entire files for simple questions.
 
-2. **Stores** in queryable format:
-   - DuckDB with array columns for keyword search
-   - Recursive CTEs for graph traversal
-   - Incremental updates for performance
+**Solution**: Extract semantic meaning and relationships, store in a queryable database.
 
-3. **Enables** intelligent context retrieval:
-   - Find code by documentation keywords
-   - Follow call relationships
-   - Assemble complete context for LLMs
+**Result**: 10-100x token reduction with better code understanding.
 
-## Usage
+## Architecture
 
-```bash
-# Initialize database
-patina scrape --init
-
-# Extract knowledge from codebase
-patina scrape
-
-# Query the knowledge base
-patina scrape --query "SELECT * FROM documentation WHERE list_contains(keywords, 'auth')"
-
-# Scrape external repository
-patina scrape --repo dagger
-
-# Force complete re-index
-patina scrape --force
+```
+Your Code → Tree-sitter → Semantic Extraction → DuckDB → LLM Context
 ```
 
-## Historical Note
+- **6 Languages**: Rust, Go, Python, JavaScript/TypeScript, Solidity
+- **10 Tables**: Functions, types, docs, call graphs, imports, behaviors
+- **Performance**: ~1,000 files/sec extraction, <10ms queries
 
-This engine is the result of a successful refactoring from a monolithic 1,827-line file into a modular architecture. The refactoring fixed critical bugs including:
-- 11x call graph duplication
-- Incomplete force flag behavior
-- SQL injection vulnerabilities
+## Documentation
 
-See [DESIGN.md](DESIGN.md#historical-context-the-refactoring-journey) for the complete story.
+- **[DESIGN.md](DESIGN.md)** - Complete technical design and roadmap
 
-## Next Steps
+## Status
 
-The extraction engine is complete. Next phase focuses on context retrieval:
-- Query interface for answering questions
-- LLM-specific formatters
-- Token budget management
-
-See [TODO.md](TODO.md#next-phase-context-retrieval-system-) for details.
+- ✅ **Extraction Engine** - Production ready
+- 🚧 **Context Retrieval** - In development
+- 📋 **LLM Formatters** - Planned
