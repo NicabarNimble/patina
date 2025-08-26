@@ -9,7 +9,7 @@ fn main() {
     println!("cargo:rustc-env=TYPESCRIPT_GRAMMAR_COMMIT=75b3874edb2dc714fb1fd77a32013d0f8699989f");
     println!("cargo:rustc-env=SOLIDITY_GRAMMAR_COMMIT=c3da7d989747679305ec1c84b68082f01089d49f");
     println!("cargo:rustc-env=GRAMMAR_PACK_VERSION=1.0.0");
-    
+
     // Build Rust grammar
     let rust_dir = PathBuf::from("grammars/rust");
     let rust_src = rust_dir.join("src");

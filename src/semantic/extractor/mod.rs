@@ -4,22 +4,10 @@ pub mod documentation;
 
 // Re-export commonly used types
 pub use ast_processor::{
-    ProcessingResult,
-    FunctionFact,
-    TypeFact,
-    ImportFact,
-    BehavioralHint,
-    FingerprintFact,
-    DocumentationFact,
-    CodeSearchFact,
-    process_tree,
+    process_tree, BehavioralHint, CodeSearchFact, DocumentationFact, FingerprintFact, FunctionFact,
+    ImportFact, ProcessingResult, TypeFact,
 };
 
-pub use call_graph::{
-    CallRelation,
-    CallType,
-};
+pub use call_graph::{CallRelation, CallType};
 
-pub use documentation::{
-    Documentation,
-};
+pub use documentation::Documentation;

@@ -1,8 +1,8 @@
 use crate::commands::incremental;
-use patina::semantic::extractor;
-use patina::semantic::languages::{Language, create_parser};
-use patina::semantic::store::{KnowledgeStore, duckdb::DuckDbStore};
 use anyhow::{Context, Result};
+use patina::semantic::extractor;
+use patina::semantic::languages::{create_parser, Language};
+use patina::semantic::store::{duckdb::DuckDbStore, KnowledgeStore};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -72,20 +72,25 @@ fn run_query(query: &str, store: &DuckDbStore) -> Result<()> {
 fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
     // Create store
     let store = DuckDbStore::new(db_path);
-    
+
     // Extract all the data
     extract_fingerprints(db_path, work_dir, force, &store)?;
     extract_git_metrics(db_path, work_dir)?;
     extract_pattern_references(db_path, work_dir)?;
-    
+
     // Print summary
     print_summary(db_path)?;
-    
+
     Ok(())
 }
 
 /// Extract semantic fingerprints with tree-sitter
-fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool, store: &DuckDbStore) -> Result<()> {
+fn extract_fingerprints(
+    db_path: &str,
+    work_dir: &Path,
+    force: bool,
+    store: &DuckDbStore,
+) -> Result<()> {
     println!("🧠 Generating semantic fingerprints and extracting truth data...");
 
     use ignore::WalkBuilder;
@@ -143,7 +148,11 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool, store: &Duc
                 // Track skipped file
                 if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                     let file_size = entry.metadata().ok().map(|m| m.len() as usize).unwrap_or(0);
-                    let entry = skipped_files.entry(ext.to_string()).or_insert((0, 0, relative_path_str.to_string()));
+                    let entry = skipped_files.entry(ext.to_string()).or_insert((
+                        0,
+                        0,
+                        relative_path_str.to_string(),
+                    ));
                     entry.0 += 1; // count
                     entry.1 += file_size; // bytes
                 }
@@ -200,7 +209,11 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool, store: &Duc
 
         // Build list of files to process
         let mut files_to_process = Vec::new();
-        for path in changes.new_files.iter().chain(changes.modified_files.iter()) {
+        for path in changes
+            .new_files
+            .iter()
+            .chain(changes.modified_files.iter())
+        {
             let path_str = path.to_string_lossy().to_string();
             if let Some((_, lang)) = all_files.iter().find(|(f, _)| f == &path_str) {
                 files_to_process.push((path_str, *lang));
@@ -229,21 +242,21 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool, store: &Duc
             if let Some(tree) = p.parse(&source, None) {
                 // Process the AST using our new extractor
                 let results = extractor::process_tree(&tree, &source, &file, language);
-                
+
                 // Store all results
                 store.store_results(&results, &file)?;
-                
+
                 // Count symbols for reporting
                 symbol_count += results.functions.len();
                 symbol_count += results.types.len();
-                
+
                 // Update index state
                 let metadata = std::fs::metadata(&file_path)?;
                 let mtime = metadata
                     .modified()?
                     .duration_since(SystemTime::UNIX_EPOCH)?
                     .as_secs() as i64;
-                    
+
                 let update_sql = format!(
                     "INSERT OR REPLACE INTO index_state (path, mtime) VALUES ('{}', {})",
                     file, mtime
@@ -303,10 +316,7 @@ fn extract_git_metrics(db_path: &str, work_dir: &Path) -> Result<()> {
 
         if log.status.success() {
             let log_output = String::from_utf8_lossy(&log.stdout);
-            let commits: Vec<_> = log_output
-                .lines()
-                .filter(|l| !l.is_empty())
-                .collect();
+            let commits: Vec<_> = log_output.lines().filter(|l| !l.is_empty()).collect();
 
             if !commits.is_empty() {
                 file_count += 1;
@@ -423,12 +433,18 @@ fn extract_pattern_references(db_path: &str, work_dir: &Path) -> Result<()> {
         .output()
         .context("Failed to insert pattern references")?;
 
-    println!("  ✓ Extracted references from {} patterns", files.lines().count());
+    println!(
+        "  ✓ Extracted references from {} patterns",
+        files.lines().count()
+    );
     Ok(())
 }
 
 /// Save skipped files statistics to database
-fn save_skipped_files_stats(db_path: &str, skipped: &HashMap<String, (usize, usize, String)>) -> Result<()> {
+fn save_skipped_files_stats(
+    db_path: &str,
+    skipped: &HashMap<String, (usize, usize, String)>,
+) -> Result<()> {
     let mut sql = String::from("BEGIN TRANSACTION;\n");
     sql.push_str("DELETE FROM skipped_files;\n");
 
@@ -452,10 +468,14 @@ fn save_skipped_files_stats(db_path: &str, skipped: &HashMap<String, (usize, usi
 
     if let Some(mut stdin) = child.stdin.take() {
         use std::io::Write;
-        stdin.write_all(sql.as_bytes()).context("Failed to write SQL")?;
+        stdin
+            .write_all(sql.as_bytes())
+            .context("Failed to write SQL")?;
     }
 
-    let output = child.wait_with_output().context("Failed to save skipped files")?;
+    let output = child
+        .wait_with_output()
+        .context("Failed to save skipped files")?;
     if !output.status.success() {
         eprintln!("Warning: Failed to save skipped files stats");
     }

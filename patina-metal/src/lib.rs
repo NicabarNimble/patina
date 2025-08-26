@@ -275,11 +275,7 @@ impl Analyzer {
         })
     }
 
-    fn count_branches(
-        cursor: &mut tree_sitter::TreeCursor,
-        metal: Metal,
-        complexity: &mut usize,
-    ) {
+    fn count_branches(cursor: &mut tree_sitter::TreeCursor, metal: Metal, complexity: &mut usize) {
         let node = cursor.node();
         let normalized = metal.normalize_node_kind(node.kind());
 
