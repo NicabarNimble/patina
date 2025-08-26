@@ -16,10 +16,6 @@ impl FileChanges {
     pub fn is_empty(&self) -> bool {
         self.new_files.is_empty() && self.modified_files.is_empty() && self.deleted_files.is_empty()
     }
-
-    pub fn total_changes(&self) -> usize {
-        self.new_files.len() + self.modified_files.len() + self.deleted_files.len()
-    }
 }
 
 /// Detect which files have changed since last index

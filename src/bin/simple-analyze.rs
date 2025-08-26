@@ -3,6 +3,17 @@ use std::fs;
 use tree_sitter::{Node, Parser};
 use walkdir::WalkDir;
 
+struct AnalysisData {
+    total_functions: usize,
+    total_structs: usize,
+    total_traits: usize,
+    total_impls: usize,
+    function_sizes: Vec<(String, usize)>,
+    error_functions: Vec<(String, String)>,
+    public_functions: Vec<String>,
+    test_functions: Vec<String>,
+}
+
 fn main() -> Result<()> {
     println!("🔍 Simple Semantic Analysis of Patina\n");
 
@@ -12,14 +23,16 @@ fn main() -> Result<()> {
         .ok_or_else(|| anyhow::anyhow!("Rust parser not available"))?;
     parser.set_language(&language)?;
 
-    let mut total_functions = 0;
-    let mut total_structs = 0;
-    let mut total_traits = 0;
-    let mut total_impls = 0;
-    let mut function_sizes = Vec::new();
-    let mut error_functions = Vec::new();
-    let mut public_functions = Vec::new();
-    let mut test_functions = Vec::new();
+    let mut data = AnalysisData {
+        total_functions: 0,
+        total_structs: 0,
+        total_traits: 0,
+        total_impls: 0,
+        function_sizes: Vec::new(),
+        error_functions: Vec::new(),
+        public_functions: Vec::new(),
+        test_functions: Vec::new(),
+    };
 
     // Analyze all Rust files
     for entry in WalkDir::new("src")
@@ -37,83 +50,71 @@ fn main() -> Result<()> {
 
                 let file_name = path.to_str().unwrap_or("");
                 let mut cursor = tree.root_node().walk();
-                analyze_node(
-                    &mut cursor,
-                    &content,
-                    file_name,
-                    &mut total_functions,
-                    &mut total_structs,
-                    &mut total_traits,
-                    &mut total_impls,
-                    &mut function_sizes,
-                    &mut error_functions,
-                    &mut public_functions,
-                    &mut test_functions,
-                );
+                analyze_node(&mut cursor, &content, file_name, &mut data);
             }
         }
     }
 
     println!("📊 Results:\n");
-    println!("  Total functions: {}", total_functions);
-    println!("  Total structs: {}", total_structs);
-    println!("  Total traits: {}", total_traits);
-    println!("  Total impls: {}", total_impls);
+    println!("  Total functions: {}", data.total_functions);
+    println!("  Total structs: {}", data.total_structs);
+    println!("  Total traits: {}", data.total_traits);
+    println!("  Total impls: {}", data.total_impls);
 
     println!("\n📏 Function Sizes (REAL, not file size!):");
-    if !function_sizes.is_empty() {
-        function_sizes.sort_by_key(|&(_, size)| std::cmp::Reverse(size));
+    if !data.function_sizes.is_empty() {
+        data.function_sizes.sort_by_key(|&(_, size)| std::cmp::Reverse(size));
         let avg_size: usize =
-            function_sizes.iter().map(|(_, s)| s).sum::<usize>() / function_sizes.len();
+            data.function_sizes.iter().map(|(_, s)| s).sum::<usize>() / data.function_sizes.len();
         println!("  Average: {} lines", avg_size);
         println!("  Largest functions:");
-        for (name, size) in function_sizes.iter().take(5) {
+        for (name, size) in data.function_sizes.iter().take(5) {
             println!("    - {}: {} lines", name, size);
         }
 
-        let small_functions = function_sizes.iter().filter(|(_, s)| *s <= 10).count();
-        let medium_functions = function_sizes
+        let small_functions = data.function_sizes.iter().filter(|(_, s)| *s <= 10).count();
+        let medium_functions = data.function_sizes
             .iter()
             .filter(|(_, s)| *s > 10 && *s <= 50)
             .count();
-        let large_functions = function_sizes.iter().filter(|(_, s)| *s > 50).count();
+        let large_functions = data.function_sizes.iter().filter(|(_, s)| *s > 50).count();
 
         println!("\n  Distribution:");
         println!(
             "    ≤10 lines: {} functions ({:.1}%)",
             small_functions,
-            small_functions as f32 / function_sizes.len() as f32 * 100.0
+            small_functions as f32 / data.function_sizes.len() as f32 * 100.0
         );
         println!(
             "    11-50 lines: {} functions ({:.1}%)",
             medium_functions,
-            medium_functions as f32 / function_sizes.len() as f32 * 100.0
+            medium_functions as f32 / data.function_sizes.len() as f32 * 100.0
         );
         println!(
             "    >50 lines: {} functions ({:.1}%)",
             large_functions,
-            large_functions as f32 / function_sizes.len() as f32 * 100.0
+            large_functions as f32 / data.function_sizes.len() as f32 * 100.0
         );
     }
 
     println!("\n⚠️  Error Handling:");
-    println!("  Functions returning Result: {}", error_functions.len());
-    let with_context = error_functions
+    println!("  Functions returning Result: {}", data.error_functions.len());
+    let with_context = data.error_functions
         .iter()
         .filter(|(_, content)| content.contains(".context(") || content.contains(".with_context("))
         .count();
     println!("  Functions using .context(): {}", with_context);
-    let with_question = error_functions
+    let with_question = data.error_functions
         .iter()
         .filter(|(_, content)| content.contains("?"))
         .count();
     println!("  Functions using ?: {}", with_question);
 
     println!("\n🚪 API Surface:");
-    println!("  Public functions: {}", public_functions.len());
-    let public_with_result = public_functions
+    println!("  Public functions: {}", data.public_functions.len());
+    let public_with_result = data.public_functions
         .iter()
-        .filter(|name| error_functions.iter().any(|(n, _)| n == *name))
+        .filter(|name| data.error_functions.iter().any(|(n, _)| n == *name))
         .count();
     println!(
         "  Public functions returning Result: {}",
@@ -121,8 +122,8 @@ fn main() -> Result<()> {
     );
 
     println!("\n🧪 Testing:");
-    println!("  Test functions: {}", test_functions.len());
-    let test_ratio = test_functions.len() as f32 / total_functions as f32 * 100.0;
+    println!("  Test functions: {}", data.test_functions.len());
+    let test_ratio = data.test_functions.len() as f32 / data.total_functions as f32 * 100.0;
     println!("  Test ratio: {:.1}%", test_ratio);
 
     Ok(())
@@ -132,20 +133,13 @@ fn analyze_node(
     cursor: &mut tree_sitter::TreeCursor,
     source: &str,
     file_name: &str,
-    total_functions: &mut usize,
-    total_structs: &mut usize,
-    total_traits: &mut usize,
-    total_impls: &mut usize,
-    function_sizes: &mut Vec<(String, usize)>,
-    error_functions: &mut Vec<(String, String)>,
-    public_functions: &mut Vec<String>,
-    test_functions: &mut Vec<String>,
+    data: &mut AnalysisData,
 ) {
     let node = cursor.node();
 
     match node.kind() {
         "function_item" => {
-            *total_functions += 1;
+            data.total_functions += 1;
 
             if let Some(name_node) = node.child_by_field_name("name") {
                 let name = name_node
@@ -157,38 +151,38 @@ fn analyze_node(
                 let start_line = node.start_position().row;
                 let end_line = node.end_position().row;
                 let size = end_line - start_line + 1;
-                function_sizes.push((format!("{}::{}", file_name, name), size));
+                data.function_sizes.push((format!("{}::{}", file_name, name), size));
 
                 // Check if it returns Result
                 if let Some(return_type) = node.child_by_field_name("return_type") {
                     let return_text = return_type.utf8_text(source.as_bytes()).unwrap_or("");
                     if return_text.contains("Result") {
                         let body = node.utf8_text(source.as_bytes()).unwrap_or("");
-                        error_functions.push((name.clone(), body.to_string()));
+                        data.error_functions.push((name.clone(), body.to_string()));
                     }
                 }
 
                 // Check if public
                 if let Some(vis) = node.child_by_field_name("visibility") {
                     if vis.utf8_text(source.as_bytes()).unwrap_or("") == "pub" {
-                        public_functions.push(name.clone());
+                        data.public_functions.push(name.clone());
                     }
                 }
 
                 // Check if test
                 if name.starts_with("test_") || is_test_function(&node, source) {
-                    test_functions.push(name);
+                    data.test_functions.push(name);
                 }
             }
         }
         "struct_item" => {
-            *total_structs += 1;
+            data.total_structs += 1;
         }
         "trait_item" => {
-            *total_traits += 1;
+            data.total_traits += 1;
         }
         "impl_item" => {
-            *total_impls += 1;
+            data.total_impls += 1;
         }
         _ => {}
     }
@@ -196,19 +190,7 @@ fn analyze_node(
     // Recurse
     if cursor.goto_first_child() {
         loop {
-            analyze_node(
-                cursor,
-                source,
-                file_name,
-                total_functions,
-                total_structs,
-                total_traits,
-                total_impls,
-                function_sizes,
-                error_functions,
-                public_functions,
-                test_functions,
-            );
+            analyze_node(cursor, source, file_name, data);
             if !cursor.goto_next_sibling() {
                 break;
             }
