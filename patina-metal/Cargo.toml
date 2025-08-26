@@ -1,0 +1,13 @@
+[package]
+name = "patina-metal"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tree-sitter = "0.24"
+streaming-iterator = "0.1"
+anyhow = "1.0"
+once_cell = "1.19"
+
+[build-dependencies]
+cc = "1.0"

@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "patina-metal"]
+resolver = "2"
+
 [package]
 name = "patina"
 version = "0.1.0"
@@ -48,7 +52,14 @@ parking_lot = "0.12"  # Faster mutexes
 
 # Navigation command dependencies
 colored = "2"
+
+# Semantic analysis - moved to patina-metal
+patina-metal = { path = "patina-metal" }
 walkdir = "2"
+ignore = "0.4"
+
+# Tree-sitter dependencies (kept for legacy semantic module - to be removed)
+tree-sitter = "0.24"
 
 # CRDT support
 automerge = "0.5"

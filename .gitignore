@@ -22,3 +22,8 @@ modules/*/vendor/
 
 # Local development
 docker-compose.yml.backup/
+
+# Database files (should not be committed)
+*.db
+*.db-shm
+*.db-wal
