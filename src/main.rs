@@ -123,6 +123,25 @@ enum Commands {
 
     /// Connect ideas to their implementations
     Connect,
+
+    /// Build semantic knowledge database from code
+    Scrape {
+        /// Initialize the knowledge database
+        #[arg(long)]
+        init: bool,
+
+        /// Run a custom SQL query against the database
+        #[arg(long)]
+        query: Option<String>,
+
+        /// Scrape a reference repo from layer/dust/repos/<name>
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Force full re-index (ignore incremental updates)
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -290,6 +309,14 @@ fn main() -> Result<()> {
         }
         Commands::Connect => {
             commands::connect::execute()?;
+        }
+        Commands::Scrape {
+            init,
+            query,
+            repo,
+            force,
+        } => {
+            commands::scrape::execute(init, query, repo, force)?;
         }
         Commands::Doctor { json } => {
             let exit_code = commands::doctor::execute(json)?;

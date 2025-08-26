@@ -93,9 +93,13 @@ Each component does one thing well, following Unix philosophy.
 
 ### Quick Setup
 ```bash
-# Clone and build
-git clone <repo>
+# Clone with submodules (required for parser support)
+git clone --recursive <repo>
 cd patina
+
+# Or if you already cloned without --recursive:
+# git submodule update --init --recursive
+
 cargo build --release
 
 # Copy docker-compose.yml.example for rqlite
