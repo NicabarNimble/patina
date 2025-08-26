@@ -22,18 +22,22 @@ pub fn extract(
     // Look for doc comment in previous sibling
     if let Some(prev) = node.prev_sibling() {
         let is_doc = match language {
-            Language::Rust => prev.kind() == "line_comment" && {
-                prev.utf8_text(source)
-                    .unwrap_or("")
-                    .trim_start()
-                    .starts_with("///")
-            },
-            Language::Go => prev.kind() == "comment" && {
-                prev.utf8_text(source)
-                    .unwrap_or("")
-                    .trim_start()
-                    .starts_with("//")
-            },
+            Language::Rust => {
+                prev.kind() == "line_comment" && {
+                    prev.utf8_text(source)
+                        .unwrap_or("")
+                        .trim_start()
+                        .starts_with("///")
+                }
+            }
+            Language::Go => {
+                prev.kind() == "comment" && {
+                    prev.utf8_text(source)
+                        .unwrap_or("")
+                        .trim_start()
+                        .starts_with("//")
+                }
+            }
             Language::Python => {
                 // Python docstrings are the first string in the function body
                 if node.kind() == "function_definition" || node.kind() == "class_definition" {
@@ -47,8 +51,11 @@ pub fn extract(
                                         let keywords = extract_keywords(&clean);
                                         let summary = extract_summary(&clean);
                                         Some(Documentation {
-                                            has_examples: clean.contains("```") || clean.contains(">>>"),
-                                            has_params: clean.contains("Args:") || clean.contains("Parameters:") || clean.contains("@param"),
+                                            has_examples: clean.contains("```")
+                                                || clean.contains(">>>"),
+                                            has_params: clean.contains("Args:")
+                                                || clean.contains("Parameters:")
+                                                || clean.contains("@param"),
                                             doc_length: clean.len(),
                                             raw: raw.to_string(),
                                             clean,
@@ -57,28 +64,32 @@ pub fn extract(
                                         })
                                     } else {
                                         None
-                                    }
+                                    };
                                 }
                             }
                         }
                     }
                 }
                 false
-            },
-            Language::JavaScript | Language::JavaScriptJSX | 
-            Language::TypeScript | Language::TypeScriptTSX => {
+            }
+            Language::JavaScript
+            | Language::JavaScriptJSX
+            | Language::TypeScript
+            | Language::TypeScriptTSX => {
                 prev.kind() == "comment" && {
                     let text = prev.utf8_text(source).unwrap_or("");
                     text.starts_with("/**") || text.starts_with("//")
                 }
-            },
-            Language::Solidity => prev.kind() == "comment" && {
-                let text = prev.utf8_text(source).unwrap_or("");
-                text.starts_with("///") || text.starts_with("/**")
-            },
+            }
+            Language::Solidity => {
+                prev.kind() == "comment" && {
+                    let text = prev.utf8_text(source).unwrap_or("");
+                    text.starts_with("///") || text.starts_with("/**")
+                }
+            }
             _ => false,
         };
-        
+
         if is_doc {
             let raw = prev.utf8_text(source).unwrap_or("").to_string();
             let clean = clean_text(&raw, language);
@@ -86,7 +97,9 @@ pub fn extract(
             let summary = extract_summary(&clean);
             return Some(Documentation {
                 has_examples: clean.contains("```") || clean.contains("Example:"),
-                has_params: clean.contains("Parameters:") || clean.contains("@param") || clean.contains("Args:"),
+                has_params: clean.contains("Parameters:")
+                    || clean.contains("@param")
+                    || clean.contains("Args:"),
                 doc_length: clean.len(),
                 raw,
                 clean,
@@ -95,7 +108,7 @@ pub fn extract(
             });
         }
     }
-    
+
     // For languages other than Python, also check block comments above
     if language != Language::Python {
         // Walk up to find doc comments that might be separated by whitespace
@@ -105,7 +118,10 @@ pub fn extract(
                 if child.end_byte() > node.start_byte() {
                     break;
                 }
-                if child.kind() == "comment" || child.kind() == "line_comment" || child.kind() == "block_comment" {
+                if child.kind() == "comment"
+                    || child.kind() == "line_comment"
+                    || child.kind() == "block_comment"
+                {
                     let text = child.utf8_text(source).unwrap_or("");
                     let is_doc = match language {
                         Language::Rust => text.starts_with("///") || text.starts_with("//!"),
@@ -130,37 +146,30 @@ pub fn extract(
             }
         }
     }
-    
+
     None
 }
 
 /// Clean doc text by removing comment markers
 pub fn clean_text(raw: &str, language: Language) -> String {
     match language {
-        Language::Rust => {
-            raw.lines()
-                .map(|line| {
-                    line.trim_start()
-                        .strip_prefix("///")
-                        .or_else(|| line.strip_prefix("//!"))
-                        .unwrap_or(line)
-                        .trim()
-                })
-                .collect::<Vec<_>>()
-                .join(" ")
-        },
-        Language::Go | Language::Solidity => {
-            raw.lines()
-                .map(|line| {
-                    line.trim_start()
-                        .strip_prefix("//")
-                        .unwrap_or(line)
-                        .trim()
-                })
-                .filter(|line| !line.is_empty())
-                .collect::<Vec<_>>()
-                .join(" ")
-        },
+        Language::Rust => raw
+            .lines()
+            .map(|line| {
+                line.trim_start()
+                    .strip_prefix("///")
+                    .or_else(|| line.strip_prefix("//!"))
+                    .unwrap_or(line)
+                    .trim()
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+        Language::Go | Language::Solidity => raw
+            .lines()
+            .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join(" "),
         Language::Python => {
             // Remove triple quotes and clean
             raw.trim()
@@ -173,36 +182,28 @@ pub fn clean_text(raw: &str, language: Language) -> String {
                 .filter(|line| !line.is_empty())
                 .collect::<Vec<_>>()
                 .join(" ")
-        },
-        Language::JavaScript | Language::JavaScriptJSX | 
-        Language::TypeScript | Language::TypeScriptTSX => {
+        }
+        Language::JavaScript
+        | Language::JavaScriptJSX
+        | Language::TypeScript
+        | Language::TypeScriptTSX => {
             // Handle both /** */ and // comments
             if raw.starts_with("/**") {
                 raw.trim_start_matches("/**")
                     .trim_end_matches("*/")
                     .lines()
-                    .map(|line| {
-                        line.trim()
-                            .strip_prefix("*")
-                            .unwrap_or(line)
-                            .trim()
-                    })
+                    .map(|line| line.trim().strip_prefix("*").unwrap_or(line).trim())
                     .filter(|line| !line.is_empty())
                     .collect::<Vec<_>>()
                     .join(" ")
             } else {
                 raw.lines()
-                    .map(|line| {
-                        line.trim_start()
-                            .strip_prefix("//")
-                            .unwrap_or(line)
-                            .trim()
-                    })
+                    .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
                     .filter(|line| !line.is_empty())
                     .collect::<Vec<_>>()
                     .join(" ")
             }
-        },
+        }
         _ => raw.to_string(),
     }
 }
@@ -210,15 +211,14 @@ pub fn clean_text(raw: &str, language: Language) -> String {
 /// Extract keywords from documentation text
 pub fn extract_keywords(doc: &str) -> Vec<String> {
     const STOP_WORDS: &[&str] = &[
-        "the", "and", "for", "with", "this", "that", "from", "into", "will", "have",
-        "has", "can", "should", "must", "may", "might", "could", "would", "been",
-        "being", "was", "were", "are", "not", "but", "just", "only", "all", "some",
-        "any", "each", "every", "either", "neither", "both", "more", "most", "less",
-        "least", "very", "too", "also", "then", "than", "when", "where", "what",
-        "which", "who", "how", "why", "because", "since", "while", "after", "before",
-        "during", "between", "among", "through", "over", "under", "above", "below",
+        "the", "and", "for", "with", "this", "that", "from", "into", "will", "have", "has", "can",
+        "should", "must", "may", "might", "could", "would", "been", "being", "was", "were", "are",
+        "not", "but", "just", "only", "all", "some", "any", "each", "every", "either", "neither",
+        "both", "more", "most", "less", "least", "very", "too", "also", "then", "than", "when",
+        "where", "what", "which", "who", "how", "why", "because", "since", "while", "after",
+        "before", "during", "between", "among", "through", "over", "under", "above", "below",
     ];
-    
+
     let words: HashSet<String> = doc
         .split_whitespace()
         .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
@@ -226,7 +226,7 @@ pub fn extract_keywords(doc: &str) -> Vec<String> {
         .filter(|w| !STOP_WORDS.contains(&w.to_lowercase().as_str()))
         .map(|w| w.to_lowercase())
         .collect();
-    
+
     words.into_iter().collect()
 }
 
@@ -244,6 +244,6 @@ pub fn extract_summary(doc: &str) -> String {
         let limit = doc.len().min(100);
         &doc[..limit]
     };
-    
+
     summary.to_string()
 }

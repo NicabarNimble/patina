@@ -1,8 +1,8 @@
-use anyhow::{Context, Result};
-use std::process::Command;
-use std::path::Path;
 use super::{KnowledgeStore, Symbol};
 use crate::semantic::extractor::*;
+use anyhow::{Context, Result};
+use std::path::Path;
+use std::process::Command;
 
 /// DuckDB implementation of the knowledge store
 pub struct DuckDbStore {
@@ -15,7 +15,7 @@ impl DuckDbStore {
             db_path: db_path.into(),
         }
     }
-    
+
     /// Execute SQL and return output as string
     fn execute_sql(&self, sql: &str) -> Result<String> {
         let output = Command::new("duckdb")
@@ -25,20 +25,20 @@ impl DuckDbStore {
             .arg(sql)
             .output()
             .context("Failed to execute DuckDB query")?;
-        
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("DuckDB query failed: {}", stderr);
         }
-        
+
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
-    
+
     /// Execute SQL via stdin (for large queries)
     fn execute_sql_stdin(&self, sql: &str) -> Result<()> {
         use std::io::Write;
         use std::process::Stdio;
-        
+
         let mut child = Command::new("duckdb")
             .arg(&self.db_path)
             .stdin(Stdio::piped())
@@ -46,20 +46,22 @@ impl DuckDbStore {
             .stderr(Stdio::piped())
             .spawn()
             .context("Failed to start DuckDB")?;
-        
+
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(sql.as_bytes())
+            stdin
+                .write_all(sql.as_bytes())
                 .context("Failed to write SQL to DuckDB")?;
         }
-        
-        let output = child.wait_with_output()
+
+        let output = child
+            .wait_with_output()
             .context("Failed to execute DuckDB")?;
-        
+
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             anyhow::bail!("DuckDB execution failed: {}", stderr);
         }
-        
+
         Ok(())
     }
 }
@@ -70,24 +72,24 @@ impl KnowledgeStore for DuckDbStore {
         if let Some(parent) = Path::new(&self.db_path).parent() {
             std::fs::create_dir_all(parent)?;
         }
-        
+
         // Initialize schema (delegating to fingerprint module for now)
         let schema = crate::semantic::fingerprint::generate_schema();
-        
+
         // Just run the schema directly on the database file
         // DuckDB will create the file if it doesn't exist
         self.execute_sql_stdin(schema)?;
         Ok(())
     }
-    
+
     fn store_results(&self, results: &ProcessingResult, file_path: &str) -> Result<()> {
         let mut sql = String::from("BEGIN TRANSACTION;\n");
-        
+
         // Store functions - note the order matches the actual table schema
         for func in &results.functions {
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, '{}', '{}');\n",
-                func.file, func.name, 
+                func.file, func.name,
                 func.takes_mut_self, func.takes_mut_params,
                 func.returns_result, func.returns_option,
                 func.is_async, func.is_unsafe, func.is_public,
@@ -96,7 +98,7 @@ impl KnowledgeStore for DuckDbStore {
                 func.return_type.replace('\'', "''")
             ));
         }
-        
+
         // Store code_search entries
         for search in &results.code_search {
             sql.push_str(&format!(
@@ -106,16 +108,19 @@ impl KnowledgeStore for DuckDbStore {
                 search.context.replace('\'', "''")
             ));
         }
-        
+
         // Store documentation
         for doc in &results.documentation {
-            let keywords_array = format!("[{}]", 
-                doc.documentation.keywords.iter()
+            let keywords_array = format!(
+                "[{}]",
+                doc.documentation
+                    .keywords
+                    .iter()
                     .map(|k| format!("'{}'", k.replace('\'', "''")))
                     .collect::<Vec<_>>()
                     .join(", ")
             );
-            
+
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO documentation VALUES ('{}', '{}', '{}', {}, '{}', '{}', '{}', {}, {}, {}, {}, NULL);\n",
                 doc.file, doc.symbol_name, doc.symbol_type, doc.line_number,
@@ -128,41 +133,41 @@ impl KnowledgeStore for DuckDbStore {
                 doc.documentation.has_params
             ));
         }
-        
+
         // Store call graph with line numbers (escape single quotes for SQL)
         for call in &results.call_graph {
             sql.push_str(&format!(
                 "INSERT INTO call_graph (caller, callee, file, call_type, line_number) VALUES ('{}', '{}', '{}', '{}', {});\n",
-                call.caller.replace('\'', "''"), 
-                call.callee.replace('\'', "''"), 
-                file_path.replace('\'', "''"), 
-                call.call_type.as_str(), 
+                call.caller.replace('\'', "''"),
+                call.callee.replace('\'', "''"),
+                file_path.replace('\'', "''"),
+                call.call_type.as_str(),
                 call.line_number
             ));
         }
-        
+
         // Store types with all fields
         for typ in &results.types {
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', '{}', '{}', '{}');\n",
-                typ.file, typ.name, 
+                typ.file, typ.name,
                 typ.definition.replace('\'', "''"),
                 typ.kind, typ.visibility
             ));
         }
-        
+
         // Store imports with all fields
         for import in &results.imports {
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, '{}');\n",
-                import.file, 
+                import.file,
                 import.imported_item.replace('\'', "''"),
                 import.imported_from.replace('\'', "''"),
                 import.is_external,
                 import.import_kind
             ));
         }
-        
+
         // Store behavioral hints with all fields
         for hint in &results.behavioral_hints {
             sql.push_str(&format!(
@@ -173,7 +178,7 @@ impl KnowledgeStore for DuckDbStore {
                 hint.has_unsafe_block, hint.has_mutex, hint.has_arc
             ));
         }
-        
+
         // Store fingerprints with individual fields (matching original, with SQL escaping)
         for fp in &results.fingerprints {
             sql.push_str(&format!(
@@ -185,19 +190,19 @@ impl KnowledgeStore for DuckDbStore {
                 fp.fingerprint.complexity, fp.fingerprint.flags
             ));
         }
-        
+
         sql.push_str("COMMIT;\n");
-        
+
         self.execute_sql_stdin(&sql)?;
         Ok(())
     }
-    
+
     fn query_by_keywords(&self, keywords: &[&str]) -> Result<Vec<Symbol>> {
         let mut conditions = Vec::new();
         for keyword in keywords {
             conditions.push(format!("list_contains(keywords, '{}')", keyword));
         }
-        
+
         let query = format!(
             "SELECT DISTINCT 
                 d.symbol_name as name,
@@ -214,11 +219,12 @@ impl KnowledgeStore for DuckDbStore {
             LIMIT 50",
             conditions.join(" OR ")
         );
-        
+
         let output = self.execute_sql(&query)?;
         let mut symbols = Vec::new();
-        
-        for line in output.lines().skip(1) { // Skip CSV header
+
+        for line in output.lines().skip(1) {
+            // Skip CSV header
             let parts: Vec<&str> = line.split(',').collect();
             if parts.len() >= 5 {
                 symbols.push(Symbol {
@@ -232,10 +238,10 @@ impl KnowledgeStore for DuckDbStore {
                 });
             }
         }
-        
+
         Ok(symbols)
     }
-    
+
     fn get_call_graph(&self, symbol: &str) -> Result<Vec<CallRelation>> {
         let query = format!(
             "SELECT caller, callee, file, call_type, line_number 
@@ -243,10 +249,10 @@ impl KnowledgeStore for DuckDbStore {
             WHERE caller = '{}'",
             symbol
         );
-        
+
         let output = self.execute_sql(&query)?;
         let mut relations = Vec::new();
-        
+
         for line in output.lines().skip(1) {
             let parts: Vec<&str> = line.split(',').collect();
             if parts.len() >= 5 {
@@ -264,10 +270,10 @@ impl KnowledgeStore for DuckDbStore {
                 });
             }
         }
-        
+
         Ok(relations)
     }
-    
+
     fn get_call_chain(&self, entry_point: &str, max_depth: usize) -> Result<Vec<String>> {
         let query = format!(
             "WITH RECURSIVE call_chain AS (
@@ -282,19 +288,19 @@ impl KnowledgeStore for DuckDbStore {
             ORDER BY func",
             entry_point, max_depth
         );
-        
+
         let output = self.execute_sql(&query)?;
         let mut chain = Vec::new();
-        
+
         for line in output.lines().skip(1) {
             if !line.is_empty() {
                 chain.push(line.to_string());
             }
         }
-        
+
         Ok(chain)
     }
-    
+
     fn get_documentation(&self, symbol: &str) -> Result<Option<DocumentationFact>> {
         let query = format!(
             "SELECT file, symbol_name, symbol_type, line_number, 
@@ -305,9 +311,9 @@ impl KnowledgeStore for DuckDbStore {
             LIMIT 1",
             symbol
         );
-        
+
         let output = self.execute_sql(&query)?;
-        
+
         for line in output.lines().skip(1) {
             let parts: Vec<&str> = line.splitn(11, ',').collect();
             if parts.len() >= 11 {
@@ -316,11 +322,12 @@ impl KnowledgeStore for DuckDbStore {
                 let keywords: Vec<String> = if keywords_str.is_empty() {
                     Vec::new()
                 } else {
-                    keywords_str.split(',')
+                    keywords_str
+                        .split(',')
                         .map(|k| k.trim().trim_matches('\'').to_string())
                         .collect()
                 };
-                
+
                 return Ok(Some(DocumentationFact {
                     file: parts[0].to_string(),
                     symbol_name: parts[1].to_string(),
@@ -338,10 +345,10 @@ impl KnowledgeStore for DuckDbStore {
                 }));
             }
         }
-        
+
         Ok(None)
     }
-    
+
     fn get_function_facts(&self, symbol: &str) -> Result<Option<FunctionFact>> {
         let query = format!(
             "SELECT file, name, takes_mut_self, takes_mut_params, returns_result, 
@@ -352,20 +359,25 @@ impl KnowledgeStore for DuckDbStore {
             LIMIT 1",
             symbol
         );
-        
+
         let output = self.execute_sql(&query)?;
-        
+
         for line in output.lines().skip(1) {
             let parts: Vec<&str> = line.splitn(13, ',').collect();
             if parts.len() >= 13 {
                 let parameters = parts[11].to_string();
                 let return_type = parts[12].to_string();
-                let signature = format!("{}({}){}", 
+                let signature = format!(
+                    "{}({}){}",
                     parts[1], // name
                     &parameters,
-                    if !return_type.is_empty() { format!(" -> {}", return_type) } else { String::new() }
+                    if !return_type.is_empty() {
+                        format!(" -> {}", return_type)
+                    } else {
+                        String::new()
+                    }
                 );
-                
+
                 return Ok(Some(FunctionFact {
                     file: parts[0].to_string(),
                     name: parts[1].to_string(),
@@ -385,10 +397,10 @@ impl KnowledgeStore for DuckDbStore {
                 }));
             }
         }
-        
+
         Ok(None)
     }
-    
+
     fn execute_query(&self, query: &str) -> Result<String> {
         self.execute_sql(query)
     }

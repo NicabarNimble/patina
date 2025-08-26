@@ -39,22 +39,22 @@ pub fn extract_calls(
     language: Language,
 ) -> Vec<CallRelation> {
     let mut calls = Vec::new();
-    
+
     if let Some(caller) = current_function {
         // Look for different types of calls based on language
         match language {
             Language::Rust => extract_rust_calls(node, source, caller, &mut calls),
             Language::Go => extract_go_calls(node, source, caller, &mut calls),
             Language::Python => extract_python_calls(node, source, caller, &mut calls),
-            Language::JavaScript | Language::JavaScriptJSX | 
-            Language::TypeScript | Language::TypeScriptTSX => {
-                extract_js_ts_calls(node, source, caller, &mut calls)
-            },
+            Language::JavaScript
+            | Language::JavaScriptJSX
+            | Language::TypeScript
+            | Language::TypeScriptTSX => extract_js_ts_calls(node, source, caller, &mut calls),
             Language::Solidity => extract_solidity_calls(node, source, caller, &mut calls),
-            _ => {},
+            _ => {}
         }
     }
-    
+
     calls
 }
 
@@ -71,7 +71,7 @@ fn extract_rust_calls(
                     // Clean up the callee name (remove generics, etc)
                     let callee = callee.split("::").last().unwrap_or(callee);
                     let callee = callee.split('<').next().unwrap_or(callee);
-                    
+
                     calls.push(CallRelation {
                         caller: caller.to_string(),
                         callee: callee.to_string(),
@@ -80,7 +80,7 @@ fn extract_rust_calls(
                     });
                 }
             }
-        },
+        }
         "method_call_expression" => {
             if let Some(method) = node.child_by_field_name("name") {
                 if let Ok(callee) = method.utf8_text(source) {
@@ -90,7 +90,7 @@ fn extract_rust_calls(
                     } else {
                         CallType::Method
                     };
-                    
+
                     calls.push(CallRelation {
                         caller: caller.to_string(),
                         callee: callee.to_string(),
@@ -99,10 +99,10 @@ fn extract_rust_calls(
                     });
                 }
             }
-        },
-        _ => {},
+        }
+        _ => {}
     }
-    
+
     // Recurse into children
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
@@ -130,7 +130,7 @@ fn extract_go_calls(
                     } else {
                         CallType::Direct
                     };
-                    
+
                     calls.push(CallRelation {
                         caller: caller.to_string(),
                         callee: callee.to_string(),
@@ -139,7 +139,7 @@ fn extract_go_calls(
                     });
                 }
             }
-        },
+        }
         "selector_expression" => {
             // Method calls in Go
             if let Some(field) = node.child_by_field_name("field") {
@@ -152,10 +152,10 @@ fn extract_go_calls(
                     });
                 }
             }
-        },
-        _ => {},
+        }
+        _ => {}
     }
-    
+
     // Recurse
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
@@ -179,21 +179,21 @@ fn extract_python_calls(
             if let Some(function) = node.child_by_field_name("function") {
                 if let Ok(callee) = function.utf8_text(source) {
                     // Check for constructor pattern
-                    let call_type = if callee.chars().next().map_or(false, |c| c.is_uppercase()) {
+                    let call_type = if callee.chars().next().is_some_and(|c| c.is_uppercase()) {
                         CallType::Constructor
                     } else {
                         CallType::Direct
                     };
-                    
+
                     calls.push(CallRelation {
                         caller: caller.to_string(),
-                        callee: callee.split('.').last().unwrap_or(callee).to_string(),
+                        callee: callee.split('.').next_back().unwrap_or(callee).to_string(),
                         call_type,
                         line_number: node.start_position().row + 1,
                     });
                 }
             }
-        },
+        }
         "attribute" => {
             // Method calls in Python
             if let Some(attr) = node.child_by_field_name("attribute") {
@@ -206,10 +206,10 @@ fn extract_python_calls(
                     });
                 }
             }
-        },
-        _ => {},
+        }
+        _ => {}
     }
-    
+
     // Recurse
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
@@ -238,16 +238,16 @@ fn extract_js_ts_calls(
                     } else {
                         CallType::Direct
                     };
-                    
+
                     calls.push(CallRelation {
                         caller: caller.to_string(),
-                        callee: callee.split('.').last().unwrap_or(callee).to_string(),
+                        callee: callee.split('.').next_back().unwrap_or(callee).to_string(),
                         call_type,
                         line_number: node.start_position().row + 1,
                     });
                 }
             }
-        },
+        }
         "member_expression" => {
             // Method calls
             if let Some(property) = node.child_by_field_name("property") {
@@ -260,7 +260,7 @@ fn extract_js_ts_calls(
                     });
                 }
             }
-        },
+        }
         "await_expression" => {
             // Async calls
             if let Some(expr) = node.child(1) {
@@ -269,7 +269,7 @@ fn extract_js_ts_calls(
                         if let Ok(callee) = function.utf8_text(source) {
                             calls.push(CallRelation {
                                 caller: caller.to_string(),
-                                callee: callee.split('.').last().unwrap_or(callee).to_string(),
+                                callee: callee.split('.').next_back().unwrap_or(callee).to_string(),
                                 call_type: CallType::Async,
                                 line_number: node.start_position().row + 1,
                             });
@@ -277,10 +277,10 @@ fn extract_js_ts_calls(
                     }
                 }
             }
-        },
-        _ => {},
+        }
+        _ => {}
     }
-    
+
     // Recurse
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
@@ -311,7 +311,7 @@ fn extract_solidity_calls(
                     });
                 }
             }
-        },
+        }
         "member_expression" => {
             if let Some(member) = node.child_by_field_name("property") {
                 if let Ok(callee) = member.utf8_text(source) {
@@ -323,10 +323,10 @@ fn extract_solidity_calls(
                     });
                 }
             }
-        },
-        _ => {},
+        }
+        _ => {}
     }
-    
+
     // Recurse
     let mut cursor = node.walk();
     if cursor.goto_first_child() {
