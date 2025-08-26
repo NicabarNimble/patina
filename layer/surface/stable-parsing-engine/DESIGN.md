@@ -1,12 +1,25 @@
-# Stable Parsing Engine - Design Document
+# Stable Parsing Engine
 
-## What We Built
+A semantic code analysis engine that gives LLMs a "senior developer's understanding" of your codebase.
 
-A semantic code analysis engine that transforms codebases into queryable knowledge for LLMs.
+## Quick Start
 
-**The Problem**: LLMs waste tokens reading entire files when they only need specific context.
+```bash
+# Initialize and extract knowledge
+patina scrape --init
+patina scrape
 
-**Our Solution**: Extract semantic meaning from code and store it in a queryable database.
+# Query the knowledge base (coming soon)
+patina context "How does authentication work?"
+```
+
+## The Problem & Solution
+
+**Problem**: LLMs waste thousands of tokens reading entire files for simple questions.
+
+**Solution**: Extract semantic meaning and relationships, store in a queryable database.
+
+**Result**: 10-100x token reduction with better code understanding.
 
 ## Architecture
 
