@@ -63,7 +63,8 @@ fn main() -> Result<()> {
 
     println!("\n📏 Function Sizes (REAL, not file size!):");
     if !data.function_sizes.is_empty() {
-        data.function_sizes.sort_by_key(|&(_, size)| std::cmp::Reverse(size));
+        data.function_sizes
+            .sort_by_key(|&(_, size)| std::cmp::Reverse(size));
         let avg_size: usize =
             data.function_sizes.iter().map(|(_, s)| s).sum::<usize>() / data.function_sizes.len();
         println!("  Average: {} lines", avg_size);
@@ -73,7 +74,8 @@ fn main() -> Result<()> {
         }
 
         let small_functions = data.function_sizes.iter().filter(|(_, s)| *s <= 10).count();
-        let medium_functions = data.function_sizes
+        let medium_functions = data
+            .function_sizes
             .iter()
             .filter(|(_, s)| *s > 10 && *s <= 50)
             .count();
@@ -98,13 +100,18 @@ fn main() -> Result<()> {
     }
 
     println!("\n⚠️  Error Handling:");
-    println!("  Functions returning Result: {}", data.error_functions.len());
-    let with_context = data.error_functions
+    println!(
+        "  Functions returning Result: {}",
+        data.error_functions.len()
+    );
+    let with_context = data
+        .error_functions
         .iter()
         .filter(|(_, content)| content.contains(".context(") || content.contains(".with_context("))
         .count();
     println!("  Functions using .context(): {}", with_context);
-    let with_question = data.error_functions
+    let with_question = data
+        .error_functions
         .iter()
         .filter(|(_, content)| content.contains("?"))
         .count();
@@ -112,7 +119,8 @@ fn main() -> Result<()> {
 
     println!("\n🚪 API Surface:");
     println!("  Public functions: {}", data.public_functions.len());
-    let public_with_result = data.public_functions
+    let public_with_result = data
+        .public_functions
         .iter()
         .filter(|name| data.error_functions.iter().any(|(n, _)| n == *name))
         .count();
@@ -151,7 +159,8 @@ fn analyze_node(
                 let start_line = node.start_position().row;
                 let end_line = node.end_position().row;
                 let size = end_line - start_line + 1;
-                data.function_sizes.push((format!("{}::{}", file_name, name), size));
+                data.function_sizes
+                    .push((format!("{}::{}", file_name, name), size));
 
                 // Check if it returns Result
                 if let Some(return_type) = node.child_by_field_name("return_type") {
