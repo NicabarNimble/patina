@@ -59,27 +59,39 @@ impl GoExtractor {
 
 ## Proposed LLM-Optimized Architecture
 
-### Existing Files to Keep
+### How Existing Files Integrate with Scrape
 
-1. **`languages.rs`** - Critical infrastructure, heavily used:
-   - `Language` enum (Rust, Go, Python, etc.)
-   - `Language::from_path()` - Detects language from file extension
-   - `create_parser()` - Creates tree-sitter parsers for each language
-   - Used throughout scrape.rs for language detection
+1. **`languages.rs`** - Core language infrastructure:
+   - **Detection**: `Language::from_path()` identifies file language (line 353)
+   - **Parser Creation**: `create_parser(language)` creates tree-sitter parser (line 490)
+   - **Language Enum**: Passed to every extraction function as context
+   - **CRITICAL**: Our extractors will use this for parser creation
 
-2. **`fingerprint.rs`** - Partially used, provides DB schema:
-   - `generate_schema()` - Creates database tables (REQUIRED)
-   - `Fingerprint` struct - Code pattern detection (currently unused but could be useful)
-   - Generates 16-byte fingerprints from AST nodes
+2. **`fingerprint.rs`** - Database schema + pattern detection:
+   - **Schema Generation**: `generate_schema()` creates ALL database tables (line 96)
+   - **Pattern Detection**: `Fingerprint::from_ast()` generates fingerprints (lines 1388, 1415, 1426)
+   - **IMPORTANT**: Fingerprints are actually calculated and stored for functions/structs
+   - **KEEP**: Both schema and fingerprinting are actively used
 
-3. **`queries.rs`** - Completely unused, can be deleted:
-   - Contains Rust-specific tree-sitter queries
-   - Never imported anywhere in codebase
-   - Likely from abandoned experiment
+3. **`queries.rs`** - Completely unused:
+   - Never imported by scrape.rs
+   - Safe to delete
 
-4. **`mod.rs`** - Module exports, needs update:
-   - Currently just exports the 3 modules
-   - Will need to add `pub mod scrape;` after refactor
+4. **`mod.rs`** - Module exports:
+   - Will need `pub mod scrape;` added
+
+### What This Means for Our Refactor
+
+Our extractors will need to:
+1. **Use `languages.rs`** for parser creation - don't duplicate this
+2. **Keep generating fingerprints** - the current code does this for functions/structs
+3. **Preserve database schema** - `fingerprint::generate_schema()` must still be called
+
+The refactor should:
+- Move the extraction logic to language-specific files
+- Keep using the existing language detection and parser creation
+- Continue generating fingerprints where the current code does
+- Maintain the exact same database schema
 
 ### Directory Structure
 ```
