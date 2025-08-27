@@ -142,6 +142,29 @@ enum Commands {
         #[arg(long)]
         force: bool,
     },
+
+    /// Index codebase using new pipeline architecture
+    Index {
+        /// Initialize the knowledge database
+        #[arg(long)]
+        init: bool,
+
+        /// Run a custom SQL query against the database
+        #[arg(long)]
+        query: Option<String>,
+
+        /// Index a reference repo from layer/dust/repos/<name>
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Force full re-index (ignore cache)
+        #[arg(long)]
+        force: bool,
+
+        /// Verbose output
+        #[arg(long, short)]
+        verbose: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -317,6 +340,15 @@ fn main() -> Result<()> {
             force,
         } => {
             commands::scrape::execute(init, query, repo, force)?;
+        }
+        Commands::Index {
+            init,
+            query,
+            repo,
+            force,
+            verbose,
+        } => {
+            commands::index::execute(init, query, repo, force, verbose)?;
         }
         Commands::Doctor { json } => {
             let exit_code = commands::doctor::execute(json)?;
