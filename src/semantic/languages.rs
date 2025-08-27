@@ -3,7 +3,7 @@ use std::path::Path;
 use tree_sitter::Parser;
 
 /// Supported programming languages
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Language {
     Rust,
     Go,
