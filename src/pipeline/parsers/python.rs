@@ -31,6 +31,13 @@ pub fn parse_python_file(path: &Path) -> Result<AstData> {
                     line_start: symbol.start_line + 1,
                     line_end: symbol.end_line + 1,
                     doc_comment: None,
+                    // Rich analysis fields - TODO: implement
+                    signature: None,
+                    complexity: None,
+                    cognitive_complexity: None,
+                    pattern_hash: None,
+                    is_test: false,
+                    is_generated: false,
                 });
             },
             _ => {
