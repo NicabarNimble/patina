@@ -6,6 +6,7 @@ use crate::scrape::discovery::{DiscoveredFile, Language};
 
 // Language-specific extractors
 pub mod rust;
+pub mod go;
 
 /// Core semantic data structure - what we extract from source code
 #[derive(Debug, Clone)]
@@ -141,6 +142,7 @@ pub fn extract_all(files: Vec<DiscoveredFile>) -> Result<Vec<SemanticData>> {
 fn create_extractor(language: Language) -> Box<dyn LanguageExtractor> {
     match language {
         Language::Rust => Box::new(rust::RustExtractor),
+        Language::Go => Box::new(go::GoExtractor),
         // Placeholder for other languages - will implement next
         _ => Box::new(PlaceholderExtractor { language }),
     }

@@ -14,7 +14,7 @@ pub struct DatabaseRecord {
 }
 
 /// SQL value types
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SqlValue {
     Text(String),
     Integer(i64),
