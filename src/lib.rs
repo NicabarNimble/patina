@@ -4,6 +4,7 @@ pub mod environment;
 pub mod indexer;
 pub mod layer;
 pub mod memory;
+pub mod scrape;
 pub mod semantic;
 pub mod session;
 pub mod version;
