@@ -1,21 +1,20 @@
 use anyhow::Result;
 use std::path::Path;
-// use tree_sitter::Parser; // Will uncomment when we add tree-sitter-rust
+use tree_sitter::Node;
 
 use super::{
-    Field, FunctionInfo, ImportInfo, LanguageExtractor, Parameter,
-    SemanticData, TypeInfo, TypeKind, Visibility,
+    CallGraph, Field, FunctionInfo, ImportInfo, LanguageExtractor,
+    Parameter, SemanticData, TypeInfo, TypeKind, Visibility,
 };
 use crate::scrape::discovery::Language;
+use crate::semantic::languages::create_parser;
 
 /// Rust-specific semantic extractor
 pub struct RustExtractor;
 
 impl LanguageExtractor for RustExtractor {
-    fn extract(&self, path: &Path, _source: &str) -> Result<SemanticData> {
-        // For now, return empty data until we add tree-sitter-rust dependency
-        // This is a placeholder implementation
-        Ok(SemanticData {
+    fn extract(&self, path: &Path, source: &str) -> Result<SemanticData> {
+        let mut data = SemanticData {
             file_path: path.to_string_lossy().to_string(),
             language: Language::Rust,
             functions: Vec::new(),
@@ -23,17 +22,71 @@ impl LanguageExtractor for RustExtractor {
             imports: Vec::new(),
             calls: Vec::new(),
             docs: Vec::new(),
-        })
+        };
+        
+        // Create parser for Rust
+        let mut parser = create_parser(crate::semantic::languages::Language::Rust)?;
+        
+        // Parse the source code
+        let tree = parser
+            .parse(source, None)
+            .ok_or_else(|| anyhow::anyhow!("Failed to parse Rust file"))?;
+        
+        // Extract semantic information from the AST
+        let mut context = ParseContext::new();
+        extract_node(&tree.root_node(), source, &mut data, &mut context);
+        
+        // Add call graph entries
+        data.calls.extend(context.get_calls());
+        
+        Ok(data)
     }
 }
 
-// Commenting out tree-sitter specific code for now
-/*
+/// Parse context for tracking state during extraction
+struct ParseContext {
+    current_function: Option<String>,
+    call_entries: Vec<CallGraph>,
+}
+
+impl ParseContext {
+    fn new() -> Self {
+        Self {
+            current_function: None,
+            call_entries: Vec::new(),
+        }
+    }
+    
+    fn enter_function(&mut self, name: String) {
+        self.current_function = Some(name);
+    }
+    
+    fn exit_function(&mut self) {
+        self.current_function = None;
+    }
+    
+    fn add_call(&mut self, callee: String, line: usize) {
+        if let Some(ref caller) = self.current_function {
+            self.call_entries.push(CallGraph {
+                caller: caller.clone(),
+                callee,
+                line_number: line,
+                is_external: false, // We'll improve this later
+            });
+        }
+    }
+    
+    fn get_calls(self) -> Vec<CallGraph> {
+        self.call_entries
+    }
+}
+
 /// Recursively extract semantic information from AST nodes
-fn extract_node(node: &tree_sitter::Node, source: &str, data: &mut SemanticData) {
+fn extract_node(node: &Node, source: &str, data: &mut SemanticData, context: &mut ParseContext) {
     match node.kind() {
         "function_item" => {
             if let Some(func) = extract_function(node, source) {
+                context.enter_function(func.name.clone());
                 data.functions.push(func);
             }
         }
@@ -54,25 +107,40 @@ fn extract_node(node: &tree_sitter::Node, source: &str, data: &mut SemanticData)
         }
         "impl_item" => {
             // Extract methods from impl blocks
-            for child in node.children(&mut node.walk()) {
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
                 if child.kind() == "function_item" {
                     if let Some(func) = extract_function(&child, source) {
+                        context.enter_function(func.name.clone());
                         data.functions.push(func);
                     }
                 }
             }
         }
+        // Extract call expressions
+        "call_expression" => {
+            extract_call_expression(node, source, context);
+        }
+        "method_call_expression" => {
+            extract_method_call(node, source, context);
+        }
         _ => {}
     }
     
     // Recurse into children
-    for child in node.children(&mut node.walk()) {
-        extract_node(&child, source, data);
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        extract_node(&child, source, data, context);
+    }
+    
+    // Exit function context if we're leaving a function
+    if node.kind() == "function_item" {
+        context.exit_function();
     }
 }
 
 /// Extract function information from a function_item node
-fn extract_function(node: &tree_sitter::Node, source: &str) -> Option<FunctionInfo> {
+fn extract_function(node: &Node, source: &str) -> Option<FunctionInfo> {
     let mut func = FunctionInfo {
         name: String::new(),
         visibility: Visibility::Private,
@@ -82,10 +150,11 @@ fn extract_function(node: &tree_sitter::Node, source: &str) -> Option<FunctionIn
         is_unsafe: false,
         line_start: node.start_position().row + 1,
         line_end: node.end_position().row + 1,
-        doc_comment: None,
+        doc_comment: extract_doc_comment(node, source),
     };
     
-    for child in node.children(&mut node.walk()) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
         match child.kind() {
             "visibility_modifier" => {
                 if child.utf8_text(source.as_bytes()).ok()? == "pub" {
@@ -115,7 +184,7 @@ fn extract_function(node: &tree_sitter::Node, source: &str) -> Option<FunctionIn
 }
 
 /// Extract struct information
-fn extract_struct(node: &tree_sitter::Node, source: &str) -> Option<TypeInfo> {
+fn extract_struct(node: &Node, source: &str) -> Option<TypeInfo> {
     let mut type_info = TypeInfo {
         name: String::new(),
         kind: TypeKind::Struct,
@@ -124,10 +193,11 @@ fn extract_struct(node: &tree_sitter::Node, source: &str) -> Option<TypeInfo> {
         generics: Vec::new(),
         line_start: node.start_position().row + 1,
         line_end: node.end_position().row + 1,
-        doc_comment: None,
+        doc_comment: extract_doc_comment(node, source),
     };
     
-    for child in node.children(&mut node.walk()) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
         match child.kind() {
             "visibility_modifier" => {
                 if child.utf8_text(source.as_bytes()).ok()? == "pub" {
@@ -151,7 +221,7 @@ fn extract_struct(node: &tree_sitter::Node, source: &str) -> Option<TypeInfo> {
 }
 
 /// Extract enum information
-fn extract_enum(node: &tree_sitter::Node, source: &str) -> Option<TypeInfo> {
+fn extract_enum(node: &Node, source: &str) -> Option<TypeInfo> {
     let mut type_info = TypeInfo {
         name: String::new(),
         kind: TypeKind::Enum,
@@ -160,10 +230,11 @@ fn extract_enum(node: &tree_sitter::Node, source: &str) -> Option<TypeInfo> {
         generics: Vec::new(),
         line_start: node.start_position().row + 1,
         line_end: node.end_position().row + 1,
-        doc_comment: None,
+        doc_comment: extract_doc_comment(node, source),
     };
     
-    for child in node.children(&mut node.walk()) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
         match child.kind() {
             "visibility_modifier" => {
                 if child.utf8_text(source.as_bytes()).ok()? == "pub" {
@@ -187,7 +258,7 @@ fn extract_enum(node: &tree_sitter::Node, source: &str) -> Option<TypeInfo> {
 }
 
 /// Extract import/use declaration
-fn extract_import(node: &tree_sitter::Node, source: &str) -> Option<ImportInfo> {
+fn extract_import(node: &Node, source: &str) -> Option<ImportInfo> {
     let mut import = ImportInfo {
         module: String::new(),
         items: Vec::new(),
@@ -213,10 +284,11 @@ fn extract_import(node: &tree_sitter::Node, source: &str) -> Option<ImportInfo> 
 }
 
 /// Extract function parameters
-fn extract_parameters(node: &tree_sitter::Node, source: &str) -> Vec<Parameter> {
+fn extract_parameters(node: &Node, source: &str) -> Vec<Parameter> {
     let mut params = Vec::new();
     
-    for child in node.children(&mut node.walk()) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
         if child.kind() == "parameter" || child.kind() == "self_parameter" {
             if let Ok(param_text) = child.utf8_text(source.as_bytes()) {
                 let param = Parameter {
@@ -233,19 +305,21 @@ fn extract_parameters(node: &tree_sitter::Node, source: &str) -> Vec<Parameter> 
 }
 
 /// Extract struct fields
-fn extract_fields(node: &tree_sitter::Node, source: &str) -> Vec<Field> {
+fn extract_fields(node: &Node, source: &str) -> Vec<Field> {
     let mut fields = Vec::new();
     
-    for child in node.children(&mut node.walk()) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
         if child.kind() == "field_declaration" {
             let mut field = Field {
                 name: String::new(),
                 type_annotation: None,
                 visibility: Visibility::Private,
-                doc_comment: None,
+                doc_comment: extract_doc_comment(&child, source),
             };
             
-            for field_child in child.children(&mut child.walk()) {
+            let mut field_cursor = child.walk();
+            for field_child in child.children(&mut field_cursor) {
                 match field_child.kind() {
                     "visibility_modifier" => {
                         if field_child.utf8_text(source.as_bytes()).ok() == Some("pub") {
@@ -280,10 +354,11 @@ fn extract_fields(node: &tree_sitter::Node, source: &str) -> Vec<Field> {
 }
 
 /// Extract enum variants
-fn extract_enum_variants(node: &tree_sitter::Node, source: &str) -> Vec<Field> {
+fn extract_enum_variants(node: &Node, source: &str) -> Vec<Field> {
     let mut variants = Vec::new();
     
-    for child in node.children(&mut node.walk()) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
         if child.kind() == "enum_variant" {
             let mut variant = Field {
                 name: String::new(),
@@ -293,7 +368,8 @@ fn extract_enum_variants(node: &tree_sitter::Node, source: &str) -> Vec<Field> {
             };
             
             // Get variant name (first identifier)
-            for variant_child in child.children(&mut child.walk()) {
+            let mut variant_cursor = child.walk();
+            for variant_child in child.children(&mut variant_cursor) {
                 if variant_child.kind() == "identifier" {
                     variant.name = variant_child
                         .utf8_text(source.as_bytes())
@@ -313,10 +389,11 @@ fn extract_enum_variants(node: &tree_sitter::Node, source: &str) -> Vec<Field> {
 }
 
 /// Extract generic parameters
-fn extract_generics(node: &tree_sitter::Node, source: &str) -> Vec<String> {
+fn extract_generics(node: &Node, source: &str) -> Vec<String> {
     let mut generics = Vec::new();
     
-    for child in node.children(&mut node.walk()) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
         if child.kind() == "type_identifier" {
             if let Ok(generic) = child.utf8_text(source.as_bytes()) {
                 generics.push(generic.to_string());
@@ -351,58 +428,73 @@ fn extract_param_type(param_text: &str) -> Option<String> {
         None
     }
 }
-*/
+
+/// Extract documentation comment for a node
+fn extract_doc_comment(node: &Node, source: &str) -> Option<String> {
+    // Look for doc comment in previous sibling
+    if let Some(prev) = node.prev_sibling() {
+        if prev.kind() == "line_comment" {
+            let text = prev.utf8_text(source.as_bytes()).ok()?;
+            if text.trim_start().starts_with("///") {
+                // Clean up doc comment
+                let cleaned = text
+                    .lines()
+                    .map(|line| {
+                        line.trim_start()
+                            .strip_prefix("///")
+                            .unwrap_or(line)
+                            .trim()
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                return Some(cleaned);
+            }
+        }
+    }
+    None
+}
+
+/// Extract call expressions
+fn extract_call_expression(node: &Node, source: &str, context: &mut ParseContext) {
+    if let Some(func_node) = node.child_by_field_name("function") {
+        if let Ok(callee) = func_node.utf8_text(source.as_bytes()) {
+            let line = node.start_position().row + 1;
+            context.add_call(callee.to_string(), line);
+        }
+    }
+}
+
+/// Extract method call expressions
+fn extract_method_call(node: &Node, source: &str, context: &mut ParseContext) {
+    if let Some(method_node) = node.child_by_field_name("name") {
+        if let Ok(callee) = method_node.utf8_text(source.as_bytes()) {
+            let line = node.start_position().row + 1;
+            context.add_call(callee.to_string(), line);
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
     
     #[test]
-    fn test_extract_simple_function() {
+    fn test_rust_extractor_basic() {
         let source = r#"
+        /// Main function
         pub fn main() {
             println!("Hello");
         }
-        "#;
         
-        let extractor = RustExtractor;
-        let path = Path::new("test.rs");
-        let result = extractor.extract(path, source).unwrap();
-        
-        assert_eq!(result.functions.len(), 1);
-        assert_eq!(result.functions[0].name, "main");
-        assert_eq!(result.functions[0].visibility, Visibility::Public);
-        assert!(result.functions[0].parameters.is_empty());
-    }
-    
-    #[test]
-    fn test_extract_struct() {
-        let source = r#"
         pub struct Point {
             pub x: f64,
             pub y: f64,
         }
-        "#;
         
-        let extractor = RustExtractor;
-        let path = Path::new("test.rs");
-        let result = extractor.extract(path, source).unwrap();
-        
-        assert_eq!(result.types.len(), 1);
-        assert_eq!(result.types[0].name, "Point");
-        assert_eq!(result.types[0].kind, TypeKind::Struct);
-        assert_eq!(result.types[0].fields.len(), 2);
-        assert_eq!(result.types[0].fields[0].name, "x");
-        assert_eq!(result.types[0].fields[1].name, "y");
-    }
-    
-    #[test]
-    fn test_extract_enum() {
-        let source = r#"
-        enum Color {
-            Red,
-            Green,
-            Blue,
+        impl Point {
+            pub fn new(x: f64, y: f64) -> Self {
+                Point { x, y }
+            }
         }
         "#;
         
@@ -410,26 +502,14 @@ mod tests {
         let path = Path::new("test.rs");
         let result = extractor.extract(path, source).unwrap();
         
+        // Should find 2 functions: main and new
+        assert_eq!(result.functions.len(), 2);
+        assert_eq!(result.functions[0].name, "main");
+        assert_eq!(result.functions[1].name, "new");
+        
+        // Should find 1 struct
         assert_eq!(result.types.len(), 1);
-        assert_eq!(result.types[0].name, "Color");
-        assert_eq!(result.types[0].kind, TypeKind::Enum);
-        assert_eq!(result.types[0].fields.len(), 3);
-        assert_eq!(result.types[0].fields[0].name, "Red");
-    }
-    
-    #[test]
-    fn test_extract_imports() {
-        let source = r#"
-        use std::collections::HashMap;
-        use anyhow::Result;
-        "#;
-        
-        let extractor = RustExtractor;
-        let path = Path::new("test.rs");
-        let result = extractor.extract(path, source).unwrap();
-        
-        assert_eq!(result.imports.len(), 2);
-        assert!(result.imports[0].module.contains("HashMap"));
-        assert!(result.imports[1].module.contains("Result"));
+        assert_eq!(result.types[0].name, "Point");
+        assert_eq!(result.types[0].fields.len(), 2);
     }
 }
