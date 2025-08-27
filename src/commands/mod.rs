@@ -10,6 +10,7 @@ pub mod organize;
 pub mod organize_v2;
 pub mod recognize;
 pub mod scrape;
+pub mod scrape_old;
 pub mod session_analyze;
 pub mod test;
 pub mod trace;
