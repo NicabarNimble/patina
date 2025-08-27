@@ -240,14 +240,55 @@ fn test_storage() {
 }
 ```
 
-## Migration Steps
+## Migration Steps - ACTUAL STATUS
 
-1. **Day 1**: Rename old, create wrapper with env var switch
-2. **Day 2**: Create layer structure and data types
-3. **Day 3**: Implement Rust extractor as proof of concept
-4. **Day 4**: Implement remaining layers
-5. **Day 5**: Add other language extractors
-6. **Week 2**: Test and validate identical output
+1. **Day 1**: ✅ COMPLETE - Rename old, create wrapper with env var switch
+   - Old code renamed and preserved
+   - Environment variable switch works
+   - Both paths compile
+   
+2. **Day 2**: ⚠️ SKELETON ONLY - Create layer structure and data types
+   - Files exist: ✅
+   - Data structures defined: ✅ 
+   - ACTUAL FUNCTIONALITY: ❌ Returns empty data for everything
+   
+3. **Day 3**: ❌ NOT STARTED - Implement Rust extractor as proof of concept
+   - Has a RustExtractor that returns empty SemanticData
+   - NO tree-sitter-rust dependency
+   - NO actual AST parsing
+   - NO semantic extraction
+   
+4. **Day 4**: ⚠️ UNTESTED - Implement remaining layers
+   - Transform layer exists but processes empty data
+   - Storage layer exists but would store empty records
+   - Never tested with real data
+   
+5. **Day 5**: ❌ NOT STARTED - Add other language extractors
+   - No language extractors work
+   - All return empty placeholder data
+   
+6. **Week 2**: ❌ NOT STARTED - Test and validate identical output
+
+## REALITY CHECK
+
+**What Works:**
+- Environment variable switch between old/new
+- Code compiles
+- Empty architecture is in place
+
+**What Doesn't Work:**
+- NO semantic extraction (the entire point)
+- NO tree-sitter parsing
+- NO language support
+- Would produce ZERO useful data if run
+
+**To Make This Real:**
+1. Add tree-sitter-rust, tree-sitter-go, etc to Cargo.toml
+2. Actually implement the extraction logic from the old code
+3. Test that both produce IDENTICAL database content
+4. Verify queries return same results
+
+**We are ~15% complete** - We have the skeleton but no muscles or organs.
 
 ## Why This is the RIGHT Architecture
 
