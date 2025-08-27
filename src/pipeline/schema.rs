@@ -9,9 +9,13 @@ pub struct AstData {
     pub types: Vec<TypeDef>,
     pub imports: Vec<Import>,
     pub calls: Vec<Call>,
+    // Rich analysis data
+    pub fingerprints: Vec<CodeFingerprint>,
+    pub symbols: Vec<Symbol>,           // All symbols for code search
+    pub file_metrics: Option<FileMetrics>,
 }
 
-/// Function definition
+/// Function definition with rich analysis data
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Function {
     pub name: String,
@@ -25,6 +29,19 @@ pub struct Function {
     pub line_start: usize,
     pub line_end: usize,
     pub doc_comment: Option<String>,
+    // Rich analysis fields from old system
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,      // Full function signature
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub complexity: Option<u16>,         // Cyclomatic complexity
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cognitive_complexity: Option<u16>, // Cognitive complexity
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pattern_hash: Option<u32>,      // AST pattern fingerprint
+    #[serde(default)]
+    pub is_test: bool,                  // Is this a test function?
+    #[serde(default)]
+    pub is_generated: bool,              // Is this generated code?
 }
 
 /// Function parameter
@@ -87,6 +104,9 @@ impl AstData {
             types: Vec::new(),
             imports: Vec::new(),
             calls: Vec::new(),
+            fingerprints: Vec::new(),
+            symbols: Vec::new(),
+            file_metrics: None,
         }
     }
     
@@ -98,4 +118,38 @@ impl AstData {
             .to_string();
         Self::new(file, language)
     }
+}
+
+/// Code fingerprint for pattern matching and similarity analysis
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CodeFingerprint {
+    pub name: String,
+    pub kind: String,  // "function", "type", "module", etc.
+    pub pattern: u32,  // AST shape hash
+    pub imports: u32,  // Dependency hash  
+    pub complexity: u16, // Cyclomatic complexity
+    pub flags: u16,    // Feature flags (async, unsafe, etc.)
+}
+
+/// Symbol for code search
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Symbol {
+    pub name: String,
+    pub kind: String,  // "function", "struct", "trait", "variable", etc.
+    pub signature: Option<String>,
+    pub context: Option<String>,  // Surrounding context for search
+    pub line: usize,
+}
+
+/// File-level metrics
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FileMetrics {
+    pub total_lines: usize,
+    pub code_lines: usize,
+    pub comment_lines: usize,
+    pub blank_lines: usize,
+    pub complexity_sum: u32,
+    pub max_complexity: u16,
+    pub function_count: usize,
+    pub type_count: usize,
 }
