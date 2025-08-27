@@ -59,6 +59,28 @@ impl GoExtractor {
 
 ## Proposed LLM-Optimized Architecture
 
+### Existing Files to Keep
+
+1. **`languages.rs`** - Critical infrastructure, heavily used:
+   - `Language` enum (Rust, Go, Python, etc.)
+   - `Language::from_path()` - Detects language from file extension
+   - `create_parser()` - Creates tree-sitter parsers for each language
+   - Used throughout scrape.rs for language detection
+
+2. **`fingerprint.rs`** - Partially used, provides DB schema:
+   - `generate_schema()` - Creates database tables (REQUIRED)
+   - `Fingerprint` struct - Code pattern detection (currently unused but could be useful)
+   - Generates 16-byte fingerprints from AST nodes
+
+3. **`queries.rs`** - Completely unused, can be deleted:
+   - Contains Rust-specific tree-sitter queries
+   - Never imported anywhere in codebase
+   - Likely from abandoned experiment
+
+4. **`mod.rs`** - Module exports, needs update:
+   - Currently just exports the 3 modules
+   - Will need to add `pub mod scrape;` after refactor
+
 ### Directory Structure
 ```
 src/semantic/
@@ -77,7 +99,10 @@ src/semantic/
 │       ├── javascript_extractor.rs # JS/JSX logic (400 lines)
 │       ├── typescript_extractor.rs # TS/TSX logic (400 lines)
 │       └── solidity_extractor.rs   # ALL Solidity logic (300 lines)
-└── [existing files unchanged]
+├── fingerprint.rs  # (KEEP) Code fingerprinting, provides DB schema
+├── languages.rs    # (KEEP) Language enum, file detection, parser creation
+├── queries.rs      # (UNUSED) Could be deleted - tree-sitter queries never used
+└── mod.rs          # (UPDATE) Will export new scrape module
 ```
 
 ### Minimal Trait (One Simple Interface)
