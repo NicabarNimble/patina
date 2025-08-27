@@ -1,0 +1,8 @@
+{
+  "calls": [],
+  "file": "./src/adapters/claude/mod.rs",
+  "functions": [],
+  "imports": [],
+  "language": "rust",
+  "types": []
+}

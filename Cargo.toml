@@ -72,6 +72,10 @@ tempfile = "3.14"
 name = "patina"
 path = "src/main.rs"
 
+[[bin]]
+name = "patina-index"
+path = "src/bin/patina-index.rs"
+
 [lib]
 name = "patina"
 path = "src/lib.rs"

@@ -1,0 +1,8 @@
+{
+  "calls": [],
+  "file": "./patina-metal/grammars/solidity/src/tree_sitter/parser.h",
+  "functions": [],
+  "imports": [],
+  "language": "c",
+  "types": []
+}

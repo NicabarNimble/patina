@@ -1,0 +1,68 @@
+{
+  "file": "./src/pipeline/parsers/mod.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "parse_file",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 9,
+      "line_end": 19,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "super::schema::AstData",
+      "items": [],
+      "alias": null,
+      "line": 6
+    }
+  ],
+  "calls": [
+    {
+      "target": "super::discovery::detect_language",
+      "caller": "parse_file",
+      "line": 10,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "rust::parse_rust_file",
+      "caller": "parse_file",
+      "line": 13,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "parse_file",
+      "line": 16,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "AstData::from_path",
+      "caller": "parse_file",
+      "line": 16,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}
