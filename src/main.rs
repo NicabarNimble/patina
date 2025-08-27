@@ -316,7 +316,7 @@ fn main() -> Result<()> {
             repo,
             force,
         } => {
-            commands::scrape::execute(init, query, repo, force)?;
+            commands::scrape::run(init, query, repo, force)?;
         }
         Commands::Doctor { json } => {
             let exit_code = commands::doctor::execute(json)?;
