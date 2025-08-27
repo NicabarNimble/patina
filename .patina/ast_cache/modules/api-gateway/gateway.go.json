@@ -1,0 +1,8 @@
+{
+  "calls": [],
+  "file": "./modules/api-gateway/gateway.go",
+  "functions": [],
+  "imports": [],
+  "language": "go",
+  "types": []
+}
