@@ -1,8 +1,15 @@
 {
-  "calls": [],
   "file": "./patina-metal/grammars/javascript/eslint.config.mjs",
-  "functions": [],
-  "imports": [],
   "language": "javascript",
-  "types": []
+  "functions": [],
+  "types": [],
+  "imports": [
+    {
+      "path": "import treesitter from 'eslint-config-treesitter';",
+      "items": [],
+      "alias": null,
+      "line": 1
+    }
+  ],
+  "calls": []
 }

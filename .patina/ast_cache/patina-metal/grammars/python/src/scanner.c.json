@@ -1,8 +1,8 @@
 {
-  "calls": [],
   "file": "./patina-metal/grammars/python/src/scanner.c",
-  "functions": [],
-  "imports": [],
   "language": "c",
-  "types": []
+  "functions": [],
+  "types": [],
+  "imports": [],
+  "calls": []
 }

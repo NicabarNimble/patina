@@ -1,8 +1,1202 @@
 {
-  "calls": [],
   "file": "./src/indexer/internal/git_detection.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "detect_file_state",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 14,
+      "line_end": 74,
+      "doc_comment": null
+    },
+    {
+      "name": "detect_committed_state",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 77,
+      "line_end": 131,
+      "doc_comment": null
+    },
+    {
+      "name": "is_commit_pushed",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 134,
+      "line_end": 142,
+      "doc_comment": null
+    },
+    {
+      "name": "get_push_info",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 145,
+      "line_end": 162,
+      "doc_comment": null
+    },
+    {
+      "name": "detect_batch_states",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 165,
+      "line_end": 209,
+      "doc_comment": null
+    },
+    {
+      "name": "parse_status_output",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 212,
+      "line_end": 254,
+      "doc_comment": null
+    },
+    {
+      "name": "is_git_available",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 257,
+      "line_end": 263,
+      "doc_comment": null
+    },
+    {
+      "name": "get_current_branch",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 266,
+      "line_end": 274,
+      "doc_comment": null
+    },
+    {
+      "name": "test_git_available",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 281,
+      "line_end": 285,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "super::GitState",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 7
+    },
+    {
+      "path": "chrono::Utc",
+      "items": [],
+      "alias": null,
+      "line": 8
+    },
+    {
+      "path": "std::collections::HashMap",
+      "items": [],
+      "alias": null,
+      "line": 9
+    },
+    {
+      "path": "std::path::{Path, PathBuf}",
+      "items": [],
+      "alias": null,
+      "line": 10
+    },
+    {
+      "path": "std::process::Command",
+      "items": [],
+      "alias": null,
+      "line": 11
+    },
+    {
+      "path": "super::*",
+      "items": [],
+      "alias": null,
+      "line": 278
+    }
+  ],
+  "calls": [
+    {
+      "target": "unwrap_or",
+      "caller": "detect_file_state",
+      "line": 16,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "strip_prefix",
+      "caller": "detect_file_state",
+      "line": 16,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "detect_file_state",
+      "line": 19,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "detect_file_state",
+      "line": 19,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "detect_file_state",
+      "line": 19,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "detect_file_state",
+      "line": 19,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "detect_file_state",
+      "line": 19,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "detect_file_state",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "detect_file_state",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "detect_file_state",
+      "line": 30,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_file_state",
+      "line": 32,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "detect_file_state",
+      "line": 33,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_file_state",
+      "line": 34,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "detect_file_state",
+      "line": 38,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "detect_file_state",
+      "line": 39,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "detect_committed_state",
+      "caller": "detect_file_state",
+      "line": 45,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "detect_file_state",
+      "line": 47,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_file_state",
+      "line": 47,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "detect_file_state",
+      "line": 48,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_file_state",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "detect_file_state",
+      "line": 51,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "detect_file_state",
+      "line": 51,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_file_state",
+      "line": 51,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_file_state",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "detect_file_state",
+      "line": 53,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "detect_file_state",
+      "line": 55,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_file_state",
+      "line": 55,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_file_state",
+      "line": 56,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "detect_file_state",
+      "line": 58,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "detect_file_state",
+      "line": 60,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_file_state",
+      "line": 60,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_file_state",
+      "line": 61,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "detect_file_state",
+      "line": 63,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_file_state",
+      "line": 67,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_file_state",
+      "line": 68,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "detect_file_state",
+      "line": 70,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "detect_committed_state",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "detect_committed_state",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "detect_committed_state",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "detect_committed_state",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "detect_committed_state",
+      "line": 79,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "detect_committed_state",
+      "line": 86,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "detect_committed_state",
+      "line": 86,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "detect_committed_state",
+      "line": 91,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_committed_state",
+      "line": 93,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "detect_committed_state",
+      "line": 94,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_committed_state",
+      "line": 95,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "detect_committed_state",
+      "line": 99,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "detect_committed_state",
+      "line": 100,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "detect_committed_state",
+      "line": 100,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "detect_committed_state",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_committed_state",
+      "line": 103,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_committed_state",
+      "line": 104,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_else",
+      "caller": "detect_committed_state",
+      "line": 105,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "detect_committed_state",
+      "line": 105,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "detect_committed_state",
+      "line": 105,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_commit_pushed",
+      "caller": "detect_committed_state",
+      "line": 108,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_push_info",
+      "caller": "detect_committed_state",
+      "line": 109,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_committed_state",
+      "line": 110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_committed_state",
+      "line": 116,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_committed_state",
+      "line": 120,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_committed_state",
+      "line": 124,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_committed_state",
+      "line": 125,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_committed_state",
+      "line": 126,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "detect_committed_state",
+      "line": 127,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_committed_state",
+      "line": 128,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "is_commit_pushed",
+      "line": 135,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "is_commit_pushed",
+      "line": 135,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "is_commit_pushed",
+      "line": 135,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "is_commit_pushed",
+      "line": 135,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "is_commit_pushed",
+      "line": 135,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "is_commit_pushed",
+      "line": 141,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "is_commit_pushed",
+      "line": 141,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "get_push_info",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_push_info",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_push_info",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "get_push_info",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_push_info",
+      "line": 146,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_push_info",
+      "line": 152,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "get_push_info",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "next",
+      "caller": "get_push_info",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "get_push_info",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "get_push_info",
+      "line": 156,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "get_push_info",
+      "line": 156,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_push_info",
+      "line": 156,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "get_push_info",
+      "line": 157,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_push_info",
+      "line": 158,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_push_info",
+      "line": 158,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "get_push_info",
+      "line": 158,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_push_info",
+      "line": 160,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_push_info",
+      "line": 160,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_push_info",
+      "line": 160,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "detect_batch_states",
+      "line": 169,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "detect_batch_states",
+      "line": 172,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "detect_batch_states",
+      "line": 172,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "detect_batch_states",
+      "line": 172,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "detect_batch_states",
+      "line": 172,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "detect_batch_states",
+      "line": 172,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "detect_batch_states",
+      "line": 178,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "detect_batch_states",
+      "line": 181,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "detect_batch_states",
+      "line": 182,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "detect_batch_states",
+      "line": 184,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_batch_states",
+      "line": 185,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_batch_states",
+      "line": 189,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "parse_status_output",
+      "caller": "detect_batch_states",
+      "line": 193,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "detect_batch_states",
+      "line": 197,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "strip_prefix",
+      "caller": "detect_batch_states",
+      "line": 197,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "detect_batch_states",
+      "line": 199,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "detect_batch_states",
+      "line": 200,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "detect_batch_states",
+      "line": 200,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "detect_batch_states",
+      "line": 200,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "detect_committed_state",
+      "caller": "detect_batch_states",
+      "line": 203,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "detect_batch_states",
+      "line": 204,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "detect_batch_states",
+      "line": 204,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_batch_states",
+      "line": 208,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "parse_status_output",
+      "line": 213,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "parse_status_output",
+      "line": 214,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "parse_status_output",
+      "line": 216,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "parse_status_output",
+      "line": 217,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "parse_status_output",
+      "line": 222,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "parse_status_output",
+      "line": 222,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "parse_status_output",
+      "line": 226,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "parse_status_output",
+      "line": 227,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "parse_status_output",
+      "line": 230,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "parse_status_output",
+      "line": 231,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "parse_status_output",
+      "line": 234,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "parse_status_output",
+      "line": 236,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "parse_status_output",
+      "line": 239,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "parse_status_output",
+      "line": 241,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "parse_status_output",
+      "line": 244,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "parse_status_output",
+      "line": 246,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "parse_status_output",
+      "line": 250,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "parse_status_output",
+      "line": 253,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "is_git_available",
+      "line": 258,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "is_git_available",
+      "line": 258,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "is_git_available",
+      "line": 258,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "is_git_available",
+      "line": 258,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "is_git_available",
+      "line": 258,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "is_git_available",
+      "line": 261,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "get_current_branch",
+      "line": 267,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_current_branch",
+      "line": 267,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_current_branch",
+      "line": 267,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "get_current_branch",
+      "line": 267,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_current_branch",
+      "line": 267,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_current_branch",
+      "line": 273,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_current_branch",
+      "line": 273,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_current_branch",
+      "line": 273,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_current_branch",
+      "line": 273,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_git_available",
+      "caller": "test_git_available",
+      "line": 283,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "test_git_available",
+      "line": 284,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

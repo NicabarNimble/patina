@@ -1,8 +1,80 @@
 {
-  "calls": [],
   "file": "./src/config.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "load",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 15,
+      "line_end": 26,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "Config",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 6,
+      "line_end": 11,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "std::path::PathBuf",
+      "items": [],
+      "alias": null,
+      "line": 2
+    }
+  ],
+  "calls": [
+    {
+      "target": "std::env::current_dir",
+      "caller": "load",
+      "line": 16,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "load",
+      "line": 17,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "load",
+      "line": 17,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::create_dir_all",
+      "caller": "load",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "load",
+      "line": 22,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

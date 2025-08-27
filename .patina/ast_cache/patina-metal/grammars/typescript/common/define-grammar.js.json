@@ -1,8 +1,4020 @@
 {
-  "calls": [],
   "file": "./patina-metal/grammars/typescript/common/define-grammar.js",
-  "functions": [],
-  "imports": [],
   "language": "javascript",
-  "types": []
+  "functions": [
+    {
+      "name": "defineGrammar",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 3,
+      "line_end": 1099,
+      "doc_comment": null
+    },
+    {
+      "name": "commaSep1",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 1109,
+      "line_end": 1111,
+      "doc_comment": null
+    },
+    {
+      "name": "commaSep",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 1121,
+      "line_end": 1123,
+      "doc_comment": null
+    },
+    {
+      "name": "sepBy",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 1134,
+      "line_end": 1136,
+      "doc_comment": null
+    },
+    {
+      "name": "sepBy1",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 1147,
+      "line_end": 1149,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [],
+  "calls": [
+    {
+      "target": "require",
+      "caller": "<module>",
+      "line": 1,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "grammar",
+      "caller": "<module>",
+      "line": 4,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "concat",
+      "caller": "<module>",
+      "line": 7,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "concat",
+      "caller": "<module>",
+      "line": 12,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "concat",
+      "caller": "<module>",
+      "line": 17,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "concat",
+      "caller": "<module>",
+      "line": 73,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "concat",
+      "caller": "<module>",
+      "line": 73,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "concat",
+      "caller": "<module>",
+      "line": 123,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "<module>",
+      "line": 123,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "includes",
+      "caller": "<module>",
+      "line": 124,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 134,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "repeat",
+      "caller": "<module>",
+      "line": 135,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 135,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 136,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 136,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 137,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 137,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 138,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 138,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 140,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 141,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 141,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 141,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 141,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 142,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 142,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 142,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 143,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 143,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 143,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 144,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 146,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 147,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 147,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 148,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 148,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 149,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 153,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 155,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 156,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 158,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 160,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 162,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 165,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 170,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 173,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 174,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 174,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 175,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 175,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 176,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 176,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 177,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 179,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 179,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 180,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 180,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 181,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 183,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 183,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 184,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 186,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 186,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 187,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "right",
+      "caller": "<module>",
+      "line": 191,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 191,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 193,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 194,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 194,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 195,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 195,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "right",
+      "caller": "<module>",
+      "line": 198,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 198,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 199,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 200,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 200,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 202,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 205,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 207,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 209,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "<module>",
+      "line": 225,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "<module>",
+      "line": 226,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "<module>",
+      "line": 226,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "<module>",
+      "line": 230,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 235,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 238,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 240,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 241,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 242,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 243,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 243,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 247,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 248,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 248,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 250,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 252,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 252,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "repeat",
+      "caller": "<module>",
+      "line": 255,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 255,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "dynamic",
+      "caller": "<module>",
+      "line": 261,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 261,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "dynamic",
+      "caller": "<module>",
+      "line": 267,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 267,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 272,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 273,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 273,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 277,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 277,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 279,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 280,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 280,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 281,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 282,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 283,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 284,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 284,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 284,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 286,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 291,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 291,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 293,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 296,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 298,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 298,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 300,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 308,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 310,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 310,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 311,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 312,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 314,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 316,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 320,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 322,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 326,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 329,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 330,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "left",
+      "caller": "<module>",
+      "line": 333,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 333,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 337,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 338,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 339,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 339,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 340,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 340,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 341,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 343,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 343,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 344,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 346,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 350,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 351,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 352,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 353,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 354,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 355,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 356,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 356,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 357,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 358,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 362,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 363,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 365,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 366,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 366,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 367,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 368,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 372,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 374,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 375,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 375,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 375,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 381,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 386,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 387,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 389,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 391,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 394,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 396,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 398,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 399,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 400,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 404,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 404,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 405,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 405,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 407,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 409,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 409,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 410,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 413,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 415,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 417,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 418,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 423,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "repeat",
+      "caller": "<module>",
+      "line": 425,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 425,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 426,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "repeat",
+      "caller": "<module>",
+      "line": 427,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 427,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 429,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 439,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 439,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 441,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 442,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 448,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "left",
+      "caller": "<module>",
+      "line": 455,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 455,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 456,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 457,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 458,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 459,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 460,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 461,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 461,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 462,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 463,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 465,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 468,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 473,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "left",
+      "caller": "<module>",
+      "line": 481,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 481,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "left",
+      "caller": "<module>",
+      "line": 486,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 486,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 489,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "left",
+      "caller": "<module>",
+      "line": 492,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 492,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 498,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 498,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 500,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 503,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 504,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 504,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 508,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 513,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 517,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "commaSep1",
+      "caller": "<module>",
+      "line": 519,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 522,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 522,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 523,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 524,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 524,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 527,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "commaSep1",
+      "caller": "<module>",
+      "line": 529,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 532,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 534,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 536,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 537,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 537,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 541,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 541,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "repeat",
+      "caller": "<module>",
+      "line": 542,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 542,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 544,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 544,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 545,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 545,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 546,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 547,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 550,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 550,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "repeat",
+      "caller": "<module>",
+      "line": 551,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 551,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 554,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 555,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 555,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 556,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 557,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "left",
+      "caller": "<module>",
+      "line": 560,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 560,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "repeat",
+      "caller": "<module>",
+      "line": 561,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 561,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 563,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 564,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 564,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 565,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 566,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 567,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 570,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 575,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "right",
+      "caller": "<module>",
+      "line": 580,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 580,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 581,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 581,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 584,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 584,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 587,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 591,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 595,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 595,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 596,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 596,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 598,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 601,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 603,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 604,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 604,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 605,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 606,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 606,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 609,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "commaSep1",
+      "caller": "<module>",
+      "line": 611,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 611,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 611,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 618,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 619,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 621,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 622,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 625,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 627,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 627,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "sepBy1",
+      "caller": "<module>",
+      "line": 628,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 628,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 629,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 632,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 637,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 638,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 642,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 644,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 645,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 645,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 647,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 651,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 659,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 661,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 661,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 662,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 665,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 668,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 668,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 669,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 672,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "repeat",
+      "caller": "<module>",
+      "line": 673,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 673,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 674,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 675,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 676,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 677,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 677,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 680,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 681,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 682,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 683,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 694,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 695,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 695,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 697,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 698,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 701,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 701,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 703,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 706,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 707,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 707,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 709,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 711,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 714,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 716,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 719,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 720,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 723,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 729,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 729,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 730,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 730,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 733,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 734,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 734,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 735,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 738,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 739,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 741,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 744,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 745,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 747,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 748,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 749,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "left",
+      "caller": "<module>",
+      "line": 755,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 755,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 756,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 758,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 758,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 759,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 761,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 764,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 776,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 787,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 787,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 789,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "repeat",
+      "caller": "<module>",
+      "line": 791,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 791,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 792,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "right",
+      "caller": "<module>",
+      "line": 798,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 798,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 801,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 801,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "right",
+      "caller": "<module>",
+      "line": 807,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 807,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 808,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 810,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 812,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 814,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prec",
+      "caller": "<module>",
+      "line": 817,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 817,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 818,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 818,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 822,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 825,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 826,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 826,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 834,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 837,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 840,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 841,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 845,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 846,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 846,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 849,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 850,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 851,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 853,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 854,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 854,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 856,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 859,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 860,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 860,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 863,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 864,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 865,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 867,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 868,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 868,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 870,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 871,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 871,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 874,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 875,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 877,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 879,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 880,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 880,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 883,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 884,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 886,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "right",
+      "caller": "<module>",
+      "line": 888,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 888,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 890,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 891,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 892,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 893,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 894,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 900,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 905,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 912,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 913,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 915,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 916,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 916,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 916,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 919,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 920,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "left",
+      "caller": "<module>",
+      "line": 929,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 929,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 930,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 930,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 931,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "right",
+      "caller": "<module>",
+      "line": 936,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 936,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 938,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 940,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 946,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 946,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 954,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "commaSep1",
+      "caller": "<module>",
+      "line": 956,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 957,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 961,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 962,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 963,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 963,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 964,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 964,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "sepBy1",
+      "caller": "<module>",
+      "line": 965,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 966,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 967,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 976,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 976,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 978,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 983,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 984,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 985,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 986,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 987,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 988,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 989,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 990,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 990,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 993,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 994,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 994,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 995,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 996,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 996,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 997,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1001,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "commaSep1",
+      "caller": "<module>",
+      "line": 1002,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 1002,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1005,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 1006,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 1007,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 1008,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 1008,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 1009,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 1009,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1012,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1017,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 1018,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1022,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 1023,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 1025,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 1025,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 1026,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 1027,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 1027,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1030,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 1031,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1032,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 1033,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 1033,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 1033,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 1038,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1039,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 1040,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 1040,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 1042,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 1045,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 1050,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 1050,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1058,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1059,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "commaSep",
+      "caller": "<module>",
+      "line": 1060,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 1060,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1062,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "left",
+      "caller": "<module>",
+      "line": 1064,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1064,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 1064,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "left",
+      "caller": "<module>",
+      "line": 1065,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1065,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 1065,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "left",
+      "caller": "<module>",
+      "line": 1067,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "<module>",
+      "line": 1067,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 1068,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "<module>",
+      "line": 1068,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 1069,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "field",
+      "caller": "<module>",
+      "line": 1071,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 1071,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "alias",
+      "caller": "<module>",
+      "line": 1074,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "choice",
+      "caller": "<module>",
+      "line": 1076,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "sepBy1",
+      "caller": "commaSep1",
+      "line": 1110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "sepBy",
+      "caller": "commaSep",
+      "line": 1122,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "optional",
+      "caller": "sepBy",
+      "line": 1135,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "sepBy1",
+      "caller": "sepBy",
+      "line": 1135,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "sepBy1",
+      "line": 1148,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "repeat",
+      "caller": "sepBy1",
+      "line": 1148,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "seq",
+      "caller": "sepBy1",
+      "line": 1148,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

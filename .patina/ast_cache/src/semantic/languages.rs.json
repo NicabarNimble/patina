@@ -1,8 +1,455 @@
 {
-  "calls": [],
   "file": "./src/semantic/languages.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "from_path",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 21,
+      "line_end": 33,
+      "doc_comment": null
+    },
+    {
+      "name": "to_metal",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 36,
+      "line_end": 46,
+      "doc_comment": null
+    },
+    {
+      "name": "file_pattern",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 49,
+      "line_end": 61,
+      "doc_comment": null
+    },
+    {
+      "name": "normalize_node_kind",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 64,
+      "line_end": 124,
+      "doc_comment": null
+    },
+    {
+      "name": "create_parser",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 128,
+      "line_end": 143,
+      "doc_comment": null
+    },
+    {
+      "name": "create_parser_for_path",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 146,
+      "line_end": 164,
+      "doc_comment": null
+    },
+    {
+      "name": "detect_languages",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 167,
+      "line_end": 194,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "tree_sitter::Parser",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "std::collections::HashSet",
+      "items": [],
+      "alias": null,
+      "line": 168
+    }
+  ],
+  "calls": [
+    {
+      "target": "and_then",
+      "caller": "from_path",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extension",
+      "caller": "from_path",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "from_path",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "to_metal",
+      "line": 38,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "to_metal",
+      "line": 39,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "to_metal",
+      "line": 40,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "to_metal",
+      "line": 41,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "to_metal",
+      "line": 42,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "to_metal",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok_or_else",
+      "caller": "create_parser",
+      "line": 129,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_metal",
+      "caller": "create_parser",
+      "line": 129,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "create_parser",
+      "line": 131,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok_or_else",
+      "caller": "create_parser",
+      "line": 133,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "tree_sitter_language",
+      "caller": "create_parser",
+      "line": 133,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "create_parser",
+      "line": 135,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Parser::new",
+      "caller": "create_parser",
+      "line": 137,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "create_parser",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "set_language",
+      "caller": "create_parser",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "create_parser",
+      "line": 142,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Language::from_path",
+      "caller": "create_parser_for_path",
+      "line": 147,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok_or_else",
+      "caller": "create_parser_for_path",
+      "line": 148,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_metal",
+      "caller": "create_parser_for_path",
+      "line": 148,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "create_parser_for_path",
+      "line": 150,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "create_parser_for_path",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "create_parser_for_path",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extension",
+      "caller": "create_parser_for_path",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "create_parser_for_path",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ok_or_else",
+      "caller": "create_parser_for_path",
+      "line": 154,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "tree_sitter_language_for_ext",
+      "caller": "create_parser_for_path",
+      "line": 154,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "create_parser_for_path",
+      "line": 156,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Parser::new",
+      "caller": "create_parser_for_path",
+      "line": 158,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "create_parser_for_path",
+      "line": 159,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "set_language",
+      "caller": "create_parser_for_path",
+      "line": 159,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "create_parser_for_path",
+      "line": 163,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashSet::new",
+      "caller": "detect_languages",
+      "line": 169,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "detect_languages",
+      "line": 171,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter_map",
+      "caller": "detect_languages",
+      "line": 171,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "into_iter",
+      "caller": "detect_languages",
+      "line": 171,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "walkdir::WalkDir::new",
+      "caller": "detect_languages",
+      "line": 171,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok",
+      "caller": "detect_languages",
+      "line": 173,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_file",
+      "caller": "detect_languages",
+      "line": 174,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file_type",
+      "caller": "detect_languages",
+      "line": 174,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Language::from_path",
+      "caller": "detect_languages",
+      "line": 176,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "detect_languages",
+      "line": 176,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "detect_languages",
+      "line": 178,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_languages",
+      "line": 182,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "detect_languages",
+      "line": 182,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "detect_languages",
+      "line": 182,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "into_iter",
+      "caller": "detect_languages",
+      "line": 182,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
 }

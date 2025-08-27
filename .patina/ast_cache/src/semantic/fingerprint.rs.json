@@ -1,8 +1,655 @@
 {
-  "calls": [],
   "file": "./src/semantic/fingerprint.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "from_ast",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 16,
+      "line_end": 28,
+      "doc_comment": null
+    },
+    {
+      "name": "to_bytes",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 31,
+      "line_end": 39,
+      "doc_comment": null
+    },
+    {
+      "name": "from_bytes",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 42,
+      "line_end": 49,
+      "doc_comment": null
+    },
+    {
+      "name": "hash_ast_shape",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 53,
+      "line_end": 57,
+      "doc_comment": null
+    },
+    {
+      "name": "hash_node_shape",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 59,
+      "line_end": 73,
+      "doc_comment": null
+    },
+    {
+      "name": "hash_imports",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 76,
+      "line_end": 82,
+      "doc_comment": null
+    },
+    {
+      "name": "find_imports",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 84,
+      "line_end": 102,
+      "doc_comment": null
+    },
+    {
+      "name": "calculate_complexity",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 105,
+      "line_end": 111,
+      "doc_comment": null
+    },
+    {
+      "name": "count_branches",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 113,
+      "line_end": 136,
+      "doc_comment": null
+    },
+    {
+      "name": "detect_features",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 139,
+      "line_end": 145,
+      "doc_comment": null
+    },
+    {
+      "name": "detect_features_recursive",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 147,
+      "line_end": 180,
+      "doc_comment": null
+    },
+    {
+      "name": "generate_schema",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 183,
+      "line_end": 315,
+      "doc_comment": null
+    },
+    {
+      "name": "test_fingerprint_serialization",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 322,
+      "line_end": 334,
+      "doc_comment": null
+    },
+    {
+      "name": "test_feature_flags",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 337,
+      "line_end": 346,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "Fingerprint",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 7,
+      "line_end": 12,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "std::collections::hash_map::DefaultHasher",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "std::hash::{Hash, Hasher}",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "tree_sitter::Node",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "super::*",
+      "items": [],
+      "alias": null,
+      "line": 319
+    }
+  ],
+  "calls": [
+    {
+      "target": "hash_ast_shape",
+      "caller": "from_ast",
+      "line": 17,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "hash_imports",
+      "caller": "from_ast",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "calculate_complexity",
+      "caller": "from_ast",
+      "line": 19,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "detect_features",
+      "caller": "from_ast",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "copy_from_slice",
+      "caller": "to_bytes",
+      "line": 33,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_le_bytes",
+      "caller": "to_bytes",
+      "line": 33,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "copy_from_slice",
+      "caller": "to_bytes",
+      "line": 34,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_le_bytes",
+      "caller": "to_bytes",
+      "line": 34,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "copy_from_slice",
+      "caller": "to_bytes",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_le_bytes",
+      "caller": "to_bytes",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "copy_from_slice",
+      "caller": "to_bytes",
+      "line": 36,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_le_bytes",
+      "caller": "to_bytes",
+      "line": 36,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "u32::from_le_bytes",
+      "caller": "from_bytes",
+      "line": 44,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "u32::from_le_bytes",
+      "caller": "from_bytes",
+      "line": 45,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "u16::from_le_bytes",
+      "caller": "from_bytes",
+      "line": 46,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "u16::from_le_bytes",
+      "caller": "from_bytes",
+      "line": 47,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "DefaultHasher::new",
+      "caller": "hash_ast_shape",
+      "line": 54,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "hash_node_shape",
+      "caller": "hash_ast_shape",
+      "line": 55,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "finish",
+      "caller": "hash_ast_shape",
+      "line": 56,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "hash",
+      "caller": "hash_node_shape",
+      "line": 61,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "hash_node_shape",
+      "line": 61,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "walk",
+      "caller": "hash_node_shape",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_first_child",
+      "caller": "hash_node_shape",
+      "line": 65,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "hash_node_shape",
+      "caller": "hash_node_shape",
+      "line": 67,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "node",
+      "caller": "hash_node_shape",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_next_sibling",
+      "caller": "hash_node_shape",
+      "line": 68,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "DefaultHasher::new",
+      "caller": "hash_imports",
+      "line": 77,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "walk",
+      "caller": "hash_imports",
+      "line": 78,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "find_imports",
+      "caller": "hash_imports",
+      "line": 80,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "finish",
+      "caller": "hash_imports",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "node",
+      "caller": "find_imports",
+      "line": 85,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "find_imports",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "utf8_text",
+      "caller": "find_imports",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "hash",
+      "caller": "find_imports",
+      "line": 89,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_first_child",
+      "caller": "find_imports",
+      "line": 93,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "find_imports",
+      "caller": "find_imports",
+      "line": 95,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "goto_next_sibling",
+      "caller": "find_imports",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_parent",
+      "caller": "find_imports",
+      "line": 100,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "walk",
+      "caller": "calculate_complexity",
+      "line": 107,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "count_branches",
+      "caller": "calculate_complexity",
+      "line": 109,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "node",
+      "caller": "count_branches",
+      "line": 114,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "count_branches",
+      "line": 116,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_first_child",
+      "caller": "count_branches",
+      "line": 127,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "count_branches",
+      "caller": "count_branches",
+      "line": 129,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "goto_next_sibling",
+      "caller": "count_branches",
+      "line": 130,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_parent",
+      "caller": "count_branches",
+      "line": 134,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "walk",
+      "caller": "detect_features",
+      "line": 141,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "detect_features_recursive",
+      "caller": "detect_features",
+      "line": 143,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "node",
+      "caller": "detect_features_recursive",
+      "line": 148,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "detect_features_recursive",
+      "line": 151,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "utf8_text",
+      "caller": "detect_features_recursive",
+      "line": 155,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "detect_features_recursive",
+      "line": 156,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "detect_features_recursive",
+      "line": 156,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "detect_features_recursive",
+      "line": 159,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "detect_features_recursive",
+      "line": 159,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_first_child",
+      "caller": "detect_features_recursive",
+      "line": 171,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "detect_features_recursive",
+      "caller": "detect_features_recursive",
+      "line": 173,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "goto_next_sibling",
+      "caller": "detect_features_recursive",
+      "line": 174,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_parent",
+      "caller": "detect_features_recursive",
+      "line": 178,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_bytes",
+      "caller": "test_fingerprint_serialization",
+      "line": 330,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fingerprint::from_bytes",
+      "caller": "test_fingerprint_serialization",
+      "line": 331,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_fingerprint_serialization",
+      "line": 333,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_feature_flags",
+      "line": 343,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_feature_flags",
+      "line": 344,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_feature_flags",
+      "line": 345,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

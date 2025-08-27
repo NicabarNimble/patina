@@ -1,8 +1,1625 @@
 {
-  "calls": [],
   "file": "./src/indexer/internal/state_machine.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "new",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 42,
+      "line_end": 49,
+      "doc_comment": null
+    },
+    {
+      "name": "with_navigation_map",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 52,
+      "line_end": 59,
+      "doc_comment": null
+    },
+    {
+      "name": "set_workspace_client",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 62,
+      "line_end": 64,
+      "doc_comment": null
+    },
+    {
+      "name": "process_event",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 67,
+      "line_end": 111,
+      "doc_comment": null
+    },
+    {
+      "name": "handle_file_created",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 114,
+      "line_end": 139,
+      "doc_comment": null
+    },
+    {
+      "name": "handle_file_modified",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 142,
+      "line_end": 170,
+      "doc_comment": null
+    },
+    {
+      "name": "handle_files_staged",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 173,
+      "line_end": 210,
+      "doc_comment": null
+    },
+    {
+      "name": "handle_commit",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 213,
+      "line_end": 264,
+      "doc_comment": null
+    },
+    {
+      "name": "handle_push",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 267,
+      "line_end": 308,
+      "doc_comment": null
+    },
+    {
+      "name": "handle_pr_opened",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 311,
+      "line_end": 340,
+      "doc_comment": null
+    },
+    {
+      "name": "handle_merge",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 343,
+      "line_end": 375,
+      "doc_comment": null
+    },
+    {
+      "name": "record_transition",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 378,
+      "line_end": 394,
+      "doc_comment": null
+    },
+    {
+      "name": "state_name",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 397,
+      "line_end": 410,
+      "doc_comment": null
+    },
+    {
+      "name": "extract_patterns_from_message",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 413,
+      "line_end": 428,
+      "doc_comment": null
+    },
+    {
+      "name": "get_current_sha",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 431,
+      "line_end": 438,
+      "doc_comment": null
+    },
+    {
+      "name": "get_transitions",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 441,
+      "line_end": 443,
+      "doc_comment": null
+    },
+    {
+      "name": "get_file_states",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 446,
+      "line_end": 448,
+      "doc_comment": null
+    },
+    {
+      "name": "get_git_state",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 451,
+      "line_end": 453,
+      "doc_comment": null
+    },
+    {
+      "name": "track_document",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 456,
+      "line_end": 481,
+      "doc_comment": null
+    },
+    {
+      "name": "find_git_root",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 484,
+      "line_end": 494,
+      "doc_comment": null
+    },
+    {
+      "name": "process_git_event",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 497,
+      "line_end": 499,
+      "doc_comment": null
+    },
+    {
+      "name": "test_state_machine_creation",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 507,
+      "line_end": 511,
+      "doc_comment": null
+    },
+    {
+      "name": "test_file_created_event",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 514,
+      "line_end": 530,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "GitNavigationStateMachine",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 15,
+      "line_end": 27,
+      "doc_comment": null
+    },
+    {
+      "name": "StateTransition",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 31,
+      "line_end": 38,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "super::git_state::PRState",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "super::{GitAwareNavigationMap, GitEvent, GitState}",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "crate::workspace_client::WorkspaceClient",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "chrono::Utc",
+      "items": [],
+      "alias": null,
+      "line": 7
+    },
+    {
+      "path": "serde_json::json",
+      "items": [],
+      "alias": null,
+      "line": 8
+    },
+    {
+      "path": "std::collections::HashMap",
+      "items": [],
+      "alias": null,
+      "line": 9
+    },
+    {
+      "path": "std::path::{Path, PathBuf}",
+      "items": [],
+      "alias": null,
+      "line": 10
+    },
+    {
+      "path": "std::sync::Arc",
+      "items": [],
+      "alias": null,
+      "line": 11
+    },
+    {
+      "path": "std::sync::Mutex",
+      "items": [],
+      "alias": null,
+      "line": 12
+    },
+    {
+      "path": "super::*",
+      "items": [],
+      "alias": null,
+      "line": 504
+    }
+  ],
+  "calls": [
+    {
+      "target": "Ok",
+      "caller": "new",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Arc::new",
+      "caller": "new",
+      "line": 44,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Mutex::new",
+      "caller": "new",
+      "line": 44,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "GitAwareNavigationMap::new",
+      "caller": "new",
+      "line": 44,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "new",
+      "line": 46,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "new",
+      "line": 47,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "with_navigation_map",
+      "line": 56,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "with_navigation_map",
+      "line": 57,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "set_workspace_client",
+      "line": 63,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "handle_file_created",
+      "caller": "process_event",
+      "line": 70,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "handle_file_modified",
+      "caller": "process_event",
+      "line": 73,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "handle_files_staged",
+      "caller": "process_event",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "handle_commit",
+      "caller": "process_event",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "handle_push",
+      "caller": "process_event",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "handle_pr_opened",
+      "caller": "process_event",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "handle_merge",
+      "caller": "process_event",
+      "line": 107,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "process_event",
+      "line": 110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "handle_file_created",
+      "line": 116,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "handle_file_created",
+      "line": 117,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "handle_file_created",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_file_created",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_file_created",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "handle_file_created",
+      "line": 125,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lock",
+      "caller": "handle_file_created",
+      "line": 125,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "update_git_state",
+      "caller": "handle_file_created",
+      "line": 126,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "record_transition",
+      "caller": "handle_file_created",
+      "line": 130,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "handle_file_created",
+      "line": 132,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "handle_file_created",
+      "line": 135,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "handle_file_created",
+      "line": 138,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "cloned",
+      "caller": "handle_file_modified",
+      "line": 143,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "handle_file_modified",
+      "line": 143,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "handle_file_modified",
+      "line": 146,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "handle_file_modified",
+      "line": 148,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "handle_file_modified",
+      "line": 152,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_file_modified",
+      "line": 152,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_file_modified",
+      "line": 152,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "handle_file_modified",
+      "line": 156,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lock",
+      "caller": "handle_file_modified",
+      "line": 156,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "update_git_state",
+      "caller": "handle_file_modified",
+      "line": 157,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "record_transition",
+      "caller": "handle_file_modified",
+      "line": 161,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "handle_file_modified",
+      "line": 163,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "state_name",
+      "caller": "handle_file_modified",
+      "line": 164,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "handle_file_modified",
+      "line": 166,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "handle_file_modified",
+      "line": 169,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_files_staged",
+      "line": 175,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "handle_files_staged",
+      "line": 176,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "handle_files_staged",
+      "line": 180,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "handle_files_staged",
+      "line": 183,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lock",
+      "caller": "handle_files_staged",
+      "line": 183,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cloned",
+      "caller": "handle_files_staged",
+      "line": 187,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "handle_files_staged",
+      "line": 187,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "handle_files_staged",
+      "line": 188,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_files_staged",
+      "line": 188,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_files_staged",
+      "line": 188,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "update_git_state",
+      "caller": "handle_files_staged",
+      "line": 191,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_files_staged",
+      "line": 191,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "handle_files_staged",
+      "line": 194,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_files_staged",
+      "line": 194,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "state_name",
+      "caller": "handle_files_staged",
+      "line": 194,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "record_transition",
+      "caller": "handle_files_staged",
+      "line": 200,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_files_staged",
+      "line": 201,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "handle_files_staged",
+      "line": 202,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "handle_files_staged",
+      "line": 205,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "handle_files_staged",
+      "line": 209,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_commit",
+      "line": 221,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_commit",
+      "line": 222,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "handle_commit",
+      "line": 223,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_commit",
+      "line": 224,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extract_patterns_from_message",
+      "caller": "handle_commit",
+      "line": 228,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "handle_commit",
+      "line": 231,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "handle_commit",
+      "line": 234,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lock",
+      "caller": "handle_commit",
+      "line": 234,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cloned",
+      "caller": "handle_commit",
+      "line": 238,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "handle_commit",
+      "line": 238,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "handle_commit",
+      "line": 239,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_commit",
+      "line": 239,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_commit",
+      "line": 239,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "update_git_state",
+      "caller": "handle_commit",
+      "line": 242,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_commit",
+      "line": 242,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "handle_commit",
+      "line": 245,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_commit",
+      "line": 245,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "state_name",
+      "caller": "handle_commit",
+      "line": 245,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "record_transition",
+      "caller": "handle_commit",
+      "line": 251,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_commit",
+      "line": 252,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "handle_commit",
+      "line": 253,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "handle_commit",
+      "line": 256,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "handle_commit",
+      "line": 263,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "handle_push",
+      "line": 269,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter_map",
+      "caller": "handle_push",
+      "line": 269,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "handle_push",
+      "line": 269,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "handle_push",
+      "line": 273,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_push",
+      "line": 273,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_push",
+      "line": 279,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_push",
+      "line": 280,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_current_sha",
+      "caller": "handle_push",
+      "line": 281,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "handle_push",
+      "line": 285,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lock",
+      "caller": "handle_push",
+      "line": 285,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "handle_push",
+      "line": 288,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_push",
+      "line": 288,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_push",
+      "line": 288,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "update_git_state",
+      "caller": "handle_push",
+      "line": 289,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_push",
+      "line": 289,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "record_transition",
+      "caller": "handle_push",
+      "line": 295,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_push",
+      "line": 296,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "handle_push",
+      "line": 297,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_push",
+      "line": 297,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "handle_push",
+      "line": 300,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "handle_push",
+      "line": 307,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_pr_opened",
+      "line": 314,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "handle_pr_opened",
+      "line": 315,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "handle_pr_opened",
+      "line": 320,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lock",
+      "caller": "handle_pr_opened",
+      "line": 320,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "keys",
+      "caller": "handle_pr_opened",
+      "line": 323,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "update_git_state",
+      "caller": "handle_pr_opened",
+      "line": 324,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_pr_opened",
+      "line": 324,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "record_transition",
+      "caller": "handle_pr_opened",
+      "line": 328,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "handle_pr_opened",
+      "line": 333,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "handle_pr_opened",
+      "line": 339,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_merge",
+      "line": 345,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_current_sha",
+      "caller": "handle_merge",
+      "line": 346,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "handle_merge",
+      "line": 347,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "handle_merge",
+      "line": 351,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lock",
+      "caller": "handle_merge",
+      "line": 351,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "keys",
+      "caller": "handle_merge",
+      "line": 354,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "update_git_state",
+      "caller": "handle_merge",
+      "line": 355,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_merge",
+      "line": 355,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "record_transition",
+      "caller": "handle_merge",
+      "line": 364,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "handle_merge",
+      "line": 369,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "handle_merge",
+      "line": 374,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "record_transition",
+      "line": 386,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "record_transition",
+      "line": 389,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "record_transition",
+      "line": 390,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "record_transition",
+      "line": 391,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "state_name",
+      "line": 398,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "extract_patterns_from_message",
+      "line": 415,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "extract_patterns_from_message",
+      "line": 417,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "extract_patterns_from_message",
+      "line": 418,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "extract_patterns_from_message",
+      "line": 419,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "extract_patterns_from_message",
+      "line": 419,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "extract_patterns_from_message",
+      "line": 419,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "nth",
+      "caller": "extract_patterns_from_message",
+      "line": 421,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "extract_patterns_from_message",
+      "line": 421,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_patterns_from_message",
+      "line": 422,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_patterns_from_message",
+      "line": 422,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "extract_patterns_from_message",
+      "line": 422,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_git_status",
+      "caller": "get_current_sha",
+      "line": 433,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_current_sha",
+      "line": 434,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_current_sha",
+      "line": 436,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_current_sha",
+      "line": 436,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "get_git_state",
+      "line": 452,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains_key",
+      "caller": "track_document",
+      "line": 458,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "find_git_root",
+      "caller": "track_document",
+      "line": 460,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "super::git_detection::detect_file_state",
+      "caller": "track_document",
+      "line": 464,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "track_document",
+      "line": 467,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "track_document",
+      "line": 468,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "track_document",
+      "line": 474,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "track_document",
+      "line": 475,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "track_document",
+      "line": 479,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "track_document",
+      "line": 479,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_file",
+      "caller": "find_git_root",
+      "line": 485,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parent",
+      "caller": "find_git_root",
+      "line": 485,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "find_git_root",
+      "line": 488,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "find_git_root",
+      "line": 488,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "find_git_root",
+      "line": 489,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_path_buf",
+      "caller": "find_git_root",
+      "line": 489,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parent",
+      "caller": "find_git_root",
+      "line": 492,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "process_event",
+      "caller": "process_git_event",
+      "line": 498,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_state_machine_creation",
+      "line": 508,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "GitNavigationStateMachine::new",
+      "caller": "test_state_machine_creation",
+      "line": 508,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_state_machine_creation",
+      "line": 509,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_state_machine_creation",
+      "line": 510,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_file_created_event",
+      "line": 515,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "GitNavigationStateMachine::new",
+      "caller": "test_file_created_event",
+      "line": 515,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "test_file_created_event",
+      "line": 518,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_file_created_event",
+      "line": 519,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_file_created_event",
+      "line": 522,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "process_event",
+      "caller": "test_file_created_event",
+      "line": 522,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_file_created_event",
+      "line": 524,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_file_created_event",
+      "line": 525,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_transitions",
+      "caller": "test_file_created_event",
+      "line": 527,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_file_created_event",
+      "line": 528,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_file_created_event",
+      "line": 529,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

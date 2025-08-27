@@ -1,8 +1,1564 @@
 {
-  "calls": [],
   "file": "./src/commands/organize_v2.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 58,
+      "line_end": 91,
+      "doc_comment": null
+    },
+    {
+      "name": "discover_patterns",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 93,
+      "line_end": 115,
+      "doc_comment": null
+    },
+    {
+      "name": "analyze_with_git",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 117,
+      "line_end": 200,
+      "doc_comment": null
+    },
+    {
+      "name": "git_command",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 202,
+      "line_end": 209,
+      "doc_comment": null
+    },
+    {
+      "name": "calculate_survival_rate",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 211,
+      "line_end": 253,
+      "doc_comment": null
+    },
+    {
+      "name": "find_co_modified_files",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 255,
+      "line_end": 287,
+      "doc_comment": null
+    },
+    {
+      "name": "recommend_action",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 289,
+      "line_end": 356,
+      "doc_comment": null
+    },
+    {
+      "name": "display_git_analysis",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 358,
+      "line_end": 454,
+      "doc_comment": null
+    },
+    {
+      "name": "apply_git_recommendations",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 456,
+      "line_end": 492,
+      "doc_comment": null
+    },
+    {
+      "name": "promote_pattern",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 494,
+      "line_end": 505,
+      "doc_comment": null
+    },
+    {
+      "name": "archive_pattern",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 507,
+      "line_end": 519,
+      "doc_comment": null
+    },
+    {
+      "name": "create_insight_task",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 521,
+      "line_end": 559,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "OrganizeArgs",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 10,
+      "line_end": 26,
+      "doc_comment": null
+    },
+    {
+      "name": "GitMetrics",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 29,
+      "line_end": 46,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "chrono::{DateTime, Utc}",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "clap::Args",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "serde::{Deserialize, Serialize}",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::collections::HashMap",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "std::path::{Path, PathBuf}",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "std::process::Command",
+      "items": [],
+      "alias": null,
+      "line": 7
+    }
+  ],
+  "calls": [
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 59,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "discover_patterns",
+      "caller": "execute",
+      "line": 65,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "execute",
+      "line": 68,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "analyze_with_git",
+      "caller": "execute",
+      "line": 70,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "execute",
+      "line": 71,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "sort_by",
+      "caller": "execute",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "then",
+      "caller": "execute",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cmp",
+      "caller": "execute",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cmp",
+      "caller": "execute",
+      "line": 78,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "display_git_analysis",
+      "caller": "execute",
+      "line": 82,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "apply_git_recommendations",
+      "caller": "execute",
+      "line": 85,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 87,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 90,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "discover_patterns",
+      "line": 94,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "discover_patterns",
+      "line": 97,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "discover_patterns",
+      "line": 98,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "discover_patterns",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "discover_patterns",
+      "line": 102,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "discover_patterns",
+      "line": 103,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::read_dir",
+      "caller": "discover_patterns",
+      "line": 104,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "discover_patterns",
+      "line": 106,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "discover_patterns",
+      "line": 107,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extension",
+      "caller": "discover_patterns",
+      "line": 107,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "discover_patterns",
+      "line": 107,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "discover_patterns",
+      "line": 107,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "discover_patterns",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "discover_patterns",
+      "line": 114,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string_lossy",
+      "caller": "analyze_with_git",
+      "line": 118,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "analyze_with_git",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "analyze_with_git",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "analyze_with_git",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "analyze_with_git",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parent",
+      "caller": "analyze_with_git",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file_name",
+      "caller": "analyze_with_git",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "analyze_with_git",
+      "line": 122,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "count",
+      "caller": "analyze_with_git",
+      "line": 127,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "analyze_with_git",
+      "line": 127,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "git_command",
+      "caller": "analyze_with_git",
+      "line": 127,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "analyze_with_git",
+      "line": 129,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "git_command",
+      "caller": "analyze_with_git",
+      "line": 138,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "analyze_with_git",
+      "line": 140,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "analyze_with_git",
+      "line": 140,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "analyze_with_git",
+      "line": 141,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "last_change.trim().parse::<i64>",
+      "caller": "analyze_with_git",
+      "line": 141,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "analyze_with_git",
+      "line": 141,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_else",
+      "caller": "analyze_with_git",
+      "line": 142,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "DateTime::from_timestamp",
+      "caller": "analyze_with_git",
+      "line": 142,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "num_days",
+      "caller": "analyze_with_git",
+      "line": 143,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "analyze_with_git",
+      "line": 143,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "analyze_with_git",
+      "line": 149,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "git_command(&[\n        \"log\",\n        &format!(\"--since={days} days ago\"),\n        \"--format=%an\",\n        \"--\",\n        &path_str,\n    ])?\n    .lines()\n    .collect::<std::collections::HashSet<_>>",
+      "caller": "analyze_with_git",
+      "line": 149,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "analyze_with_git",
+      "line": 149,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "git_command",
+      "caller": "analyze_with_git",
+      "line": 149,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "analyze_with_git",
+      "line": 151,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "calculate_survival_rate",
+      "caller": "analyze_with_git",
+      "line": 161,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "find_co_modified_files",
+      "caller": "analyze_with_git",
+      "line": 164,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "analyze_with_git",
+      "line": 167,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "analyze_with_git",
+      "line": 167,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file_stem",
+      "caller": "analyze_with_git",
+      "line": 167,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "analyze_with_git",
+      "line": 167,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "count",
+      "caller": "analyze_with_git",
+      "line": 169,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "analyze_with_git",
+      "line": 169,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "git_command",
+      "caller": "analyze_with_git",
+      "line": 169,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "analyze_with_git",
+      "line": 171,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "recommend_action",
+      "caller": "analyze_with_git",
+      "line": 180,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "analyze_with_git",
+      "line": 188,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_path_buf",
+      "caller": "analyze_with_git",
+      "line": 189,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "git_command",
+      "line": 203,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "git_command",
+      "line": 203,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "git_command",
+      "line": 203,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "git_command",
+      "line": 203,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "git_command",
+      "line": 208,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "git_command",
+      "line": 208,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "git_command",
+      "line": 208,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "git_command",
+      "caller": "calculate_survival_rate",
+      "line": 213,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "calculate_survival_rate",
+      "line": 215,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string_lossy",
+      "caller": "calculate_survival_rate",
+      "line": 218,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "calculate_survival_rate",
+      "line": 221,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "calculate_survival_rate",
+      "line": 221,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "calculate_survival_rate",
+      "line": 222,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "calculate_survival_rate",
+      "line": 223,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "calculate_survival_rate",
+      "line": 230,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "git_command",
+      "caller": "calculate_survival_rate",
+      "line": 234,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "calculate_survival_rate",
+      "line": 236,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string_lossy",
+      "caller": "calculate_survival_rate",
+      "line": 239,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "calculate_survival_rate",
+      "line": 242,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "calculate_survival_rate",
+      "line": 249,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "calculate_survival_rate",
+      "line": 251,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "git_command",
+      "caller": "find_co_modified_files",
+      "line": 257,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "find_co_modified_files",
+      "line": 259,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string_lossy",
+      "caller": "find_co_modified_files",
+      "line": 262,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "find_co_modified_files",
+      "line": 265,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "find_co_modified_files",
+      "line": 268,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "git_command",
+      "caller": "find_co_modified_files",
+      "line": 269,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "find_co_modified_files",
+      "line": 271,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string_lossy",
+      "caller": "find_co_modified_files",
+      "line": 272,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "find_co_modified_files",
+      "line": 272,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "or_insert",
+      "caller": "find_co_modified_files",
+      "line": 273,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "entry",
+      "caller": "find_co_modified_files",
+      "line": 273,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "find_co_modified_files",
+      "line": 273,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "find_co_modified_files",
+      "line": 279,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "into_iter",
+      "caller": "find_co_modified_files",
+      "line": 279,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "sort_by",
+      "caller": "find_co_modified_files",
+      "line": 280,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cmp",
+      "caller": "find_co_modified_files",
+      "line": 280,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "find_co_modified_files",
+      "line": 282,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "find_co_modified_files",
+      "line": 282,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "find_co_modified_files",
+      "line": 282,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "find_co_modified_files",
+      "line": 282,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "into_iter",
+      "caller": "find_co_modified_files",
+      "line": 282,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "recommend_action",
+      "line": 302,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "recommend_action",
+      "line": 310,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "recommend_action",
+      "line": 315,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "recommend_action",
+      "line": 324,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "recommend_action",
+      "line": 332,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "recommend_action",
+      "line": 340,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "recommend_action",
+      "line": 350,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "recommend_action",
+      "line": 355,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_git_analysis",
+      "line": 359,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_git_analysis",
+      "line": 360,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "display_git_analysis",
+      "line": 363,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "display_git_analysis",
+      "line": 365,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "display_git_analysis",
+      "line": 366,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "or_default",
+      "caller": "display_git_analysis",
+      "line": 366,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "entry",
+      "caller": "display_git_analysis",
+      "line": 366,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_git_analysis",
+      "line": 370,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "display_git_analysis",
+      "line": 371,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "display_git_analysis",
+      "line": 371,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "display_git_analysis",
+      "line": 373,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "display_git_analysis",
+      "line": 373,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file_stem",
+      "caller": "display_git_analysis",
+      "line": 373,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "display_git_analysis",
+      "line": 376,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_git_analysis",
+      "line": 378,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_git_analysis",
+      "line": 390,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "display_git_analysis",
+      "line": 392,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "display_git_analysis",
+      "line": 396,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_git_analysis",
+      "line": 406,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "display_git_analysis",
+      "line": 408,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "display_git_analysis",
+      "line": 408,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "display_git_analysis",
+      "line": 409,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "display_git_analysis",
+      "line": 409,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file_stem",
+      "caller": "display_git_analysis",
+      "line": 409,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "display_git_analysis",
+      "line": 412,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_git_analysis",
+      "line": 414,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "display_git_analysis",
+      "line": 416,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_git_analysis",
+      "line": 417,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_git_analysis",
+      "line": 426,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "display_git_analysis",
+      "line": 429,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "display_git_analysis",
+      "line": 432,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "or_insert",
+      "caller": "display_git_analysis",
+      "line": 444,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "entry",
+      "caller": "display_git_analysis",
+      "line": 444,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "display_git_analysis",
+      "line": 448,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_git_analysis",
+      "line": 449,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "display_git_analysis",
+      "line": 450,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "display_git_analysis",
+      "line": 450,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_git_analysis",
+      "line": 451,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "apply_git_recommendations",
+      "line": 457,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "promote_pattern",
+      "caller": "apply_git_recommendations",
+      "line": 465,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "promote_pattern",
+      "caller": "apply_git_recommendations",
+      "line": 469,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "archive_pattern",
+      "caller": "apply_git_recommendations",
+      "line": 473,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "create_insight_task",
+      "caller": "apply_git_recommendations",
+      "line": 477,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "apply_git_recommendations",
+      "line": 485,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "apply_git_recommendations",
+      "line": 488,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "apply_git_recommendations",
+      "line": 491,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok_or_else",
+      "caller": "promote_pattern",
+      "line": 495,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file_name",
+      "caller": "promote_pattern",
+      "line": 495,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "promote_pattern",
+      "line": 497,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "promote_pattern",
+      "line": 498,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "promote_pattern",
+      "line": 498,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "promote_pattern",
+      "line": 498,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::create_dir_all",
+      "caller": "promote_pattern",
+      "line": 500,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "promote_pattern",
+      "line": 500,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parent",
+      "caller": "promote_pattern",
+      "line": 500,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::rename",
+      "caller": "promote_pattern",
+      "line": 501,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "promote_pattern",
+      "line": 503,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "promote_pattern",
+      "line": 504,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "archive_pattern",
+      "line": 508,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::create_dir_all",
+      "caller": "archive_pattern",
+      "line": 509,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok_or_else",
+      "caller": "archive_pattern",
+      "line": 511,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file_name",
+      "caller": "archive_pattern",
+      "line": 511,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "archive_pattern",
+      "line": 513,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "archive_pattern",
+      "line": 514,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::rename",
+      "caller": "archive_pattern",
+      "line": 516,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "archive_pattern",
+      "line": 517,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "archive_pattern",
+      "line": 518,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "create_insight_task",
+      "line": 523,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "create_insight_task",
+      "line": 532,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_insight_task",
+      "line": 553,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "create_insight_task",
+      "line": 553,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::create_dir_all",
+      "caller": "create_insight_task",
+      "line": 554,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "create_insight_task",
+      "line": 554,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parent",
+      "caller": "create_insight_task",
+      "line": 554,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::write",
+      "caller": "create_insight_task",
+      "line": 555,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "create_insight_task",
+      "line": 557,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "create_insight_task",
+      "line": 558,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

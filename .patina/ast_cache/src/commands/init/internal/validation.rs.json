@@ -1,8 +1,296 @@
 {
-  "calls": [],
   "file": "./src/commands/init/internal/validation.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "validate_environment",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 9,
+      "line_end": 46,
+      "doc_comment": null
+    },
+    {
+      "name": "determine_dev_environment",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 49,
+      "line_end": 71,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "toml::Value",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "patina::environment::Environment",
+      "items": [],
+      "alias": null,
+      "line": 6
+    }
+  ],
+  "calls": [
+    {
+      "target": "Vec::new",
+      "caller": "validate_environment",
+      "line": 10,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "validate_environment",
+      "line": 13,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "validate_environment",
+      "line": 13,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "validate_environment",
+      "line": 13,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "validate_environment",
+      "line": 13,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "validate_environment",
+      "line": 15,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "validate_environment",
+      "line": 16,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_some_and",
+      "caller": "validate_environment",
+      "line": 20,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "validate_environment",
+      "line": 20,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "validate_environment",
+      "line": 21,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "validate_environment",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_some_and",
+      "caller": "validate_environment",
+      "line": 28,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "validate_environment",
+      "line": 28,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_some_and",
+      "caller": "validate_environment",
+      "line": 29,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "validate_environment",
+      "line": 29,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "validate_environment",
+      "line": 32,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "validate_environment",
+      "line": 33,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_some_and",
+      "caller": "validate_environment",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "validate_environment",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "validate_environment",
+      "line": 38,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "validate_environment",
+      "line": 38,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "validate_environment",
+      "line": 41,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "validate_environment",
+      "line": 42,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "validate_environment",
+      "line": 44,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "validate_environment",
+      "line": 44,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::env::var",
+      "caller": "determine_dev_environment",
+      "line": 51,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "determine_dev_environment",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_some_and",
+      "caller": "determine_dev_environment",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "determine_dev_environment",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "determine_dev_environment",
+      "line": 63,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "determine_dev_environment",
+      "line": 64,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "determine_dev_environment",
+      "line": 65,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "determine_dev_environment",
+      "line": 67,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "determine_dev_environment",
+      "line": 68,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "determine_dev_environment",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
 }

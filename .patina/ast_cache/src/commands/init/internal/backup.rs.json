@@ -1,8 +1,317 @@
 {
-  "calls": [],
   "file": "./src/commands/init/internal/backup.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "backup_gitignored_dirs",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 8,
+      "line_end": 52,
+      "doc_comment": null
+    },
+    {
+      "name": "restore_session_files",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 55,
+      "line_end": 84,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 5
+    }
+  ],
+  "calls": [
+    {
+      "target": "format",
+      "caller": "backup_gitignored_dirs",
+      "line": 9,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "chrono::Utc::now",
+      "caller": "backup_gitignored_dirs",
+      "line": 9,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "backup_gitignored_dirs",
+      "line": 12,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "backup_gitignored_dirs",
+      "line": 12,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "backup_gitignored_dirs",
+      "line": 14,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "backup_gitignored_dirs",
+      "line": 15,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "backup_gitignored_dirs",
+      "line": 15,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "backup_gitignored_dirs",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "backup_gitignored_dirs",
+      "line": 19,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "backup_gitignored_dirs",
+      "line": 21,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "backup_gitignored_dirs",
+      "line": 24,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "backup_gitignored_dirs",
+      "line": 29,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "backup_gitignored_dirs",
+      "line": 31,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "backup_gitignored_dirs",
+      "line": 31,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "backup_gitignored_dirs",
+      "line": 33,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "backup_gitignored_dirs",
+      "line": 33,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "backup_gitignored_dirs",
+      "line": 33,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file_name",
+      "caller": "backup_gitignored_dirs",
+      "line": 33,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "backup_gitignored_dirs",
+      "line": 33,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "backup_gitignored_dirs",
+      "line": 34,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::copy",
+      "caller": "backup_gitignored_dirs",
+      "line": 35,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "backup_gitignored_dirs",
+      "line": 36,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "backup_gitignored_dirs",
+      "line": 36,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "backup_gitignored_dirs",
+      "line": 41,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::rename",
+      "caller": "backup_gitignored_dirs",
+      "line": 41,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "backup_gitignored_dirs",
+      "line": 45,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "backup_gitignored_dirs",
+      "line": 47,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "backup_gitignored_dirs",
+      "line": 51,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "restore_session_files",
+      "line": 56,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "restore_session_files",
+      "line": 56,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "restore_session_files",
+      "line": 58,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "restore_session_files",
+      "line": 61,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "restore_session_files",
+      "line": 73,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "restore_session_files",
+      "line": 73,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::rename",
+      "caller": "restore_session_files",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "restore_session_files",
+      "line": 75,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::remove_file",
+      "caller": "restore_session_files",
+      "line": 80,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "restore_session_files",
+      "line": 83,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

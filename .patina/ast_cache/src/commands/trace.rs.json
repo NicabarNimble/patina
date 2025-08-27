@@ -1,8 +1,1026 @@
 {
-  "calls": [],
   "file": "./src/commands/trace.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 5,
+      "line_end": 27,
+      "doc_comment": null
+    },
+    {
+      "name": "trace_in_docs",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 37,
+      "line_end": 111,
+      "doc_comment": null
+    },
+    {
+      "name": "trace_in_code",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 113,
+      "line_end": 161,
+      "doc_comment": null
+    },
+    {
+      "name": "analyze_survival",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 163,
+      "line_end": 211,
+      "doc_comment": null
+    },
+    {
+      "name": "display_timeline",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 220,
+      "line_end": 250,
+      "doc_comment": null
+    },
+    {
+      "name": "display_status",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 252,
+      "line_end": 290,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "TimelineEntry",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 30,
+      "line_end": 35,
+      "doc_comment": null
+    },
+    {
+      "name": "SurvivalStats",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 214,
+      "line_end": 218,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "colored::*",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::process::Command",
+      "items": [],
+      "alias": null,
+      "line": 3
+    }
+  ],
+  "calls": [
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 6,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "trace_in_docs",
+      "caller": "execute",
+      "line": 12,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "trace_in_code",
+      "caller": "execute",
+      "line": 15,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "analyze_survival",
+      "caller": "execute",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "display_timeline",
+      "caller": "execute",
+      "line": 21,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "display_status",
+      "caller": "execute",
+      "line": 24,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 26,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "trace_in_docs",
+      "line": 39,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "trace_in_docs",
+      "line": 39,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "trace_in_docs",
+      "line": 39,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "trace_in_docs",
+      "line": 39,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "trace_in_docs",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "trace_in_docs",
+      "line": 53,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "trace_in_docs",
+      "line": 55,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "trace_in_docs",
+      "line": 56,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "trace_in_docs",
+      "line": 59,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "trace_in_docs",
+      "line": 59,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "trace_in_docs",
+      "line": 60,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "trace_in_docs",
+      "line": 62,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "trace_in_docs",
+      "line": 62,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "trace_in_docs",
+      "line": 62,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "trace_in_docs",
+      "line": 66,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "trace_in_docs",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "trace_in_docs",
+      "line": 68,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ends_with",
+      "caller": "trace_in_docs",
+      "line": 68,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "trace_in_docs",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "trace_in_docs",
+      "line": 70,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "trace_in_docs",
+      "line": 71,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "trace_in_docs",
+      "line": 72,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "trace_in_docs",
+      "line": 73,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "trace_in_docs",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "trace_in_docs",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "trace_in_docs",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "trace_in_docs",
+      "line": 81,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "trace_in_docs",
+      "line": 86,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "trace_in_docs",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "trace_in_docs",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "trace_in_docs",
+      "line": 90,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "trace_in_docs",
+      "line": 90,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "trace_in_docs",
+      "line": 90,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "trace_in_docs",
+      "line": 94,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "next",
+      "caller": "trace_in_docs",
+      "line": 95,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "trace_in_docs",
+      "line": 95,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "trace_in_docs",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "trace_in_docs",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "trace_in_docs",
+      "line": 97,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "trace_in_docs",
+      "line": 98,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "trace_in_docs",
+      "line": 99,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "trace_in_docs",
+      "line": 100,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "trace_in_docs",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "trace_in_docs",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "sort_by",
+      "caller": "trace_in_docs",
+      "line": 109,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cmp",
+      "caller": "trace_in_docs",
+      "line": 109,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "trace_in_docs",
+      "line": 110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "trace_in_code",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "trace_in_code",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "trace_in_code",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "trace_in_code",
+      "line": 115,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "trace_in_code",
+      "line": 129,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "trace_in_code",
+      "line": 130,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "trace_in_code",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "trace_in_code",
+      "line": 133,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "trace_in_code",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "trace_in_code",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "trace_in_code",
+      "line": 137,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "trace_in_code",
+      "line": 139,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "trace_in_code",
+      "line": 139,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "trace_in_code",
+      "line": 139,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "trace_in_code",
+      "line": 143,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "trace_in_code",
+      "line": 144,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "trace_in_code",
+      "line": 145,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "trace_in_code",
+      "line": 145,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ends_with",
+      "caller": "trace_in_code",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ends_with",
+      "caller": "trace_in_code",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "trace_in_code",
+      "line": 148,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "trace_in_code",
+      "line": 149,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "trace_in_code",
+      "line": 150,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "trace_in_code",
+      "line": 151,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "trace_in_code",
+      "line": 152,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "sort_by",
+      "caller": "trace_in_code",
+      "line": 159,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cmp",
+      "caller": "trace_in_code",
+      "line": 159,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "trace_in_code",
+      "line": 160,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "analyze_survival",
+      "line": 165,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "analyze_survival",
+      "line": 165,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "analyze_survival",
+      "line": 165,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "analyze_survival",
+      "line": 165,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "analyze_survival",
+      "line": 170,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "analyze_survival",
+      "line": 171,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "analyze_survival",
+      "line": 174,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "analyze_survival",
+      "line": 175,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "analyze_survival",
+      "line": 178,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "analyze_survival",
+      "line": 178,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "analyze_survival",
+      "line": 178,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "analyze_survival",
+      "line": 182,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "analyze_survival",
+      "line": 183,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "analyze_survival",
+      "line": 183,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "analyze_survival",
+      "line": 183,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "analyze_survival",
+      "line": 188,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "analyze_survival",
+      "line": 188,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "analyze_survival",
+      "line": 188,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "analyze_survival",
+      "line": 200,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "count",
+      "caller": "analyze_survival",
+      "line": 201,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "analyze_survival",
+      "line": 201,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "analyze_survival",
+      "line": 201,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "analyze_survival",
+      "line": 203,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "analyze_survival",
+      "line": 206,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "analyze_survival",
+      "line": 207,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_timeline",
+      "line": 221,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "display_timeline",
+      "line": 224,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "display_timeline",
+      "line": 226,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "display_timeline",
+      "line": 229,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "sort_by",
+      "caller": "display_timeline",
+      "line": 231,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cmp",
+      "caller": "display_timeline",
+      "line": 231,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "bright_blue",
+      "caller": "display_timeline",
+      "line": 236,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "bright_green",
+      "caller": "display_timeline",
+      "line": 238,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_timeline",
+      "line": 241,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_timeline",
+      "line": 246,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "display_timeline",
+      "line": 249,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_status",
+      "line": 253,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "bright_green",
+      "caller": "display_status",
+      "line": 262,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "bright_yellow",
+      "caller": "display_status",
+      "line": 264,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "bright_red",
+      "caller": "display_status",
+      "line": 266,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "bright_black",
+      "caller": "display_status",
+      "line": 268,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_status",
+      "line": 271,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "display_status",
+      "line": 278,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_status",
+      "line": 279,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "min",
+      "caller": "display_status",
+      "line": 280,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "display_status",
+      "line": 280,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_status",
+      "line": 281,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "display_status",
+      "line": 289,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

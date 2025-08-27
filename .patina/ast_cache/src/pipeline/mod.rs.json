@@ -8,31 +8,37 @@
       "path": "discovery::{discover_files, detect_language}",
       "items": [],
       "alias": null,
-      "line": 7
-    },
-    {
-      "path": "git::{analyze_git, GitMetrics}",
-      "items": [],
-      "alias": null,
       "line": 8
     },
     {
-      "path": "parsers::parse_file",
+      "path": "duckdb::load_into_duckdb",
       "items": [],
       "alias": null,
       "line": 9
     },
     {
-      "path": "schema::AstData",
+      "path": "git::{analyze_git, GitMetrics}",
       "items": [],
       "alias": null,
       "line": 10
     },
     {
-      "path": "sql::generate_sql",
+      "path": "parsers::parse_file",
       "items": [],
       "alias": null,
       "line": 11
+    },
+    {
+      "path": "schema::AstData",
+      "items": [],
+      "alias": null,
+      "line": 12
+    },
+    {
+      "path": "sql::generate_sql",
+      "items": [],
+      "alias": null,
+      "line": 13
     }
   ],
   "calls": []

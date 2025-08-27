@@ -1,8 +1,216 @@
 {
-  "calls": [],
   "file": "./patina-metal/src/parser.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "find_files",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 9,
+      "line_end": 29,
+      "doc_comment": null
+    },
+    {
+      "name": "detect_metals",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 32,
+      "line_end": 43,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "MetalParser",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 5,
+      "line_end": 5,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "crate::Metal",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::process::Command",
+      "items": [],
+      "alias": null,
+      "line": 10
+    }
+  ],
+  "calls": [
+    {
+      "target": "file_pattern",
+      "caller": "find_files",
+      "line": 12,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "find_files",
+      "line": 13,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "find_files",
+      "line": 13,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "find_files",
+      "line": 13,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "find_files",
+      "line": 13,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "find_files",
+      "line": 18,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "find_files",
+      "line": 19,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "find_files",
+      "line": 19,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "find_files",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "find_files",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "find_files",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "find_files",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "find_files",
+      "line": 22,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "find_files",
+      "line": 24,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "find_files",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "find_files",
+      "line": 28,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "detect_metals",
+      "line": 33,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Metal::all",
+      "caller": "detect_metals",
+      "line": 35,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Self::find_files",
+      "caller": "detect_metals",
+      "line": 36,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "detect_metals",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "detect_metals",
+      "line": 38,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_metals",
+      "line": 42,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

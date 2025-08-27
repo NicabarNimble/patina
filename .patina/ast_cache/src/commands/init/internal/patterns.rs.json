@@ -1,8 +1,454 @@
 {
-  "calls": [],
   "file": "./src/commands/init/internal/patterns.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "copy_core_patterns_safe",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 8,
+      "line_end": 50,
+      "doc_comment": null
+    },
+    {
+      "name": "is_patina_source",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 53,
+      "line_end": 60,
+      "doc_comment": null
+    },
+    {
+      "name": "find_patina_core_patterns",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 63,
+      "line_end": 98,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::path::{Path, PathBuf}",
+      "items": [],
+      "alias": null,
+      "line": 5
+    }
+  ],
+  "calls": [
+    {
+      "target": "join",
+      "caller": "copy_core_patterns_safe",
+      "line": 9,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_patina_source",
+      "caller": "copy_core_patterns_safe",
+      "line": 13,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "copy_core_patterns_safe",
+      "line": 14,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "find_patina_core_patterns",
+      "caller": "copy_core_patterns_safe",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::canonicalize",
+      "caller": "copy_core_patterns_safe",
+      "line": 23,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::canonicalize",
+      "caller": "copy_core_patterns_safe",
+      "line": 24,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "copy_core_patterns_safe",
+      "line": 27,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "copy_core_patterns_safe",
+      "line": 31,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::read_dir",
+      "caller": "copy_core_patterns_safe",
+      "line": 33,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "copy_core_patterns_safe",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_file",
+      "caller": "copy_core_patterns_safe",
+      "line": 36,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_some_and",
+      "caller": "copy_core_patterns_safe",
+      "line": 36,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extension",
+      "caller": "copy_core_patterns_safe",
+      "line": 36,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "copy_core_patterns_safe",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file_name",
+      "caller": "copy_core_patterns_safe",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "copy_core_patterns_safe",
+      "line": 38,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "copy_core_patterns_safe",
+      "line": 41,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "copy_core_patterns_safe",
+      "line": 41,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::metadata",
+      "caller": "copy_core_patterns_safe",
+      "line": 41,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::copy",
+      "caller": "copy_core_patterns_safe",
+      "line": 42,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "copy_core_patterns_safe",
+      "line": 46,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "copy_core_patterns_safe",
+      "line": 48,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "is_patina_source",
+      "line": 54,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "is_patina_source",
+      "line": 54,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::read_to_string",
+      "caller": "is_patina_source",
+      "line": 55,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "is_patina_source",
+      "line": 55,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "is_patina_source",
+      "line": 56,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "is_patina_source",
+      "line": 56,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "is_patina_source",
+      "line": 59,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::env::var",
+      "caller": "find_patina_core_patterns",
+      "line": 65,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "find_patina_core_patterns",
+      "line": 66,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "find_patina_core_patterns",
+      "line": 66,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "find_patina_core_patterns",
+      "line": 66,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "find_patina_core_patterns",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "find_patina_core_patterns",
+      "line": 68,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "find_patina_core_patterns",
+      "line": 68,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::env::current_exe",
+      "caller": "find_patina_core_patterns",
+      "line": 73,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "find_patina_core_patterns",
+      "line": 74,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "find_patina_core_patterns",
+      "line": 74,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parent",
+      "caller": "find_patina_core_patterns",
+      "line": 74,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parent",
+      "caller": "find_patina_core_patterns",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parent",
+      "caller": "find_patina_core_patterns",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "find_patina_core_patterns",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "find_patina_core_patterns",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "find_patina_core_patterns",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "find_patina_core_patterns",
+      "line": 81,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "find_patina_core_patterns",
+      "line": 81,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::env::var",
+      "caller": "find_patina_core_patterns",
+      "line": 87,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "find_patina_core_patterns",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "find_patina_core_patterns",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "find_patina_core_patterns",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "find_patina_core_patterns",
+      "line": 88,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "find_patina_core_patterns",
+      "line": 92,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "find_patina_core_patterns",
+      "line": 93,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "find_patina_core_patterns",
+      "line": 93,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "find_patina_core_patterns",
+      "line": 97,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

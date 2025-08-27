@@ -1,8 +1,389 @@
 {
-  "calls": [],
   "file": "./src/layer/mod.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "new",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 10,
+      "line_end": 14,
+      "doc_comment": null
+    },
+    {
+      "name": "init",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 17,
+      "line_end": 31,
+      "doc_comment": null
+    },
+    {
+      "name": "sessions_path",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 34,
+      "line_end": 36,
+      "doc_comment": null
+    },
+    {
+      "name": "core_path",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 39,
+      "line_end": 41,
+      "doc_comment": null
+    },
+    {
+      "name": "surface_path",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 44,
+      "line_end": 46,
+      "doc_comment": null
+    },
+    {
+      "name": "dust_path",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 49,
+      "line_end": 51,
+      "doc_comment": null
+    },
+    {
+      "name": "test_layer_new",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 60,
+      "line_end": 64,
+      "doc_comment": null
+    },
+    {
+      "name": "test_layer_init_creates_directories",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 67,
+      "line_end": 77,
+      "doc_comment": null
+    },
+    {
+      "name": "test_path_accessors",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 80,
+      "line_end": 88,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "Layer",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 5,
+      "line_end": 7,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::path::{Path, PathBuf}",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "super::*",
+      "items": [],
+      "alias": null,
+      "line": 56
+    },
+    {
+      "path": "tempfile::TempDir",
+      "items": [],
+      "alias": null,
+      "line": 57
+    }
+  ],
+  "calls": [
+    {
+      "target": "to_path_buf",
+      "caller": "new",
+      "line": 12,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_ref",
+      "caller": "new",
+      "line": 12,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "init",
+      "line": 19,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "init",
+      "line": 20,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "init",
+      "line": 21,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "init",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "with_context",
+      "caller": "init",
+      "line": 26,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "init",
+      "line": 26,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "init",
+      "line": 27,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "init",
+      "line": 30,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "sessions_path",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "core_path",
+      "line": 40,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "surface_path",
+      "line": 45,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "dust_path",
+      "line": 50,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_layer_new",
+      "line": 61,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "TempDir::new",
+      "caller": "test_layer_new",
+      "line": 61,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Layer::new",
+      "caller": "test_layer_new",
+      "line": 62,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_layer_new",
+      "line": 63,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_layer_init_creates_directories",
+      "line": 68,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "TempDir::new",
+      "caller": "test_layer_init_creates_directories",
+      "line": 68,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Layer::new",
+      "caller": "test_layer_init_creates_directories",
+      "line": 69,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_layer_init_creates_directories",
+      "line": 71,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "init",
+      "caller": "test_layer_init_creates_directories",
+      "line": 71,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_layer_init_creates_directories",
+      "line": 73,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_layer_init_creates_directories",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_layer_init_creates_directories",
+      "line": 75,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_layer_init_creates_directories",
+      "line": 76,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_path_accessors",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "TempDir::new",
+      "caller": "test_path_accessors",
+      "line": 81,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Layer::new",
+      "caller": "test_path_accessors",
+      "line": 82,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_path_accessors",
+      "line": 84,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_path_accessors",
+      "line": 85,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_path_accessors",
+      "line": 86,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_path_accessors",
+      "line": 87,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

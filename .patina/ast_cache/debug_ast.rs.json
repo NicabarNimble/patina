@@ -1,8 +1,172 @@
 {
-  "calls": [],
   "file": "./debug_ast.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "main",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 3,
+      "line_end": 25,
+      "doc_comment": null
+    },
+    {
+      "name": "print_tree",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 27,
+      "line_end": 42,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "tree_sitter::{Parser, Language}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    }
+  ],
+  "calls": [
+    {
+      "target": "tree_sitter_rust",
+      "caller": "main",
+      "line": 16,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Parser::new",
+      "caller": "main",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "main",
+      "line": 19,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "set_language",
+      "caller": "main",
+      "line": 19,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "main",
+      "line": 21,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "main",
+      "line": 21,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "root_node",
+      "caller": "main",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "print_tree",
+      "caller": "main",
+      "line": 24,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "as_bytes",
+      "caller": "main",
+      "line": 24,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "print_tree",
+      "line": 28,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "child_count",
+      "caller": "print_tree",
+      "line": 29,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "print_tree",
+      "line": 30,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "print_tree",
+      "line": 30,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "utf8_text",
+      "caller": "print_tree",
+      "line": 30,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "print_tree",
+      "line": 32,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_tree",
+      "line": 35,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "walk",
+      "caller": "print_tree",
+      "line": 38,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "children",
+      "caller": "print_tree",
+      "line": 39,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "print_tree",
+      "caller": "print_tree",
+      "line": 40,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

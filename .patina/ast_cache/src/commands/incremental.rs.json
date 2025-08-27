@@ -1,8 +1,844 @@
 {
-  "calls": [],
   "file": "./src/commands/incremental.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "is_empty",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 16,
+      "line_end": 18,
+      "doc_comment": null
+    },
+    {
+      "name": "detect_changes",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 22,
+      "line_end": 97,
+      "doc_comment": null
+    },
+    {
+      "name": "cleanup_changed_files",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 100,
+      "line_end": 161,
+      "doc_comment": null
+    },
+    {
+      "name": "print_change_summary",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 164,
+      "line_end": 179,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "FileChanges",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 8,
+      "line_end": 13,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "std::collections::{HashMap, HashSet}",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::path::PathBuf",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "std::process::Command",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::io::Write",
+      "items": [],
+      "alias": null,
+      "line": 36
+    },
+    {
+      "path": "std::io::Write",
+      "items": [],
+      "alias": null,
+      "line": 145
+    }
+  ],
+  "calls": [
+    {
+      "target": "is_empty",
+      "caller": "is_empty",
+      "line": 17,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "is_empty",
+      "line": 17,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "is_empty",
+      "line": 17,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "detect_changes",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "spawn",
+      "caller": "detect_changes",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "stderr",
+      "caller": "detect_changes",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "stdout",
+      "caller": "detect_changes",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "stdin",
+      "caller": "detect_changes",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "detect_changes",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "detect_changes",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "detect_changes",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "detect_changes",
+      "line": 25,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::process::Stdio::piped",
+      "caller": "detect_changes",
+      "line": 29,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::process::Stdio::piped",
+      "caller": "detect_changes",
+      "line": 30,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::process::Stdio::piped",
+      "caller": "detect_changes",
+      "line": 31,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "detect_changes",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "detect_changes",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "write_all",
+      "caller": "detect_changes",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_bytes",
+      "caller": "detect_changes",
+      "line": 38,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "detect_changes",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "wait_with_output",
+      "caller": "detect_changes",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "detect_changes",
+      "line": 46,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_changes",
+      "line": 48,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "detect_changes",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cloned",
+      "caller": "detect_changes",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "keys",
+      "caller": "detect_changes",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_changes",
+      "line": 50,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_changes",
+      "line": 51,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_changes",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "detect_changes",
+      "line": 57,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "detect_changes",
+      "line": 58,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "detect_changes",
+      "line": 59,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split_once",
+      "caller": "detect_changes",
+      "line": 60,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "mtime_str.parse::<i64>",
+      "caller": "detect_changes",
+      "line": 61,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "detect_changes",
+      "line": 62,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_changes",
+      "line": 62,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_changes",
+      "line": 68,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_changes",
+      "line": 69,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_changes",
+      "line": 70,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_changes",
+      "line": 71,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_changes",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string_lossy",
+      "caller": "detect_changes",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "detect_changes",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "detect_changes",
+      "line": 78,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "detect_changes",
+      "line": 78,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "detect_changes",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "detect_changes",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "detect_changes",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "detect_changes",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "detect_changes",
+      "line": 85,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "detect_changes",
+      "line": 85,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "keys",
+      "caller": "detect_changes",
+      "line": 85,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_changes",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string_lossy",
+      "caller": "detect_changes",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "keys",
+      "caller": "detect_changes",
+      "line": 90,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "detect_changes",
+      "line": 91,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "detect_changes",
+      "line": 92,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "detect_changes",
+      "line": 92,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect_changes",
+      "line": 96,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "cleanup_changed_files",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "cleanup_changed_files",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "cleanup_changed_files",
+      "line": 102,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "cleanup_changed_files",
+      "line": 105,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "cleanup_changed_files",
+      "line": 108,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "cleanup_changed_files",
+      "line": 110,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "cleanup_changed_files",
+      "line": 110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "cleanup_changed_files",
+      "line": 113,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "cleanup_changed_files",
+      "line": 113,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "cleanup_changed_files",
+      "line": 116,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "cleanup_changed_files",
+      "line": 117,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "cleanup_changed_files",
+      "line": 120,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "cleanup_changed_files",
+      "line": 120,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "cleanup_changed_files",
+      "line": 124,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "cleanup_changed_files",
+      "line": 124,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "cleanup_changed_files",
+      "line": 128,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "cleanup_changed_files",
+      "line": 128,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "cleanup_changed_files",
+      "line": 135,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "cleanup_changed_files",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "spawn",
+      "caller": "cleanup_changed_files",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "stderr",
+      "caller": "cleanup_changed_files",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "stdout",
+      "caller": "cleanup_changed_files",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "stdin",
+      "caller": "cleanup_changed_files",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "cleanup_changed_files",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "cleanup_changed_files",
+      "line": 136,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::process::Stdio::piped",
+      "caller": "cleanup_changed_files",
+      "line": 138,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::process::Stdio::piped",
+      "caller": "cleanup_changed_files",
+      "line": 139,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::process::Stdio::piped",
+      "caller": "cleanup_changed_files",
+      "line": 140,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "cleanup_changed_files",
+      "line": 144,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "cleanup_changed_files",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "write_all",
+      "caller": "cleanup_changed_files",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_bytes",
+      "caller": "cleanup_changed_files",
+      "line": 147,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "cleanup_changed_files",
+      "line": 151,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "wait_with_output",
+      "caller": "cleanup_changed_files",
+      "line": 151,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "cleanup_changed_files",
+      "line": 154,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "cleanup_changed_files",
+      "line": 155,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "cleanup_changed_files",
+      "line": 156,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "cleanup_changed_files",
+      "line": 160,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "print_change_summary",
+      "line": 165,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_change_summary",
+      "line": 166,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "print_change_summary",
+      "line": 168,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_change_summary",
+      "line": 169,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "print_change_summary",
+      "line": 171,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_change_summary",
+      "line": 172,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "print_change_summary",
+      "line": 174,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_change_summary",
+      "line": 175,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_change_summary",
+      "line": 177,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

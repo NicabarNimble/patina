@@ -1,8 +1,15 @@
 {
-  "calls": [],
   "file": "./patina-metal/grammars/solidity/typed-libraries/python/tree_sitter_solidity/__init__.py",
-  "functions": [],
-  "imports": [],
   "language": "python",
-  "types": []
+  "functions": [],
+  "types": [],
+  "imports": [
+    {
+      "path": "from typed_parser import *",
+      "items": [],
+      "alias": null,
+      "line": 1
+    }
+  ],
+  "calls": []
 }

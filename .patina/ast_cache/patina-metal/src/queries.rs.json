@@ -1,8 +1,324 @@
 {
-  "calls": [],
   "file": "./patina-metal/src/queries.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "load_all_queries",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 11,
+      "line_end": 43,
+      "doc_comment": null
+    },
+    {
+      "name": "load_query",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 46,
+      "line_end": 59,
+      "doc_comment": null
+    },
+    {
+      "name": "create_query",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 62,
+      "line_end": 69,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "QueryLoader",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 7,
+      "line_end": 7,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "crate::{Metal, QueryType}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::collections::HashMap",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "tree_sitter::Query",
+      "items": [],
+      "alias": null,
+      "line": 4
+    }
+  ],
+  "calls": [
+    {
+      "target": "HashMap::new",
+      "caller": "load_all_queries",
+      "line": 12,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "load_all_queries",
+      "line": 15,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "load_all_queries",
+      "line": 17,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "load_all_queries",
+      "line": 17,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "load_all_queries",
+      "line": 19,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "load_all_queries",
+      "line": 21,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "load_all_queries",
+      "line": 21,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "load_all_queries",
+      "line": 23,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "load_all_queries",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "load_all_queries",
+      "line": 25,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "load_all_queries",
+      "line": 29,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "load_all_queries",
+      "line": 31,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "load_all_queries",
+      "line": 31,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "load_all_queries",
+      "line": 33,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "load_all_queries",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "load_all_queries",
+      "line": 35,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "load_all_queries",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "load_all_queries",
+      "line": 39,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "load_all_queries",
+      "line": 39,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Self::load_all_queries",
+      "caller": "load_query",
+      "line": 47,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok_or_else",
+      "caller": "load_query",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "load_query",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "load_query",
+      "line": 51,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok_or_else",
+      "caller": "load_query",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "tree_sitter_language",
+      "caller": "load_query",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "load_query",
+      "line": 55,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "map_err",
+      "caller": "load_query",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Query::new",
+      "caller": "load_query",
+      "line": 57,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "load_query",
+      "line": 58,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok_or_else",
+      "caller": "create_query",
+      "line": 63,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "tree_sitter_language",
+      "caller": "create_query",
+      "line": 63,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "create_query",
+      "line": 65,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "map_err",
+      "caller": "create_query",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Query::new",
+      "caller": "create_query",
+      "line": 67,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "create_query",
+      "line": 68,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }
