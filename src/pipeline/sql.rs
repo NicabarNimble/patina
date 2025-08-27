@@ -118,7 +118,13 @@ fn find_json_files(dir: &Path) -> Result<Vec<std::path::PathBuf>> {
                 if path.is_dir() {
                     visit_dir(&path, files)?;
                 } else if path.extension().and_then(|s| s.to_str()) == Some("json") {
-                    files.push(path);
+                    // Skip git_metrics.json and other non-AST files
+                    let filename = path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("");
+                    if !filename.starts_with("git_metrics") {
+                        files.push(path);
+                    }
                 }
             }
         }
@@ -205,4 +211,23 @@ fn process_json_file(json_path: &Path, sql_file: &mut fs::File) -> Result<()> {
 
 fn escape_string(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
+}
+
+/// Load the generated SQL file into an SQLite database
+pub fn load_into_sqlite(sql_path: &Path, db_path: &Path) -> Result<()> {
+    use rusqlite::Connection;
+    
+    // Read the SQL file
+    let sql_content = fs::read_to_string(sql_path)
+        .with_context(|| format!("Failed to read SQL file: {}", sql_path.display()))?;
+    
+    // Open or create the database
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("Failed to open database: {}", db_path.display()))?;
+    
+    // Execute the SQL in a transaction for better performance
+    conn.execute_batch(&sql_content)
+        .with_context(|| "Failed to execute SQL statements")?;
+    
+    Ok(())
 }
