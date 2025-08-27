@@ -1,8 +1,618 @@
 {
-  "calls": [],
   "file": "./src/memory/learn.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 10,
+      "line_end": 41,
+      "doc_comment": null
+    },
+    {
+      "name": "execute_decision",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 43,
+      "line_end": 65,
+      "doc_comment": null
+    },
+    {
+      "name": "get_current_branch",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 68,
+      "line_end": 74,
+      "doc_comment": null
+    },
+    {
+      "name": "get_current_commit_short",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 76,
+      "line_end": 82,
+      "doc_comment": null
+    },
+    {
+      "name": "check_for_repeated_mistake",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 84,
+      "line_end": 130,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "LearnCommand",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 7,
+      "line_end": 7,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "chrono::Utc",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::fs::OpenOptions",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "std::io::Write",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 5
+    }
+  ],
+  "calls": [
+    {
+      "target": "Path::new",
+      "caller": "execute",
+      "line": 12,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::create_dir_all",
+      "caller": "execute",
+      "line": 15,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_current_branch",
+      "caller": "execute",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format",
+      "caller": "execute",
+      "line": 19,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "execute",
+      "line": 19,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "execute",
+      "line": 22,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "open",
+      "caller": "execute",
+      "line": 28,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "append",
+      "caller": "execute",
+      "line": 28,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "create",
+      "caller": "execute",
+      "line": 28,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "OpenOptions::new",
+      "caller": "execute",
+      "line": 28,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "writeln!",
+      "caller": "execute",
+      "line": 33,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 35,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "check_for_repeated_mistake",
+      "caller": "execute",
+      "line": 38,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 40,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "execute_decision",
+      "line": 44,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::create_dir_all",
+      "caller": "execute_decision",
+      "line": 46,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format",
+      "caller": "execute_decision",
+      "line": 48,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "execute_decision",
+      "line": 48,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "execute_decision",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "open",
+      "caller": "execute_decision",
+      "line": 54,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "append",
+      "caller": "execute_decision",
+      "line": 54,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "create",
+      "caller": "execute_decision",
+      "line": 54,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "OpenOptions::new",
+      "caller": "execute_decision",
+      "line": 54,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "writeln!",
+      "caller": "execute_decision",
+      "line": 59,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_decision",
+      "line": 61,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_decision",
+      "line": 62,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute_decision",
+      "line": 64,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_current_branch",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_current_branch",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::process::Command::new",
+      "caller": "get_current_branch",
+      "line": 69,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_current_branch",
+      "line": 73,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_current_branch",
+      "line": 73,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_current_branch",
+      "line": 73,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_current_branch",
+      "line": 73,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_current_commit_short",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_current_commit_short",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::process::Command::new",
+      "caller": "get_current_commit_short",
+      "line": 77,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_current_commit_short",
+      "line": 81,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_current_commit_short",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_current_commit_short",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_current_commit_short",
+      "line": 81,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "check_for_repeated_mistake",
+      "line": 86,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "check_for_repeated_mistake",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "check_for_repeated_mistake",
+      "line": 89,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::read_to_string",
+      "caller": "check_for_repeated_mistake",
+      "line": 92,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "check_for_repeated_mistake",
+      "line": 93,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "check_for_repeated_mistake",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "check_for_repeated_mistake",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split_whitespace",
+      "caller": "check_for_repeated_mistake",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "check_for_repeated_mistake",
+      "line": 98,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "check_for_repeated_mistake",
+      "line": 101,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "check_for_repeated_mistake",
+      "line": 103,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "check_for_repeated_mistake",
+      "line": 104,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "check_for_repeated_mistake",
+      "line": 105,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "check_for_repeated_mistake",
+      "line": 105,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "check_for_repeated_mistake",
+      "line": 105,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "count",
+      "caller": "check_for_repeated_mistake",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "check_for_repeated_mistake",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "check_for_repeated_mistake",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "check_for_repeated_mistake",
+      "line": 110,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "check_for_repeated_mistake",
+      "line": 114,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "check_for_repeated_mistake",
+      "line": 114,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "check_for_repeated_mistake",
+      "line": 116,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "check_for_repeated_mistake",
+      "line": 116,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "check_for_repeated_mistake",
+      "line": 116,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "check_for_repeated_mistake",
+      "line": 116,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "check_for_repeated_mistake",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "check_for_repeated_mistake",
+      "line": 122,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "check_for_repeated_mistake",
+      "line": 123,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "check_for_repeated_mistake",
+      "line": 123,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "check_for_repeated_mistake",
+      "line": 124,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "check_for_repeated_mistake",
+      "line": 126,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "check_for_repeated_mistake",
+      "line": 129,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

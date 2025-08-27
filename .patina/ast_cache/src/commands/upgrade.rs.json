@@ -1,8 +1,678 @@
 {
-  "calls": [],
   "file": "./src/commands/upgrade.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 12,
+      "line_end": 83,
+      "doc_comment": null
+    },
+    {
+      "name": "check_latest_release",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 85,
+      "line_end": 126,
+      "doc_comment": null
+    },
+    {
+      "name": "is_version_outdated",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 128,
+      "line_end": 148,
+      "doc_comment": null
+    },
+    {
+      "name": "test_version_comparison",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 155,
+      "line_end": 161,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "GitHubRelease",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 6,
+      "line_end": 10,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "serde::Deserialize",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::io::{self, Write}",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "super::*",
+      "items": [],
+      "alias": null,
+      "line": 152
+    }
+  ],
+  "calls": [
+    {
+      "target": "env!",
+      "caller": "execute",
+      "line": 13,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 16,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "check_latest_release",
+      "caller": "execute",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "trim_start_matches",
+      "caller": "execute",
+      "line": 21,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_version_outdated",
+      "caller": "execute",
+      "line": 23,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::json!",
+      "caller": "execute",
+      "line": 26,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 32,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 33,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 36,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 37,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "chrono::DateTime::parse_from_rfc3339",
+      "caller": "execute",
+      "line": 40,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "num_days",
+      "caller": "execute",
+      "line": 41,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "chrono::Utc::now",
+      "caller": "execute",
+      "line": 41,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "with_timezone",
+      "caller": "execute",
+      "line": 41,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 45,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 47,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 53,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 56,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 59,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 63,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 64,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 65,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 66,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_ok",
+      "caller": "execute",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::var",
+      "caller": "execute",
+      "line": 69,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "print!",
+      "caller": "execute",
+      "line": 72,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "flush",
+      "caller": "execute",
+      "line": 73,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "io::stdout",
+      "caller": "execute",
+      "line": 73,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "execute",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "read_line",
+      "caller": "execute",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "io::stdin",
+      "caller": "execute",
+      "line": 75,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "execute",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "execute",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eq_ignore_ascii_case",
+      "caller": "execute",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "execute",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 78,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 82,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "build",
+      "caller": "check_latest_release",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "timeout",
+      "caller": "check_latest_release",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "user_agent",
+      "caller": "check_latest_release",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "reqwest::blocking::Client::builder",
+      "caller": "check_latest_release",
+      "line": 87,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::time::Duration::from_secs",
+      "caller": "check_latest_release",
+      "line": 89,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_ok",
+      "caller": "check_latest_release",
+      "line": 97,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::var",
+      "caller": "check_latest_release",
+      "line": 97,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "check_latest_release",
+      "line": 98,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "check_latest_release",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "send",
+      "caller": "check_latest_release",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "header",
+      "caller": "check_latest_release",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "check_latest_release",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_success",
+      "caller": "check_latest_release",
+      "line": 107,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "status",
+      "caller": "check_latest_release",
+      "line": 107,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "status",
+      "caller": "check_latest_release",
+      "line": 109,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "check_latest_release",
+      "line": 110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "check_latest_release",
+      "line": 114,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "check_latest_release",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "check_latest_release",
+      "line": 116,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "check_latest_release",
+      "line": 117,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "check_latest_release",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "json",
+      "caller": "check_latest_release",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "check_latest_release",
+      "line": 125,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "is_version_outdated",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter_map",
+      "caller": "is_version_outdated",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "is_version_outdated",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ok",
+      "caller": "is_version_outdated",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "is_version_outdated",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "is_version_outdated",
+      "line": 134,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter_map",
+      "caller": "is_version_outdated",
+      "line": 134,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "is_version_outdated",
+      "line": 134,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ok",
+      "caller": "is_version_outdated",
+      "line": 134,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "is_version_outdated",
+      "line": 134,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "is_version_outdated",
+      "line": 137,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "is_version_outdated",
+      "line": 137,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "is_version_outdated",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "is_version_outdated",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "is_version_outdated",
+      "line": 141,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "is_version_outdated",
+      "line": 143,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "is_version_outdated",
+      "line": 147,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_version_comparison",
+      "line": 156,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_version_comparison",
+      "line": 157,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_version_comparison",
+      "line": 158,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_version_comparison",
+      "line": 159,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_version_comparison",
+      "line": 160,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

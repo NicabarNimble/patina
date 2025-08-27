@@ -34,17 +34,6 @@
       "line_start": 142,
       "line_end": 151,
       "doc_comment": null
-    },
-    {
-      "name": "load_into_duckdb",
-      "visibility": "public",
-      "async": false,
-      "unsafe": false,
-      "params": [],
-      "returns": null,
-      "line_start": 154,
-      "line_end": 158,
-      "doc_comment": null
     }
   ],
   "types": [
@@ -73,7 +62,7 @@
       "line": 2
     },
     {
-      "path": "patina::pipeline::{analyze_git, detect_language, discover_files, generate_sql, parse_file}",
+      "path": "patina::pipeline::{analyze_git, detect_language, discover_files, generate_sql, load_into_duckdb, parse_file}",
       "items": [],
       "alias": null,
       "line": 3
@@ -426,20 +415,6 @@
       "target": "Ok",
       "caller": "should_skip_parse",
       "line": 150,
-      "is_method": false,
-      "is_async": false
-    },
-    {
-      "target": "println!",
-      "caller": "load_into_duckdb",
-      "line": 156,
-      "is_method": false,
-      "is_async": false
-    },
-    {
-      "target": "Ok",
-      "caller": "load_into_duckdb",
-      "line": 157,
       "is_method": false,
       "is_async": false
     }

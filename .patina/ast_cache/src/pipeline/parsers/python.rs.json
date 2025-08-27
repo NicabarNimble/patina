@@ -1,0 +1,629 @@
+{
+  "file": "./src/pipeline/parsers/python.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "parse_python_file",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 8,
+      "line_end": 58,
+      "doc_comment": null
+    },
+    {
+      "name": "extract_imports",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 60,
+      "line_end": 64,
+      "doc_comment": null
+    },
+    {
+      "name": "extract_imports_recursive",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 66,
+      "line_end": 95,
+      "doc_comment": null
+    },
+    {
+      "name": "extract_calls",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 97,
+      "line_end": 101,
+      "doc_comment": null
+    },
+    {
+      "name": "extract_calls_recursive",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 103,
+      "line_end": 155,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "patina_metal::{Analyzer, Metal}",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "crate::pipeline::schema::{AstData, Call, Function, Import, TypeDef}",
+      "items": [],
+      "alias": null,
+      "line": 5
+    }
+  ],
+  "calls": [
+    {
+      "target": "with_context",
+      "caller": "parse_python_file",
+      "line": 9,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::read_to_string",
+      "caller": "parse_python_file",
+      "line": 9,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "parse_python_file",
+      "line": 10,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Analyzer::new",
+      "caller": "parse_python_file",
+      "line": 12,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "parse_python_file",
+      "line": 13,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "AstData::from_path",
+      "caller": "parse_python_file",
+      "line": 15,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "extract_symbols",
+      "caller": "parse_python_file",
+      "line": 18,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "parse_python_file",
+      "line": 24,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "parse_python_file",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "parse_python_file",
+      "line": 26,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "parse_python_file",
+      "line": 26,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "parse_python_file",
+      "line": 27,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "parse_python_file",
+      "line": 29,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "parse_python_file",
+      "line": 39,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "parse_python_file",
+      "line": 41,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "parse_python_file",
+      "line": 41,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "parse_python_file",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "parse_python_file",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "parse_python_file",
+      "line": 44,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "extract_imports",
+      "caller": "parse_python_file",
+      "line": 54,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "extract_calls",
+      "caller": "parse_python_file",
+      "line": 55,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "parse_python_file",
+      "line": 57,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "walk",
+      "caller": "extract_imports",
+      "line": 61,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extract_imports_recursive",
+      "caller": "extract_imports",
+      "line": 62,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "extract_imports",
+      "line": 63,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "node",
+      "caller": "extract_imports_recursive",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "extract_imports_recursive",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "start_position",
+      "caller": "extract_imports_recursive",
+      "line": 71,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_imports_recursive",
+      "line": 72,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "byte_range",
+      "caller": "extract_imports_recursive",
+      "line": 72,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_imports_recursive",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "extract_imports_recursive",
+      "line": 77,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "goto_first_child",
+      "caller": "extract_imports_recursive",
+      "line": 86,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extract_imports_recursive",
+      "caller": "extract_imports_recursive",
+      "line": 88,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "goto_next_sibling",
+      "caller": "extract_imports_recursive",
+      "line": 89,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_parent",
+      "caller": "extract_imports_recursive",
+      "line": 93,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "walk",
+      "caller": "extract_calls",
+      "line": 98,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extract_calls_recursive",
+      "caller": "extract_calls",
+      "line": 99,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "extract_calls",
+      "line": 100,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "node",
+      "caller": "extract_calls_recursive",
+      "line": 104,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "extract_calls_recursive",
+      "line": 107,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_else",
+      "caller": "extract_calls_recursive",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "extract_calls_recursive",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "child_by_field_name",
+      "caller": "extract_calls_recursive",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_calls_recursive",
+      "line": 109,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "byte_range",
+      "caller": "extract_calls_recursive",
+      "line": 109,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_calls_recursive",
+      "line": 110,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "extract_calls_recursive",
+      "line": 111,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_else",
+      "caller": "extract_calls_recursive",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "extract_calls_recursive",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "child_by_field_name",
+      "caller": "extract_calls_recursive",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "extract_calls_recursive",
+      "line": 113,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_calls_recursive",
+      "line": 114,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_calls_recursive",
+      "line": 116,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "extract_calls_recursive",
+      "line": 120,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "child_by_field_name",
+      "caller": "extract_calls_recursive",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "extract_calls_recursive",
+      "line": 123,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_else",
+      "caller": "extract_calls_recursive",
+      "line": 124,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "extract_calls_recursive",
+      "line": 124,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "child_by_field_name",
+      "caller": "extract_calls_recursive",
+      "line": 124,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_calls_recursive",
+      "line": 125,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "byte_range",
+      "caller": "extract_calls_recursive",
+      "line": 125,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_calls_recursive",
+      "line": 126,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_calls_recursive",
+      "line": 128,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "byte_range",
+      "caller": "extract_calls_recursive",
+      "line": 128,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_calls_recursive",
+      "line": 131,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_calls_recursive",
+      "line": 134,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "extract_calls_recursive",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "start_position",
+      "caller": "extract_calls_recursive",
+      "line": 137,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "extract_calls_recursive",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "extract_calls_recursive",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "child_by_field_name",
+      "caller": "extract_calls_recursive",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "extract_calls_recursive",
+      "line": 139,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_first_child",
+      "caller": "extract_calls_recursive",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extract_calls_recursive",
+      "caller": "extract_calls_recursive",
+      "line": 148,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "goto_next_sibling",
+      "caller": "extract_calls_recursive",
+      "line": 149,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_parent",
+      "caller": "extract_calls_recursive",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
+}

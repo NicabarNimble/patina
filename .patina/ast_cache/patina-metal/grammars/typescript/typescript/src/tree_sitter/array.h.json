@@ -1,8 +1,8 @@
 {
-  "calls": [],
   "file": "./patina-metal/grammars/typescript/typescript/src/tree_sitter/array.h",
-  "functions": [],
-  "imports": [],
   "language": "c",
-  "types": []
+  "functions": [],
+  "types": [],
+  "imports": [],
+  "calls": []
 }

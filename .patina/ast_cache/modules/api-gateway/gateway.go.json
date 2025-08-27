@@ -1,8 +1,557 @@
 {
-  "calls": [],
   "file": "./modules/api-gateway/gateway.go",
-  "functions": [],
-  "imports": [],
   "language": "go",
-  "types": []
+  "functions": [
+    {
+      "name": "New",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 34,
+      "line_end": 47,
+      "doc_comment": null
+    },
+    {
+      "name": "CreateWorkspace",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 50,
+      "line_end": 93,
+      "doc_comment": null
+    },
+    {
+      "name": "Execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 96,
+      "line_end": 108,
+      "doc_comment": null
+    },
+    {
+      "name": "GetWorkspace",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 111,
+      "line_end": 113,
+      "doc_comment": null
+    },
+    {
+      "name": "ListWorkspaces",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 116,
+      "line_end": 118,
+      "doc_comment": null
+    },
+    {
+      "name": "DeleteWorkspace",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 121,
+      "line_end": 148,
+      "doc_comment": null
+    },
+    {
+      "name": "GetGitStatus",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 151,
+      "line_end": 158,
+      "doc_comment": null
+    },
+    {
+      "name": "CreateBranch",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 161,
+      "line_end": 168,
+      "doc_comment": null
+    },
+    {
+      "name": "CommitChanges",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 171,
+      "line_end": 178,
+      "doc_comment": null
+    },
+    {
+      "name": "PushBranch",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 181,
+      "line_end": 188,
+      "doc_comment": null
+    },
+    {
+      "name": "GetID",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 201,
+      "line_end": 201,
+      "doc_comment": null
+    },
+    {
+      "name": "GetName",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 202,
+      "line_end": 202,
+      "doc_comment": null
+    },
+    {
+      "name": "GetStatus",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 203,
+      "line_end": 203,
+      "doc_comment": null
+    },
+    {
+      "name": "GetBranchName",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 204,
+      "line_end": 204,
+      "doc_comment": null
+    },
+    {
+      "name": "GetWorktreePath",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 205,
+      "line_end": 205,
+      "doc_comment": null
+    },
+    {
+      "name": "GetBaseImage",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 206,
+      "line_end": 206,
+      "doc_comment": null
+    },
+    {
+      "name": "GetCreatedAt",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 207,
+      "line_end": 207,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "Gateway",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 16,
+      "line_end": 25,
+      "doc_comment": null
+    },
+    {
+      "name": "Config",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 28,
+      "line_end": 31,
+      "doc_comment": null
+    },
+    {
+      "name": "workspaceAdapter",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 191,
+      "line_end": 199,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "context",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "fmt",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "sync",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "dagger.io/dagger",
+      "items": [],
+      "alias": null,
+      "line": 8
+    },
+    {
+      "path": "github.com/your-org/patina/modules/code-executor",
+      "items": [],
+      "alias": null,
+      "line": 9
+    },
+    {
+      "path": "github.com/your-org/patina/modules/environment-provider",
+      "items": [],
+      "alias": null,
+      "line": 10
+    },
+    {
+      "path": "github.com/your-org/patina/modules/environment-registry",
+      "items": [],
+      "alias": null,
+      "line": 11
+    },
+    {
+      "path": "github.com/your-org/patina/modules/git-manager",
+      "items": [],
+      "alias": null,
+      "line": 12
+    }
+  ],
+  "calls": [
+    {
+      "target": "NewManager",
+      "caller": "New",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "New",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "New",
+      "caller": "New",
+      "line": 41,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewRegistry",
+      "caller": "New",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "New",
+      "caller": "New",
+      "line": 43,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "make",
+      "caller": "New",
+      "line": 45,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "CreateWorktree",
+      "caller": "CreateWorkspace",
+      "line": 52,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "CreateWorkspace",
+      "line": 54,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Create",
+      "caller": "CreateWorkspace",
+      "line": 58,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "RemoveWorktree",
+      "caller": "CreateWorkspace",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "CreateWorkspace",
+      "line": 68,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Register",
+      "caller": "CreateWorkspace",
+      "line": 72,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Format",
+      "caller": "CreateWorkspace",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "RemoveWorktree",
+      "caller": "CreateWorkspace",
+      "line": 83,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "CreateWorkspace",
+      "line": 84,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Lock",
+      "caller": "CreateWorkspace",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Unlock",
+      "caller": "CreateWorkspace",
+      "line": 90,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "RLock",
+      "caller": "Execute",
+      "line": 98,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "RUnlock",
+      "caller": "Execute",
+      "line": 100,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "Execute",
+      "line": 103,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ExecuteSimple",
+      "caller": "Execute",
+      "line": 107,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Get",
+      "caller": "GetWorkspace",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "List",
+      "caller": "ListWorkspaces",
+      "line": 117,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Exists",
+      "caller": "DeleteWorkspace",
+      "line": 123,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "DeleteWorkspace",
+      "line": 128,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Deregister",
+      "caller": "DeleteWorkspace",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "DeleteWorkspace",
+      "line": 133,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Lock",
+      "caller": "DeleteWorkspace",
+      "line": 137,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "delete",
+      "caller": "DeleteWorkspace",
+      "line": 138,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Unlock",
+      "caller": "DeleteWorkspace",
+      "line": 139,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "RemoveWorktree",
+      "caller": "DeleteWorkspace",
+      "line": 142,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Printf",
+      "caller": "DeleteWorkspace",
+      "line": 144,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Get",
+      "caller": "GetGitStatus",
+      "line": 152,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "GetStatus",
+      "caller": "GetGitStatus",
+      "line": 157,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Get",
+      "caller": "CreateBranch",
+      "line": 162,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CreateBranch",
+      "caller": "CreateBranch",
+      "line": 167,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Get",
+      "caller": "CommitChanges",
+      "line": 172,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Commit",
+      "caller": "CommitChanges",
+      "line": 177,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Get",
+      "caller": "PushBranch",
+      "line": 182,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Push",
+      "caller": "PushBranch",
+      "line": 187,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
 }

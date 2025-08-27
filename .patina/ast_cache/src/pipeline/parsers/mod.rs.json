@@ -9,8 +9,8 @@
       "unsafe": false,
       "params": [],
       "returns": null,
-      "line_start": 9,
-      "line_end": 19,
+      "line_start": 12,
+      "line_end": 26,
       "doc_comment": null
     }
   ],
@@ -20,47 +20,75 @@
       "path": "anyhow::Result",
       "items": [],
       "alias": null,
-      "line": 3
+      "line": 6
     },
     {
       "path": "std::path::Path",
       "items": [],
       "alias": null,
-      "line": 4
+      "line": 7
     },
     {
       "path": "super::schema::AstData",
       "items": [],
       "alias": null,
-      "line": 6
+      "line": 9
     }
   ],
   "calls": [
     {
       "target": "super::discovery::detect_language",
       "caller": "parse_file",
-      "line": 10,
+      "line": 13,
       "is_method": false,
       "is_async": false
     },
     {
       "target": "rust::parse_rust_file",
       "caller": "parse_file",
-      "line": 13,
+      "line": 16,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "go::parse_go_file",
+      "caller": "parse_file",
+      "line": 17,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "python::parse_python_file",
+      "caller": "parse_file",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "javascript::parse_javascript_file",
+      "caller": "parse_file",
+      "line": 19,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "javascript::parse_javascript_file",
+      "caller": "parse_file",
+      "line": 20,
       "is_method": false,
       "is_async": false
     },
     {
       "target": "Ok",
       "caller": "parse_file",
-      "line": 16,
+      "line": 23,
       "is_method": false,
       "is_async": false
     },
     {
       "target": "AstData::from_path",
       "caller": "parse_file",
-      "line": 16,
+      "line": 23,
       "is_method": false,
       "is_async": false
     }

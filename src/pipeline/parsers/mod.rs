@@ -1,3 +1,6 @@
+pub mod go;
+pub mod javascript;
+pub mod python;
 pub mod rust;
 
 use anyhow::Result;
@@ -11,6 +14,10 @@ pub fn parse_file(path: &Path) -> Result<AstData> {
     
     match language {
         Some("rust") => rust::parse_rust_file(path),
+        Some("go") => go::parse_go_file(path),
+        Some("python") => python::parse_python_file(path),
+        Some("javascript") => javascript::parse_javascript_file(path, false),
+        Some("typescript") => javascript::parse_javascript_file(path, true),
         _ => {
             // Return empty AST data for unsupported languages for now
             Ok(AstData::from_path(path))

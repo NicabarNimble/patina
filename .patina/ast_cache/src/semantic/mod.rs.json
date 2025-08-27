@@ -1,8 +1,8 @@
 {
-  "calls": [],
   "file": "./src/semantic/mod.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [],
+  "types": [],
+  "imports": [],
+  "calls": []
 }

@@ -1,0 +1,332 @@
+{
+  "file": "./src/pipeline/duckdb.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "load_into_duckdb",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 6,
+      "line_end": 10,
+      "doc_comment": null
+    },
+    {
+      "name": "load_into_sqlite",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 13,
+      "line_end": 39,
+      "doc_comment": null
+    },
+    {
+      "name": "query_functions",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 42,
+      "line_end": 58,
+      "doc_comment": null
+    },
+    {
+      "name": "get_stats",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 61,
+      "line_end": 103,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "rusqlite::{Connection, params}",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 3
+    }
+  ],
+  "calls": [
+    {
+      "target": "load_into_sqlite",
+      "caller": "load_into_duckdb",
+      "line": 9,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "load_into_sqlite",
+      "line": 15,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ok",
+      "caller": "load_into_sqlite",
+      "line": 16,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::remove_file",
+      "caller": "load_into_sqlite",
+      "line": 16,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "with_context",
+      "caller": "load_into_sqlite",
+      "line": 20,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Connection::open",
+      "caller": "load_into_sqlite",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "load_into_sqlite",
+      "line": 21,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "with_context",
+      "caller": "load_into_sqlite",
+      "line": 24,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::read_to_string",
+      "caller": "load_into_sqlite",
+      "line": 24,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "load_into_sqlite",
+      "line": 25,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "load_into_sqlite",
+      "line": 30,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "load_into_sqlite",
+      "line": 31,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "load_into_sqlite",
+      "line": 32,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "with_context",
+      "caller": "load_into_sqlite",
+      "line": 33,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "execute",
+      "caller": "load_into_sqlite",
+      "line": 33,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "load_into_sqlite",
+      "line": 34,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "load_into_sqlite",
+      "line": 38,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Connection::open",
+      "caller": "query_functions",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "prepare",
+      "caller": "query_functions",
+      "line": 45,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "stmt.query_map([format!(\"%{}%\", pattern)], |row| {\n        row.get(0)\n    })?\n    .collect::<Result<Vec<_>, _>>",
+      "caller": "query_functions",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "query_map",
+      "caller": "query_functions",
+      "line": 52,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "query_functions",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "query_functions",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "query_functions",
+      "line": 57,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Connection::open",
+      "caller": "get_stats",
+      "line": 62,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "query_row",
+      "caller": "get_stats",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "get_stats",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "query_row",
+      "caller": "get_stats",
+      "line": 70,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "get_stats",
+      "line": 73,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "query_row",
+      "caller": "get_stats",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "get_stats",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "query_row",
+      "caller": "get_stats",
+      "line": 82,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "get_stats",
+      "line": 85,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "query_row",
+      "caller": "get_stats",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "get_stats",
+      "line": 91,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_stats",
+      "line": 94,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "get_stats",
+      "line": 94,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

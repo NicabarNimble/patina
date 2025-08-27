@@ -1,8 +1,205 @@
 {
-  "calls": [],
   "file": "./modules/api-gateway/cmd/server/main.go",
-  "functions": [],
-  "imports": [],
   "language": "go",
-  "types": []
+  "functions": [
+    {
+      "name": "main",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 13,
+      "line_end": 69,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "context",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "log",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "net/http",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "os",
+      "items": [],
+      "alias": null,
+      "line": 7
+    },
+    {
+      "path": "dagger.io/dagger",
+      "items": [],
+      "alias": null,
+      "line": 9
+    },
+    {
+      "path": "github.com/your-org/patina/modules/api-gateway",
+      "items": [],
+      "alias": null,
+      "line": 10
+    }
+  ],
+  "calls": [
+    {
+      "target": "Background",
+      "caller": "main",
+      "line": 14,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Connect",
+      "caller": "main",
+      "line": 17,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WithLogOutput",
+      "caller": "main",
+      "line": 17,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "main",
+      "line": 19,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Close",
+      "caller": "main",
+      "line": 21,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Getenv",
+      "caller": "main",
+      "line": 24,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Getenv",
+      "caller": "main",
+      "line": 29,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "New",
+      "caller": "main",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "main",
+      "line": 40,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewHTTPHandlers",
+      "caller": "main",
+      "line": 44,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewServeMux",
+      "caller": "main",
+      "line": 47,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "RegisterRoutes",
+      "caller": "main",
+      "line": 48,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HandleFunc",
+      "caller": "main",
+      "line": 51,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WriteHeader",
+      "caller": "main",
+      "line": 52,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Write",
+      "caller": "main",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Getenv",
+      "caller": "main",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Printf",
+      "caller": "main",
+      "line": 62,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Printf",
+      "caller": "main",
+      "line": 63,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Printf",
+      "caller": "main",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ListenAndServe",
+      "caller": "main",
+      "line": 66,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "main",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
 }

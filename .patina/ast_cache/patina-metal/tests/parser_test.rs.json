@@ -1,8 +1,296 @@
 {
-  "calls": [],
   "file": "./patina-metal/tests/parser_test.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "test_rust_parser",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 4,
+      "line_end": 19,
+      "doc_comment": null
+    },
+    {
+      "name": "test_go_parser",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 22,
+      "line_end": 39,
+      "doc_comment": null
+    },
+    {
+      "name": "test_solidity_parser",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 42,
+      "line_end": 59,
+      "doc_comment": null
+    },
+    {
+      "name": "test_cairo_parser",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 62,
+      "line_end": 77,
+      "doc_comment": null
+    },
+    {
+      "name": "test_available_languages",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 80,
+      "line_end": 107,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "patina_metal::{Analyzer, Metal}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    }
+  ],
+  "calls": [
+    {
+      "target": "expect",
+      "caller": "test_rust_parser",
+      "line": 5,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Analyzer::new",
+      "caller": "test_rust_parser",
+      "line": 5,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "has_parser",
+      "caller": "test_rust_parser",
+      "line": 7,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "test_rust_parser",
+      "line": 8,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "test_rust_parser",
+      "line": 17,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_rust_parser",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "expect",
+      "caller": "test_go_parser",
+      "line": 23,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Analyzer::new",
+      "caller": "test_go_parser",
+      "line": 23,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "has_parser",
+      "caller": "test_go_parser",
+      "line": 25,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "test_go_parser",
+      "line": 26,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "test_go_parser",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_go_parser",
+      "line": 38,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "expect",
+      "caller": "test_solidity_parser",
+      "line": 43,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Analyzer::new",
+      "caller": "test_solidity_parser",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "has_parser",
+      "caller": "test_solidity_parser",
+      "line": 45,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "test_solidity_parser",
+      "line": 46,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "test_solidity_parser",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_solidity_parser",
+      "line": 58,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "expect",
+      "caller": "test_cairo_parser",
+      "line": 63,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Analyzer::new",
+      "caller": "test_cairo_parser",
+      "line": 63,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "has_parser",
+      "caller": "test_cairo_parser",
+      "line": 65,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "test_cairo_parser",
+      "line": 66,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "test_cairo_parser",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_cairo_parser",
+      "line": 76,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "expect",
+      "caller": "test_available_languages",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Analyzer::new",
+      "caller": "test_available_languages",
+      "line": 81,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "test_available_languages",
+      "line": 83,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Metal::all",
+      "caller": "test_available_languages",
+      "line": 85,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "has_parser",
+      "caller": "test_available_languages",
+      "line": 86,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "test_available_languages",
+      "line": 87,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_available_languages",
+      "line": 99,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_available_languages",
+      "line": 103,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

@@ -1,8 +1,245 @@
 {
-  "calls": [],
   "file": "./modules/environment-provider/provider.go",
-  "functions": [],
-  "imports": [],
   "language": "go",
-  "types": []
+  "functions": [
+    {
+      "name": "New",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 36,
+      "line_end": 40,
+      "doc_comment": null
+    },
+    {
+      "name": "Create",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 43,
+      "line_end": 96,
+      "doc_comment": null
+    },
+    {
+      "name": "CreateWithDefaults",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 99,
+      "line_end": 104,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "Config",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 13,
+      "line_end": 19,
+      "doc_comment": null
+    },
+    {
+      "name": "Environment",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 22,
+      "line_end": 28,
+      "doc_comment": null
+    },
+    {
+      "name": "Provider",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 31,
+      "line_end": 33,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "context",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "fmt",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "strings",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "time",
+      "items": [],
+      "alias": null,
+      "line": 7
+    },
+    {
+      "path": "dagger.io/dagger",
+      "items": [],
+      "alias": null,
+      "line": 9
+    }
+  ],
+  "calls": [
+    {
+      "target": "Errorf",
+      "caller": "Create",
+      "line": 45,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "From",
+      "caller": "Create",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Container",
+      "caller": "Create",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Contains",
+      "caller": "Create",
+      "line": 56,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Contains",
+      "caller": "Create",
+      "line": 56,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WithExec",
+      "caller": "Create",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WithExec",
+      "caller": "Create",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WithEnvVariable",
+      "caller": "Create",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Directory",
+      "caller": "Create",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Host",
+      "caller": "Create",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WithMountedDirectory",
+      "caller": "Create",
+      "line": 72,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Directory",
+      "caller": "Create",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Host",
+      "caller": "Create",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WithDirectory",
+      "caller": "Create",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WithWorkdir",
+      "caller": "Create",
+      "line": 84,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Sprintf",
+      "caller": "Create",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Unix",
+      "caller": "Create",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Now",
+      "caller": "Create",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Now",
+      "caller": "Create",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Create",
+      "caller": "CreateWithDefaults",
+      "line": 100,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
 }

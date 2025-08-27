@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use patina::pipeline::{analyze_git, detect_language, discover_files, generate_sql, parse_file};
+use patina::pipeline::{analyze_git, detect_language, discover_files, generate_sql, load_into_duckdb, parse_file};
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
@@ -151,8 +151,3 @@ fn should_skip_parse(source: &Path, cache: &Path) -> Result<bool> {
 }
 
 
-fn load_into_duckdb(sql_path: &Path, db_path: &Path) -> Result<()> {
-    // TODO: Implement DuckDB loading
-    println!("TODO: Load SQL from {:?} into {:?}", sql_path, db_path);
-    Ok(())
-}

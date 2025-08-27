@@ -1,8 +1,667 @@
 {
-  "calls": [],
   "file": "./src/commands/dev/release.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 5,
+      "line_end": 100,
+      "doc_comment": null
+    },
+    {
+      "name": "bump_version",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 102,
+      "line_end": 154,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::process::Command",
+      "items": [],
+      "alias": null,
+      "line": 3
+    }
+  ],
+  "calls": [
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 6,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 7,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 10,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "super::validate::execute",
+      "caller": "execute",
+      "line": 11,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 12,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 15,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "execute",
+      "line": 16,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "execute",
+      "line": 16,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "execute",
+      "line": 16,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "execute",
+      "line": 16,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "execute",
+      "line": 21,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "execute",
+      "line": 22,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 24,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 25,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 28,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "execute",
+      "line": 29,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "execute",
+      "line": 29,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "execute",
+      "line": 29,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "execute",
+      "line": 29,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "execute",
+      "line": 34,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "execute",
+      "line": 35,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 37,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 38,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 41,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "execute",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "execute",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "execute",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "execute",
+      "line": 42,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "execute",
+      "line": 47,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "execute",
+      "line": 48,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 50,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 51,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 54,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "execute",
+      "line": 55,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "execute",
+      "line": 55,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "execute",
+      "line": 55,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "execute",
+      "line": 55,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "execute",
+      "line": 60,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "execute",
+      "line": 61,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 63,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 64,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 69,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "bump_version",
+      "caller": "execute",
+      "line": 75,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 76,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 78,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 81,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 82,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 83,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_none",
+      "caller": "execute",
+      "line": 84,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 85,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 87,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 89,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 90,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 93,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 94,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 95,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 96,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 99,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::read_to_string",
+      "caller": "bump_version",
+      "line": 105,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "bump_version",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "find",
+      "caller": "bump_version",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "bump_version",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "bump_version",
+      "line": 110,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "bump_version",
+      "line": 113,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "nth",
+      "caller": "bump_version",
+      "line": 113,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "bump_version",
+      "line": 113,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "bump_version",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "bump_version",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "bump_version",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "bump_version",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "bump_version",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "bump_version",
+      "line": 124,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "bump_version",
+      "line": 125,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "bump_version",
+      "line": 131,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "bump_version",
+      "line": 132,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "bump_version",
+      "line": 133,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "bump_version",
+      "line": 134,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "bump_version",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "bump_version",
+      "line": 139,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "bump_version",
+      "line": 140,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "bump_version",
+      "line": 143,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "bump_version",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "bump_version",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "bump_version",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "bump_version",
+      "line": 146,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "bump_version",
+      "line": 151,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "bump_version",
+      "line": 153,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

@@ -1,8 +1,70 @@
 {
-  "calls": [],
   "file": "./patina-metal/tests/debug_test.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "debug_analyzer_creation",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 4,
+      "line_end": 17,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "patina_metal::{Analyzer, Metal}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    }
+  ],
+  "calls": [
+    {
+      "target": "println!",
+      "caller": "debug_analyzer_creation",
+      "line": 5,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "expect",
+      "caller": "debug_analyzer_creation",
+      "line": 6,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Analyzer::new",
+      "caller": "debug_analyzer_creation",
+      "line": 6,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "debug_analyzer_creation",
+      "line": 8,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "available_metals",
+      "caller": "debug_analyzer_creation",
+      "line": 10,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "debug_analyzer_creation",
+      "line": 11,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

@@ -1,8 +1,1350 @@
 {
-  "calls": [],
   "file": "./src/version.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "default",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 25,
+      "line_end": 27,
+      "doc_comment": null
+    },
+    {
+      "name": "new",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 31,
+      "line_end": 72,
+      "doc_comment": null
+    },
+    {
+      "name": "load",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 74,
+      "line_end": 83,
+      "doc_comment": null
+    },
+    {
+      "name": "save",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 85,
+      "line_end": 92,
+      "doc_comment": null
+    },
+    {
+      "name": "get_component_version",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 94,
+      "line_end": 96,
+      "doc_comment": null
+    },
+    {
+      "name": "update_component_version",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 98,
+      "line_end": 102,
+      "doc_comment": null
+    },
+    {
+      "name": "get_available_versions",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 108,
+      "line_end": 124,
+      "doc_comment": null
+    },
+    {
+      "name": "check_for_updates",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 126,
+      "line_end": 139,
+      "doc_comment": null
+    },
+    {
+      "name": "force_all_updates",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 141,
+      "line_end": 155,
+      "doc_comment": null
+    },
+    {
+      "name": "test_version_manifest_new",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 164,
+      "line_end": 180,
+      "doc_comment": null
+    },
+    {
+      "name": "test_version_manifest_default",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 183,
+      "line_end": 189,
+      "doc_comment": null
+    },
+    {
+      "name": "test_load_nonexistent_manifest",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 192,
+      "line_end": 199,
+      "doc_comment": null
+    },
+    {
+      "name": "test_save_and_load_manifest",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 202,
+      "line_end": 217,
+      "doc_comment": null
+    },
+    {
+      "name": "test_get_component_version",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 220,
+      "line_end": 230,
+      "doc_comment": null
+    },
+    {
+      "name": "test_update_component_version",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 233,
+      "line_end": 244,
+      "doc_comment": null
+    },
+    {
+      "name": "test_update_checker_get_available_versions",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 247,
+      "line_end": 255,
+      "doc_comment": null
+    },
+    {
+      "name": "test_update_checker_check_for_updates",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 258,
+      "line_end": 279,
+      "doc_comment": null
+    },
+    {
+      "name": "test_update_checker_no_updates_needed",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 282,
+      "line_end": 288,
+      "doc_comment": null
+    },
+    {
+      "name": "test_version_manifest_serialization",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 291,
+      "line_end": 308,
+      "doc_comment": null
+    },
+    {
+      "name": "test_update_checker_force_all_updates",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 311,
+      "line_end": 324,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "VersionManifest",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 13,
+      "line_end": 16,
+      "doc_comment": null
+    },
+    {
+      "name": "ComponentInfo",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 19,
+      "line_end": 22,
+      "doc_comment": null
+    },
+    {
+      "name": "UpdateChecker",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 105,
+      "line_end": 105,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "serde::{Deserialize, Serialize}",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::collections::HashMap",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "crate::adapters::claude::CLAUDE_ADAPTER_VERSION",
+      "items": [],
+      "alias": null,
+      "line": 7
+    },
+    {
+      "path": "crate::adapters::gemini::GEMINI_ADAPTER_VERSION",
+      "items": [],
+      "alias": null,
+      "line": 8
+    },
+    {
+      "path": "crate::dev_env::dagger::DAGGER_VERSION",
+      "items": [],
+      "alias": null,
+      "line": 9
+    },
+    {
+      "path": "crate::dev_env::docker::DOCKER_VERSION",
+      "items": [],
+      "alias": null,
+      "line": 10
+    },
+    {
+      "path": "super::*",
+      "items": [],
+      "alias": null,
+      "line": 160
+    },
+    {
+      "path": "tempfile::TempDir",
+      "items": [],
+      "alias": null,
+      "line": 161
+    }
+  ],
+  "calls": [
+    {
+      "target": "Self::new",
+      "caller": "default",
+      "line": 26,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "new",
+      "line": 32,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "new",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "new",
+      "line": 36,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "new",
+      "line": 38,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "new",
+      "line": 39,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "new",
+      "line": 43,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "new",
+      "line": 44,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "new",
+      "line": 46,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "new",
+      "line": 47,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "new",
+      "line": 52,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "new",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "new",
+      "line": 55,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "new",
+      "line": 56,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "new",
+      "line": 60,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "new",
+      "line": 61,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "new",
+      "line": 63,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "new",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "new",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "env!",
+      "caller": "new",
+      "line": 69,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "load",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "load",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "load",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::read_to_string",
+      "caller": "load",
+      "line": 78,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "load",
+      "line": 79,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::from_str",
+      "caller": "load",
+      "line": 79,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "load",
+      "line": 81,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Self::new",
+      "caller": "load",
+      "line": 81,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "save",
+      "line": 86,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "save",
+      "line": 87,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "save",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::to_string_pretty",
+      "caller": "save",
+      "line": 89,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "save",
+      "line": 90,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "save",
+      "line": 91,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "get_component_version",
+      "line": 95,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "get_component_version",
+      "line": 95,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "get_component_version",
+      "line": 95,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_mut",
+      "caller": "update_component_version",
+      "line": 99,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "update_component_version",
+      "line": 100,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "get_available_versions",
+      "line": 109,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "get_available_versions",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_available_versions",
+      "line": 113,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_available_versions",
+      "line": 114,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "get_available_versions",
+      "line": 116,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_available_versions",
+      "line": 117,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_available_versions",
+      "line": 118,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "get_available_versions",
+      "line": 120,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_available_versions",
+      "line": 120,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_available_versions",
+      "line": 120,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "get_available_versions",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_available_versions",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_available_versions",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Self::get_available_versions",
+      "caller": "check_for_updates",
+      "line": 127,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "check_for_updates",
+      "line": 128,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_component_version",
+      "caller": "check_for_updates",
+      "line": 131,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "check_for_updates",
+      "line": 133,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "check_for_updates",
+      "line": 133,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Self::get_available_versions",
+      "caller": "force_all_updates",
+      "line": 142,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "force_all_updates",
+      "line": 143,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "force_all_updates",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "force_all_updates",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_component_version",
+      "caller": "force_all_updates",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "force_all_updates",
+      "line": 151,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::new",
+      "caller": "test_version_manifest_new",
+      "line": 165,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_version_manifest_new",
+      "line": 168,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_version_manifest_new",
+      "line": 171,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_version_manifest_new",
+      "line": 172,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_version_manifest_new",
+      "line": 173,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_version_manifest_new",
+      "line": 174,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_version_manifest_new",
+      "line": 178,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_version_manifest_new",
+      "line": 179,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::default",
+      "caller": "test_version_manifest_default",
+      "line": 184,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::new",
+      "caller": "test_version_manifest_default",
+      "line": 185,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_version_manifest_default",
+      "line": 187,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_version_manifest_default",
+      "line": 188,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_load_nonexistent_manifest",
+      "line": 193,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "TempDir::new",
+      "caller": "test_load_nonexistent_manifest",
+      "line": 193,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_load_nonexistent_manifest",
+      "line": 194,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::load",
+      "caller": "test_load_nonexistent_manifest",
+      "line": 194,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "test_load_nonexistent_manifest",
+      "line": 194,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_load_nonexistent_manifest",
+      "line": 197,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_load_nonexistent_manifest",
+      "line": 198,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_save_and_load_manifest",
+      "line": 203,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "TempDir::new",
+      "caller": "test_save_and_load_manifest",
+      "line": 203,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::new",
+      "caller": "test_save_and_load_manifest",
+      "line": 204,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_save_and_load_manifest",
+      "line": 207,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "save",
+      "caller": "test_save_and_load_manifest",
+      "line": 207,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "test_save_and_load_manifest",
+      "line": 207,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "test_save_and_load_manifest",
+      "line": 210,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "test_save_and_load_manifest",
+      "line": 210,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "test_save_and_load_manifest",
+      "line": 210,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_save_and_load_manifest",
+      "line": 211,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_save_and_load_manifest",
+      "line": 214,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::load",
+      "caller": "test_save_and_load_manifest",
+      "line": 214,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "test_save_and_load_manifest",
+      "line": 214,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_save_and_load_manifest",
+      "line": 215,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_save_and_load_manifest",
+      "line": 216,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::new",
+      "caller": "test_get_component_version",
+      "line": 221,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_get_component_version",
+      "line": 224,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_component_version",
+      "caller": "test_get_component_version",
+      "line": 224,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_get_component_version",
+      "line": 225,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_component_version",
+      "caller": "test_get_component_version",
+      "line": 228,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_get_component_version",
+      "line": 229,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::new",
+      "caller": "test_update_component_version",
+      "line": 234,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "update_component_version",
+      "caller": "test_update_component_version",
+      "line": 237,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_update_component_version",
+      "line": 238,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "update_component_version",
+      "caller": "test_update_component_version",
+      "line": 241,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_update_component_version",
+      "line": 243,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "UpdateChecker::get_available_versions",
+      "caller": "test_update_checker_get_available_versions",
+      "line": 248,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_update_checker_get_available_versions",
+      "line": 250,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_update_checker_get_available_versions",
+      "line": 251,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_update_checker_get_available_versions",
+      "line": 252,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_update_checker_get_available_versions",
+      "line": 253,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_update_checker_get_available_versions",
+      "line": 254,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::new",
+      "caller": "test_update_checker_check_for_updates",
+      "line": 259,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "update_component_version",
+      "caller": "test_update_checker_check_for_updates",
+      "line": 262,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "update_component_version",
+      "caller": "test_update_checker_check_for_updates",
+      "line": 263,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "UpdateChecker::check_for_updates",
+      "caller": "test_update_checker_check_for_updates",
+      "line": 265,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_update_checker_check_for_updates",
+      "line": 268,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_update_checker_check_for_updates",
+      "line": 272,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "test_update_checker_check_for_updates",
+      "line": 273,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_update_checker_check_for_updates",
+      "line": 274,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_update_checker_check_for_updates",
+      "line": 275,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "panic!",
+      "caller": "test_update_checker_check_for_updates",
+      "line": 276,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::new",
+      "caller": "test_update_checker_no_updates_needed",
+      "line": 283,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "UpdateChecker::check_for_updates",
+      "caller": "test_update_checker_no_updates_needed",
+      "line": 284,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_update_checker_no_updates_needed",
+      "line": 287,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::new",
+      "caller": "test_version_manifest_serialization",
+      "line": 292,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_version_manifest_serialization",
+      "line": 295,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::to_string",
+      "caller": "test_version_manifest_serialization",
+      "line": 295,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_version_manifest_serialization",
+      "line": 298,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::from_str",
+      "caller": "test_version_manifest_serialization",
+      "line": 298,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_version_manifest_serialization",
+      "line": 300,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_version_manifest_serialization",
+      "line": 301,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_version_manifest_serialization",
+      "line": 304,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::new",
+      "caller": "test_update_checker_force_all_updates",
+      "line": 312,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "UpdateChecker::force_all_updates",
+      "caller": "test_update_checker_force_all_updates",
+      "line": 313,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_update_checker_force_all_updates",
+      "line": 316,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "test_update_checker_force_all_updates",
+      "line": 319,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "test_update_checker_force_all_updates",
+      "line": 319,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "test_update_checker_force_all_updates",
+      "line": 319,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "test_update_checker_force_all_updates",
+      "line": 319,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_update_checker_force_all_updates",
+      "line": 320,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_update_checker_force_all_updates",
+      "line": 321,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_update_checker_force_all_updates",
+      "line": 322,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_update_checker_force_all_updates",
+      "line": 323,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

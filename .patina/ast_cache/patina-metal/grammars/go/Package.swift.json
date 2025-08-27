@@ -1,8 +1,8 @@
 {
-  "calls": [],
   "file": "./patina-metal/grammars/go/Package.swift",
-  "functions": [],
-  "imports": [],
   "language": "swift",
-  "types": []
+  "functions": [],
+  "types": [],
+  "imports": [],
+  "calls": []
 }

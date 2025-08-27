@@ -1,8 +1,730 @@
 {
-  "calls": [],
   "file": "./src/commands/version.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 9,
+      "line_end": 16,
+      "doc_comment": null
+    },
+    {
+      "name": "output_json",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 18,
+      "line_end": 30,
+      "doc_comment": null
+    },
+    {
+      "name": "output_human",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 32,
+      "line_end": 72,
+      "doc_comment": null
+    },
+    {
+      "name": "get_git_info",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 74,
+      "line_end": 111,
+      "doc_comment": null
+    },
+    {
+      "name": "get_dagger_version",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 113,
+      "line_end": 128,
+      "doc_comment": null
+    },
+    {
+      "name": "get_component_versions",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 130,
+      "line_end": 162,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "serde_json::json",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::process::Command",
+      "items": [],
+      "alias": null,
+      "line": 5
+    }
+  ],
+  "calls": [
+    {
+      "target": "env!",
+      "caller": "<module>",
+      "line": 7,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output_json",
+      "caller": "execute",
+      "line": 11,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output_human",
+      "caller": "execute",
+      "line": 13,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 15,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "output_json",
+      "line": 19,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_component_versions",
+      "caller": "output_json",
+      "line": 24,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "output_json",
+      "line": 28,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "output_json",
+      "line": 29,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "output_human",
+      "line": 33,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "output_human",
+      "line": 36,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_component_versions",
+      "caller": "output_human",
+      "line": 37,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "output_human",
+      "line": 40,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "output_human",
+      "line": 40,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_object",
+      "caller": "output_human",
+      "line": 40,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "output_human",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "output_human",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "output_human",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "output_human",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "output_human",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "output_human",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_object",
+      "caller": "output_human",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "output_human",
+      "line": 50,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "output_human",
+      "line": 50,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "output_human",
+      "line": 50,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "output_human",
+      "line": 51,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "output_human",
+      "line": 52,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "output_human",
+      "line": 52,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "output_human",
+      "line": 52,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "output_human",
+      "line": 53,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "output_human",
+      "line": 55,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "output_human",
+      "line": 55,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "output_human",
+      "line": 55,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "output_human",
+      "line": 56,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "output_human",
+      "line": 62,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "output_human",
+      "line": 62,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_object",
+      "caller": "output_human",
+      "line": 62,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "output_human",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "output_human",
+      "line": 65,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "output_human",
+      "line": 71,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_else",
+      "caller": "get_git_info",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "get_git_info",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "get_git_info",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ok",
+      "caller": "get_git_info",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_git_info",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "get_git_info",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_git_info",
+      "line": 75,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok",
+      "caller": "get_git_info",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8",
+      "caller": "get_git_info",
+      "line": 79,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "get_git_info",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_git_info",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_git_info",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "get_git_info",
+      "line": 83,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_git_info",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_git_info",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_git_info",
+      "line": 88,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "get_git_info",
+      "line": 92,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8",
+      "caller": "get_git_info",
+      "line": 93,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "get_git_info",
+      "line": 94,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_git_info",
+      "line": 99,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_git_info",
+      "line": 99,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_git_info",
+      "line": 99,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "get_git_info",
+      "line": 103,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8",
+      "caller": "get_git_info",
+      "line": 104,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "get_git_info",
+      "line": 105,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_git_info",
+      "line": 110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_dagger_version",
+      "line": 114,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "get_dagger_version",
+      "line": 114,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_dagger_version",
+      "line": 114,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "get_dagger_version",
+      "line": 116,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8",
+      "caller": "get_dagger_version",
+      "line": 117,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_dagger_version",
+      "line": 119,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "get_dagger_version",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_dagger_version",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "get_dagger_version",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "next",
+      "caller": "get_dagger_version",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "get_dagger_version",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "get_dagger_version",
+      "line": 126,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "get_component_versions",
+      "line": 131,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "get_component_versions",
+      "line": 137,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "get_component_versions",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::read_to_string",
+      "caller": "get_component_versions",
+      "line": 139,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::from_str::<serde_json::Value>",
+      "caller": "get_component_versions",
+      "line": 140,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "get_component_versions",
+      "line": 141,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "get_component_versions",
+      "line": 142,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_git_info",
+      "caller": "get_component_versions",
+      "line": 148,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "get_component_versions",
+      "line": 153,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_dagger_version",
+      "caller": "get_component_versions",
+      "line": 154,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "get_component_versions",
+      "line": 155,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_component_versions",
+      "line": 161,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

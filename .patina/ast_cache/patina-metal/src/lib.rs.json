@@ -1,8 +1,917 @@
 {
-  "calls": [],
   "file": "./patina-metal/src/lib.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "new",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 67,
+      "line_end": 118,
+      "doc_comment": null
+    },
+    {
+      "name": "has_parser",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 121,
+      "line_end": 123,
+      "doc_comment": null
+    },
+    {
+      "name": "available_metals",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 126,
+      "line_end": 128,
+      "doc_comment": null
+    },
+    {
+      "name": "parse",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 131,
+      "line_end": 152,
+      "doc_comment": null
+    },
+    {
+      "name": "extract_symbols",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 155,
+      "line_end": 160,
+      "doc_comment": null
+    },
+    {
+      "name": "calculate_complexity",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 163,
+      "line_end": 168,
+      "doc_comment": null
+    },
+    {
+      "name": "run_query",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 171,
+      "line_end": 200,
+      "doc_comment": null
+    },
+    {
+      "name": "generate_fingerprint",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 203,
+      "line_end": 210,
+      "doc_comment": null
+    },
+    {
+      "name": "visit_node",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 214,
+      "line_end": 238,
+      "doc_comment": null
+    },
+    {
+      "name": "extract_symbol",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 240,
+      "line_end": 276,
+      "doc_comment": null
+    },
+    {
+      "name": "count_branches",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 278,
+      "line_end": 298,
+      "doc_comment": null
+    },
+    {
+      "name": "hash_node_structure",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 300,
+      "line_end": 313,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "Analyzer",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 15,
+      "line_end": 19,
+      "doc_comment": null
+    },
+    {
+      "name": "ParsedFile",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 29,
+      "line_end": 33,
+      "doc_comment": null
+    },
+    {
+      "name": "Symbol",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 37,
+      "line_end": 43,
+      "doc_comment": null
+    },
+    {
+      "name": "QueryMatch",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 58,
+      "line_end": 63,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "std::collections::HashMap",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "streaming_iterator::StreamingIterator",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "tree_sitter::{Node, Parser, Query, QueryCursor, Tree}",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "metal::Metal",
+      "items": [],
+      "alias": null,
+      "line": 11
+    },
+    {
+      "path": "parser::MetalParser",
+      "items": [],
+      "alias": null,
+      "line": 12
+    },
+    {
+      "path": "std::collections::hash_map::DefaultHasher",
+      "items": [],
+      "alias": null,
+      "line": 204
+    },
+    {
+      "path": "std::hash::Hasher",
+      "items": [],
+      "alias": null,
+      "line": 205
+    },
+    {
+      "path": "std::hash::Hash",
+      "items": [],
+      "alias": null,
+      "line": 301
+    }
+  ],
+  "calls": [
+    {
+      "target": "HashMap::new",
+      "caller": "new",
+      "line": 68,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Metal::all",
+      "caller": "new",
+      "line": 71,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "tree_sitter_language",
+      "caller": "new",
+      "line": 73,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "new",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Parser::new",
+      "caller": "new",
+      "line": 78,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "set_language",
+      "caller": "new",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "new",
+      "line": 82,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "new",
+      "line": 86,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "new",
+      "line": 90,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Err",
+      "caller": "new",
+      "line": 91,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "new",
+      "line": 91,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "new",
+      "line": 95,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "keys",
+      "caller": "new",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "queries::QueryLoader::load_query",
+      "caller": "new",
+      "line": 103,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "new",
+      "line": 105,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "new",
+      "line": 108,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "new",
+      "line": 117,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "contains_key",
+      "caller": "has_parser",
+      "line": 122,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "available_metals",
+      "line": 127,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "copied",
+      "caller": "available_metals",
+      "line": 127,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "keys",
+      "caller": "available_metals",
+      "line": 127,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains_key",
+      "caller": "parse",
+      "line": 133,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Err",
+      "caller": "parse",
+      "line": 134,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "parse",
+      "line": 134,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "parse",
+      "line": 141,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_mut",
+      "caller": "parse",
+      "line": 141,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ok_or_else",
+      "caller": "parse",
+      "line": 143,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "parse",
+      "line": 143,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "parse",
+      "line": 145,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "parse",
+      "line": 147,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "parse",
+      "line": 150,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "extract_symbols",
+      "line": 156,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "walk",
+      "caller": "extract_symbols",
+      "line": 157,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "visit_node",
+      "caller": "extract_symbols",
+      "line": 158,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "walk",
+      "caller": "calculate_complexity",
+      "line": 165,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Self::count_branches",
+      "caller": "calculate_complexity",
+      "line": 166,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok_or_else",
+      "caller": "run_query",
+      "line": 172,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "run_query",
+      "line": 172,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::anyhow!",
+      "caller": "run_query",
+      "line": 175,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "QueryCursor::new",
+      "caller": "run_query",
+      "line": 177,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "matches",
+      "caller": "run_query",
+      "line": 178,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "root_node",
+      "caller": "run_query",
+      "line": 178,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_bytes",
+      "caller": "run_query",
+      "line": 178,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "run_query",
+      "line": 180,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "next",
+      "caller": "run_query",
+      "line": 181,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "run_query",
+      "line": 183,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_default",
+      "caller": "run_query",
+      "line": 183,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "utf8_text",
+      "caller": "run_query",
+      "line": 183,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_bytes",
+      "caller": "run_query",
+      "line": 185,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "run_query",
+      "line": 188,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "capture_names",
+      "caller": "run_query",
+      "line": 188,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "run_query",
+      "line": 190,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "start_position",
+      "caller": "run_query",
+      "line": 193,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "end_position",
+      "caller": "run_query",
+      "line": 194,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "run_query",
+      "line": 199,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "DefaultHasher::new",
+      "caller": "generate_fingerprint",
+      "line": 207,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Self::hash_node_structure",
+      "caller": "generate_fingerprint",
+      "line": 208,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "finish",
+      "caller": "generate_fingerprint",
+      "line": 209,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "node",
+      "caller": "visit_node",
+      "line": 221,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extract_symbol",
+      "caller": "visit_node",
+      "line": 224,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "visit_node",
+      "line": 225,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_first_child",
+      "caller": "visit_node",
+      "line": 229,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "visit_node",
+      "caller": "visit_node",
+      "line": 231,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_next_sibling",
+      "caller": "visit_node",
+      "line": 232,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_parent",
+      "caller": "visit_node",
+      "line": 236,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "normalize_node_kind",
+      "caller": "extract_symbol",
+      "line": 241,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "extract_symbol",
+      "line": 241,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "or_else",
+      "caller": "extract_symbol",
+      "line": 255,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "child_by_field_name",
+      "caller": "extract_symbol",
+      "line": 255,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "child_by_field_name",
+      "caller": "extract_symbol",
+      "line": 257,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_symbol",
+      "line": 259,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ok",
+      "caller": "extract_symbol",
+      "line": 259,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "utf8_text",
+      "caller": "extract_symbol",
+      "line": 259,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_bytes",
+      "caller": "extract_symbol",
+      "line": 259,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_symbol",
+      "line": 262,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "next",
+      "caller": "extract_symbol",
+      "line": 262,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "extract_symbol",
+      "line": 262,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ok",
+      "caller": "extract_symbol",
+      "line": 262,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "utf8_text",
+      "caller": "extract_symbol",
+      "line": 262,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_bytes",
+      "caller": "extract_symbol",
+      "line": 263,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "extract_symbol",
+      "line": 269,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "start_position",
+      "caller": "extract_symbol",
+      "line": 272,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "end_position",
+      "caller": "extract_symbol",
+      "line": 273,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "node",
+      "caller": "count_branches",
+      "line": 279,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "normalize_node_kind",
+      "caller": "count_branches",
+      "line": 280,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "count_branches",
+      "line": 280,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_first_child",
+      "caller": "count_branches",
+      "line": 289,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Self::count_branches",
+      "caller": "count_branches",
+      "line": 291,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "goto_next_sibling",
+      "caller": "count_branches",
+      "line": 292,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_parent",
+      "caller": "count_branches",
+      "line": 296,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "hash",
+      "caller": "hash_node_structure",
+      "line": 302,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "kind",
+      "caller": "hash_node_structure",
+      "line": 302,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "walk",
+      "caller": "hash_node_structure",
+      "line": 304,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_first_child",
+      "caller": "hash_node_structure",
+      "line": 305,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Self::hash_node_structure",
+      "caller": "hash_node_structure",
+      "line": 307,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "node",
+      "caller": "hash_node_structure",
+      "line": 307,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "goto_next_sibling",
+      "caller": "hash_node_structure",
+      "line": 308,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
 }

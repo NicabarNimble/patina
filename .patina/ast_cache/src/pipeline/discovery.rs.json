@@ -1,8 +1,362 @@
 {
-  "calls": [],
   "file": "./src/pipeline/discovery.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [
+    {
+      "name": "discover_files",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 22,
+      "line_end": 52,
+      "doc_comment": null
+    },
+    {
+      "name": "is_source_file",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 55,
+      "line_end": 73,
+      "doc_comment": null
+    },
+    {
+      "name": "detect_language",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 76,
+      "line_end": 86,
+      "doc_comment": null
+    },
+    {
+      "name": "test_is_source_file",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 94,
+      "line_end": 105,
+      "doc_comment": null
+    },
+    {
+      "name": "test_detect_language",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 108,
+      "line_end": 118,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "ignore::WalkBuilder",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::path::{Path, PathBuf}",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "super::*",
+      "items": [],
+      "alias": null,
+      "line": 90
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 91
+    }
+  ],
+  "calls": [
+    {
+      "target": "Vec::new",
+      "caller": "discover_files",
+      "line": 23,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "build",
+      "caller": "discover_files",
+      "line": 26,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "git_exclude",
+      "caller": "discover_files",
+      "line": 26,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "git_global",
+      "caller": "discover_files",
+      "line": 26,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "git_ignore",
+      "caller": "discover_files",
+      "line": 26,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "hidden",
+      "caller": "discover_files",
+      "line": 26,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WalkBuilder::new",
+      "caller": "discover_files",
+      "line": 26,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "discover_files",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_dir",
+      "caller": "discover_files",
+      "line": 38,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_source_file",
+      "caller": "discover_files",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "discover_files",
+      "line": 44,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_path_buf",
+      "caller": "discover_files",
+      "line": 44,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "sort",
+      "caller": "discover_files",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "discover_files",
+      "line": 51,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "extension",
+      "caller": "is_source_file",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "is_source_file",
+      "line": 61,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "is_source_file",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "detect_language",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extension",
+      "caller": "detect_language",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "detect_language",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "detect_language",
+      "line": 81,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_is_source_file",
+      "line": 95,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_is_source_file",
+      "line": 96,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_is_source_file",
+      "line": 97,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_is_source_file",
+      "line": 98,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_is_source_file",
+      "line": 99,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_is_source_file",
+      "line": 101,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_is_source_file",
+      "line": 102,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_is_source_file",
+      "line": 103,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_is_source_file",
+      "line": 104,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_detect_language",
+      "line": 109,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_detect_language",
+      "line": 110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_detect_language",
+      "line": 111,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_detect_language",
+      "line": 112,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_detect_language",
+      "line": 113,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_detect_language",
+      "line": 114,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_detect_language",
+      "line": 116,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_detect_language",
+      "line": 117,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }

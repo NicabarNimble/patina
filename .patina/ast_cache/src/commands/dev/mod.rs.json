@@ -1,8 +1,8 @@
 {
-  "calls": [],
   "file": "./src/commands/dev/mod.rs",
-  "functions": [],
-  "imports": [],
   "language": "rust",
-  "types": []
+  "functions": [],
+  "types": [],
+  "imports": [],
+  "calls": []
 }

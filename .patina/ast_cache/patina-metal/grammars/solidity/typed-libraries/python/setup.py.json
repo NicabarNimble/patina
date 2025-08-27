@@ -1,8 +1,71 @@
 {
-  "calls": [],
   "file": "./patina-metal/grammars/solidity/typed-libraries/python/setup.py",
-  "functions": [],
-  "imports": [],
   "language": "python",
-  "types": []
+  "functions": [],
+  "types": [],
+  "imports": [
+    {
+      "path": "import pathlib",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "from setuptools import setup, find_packages",
+      "items": [],
+      "alias": null,
+      "line": 2
+    }
+  ],
+  "calls": [
+    {
+      "target": "Path",
+      "caller": "<module>",
+      "line": 5,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "read_text",
+      "caller": "<module>",
+      "line": 8,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "<module>",
+      "line": 12,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "<module>",
+      "line": 12,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "read_text",
+      "caller": "<module>",
+      "line": 12,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "setup",
+      "caller": "<module>",
+      "line": 14,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "find_packages",
+      "caller": "<module>",
+      "line": 27,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
 }
