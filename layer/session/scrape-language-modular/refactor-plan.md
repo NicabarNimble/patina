@@ -15,6 +15,9 @@ After a failed attempt to modularize the 2000+ line monolithic `scrape.rs` that 
 - `src/commands/scrape.rs`: 2072 lines, monolithic but WORKING
 - Supports: Rust, Go, Python, JavaScript/JSX, TypeScript/TSX, Solidity
 - Each language has 100-200 lines of specific logic scattered throughout
+- Database storage:
+  - `.patina/knowledge.db` for local project scraping
+  - `layer/dust/repos/{repo_name}.db` for external repository analysis
 
 ## Proposed Architecture
 
@@ -131,6 +134,11 @@ src/semantic/
 3. Documentation and cleanup
 
 ## Testing Strategy
+
+### Database Storage Locations (Unchanged)
+- **Local Project**: `.patina/knowledge.db` - for active project scraping
+- **External Repos**: `layer/dust/repos/{repo_name}.db` - for studying external codebases
+- This separation is intentional and will be preserved in the refactor
 
 ### Comparison Testing
 ```bash
