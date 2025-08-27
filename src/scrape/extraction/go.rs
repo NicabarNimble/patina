@@ -3,11 +3,13 @@ use std::path::Path;
 use tree_sitter::Node;
 
 use super::{
-    CallGraph, Field, FunctionInfo, ImportInfo, LanguageExtractor, Parameter, SemanticData,
-    TypeInfo, TypeKind, Visibility,
+    BehavioralHints, CallGraph, Documentation, DocKind, Field, FunctionFingerprint,
+    FunctionInfo, ImportInfo, LanguageExtractor, Parameter, SemanticData, TypeInfo, TypeKind,
+    Visibility, extract_keywords, extract_summary,
 };
 use crate::scrape::discovery::Language;
 use crate::semantic::languages::create_parser;
+use crate::semantic::fingerprint::Fingerprint;
 
 /// Go-specific semantic extractor
 pub struct GoExtractor;
@@ -22,6 +24,8 @@ impl LanguageExtractor for GoExtractor {
             imports: Vec::new(),
             calls: Vec::new(),
             docs: Vec::new(),
+            fingerprints: Vec::new(),
+            behavioral_hints: Vec::new(),
         };
 
         // Create parser for Go
@@ -69,9 +73,10 @@ impl ParseContext {
         if let Some(ref caller) = self.current_function {
             self.call_entries.push(CallGraph {
                 caller: caller.clone(),
-                callee,
+                callee: callee.clone(),
                 line_number: line,
-                is_external: call_type == "external",
+                call_type: call_type.to_string(),
+                is_external: is_external_call(&callee),
             });
         }
     }
@@ -86,18 +91,44 @@ fn extract_node(node: &Node, source: &str, data: &mut SemanticData, context: &mu
     match node.kind() {
         "function_declaration" => {
             if let Some(func) = extract_function(node, source) {
+                // Calculate fingerprint
+                let fingerprint = calculate_fingerprint(node, source);
+                data.fingerprints.push((func.name.clone(), fingerprint));
+                
+                // Extract behavioral hints
+                let hints = extract_behavioral_hints(&func.name, node, source);
+                if has_interesting_behavior(&hints) {
+                    data.behavioral_hints.push(hints);
+                }
+                
                 context.enter_function(func.name.clone());
                 data.functions.push(func);
             }
         }
         "method_declaration" => {
             if let Some(func) = extract_method(node, source) {
+                // Calculate fingerprint
+                let fingerprint = calculate_fingerprint(node, source);
+                data.fingerprints.push((func.name.clone(), fingerprint));
+                
+                // Extract behavioral hints
+                let hints = extract_behavioral_hints(&func.name, node, source);
+                if has_interesting_behavior(&hints) {
+                    data.behavioral_hints.push(hints);
+                }
+                
                 context.enter_function(func.name.clone());
                 data.functions.push(func);
             }
         }
         "type_spec" => {
             if let Some(type_info) = extract_type_spec(node, source) {
+                // Calculate fingerprint for structs/interfaces
+                if matches!(type_info.kind, TypeKind::Struct | TypeKind::Interface) {
+                    let fingerprint = calculate_fingerprint(node, source);
+                    data.fingerprints.push((type_info.name.clone(), fingerprint));
+                }
+                
                 data.types.push(type_info);
             }
         }
@@ -107,7 +138,7 @@ fn extract_node(node: &Node, source: &str, data: &mut SemanticData, context: &mu
             }
         }
         "const_declaration" => {
-            // We could extract constants as well if needed
+            // We could extract constants as type vocabulary if needed
         }
         // Extract call expressions
         "call_expression" => {
@@ -148,6 +179,14 @@ fn extract_function(node: &Node, source: &str) -> Option<FunctionInfo> {
         line_start: node.start_position().row + 1,
         line_end: node.end_position().row + 1,
         doc_comment: extract_doc_comment(node, source),
+        signature: String::new(),
+        takes_mut_self: false, // Go doesn't have &mut self concept
+        takes_mut_params: false, // Go passes by value or pointer
+        returns_result: false, // Check for error return
+        returns_option: false, // Go doesn't have Option, but might return pointer
+        parameter_count: 0,
+        has_self: false, // Methods have receivers
+        context_snippet: extract_context(node, source),
     };
 
     let mut cursor = node.walk();
@@ -165,13 +204,33 @@ fn extract_function(node: &Node, source: &str) -> Option<FunctionInfo> {
             }
             "parameter_list" => {
                 func.parameters = extract_parameters(&child, source);
+                func.parameter_count = func.parameters.len();
+                
+                // Check for pointer parameters (similar to &mut)
+                for param in &func.parameters {
+                    if let Some(ref type_ann) = param.type_annotation {
+                        if type_ann.starts_with('*') {
+                            func.takes_mut_params = true;
+                        }
+                    }
+                }
             }
             "result" => {
-                func.return_type = extract_return_type(&child, source);
+                let return_info = extract_return_type(&child, source);
+                if let Some(ref ret_type) = return_info {
+                    // Check for error return (Go's equivalent of Result)
+                    func.returns_result = ret_type.contains("error");
+                    // Check for pointer return (similar to Option)
+                    func.returns_option = ret_type.starts_with('*') && !ret_type.contains("error");
+                }
+                func.return_type = return_info;
             }
             _ => {}
         }
     }
+    
+    // Generate signature
+    func.signature = generate_function_signature(&func);
 
     Some(func)
 }
@@ -188,6 +247,14 @@ fn extract_method(node: &Node, source: &str) -> Option<FunctionInfo> {
         line_start: node.start_position().row + 1,
         line_end: node.end_position().row + 1,
         doc_comment: extract_doc_comment(node, source),
+        signature: String::new(),
+        takes_mut_self: false,
+        takes_mut_params: false,
+        returns_result: false,
+        returns_option: false,
+        parameter_count: 0,
+        has_self: true, // Methods always have receivers
+        context_snippet: extract_context(node, source),
     };
 
     let mut cursor = node.walk();
@@ -199,11 +266,23 @@ fn extract_method(node: &Node, source: &str) -> Option<FunctionInfo> {
                 // First parameter list is the receiver
                 if receiver_type.is_empty() {
                     if let Some(receiver) = extract_receiver(&child, source) {
-                        receiver_type = receiver;
+                        receiver_type = receiver.clone();
+                        // Check if receiver is a pointer (similar to &mut self)
+                        func.takes_mut_self = receiver.starts_with('*');
                     }
                 } else {
                     // Second parameter list is the actual parameters
                     func.parameters = extract_parameters(&child, source);
+                    func.parameter_count = func.parameters.len();
+                    
+                    // Check for pointer parameters
+                    for param in &func.parameters {
+                        if let Some(ref type_ann) = param.type_annotation {
+                            if type_ann.starts_with('*') {
+                                func.takes_mut_params = true;
+                            }
+                        }
+                    }
                 }
             }
             "field_identifier" => {
@@ -211,7 +290,7 @@ fn extract_method(node: &Node, source: &str) -> Option<FunctionInfo> {
                 func.name = if receiver_type.is_empty() {
                     name.clone()
                 } else {
-                    format!("{}.{}", receiver_type, name.clone())
+                    format!("{}.{}", receiver_type.trim_start_matches('*'), name.clone())
                 };
                 // Check visibility based on first letter
                 func.visibility = if name.chars().next()?.is_lowercase() {
@@ -221,13 +300,78 @@ fn extract_method(node: &Node, source: &str) -> Option<FunctionInfo> {
                 };
             }
             "result" => {
-                func.return_type = extract_return_type(&child, source);
+                let return_info = extract_return_type(&child, source);
+                if let Some(ref ret_type) = return_info {
+                    func.returns_result = ret_type.contains("error");
+                    func.returns_option = ret_type.starts_with('*') && !ret_type.contains("error");
+                }
+                func.return_type = return_info;
             }
             _ => {}
         }
     }
+    
+    // Generate signature
+    func.signature = generate_method_signature(&func, &receiver_type);
 
     Some(func)
+}
+
+/// Generate function signature
+fn generate_function_signature(func: &FunctionInfo) -> String {
+    let mut sig = String::new();
+    
+    sig.push_str("func ");
+    sig.push_str(&func.name);
+    sig.push('(');
+    
+    let param_strs: Vec<String> = func.parameters.iter().map(|p| {
+        if let Some(ref ty) = p.type_annotation {
+            format!("{} {}", p.name, ty)
+        } else {
+            p.name.clone()
+        }
+    }).collect();
+    sig.push_str(&param_strs.join(", "));
+    sig.push(')');
+    
+    if let Some(ref ret) = func.return_type {
+        sig.push(' ');
+        sig.push_str(ret);
+    }
+    
+    sig
+}
+
+/// Generate method signature
+fn generate_method_signature(func: &FunctionInfo, receiver: &str) -> String {
+    let mut sig = String::new();
+    
+    sig.push_str("func (");
+    sig.push_str(receiver);
+    sig.push_str(") ");
+    
+    // Extract just the method name (not the full qualified name)
+    let method_name = func.name.split('.').last().unwrap_or(&func.name);
+    sig.push_str(method_name);
+    sig.push('(');
+    
+    let param_strs: Vec<String> = func.parameters.iter().map(|p| {
+        if let Some(ref ty) = p.type_annotation {
+            format!("{} {}", p.name, ty)
+        } else {
+            p.name.clone()
+        }
+    }).collect();
+    sig.push_str(&param_strs.join(", "));
+    sig.push(')');
+    
+    if let Some(ref ret) = func.return_type {
+        sig.push(' ');
+        sig.push_str(ret);
+    }
+    
+    sig
 }
 
 /// Extract type spec (struct, interface, type alias)
@@ -237,10 +381,13 @@ fn extract_type_spec(node: &Node, source: &str) -> Option<TypeInfo> {
         kind: TypeKind::Struct,
         visibility: Visibility::Public,
         fields: Vec::new(),
-        generics: Vec::new(), // Go uses type parameters in newer versions
+        generics: Vec::new(), // Go 1.18+ has type parameters
         line_start: node.start_position().row + 1,
         line_end: node.end_position().row + 1,
         doc_comment: extract_doc_comment(node, source),
+        full_definition: node.utf8_text(source.as_bytes()).ok()?.to_string(),
+        signature: String::new(),
+        context_snippet: extract_context(node, source),
     };
 
     let mut cursor = node.walk();
@@ -267,6 +414,10 @@ fn extract_type_spec(node: &Node, source: &str) -> Option<TypeInfo> {
             "type_alias" => {
                 type_info.kind = TypeKind::TypeAlias;
             }
+            "type_parameter_list" => {
+                // Go 1.18+ generics
+                type_info.generics = extract_type_parameters(&child, source);
+            }
             _ => {}
         }
     }
@@ -274,8 +425,33 @@ fn extract_type_spec(node: &Node, source: &str) -> Option<TypeInfo> {
     if type_info.name.is_empty() {
         return None;
     }
+    
+    // Generate signature
+    type_info.signature = generate_type_signature(&type_info);
 
     Some(type_info)
+}
+
+/// Generate type signature
+fn generate_type_signature(type_info: &TypeInfo) -> String {
+    let mut sig = String::new();
+    
+    sig.push_str("type ");
+    sig.push_str(&type_info.name);
+    
+    if !type_info.generics.is_empty() {
+        sig.push('[');
+        sig.push_str(&type_info.generics.join(", "));
+        sig.push(']');
+    }
+    
+    match type_info.kind {
+        TypeKind::Struct => sig.push_str(" struct"),
+        TypeKind::Interface => sig.push_str(" interface"),
+        _ => {}
+    }
+    
+    sig
 }
 
 /// Extract import declaration
@@ -284,6 +460,7 @@ fn extract_import(node: &Node, source: &str) -> Option<ImportInfo> {
         module: String::new(),
         items: Vec::new(),
         is_wildcard: false,
+        is_external: true, // Most Go imports are external
         line_number: node.start_position().row + 1,
     };
 
@@ -297,7 +474,14 @@ fn extract_import(node: &Node, source: &str) -> Option<ImportInfo> {
                     if let Ok(import_text) = spec.utf8_text(source.as_bytes()) {
                         let cleaned = import_text.trim().trim_matches('"');
                         import.module = cleaned.to_string();
-                        import.items.push(cleaned.to_string());
+                        
+                        // Check if it's an internal import (starts with current module)
+                        import.is_external = !cleaned.starts_with("./") && !cleaned.starts_with("../");
+                        
+                        // Extract the package name as an item
+                        if let Some(last_part) = cleaned.split('/').last() {
+                            import.items.push(last_part.to_string());
+                        }
                     }
                 }
             }
@@ -305,6 +489,11 @@ fn extract_import(node: &Node, source: &str) -> Option<ImportInfo> {
             if let Ok(import_text) = child.utf8_text(source.as_bytes()) {
                 let cleaned = import_text.trim().trim_matches('"');
                 import.module = cleaned.to_string();
+                import.is_external = !cleaned.starts_with("./") && !cleaned.starts_with("../");
+                
+                if let Some(last_part) = cleaned.split('/').last() {
+                    import.items.push(last_part.to_string());
+                }
             }
         }
     }
@@ -334,7 +523,8 @@ fn extract_parameters(node: &Node, source: &str) -> Vec<Parameter> {
                             param_names.push(name.to_string());
                         }
                     }
-                    "type_identifier" | "pointer_type" | "slice_type" | "array_type" => {
+                    "type_identifier" | "pointer_type" | "slice_type" | "array_type" 
+                    | "map_type" | "channel_type" | "interface_type" => {
                         if let Ok(type_text) = param_child.utf8_text(source.as_bytes()) {
                             param_type = Some(type_text.to_string());
                         }
@@ -354,8 +544,9 @@ fn extract_parameters(node: &Node, source: &str) -> Vec<Parameter> {
         } else if child.kind() == "variadic_parameter_declaration" {
             // Handle variadic parameters (...)
             if let Ok(param_text) = child.utf8_text(source.as_bytes()) {
+                let name = extract_variadic_param_name(param_text);
                 params.push(Parameter {
-                    name: extract_variadic_param_name(param_text),
+                    name,
                     type_annotation: Some(param_text.to_string()),
                     default_value: None,
                 });
@@ -371,22 +562,9 @@ fn extract_receiver(node: &Node, source: &str) -> Option<String> {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "parameter_declaration" {
-            let mut param_cursor = child.walk();
-            for param_child in child.children(&mut param_cursor) {
-                if param_child.kind() == "type_identifier" {
-                    return param_child.utf8_text(source.as_bytes()).ok().map(|s| s.to_string());
-                } else if param_child.kind() == "pointer_type" {
-                    // Handle pointer receivers (*Type)
-                    let mut ptr_cursor = param_child.walk();
-                    for ptr_child in param_child.children(&mut ptr_cursor) {
-                        if ptr_child.kind() == "type_identifier" {
-                            return ptr_child
-                                .utf8_text(source.as_bytes())
-                                .ok()
-                                .map(|s| format!("*{}", s));
-                        }
-                    }
-                }
+            // Get the full receiver text
+            if let Ok(receiver_text) = child.utf8_text(source.as_bytes()) {
+                return Some(receiver_text.to_string());
             }
         }
     }
@@ -401,7 +579,8 @@ fn extract_return_type(node: &Node, source: &str) -> Option<String> {
 
     for child in node.children(&mut cursor) {
         match child.kind() {
-            "type_identifier" | "pointer_type" | "slice_type" | "interface_type" => {
+            "type_identifier" | "pointer_type" | "slice_type" | "interface_type" 
+            | "array_type" | "map_type" | "channel_type" => {
                 if let Ok(type_text) = child.utf8_text(source.as_bytes()) {
                     return_types.push(type_text.to_string());
                 }
@@ -411,7 +590,11 @@ fn extract_return_type(node: &Node, source: &str) -> Option<String> {
                 let params = extract_parameters(&child, source);
                 for param in params {
                     if let Some(type_ann) = param.type_annotation {
-                        return_types.push(format!("{} {}", param.name, type_ann));
+                        if !param.name.is_empty() {
+                            return_types.push(format!("{} {}", param.name, type_ann));
+                        } else {
+                            return_types.push(type_ann);
+                        }
                     }
                 }
             }
@@ -471,10 +654,18 @@ fn extract_field(node: &Node, source: &str) -> Option<Field> {
                     Visibility::Public
                 };
             }
-            "type_identifier" | "pointer_type" | "slice_type" | "array_type" | "map_type" => {
+            "type_identifier" | "pointer_type" | "slice_type" | "array_type" 
+            | "map_type" | "channel_type" | "interface_type" => {
                 field.type_annotation = Some(child.utf8_text(source.as_bytes()).ok()?.to_string());
             }
             _ => {}
+        }
+    }
+
+    if field.name.is_empty() {
+        // Anonymous field (embedded type)
+        if let Some(ref type_ann) = field.type_annotation {
+            field.name = type_ann.clone();
         }
     }
 
@@ -491,7 +682,7 @@ fn extract_interface_methods(node: &Node, source: &str) -> Vec<Field> {
 
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if child.kind() == "method_spec_list" {
+        if child.kind() == "method_spec_list" || child.kind() == "interface_body" {
             let mut method_cursor = child.walk();
             for method_node in child.children(&mut method_cursor) {
                 if method_node.kind() == "method_spec" {
@@ -499,19 +690,21 @@ fn extract_interface_methods(node: &Node, source: &str) -> Vec<Field> {
                         name: String::new(),
                         type_annotation: None,
                         visibility: Visibility::Public,
-                        doc_comment: None,
+                        doc_comment: extract_doc_comment(&method_node, source),
                     };
 
-                    let mut spec_cursor = method_node.walk();
-                    for spec_child in method_node.children(&mut spec_cursor) {
-                        if spec_child.kind() == "field_identifier" {
-                            if let Ok(name) = spec_child.utf8_text(source.as_bytes()) {
-                                method.name = name.to_string();
-                                // Get the full method signature
-                                if let Ok(full_text) = method_node.utf8_text(source.as_bytes()) {
-                                    method.type_annotation = Some(full_text.to_string());
+                    // Get the full method spec as type annotation
+                    if let Ok(full_text) = method_node.utf8_text(source.as_bytes()) {
+                        method.type_annotation = Some(full_text.to_string());
+                        
+                        // Extract method name
+                        let mut spec_cursor = method_node.walk();
+                        for spec_child in method_node.children(&mut spec_cursor) {
+                            if spec_child.kind() == "field_identifier" {
+                                if let Ok(name) = spec_child.utf8_text(source.as_bytes()) {
+                                    method.name = name.to_string();
+                                    break;
                                 }
-                                break;
                             }
                         }
                     }
@@ -525,6 +718,27 @@ fn extract_interface_methods(node: &Node, source: &str) -> Vec<Field> {
     }
 
     methods
+}
+
+/// Extract type parameters (Go 1.18+ generics)
+fn extract_type_parameters(node: &Node, source: &str) -> Vec<String> {
+    let mut params = Vec::new();
+    
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "type_parameter" {
+            let mut param_cursor = child.walk();
+            for param_child in child.children(&mut param_cursor) {
+                if param_child.kind() == "type_identifier" {
+                    if let Ok(param_text) = param_child.utf8_text(source.as_bytes()) {
+                        params.push(param_text.to_string());
+                    }
+                }
+            }
+        }
+    }
+    
+    params
 }
 
 /// Extract documentation comment
@@ -553,15 +767,36 @@ fn extract_call_expression(node: &Node, source: &str, context: &mut ParseContext
     if let Some(func_node) = node.child_by_field_name("function") {
         if let Ok(callee) = func_node.utf8_text(source.as_bytes()) {
             let line = node.start_position().row + 1;
-            let call_type = if callee.starts_with("go ") {
+            
+            // Check for goroutine call
+            let call_type = if is_goroutine_call(node, source) {
                 "async" // Goroutine call
             } else {
                 "direct"
             };
-            let clean_callee = callee.strip_prefix("go ").unwrap_or(callee);
-            context.add_call(clean_callee.to_string(), call_type, line);
+            
+            context.add_call(callee.to_string(), call_type, line);
         }
     }
+}
+
+/// Check if a call is a goroutine
+fn is_goroutine_call(node: &Node, source: &str) -> bool {
+    // Check if preceded by 'go' keyword
+    if let Some(prev) = node.prev_sibling() {
+        if prev.kind() == "go" {
+            return true;
+        }
+    }
+    
+    // Check parent for go statement
+    if let Some(parent) = node.parent() {
+        if parent.kind() == "go_statement" {
+            return true;
+        }
+    }
+    
+    false
 }
 
 /// Extract method call
@@ -571,6 +806,122 @@ fn extract_method_call(node: &Node, source: &str, context: &mut ParseContext) {
             let line = node.start_position().row + 1;
             context.add_call(callee.to_string(), "method", line);
         }
+    }
+}
+
+/// Calculate fingerprint for a node
+fn calculate_fingerprint(node: &Node, source: &str) -> FunctionFingerprint {
+    let fingerprint = Fingerprint::from_ast(*node, source.as_bytes());
+    
+    FunctionFingerprint {
+        pattern: fingerprint.pattern,
+        imports: fingerprint.imports,
+        complexity: fingerprint.complexity,
+        flags: fingerprint.flags,
+    }
+}
+
+/// Extract behavioral hints from a function
+fn extract_behavioral_hints(name: &str, node: &Node, source: &str) -> BehavioralHints {
+    let mut hints = BehavioralHints {
+        function_name: name.to_string(),
+        calls_unwrap: 0, // Go doesn't have unwrap, but we'll track panic patterns
+        calls_expect: 0, // Go doesn't have expect
+        has_panic_macro: false,
+        has_todo_macro: false, // Go doesn't have todo!
+        has_unsafe_block: false, // Go has unsafe package usage
+        has_mutex: false,
+        has_arc: false, // Go doesn't have Arc, but has channels for sharing
+    };
+    
+    // Walk the function body AST
+    let mut cursor = node.walk();
+    count_behavioral_patterns(&mut cursor, source, &mut hints);
+    
+    hints
+}
+
+/// Count behavioral patterns in AST
+fn count_behavioral_patterns(cursor: &mut tree_sitter::TreeCursor, source: &str, hints: &mut BehavioralHints) {
+    let node = cursor.node();
+    
+    match node.kind() {
+        "call_expression" => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                if let Ok(func_name) = func_node.utf8_text(source.as_bytes()) {
+                    // Check for panic calls
+                    if func_name == "panic" {
+                        hints.has_panic_macro = true;
+                    }
+                    // Check for log.Fatal (similar to panic)
+                    if func_name.ends_with("Fatal") || func_name.ends_with("Fatalf") {
+                        hints.has_panic_macro = true;
+                    }
+                }
+            }
+        }
+        "selector_expression" => {
+            if let Ok(selector_text) = node.utf8_text(source.as_bytes()) {
+                // Check for sync.Mutex usage
+                if selector_text.contains("Mutex") || selector_text.contains("RWMutex") {
+                    hints.has_mutex = true;
+                }
+                // Check for unsafe package usage
+                if selector_text.starts_with("unsafe.") {
+                    hints.has_unsafe_block = true;
+                }
+            }
+        }
+        "type_identifier" => {
+            if let Ok(type_name) = node.utf8_text(source.as_bytes()) {
+                if type_name == "Mutex" || type_name == "RWMutex" {
+                    hints.has_mutex = true;
+                }
+            }
+        }
+        "import_spec" => {
+            if let Ok(import_text) = node.utf8_text(source.as_bytes()) {
+                if import_text.contains("unsafe") {
+                    hints.has_unsafe_block = true;
+                }
+            }
+        }
+        _ => {}
+    }
+    
+    // Recurse into children
+    if cursor.goto_first_child() {
+        loop {
+            count_behavioral_patterns(cursor, source, hints);
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+        cursor.goto_parent();
+    }
+}
+
+/// Check if hints indicate interesting behavior
+fn has_interesting_behavior(hints: &BehavioralHints) -> bool {
+    hints.calls_unwrap > 0 ||
+    hints.calls_expect > 0 ||
+    hints.has_panic_macro ||
+    hints.has_todo_macro ||
+    hints.has_unsafe_block ||
+    hints.has_mutex ||
+    hints.has_arc
+}
+
+/// Extract surrounding context for search
+fn extract_context(node: &Node, source: &str) -> String {
+    let lines: Vec<&str> = source.lines().collect();
+    let start_line = node.start_position().row.saturating_sub(2);
+    let end_line = (node.end_position().row + 3).min(lines.len());
+    
+    if start_line < lines.len() && end_line <= lines.len() {
+        lines[start_line..end_line].join("\n")
+    } else {
+        String::new()
     }
 }
 
@@ -584,21 +935,31 @@ fn extract_variadic_param_name(param_text: &str) -> String {
         .to_string()
 }
 
+/// Check if a call is to an external package
+fn is_external_call(callee: &str) -> bool {
+    // In Go, external calls typically have a package prefix
+    callee.contains('.') && !callee.starts_with("self.")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_go_extractor_basic() {
+    fn test_go_extractor_comprehensive() {
         let source = r#"
         package main
         
-        import "fmt"
+        import (
+            "fmt"
+            "sync"
+        )
         
         // Point represents a 2D point
         type Point struct {
             X float64
             Y float64
+            mu sync.Mutex
         }
         
         // NewPoint creates a new point
@@ -607,13 +968,24 @@ mod tests {
         }
         
         // Distance calculates distance from origin
-        func (p *Point) Distance() float64 {
-            return math.Sqrt(p.X*p.X + p.Y*p.Y)
+        func (p *Point) Distance() (float64, error) {
+            p.mu.Lock()
+            defer p.mu.Unlock()
+            
+            if p.X < 0 || p.Y < 0 {
+                panic("negative coordinates")
+            }
+            
+            return math.Sqrt(p.X*p.X + p.Y*p.Y), nil
         }
         
         func main() {
             p := NewPoint(3, 4)
-            fmt.Println(p.Distance())
+            dist, err := p.Distance()
+            if err != nil {
+                fmt.Println("Error:", err)
+            }
+            fmt.Println(dist)
         }
         "#;
 
@@ -621,14 +993,31 @@ mod tests {
         let path = Path::new("test.go");
         let result = extractor.extract(path, source).unwrap();
 
-        // Should find functions
-        assert!(result.functions.len() >= 2); // At least main and NewPoint
+        // Check functions
+        assert!(result.functions.len() >= 3); // NewPoint, Distance, main
         
-        // Should find struct
-        assert!(result.types.len() >= 1);
+        // Check behavioral analysis
+        let distance = result.functions.iter()
+            .find(|f| f.name.contains("Distance"))
+            .unwrap();
+        assert!(distance.returns_result); // Returns error
+        assert!(distance.takes_mut_self); // *Point receiver
+        
+        // Check behavioral hints
+        assert!(result.behavioral_hints.iter()
+            .any(|h| h.function_name.contains("Distance") && h.has_panic_macro));
+        assert!(result.behavioral_hints.iter()
+            .any(|h| h.has_mutex));
+        
+        // Check types
         assert!(result.types.iter().any(|t| t.name == "Point"));
         
-        // Should find import
-        assert!(result.imports.len() >= 1);
+        // Check imports
+        assert!(result.imports.len() >= 2);
+        assert!(result.imports.iter().any(|i| i.module.contains("fmt")));
+        assert!(result.imports.iter().any(|i| i.module.contains("sync")));
+        
+        // Check fingerprints
+        assert!(!result.fingerprints.is_empty());
     }
 }
