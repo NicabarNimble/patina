@@ -72,24 +72,6 @@ enum Commands {
         components: bool,
     },
 
-    /// Navigate patterns using semantic search
-    Navigate {
-        /// Search query
-        query: String,
-
-        /// Search across all branches (not just current)
-        #[arg(short, long)]
-        all_branches: bool,
-
-        /// Filter by layer (core, surface, dust)
-        #[arg(short, long)]
-        layer: Option<String>,
-
-        /// Output as JSON
-        #[arg(short, long)]
-        json: bool,
-    },
-
 
     /// Manage agent environments
     Agent {
@@ -247,14 +229,6 @@ fn main() -> Result<()> {
         }
         Commands::Test => {
             commands::test::execute()?;
-        }
-        Commands::Navigate {
-            query,
-            all_branches,
-            layer,
-            json,
-        } => {
-            commands::navigate::execute(&query, all_branches, layer, json)?;
         }
         Commands::Agent { command } => match command {
             AgentCommands::Start => commands::agent::start()?,

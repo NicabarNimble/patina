@@ -1,7 +1,6 @@
 pub mod adapters;
 pub mod dev_env;
 pub mod environment;
-pub mod indexer;
 pub mod layer;
 pub mod memory;
 pub mod session;
