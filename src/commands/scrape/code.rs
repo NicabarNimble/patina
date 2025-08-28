@@ -390,8 +390,79 @@ CREATE INDEX IF NOT EXISTS idx_documentation_type ON documentation(symbol_type);
 // MODULE: Language Support
 // ============================================================================
 
-mod languages {
-    // TODO: Move language support here from original lines 2382-2455
+pub(crate) mod languages {
+    use anyhow::{Context, Result};
+    use std::path::Path;
+    use tree_sitter::Parser;
+
+    /// Supported programming languages
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub enum Language {
+        Rust,
+        Go,
+        Solidity,
+        Python,
+        JavaScript,
+        JavaScriptJSX, // .jsx files
+        TypeScript,
+        TypeScriptTSX, // .tsx files
+        Unknown,
+    }
+
+    impl Language {
+        /// Detect language from file extension
+        pub fn from_path(path: &Path) -> Self {
+            match path.extension().and_then(|ext| ext.to_str()) {
+                Some("rs") => Language::Rust,
+                Some("go") => Language::Go,
+                Some("sol") => Language::Solidity,
+                Some("py") => Language::Python,
+                Some("js") | Some("mjs") => Language::JavaScript,
+                Some("jsx") => Language::JavaScriptJSX,
+                Some("ts") => Language::TypeScript,
+                Some("tsx") => Language::TypeScriptTSX,
+                _ => Language::Unknown,
+            }
+        }
+
+        /// Convert to patina_metal::Metal enum
+        pub fn to_metal(self) -> Option<patina_metal::Metal> {
+            match self {
+                Language::Rust => Some(patina_metal::Metal::Rust),
+                Language::Go => Some(patina_metal::Metal::Go),
+                Language::Solidity => Some(patina_metal::Metal::Solidity),
+                Language::Python => Some(patina_metal::Metal::Python),
+                Language::JavaScript | Language::JavaScriptJSX => {
+                    Some(patina_metal::Metal::JavaScript)
+                }
+                Language::TypeScript | Language::TypeScriptTSX => {
+                    Some(patina_metal::Metal::TypeScript)
+                }
+                Language::Unknown => None,
+            }
+        }
+    }
+
+    /// Create a parser for a specific file path, handling TypeScript's tsx vs ts distinction
+    pub fn create_parser_for_path(path: &Path) -> Result<Parser> {
+        let language = Language::from_path(path);
+        let metal = language
+            .to_metal()
+            .ok_or_else(|| anyhow::anyhow!("Unsupported language: {:?}", language))?;
+
+        // Use the extension-aware method for TypeScript to get the right parser
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let ts_lang = metal
+            .tree_sitter_language_for_ext(ext)
+            .ok_or_else(|| anyhow::anyhow!("No parser available for {:?}", language))?;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&ts_lang)
+            .context("Failed to set language")?;
+
+        Ok(parser)
+    }
 }
 
 // ============================================================================
