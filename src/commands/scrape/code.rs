@@ -486,9 +486,121 @@ fn process_files_batch(
     work_dir: &Path,
     files_to_process: Vec<(String, languages::Language)>
 ) -> Result<()> {
-    // TODO: This is where the actual AST processing happens
-    // Will need to move the big processing logic here
-    println!("  ✓ Processed {} files", files_to_process.len());
+    use languages::{create_parser_for_path, Language};
+    use std::time::SystemTime;
+    
+    let mut sql = String::from("BEGIN TRANSACTION;\n");
+    let mut symbol_count = 0;
+    let mut current_lang = Language::Unknown;
+    let mut parser: Option<tree_sitter::Parser> = None;
+    let mut batch_count = 0;
+
+    // Process only new and modified files
+    for (file, language) in files_to_process {
+        // Check if file needs reindexing (mtime-based incremental)
+        let file_path = work_dir.join(&file);
+
+        // Create parser for this specific file path
+        // This correctly handles TSX vs TS and JSX vs JS distinctions
+        if language != current_lang {
+            parser = Some(create_parser_for_path(&file_path)?);
+            current_lang = language;
+        }
+        let metadata = std::fs::metadata(&file_path)?;
+        let mtime = metadata
+            .modified()?
+            .duration_since(SystemTime::UNIX_EPOCH)?
+            .as_secs() as i64;
+
+        // Parse and fingerprint
+        let content = std::fs::read_to_string(&file_path)?;
+        if let Some(ref mut p) = parser {
+            if let Some(tree) = p.parse(&content, None) {
+                let mut cursor = tree.walk();
+                let mut context = ParseContext::new();
+                symbol_count += process_ast_node(
+                    &mut cursor,
+                    content.as_bytes(),
+                    &file,
+                    &mut sql,
+                    language,
+                    &mut context,
+                );
+
+                // Flush call graph entries for this file
+                context.flush_to_sql(&file, &mut sql);
+
+                // Record index state
+                sql.push_str(&format!(
+                    "INSERT INTO index_state (path, mtime) VALUES ('{}', {});\n",
+                    file, mtime
+                ));
+            }
+        }
+
+        // Batch execute every 10 files to avoid command line limits
+        batch_count += 1;
+        if batch_count >= 10 {
+            sql.push_str("COMMIT;\n");
+
+            // Use stdin to avoid command line length limits
+            let mut child = Command::new("duckdb")
+                .arg(db_path)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .context("Failed to start DuckDB")?;
+
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                stdin
+                    .write_all(sql.as_bytes())
+                    .context("Failed to write SQL")?;
+            }
+
+            let output = child
+                .wait_with_output()
+                .context("Failed to execute batch")?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                anyhow::bail!("DuckDB error: {}", stderr);
+            }
+            sql = String::from("BEGIN TRANSACTION;\n");
+            batch_count = 0;
+        }
+    }
+
+    // Execute final batch
+    if batch_count > 0 {
+        sql.push_str("COMMIT;\n");
+
+        // Use stdin to avoid command line length limits
+        let mut child = Command::new("duckdb")
+            .arg(db_path)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .context("Failed to start DuckDB")?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            stdin
+                .write_all(sql.as_bytes())
+                .context("Failed to write SQL")?;
+        }
+
+        let output = child
+            .wait_with_output()
+            .context("Failed to execute batch")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            eprintln!("Warning: Final batch had issues: {}", stderr);
+        }
+    }
+
+    println!("  ✓ Fingerprinted {} symbols", symbol_count);
     Ok(())
 }
 
@@ -499,6 +611,134 @@ fn save_and_report_skipped_files(
     save_skipped_files(db_path, skipped_files)?;
     report_skipped_files(skipped_files);
     Ok(())
+}
+
+/// Save skipped files to database
+fn save_skipped_files(
+    db_path: &str,
+    skipped: &HashMap<String, (usize, usize, String)>,
+) -> Result<()> {
+    let mut sql = String::from("BEGIN TRANSACTION;\n");
+    sql.push_str("DELETE FROM skipped_files;\n");
+
+    for (ext, (count, bytes, example)) in skipped {
+        // Map common extensions to language names
+        let lang_name = match ext.as_str() {
+            "py" => "Python",
+            "js" => "JavaScript",
+            "ts" => "TypeScript",
+            "jsx" => "React JSX",
+            "tsx" => "React TSX",
+            "java" => "Java",
+            "c" => "C",
+            "cpp" | "cc" | "cxx" => "C++",
+            "h" | "hpp" => "C/C++ Header",
+            "cs" => "C#",
+            "rb" => "Ruby",
+            "php" => "PHP",
+            "swift" => "Swift",
+            "kt" => "Kotlin",
+            "scala" => "Scala",
+            "ml" => "OCaml",
+            "hs" => "Haskell",
+            "ex" | "exs" => "Elixir",
+            "clj" => "Clojure",
+            "vue" => "Vue",
+            "svelte" => "Svelte",
+            "lua" => "Lua",
+            "r" => "R",
+            "jl" => "Julia",
+            "zig" => "Zig",
+            "nim" => "Nim",
+            "dart" => "Dart",
+            "sh" | "bash" => "Shell",
+            "yaml" | "yml" => "YAML",
+            "json" => "JSON",
+            "toml" => "TOML",
+            "xml" => "XML",
+            "md" => "Markdown",
+            _ => "",
+        };
+
+        sql.push_str(&format!(
+            "INSERT INTO skipped_files (extension, file_count, total_bytes, example_path, common_name) VALUES ('{}', {}, {}, '{}', '{}');\n",
+            ext, count, bytes, example.replace('\'', "''"), lang_name
+        ));
+    }
+
+    sql.push_str("COMMIT;\n");
+
+    // Execute via stdin
+    let mut child = Command::new("duckdb")
+        .arg(db_path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("Failed to start DuckDB")?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin
+            .write_all(sql.as_bytes())
+            .context("Failed to write SQL")?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .context("Failed to save skipped files")?;
+    if !output.status.success() {
+        eprintln!("Warning: Failed to save skipped files stats");
+    }
+
+    Ok(())
+}
+
+/// Report skipped files to user
+fn report_skipped_files(skipped: &HashMap<String, (usize, usize, String)>) {
+    // Sort by file count descending
+    let mut sorted: Vec<_> = skipped.iter().collect();
+    sorted.sort_by(|a, b| b.1 .0.cmp(&a.1 .0));
+
+    println!("\n⚠️  Skipped files (no parser available):");
+
+    // Show top 5 most common extensions
+    for (ext, (count, bytes, _)) in sorted.iter().take(5) {
+        let size_mb = *bytes as f64 / 1_048_576.0;
+        println!("   {} .{} files ({:.1} MB)", count, ext, size_mb);
+    }
+
+    if sorted.len() > 5 {
+        let remaining: usize = sorted.iter().skip(5).map(|(_, (c, _, _))| c).sum();
+        println!("   {} files with other extensions", remaining);
+    }
+
+    // Suggest adding parsers for common languages
+    let suggestions: Vec<&str> = sorted
+        .iter()
+        .filter_map(|(ext, (count, _, _))| {
+            if *count > 10 {
+                match ext.as_str() {
+                    "py" => Some("Python"),
+                    "js" | "ts" | "jsx" | "tsx" => Some("JavaScript/TypeScript"),
+                    "java" => Some("Java"),
+                    "c" | "cpp" | "h" => Some("C/C++"),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        })
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    if !suggestions.is_empty() {
+        println!(
+            "\n💡 Consider adding parsers for: {}",
+            suggestions.join(", ")
+        );
+    }
 }
 
 // ============================================================================
@@ -534,8 +774,69 @@ fn create_database_with_schema(db_path: &str) -> Result<()> {
 }
 
 fn show_extraction_summary(db_path: &str) -> Result<()> {
-    // TODO: Move summary generation here from original lines 1446-1510
-    println!("  Summary generated");
+    println!("\n📈 Summary:");
+
+    let summary_query = r#"
+SELECT 
+    'Functions indexed' as metric,
+    COUNT(*) as value
+FROM code_fingerprints
+WHERE kind = 'function'
+UNION ALL
+SELECT 
+    'Average complexity' as metric,
+    CAST(AVG(complexity) AS INTEGER) as value
+FROM code_fingerprints
+WHERE kind = 'function'
+UNION ALL
+SELECT 
+    'Unique patterns' as metric,
+    COUNT(DISTINCT pattern) as value
+FROM code_fingerprints
+UNION ALL
+SELECT 
+    'Files with 10+ commits' as metric,
+    COUNT(*) as value
+FROM git_metrics
+WHERE commit_count >= 10
+UNION ALL
+SELECT
+    'Languages skipped' as metric,
+    COUNT(*) as value
+FROM skipped_files
+WHERE file_count > 0;
+"#;
+
+    let output = Command::new("duckdb")
+        .arg(db_path)
+        .arg("-c")
+        .arg(summary_query)
+        .output()
+        .context("Failed to query summary")?;
+
+    if output.status.success() {
+        println!("{}", String::from_utf8_lossy(&output.stdout));
+    }
+
+    // Show database size and block info
+    let size_query = "PRAGMA database_size;";
+    let size_output = Command::new("duckdb")
+        .arg(db_path)
+        .arg("-c")
+        .arg(size_query)
+        .output()?;
+
+    if size_output.status.success() {
+        println!("\n💾 Database info:");
+        println!("{}", String::from_utf8_lossy(&size_output.stdout));
+    }
+
+    // Also show file size
+    if let Ok(metadata) = std::fs::metadata(db_path) {
+        let size_kb = metadata.len() / 1024;
+        println!("📁 File size: {}KB", size_kb);
+    }
+
     Ok(())
 }
 
@@ -559,6 +860,55 @@ fn determine_work_directory(config: &ScrapeConfig) -> Result<PathBuf> {
         Ok(std::env::current_dir()?.join(repo_dir))
     } else {
         Ok(std::env::current_dir()?)
+    }
+}
+
+/// Escape SQL strings
+fn escape_sql(s: &str) -> String {
+    s.replace('\'', "''")
+}
+
+/// Context for tracking state during AST traversal
+struct ParseContext {
+    current_function: Option<String>,
+    call_graph_entries: Vec<(String, String, String, i32)>, // (caller, callee, call_type, line)
+}
+
+impl ParseContext {
+    fn new() -> Self {
+        Self {
+            current_function: None,
+            call_graph_entries: Vec::new(),
+        }
+    }
+
+    fn enter_function(&mut self, name: String) {
+        self.current_function = Some(name);
+    }
+
+    fn exit_function(&mut self) {
+        self.current_function = None;
+    }
+
+    fn add_call(&mut self, callee: String, call_type: String, line: i32) {
+        if let Some(ref caller) = self.current_function {
+            self.call_graph_entries
+                .push((caller.clone(), callee, call_type, line));
+        }
+    }
+
+    fn flush_to_sql(&mut self, file_path: &str, sql: &mut String) {
+        for (caller, callee, call_type, line) in &self.call_graph_entries {
+            sql.push_str(&format!(
+                "INSERT INTO call_graph (caller, callee, file, call_type, line_number) VALUES ('{}', '{}', '{}', '{}', {});\n",
+                escape_sql(caller),
+                escape_sql(callee),
+                file_path,
+                call_type,
+                line
+            ));
+        }
+        self.call_graph_entries.clear();
     }
 }
 
