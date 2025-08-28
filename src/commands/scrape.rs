@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+
 /// Execute the scrape command to build semantic knowledge database
 pub fn execute(init: bool, query: Option<String>, repo: Option<String>, force: bool) -> Result<()> {
     // Determine paths based on whether we're scraping a repo
@@ -93,7 +94,7 @@ CREATE TABLE IF NOT EXISTS pattern_references (
     PRIMARY KEY (from_pattern, to_pattern, reference_type)
 );
 "#,
-        patina::semantic::fingerprint::generate_schema(),
+        fingerprint::generate_schema(),
         db_path = db_path
     );
 
@@ -312,7 +313,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
     println!("🧠 Generating semantic fingerprints and extracting truth data...");
 
     use ignore::WalkBuilder;
-    use patina::semantic::languages::{create_parser, Language};
+    use crate::commands::scrape::languages::{create_parser, Language};
     use std::collections::HashMap;
     use std::time::SystemTime;
 
@@ -734,9 +735,9 @@ fn report_skipped_files(skipped: &HashMap<String, (usize, usize, String)>) {
 fn extract_doc_comment(
     node: tree_sitter::Node,
     source: &[u8],
-    language: patina::semantic::languages::Language,
+    language: languages::Language,
 ) -> Option<(String, String, Vec<String>)> {
-    use patina::semantic::languages::Language;
+    use crate::commands::scrape::languages::Language;
 
     // Look for doc comment in previous sibling
     if let Some(prev) = node.prev_sibling() {
@@ -838,8 +839,8 @@ fn extract_doc_comment(
 }
 
 /// Clean doc text by removing comment markers
-fn clean_doc_text(raw: &str, language: patina::semantic::languages::Language) -> String {
-    use patina::semantic::languages::Language;
+fn clean_doc_text(raw: &str, language: languages::Language) -> String {
+    use crate::commands::scrape::languages::Language;
 
     match language {
         Language::Rust => raw
@@ -928,10 +929,10 @@ fn extract_keywords(doc: &str) -> Vec<String> {
 fn extract_call_expressions(
     node: tree_sitter::Node,
     source: &[u8],
-    language: patina::semantic::languages::Language,
+    language: languages::Language,
     context: &mut ParseContext,
 ) {
-    use patina::semantic::languages::Language;
+    use crate::commands::scrape::languages::Language;
 
     let line_number = (node.start_position().row + 1) as i32;
 
@@ -1125,11 +1126,11 @@ fn process_ast_node(
     source: &[u8],
     file_path: &str,
     sql: &mut String,
-    language: patina::semantic::languages::Language,
+    language: languages::Language,
     context: &mut ParseContext,
 ) -> usize {
-    use patina::semantic::fingerprint::Fingerprint;
-    use patina::semantic::languages::Language;
+    use crate::commands::scrape::fingerprint::Fingerprint;
+    use crate::commands::scrape::languages::Language;
 
     let node = cursor.node();
     let mut count = 0;
@@ -1533,9 +1534,9 @@ fn extract_function_facts(
     file_path: &str,
     name: &str,
     sql: &mut String,
-    language: patina::semantic::languages::Language,
+    language: languages::Language,
 ) {
-    use patina::semantic::languages::Language;
+    use crate::commands::scrape::languages::Language;
 
     // Extract visibility
     let is_public = match language {
@@ -1815,9 +1816,9 @@ fn extract_type_definition(
     name: &str,
     kind: &str,
     sql: &mut String,
-    language: patina::semantic::languages::Language,
+    language: languages::Language,
 ) {
-    use patina::semantic::languages::Language;
+    use crate::commands::scrape::languages::Language;
 
     // Get the full definition (first line for brevity)
     let definition = node
@@ -1898,9 +1899,9 @@ fn extract_import_fact(
     source: &[u8],
     file_path: &str,
     sql: &mut String,
-    language: patina::semantic::languages::Language,
+    language: languages::Language,
 ) {
-    use patina::semantic::languages::Language;
+    use crate::commands::scrape::languages::Language;
 
     let import_text = node.utf8_text(source).unwrap_or("");
 
@@ -2069,4 +2070,524 @@ fn extract_behavioral_hints(
 /// Escape SQL strings
 fn escape_sql(s: &str) -> String {
     s.replace('\'', "''")
+}
+// ============================================================================
+// FINGERPRINT MODULE
+// ============================================================================
+mod fingerprint {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use tree_sitter::Node;
+
+    /// Compact 16-byte fingerprint for code patterns
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Fingerprint {
+        pub pattern: u32,    // AST shape hash
+        pub imports: u32,    // Dependency hash
+        pub complexity: u16, // Cyclomatic complexity
+        pub flags: u16,      // Feature flags
+    }
+
+    impl Fingerprint {
+        /// Generate fingerprint from tree-sitter AST node
+        pub fn from_ast(node: Node, source: &[u8]) -> Self {
+            let pattern = hash_ast_shape(node, source);
+            let imports = hash_imports(node, source);
+            let complexity = calculate_complexity(node) as u16;
+            let flags = detect_features(node, source);
+
+            Self {
+                pattern,
+                imports,
+                complexity,
+                flags,
+            }
+        }
+
+        /// Convert to bytes for storage
+        pub fn to_bytes(&self) -> [u8; 16] {
+            let mut bytes = [0u8; 16];
+            bytes[0..4].copy_from_slice(&self.pattern.to_le_bytes());
+            bytes[4..8].copy_from_slice(&self.imports.to_le_bytes());
+            bytes[8..10].copy_from_slice(&self.complexity.to_le_bytes());
+            bytes[10..12].copy_from_slice(&self.flags.to_le_bytes());
+            // bytes[12..16] reserved for future use
+            bytes
+        }
+
+        /// Parse from bytes
+        pub fn from_bytes(bytes: &[u8; 16]) -> Self {
+            Self {
+                pattern: u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
+                imports: u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
+                complexity: u16::from_le_bytes([bytes[8], bytes[9]]),
+                flags: u16::from_le_bytes([bytes[10], bytes[11]]),
+            }
+        }
+    }
+
+    /// Hash the AST structure (types only, not content)
+    fn hash_ast_shape(node: Node, _source: &[u8]) -> u32 {
+        let mut hasher = DefaultHasher::new();
+        hash_node_shape(&mut hasher, node);
+        (hasher.finish() & 0xFFFFFFFF) as u32
+    }
+
+    fn hash_node_shape(hasher: &mut impl Hasher, node: Node) {
+        // Hash node type (structure, not content)
+        node.kind().hash(hasher);
+
+        // Hash child structure recursively
+        let mut cursor = node.walk();
+        if cursor.goto_first_child() {
+            loop {
+                hash_node_shape(hasher, cursor.node());
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Hash imports/dependencies
+    fn hash_imports(node: Node, source: &[u8]) -> u32 {
+        let mut hasher = DefaultHasher::new();
+        let mut cursor = node.walk();
+
+        find_imports(&mut cursor, source, &mut hasher);
+        (hasher.finish() & 0xFFFFFFFF) as u32
+    }
+
+    fn find_imports(cursor: &mut tree_sitter::TreeCursor, source: &[u8], hasher: &mut impl Hasher) {
+        let node = cursor.node();
+
+        if node.kind() == "use_declaration" {
+            if let Ok(text) = node.utf8_text(source) {
+                text.hash(hasher);
+            }
+        }
+
+        if cursor.goto_first_child() {
+            loop {
+                find_imports(cursor, source, hasher);
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+            cursor.goto_parent();
+        }
+    }
+
+    /// Calculate cyclomatic complexity
+    fn calculate_complexity(node: Node) -> usize {
+        let mut complexity = 1; // Base complexity
+        let mut cursor = node.walk();
+
+        count_branches(&mut cursor, &mut complexity);
+        complexity
+    }
+
+    fn count_branches(cursor: &mut tree_sitter::TreeCursor, complexity: &mut usize) {
+        let node = cursor.node();
+
+        match node.kind() {
+            "if_expression" | "match_expression" | "while_expression" | "for_expression" => {
+                *complexity += 1;
+            }
+            "match_arm" => {
+                // Each arm adds a branch
+                *complexity += 1;
+            }
+            _ => {}
+        }
+
+        if cursor.goto_first_child() {
+            loop {
+                count_branches(cursor, complexity);
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+            cursor.goto_parent();
+        }
+    }
+
+    /// Detect feature flags (async, unsafe, etc.)
+    fn detect_features(node: Node, source: &[u8]) -> u16 {
+        let mut flags = 0u16;
+        let mut cursor = node.walk();
+
+        detect_features_recursive(&mut cursor, source, &mut flags);
+        flags
+    }
+
+    fn detect_features_recursive(cursor: &mut tree_sitter::TreeCursor, source: &[u8], flags: &mut u16) {
+        let node = cursor.node();
+
+        // Check for various features
+        match node.kind() {
+            "async" => *flags |= 0x0001,                   // Bit 0: async
+            "unsafe_block" | "unsafe" => *flags |= 0x0002, // Bit 1: unsafe
+            "macro_invocation" => {
+                if let Ok(text) = node.utf8_text(source) {
+                    if text.starts_with("panic!") || text.starts_with("unreachable!") {
+                        *flags |= 0x0004; // Bit 2: has panic
+                    }
+                    if text.starts_with("todo!") || text.starts_with("unimplemented!") {
+                        *flags |= 0x0008; // Bit 3: has todo
+                    }
+                }
+            }
+            "question_mark" => *flags |= 0x0010, // Bit 4: uses ?
+            "generic_type" | "generic_function" => *flags |= 0x0020, // Bit 5: generic
+            "trait_bounds" => *flags |= 0x0040,  // Bit 6: has trait bounds
+            "lifetime" => *flags |= 0x0080,      // Bit 7: has lifetimes
+            _ => {}
+        }
+
+        if cursor.goto_first_child() {
+            loop {
+                detect_features_recursive(cursor, source, flags);
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+            cursor.goto_parent();
+        }
+    }
+
+    /// Generate DuckDB schema for fingerprint storage
+    pub fn generate_schema() -> &'static str {
+        r#"
+-- Compact fingerprint storage (columnar for SIMD)
+CREATE TABLE IF NOT EXISTS code_fingerprints (
+    path VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    kind VARCHAR NOT NULL,  -- function, struct, trait, impl
+    pattern UINTEGER,       -- AST shape hash
+    imports UINTEGER,       -- Dependency hash  
+    complexity USMALLINT,   -- Cyclomatic complexity
+    flags USMALLINT,        -- Feature bitmask
+    PRIMARY KEY (path, name, kind)
+);
+
+-- Full-text search for actual code search
+CREATE TABLE IF NOT EXISTS code_search (
+    path VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    signature VARCHAR,      -- Function/struct signature
+    context VARCHAR,        -- Surrounding code snippet
+    PRIMARY KEY (path, name)
+);
+
+-- Type vocabulary: The domain language (compiler-verified truth)
+CREATE TABLE IF NOT EXISTS type_vocabulary (
+    file VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    definition TEXT,        -- 'type NodeId = u32' or 'struct User { ... }'
+    kind VARCHAR,          -- 'type_alias', 'struct', 'enum', 'const'
+    visibility VARCHAR,     -- 'pub', 'pub(crate)', 'private'
+    usage_count INTEGER DEFAULT 0,
+    PRIMARY KEY (file, name)
+);
+
+-- Function facts: Behavioral signals without interpretation
+CREATE TABLE IF NOT EXISTS function_facts (
+    file VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    takes_mut_self BOOLEAN,     -- Thread safety signal
+    takes_mut_params BOOLEAN,   -- Mutation indicator
+    returns_result BOOLEAN,     -- Error handling
+    returns_option BOOLEAN,     -- Nullability
+    is_async BOOLEAN,          -- Concurrency
+    is_unsafe BOOLEAN,         -- Safety requirements
+    is_public BOOLEAN,         -- API surface
+    parameter_count INTEGER,
+    generic_count INTEGER,      -- Complexity indicator
+    parameters TEXT,            -- Parameter names and types
+    return_type TEXT,           -- Return type signature
+    PRIMARY KEY (file, name)
+);
+
+-- Import facts: Navigation and dependencies
+CREATE TABLE IF NOT EXISTS import_facts (
+    importer_file VARCHAR NOT NULL,
+    imported_item VARCHAR NOT NULL,
+    imported_from VARCHAR,      -- Source module/crate
+    is_external BOOLEAN,       -- External crate?
+    import_kind VARCHAR,        -- 'use', 'mod', 'extern'
+    PRIMARY KEY (importer_file, imported_item)
+);
+
+-- Documentation: Searchable docs with keywords for LLM context retrieval
+CREATE TABLE IF NOT EXISTS documentation (
+    file VARCHAR NOT NULL,
+    symbol_name VARCHAR NOT NULL,
+    symbol_type VARCHAR,        -- 'function', 'struct', 'module', 'field'
+    line_number INTEGER,
+    doc_raw TEXT,              -- Original with comment markers
+    doc_clean TEXT,            -- Cleaned text for display
+    doc_summary VARCHAR,       -- First sentence (fast preview)
+    keywords VARCHAR[],        -- Extracted keywords for search
+    doc_length INTEGER,        -- Character count
+    has_examples BOOLEAN,      -- Contains code blocks
+    has_params BOOLEAN,        -- Documents parameters
+    parent_symbol VARCHAR,     -- For nested items (methods in impl blocks)
+    PRIMARY KEY (file, symbol_name)
+);
+
+-- Call graph: Function relationships for context traversal
+CREATE TABLE IF NOT EXISTS call_graph (
+    caller VARCHAR NOT NULL,
+    callee VARCHAR NOT NULL,
+    file VARCHAR NOT NULL,
+    call_type VARCHAR,         -- 'direct', 'method', 'async', 'callback'
+    line_number INTEGER        -- Where the call happens
+);
+
+CREATE INDEX IF NOT EXISTS idx_caller ON call_graph(caller);
+CREATE INDEX IF NOT EXISTS idx_callee ON call_graph(callee);
+
+-- Behavioral hints: Code smell detection (facts only)
+CREATE TABLE IF NOT EXISTS behavioral_hints (
+    file VARCHAR NOT NULL,
+    function VARCHAR NOT NULL,
+    calls_unwrap INTEGER DEFAULT 0,     -- Count of .unwrap()
+    calls_expect INTEGER DEFAULT 0,     -- Count of .expect()
+    has_panic_macro BOOLEAN,           -- Contains panic!()
+    has_todo_macro BOOLEAN,            -- Contains todo!()
+    has_unsafe_block BOOLEAN,          -- Contains unsafe {}
+    has_mutex BOOLEAN,                 -- Thread synchronization
+    has_arc BOOLEAN,                   -- Shared ownership
+    PRIMARY KEY (file, function)
+);
+
+-- Index metadata for incremental updates
+CREATE TABLE IF NOT EXISTS index_state (
+    path VARCHAR PRIMARY KEY,
+    mtime BIGINT NOT NULL,
+    hash VARCHAR,           -- File content hash
+    indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Track files we skipped due to missing language support
+CREATE TABLE IF NOT EXISTS skipped_files (
+    extension VARCHAR PRIMARY KEY,
+    file_count INTEGER DEFAULT 0,
+    total_bytes INTEGER DEFAULT 0,
+    example_path VARCHAR,
+    common_name VARCHAR     -- e.g., "Python", "TypeScript"
+);
+
+-- Create indexes for fast lookups
+CREATE INDEX IF NOT EXISTS idx_fingerprint_pattern ON code_fingerprints(pattern);
+CREATE INDEX IF NOT EXISTS idx_fingerprint_complexity ON code_fingerprints(complexity);
+CREATE INDEX IF NOT EXISTS idx_fingerprint_flags ON code_fingerprints(flags);
+CREATE INDEX IF NOT EXISTS idx_type_vocabulary_kind ON type_vocabulary(kind);
+CREATE INDEX IF NOT EXISTS idx_function_facts_public ON function_facts(is_public);
+CREATE INDEX IF NOT EXISTS idx_import_facts_external ON import_facts(is_external);
+CREATE INDEX IF NOT EXISTS idx_documentation_symbol ON documentation(symbol_name);
+CREATE INDEX IF NOT EXISTS idx_documentation_type ON documentation(symbol_type);
+"#
+    }
+}
+
+// ============================================================================
+// LANGUAGES MODULE
+// ============================================================================
+mod languages {
+    use anyhow::{Context, Result};
+    use std::path::Path;
+    use tree_sitter::Parser;
+
+    /// Supported programming languages
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub enum Language {
+        Rust,
+        Go,
+        Solidity,
+        Python,
+        JavaScript,
+        JavaScriptJSX, // .jsx files
+        TypeScript,
+        TypeScriptTSX, // .tsx files
+        Unknown,
+    }
+
+    impl Language {
+        /// Detect language from file extension
+        pub fn from_path(path: &Path) -> Self {
+            match path.extension().and_then(|ext| ext.to_str()) {
+                Some("rs") => Language::Rust,
+                Some("go") => Language::Go,
+                Some("sol") => Language::Solidity,
+                Some("py") => Language::Python,
+                Some("js") | Some("mjs") => Language::JavaScript,
+                Some("jsx") => Language::JavaScriptJSX,
+                Some("ts") => Language::TypeScript,
+                Some("tsx") => Language::TypeScriptTSX,
+                _ => Language::Unknown,
+            }
+        }
+
+        /// Convert to patina_metal::Metal enum
+        pub fn to_metal(&self) -> Option<patina_metal::Metal> {
+            match self {
+                Language::Rust => Some(patina_metal::Metal::Rust),
+                Language::Go => Some(patina_metal::Metal::Go),
+                Language::Solidity => Some(patina_metal::Metal::Solidity),
+                Language::Python => Some(patina_metal::Metal::Python),
+                Language::JavaScript | Language::JavaScriptJSX => Some(patina_metal::Metal::JavaScript),
+                Language::TypeScript | Language::TypeScriptTSX => Some(patina_metal::Metal::TypeScript),
+                Language::Unknown => None,
+            }
+        }
+
+        /// Get file extension pattern for finding files
+        pub fn file_pattern(&self) -> &'static str {
+            match self {
+                Language::Rust => "*.rs",
+                Language::Go => "*.go",
+                Language::Solidity => "*.sol",
+                Language::Python => "*.py",
+                Language::JavaScript => "*.js",
+                Language::JavaScriptJSX => "*.jsx",
+                Language::TypeScript => "*.ts",
+                Language::TypeScriptTSX => "*.tsx",
+                Language::Unknown => "*",
+            }
+        }
+
+        /// Map language-specific node types to generic categories
+        pub fn normalize_node_kind<'a>(&self, node_kind: &'a str) -> &'a str {
+            match self {
+                Language::Rust => match node_kind {
+                    "function_item" => "function",
+                    "struct_item" => "struct",
+                    "trait_item" => "trait",
+                    "impl_item" => "impl",
+                    "if_expression" => "if",
+                    "match_expression" => "switch",
+                    "while_expression" => "while",
+                    "for_expression" => "for",
+                    _ => node_kind,
+                },
+                Language::Go => match node_kind {
+                    "function_declaration" | "method_declaration" => "function",
+                    "type_declaration" => "struct",
+                    "interface_type" => "trait",
+                    "if_statement" => "if",
+                    "switch_statement" => "switch",
+                    "for_statement" => "for",
+                    _ => node_kind,
+                },
+                Language::Solidity => match node_kind {
+                    "function_definition" => "function",
+                    "contract_declaration" => "struct", // Contracts are like structs
+                    "interface_declaration" => "trait", // Interfaces are like traits
+                    "library_declaration" => "impl",    // Libraries are like impl blocks
+                    "modifier_definition" => "function", // Modifiers are special functions
+                    "event_definition" => "function",   // Events are like functions
+                    "if_statement" => "if",
+                    "for_statement" => "for",
+                    "while_statement" => "while",
+                    _ => node_kind,
+                },
+                Language::Python => match node_kind {
+                    "function_definition" => "function",
+                    "class_definition" => "struct",
+                    "decorated_definition" => "function",
+                    "if_statement" => "if",
+                    "for_statement" => "for",
+                    "while_statement" => "while",
+                    _ => node_kind,
+                },
+                Language::JavaScript
+                | Language::JavaScriptJSX
+                | Language::TypeScript
+                | Language::TypeScriptTSX => match node_kind {
+                    "function_declaration" | "function_expression" | "arrow_function" => "function",
+                    "method_definition" => "function",
+                    "class_declaration" => "struct",
+                    "interface_declaration" => "trait",
+                    "type_alias_declaration" => "type_alias",
+                    "if_statement" => "if",
+                    "for_statement" | "for_in_statement" | "for_of_statement" => "for",
+                    "while_statement" | "do_statement" => "while",
+                    "switch_statement" => "switch",
+                    _ => node_kind,
+                },
+                Language::Unknown => node_kind,
+            }
+        }
+    }
+
+    /// Create a parser for the given language using patina-metal
+    pub fn create_parser(language: Language) -> Result<Parser> {
+        let metal = language
+            .to_metal()
+            .ok_or_else(|| anyhow::anyhow!("Unsupported language: {:?}", language))?;
+
+        let ts_lang = metal
+            .tree_sitter_language()
+            .ok_or_else(|| anyhow::anyhow!("No parser available for {:?}", language))?;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&ts_lang)
+            .context("Failed to set language")?;
+
+        Ok(parser)
+    }
+
+    /// Create a parser for a specific file path, handling TypeScript's tsx vs ts distinction
+    pub fn create_parser_for_path(path: &Path) -> Result<Parser> {
+        let language = Language::from_path(path);
+        let metal = language
+            .to_metal()
+            .ok_or_else(|| anyhow::anyhow!("Unsupported language: {:?}", language))?;
+
+        // Use the extension-aware method for TypeScript to get the right parser
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let ts_lang = metal
+            .tree_sitter_language_for_ext(ext)
+            .ok_or_else(|| anyhow::anyhow!("No parser available for {:?}", language))?;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&ts_lang)
+            .context("Failed to set language")?;
+
+        Ok(parser)
+    }
+
+    /// Detect all languages in a directory
+    pub fn detect_languages(dir: &Path) -> Result<Vec<Language>> {
+        use std::collections::HashSet;
+        let mut languages = HashSet::new();
+
+        for entry in walkdir::WalkDir::new(dir)
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            let lang = Language::from_path(entry.path());
+            if lang != Language::Unknown {
+                languages.insert(lang as u8);
+            }
+        }
+
+        Ok(languages
+            .into_iter()
+            .map(|l| match l {
+                0 => Language::Rust,
+                1 => Language::Go,
+                2 => Language::Solidity,
+                3 => Language::Python,
+                4 => Language::JavaScript,
+                5 => Language::TypeScript,
+                _ => Language::Unknown,
+            })
+            .collect())
+    }
 }
