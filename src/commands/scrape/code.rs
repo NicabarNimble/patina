@@ -2,9 +2,9 @@
 // SEMANTIC CODE EXTRACTION PIPELINE
 // ============================================================================
 //! # Code → Knowledge ETL Pipeline
-//! 
+//!
 //! Transforms source code into queryable semantic knowledge using tree-sitter.
-//! 
+//!
 //! ## Purpose
 //! This module implements a pure ETL (Extract, Transform, Load) pipeline:
 //! - **Extract**: Read source files and git history
@@ -43,48 +43,53 @@ use super::ScrapeConfig;
 /// Initialize a new knowledge database
 pub fn initialize(config: &ScrapeConfig) -> Result<()> {
     println!("🗄️  Initializing optimized knowledge database...");
-    
+
     // Create parent directory if needed
     if let Some(parent) = Path::new(&config.db_path).parent() {
         std::fs::create_dir_all(parent)?;
     }
-    
+
     // Remove old database if exists
     if Path::new(&config.db_path).exists() {
         std::fs::remove_file(&config.db_path)?;
     }
-    
+
     // Create with schema
     initialize_database(&config.db_path)?;
-    
-    println!("✅ Database initialized with 16KB blocks at {}", config.db_path);
+
+    println!(
+        "✅ Database initialized with 16KB blocks at {}",
+        config.db_path
+    );
     println!("\nNext steps:");
     println!("  1. Run 'patina scrape code' to index your codebase");
     println!("  2. Run 'patina scrape code --query \"SELECT ...\"' to explore");
-    
+
     Ok(())
 }
 
 /// Extract semantic information from codebase
 pub fn extract(config: &ScrapeConfig) -> Result<()> {
     println!("🔍 Starting semantic extraction...\n");
-    
+
     let work_dir = determine_work_directory(config)?;
-    
+
     // Print repo info if scraping a repository
     if config.db_path.contains("layer/dust/repos/") {
-        if let Some(repo_name) = config.db_path
+        if let Some(repo_name) = config
+            .db_path
             .strip_prefix("layer/dust/repos/")
-            .and_then(|s| s.strip_suffix(".db")) {
+            .and_then(|s| s.strip_suffix(".db"))
+        {
             println!("📦 Scraping repository: {}", repo_name);
             println!("📁 Source: {}", work_dir.display());
             println!("💾 Database: {}", config.db_path);
         }
     }
-    
+
     // Run the ETL pipeline (it handles initialization if force=true)
     extract_and_index(&config.db_path, &work_dir, config.force)?;
-    
+
     Ok(())
 }
 
@@ -94,28 +99,31 @@ pub fn query(_config: &ScrapeConfig, _sql: &str) -> Result<()> {
 }
 
 // ============================================================================
-// CHAPTER 2: ETL PIPELINE ORCHESTRATION  
+// CHAPTER 2: ETL PIPELINE ORCHESTRATION
 // ============================================================================
 
 fn determine_work_directory(config: &ScrapeConfig) -> Result<PathBuf> {
     // Extract repo name from db_path if it's in layer/dust/repos/
     if config.db_path.contains("layer/dust/repos/") {
-        let repo_name = config.db_path
+        let repo_name = config
+            .db_path
             .strip_prefix("layer/dust/repos/")
             .and_then(|s| s.strip_suffix(".db"))
             .context("Invalid repo database path")?;
-        
+
         let repo_dir = PathBuf::from("layer/dust/repos").join(repo_name);
         if !repo_dir.exists() {
-            anyhow::bail!("Repository '{}' not found. Clone it first to layer/dust/repos/", repo_name);
+            anyhow::bail!(
+                "Repository '{}' not found. Clone it first to layer/dust/repos/",
+                repo_name
+            );
         }
-        
+
         Ok(std::env::current_dir()?.join(repo_dir))
     } else {
         Ok(std::env::current_dir()?)
     }
 }
-
 
 /// Initialize DuckDB database with lean schema and optimal settings for small size
 fn initialize_database(db_path: &str) -> Result<()> {
@@ -229,46 +237,53 @@ fn check_git_freshness(work_dir: &Path) -> Result<()> {
         .args(["log", "-1", "--format=%at"])
         .output()
         .context("Failed to get last commit date")?;
-    
+
     if !last_commit.status.success() {
         // Not a git repo or no commits
         return Ok(());
     }
-    
-    let timestamp_str = String::from_utf8_lossy(&last_commit.stdout).trim().to_string();
+
+    let timestamp_str = String::from_utf8_lossy(&last_commit.stdout)
+        .trim()
+        .to_string();
     if let Ok(last_commit_timestamp) = timestamp_str.parse::<i64>() {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)?
             .as_secs() as i64;
-        
+
         let days_old = (now - last_commit_timestamp) / 86400;
-        
+
         // Alert thresholds
         if days_old > 30 {
-            println!("  ⚠️  WARNING: Repository hasn't been updated in {} days!", days_old);
+            println!(
+                "  ⚠️  WARNING: Repository hasn't been updated in {} days!",
+                days_old
+            );
             println!("     Consider pulling latest changes before scraping.");
         } else if days_old > 7 {
             println!("  ℹ️  Note: Repository last updated {} days ago", days_old);
         }
-        
+
         // Also show the last commit info
         let last_commit_info = Command::new("git")
             .current_dir(work_dir)
             .args(["log", "-1", "--format=%h %s (%ar)"])
             .output()?;
-        
+
         if last_commit_info.status.success() {
-            let info = String::from_utf8_lossy(&last_commit_info.stdout).trim().to_string();
+            let info = String::from_utf8_lossy(&last_commit_info.stdout)
+                .trim()
+                .to_string();
             println!("  📝 Last commit: {}", info);
         }
     }
-    
+
     Ok(())
 }
 
 fn extract_git_metrics(db_path: &str, work_dir: &Path) -> Result<()> {
     println!("📊 Analyzing Git history...");
-    
+
     // Check repository freshness
     check_git_freshness(work_dir)?;
 
@@ -432,8 +447,8 @@ fn extract_pattern_references(db_path: &str, work_dir: &Path) -> Result<()> {
 fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
     println!("🧠 Generating semantic fingerprints and extracting truth data...");
 
-    use languages::{create_parser_for_path, Language};
     use ignore::WalkBuilder;
+    use languages::{create_parser_for_path, Language};
     use std::collections::HashMap;
     use std::time::SystemTime;
 
