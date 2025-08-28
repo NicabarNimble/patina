@@ -34,7 +34,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use super::ScrapeConfig;
+use super::{ScrapeConfig, ScrapeStats};
 
 // ============================================================================
 // CHAPTER 1: PUBLIC INTERFACE
@@ -69,8 +69,10 @@ pub fn initialize(config: &ScrapeConfig) -> Result<()> {
 }
 
 /// Extract semantic information from codebase
-pub fn extract(config: &ScrapeConfig) -> Result<()> {
+pub fn extract(config: &ScrapeConfig) -> Result<ScrapeStats> {
     println!("🔍 Starting semantic extraction...\n");
+
+    let start = std::time::Instant::now();
 
     let work_dir = determine_work_directory(config)?;
 
@@ -88,14 +90,18 @@ pub fn extract(config: &ScrapeConfig) -> Result<()> {
     }
 
     // Run the ETL pipeline (it handles initialization if force=true)
-    extract_and_index(&config.db_path, &work_dir, config.force)?;
+    let items_processed = extract_and_index(&config.db_path, &work_dir, config.force)?;
 
-    Ok(())
-}
+    // Get database size
+    let db_size_kb = std::fs::metadata(&config.db_path)
+        .map(|m| m.len() / 1024)
+        .unwrap_or(0);
 
-/// Query the knowledge database (deprecated - use 'patina ask' instead)
-pub fn query(_config: &ScrapeConfig, _sql: &str) -> Result<()> {
-    anyhow::bail!("Query functionality has moved. Use 'patina ask' instead.")
+    Ok(ScrapeStats {
+        items_processed,
+        time_elapsed: start.elapsed(),
+        database_size_kb: db_size_kb,
+    })
 }
 
 // ============================================================================
@@ -200,7 +206,7 @@ CREATE TABLE IF NOT EXISTS pattern_references (
     Ok(())
 }
 
-fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
+fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<usize> {
     println!("🔍 Indexing codebase...\n");
 
     // If force flag is set, reinitialize database to ensure clean state
@@ -217,12 +223,12 @@ fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<()> 
     }
 
     // Step 3: Semantic fingerprints with tree-sitter
-    extract_fingerprints(db_path, work_dir, force)?;
+    let symbol_count = extract_fingerprints(db_path, work_dir, force)?;
 
     // Step 4: Show summary
     show_summary(db_path)?;
 
-    Ok(())
+    Ok(symbol_count)
 }
 
 // ============================================================================
@@ -444,7 +450,7 @@ fn extract_pattern_references(db_path: &str, work_dir: &Path) -> Result<()> {
 // CHAPTER 5: EXTRACTION - Semantic Data
 // ============================================================================
 
-fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
+fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<usize> {
     println!("🧠 Generating semantic fingerprints and extracting truth data...");
 
     use ignore::WalkBuilder;
@@ -521,7 +527,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
 
     if all_files.is_empty() {
         println!("  ⚠️  No supported language files found");
-        return Ok(());
+        return Ok(0);
     }
 
     println!(
@@ -592,7 +598,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
 
         // If no changes, we're done!
         if changes.is_empty() {
-            return Ok(());
+            return Ok(0);
         }
 
         // Clean up changed files
@@ -735,7 +741,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
         report_skipped_files(&skipped_files);
     }
 
-    Ok(())
+    Ok(symbol_count)
 }
 
 // ============================================================================
