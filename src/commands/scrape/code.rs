@@ -221,8 +221,56 @@ fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<()> 
 // CHAPTER 3: EXTRACTION - Git Metrics
 // ============================================================================
 
+/// Check if the git repository has been updated recently
+fn check_git_freshness(work_dir: &Path) -> Result<()> {
+    // Get the last commit date
+    let last_commit = Command::new("git")
+        .current_dir(work_dir)
+        .args(["log", "-1", "--format=%at"])
+        .output()
+        .context("Failed to get last commit date")?;
+    
+    if !last_commit.status.success() {
+        // Not a git repo or no commits
+        return Ok(());
+    }
+    
+    let timestamp_str = String::from_utf8_lossy(&last_commit.stdout).trim().to_string();
+    if let Ok(last_commit_timestamp) = timestamp_str.parse::<i64>() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_secs() as i64;
+        
+        let days_old = (now - last_commit_timestamp) / 86400;
+        
+        // Alert thresholds
+        if days_old > 30 {
+            println!("  ⚠️  WARNING: Repository hasn't been updated in {} days!", days_old);
+            println!("     Consider pulling latest changes before scraping.");
+        } else if days_old > 7 {
+            println!("  ℹ️  Note: Repository last updated {} days ago", days_old);
+        }
+        
+        // Also show the last commit info
+        let last_commit_info = Command::new("git")
+            .current_dir(work_dir)
+            .args(["log", "-1", "--format=%h %s (%ar)"])
+            .output()?;
+        
+        if last_commit_info.status.success() {
+            let info = String::from_utf8_lossy(&last_commit_info.stdout).trim().to_string();
+            println!("  📝 Last commit: {}", info);
+        }
+    }
+    
+    Ok(())
+}
+
 fn extract_git_metrics(db_path: &str, work_dir: &Path) -> Result<()> {
     println!("📊 Analyzing Git history...");
+    
+    // Check repository freshness
+    check_git_freshness(work_dir)?;
 
     let rust_files = Command::new("git")
         .current_dir(work_dir)
