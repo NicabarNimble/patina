@@ -82,11 +82,7 @@ pub fn extract(config: &ScrapeConfig) -> Result<()> {
         }
     }
     
-    if config.force {
-        initialize(config)?;
-    }
-    
-    // Run the ETL pipeline
+    // Run the ETL pipeline (it handles initialization if force=true)
     extract_and_index(&config.db_path, &work_dir, config.force)?;
     
     Ok(())
