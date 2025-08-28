@@ -127,8 +127,91 @@ fn run_pipeline(db_path: &str, work_dir: &Path) -> Result<()> {
 // ============================================================================
 
 fn extract_and_load_git_metrics(db_path: &str, work_dir: &Path) -> Result<()> {
-    // TODO: Move Git metrics extraction here from original lines 156-244
-    println!("  ✓ Git metrics extracted");
+    println!("📊 Analyzing Git history...");
+
+    let rust_files = Command::new("git")
+        .current_dir(work_dir)
+        .args(["ls-files", "*.rs", "src/**/*.rs"])
+        .output()
+        .context("Failed to list Git files")?;
+
+    if !rust_files.status.success() {
+        anyhow::bail!("Failed to get file list from Git");
+    }
+
+    let files = String::from_utf8_lossy(&rust_files.stdout);
+    let file_count = files.lines().count();
+
+    let mut metrics_sql = String::from("BEGIN TRANSACTION;\n");
+    metrics_sql.push_str("DELETE FROM git_metrics;\n");
+
+    for file in files.lines() {
+        if file.is_empty() {
+            continue;
+        }
+
+        // Get commit history for this file
+        let log_output = Command::new("git")
+            .current_dir(work_dir)
+            .args(["log", "--format=%H %ai", "--follow", "--", file])
+            .output()?;
+
+        if log_output.status.success() {
+            let log = String::from_utf8_lossy(&log_output.stdout);
+            let commits: Vec<&str> = log.lines().collect();
+
+            if !commits.is_empty() {
+                let first = commits
+                    .last()
+                    .unwrap_or(&"")
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("");
+                let last = commits
+                    .first()
+                    .unwrap_or(&"")
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("");
+                let count = commits.len();
+
+                // Calculate survival days
+                let first_date = Command::new("git")
+                    .current_dir(work_dir)
+                    .args(["show", "-s", "--format=%at", first])
+                    .output()?;
+
+                if first_date.status.success() {
+                    let timestamp = String::from_utf8_lossy(&first_date.stdout)
+                        .trim()
+                        .parse::<i64>()
+                        .unwrap_or(0);
+
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)?
+                        .as_secs() as i64;
+
+                    let survival_days = (now - timestamp) / 86400;
+
+                    metrics_sql.push_str(&format!(
+                        "INSERT INTO git_metrics (file, first_commit, last_commit, commit_count, survival_days) VALUES ('{}', '{}', '{}', {}, {});\n",
+                        file, first, last, count, survival_days
+                    ));
+                }
+            }
+        }
+    }
+
+    metrics_sql.push_str("COMMIT;\n");
+
+    Command::new("duckdb")
+        .arg(db_path)
+        .arg("-c")
+        .arg(&metrics_sql)
+        .output()
+        .context("Failed to insert Git metrics")?;
+
+    println!("  ✓ Analyzed {} files", file_count);
     Ok(())
 }
 
@@ -137,8 +220,65 @@ fn extract_and_load_git_metrics(db_path: &str, work_dir: &Path) -> Result<()> {
 // ============================================================================
 
 fn extract_and_load_pattern_references(db_path: &str, work_dir: &Path) -> Result<()> {
-    // TODO: Move pattern extraction here from original lines 246-308
-    println!("  ✓ Pattern references extracted");
+    println!("🔗 Extracting pattern references...");
+
+    let pattern_files = Command::new("find")
+        .current_dir(work_dir)
+        .args(["layer", "-name", "*.md", "-type", "f"])
+        .output()
+        .context("Failed to find pattern files")?;
+
+    if !pattern_files.status.success() {
+        anyhow::bail!("Failed to list pattern files");
+    }
+
+    let files = String::from_utf8_lossy(&pattern_files.stdout);
+    let mut references_sql = String::from("BEGIN TRANSACTION;\n");
+    references_sql.push_str("DELETE FROM pattern_references;\n");
+
+    for file in files.lines() {
+        if file.is_empty() {
+            continue;
+        }
+
+        let pattern_id = Path::new(file)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
+
+        let file_path = work_dir.join(file);
+        if let Ok(content) = std::fs::read_to_string(&file_path) {
+            // Look for references in YAML frontmatter
+            if let Some(refs_line) = content.lines().find(|l| l.starts_with("references:")) {
+                if let Some(refs) = refs_line.strip_prefix("references:") {
+                    let refs = refs.trim().trim_start_matches('[').trim_end_matches(']');
+                    for reference in refs.split(',') {
+                        let reference = reference.trim().trim_matches('"').trim_matches('\'');
+                        if !reference.is_empty() {
+                            references_sql.push_str(&format!(
+                                "INSERT INTO pattern_references (from_pattern, to_pattern, reference_type, context) VALUES ('{}', '{}', 'references', 'frontmatter');\n",
+                                pattern_id, reference
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    references_sql.push_str("COMMIT;\n");
+
+    Command::new("duckdb")
+        .arg(db_path)
+        .arg("-c")
+        .arg(&references_sql)
+        .output()
+        .context("Failed to insert pattern references")?;
+
+    println!(
+        "  ✓ Extracted references from {} patterns",
+        files.lines().count()
+    );
     Ok(())
 }
 
