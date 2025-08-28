@@ -2,7 +2,6 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 mod commands;
-mod config;
 
 #[derive(Parser)]
 #[command(author, version = env!("CARGO_PKG_VERSION"), about = "Context management for AI-assisted development", long_about = None)]
@@ -91,14 +90,6 @@ enum Commands {
         json: bool,
     },
 
-    /// Organize and clean up patterns
-    Organize(commands::organize::OrganizeArgs),
-
-    /// Organize patterns using Git history (v2)
-    OrganizeV2(commands::organize_v2::OrganizeArgs),
-
-    /// Analyze session activity and patterns
-    SessionAnalyze(commands::session_analyze::SessionAnalyzeArgs),
 
     /// Manage agent environments
     Agent {
@@ -106,23 +97,6 @@ enum Commands {
         command: AgentCommands,
     },
 
-    /// Process hooks from LLMs (Claude, Gemini, etc)
-    Hook {
-        /// Hook event name (on-stop, on-modified, on-before-edit, on-session-start)
-        event: String,
-    },
-
-    /// Trace ideas through their implementation lifecycle
-    Trace {
-        /// Pattern/idea name to trace
-        pattern: String,
-    },
-
-    /// Recognize patterns in surviving code
-    Recognize,
-
-    /// Connect ideas to their implementations
-    Connect,
 
     /// Build semantic knowledge database from code
     Scrape {
@@ -282,34 +256,12 @@ fn main() -> Result<()> {
         } => {
             commands::navigate::execute(&query, all_branches, layer, json)?;
         }
-        Commands::Organize(args) => {
-            let config = config::Config::load()?;
-            commands::organize::execute(&config, args)?;
-        }
-        Commands::OrganizeV2(args) => {
-            commands::organize_v2::execute(args)?;
-        }
-        Commands::SessionAnalyze(args) => {
-            commands::session_analyze::execute(args)?;
-        }
         Commands::Agent { command } => match command {
             AgentCommands::Start => commands::agent::start()?,
             AgentCommands::Stop => commands::agent::stop()?,
             AgentCommands::Status => commands::agent::status()?,
             AgentCommands::List => commands::agent::list()?,
         },
-        Commands::Hook { event } => {
-            commands::hook::process_hook(&event)?;
-        }
-        Commands::Trace { pattern } => {
-            commands::trace::execute(&pattern)?;
-        }
-        Commands::Recognize => {
-            commands::recognize::execute()?;
-        }
-        Commands::Connect => {
-            commands::connect::execute()?;
-        }
         Commands::Scrape {
             init,
             query,
