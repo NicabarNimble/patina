@@ -1337,6 +1337,76 @@ pub(crate) mod fingerprint {
 // MODULE: AST Processing
 // ============================================================================
 
-mod ast_processing {
-    // TODO: Move AST processing functions here from original lines 1125-1443
+// Forward declarations for the extraction functions
+fn process_ast_node(
+    cursor: &mut tree_sitter::TreeCursor,
+    source: &[u8],
+    file_path: &str,
+    sql: &mut String,
+    language: languages::Language,
+    context: &mut ParseContext,
+) -> usize {
+    // TODO: Move implementation here
+    0
+}
+
+fn extract_function_facts(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    sql: &mut String,
+    language: languages::Language,
+) {
+    // TODO: Move implementation here
+}
+
+fn extract_type_definition(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    sql: &mut String,
+    language: languages::Language,
+) {
+    // TODO: Move implementation here
+}
+
+fn extract_import_fact(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    sql: &mut String,
+    language: languages::Language,
+) {
+    // TODO: Move implementation here
+}
+
+fn extract_behavioral_hints(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    function_name: &str,
+    sql: &mut String,
+) {
+    // TODO: Move implementation here
+}
+
+fn extract_doc_comment(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    symbol_name: &str,
+    symbol_type: &str,
+    parent_symbol: Option<&str>,
+    sql: &mut String,
+) -> bool {
+    // TODO: Move implementation here
+    false
+}
+
+fn extract_call_expressions(
+    cursor: &mut tree_sitter::TreeCursor,
+    source: &[u8],
+    context: &mut ParseContext,
+) {
+    // TODO: Move implementation here
 }
