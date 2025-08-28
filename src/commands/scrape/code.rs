@@ -92,9 +92,9 @@ pub fn extract(config: &ScrapeConfig) -> Result<()> {
     Ok(())
 }
 
-/// Query the knowledge database (temporary - should move to Ask)
-pub fn query(config: &ScrapeConfig, sql: &str) -> Result<()> {
-    run_query(sql, &config.db_path)
+/// Query the knowledge database (deprecated - use 'patina ask' instead)
+pub fn query(_config: &ScrapeConfig, _sql: &str) -> Result<()> {
+    anyhow::bail!("Query functionality has moved. Use 'patina ask' instead.")
 }
 
 // ============================================================================
