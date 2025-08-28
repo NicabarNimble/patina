@@ -1,51 +1,3 @@
-// TODO: SCRAPE REFACTOR - RESUME POINT
-// ============================================================================
-// CURRENT STATUS:
-// - We copied the entire scrape.rs to code_complete.rs to reorganize it
-// - Started adding book-style chapter organization
-// - Need to finish reorganizing and then replace code.rs with this file
-//
-// WHAT'S DONE:
-// ✅ Chapter 1: Public Interface (initialize, extract, query functions)
-// ✅ Chapter 2: ETL Pipeline Orchestration header added
-// ✅ Chapter 3: Git Metrics header added
-// ✅ Chapter 4: Pattern References header added  
-// ✅ Chapter 5: Semantic Data header added
-// ✅ Chapter 6: Database Operations header added
-// ✅ Removed duplicate validate_repo_path function
-// ✅ Added determine_work_directory function
-//
-// WHAT'S NEEDED:
-// [ ] Add Chapter 7: AST Processing header (around line 1206)
-// [ ] Add Chapter 8: Utilities header (find escape_sql, ParseContext)
-// [ ] Add Chapter 9: Modules header (fingerprint module at line 2155, languages at 2459)
-// [ ] Fix all imports - change from crate::commands::scrape:: to just module names
-// [ ] Move fingerprint and languages modules to be pub(crate) mod
-// [ ] Remove run_query function (not needed with new API)
-// [ ] Ensure all functions use proper visibility (pub for API, nothing for internal)
-//
-// KEY LINES TO CHECK:
-// - Line 1206: process_ast_node function needs Chapter 7 header
-// - Line 1163: ParseContext struct
-// - Line 2149: escape_sql function  
-// - Line 2155: fingerprint module
-// - Line 2459: languages module
-//
-// FILE STRUCTURE:
-// - code.rs: Our attempted structured version (can reference for organization)
-// - code_structured.rs: Backup of our structured attempt
-// - code_complete.rs: THIS FILE - the full 2455 lines being reorganized
-// - scrape_new.rs: The router that will call this module
-//
-// FINAL STEPS:
-// 1. Finish reorganizing this file with all chapter headers
-// 2. Fix all imports to work within module context
-// 3. Test compilation with cargo check
-// 4. Replace code.rs with this reorganized version
-// 5. Delete code_complete.rs and code_structured.rs
-// 6. Update src/commands/scrape_new.rs to use the new module
-// ============================================================================
-
 // ============================================================================
 // SEMANTIC CODE EXTRACTION PIPELINE
 // ============================================================================
@@ -867,7 +819,7 @@ fn extract_doc_comment(
     source: &[u8],
     language: languages::Language,
 ) -> Option<(String, String, Vec<String>)> {
-    use crate::commands::scrape::languages::Language;
+    use languages::Language;
 
     // Look for doc comment in previous sibling
     if let Some(prev) = node.prev_sibling() {
@@ -970,7 +922,7 @@ fn extract_doc_comment(
 
 /// Clean doc text by removing comment markers
 fn clean_doc_text(raw: &str, language: languages::Language) -> String {
-    use crate::commands::scrape::languages::Language;
+    use languages::Language;
 
     match language {
         Language::Rust => raw
@@ -1062,7 +1014,7 @@ fn extract_call_expressions(
     language: languages::Language,
     context: &mut ParseContext,
 ) {
-    use crate::commands::scrape::languages::Language;
+    use languages::Language;
 
     let line_number = (node.start_position().row + 1) as i32;
 
@@ -1207,6 +1159,10 @@ fn extract_call_expressions(
     }
 }
 
+// ============================================================================
+// CHAPTER 7: AST PROCESSING
+// ============================================================================
+
 /// Context for tracking state during AST traversal
 struct ParseContext {
     current_function: Option<String>,
@@ -1259,8 +1215,8 @@ fn process_ast_node(
     language: languages::Language,
     context: &mut ParseContext,
 ) -> usize {
-    use crate::commands::scrape::fingerprint::Fingerprint;
-    use crate::commands::scrape::languages::Language;
+    use fingerprint::Fingerprint;
+    use languages::Language;
 
     let node = cursor.node();
     let mut count = 0;
@@ -1640,23 +1596,6 @@ WHERE file_count > 0;
 }
 
 /// Run a custom query
-fn run_query(query: &str, db_path: &str) -> Result<()> {
-    let output = Command::new("duckdb")
-        .arg(db_path)
-        .arg("-c")
-        .arg(query)
-        .output()
-        .context("Failed to execute query")?;
-
-    if output.status.success() {
-        println!("{}", String::from_utf8_lossy(&output.stdout));
-    } else {
-        anyhow::bail!("Query failed: {}", String::from_utf8_lossy(&output.stderr));
-    }
-
-    Ok(())
-}
-
 /// Extract function facts (truth data only)
 fn extract_function_facts(
     node: tree_sitter::Node,
@@ -1666,7 +1605,7 @@ fn extract_function_facts(
     sql: &mut String,
     language: languages::Language,
 ) {
-    use crate::commands::scrape::languages::Language;
+    use languages::Language;
 
     // Extract visibility
     let is_public = match language {
@@ -1948,7 +1887,7 @@ fn extract_type_definition(
     sql: &mut String,
     language: languages::Language,
 ) {
-    use crate::commands::scrape::languages::Language;
+    use languages::Language;
 
     // Get the full definition (first line for brevity)
     let definition = node
@@ -2031,7 +1970,7 @@ fn extract_import_fact(
     sql: &mut String,
     language: languages::Language,
 ) {
-    use crate::commands::scrape::languages::Language;
+    use languages::Language;
 
     let import_text = node.utf8_text(source).unwrap_or("");
 
@@ -2197,14 +2136,23 @@ fn extract_behavioral_hints(
     }
 }
 
+// ============================================================================
+// CHAPTER 8: UTILITIES
+// ============================================================================
+
 /// Escape SQL strings
 fn escape_sql(s: &str) -> String {
     s.replace('\'', "''")
 }
+
+// ============================================================================
+// CHAPTER 9: MODULES
+// ============================================================================
+
 // ============================================================================
 // FINGERPRINT MODULE
 // ============================================================================
-mod fingerprint {
+pub(crate) mod fingerprint {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     use tree_sitter::Node;
@@ -2508,7 +2456,7 @@ CREATE INDEX IF NOT EXISTS idx_documentation_type ON documentation(symbol_type);
 // ============================================================================
 // LANGUAGES MODULE
 // ============================================================================
-mod languages {
+pub(crate) mod languages {
     use anyhow::{Context, Result};
     use std::path::Path;
     use tree_sitter::Parser;
