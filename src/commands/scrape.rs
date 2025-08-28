@@ -487,7 +487,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
     for (file, language) in files_to_process {
         // Check if file needs reindexing (mtime-based incremental)
         let file_path = work_dir.join(&file);
-        
+
         // Create parser for this specific file path
         // This correctly handles TSX vs TS and JSX vs JS distinctions
         // We need to use create_parser_for_path because create_parser loses the TSX/JSX distinction
