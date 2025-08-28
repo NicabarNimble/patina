@@ -70,6 +70,17 @@ pub fn extract(config: &ScrapeConfig) -> Result<()> {
     
     let work_dir = determine_work_directory(config)?;
     
+    // Print repo info if scraping a repository
+    if config.db_path.contains("layer/dust/repos/") {
+        if let Some(repo_name) = config.db_path
+            .strip_prefix("layer/dust/repos/")
+            .and_then(|s| s.strip_suffix(".db")) {
+            println!("📦 Scraping repository: {}", repo_name);
+            println!("📁 Source: {}", work_dir.display());
+            println!("💾 Database: {}", config.db_path);
+        }
+    }
+    
     if config.force {
         initialize(config)?;
     }
