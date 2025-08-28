@@ -32,10 +32,27 @@ pub struct ScrapeStats {
     pub database_size_kb: u64,
 }
 
-/// Execute scrape command - for now just delegates to code scraper
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn test_scrape_stats_creation() {
+        let stats = ScrapeStats {
+            items_processed: 100,
+            time_elapsed: Duration::from_secs(5),
+            database_size_kb: 1024,
+        };
+        assert_eq!(stats.items_processed, 100);
+        assert_eq!(stats.time_elapsed.as_secs(), 5);
+        assert_eq!(stats.database_size_kb, 1024);
+    }
+}
+
+/// Execute scrape command with optional subcommand support
 pub fn execute(init: bool, query: Option<String>, repo: Option<String>, force: bool) -> Result<()> {
-    // For backward compatibility, we just run code scraper
-    // In future, we'll add subcommand routing here
+    // For backward compatibility, we default to code scraper
     let mut config = ScrapeConfig::new(force);
     if let Some(r) = repo.as_ref() {
         config.for_repo(r);
@@ -44,10 +61,17 @@ pub fn execute(init: bool, query: Option<String>, repo: Option<String>, force: b
     if init {
         code::initialize(&config)?;
     } else if let Some(_q) = query {
-        // Query should move to Ask command eventually
+        // Query functionality has moved to 'patina ask'
         bail!("Query functionality has moved. Use 'patina ask' instead.");
     } else {
-        code::extract(&config)?;
+        // Extract and show stats
+        let stats = code::extract(&config)?;
+
+        // Display summary
+        println!("\n📊 Extraction Summary:");
+        println!("  • Processed {} items", stats.items_processed);
+        println!("  • Time elapsed: {:?}", stats.time_elapsed);
+        println!("  • Database size: {} KB", stats.database_size_kb);
     }
     Ok(())
 }
