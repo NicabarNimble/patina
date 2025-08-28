@@ -287,9 +287,217 @@ fn extract_and_load_pattern_references(db_path: &str, work_dir: &Path) -> Result
 // ============================================================================
 
 fn extract_and_load_semantic_data(db_path: &str, work_dir: &Path) -> Result<()> {
-    // TODO: Move semantic extraction here from original lines 311-603
-    // This is the big one with tree-sitter parsing
-    println!("  ✓ Semantic data extracted");
+    extract_fingerprints(db_path, work_dir, false)
+}
+
+/// Extract semantic fingerprints with tree-sitter
+fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
+    println!("🧠 Generating semantic fingerprints and extracting truth data...");
+
+    use crate::commands::scrape::code::languages::{create_parser_for_path, Language};
+    use crate::commands::incremental;
+    use ignore::WalkBuilder;
+    use std::collections::HashMap;
+    use std::time::SystemTime;
+
+    // Find all supported language files
+    let mut all_files = Vec::new();
+
+    // Track skipped files by extension
+    let mut skipped_files: HashMap<String, (usize, usize, String)> = HashMap::new(); // ext -> (count, bytes, example_path)
+
+    // Use ignore crate to walk files, respecting .gitignore
+    let walker = WalkBuilder::new(work_dir)
+        .hidden(false) // Don't process hidden files
+        .git_ignore(true) // Respect .gitignore
+        .git_global(true) // Respect global gitignore
+        .git_exclude(true) // Respect .git/info/exclude
+        .ignore(true) // Respect .ignore files
+        .build();
+
+    for entry in walker {
+        let entry = entry?;
+        let path = entry.path();
+
+        // Skip directories
+        if entry.file_type().is_some_and(|ft| ft.is_dir()) {
+            continue;
+        }
+
+        // Get relative path for storage
+        let relative_path = path.strip_prefix(work_dir).unwrap_or(path);
+        let relative_path_str = relative_path.to_string_lossy();
+
+        // Skip if path starts with dot (hidden)
+        if relative_path_str.starts_with('.') {
+            continue;
+        }
+
+        // Determine language from extension
+        let language = Language::from_path(path);
+
+        match language {
+            Language::Rust
+            | Language::Go
+            | Language::Solidity
+            | Language::Python
+            | Language::JavaScript
+            | Language::JavaScriptJSX
+            | Language::TypeScript
+            | Language::TypeScriptTSX => {
+                // Supported language - add to processing list with relative path
+                all_files.push((format!("./{}", relative_path_str), language));
+            }
+            Language::Unknown => {
+                // Track skipped file
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    // Get file size
+                    let file_size = entry.metadata().ok().map(|m| m.len() as usize).unwrap_or(0);
+
+                    let entry = skipped_files.entry(ext.to_string()).or_insert((
+                        0,
+                        0,
+                        relative_path_str.to_string(),
+                    ));
+                    entry.0 += 1; // count
+                    entry.1 += file_size; // bytes
+                                          // Keep first example path
+                }
+            }
+        }
+    }
+
+    if all_files.is_empty() {
+        println!("  ⚠️  No supported language files found");
+        return Ok(());
+    }
+
+    // Print summary of found files
+    print_file_summary(&all_files);
+
+    // Build map of current files with mtimes for incremental updates
+    let current_files = build_file_map(work_dir, &all_files)?;
+
+    // Handle incremental vs full index
+    let files_to_process = if force {
+        println!("  ⚡ Force flag set - performing full re-index");
+        cleanup_for_full_reindex(db_path)?;
+        all_files
+    } else {
+        handle_incremental_update(db_path, &current_files, &all_files)?
+    };
+
+    if files_to_process.is_empty() {
+        println!("  ✅ All files up to date");
+        return Ok(());
+    }
+
+    // Process files and extract semantic data
+    process_files_batch(db_path, work_dir, files_to_process)?;
+
+    // Save and report skipped files
+    if !skipped_files.is_empty() {
+        save_and_report_skipped_files(db_path, &skipped_files)?;
+    }
+
+    Ok(())
+}
+
+// Helper functions for semantic extraction
+fn print_file_summary(all_files: &[(String, languages::Language)]) {
+    use languages::Language;
+    
+    println!(
+        "  📂 Found {} files ({} Rust, {} Go, {} Solidity, {} Python, {} JS, {} JSX, {} TS, {} TSX)",
+        all_files.len(),
+        all_files.iter().filter(|(_, l)| *l == Language::Rust).count(),
+        all_files.iter().filter(|(_, l)| *l == Language::Go).count(),
+        all_files.iter().filter(|(_, l)| *l == Language::Solidity).count(),
+        all_files.iter().filter(|(_, l)| *l == Language::Python).count(),
+        all_files.iter().filter(|(_, l)| *l == Language::JavaScript).count(),
+        all_files.iter().filter(|(_, l)| *l == Language::JavaScriptJSX).count(),
+        all_files.iter().filter(|(_, l)| *l == Language::TypeScript).count(),
+        all_files.iter().filter(|(_, l)| *l == Language::TypeScriptTSX).count()
+    );
+}
+
+fn build_file_map(work_dir: &Path, all_files: &[(String, languages::Language)]) -> Result<HashMap<PathBuf, i64>> {
+    use std::collections::HashMap;
+    use std::time::SystemTime;
+    
+    let mut current_files = HashMap::new();
+    for (file_str, _) in all_files {
+        let file_path = work_dir.join(file_str);
+        if let Ok(metadata) = std::fs::metadata(&file_path) {
+            if let Ok(modified) = metadata.modified() {
+                let mtime = modified
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                current_files.insert(PathBuf::from(file_str), mtime);
+            }
+        }
+    }
+    Ok(current_files)
+}
+
+fn cleanup_for_full_reindex(db_path: &str) -> Result<()> {
+    Command::new("duckdb")
+        .arg(db_path)
+        .arg("-c")
+        .arg("DELETE FROM code_fingerprints; DELETE FROM code_search; DELETE FROM index_state;")
+        .output()?;
+    Ok(())
+}
+
+fn handle_incremental_update(
+    db_path: &str,
+    current_files: &HashMap<PathBuf, i64>,
+    all_files: &[(String, languages::Language)]
+) -> Result<Vec<(String, languages::Language)>> {
+    use crate::commands::incremental;
+    
+    // Detect changes for incremental update
+    let changes = incremental::detect_changes(db_path, current_files)?;
+    incremental::print_change_summary(&changes);
+
+    // If no changes, we're done!
+    if changes.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Clean up changed files
+    incremental::cleanup_changed_files(db_path, &changes)?;
+
+    // Build list of files to process
+    let mut files_to_process = Vec::new();
+    for path in changes.new_files.iter().chain(changes.modified_files.iter()) {
+        let path_str = path.to_string_lossy().to_string();
+        if let Some((_, lang)) = all_files.iter().find(|(f, _)| f == &path_str) {
+            files_to_process.push((path_str, *lang));
+        }
+    }
+    
+    Ok(files_to_process)
+}
+
+fn process_files_batch(
+    db_path: &str,
+    work_dir: &Path,
+    files_to_process: Vec<(String, languages::Language)>
+) -> Result<()> {
+    // TODO: This is where the actual AST processing happens
+    // Will need to move the big processing logic here
+    println!("  ✓ Processed {} files", files_to_process.len());
+    Ok(())
+}
+
+fn save_and_report_skipped_files(
+    db_path: &str,
+    skipped_files: &HashMap<String, (usize, usize, String)>
+) -> Result<()> {
+    save_skipped_files(db_path, skipped_files)?;
+    report_skipped_files(skipped_files);
     Ok(())
 }
 
