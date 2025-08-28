@@ -1,0 +1,1804 @@
+{
+  "file": "./src/commands/session_analyze.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 51,
+      "line_end": 65,
+      "doc_comment": null
+    },
+    {
+      "name": "get_session_id",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 67,
+      "line_end": 94,
+      "doc_comment": null
+    },
+    {
+      "name": "analyze_session",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 96,
+      "line_end": 146,
+      "doc_comment": null
+    },
+    {
+      "name": "get_session_goal",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 148,
+      "line_end": 170,
+      "doc_comment": null
+    },
+    {
+      "name": "get_session_duration",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 172,
+      "line_end": 198,
+      "doc_comment": null
+    },
+    {
+      "name": "git_tag_exists",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 200,
+      "line_end": 206,
+      "doc_comment": null
+    },
+    {
+      "name": "get_file_changes",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 208,
+      "line_end": 236,
+      "doc_comment": null
+    },
+    {
+      "name": "get_diff_stats",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 238,
+      "line_end": 264,
+      "doc_comment": null
+    },
+    {
+      "name": "analyze_patterns",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 266,
+      "line_end": 299,
+      "doc_comment": null
+    },
+    {
+      "name": "calculate_survival_rate",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 301,
+      "line_end": 332,
+      "doc_comment": null
+    },
+    {
+      "name": "count_refactors",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 334,
+      "line_end": 347,
+      "doc_comment": null
+    },
+    {
+      "name": "extract_insights",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 349,
+      "line_end": 389,
+      "doc_comment": null
+    },
+    {
+      "name": "print_human_summary",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 391,
+      "line_end": 447,
+      "doc_comment": null
+    },
+    {
+      "name": "print_agent_context",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 449,
+      "line_end": 471,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "SessionAnalyzeArgs",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 9,
+      "line_end": 25,
+      "doc_comment": null
+    },
+    {
+      "name": "SessionAnalysis",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 28,
+      "line_end": 49,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "chrono::Utc",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "clap::Args",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "serde::Serialize",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "std::process::Command",
+      "items": [],
+      "alias": null,
+      "line": 6
+    }
+  ],
+  "calls": [
+    {
+      "target": "get_session_id",
+      "caller": "execute",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 54,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "analyze_session",
+      "caller": "execute",
+      "line": 56,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "print_agent_context",
+      "caller": "execute",
+      "line": 59,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "print_human_summary",
+      "caller": "execute",
+      "line": 61,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 64,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_session_id",
+      "line": 69,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "get_session_id",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::read_to_string",
+      "caller": "get_session_id",
+      "line": 73,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "get_session_id",
+      "line": 74,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "get_session_id",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_session_id",
+      "line": 76,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_session_id",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_session_id",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "get_session_id",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "nth",
+      "caller": "get_session_id",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "get_session_id",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_session_id",
+      "line": 82,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_session_id",
+      "line": 82,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_session_id",
+      "line": 82,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_session_id",
+      "line": 86,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "next",
+      "caller": "get_session_id",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "get_session_id",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "get_session_id",
+      "line": 89,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "get_session_id",
+      "line": 89,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_session_id",
+      "line": 90,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "get_session_id",
+      "line": 93,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "analyze_session",
+      "line": 97,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "analyze_session",
+      "line": 98,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_session_goal",
+      "caller": "analyze_session",
+      "line": 101,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_session_duration",
+      "caller": "analyze_session",
+      "line": 104,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_file_changes",
+      "caller": "analyze_session",
+      "line": 107,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_diff_stats",
+      "caller": "analyze_session",
+      "line": 110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "analyze_patterns",
+      "caller": "analyze_session",
+      "line": 114,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "analyze_session",
+      "line": 116,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "analyze_session",
+      "line": 116,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "calculate_survival_rate",
+      "caller": "analyze_session",
+      "line": 120,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "count_refactors",
+      "caller": "analyze_session",
+      "line": 121,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "extract_insights",
+      "caller": "analyze_session",
+      "line": 124,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "analyze_session",
+      "line": 132,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "analyze_session",
+      "line": 133,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "get_session_goal",
+      "line": 150,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "get_session_goal",
+      "line": 151,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "get_session_goal",
+      "line": 151,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::read_to_string",
+      "caller": "get_session_goal",
+      "line": 152,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "get_session_goal",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "get_session_goal",
+      "line": 154,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_session_goal",
+      "line": 155,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_session_goal",
+      "line": 155,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_session_goal",
+      "line": 155,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "get_session_goal",
+      "line": 155,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::read_to_string",
+      "caller": "get_session_goal",
+      "line": 161,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "get_session_goal",
+      "line": 162,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "get_session_goal",
+      "line": 163,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_session_goal",
+      "line": 164,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_session_goal",
+      "line": 164,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_session_goal",
+      "line": 164,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "get_session_goal",
+      "line": 164,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_session_goal",
+      "line": 169,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_session_goal",
+      "line": 169,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_session_duration",
+      "line": 174,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_session_duration",
+      "line": 174,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_session_duration",
+      "line": 174,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "get_session_duration",
+      "line": 178,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy(&start_time.stdout)\n        .trim()\n        .parse::<i64>",
+      "caller": "get_session_duration",
+      "line": 178,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_session_duration",
+      "line": 178,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_session_duration",
+      "line": 178,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "git_tag_exists",
+      "caller": "get_session_duration",
+      "line": 184,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_session_duration",
+      "line": 185,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_session_duration",
+      "line": 185,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_session_duration",
+      "line": 185,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "get_session_duration",
+      "line": 189,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy(&end_time.stdout)\n            .trim()\n            .parse::<i64>",
+      "caller": "get_session_duration",
+      "line": 189,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_session_duration",
+      "line": 189,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_session_duration",
+      "line": 189,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "timestamp",
+      "caller": "get_session_duration",
+      "line": 194,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "get_session_duration",
+      "line": 194,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_session_duration",
+      "line": 197,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "git_tag_exists",
+      "line": 201,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "git_tag_exists",
+      "line": 201,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "git_tag_exists",
+      "line": 201,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "git_tag_exists",
+      "line": 201,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "git_tag_exists",
+      "line": 201,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "git_tag_exists",
+      "line": 204,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_file_changes",
+      "line": 209,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_file_changes",
+      "line": 209,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_file_changes",
+      "line": 209,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "get_file_changes",
+      "line": 210,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "get_file_changes",
+      "line": 213,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "get_file_changes",
+      "line": 214,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "get_file_changes",
+      "line": 216,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_file_changes",
+      "line": 216,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "get_file_changes",
+      "line": 217,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "get_file_changes",
+      "line": 217,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "get_file_changes",
+      "line": 218,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_file_changes",
+      "line": 220,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ends_with",
+      "caller": "get_file_changes",
+      "line": 223,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ends_with",
+      "caller": "get_file_changes",
+      "line": 223,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ends_with",
+      "caller": "get_file_changes",
+      "line": 223,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "get_file_changes",
+      "line": 228,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "get_file_changes",
+      "line": 229,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_file_changes",
+      "line": 235,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_diff_stats",
+      "line": 239,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_diff_stats",
+      "line": 239,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_diff_stats",
+      "line": 239,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "get_diff_stats",
+      "line": 240,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_diff_stats",
+      "line": 243,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "find",
+      "caller": "get_diff_stats",
+      "line": 249,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "last",
+      "caller": "get_diff_stats",
+      "line": 251,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split_whitespace",
+      "caller": "get_diff_stats",
+      "line": 251,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "get_diff_stats",
+      "line": 252,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "get_diff_stats",
+      "line": 252,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "find",
+      "caller": "get_diff_stats",
+      "line": 256,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "last",
+      "caller": "get_diff_stats",
+      "line": 258,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split_whitespace",
+      "caller": "get_diff_stats",
+      "line": 258,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "get_diff_stats",
+      "line": 259,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "get_diff_stats",
+      "line": 259,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_diff_stats",
+      "line": 263,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "analyze_patterns",
+      "line": 267,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "analyze_patterns",
+      "line": 268,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "chain",
+      "caller": "analyze_patterns",
+      "line": 271,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "analyze_patterns",
+      "line": 271,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "analyze_patterns",
+      "line": 271,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "analyze_patterns",
+      "line": 272,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ends_with",
+      "caller": "analyze_patterns",
+      "line": 272,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "analyze_patterns",
+      "line": 273,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "analyze_patterns",
+      "line": 273,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "analyze_patterns",
+      "line": 275,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "analyze_patterns",
+      "line": 275,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "analyze_patterns",
+      "line": 279,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "analyze_patterns",
+      "line": 280,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "analyze_patterns",
+      "line": 280,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "analyze_patterns",
+      "line": 285,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "analyze_patterns",
+      "line": 285,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "analyze_patterns",
+      "line": 285,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "analyze_patterns",
+      "line": 289,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "analyze_patterns",
+      "line": 289,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "analyze_patterns",
+      "line": 290,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "analyze_patterns",
+      "line": 290,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "analyze_patterns",
+      "line": 292,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "analyze_patterns",
+      "line": 293,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "analyze_patterns",
+      "line": 293,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "analyze_patterns",
+      "line": 298,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "calculate_survival_rate",
+      "line": 303,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "calculate_survival_rate",
+      "line": 303,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "calculate_survival_rate",
+      "line": 303,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "calculate_survival_rate",
+      "line": 304,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "calculate_survival_rate",
+      "line": 307,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "calculate_survival_rate",
+      "line": 308,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "calculate_survival_rate",
+      "line": 308,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "calculate_survival_rate",
+      "line": 310,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "calculate_survival_rate",
+      "line": 311,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "calculate_survival_rate",
+      "line": 316,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "calculate_survival_rate",
+      "line": 320,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "calculate_survival_rate",
+      "line": 320,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "calculate_survival_rate",
+      "line": 320,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "calculate_survival_rate",
+      "line": 321,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "count",
+      "caller": "calculate_survival_rate",
+      "line": 324,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "calculate_survival_rate",
+      "line": 324,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "calculate_survival_rate",
+      "line": 324,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "calculate_survival_rate",
+      "line": 331,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "count_refactors",
+      "line": 336,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "count_refactors",
+      "line": 336,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "count_refactors",
+      "line": 336,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "count_refactors",
+      "line": 340,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "count_refactors",
+      "line": 346,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "count",
+      "caller": "count_refactors",
+      "line": 346,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "count_refactors",
+      "line": 346,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "count_refactors",
+      "line": 346,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "extract_insights",
+      "line": 356,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "any",
+      "caller": "extract_insights",
+      "line": 359,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "extract_insights",
+      "line": 359,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "extract_insights",
+      "line": 359,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_insights",
+      "line": 360,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_insights",
+      "line": 360,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_insights",
+      "line": 365,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "extract_insights",
+      "line": 365,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "extract_insights",
+      "line": 371,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_insights",
+      "line": 372,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "extract_insights",
+      "line": 372,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_insights",
+      "line": 380,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_insights",
+      "line": 380,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_insights",
+      "line": 385,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_insights",
+      "line": 385,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 392,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 393,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 395,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 397,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 398,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 399,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 400,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "print_human_summary",
+      "line": 406,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 407,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "min",
+      "caller": "print_human_summary",
+      "line": 408,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "print_human_summary",
+      "line": 408,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 410,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "print_human_summary",
+      "line": 414,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 415,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "min",
+      "caller": "print_human_summary",
+      "line": 416,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "print_human_summary",
+      "line": 416,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 418,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 423,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 424,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 425,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "print_human_summary",
+      "line": 427,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 428,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 430,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "print_human_summary",
+      "line": 434,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 435,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 437,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "print_human_summary",
+      "line": 441,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 442,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_human_summary",
+      "line": 444,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_agent_context",
+      "line": 451,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_agent_context",
+      "line": 452,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_agent_context",
+      "line": 453,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_agent_context",
+      "line": 454,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "print_agent_context",
+      "line": 456,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_agent_context",
+      "line": 457,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_agent_context",
+      "line": 459,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_agent_context",
+      "line": 463,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "print_agent_context",
+      "line": 464,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "print_agent_context",
+      "line": 464,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_agent_context",
+      "line": 465,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "print_agent_context",
+      "line": 468,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "print_agent_context",
+      "line": 469,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

@@ -1,0 +1,1726 @@
+{
+  "file": "./src/environment.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "detect",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 33,
+      "line_end": 56,
+      "doc_comment": null
+    },
+    {
+      "name": "detect_tools",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 58,
+      "line_end": 103,
+      "doc_comment": null
+    },
+    {
+      "name": "detect_languages",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 105,
+      "line_end": 160,
+      "doc_comment": null
+    },
+    {
+      "name": "detect_rust_tools",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 162,
+      "line_end": 202,
+      "doc_comment": null
+    },
+    {
+      "name": "collect_env_vars",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 204,
+      "line_end": 245,
+      "doc_comment": null
+    },
+    {
+      "name": "to_markdown",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 247,
+      "line_end": 292,
+      "doc_comment": null
+    },
+    {
+      "name": "test_environment_detect_basic_fields",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 300,
+      "line_end": 322,
+      "doc_comment": null
+    },
+    {
+      "name": "test_tool_info_creation",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 325,
+      "line_end": 335,
+      "doc_comment": null
+    },
+    {
+      "name": "test_language_info_creation",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 338,
+      "line_end": 348,
+      "doc_comment": null
+    },
+    {
+      "name": "test_environment_to_markdown",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 351,
+      "line_end": 399,
+      "doc_comment": null
+    },
+    {
+      "name": "test_environment_serialization",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 402,
+      "line_end": 414,
+      "doc_comment": null
+    },
+    {
+      "name": "test_detect_rust_version",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 417,
+      "line_end": 430,
+      "doc_comment": null
+    },
+    {
+      "name": "test_markdown_empty_sections",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 433,
+      "line_end": 450,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "Environment",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 8,
+      "line_end": 16,
+      "doc_comment": null
+    },
+    {
+      "name": "ToolInfo",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 19,
+      "line_end": 23,
+      "doc_comment": null
+    },
+    {
+      "name": "LanguageInfo",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 26,
+      "line_end": 30,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "serde::{Deserialize, Serialize}",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::collections::HashMap",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "std::env",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::process::Command",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "super::*",
+      "items": [],
+      "alias": null,
+      "line": 297
+    }
+  ],
+  "calls": [
+    {
+      "target": "to_string",
+      "caller": "detect",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect",
+      "line": 36,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_default",
+      "caller": "detect",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "detect",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "dirs::home_dir",
+      "caller": "detect",
+      "line": 37,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect",
+      "line": 38,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "display",
+      "caller": "detect",
+      "line": 38,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect",
+      "line": 40,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "display",
+      "caller": "detect",
+      "line": 40,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "env::current_dir",
+      "caller": "detect",
+      "line": 40,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "detect",
+      "line": 41,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "detect",
+      "line": 42,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "detect",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "detect_tools",
+      "caller": "detect",
+      "line": 47,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "detect_languages",
+      "caller": "detect",
+      "line": 50,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect_env_vars",
+      "caller": "detect",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "detect",
+      "line": 55,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_tools",
+      "line": 59,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "which::which",
+      "caller": "detect_tools",
+      "line": 87,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "detect_tools",
+      "line": 89,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_tools",
+      "line": 89,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "display",
+      "caller": "detect_tools",
+      "line": 89,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "detect_tools",
+      "line": 92,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "detect_tools",
+      "line": 92,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "detect_tools",
+      "line": 92,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "detect_tools",
+      "line": 93,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "detect_tools",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "detect_tools",
+      "line": 96,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_tools",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "detect_tools",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "next",
+      "caller": "detect_tools",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "detect_tools",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "detect_tools",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_tools",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "detect_languages",
+      "line": 113,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "detect_languages",
+      "line": 113,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "detect_languages",
+      "line": 113,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "detect_languages",
+      "line": 115,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_languages",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "detect_languages",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "detect_languages",
+      "line": 115,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "detect_languages",
+      "line": 117,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "detect_languages",
+      "line": 117,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "detect_languages",
+      "line": 117,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "detect_languages",
+      "line": 121,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_languages",
+      "line": 122,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "detect_languages",
+      "line": 122,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "detect_languages",
+      "line": 122,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "detect_languages",
+      "line": 128,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_languages",
+      "line": 128,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "detect_rust_tools",
+      "caller": "detect_languages",
+      "line": 130,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "detect_languages",
+      "line": 139,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "detect_languages",
+      "line": 139,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "detect_languages",
+      "line": 139,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "detect_languages",
+      "line": 141,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_languages",
+      "line": 141,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "detect_languages",
+      "line": 141,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "detect_languages",
+      "line": 141,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "detect_languages",
+      "line": 142,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "detect_languages",
+      "line": 142,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "detect_languages",
+      "line": 142,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "detect_languages",
+      "line": 144,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_languages",
+      "line": 144,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "detect_languages",
+      "line": 144,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "detect_languages",
+      "line": 144,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "detect_languages",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_languages",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "detect_languages",
+      "line": 155,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "detect_languages",
+      "line": 155,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "detect_languages",
+      "line": 155,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "detect_languages",
+      "line": 157,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_languages",
+      "line": 157,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "detect_languages",
+      "line": 157,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "detect_languages",
+      "line": 157,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "detect_languages",
+      "line": 159,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_languages",
+      "line": 159,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "detect_rust_tools",
+      "line": 163,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "which::which",
+      "caller": "detect_rust_tools",
+      "line": 187,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "detect_rust_tools",
+      "line": 189,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_rust_tools",
+      "line": 189,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "display",
+      "caller": "detect_rust_tools",
+      "line": 189,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "detect_rust_tools",
+      "line": 191,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "detect_rust_tools",
+      "line": 191,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "detect_rust_tools",
+      "line": 191,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "detect_rust_tools",
+      "line": 192,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "detect_rust_tools",
+      "line": 193,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "detect_rust_tools",
+      "line": 195,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_rust_tools",
+      "line": 195,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "detect_rust_tools",
+      "line": 195,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "next",
+      "caller": "detect_rust_tools",
+      "line": 195,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "detect_rust_tools",
+      "line": 195,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "detect_rust_tools",
+      "line": 200,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "detect_rust_tools",
+      "line": 200,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "collect_env_vars",
+      "line": 205,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "env::var",
+      "caller": "collect_env_vars",
+      "line": 226,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "collect_env_vars",
+      "line": 229,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "collect_env_vars",
+      "line": 229,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "collect_env_vars",
+      "line": 230,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "collect_env_vars",
+      "line": 231,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "collect_env_vars",
+      "line": 239,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "collect_env_vars",
+      "line": 239,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "collect_env_vars",
+      "line": 241,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "collect_env_vars",
+      "line": 241,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "to_markdown",
+      "line": 248,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "to_markdown",
+      "line": 250,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "to_markdown",
+      "line": 251,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "to_markdown",
+      "line": 251,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "to_markdown",
+      "line": 252,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "to_markdown",
+      "line": 252,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "to_markdown",
+      "line": 253,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "to_markdown",
+      "line": 253,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "to_markdown",
+      "line": 254,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "to_markdown",
+      "line": 256,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "to_markdown",
+      "line": 259,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "to_markdown",
+      "line": 259,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "to_markdown",
+      "line": 261,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "to_markdown",
+      "line": 261,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "to_markdown",
+      "line": 263,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "to_markdown",
+      "line": 266,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "to_markdown",
+      "line": 268,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "to_markdown",
+      "line": 271,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "to_markdown",
+      "line": 271,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "to_markdown",
+      "line": 273,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "to_markdown",
+      "line": 276,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "to_markdown",
+      "line": 276,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "to_markdown",
+      "line": 278,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "to_markdown",
+      "line": 281,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "to_markdown",
+      "line": 283,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "to_markdown",
+      "line": 287,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "to_markdown",
+      "line": 287,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_environment_detect_basic_fields",
+      "line": 301,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Environment::detect",
+      "caller": "test_environment_detect_basic_fields",
+      "line": 301,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_detect_basic_fields",
+      "line": 304,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_detect_basic_fields",
+      "line": 305,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_detect_basic_fields",
+      "line": 308,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_detect_basic_fields",
+      "line": 309,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_detect_basic_fields",
+      "line": 315,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_detect_basic_fields",
+      "line": 318,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_detect_basic_fields",
+      "line": 321,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "test_tool_info_creation",
+      "line": 328,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_tool_info_creation",
+      "line": 328,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "test_tool_info_creation",
+      "line": 329,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_tool_info_creation",
+      "line": 329,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_tool_info_creation",
+      "line": 332,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_tool_info_creation",
+      "line": 333,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_tool_info_creation",
+      "line": 334,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "test_language_info_creation",
+      "line": 341,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_language_info_creation",
+      "line": 341,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "test_language_info_creation",
+      "line": 342,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_language_info_creation",
+      "line": 342,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_language_info_creation",
+      "line": 345,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_language_info_creation",
+      "line": 346,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_language_info_creation",
+      "line": 347,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_environment_to_markdown",
+      "line": 353,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_environment_to_markdown",
+      "line": 354,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_environment_to_markdown",
+      "line": 355,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_environment_to_markdown",
+      "line": 356,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "test_environment_to_markdown",
+      "line": 357,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "test_environment_to_markdown",
+      "line": 358,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "test_environment_to_markdown",
+      "line": 359,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "test_environment_to_markdown",
+      "line": 363,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_environment_to_markdown",
+      "line": 364,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "test_environment_to_markdown",
+      "line": 367,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_environment_to_markdown",
+      "line": 367,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "test_environment_to_markdown",
+      "line": 368,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_environment_to_markdown",
+      "line": 368,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "test_environment_to_markdown",
+      "line": 373,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_environment_to_markdown",
+      "line": 374,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "test_environment_to_markdown",
+      "line": 377,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_environment_to_markdown",
+      "line": 377,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "test_environment_to_markdown",
+      "line": 378,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_environment_to_markdown",
+      "line": 378,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "test_environment_to_markdown",
+      "line": 383,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_environment_to_markdown",
+      "line": 384,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_environment_to_markdown",
+      "line": 384,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_markdown",
+      "caller": "test_environment_to_markdown",
+      "line": 386,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_to_markdown",
+      "line": 389,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_to_markdown",
+      "line": 390,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_to_markdown",
+      "line": 391,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_to_markdown",
+      "line": 392,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_to_markdown",
+      "line": 393,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_to_markdown",
+      "line": 394,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_to_markdown",
+      "line": 395,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_to_markdown",
+      "line": 396,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_to_markdown",
+      "line": 397,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_to_markdown",
+      "line": 398,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_environment_serialization",
+      "line": 403,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Environment::detect",
+      "caller": "test_environment_serialization",
+      "line": 403,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_environment_serialization",
+      "line": 406,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::to_string",
+      "caller": "test_environment_serialization",
+      "line": 406,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_environment_serialization",
+      "line": 407,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_environment_serialization",
+      "line": 410,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::from_str",
+      "caller": "test_environment_serialization",
+      "line": 410,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_environment_serialization",
+      "line": 411,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_environment_serialization",
+      "line": 412,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_environment_serialization",
+      "line": 413,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_detect_rust_version",
+      "line": 418,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Environment::detect",
+      "caller": "test_detect_rust_version",
+      "line": 418,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_detect_rust_version",
+      "line": 421,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_detect_rust_version",
+      "line": 423,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_detect_rust_version",
+      "line": 424,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_some_and",
+      "caller": "test_detect_rust_version",
+      "line": 427,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "test_detect_rust_version",
+      "line": 427,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_detect_rust_version",
+      "line": 428,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_markdown_empty_sections",
+      "line": 435,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_markdown_empty_sections",
+      "line": 436,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_markdown_empty_sections",
+      "line": 437,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_markdown_empty_sections",
+      "line": 438,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "test_markdown_empty_sections",
+      "line": 439,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "test_markdown_empty_sections",
+      "line": 440,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "test_markdown_empty_sections",
+      "line": 441,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_markdown",
+      "caller": "test_markdown_empty_sections",
+      "line": 444,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_markdown_empty_sections",
+      "line": 447,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_markdown_empty_sections",
+      "line": 448,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_markdown_empty_sections",
+      "line": 449,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

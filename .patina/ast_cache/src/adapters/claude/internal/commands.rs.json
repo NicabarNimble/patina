@@ -1,0 +1,8 @@
+{
+  "file": "./src/adapters/claude/internal/commands.rs",
+  "language": "rust",
+  "functions": [],
+  "types": [],
+  "imports": [],
+  "calls": []
+}

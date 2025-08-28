@@ -1,0 +1,8 @@
+{
+  "file": "./patina-metal/grammars/javascript/src/scanner.c",
+  "language": "c",
+  "functions": [],
+  "types": [],
+  "imports": [],
+  "calls": []
+}

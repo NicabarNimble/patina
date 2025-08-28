@@ -1,0 +1,23 @@
+{
+  "file": "./patina-metal/grammars/typescript/tsx/grammar.js",
+  "language": "javascript",
+  "functions": [],
+  "types": [],
+  "imports": [],
+  "calls": [
+    {
+      "target": "require",
+      "caller": "<module>",
+      "line": 1,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "defineGrammar",
+      "caller": "<module>",
+      "line": 3,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

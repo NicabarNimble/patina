@@ -1,0 +1,381 @@
+{
+  "file": "./src/adapters/claude/internal/context_generation.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "generate_initial_context",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 16,
+      "line_end": 28,
+      "doc_comment": null
+    },
+    {
+      "name": "generate_minimal_context",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 31,
+      "line_end": 90,
+      "doc_comment": null
+    },
+    {
+      "name": "extract_project_name",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 93,
+      "line_end": 100,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 7
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 8
+    },
+    {
+      "path": "crate::environment::Environment",
+      "items": [],
+      "alias": null,
+      "line": 10
+    },
+    {
+      "path": "toml::Value",
+      "items": [],
+      "alias": null,
+      "line": 11
+    },
+    {
+      "path": "super::paths",
+      "items": [],
+      "alias": null,
+      "line": 13
+    }
+  ],
+  "calls": [
+    {
+      "target": "extract_project_name",
+      "caller": "generate_initial_context",
+      "line": 21,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "generate_minimal_context",
+      "caller": "generate_initial_context",
+      "line": 22,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "paths::get_context_file_path",
+      "caller": "generate_initial_context",
+      "line": 24,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "generate_initial_context",
+      "line": 25,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "generate_initial_context",
+      "line": 27,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "generate_minimal_context",
+      "line": 32,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "generate_minimal_context",
+      "line": 35,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 36,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 40,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 45,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 46,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "generate_minimal_context",
+      "line": 46,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 50,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "generate_minimal_context",
+      "line": 50,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "generate_minimal_context",
+      "line": 54,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter_map",
+      "caller": "generate_minimal_context",
+      "line": 54,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "generate_minimal_context",
+      "line": 54,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "generate_minimal_context",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "generate_minimal_context",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "generate_minimal_context",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "generate_minimal_context",
+      "line": 65,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 66,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "generate_minimal_context",
+      "line": 66,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "generate_minimal_context",
+      "line": 68,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 71,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 72,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 78,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "generate_minimal_context",
+      "line": 83,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "generate_minimal_context",
+      "line": 83,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_project_name",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "extract_project_name",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "extract_project_name",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "extract_project_name",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "extract_project_name",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "extract_project_name",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "extract_project_name",
+      "line": 97,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
+}

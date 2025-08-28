@@ -1,0 +1,292 @@
+{
+  "file": "./src/commands/init/internal/config.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "create_project_config",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 13,
+      "line_end": 53,
+      "doc_comment": null
+    },
+    {
+      "name": "handle_version_manifest",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 56,
+      "line_end": 107,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "serde_json::json",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "patina::dev_env::DevEnvironment",
+      "items": [],
+      "alias": null,
+      "line": 8
+    },
+    {
+      "path": "patina::environment::Environment",
+      "items": [],
+      "alias": null,
+      "line": 9
+    },
+    {
+      "path": "patina::version::VersionManifest",
+      "items": [],
+      "alias": null,
+      "line": 10
+    }
+  ],
+  "calls": [
+    {
+      "target": "join",
+      "caller": "create_project_config",
+      "line": 21,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "create_project_config",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "create_project_config",
+      "line": 22,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "create_project_config",
+      "line": 25,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "json!",
+      "caller": "create_project_config",
+      "line": 32,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_project_config",
+      "line": 48,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "create_project_config",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "create_project_config",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::to_string_pretty",
+      "caller": "create_project_config",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "create_project_config",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "handle_version_manifest",
+      "line": 63,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "handle_version_manifest",
+      "line": 65,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "handle_version_manifest",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "handle_version_manifest",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "handle_version_manifest",
+      "line": 70,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::load",
+      "caller": "handle_version_manifest",
+      "line": 73,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::new",
+      "caller": "handle_version_manifest",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_component_version",
+      "caller": "handle_version_manifest",
+      "line": 78,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "handle_version_manifest",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_version_manifest",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "handle_version_manifest",
+      "line": 82,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "handle_version_manifest",
+      "line": 83,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "handle_version_manifest",
+      "line": 89,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "handle_version_manifest",
+      "line": 90,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "handle_version_manifest",
+      "line": 92,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "handle_version_manifest",
+      "line": 94,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "VersionManifest::new",
+      "caller": "handle_version_manifest",
+      "line": 99,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "save",
+      "caller": "handle_version_manifest",
+      "line": 100,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "handle_version_manifest",
+      "line": 102,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "handle_version_manifest",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "handle_version_manifest",
+      "line": 105,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

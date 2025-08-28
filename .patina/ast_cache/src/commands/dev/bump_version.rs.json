@@ -1,0 +1,588 @@
+{
+  "file": "./src/commands/dev/bump_version.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 4,
+      "line_end": 28,
+      "doc_comment": null
+    },
+    {
+      "name": "bump_patina_version",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 30,
+      "line_end": 59,
+      "doc_comment": null
+    },
+    {
+      "name": "bump_component_version",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 61,
+      "line_end": 99,
+      "doc_comment": null
+    },
+    {
+      "name": "calculate_new_version",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 101,
+      "line_end": 116,
+      "doc_comment": null
+    },
+    {
+      "name": "update_version_in_code",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 118,
+      "line_end": 141,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 143
+    }
+  ],
+  "calls": [
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 5,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "bump_patina_version",
+      "caller": "execute",
+      "line": 8,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "bump_component_version",
+      "caller": "execute",
+      "line": 9,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "bump_component_version",
+      "caller": "execute",
+      "line": 10,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "bump_component_version",
+      "caller": "execute",
+      "line": 11,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "bump_component_version",
+      "caller": "execute",
+      "line": 12,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "bump_component_version",
+      "caller": "execute",
+      "line": 13,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "execute",
+      "line": 14,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 19,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 21,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 22,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 23,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 24,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 27,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::read_to_string",
+      "caller": "bump_patina_version",
+      "line": 33,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "bump_patina_version",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "find",
+      "caller": "bump_patina_version",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "bump_patina_version",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "bump_patina_version",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "bump_patina_version",
+      "line": 40,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "nth",
+      "caller": "bump_patina_version",
+      "line": 40,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "bump_patina_version",
+      "line": 40,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "calculate_new_version",
+      "caller": "bump_patina_version",
+      "line": 45,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "bump_patina_version",
+      "line": 47,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "bump_patina_version",
+      "line": 48,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "bump_patina_version",
+      "line": 51,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "bump_patina_version",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "bump_patina_version",
+      "line": 53,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "bump_patina_version",
+      "line": 55,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "bump_patina_version",
+      "line": 58,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "bump_component_version",
+      "line": 65,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "bump_component_version",
+      "line": 65,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "bump_component_version",
+      "line": 67,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "bump_component_version",
+      "line": 68,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::read_to_string",
+      "caller": "bump_component_version",
+      "line": 71,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::from_str",
+      "caller": "bump_component_version",
+      "line": 72,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "bump_component_version",
+      "line": 74,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "bump_component_version",
+      "line": 74,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_mut",
+      "caller": "bump_component_version",
+      "line": 74,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_object_mut",
+      "caller": "bump_component_version",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "bump_component_version",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "bump_component_version",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "bump_component_version",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "bump_component_version",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "calculate_new_version",
+      "caller": "bump_component_version",
+      "line": 84,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "bump_component_version",
+      "line": 86,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "bump_component_version",
+      "line": 87,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::Value::String",
+      "caller": "bump_component_version",
+      "line": 90,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "bump_component_version",
+      "line": 90,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::to_string_pretty",
+      "caller": "bump_component_version",
+      "line": 91,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "bump_component_version",
+      "line": 92,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "update_version_in_code",
+      "caller": "bump_component_version",
+      "line": 95,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "bump_component_version",
+      "line": 98,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "calculate_new_version",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "calculate_new_version",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "calculate_new_version",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "calculate_new_version",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "calculate_new_version",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "calculate_new_version",
+      "line": 104,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "calculate_new_version",
+      "line": 105,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "calculate_new_version",
+      "line": 110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "calculate_new_version",
+      "line": 111,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "calculate_new_version",
+      "line": 112,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "calculate_new_version",
+      "line": 113,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "calculate_new_version",
+      "line": 114,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::read_to_string",
+      "caller": "update_version_in_code",
+      "line": 123,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "update_version_in_code",
+      "line": 124,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "update_version_in_code",
+      "line": 126,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "update_version_in_code",
+      "line": 132,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "update_version_in_code",
+      "line": 140,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

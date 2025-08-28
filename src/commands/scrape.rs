@@ -1,8 +1,5 @@
 use crate::commands::incremental;
 use anyhow::{Context, Result};
-use patina::semantic::extractor;
-use patina::semantic::languages::{create_parser, Language};
-use patina::semantic::store::{duckdb::DuckDbStore, KnowledgeStore};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -16,15 +13,10 @@ pub fn execute(init: bool, query: Option<String>, repo: Option<String>, force: b
         (".patina/knowledge.db".into(), std::env::current_dir()?)
     };
 
-    // Create store instance
-    let store = DuckDbStore::new(&db_path);
-
     if init {
-        println!("🗄️  Initializing optimized knowledge database...");
-        store.initialize()?;
-        println!("  ✓ Database initialized at {}", db_path);
+        initialize_database(&db_path)?;
     } else if let Some(q) = query {
-        run_query(&q, &store)?;
+        run_query(&q, &db_path)?;
     } else {
         extract_and_index(&db_path, &work_dir, force)?;
     }
@@ -60,268 +52,143 @@ fn validate_repo_path(repo_name: &str) -> Result<(String, PathBuf)> {
     Ok((db_path, work_dir))
 }
 
-/// Run a query against the database
-fn run_query(query: &str, store: &DuckDbStore) -> Result<()> {
-    println!("🔍 Running query...\n");
-    let output = store.execute_query(query)?;
-    println!("{}", output);
+/// Initialize DuckDB database with lean schema and optimal settings for small size
+fn initialize_database(db_path: &str) -> Result<()> {
+    println!("🗄️  Initializing optimized knowledge database...");
+
+    // Create parent directory if needed
+    if let Some(parent) = Path::new(db_path).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    // Remove old database if exists
+    if Path::new(db_path).exists() {
+        std::fs::remove_file(db_path)?;
+    }
+
+    // Create with 16KB block size for minimal overhead
+    let init_script = format!(
+        r#"
+-- Attach with minimal block size (16KB instead of default 256KB)
+ATTACH '{db_path}' AS knowledge (BLOCK_SIZE 16384);
+USE knowledge;
+
+{}
+
+-- Git survival metrics for quality assessment
+CREATE TABLE IF NOT EXISTS git_metrics (
+    file VARCHAR PRIMARY KEY,
+    first_commit VARCHAR,
+    last_commit VARCHAR,
+    commit_count INTEGER,
+    survival_days INTEGER
+);
+
+-- Pattern references extracted from documentation
+CREATE TABLE IF NOT EXISTS pattern_references (
+    from_pattern VARCHAR NOT NULL,
+    to_pattern VARCHAR NOT NULL,
+    reference_type VARCHAR NOT NULL,
+    context VARCHAR,
+    PRIMARY KEY (from_pattern, to_pattern, reference_type)
+);
+"#,
+        fingerprint::generate_schema(),
+        db_path = db_path
+    );
+
+    // Execute via stdin to avoid command line escaping issues
+    let mut child = Command::new("duckdb")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("Failed to start DuckDB. Is duckdb installed?")?;
+
+    if let Some(stdin) = child.stdin.as_mut() {
+        use std::io::Write;
+        stdin.write_all(init_script.as_bytes())?;
+    }
+
+    let output = child.wait_with_output()?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to create database: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    println!("✅ Database initialized with 16KB blocks at {}", db_path);
+    println!("\nNext steps:");
+    println!("  1. Run 'patina scrape' to index your codebase");
+    println!("  2. Run 'patina scrape --query \"SELECT ...\"' to explore");
+
     Ok(())
 }
 
-/// Extract and index code fingerprints
+/// Extract and index code with fingerprints + Git metrics
 fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
-    // Create store
-    let store = DuckDbStore::new(db_path);
+    println!("🔍 Indexing codebase...\n");
 
-    // Extract all the data
-    extract_fingerprints(db_path, work_dir, force, &store)?;
+    // If force flag is set, reinitialize database to ensure clean state
+    if force {
+        initialize_database(db_path)?;
+    }
+
+    // Step 1: Git metrics for quality signals
     extract_git_metrics(db_path, work_dir)?;
-    extract_pattern_references(db_path, work_dir)?;
 
-    // Print summary
-    print_summary(db_path)?;
+    // Step 2: Pattern references from docs (only for main repo)
+    if db_path.contains(".patina/") {
+        extract_pattern_references(db_path, work_dir)?;
+    }
+
+    // Step 3: Semantic fingerprints with tree-sitter
+    extract_fingerprints(db_path, work_dir, force)?;
+
+    // Step 4: Show summary
+    show_summary(db_path)?;
 
     Ok(())
 }
 
-/// Extract semantic fingerprints with tree-sitter
-fn extract_fingerprints(
-    db_path: &str,
-    work_dir: &Path,
-    force: bool,
-    store: &DuckDbStore,
-) -> Result<()> {
-    println!("🧠 Generating semantic fingerprints and extracting truth data...");
-
-    use ignore::WalkBuilder;
-    use std::time::SystemTime;
-
-    // Find all supported language files
-    let mut all_files = Vec::new();
-
-    // Track skipped files by extension
-    let mut skipped_files: HashMap<String, (usize, usize, String)> = HashMap::new();
-
-    // Use ignore crate to walk files, respecting .gitignore
-    let walker = WalkBuilder::new(work_dir)
-        .hidden(false)
-        .git_ignore(true)
-        .git_global(true)
-        .git_exclude(true)
-        .ignore(true)
-        .build();
-
-    for entry in walker {
-        let entry = entry?;
-        let path = entry.path();
-
-        // Skip directories
-        if entry.file_type().is_some_and(|ft| ft.is_dir()) {
-            continue;
-        }
-
-        // Get relative path for storage
-        let relative_path = path.strip_prefix(work_dir).unwrap_or(path);
-        let relative_path_str = relative_path.to_string_lossy();
-
-        // Skip if path starts with dot (hidden)
-        if relative_path_str.starts_with('.') {
-            continue;
-        }
-
-        // Determine language from extension
-        let language = Language::from_path(path);
-
-        match language {
-            Language::Rust
-            | Language::Go
-            | Language::Solidity
-            | Language::Python
-            | Language::JavaScript
-            | Language::JavaScriptJSX
-            | Language::TypeScript
-            | Language::TypeScriptTSX => {
-                // Supported language - add to processing list with relative path
-                all_files.push((format!("./{}", relative_path_str), language));
-            }
-            Language::Unknown => {
-                // Track skipped file
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    let file_size = entry.metadata().ok().map(|m| m.len() as usize).unwrap_or(0);
-                    let entry = skipped_files.entry(ext.to_string()).or_insert((
-                        0,
-                        0,
-                        relative_path_str.to_string(),
-                    ));
-                    entry.0 += 1; // count
-                    entry.1 += file_size; // bytes
-                }
-            }
-        }
-    }
-
-    if all_files.is_empty() {
-        println!("  ⚠️  No supported language files found");
-        return Ok(());
-    }
-
-    println!("  📂 Found {} files", all_files.len());
-
-    // Build map of current files with mtimes
-    let mut current_files = HashMap::new();
-    for (file_str, _) in &all_files {
-        let file_path = work_dir.join(file_str);
-        if let Ok(metadata) = std::fs::metadata(&file_path) {
-            if let Ok(modified) = metadata.modified() {
-                let mtime = modified
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() as i64;
-                current_files.insert(PathBuf::from(file_str), mtime);
-            }
-        }
-    }
-
-    // Handle incremental vs full index
-    let files_to_process = if force {
-        println!("  ⚡ Force flag set - performing full re-index");
-
-        // Clear all existing data for full re-index
-        Command::new("duckdb")
-            .arg(db_path)
-            .arg("-c")
-            .arg("DELETE FROM code_fingerprints; DELETE FROM code_search; DELETE FROM index_state;")
-            .output()?;
-
-        all_files
-    } else {
-        // Detect changes for incremental update
-        let changes = incremental::detect_changes(db_path, &current_files)?;
-        incremental::print_change_summary(&changes);
-
-        // If no changes, we're done!
-        if changes.is_empty() {
-            return Ok(());
-        }
-
-        // Clean up changed files
-        incremental::cleanup_changed_files(db_path, &changes)?;
-
-        // Build list of files to process
-        let mut files_to_process = Vec::new();
-        for path in changes
-            .new_files
-            .iter()
-            .chain(changes.modified_files.iter())
-        {
-            let path_str = path.to_string_lossy().to_string();
-            if let Some((_, lang)) = all_files.iter().find(|(f, _)| f == &path_str) {
-                files_to_process.push((path_str, *lang));
-            }
-        }
-        files_to_process
-    };
-
-    let mut symbol_count = 0;
-    let mut current_lang = Language::Unknown;
-    let mut parser: Option<tree_sitter::Parser> = None;
-
-    // Process files
-    for (file, language) in files_to_process {
-        // Switch parser if language changed
-        if language != current_lang {
-            parser = Some(create_parser(language)?);
-            current_lang = language;
-        }
-
-        let file_path = work_dir.join(&file);
-        let source = std::fs::read(&file_path)?;
-
-        // Parse the file
-        if let Some(ref mut p) = parser {
-            if let Some(tree) = p.parse(&source, None) {
-                // Process the AST using our new extractor
-                let results = extractor::process_tree(&tree, &source, &file, language);
-
-                // Store all results
-                store.store_results(&results, &file)?;
-
-                // Count symbols for reporting
-                symbol_count += results.functions.len();
-                symbol_count += results.types.len();
-
-                // Update index state
-                let metadata = std::fs::metadata(&file_path)?;
-                let mtime = metadata
-                    .modified()?
-                    .duration_since(SystemTime::UNIX_EPOCH)?
-                    .as_secs() as i64;
-
-                let update_sql = format!(
-                    "INSERT OR REPLACE INTO index_state (path, mtime) VALUES ('{}', {})",
-                    file, mtime
-                );
-                store.execute_query(&update_sql)?;
-            }
-        }
-    }
-
-    println!("  ✓ Extracted {} symbols", symbol_count);
-
-    // Report skipped files if any
-    if !skipped_files.is_empty() {
-        report_skipped_files(&skipped_files);
-        save_skipped_files_stats(db_path, &skipped_files)?;
-    }
-
-    Ok(())
-}
-
-/// Extract Git metrics for quality assessment
+/// Extract Git survival metrics
 fn extract_git_metrics(db_path: &str, work_dir: &Path) -> Result<()> {
-    println!("📊 Extracting Git survival metrics...");
+    println!("📊 Analyzing Git history...");
 
-    // Get all indexed files from database
-    let files_query = Command::new("duckdb")
-        .arg(db_path)
-        .arg("-csv")
-        .arg("-c")
-        .arg("SELECT DISTINCT file FROM code_fingerprints")
+    let rust_files = Command::new("git")
+        .current_dir(work_dir)
+        .args(["ls-files", "*.rs", "src/**/*.rs"])
         .output()
-        .context("Failed to query indexed files")?;
+        .context("Failed to list Git files")?;
 
-    if !files_query.status.success() {
-        anyhow::bail!("Failed to query indexed files from database");
+    if !rust_files.status.success() {
+        anyhow::bail!("Failed to get file list from Git");
     }
 
-    let files_output = String::from_utf8_lossy(&files_query.stdout);
+    let files = String::from_utf8_lossy(&rust_files.stdout);
+    let file_count = files.lines().count();
+
     let mut metrics_sql = String::from("BEGIN TRANSACTION;\n");
     metrics_sql.push_str("DELETE FROM git_metrics;\n");
 
-    let mut file_count = 0;
-
-    for line in files_output.lines().skip(1) {
-        // Skip CSV header
-        if line.is_empty() {
+    for file in files.lines() {
+        if file.is_empty() {
             continue;
         }
 
-        let file = line.trim_start_matches("./");
-
         // Get commit history for this file
-        let log = Command::new("git")
+        let log_output = Command::new("git")
             .current_dir(work_dir)
-            .args(["log", "--oneline", "--follow", "--", file])
+            .args(["log", "--format=%H %ai", "--follow", "--", file])
             .output()?;
 
-        if log.status.success() {
-            let log_output = String::from_utf8_lossy(&log.stdout);
-            let commits: Vec<_> = log_output.lines().filter(|l| !l.is_empty()).collect();
+        if log_output.status.success() {
+            let log = String::from_utf8_lossy(&log_output.stdout);
+            let commits: Vec<&str> = log.lines().collect();
 
             if !commits.is_empty() {
-                file_count += 1;
-
-                // Get first and last commits
                 let first = commits
                     .last()
                     .unwrap_or(&"")
@@ -440,18 +307,353 @@ fn extract_pattern_references(db_path: &str, work_dir: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Save skipped files statistics to database
-fn save_skipped_files_stats(
+/// Extract semantic fingerprints with tree-sitter
+fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
+    println!("🧠 Generating semantic fingerprints and extracting truth data...");
+
+    use crate::commands::scrape::languages::{create_parser_for_path, Language};
+    use ignore::WalkBuilder;
+    use std::collections::HashMap;
+    use std::time::SystemTime;
+
+    // Find all supported language files
+    let mut all_files = Vec::new();
+
+    // Track skipped files by extension
+    let mut skipped_files: HashMap<String, (usize, usize, String)> = HashMap::new(); // ext -> (count, bytes, example_path)
+
+    // Use ignore crate to walk files, respecting .gitignore
+    let walker = WalkBuilder::new(work_dir)
+        .hidden(false) // Don't process hidden files
+        .git_ignore(true) // Respect .gitignore
+        .git_global(true) // Respect global gitignore
+        .git_exclude(true) // Respect .git/info/exclude
+        .ignore(true) // Respect .ignore files
+        .build();
+
+    for entry in walker {
+        let entry = entry?;
+        let path = entry.path();
+
+        // Skip directories
+        if entry.file_type().is_some_and(|ft| ft.is_dir()) {
+            continue;
+        }
+
+        // Get relative path for storage
+        let relative_path = path.strip_prefix(work_dir).unwrap_or(path);
+        let relative_path_str = relative_path.to_string_lossy();
+
+        // Skip if path starts with dot (hidden)
+        if relative_path_str.starts_with('.') {
+            continue;
+        }
+
+        // Determine language from extension
+        let language = Language::from_path(path);
+
+        match language {
+            Language::Rust
+            | Language::Go
+            | Language::Solidity
+            | Language::Python
+            | Language::JavaScript
+            | Language::JavaScriptJSX
+            | Language::TypeScript
+            | Language::TypeScriptTSX => {
+                // Supported language - add to processing list with relative path
+                all_files.push((format!("./{}", relative_path_str), language));
+            }
+            Language::Unknown => {
+                // Track skipped file
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    // Get file size
+                    let file_size = entry.metadata().ok().map(|m| m.len() as usize).unwrap_or(0);
+
+                    let entry = skipped_files.entry(ext.to_string()).or_insert((
+                        0,
+                        0,
+                        relative_path_str.to_string(),
+                    ));
+                    entry.0 += 1; // count
+                    entry.1 += file_size; // bytes
+                                          // Keep first example path
+                }
+            }
+        }
+    }
+
+    if all_files.is_empty() {
+        println!("  ⚠️  No supported language files found");
+        return Ok(());
+    }
+
+    println!(
+        "  📂 Found {} files ({} Rust, {} Go, {} Solidity, {} Python, {} JS, {} JSX, {} TS, {} TSX)",
+        all_files.len(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::Rust)
+            .count(),
+        all_files.iter().filter(|(_, l)| *l == Language::Go).count(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::Solidity)
+            .count(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::Python)
+            .count(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::JavaScript)
+            .count(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::JavaScriptJSX)
+            .count(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::TypeScript)
+            .count(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::TypeScriptTSX)
+            .count()
+    );
+
+    // Build map of current files with mtimes
+    let mut current_files = HashMap::new();
+    for (file_str, _) in &all_files {
+        let file_path = work_dir.join(file_str);
+        if let Ok(metadata) = std::fs::metadata(&file_path) {
+            if let Ok(modified) = metadata.modified() {
+                let mtime = modified
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+                current_files.insert(PathBuf::from(file_str), mtime);
+            }
+        }
+    }
+
+    // Handle incremental vs full index
+    let files_to_process = if force {
+        println!("  ⚡ Force flag set - performing full re-index");
+
+        // Clear all existing data for full re-index
+        Command::new("duckdb")
+            .arg(db_path)
+            .arg("-c")
+            .arg("DELETE FROM code_fingerprints; DELETE FROM code_search; DELETE FROM index_state;")
+            .output()?;
+
+        all_files
+    } else {
+        // Detect changes for incremental update
+        let changes = incremental::detect_changes(db_path, &current_files)?;
+        incremental::print_change_summary(&changes);
+
+        // If no changes, we're done!
+        if changes.is_empty() {
+            return Ok(());
+        }
+
+        // Clean up changed files
+        incremental::cleanup_changed_files(db_path, &changes)?;
+
+        // Build list of files to process
+        let mut files_to_process = Vec::new();
+        for path in changes
+            .new_files
+            .iter()
+            .chain(changes.modified_files.iter())
+        {
+            let path_str = path.to_string_lossy().to_string();
+            if let Some((_, lang)) = all_files.iter().find(|(f, _)| f == &path_str) {
+                files_to_process.push((path_str, *lang));
+            }
+        }
+        files_to_process
+    };
+
+    let mut sql = String::from("BEGIN TRANSACTION;\n");
+    let mut symbol_count = 0;
+    let mut current_lang = Language::Unknown;
+    let mut parser: Option<tree_sitter::Parser> = None;
+    let mut batch_count = 0;
+
+    // Process only new and modified files
+    for (file, language) in files_to_process {
+        // Check if file needs reindexing (mtime-based incremental)
+        let file_path = work_dir.join(&file);
+
+        // Create parser for this specific file path
+        // This correctly handles TSX vs TS and JSX vs JS distinctions
+        // We need to use create_parser_for_path because create_parser loses the TSX/JSX distinction
+        if language != current_lang {
+            parser = Some(create_parser_for_path(&file_path)?);
+            current_lang = language;
+        }
+        let metadata = std::fs::metadata(&file_path)?;
+        let mtime = metadata
+            .modified()?
+            .duration_since(SystemTime::UNIX_EPOCH)?
+            .as_secs() as i64;
+
+        // TODO: Check index_state to skip unchanged files
+
+        // Parse and fingerprint
+        let content = std::fs::read_to_string(&file_path)?;
+        if let Some(ref mut p) = parser {
+            if let Some(tree) = p.parse(&content, None) {
+                let mut cursor = tree.walk();
+                let mut context = ParseContext::new();
+                symbol_count += process_ast_node(
+                    &mut cursor,
+                    content.as_bytes(),
+                    &file,
+                    &mut sql,
+                    language,
+                    &mut context,
+                );
+
+                // Flush call graph entries for this file
+                context.flush_to_sql(&file, &mut sql);
+
+                // Record index state
+                sql.push_str(&format!(
+                    "INSERT INTO index_state (path, mtime) VALUES ('{}', {});\n",
+                    file, mtime
+                ));
+            }
+        }
+
+        // Batch execute every 10 files to avoid command line limits
+        batch_count += 1;
+        if batch_count >= 10 {
+            sql.push_str("COMMIT;\n");
+
+            // Use stdin to avoid command line length limits
+            let mut child = Command::new("duckdb")
+                .arg(db_path)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .context("Failed to start DuckDB")?;
+
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                stdin
+                    .write_all(sql.as_bytes())
+                    .context("Failed to write SQL")?;
+            }
+
+            let output = child
+                .wait_with_output()
+                .context("Failed to execute batch")?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                anyhow::bail!("DuckDB error: {}", stderr);
+            }
+            sql = String::from("BEGIN TRANSACTION;\n");
+            batch_count = 0;
+        }
+    }
+
+    // Execute final batch
+    if batch_count > 0 {
+        sql.push_str("COMMIT;\n");
+
+        // Use stdin to avoid command line length limits
+        let mut child = Command::new("duckdb")
+            .arg(db_path)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .context("Failed to start DuckDB")?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            stdin
+                .write_all(sql.as_bytes())
+                .context("Failed to write SQL")?;
+        }
+
+        let output = child
+            .wait_with_output()
+            .context("Failed to insert final batch")?;
+
+        if !output.status.success() {
+            eprintln!("DuckDB error: {}", String::from_utf8_lossy(&output.stderr));
+        }
+    }
+
+    println!("  ✓ Fingerprinted {} symbols", symbol_count);
+
+    // Save and report skipped files
+    if !skipped_files.is_empty() {
+        save_skipped_files(db_path, &skipped_files)?;
+        report_skipped_files(&skipped_files);
+    }
+
+    Ok(())
+}
+
+/// Save skipped files to database
+fn save_skipped_files(
     db_path: &str,
     skipped: &HashMap<String, (usize, usize, String)>,
 ) -> Result<()> {
+    use std::process::Command;
+
     let mut sql = String::from("BEGIN TRANSACTION;\n");
     sql.push_str("DELETE FROM skipped_files;\n");
 
     for (ext, (count, bytes, example)) in skipped {
+        // Map common extensions to language names
+        let lang_name = match ext.as_str() {
+            "py" => "Python",
+            "js" => "JavaScript",
+            "ts" => "TypeScript",
+            "jsx" => "React JSX",
+            "tsx" => "React TSX",
+            "java" => "Java",
+            "c" => "C",
+            "cpp" | "cc" | "cxx" => "C++",
+            "h" | "hpp" => "C/C++ Header",
+            "cs" => "C#",
+            "rb" => "Ruby",
+            "php" => "PHP",
+            "swift" => "Swift",
+            "kt" => "Kotlin",
+            "scala" => "Scala",
+            "ml" => "OCaml",
+            "hs" => "Haskell",
+            "ex" | "exs" => "Elixir",
+            "clj" => "Clojure",
+            "vue" => "Vue",
+            "svelte" => "Svelte",
+            "lua" => "Lua",
+            "r" => "R",
+            "jl" => "Julia",
+            "zig" => "Zig",
+            "nim" => "Nim",
+            "dart" => "Dart",
+            "sh" | "bash" => "Shell",
+            "yaml" | "yml" => "YAML",
+            "json" => "JSON",
+            "toml" => "TOML",
+            "xml" => "XML",
+            "md" => "Markdown",
+            _ => "",
+        };
+
         sql.push_str(&format!(
-            "INSERT INTO skipped_files (extension, file_count, total_bytes, example_path) VALUES ('{}', {}, {}, '{}');\n",
-            ext, count, bytes, example.replace('\'', "''")
+            "INSERT INTO skipped_files (extension, file_count, total_bytes, example_path, common_name) VALUES ('{}', {}, {}, '{}', '{}');\n",
+            ext, count, bytes, example.replace('\'', "''"), lang_name
         ));
     }
 
@@ -501,46 +703,1753 @@ fn report_skipped_files(skipped: &HashMap<String, (usize, usize, String)>) {
         let remaining: usize = sorted.iter().skip(5).map(|(_, (c, _, _))| c).sum();
         println!("   {} files with other extensions", remaining);
     }
+
+    // Suggest adding parsers for common languages
+    let suggestions: Vec<&str> = sorted
+        .iter()
+        .filter_map(|(ext, (count, _, _))| {
+            if *count > 10 {
+                match ext.as_str() {
+                    "py" => Some("Python"),
+                    "js" | "ts" | "jsx" | "tsx" => Some("JavaScript/TypeScript"),
+                    "java" => Some("Java"),
+                    "c" | "cpp" | "h" => Some("C/C++"),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        })
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
+    if !suggestions.is_empty() {
+        println!(
+            "\n💡 Consider adding parsers for: {}",
+            suggestions.join(", ")
+        );
+    }
 }
 
-/// Print database summary
-fn print_summary(db_path: &str) -> Result<()> {
-    println!("\n📈 Database Summary:");
+/// Extract documentation comment for a node
+fn extract_doc_comment(
+    node: tree_sitter::Node,
+    source: &[u8],
+    language: languages::Language,
+) -> Option<(String, String, Vec<String>)> {
+    use crate::commands::scrape::languages::Language;
 
-    let summary = Command::new("duckdb")
-        .arg(db_path)
-        .arg("-csv")
-        .arg("-c")
-        .arg(
-            "SELECT 
-                (SELECT COUNT(*) FROM function_facts) as functions,
-                (SELECT COUNT(*) FROM documentation) as documented,
-                (SELECT COUNT(*) FROM call_graph) as call_relations,
-                (SELECT COUNT(*) FROM type_vocabulary) as types,
-                (SELECT COUNT(*) FROM code_fingerprints) as fingerprints",
-        )
-        .output()
-        .context("Failed to query summary")?;
+    // Look for doc comment in previous sibling
+    if let Some(prev) = node.prev_sibling() {
+        let is_doc = match language {
+            Language::Rust => {
+                prev.kind() == "line_comment" && {
+                    prev.utf8_text(source)
+                        .unwrap_or("")
+                        .trim_start()
+                        .starts_with("///")
+                }
+            }
+            Language::Go => {
+                prev.kind() == "comment" && {
+                    prev.utf8_text(source)
+                        .unwrap_or("")
+                        .trim_start()
+                        .starts_with("//")
+                }
+            }
+            Language::Python => {
+                // Python docstrings are the first string in the function body
+                if node.kind() == "function_definition" || node.kind() == "class_definition" {
+                    if let Some(body) = node.child_by_field_name("body") {
+                        if let Some(first_stmt) = body.children(&mut body.walk()).nth(1) {
+                            if first_stmt.kind() == "expression_statement" {
+                                if let Some(string) = first_stmt.child(0) {
+                                    return if string.kind() == "string" {
+                                        let raw = string.utf8_text(source).unwrap_or("");
+                                        let clean = clean_doc_text(raw, language);
+                                        let keywords = extract_keywords(&clean);
+                                        Some((raw.to_string(), clean, keywords))
+                                    } else {
+                                        None
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+                false
+            }
+            Language::JavaScript
+            | Language::JavaScriptJSX
+            | Language::TypeScript
+            | Language::TypeScriptTSX => {
+                prev.kind() == "comment" && {
+                    let text = prev.utf8_text(source).unwrap_or("");
+                    text.starts_with("/**") || text.starts_with("//")
+                }
+            }
+            Language::Solidity => {
+                prev.kind() == "comment" && {
+                    let text = prev.utf8_text(source).unwrap_or("");
+                    text.starts_with("///") || text.starts_with("/**")
+                }
+            }
+            _ => false,
+        };
 
-    if summary.status.success() {
-        let output = String::from_utf8_lossy(&summary.stdout);
-        for line in output.lines().skip(1) {
-            let parts: Vec<&str> = line.split(',').collect();
-            if parts.len() >= 5 {
-                println!("  📝 Functions: {}", parts[0]);
-                println!("  📚 Documentation: {}", parts[1]);
-                println!("  🔗 Call relations: {}", parts[2]);
-                println!("  🏗️  Types: {}", parts[3]);
-                println!("  🎯 Fingerprints: {}", parts[4]);
+        if is_doc {
+            let raw = prev.utf8_text(source).unwrap_or("").to_string();
+            let clean = clean_doc_text(&raw, language);
+            let keywords = extract_keywords(&clean);
+            return Some((raw, clean, keywords));
+        }
+    }
+
+    // For languages other than Python, also check block comments above
+    if language != Language::Python {
+        // Walk up to find doc comments that might be separated by whitespace
+        let mut cursor = node.walk();
+        if let Some(parent) = node.parent() {
+            for child in parent.children(&mut cursor) {
+                if child.end_byte() > node.start_byte() {
+                    break;
+                }
+                if child.kind() == "comment"
+                    || child.kind() == "line_comment"
+                    || child.kind() == "block_comment"
+                {
+                    let text = child.utf8_text(source).unwrap_or("");
+                    let is_doc = match language {
+                        Language::Rust => text.starts_with("///") || text.starts_with("//!"),
+                        _ => text.starts_with("/**") || text.starts_with("///"),
+                    };
+                    if is_doc {
+                        let raw = text.to_string();
+                        let clean = clean_doc_text(&raw, language);
+                        let keywords = extract_keywords(&clean);
+                        return Some((raw, clean, keywords));
+                    }
+                }
             }
         }
     }
 
-    // Get database size
+    None
+}
+
+/// Clean doc text by removing comment markers
+fn clean_doc_text(raw: &str, language: languages::Language) -> String {
+    use crate::commands::scrape::languages::Language;
+
+    match language {
+        Language::Rust => raw
+            .lines()
+            .map(|line| {
+                line.trim_start()
+                    .strip_prefix("///")
+                    .or_else(|| line.strip_prefix("//!"))
+                    .unwrap_or(line)
+                    .trim()
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+        Language::Go | Language::Solidity => raw
+            .lines()
+            .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join(" "),
+        Language::Python => {
+            // Remove triple quotes
+            raw.trim()
+                .strip_prefix("\"\"\"")
+                .and_then(|s| s.strip_suffix("\"\"\""))
+                .or_else(|| {
+                    raw.trim()
+                        .strip_prefix("'''")
+                        .and_then(|s| s.strip_suffix("'''"))
+                })
+                .unwrap_or(raw)
+                .trim()
+                .to_string()
+        }
+        Language::JavaScript
+        | Language::JavaScriptJSX
+        | Language::TypeScript
+        | Language::TypeScriptTSX => {
+            if raw.starts_with("/**") {
+                raw.strip_prefix("/**")
+                    .and_then(|s| s.strip_suffix("*/"))
+                    .map(|s| {
+                        s.lines()
+                            .map(|line| line.trim().strip_prefix("*").unwrap_or(line).trim())
+                            .filter(|line| !line.is_empty())
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    })
+                    .unwrap_or_else(|| raw.to_string())
+            } else {
+                raw.lines()
+                    .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            }
+        }
+        _ => raw.to_string(),
+    }
+}
+
+/// Extract first sentence as summary
+fn extract_summary(doc: &str) -> String {
+    doc.split('.').next().unwrap_or(doc).trim().to_string()
+}
+
+/// Extract keywords from documentation
+fn extract_keywords(doc: &str) -> Vec<String> {
+    const STOP_WORDS: &[&str] = &[
+        "the", "and", "for", "with", "this", "that", "from", "into", "will", "can", "may", "must",
+        "should", "would", "could", "has", "have", "had", "does", "did", "are", "was", "were",
+        "been", "being", "get", "set", "new", "all", "some", "any", "each", "every",
+    ];
+
+    let words: std::collections::HashSet<String> = doc
+        .split_whitespace()
+        .flat_map(|word| word.split(|c: char| !c.is_alphanumeric()))
+        .filter(|w| w.len() > 3)
+        .map(|w| w.to_lowercase())
+        .filter(|w| !STOP_WORDS.contains(&w.as_str()))
+        .collect();
+
+    words.into_iter().collect()
+}
+
+/// Process AST nodes and generate fingerprints
+/// Extract call expressions from AST nodes
+fn extract_call_expressions(
+    node: tree_sitter::Node,
+    source: &[u8],
+    language: languages::Language,
+    context: &mut ParseContext,
+) {
+    use crate::commands::scrape::languages::Language;
+
+    let line_number = (node.start_position().row + 1) as i32;
+
+    match (language, node.kind()) {
+        // Rust call expressions
+        (Language::Rust, "call_expression") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                let callee = func_node.utf8_text(source).unwrap_or("").to_string();
+                context.add_call(callee, "direct".to_string(), line_number);
+            }
+        }
+        (Language::Rust, "method_call_expression") => {
+            if let Some(method_node) = node.child_by_field_name("name") {
+                let callee = method_node.utf8_text(source).unwrap_or("").to_string();
+                context.add_call(callee, "method".to_string(), line_number);
+            }
+        }
+
+        // Go call expressions
+        (Language::Go, "call_expression") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                let callee = func_node.utf8_text(source).unwrap_or("").to_string();
+                let call_type = if callee.contains("go ") {
+                    "async"
+                } else {
+                    "direct"
+                };
+                context.add_call(
+                    callee.replace("go ", ""),
+                    call_type.to_string(),
+                    line_number,
+                );
+            }
+        }
+        (Language::Go, "selector_expression") => {
+            // Go method calls are selector expressions followed by call_expression
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "call_expression" {
+                    if let Some(field_node) = node.child_by_field_name("field") {
+                        let callee = field_node.utf8_text(source).unwrap_or("").to_string();
+                        context.add_call(callee, "method".to_string(), line_number);
+                    }
+                }
+            }
+        }
+
+        // Python call expressions
+        (Language::Python, "call") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                let callee = func_node.utf8_text(source).unwrap_or("").to_string();
+                let call_type = if callee.starts_with("await ") {
+                    "async"
+                } else {
+                    "direct"
+                };
+                context.add_call(
+                    callee.replace("await ", ""),
+                    call_type.to_string(),
+                    line_number,
+                );
+            }
+        }
+        (Language::Python, "attribute") => {
+            // Python method calls via attribute access
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "call" {
+                    if let Some(attr_node) = node.child_by_field_name("attribute") {
+                        let callee = attr_node.utf8_text(source).unwrap_or("").to_string();
+                        context.add_call(callee, "method".to_string(), line_number);
+                    }
+                }
+            }
+        }
+
+        // JavaScript/TypeScript call expressions
+        (
+            Language::JavaScript
+            | Language::JavaScriptJSX
+            | Language::TypeScript
+            | Language::TypeScriptTSX,
+            "call_expression",
+        ) => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                let callee_text = func_node.utf8_text(source).unwrap_or("");
+
+                // Check if it's an async call (await keyword)
+                let call_type = if node
+                    .parent()
+                    .is_some_and(|p| p.kind() == "await_expression")
+                {
+                    "async"
+                } else if callee_text.contains('.') {
+                    "method"
+                } else {
+                    "direct"
+                };
+
+                // Extract just the function name
+                let callee = if let Some(last_part) = callee_text.split('.').next_back() {
+                    last_part.to_string()
+                } else {
+                    callee_text.to_string()
+                };
+
+                context.add_call(callee, call_type.to_string(), line_number);
+            }
+        }
+        (
+            Language::JavaScript
+            | Language::JavaScriptJSX
+            | Language::TypeScript
+            | Language::TypeScriptTSX,
+            "new_expression",
+        ) => {
+            // Constructor calls
+            if let Some(constructor_node) = node.child_by_field_name("constructor") {
+                let callee = constructor_node.utf8_text(source).unwrap_or("").to_string();
+                context.add_call(callee, "constructor".to_string(), line_number);
+            }
+        }
+
+        // Solidity call expressions
+        (Language::Solidity, "call_expression") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                let callee = func_node.utf8_text(source).unwrap_or("").to_string();
+                context.add_call(callee, "direct".to_string(), line_number);
+            }
+        }
+        (Language::Solidity, "member_access") => {
+            // Solidity method calls
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "call_expression" {
+                    if let Some(member_node) = node.child_by_field_name("property") {
+                        let callee = member_node.utf8_text(source).unwrap_or("").to_string();
+                        context.add_call(callee, "method".to_string(), line_number);
+                    }
+                }
+            }
+        }
+
+        _ => {}
+    }
+}
+
+/// Context for tracking state during AST traversal
+struct ParseContext {
+    current_function: Option<String>,
+    call_graph_entries: Vec<(String, String, String, i32)>, // (caller, callee, call_type, line)
+}
+
+impl ParseContext {
+    fn new() -> Self {
+        Self {
+            current_function: None,
+            call_graph_entries: Vec::new(),
+        }
+    }
+
+    fn enter_function(&mut self, name: String) {
+        self.current_function = Some(name);
+    }
+
+    fn exit_function(&mut self) {
+        self.current_function = None;
+    }
+
+    fn add_call(&mut self, callee: String, call_type: String, line: i32) {
+        if let Some(ref caller) = self.current_function {
+            self.call_graph_entries
+                .push((caller.clone(), callee, call_type, line));
+        }
+    }
+
+    fn flush_to_sql(&mut self, file_path: &str, sql: &mut String) {
+        for (caller, callee, call_type, line) in &self.call_graph_entries {
+            sql.push_str(&format!(
+                "INSERT INTO call_graph (caller, callee, file, call_type, line_number) VALUES ('{}', '{}', '{}', '{}', {});\n",
+                caller.replace('\'', "''"),
+                callee.replace('\'', "''"),
+                file_path,
+                call_type,
+                line
+            ));
+        }
+        self.call_graph_entries.clear();
+    }
+}
+
+fn process_ast_node(
+    cursor: &mut tree_sitter::TreeCursor,
+    source: &[u8],
+    file_path: &str,
+    sql: &mut String,
+    language: languages::Language,
+    context: &mut ParseContext,
+) -> usize {
+    use crate::commands::scrape::fingerprint::Fingerprint;
+    use crate::commands::scrape::languages::Language;
+
+    let node = cursor.node();
+    let mut count = 0;
+
+    // Check if this is a symbol we want to fingerprint
+    let kind = match (language, node.kind()) {
+        // Rust mappings
+        (Language::Rust, "function_item") => "function",
+        (Language::Rust, "struct_item") => "struct",
+        (Language::Rust, "trait_item") => "trait",
+        (Language::Rust, "impl_item") => "impl",
+        (Language::Rust, "type_alias") => "type_alias",
+        (Language::Rust, "const_item") => "const",
+        (Language::Rust, "use_declaration") => "import",
+        // Go mappings
+        (Language::Go, "function_declaration") => "function",
+        (Language::Go, "method_declaration") => "function",
+        (Language::Go, "const_declaration") => "const",
+        (Language::Go, "import_declaration") => "import",
+        (Language::Go, "type_spec") => {
+            // Check if it's a struct or interface
+            if node
+                .child_by_field_name("type")
+                .is_some_and(|n| n.kind() == "struct_type")
+            {
+                "struct"
+            } else if node
+                .child_by_field_name("type")
+                .is_some_and(|n| n.kind() == "interface_type")
+            {
+                "trait"
+            } else {
+                "type_alias" // Type aliases in Go
+            }
+        }
+        // Solidity mappings
+        (Language::Solidity, "function_definition") => "function",
+        (Language::Solidity, "contract_declaration") => "struct",
+        (Language::Solidity, "interface_declaration") => "trait",
+        (Language::Solidity, "library_declaration") => "impl",
+        (Language::Solidity, "modifier_definition") => "function",
+        (Language::Solidity, "event_definition") => "function",
+        // Python mappings
+        (Language::Python, "function_definition") => "function",
+        (Language::Python, "class_definition") => "struct",
+        (Language::Python, "decorated_definition") => {
+            // Check if it's a decorated function or class
+            if node
+                .child_by_field_name("definition")
+                .is_some_and(|n| n.kind() == "function_definition")
+            {
+                "function"
+            } else if node
+                .child_by_field_name("definition")
+                .is_some_and(|n| n.kind() == "class_definition")
+            {
+                "struct"
+            } else {
+                ""
+            }
+        }
+        (Language::Python, "import_statement") => "import",
+        (Language::Python, "import_from_statement") => "import",
+        // JavaScript/JSX mappings
+        (Language::JavaScript | Language::JavaScriptJSX, "function_declaration") => "function",
+        (Language::JavaScript | Language::JavaScriptJSX, "function_expression") => "function",
+        (Language::JavaScript | Language::JavaScriptJSX, "arrow_function") => "function",
+        (Language::JavaScript | Language::JavaScriptJSX, "method_definition") => "function",
+        (Language::JavaScript | Language::JavaScriptJSX, "class_declaration") => "struct",
+        (Language::JavaScript | Language::JavaScriptJSX, "import_statement") => "import",
+        (Language::JavaScript | Language::JavaScriptJSX, "variable_declarator") => {
+            // Check if it's a const/let/var with a function value
+            if node
+                .child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression")
+            {
+                "function"
+            } else if node
+                .child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "class_expression")
+            {
+                "struct"
+            } else {
+                ""
+            }
+        }
+        // TypeScript/TSX mappings
+        (Language::TypeScript | Language::TypeScriptTSX, "function_declaration") => "function",
+        (Language::TypeScript | Language::TypeScriptTSX, "function_expression") => "function",
+        (Language::TypeScript | Language::TypeScriptTSX, "arrow_function") => "function",
+        (Language::TypeScript | Language::TypeScriptTSX, "method_definition") => "function",
+        (Language::TypeScript | Language::TypeScriptTSX, "class_declaration") => "struct",
+        (Language::TypeScript | Language::TypeScriptTSX, "interface_declaration") => "trait",
+        (Language::TypeScript | Language::TypeScriptTSX, "type_alias_declaration") => "type_alias",
+        (Language::TypeScript | Language::TypeScriptTSX, "enum_declaration") => "struct",
+        (Language::TypeScript | Language::TypeScriptTSX, "import_statement") => "import",
+        (Language::TypeScript | Language::TypeScriptTSX, "variable_declarator") => {
+            // Check if it's a const/let/var with a function value
+            if node
+                .child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression")
+            {
+                "function"
+            } else if node
+                .child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "class_expression")
+            {
+                "struct"
+            } else {
+                ""
+            }
+        }
+        _ => {
+            // Check for call expressions before recursing
+            extract_call_expressions(node, source, language, context);
+
+            // Recurse into children
+            if cursor.goto_first_child() {
+                loop {
+                    count += process_ast_node(cursor, source, file_path, sql, language, context);
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+                cursor.goto_parent();
+            }
+            return count;
+        }
+    };
+
+    // Skip empty kinds
+    if kind.is_empty() {
+        return count;
+    }
+
+    // Handle imports separately (they don't have a name field)
+    if kind == "import" {
+        extract_import_fact(node, source, file_path, sql, language);
+        count += 1;
+        return count;
+    }
+
+    // Extract name for other symbols
+    let name_node = match language {
+        Language::Go if node.kind() == "type_spec" => {
+            // Go type specs have name directly in the node
+            node.child_by_field_name("name")
+        }
+        Language::Solidity => {
+            // Solidity has name or identifier field
+            node.child_by_field_name("name")
+                .or_else(|| node.child_by_field_name("identifier"))
+        }
+        Language::Python => {
+            // Python uses name field for functions/classes
+            if node.kind() == "decorated_definition" {
+                // For decorated definitions, get the name from the inner definition
+                node.child_by_field_name("definition")
+                    .and_then(|def| def.child_by_field_name("name"))
+            } else {
+                node.child_by_field_name("name")
+            }
+        }
+        Language::JavaScript
+        | Language::JavaScriptJSX
+        | Language::TypeScript
+        | Language::TypeScriptTSX => {
+            // JS/TS uses different field names depending on context
+            if node.kind() == "variable_declarator" {
+                // For const/let/var declarations, name is in the 'name' field
+                node.child_by_field_name("name")
+            } else if node.kind() == "method_definition" {
+                // Methods have name in 'name' field
+                node.child_by_field_name("name")
+            } else {
+                // Functions, classes use 'name' field
+                node.child_by_field_name("name")
+            }
+        }
+        _ => node.child_by_field_name("name"),
+    };
+
+    if let Some(name_node) = name_node {
+        let name = name_node.utf8_text(source).unwrap_or("<unknown>");
+
+        // Track function context for call graph
+        if kind == "function" {
+            context.enter_function(name.to_string());
+
+            // Process function body to extract calls
+            if cursor.goto_first_child() {
+                loop {
+                    count += process_ast_node(cursor, source, file_path, sql, language, context);
+                    if !cursor.goto_next_sibling() {
+                        break;
+                    }
+                }
+                cursor.goto_parent();
+            }
+
+            // Exit function context
+            context.exit_function();
+        }
+
+        // Extract documentation if present
+        let doc_info = extract_doc_comment(node, source, language);
+        if let Some((doc_raw, doc_clean, keywords)) = doc_info {
+            // Store documentation in database
+            let line_number = node.start_position().row + 1;
+            let doc_summary = extract_summary(&doc_clean);
+            let doc_length = doc_clean.len() as i32;
+            let has_examples = doc_raw.contains("```")
+                || doc_raw.contains("Example:")
+                || doc_raw.contains("example:");
+            let has_params = doc_raw.contains("@param")
+                || doc_raw.contains("Args:")
+                || doc_raw.contains("Parameters:");
+
+            // Format keywords as DuckDB array
+            let keywords_str = if keywords.is_empty() {
+                "ARRAY[]::VARCHAR[]".to_string()
+            } else {
+                format!(
+                    "ARRAY[{}]",
+                    keywords
+                        .iter()
+                        .map(|k| format!("'{}'", k.replace('\'', "''")))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            };
+
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO documentation (file, symbol_name, symbol_type, line_number, doc_raw, doc_clean, doc_summary, keywords, doc_length, has_examples, has_params) VALUES ('{}', '{}', '{}', {}, '{}', '{}', '{}', {}, {}, {}, {});\n",
+                file_path,
+                name.replace('\'', "''"),
+                kind,
+                line_number,
+                doc_raw.replace('\'', "''"),
+                doc_clean.replace('\'', "''"),
+                doc_summary.replace('\'', "''"),
+                keywords_str,
+                doc_length,
+                has_examples,
+                has_params
+            ));
+        }
+
+        // Extract based on kind
+        match kind {
+            "function" => {
+                // Extract function facts
+                extract_function_facts(node, source, file_path, name, sql, language);
+
+                // Also generate fingerprint for functions
+                let fingerprint = Fingerprint::from_ast(node, source);
+                let signature = node
+                    .utf8_text(source)
+                    .unwrap_or("")
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .replace('\'', "''");
+
+                sql.push_str(&format!(
+                    "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
+                    file_path, name, kind,
+                    fingerprint.pattern, fingerprint.imports,
+                    fingerprint.complexity, fingerprint.flags
+                ));
+
+                sql.push_str(&format!(
+                    "INSERT OR REPLACE INTO code_search (path, name, signature) VALUES ('{}', '{}', '{}');\n",
+                    file_path, name, signature
+                ));
+            }
+            "type_alias" | "struct" | "trait" | "const" => {
+                // Extract type vocabulary
+                extract_type_definition(node, source, file_path, name, kind, sql, language);
+
+                // Also generate fingerprint for structs/traits
+                if kind == "struct" || kind == "trait" {
+                    let fingerprint = Fingerprint::from_ast(node, source);
+                    sql.push_str(&format!(
+                        "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
+                        file_path, name, kind,
+                        fingerprint.pattern, fingerprint.imports,
+                        fingerprint.complexity, fingerprint.flags
+                    ));
+                }
+            }
+            "impl" => {
+                // Keep fingerprinting for impl blocks
+                let fingerprint = Fingerprint::from_ast(node, source);
+                sql.push_str(&format!(
+                    "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
+                    file_path, name, kind,
+                    fingerprint.pattern, fingerprint.imports,
+                    fingerprint.complexity, fingerprint.flags
+                ));
+            }
+            _ => {}
+        }
+
+        count += 1;
+    }
+
+    count
+}
+
+/// Show extraction summary
+fn show_summary(db_path: &str) -> Result<()> {
+    println!("\n📈 Summary:");
+
+    let summary_query = r#"
+SELECT 
+    'Functions indexed' as metric,
+    COUNT(*) as value
+FROM code_fingerprints
+WHERE kind = 'function'
+UNION ALL
+SELECT 
+    'Average complexity' as metric,
+    CAST(AVG(complexity) AS INTEGER) as value
+FROM code_fingerprints
+WHERE kind = 'function'
+UNION ALL
+SELECT 
+    'Unique patterns' as metric,
+    COUNT(DISTINCT pattern) as value
+FROM code_fingerprints
+UNION ALL
+SELECT 
+    'Files with 10+ commits' as metric,
+    COUNT(*) as value
+FROM git_metrics
+WHERE commit_count >= 10
+UNION ALL
+SELECT
+    'Languages skipped' as metric,
+    COUNT(*) as value
+FROM skipped_files
+WHERE file_count > 0;
+"#;
+
+    let output = Command::new("duckdb")
+        .arg(db_path)
+        .arg("-c")
+        .arg(summary_query)
+        .output()
+        .context("Failed to query summary")?;
+
+    if output.status.success() {
+        println!("{}", String::from_utf8_lossy(&output.stdout));
+    }
+
+    // Show database size and block info
+    let size_query = "PRAGMA database_size;";
+    let size_output = Command::new("duckdb")
+        .arg(db_path)
+        .arg("-c")
+        .arg(size_query)
+        .output()?;
+
+    if size_output.status.success() {
+        println!("\n💾 Database info:");
+        println!("{}", String::from_utf8_lossy(&size_output.stdout));
+    }
+
+    // Also show file size
     if let Ok(metadata) = std::fs::metadata(db_path) {
-        let size_mb = metadata.len() as f64 / 1_048_576.0;
-        println!("  💾 Database size: {:.1} MB", size_mb);
+        let size_kb = metadata.len() / 1024;
+        println!("📁 File size: {}KB", size_kb);
     }
 
     Ok(())
+}
+
+/// Run a custom query
+fn run_query(query: &str, db_path: &str) -> Result<()> {
+    let output = Command::new("duckdb")
+        .arg(db_path)
+        .arg("-c")
+        .arg(query)
+        .output()
+        .context("Failed to execute query")?;
+
+    if output.status.success() {
+        println!("{}", String::from_utf8_lossy(&output.stdout));
+    } else {
+        anyhow::bail!("Query failed: {}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    Ok(())
+}
+
+/// Extract function facts (truth data only)
+fn extract_function_facts(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    sql: &mut String,
+    language: languages::Language,
+) {
+    use crate::commands::scrape::languages::Language;
+
+    // Extract visibility
+    let is_public = match language {
+        Language::Rust => {
+            // Check for pub keyword
+            node.children(&mut node.walk())
+                .any(|child| child.kind() == "visibility_modifier")
+        }
+        Language::Go => {
+            // In Go, uppercase first letter = public
+            name.chars().next().is_some_and(|c| c.is_uppercase())
+        }
+        Language::Solidity => {
+            // Solidity defaults to public
+            !node.utf8_text(source).unwrap_or("").contains("private")
+        }
+        Language::Python => {
+            // Python uses convention: _ prefix = private
+            !name.starts_with('_')
+        }
+        Language::JavaScript
+        | Language::JavaScriptJSX
+        | Language::TypeScript
+        | Language::TypeScriptTSX => {
+            // JS/TS: export = public, TypeScript can have public/private keywords
+            let text = node.utf8_text(source).unwrap_or("");
+            text.contains("export") || text.contains("public")
+        }
+        Language::Unknown => false,
+    };
+
+    // Extract async
+    let is_async = match language {
+        Language::Rust => node
+            .children(&mut node.walk())
+            .any(|child| child.kind() == "async"),
+        Language::JavaScript
+        | Language::JavaScriptJSX
+        | Language::TypeScript
+        | Language::TypeScriptTSX => {
+            // JS/TS have async functions
+            let text = node.utf8_text(source).unwrap_or("");
+            text.starts_with("async ") || text.contains(" async ")
+        }
+        Language::Python => {
+            // Python uses async def
+            node.kind() == "async_function_definition"
+                || node
+                    .utf8_text(source)
+                    .unwrap_or("")
+                    .starts_with("async def")
+        }
+        _ => false, // Go and Solidity don't have async keyword
+    };
+
+    // Extract unsafe
+    let is_unsafe = match language {
+        Language::Rust => node
+            .children(&mut node.walk())
+            .any(|child| child.kind() == "unsafe"),
+        _ => false,
+    };
+
+    // Extract parameters with details
+    // Note: Solidity doesn't have a "parameters" field, parameters are direct children
+    let params_node = if language != Language::Solidity {
+        node.child_by_field_name("parameters")
+    } else {
+        None
+    };
+
+    let (takes_mut_self, takes_mut_params, parameter_count, parameter_list) = if language
+        == Language::Solidity
+    {
+        // Special handling for Solidity - parameters are direct children of type "parameter"
+        let mut param_count = 0;
+        let mut param_details = Vec::new();
+
+        for child in node.children(&mut node.walk()) {
+            if child.kind() == "parameter" {
+                let param_text = child.utf8_text(source).unwrap_or("").to_string();
+                param_details.push(param_text);
+                param_count += 1;
+            }
+        }
+
+        let param_list = if param_details.is_empty() {
+            "[]".to_string()
+        } else {
+            serde_json::to_string(&param_details).unwrap_or_else(|_| "[]".to_string())
+        };
+
+        (false, false, param_count, param_list)
+    } else if let Some(params) = params_node {
+        let mut has_mut_self = false;
+        let mut has_mut_params = false;
+        let mut param_count = 0;
+        let mut param_details = Vec::new();
+
+        let params_text = params.utf8_text(source).unwrap_or("");
+
+        match language {
+            Language::Rust => {
+                // Check for &mut self
+                if params_text.contains("&mut self") {
+                    has_mut_self = true;
+                }
+                // Check for other mut params
+                if params_text.contains("mut ") && !params_text.contains("&mut self") {
+                    has_mut_params = true;
+                }
+                // Extract each parameter
+                for child in params.children(&mut params.walk()) {
+                    if child.kind() == "parameter" {
+                        // Get parameter name and type
+                        if let Some(pattern) = child.child_by_field_name("pattern") {
+                            let param_name = pattern.utf8_text(source).unwrap_or("").to_string();
+                            let param_type = child
+                                .child_by_field_name("type")
+                                .and_then(|t| t.utf8_text(source).ok())
+                                .unwrap_or("")
+                                .to_string();
+                            param_details.push(format!("{}:{}", param_name, param_type));
+                        }
+                        param_count += 1;
+                    } else if child.kind() == "self_parameter" {
+                        param_details.push("self".to_string());
+                        param_count += 1;
+                    }
+                }
+            }
+            Language::Go => {
+                // Extract Go parameters
+                for child in params.children(&mut params.walk()) {
+                    if child.kind() == "parameter_declaration" {
+                        let param_text = child.utf8_text(source).unwrap_or("").to_string();
+                        param_details.push(param_text);
+                        param_count += 1;
+                    }
+                }
+            }
+            Language::Python => {
+                // Extract Python parameters - simpler approach
+                for child in params.children(&mut params.walk()) {
+                    // Skip punctuation
+                    if child.kind() == "," || child.kind() == "(" || child.kind() == ")" {
+                        continue;
+                    }
+
+                    // Get any parameter-like text
+                    if child.kind().contains("parameter") || child.kind() == "identifier" {
+                        let param_text = child.utf8_text(source).unwrap_or("").trim().to_string();
+                        if !param_text.is_empty() {
+                            param_count += 1;
+                            if param_text != "self" {
+                                // Skip 'self' in param list but count it
+                                param_details.push(param_text);
+                            }
+                        }
+                    }
+                }
+            }
+            Language::JavaScript
+            | Language::JavaScriptJSX
+            | Language::TypeScript
+            | Language::TypeScriptTSX => {
+                // Extract JS/TS parameters - they can be formal_parameter, required_parameter, optional_parameter, or just identifier
+                for child in params.children(&mut params.walk()) {
+                    // Skip punctuation like commas and parentheses
+                    if child.kind() == "," || child.kind() == "(" || child.kind() == ")" {
+                        continue;
+                    }
+
+                    // Get the parameter text for any parameter-like node
+                    if child.kind().contains("parameter") || child.kind() == "identifier" {
+                        let param_text = child.utf8_text(source).unwrap_or("").trim().to_string();
+                        if !param_text.is_empty() {
+                            param_details.push(param_text);
+                            param_count += 1;
+                        }
+                    }
+                }
+            }
+            Language::Solidity | Language::Unknown => {} // Solidity handled earlier, Unknown skipped
+        }
+
+        // Create parameter list string (escape for SQL)
+        let param_list = if !param_details.is_empty() {
+            param_details.join(", ").replace('\'', "''")
+        } else {
+            String::new()
+        };
+
+        (has_mut_self, has_mut_params, param_count, param_list)
+    } else {
+        (false, false, 0, String::new())
+    };
+
+    // Extract return type with full details
+    let (returns_result, returns_option, return_type) = match language {
+        Language::Rust => {
+            if let Some(return_type_node) = node.child_by_field_name("return_type") {
+                let ret_text = return_type_node.utf8_text(source).unwrap_or("");
+                let ret_clean = ret_text.replace('\'', "''");
+                (
+                    ret_text.contains("Result"),
+                    ret_text.contains("Option"),
+                    ret_clean,
+                )
+            } else {
+                (false, false, String::new())
+            }
+        }
+        Language::Go => {
+            if let Some(result) = node.child_by_field_name("result") {
+                let ret_text = result.utf8_text(source).unwrap_or("");
+                let ret_clean = ret_text.replace('\'', "''");
+                (ret_text.contains("error"), false, ret_clean) // Go uses error, not Result/Option
+            } else {
+                (false, false, String::new())
+            }
+        }
+        Language::TypeScript | Language::TypeScriptTSX => {
+            if let Some(return_type_node) = node.child_by_field_name("return_type") {
+                let ret_text = return_type_node.utf8_text(source).unwrap_or("");
+                let ret_clean = ret_text.replace('\'', "''");
+                (false, false, ret_clean) // TypeScript has explicit return types
+            } else {
+                (false, false, String::new())
+            }
+        }
+        _ => (false, false, String::new()),
+    };
+
+    // Count generics
+    let generic_count = match language {
+        Language::Rust => node
+            .child_by_field_name("type_parameters")
+            .map(|tp| {
+                tp.children(&mut tp.walk())
+                    .filter(|c| c.kind() == "type_identifier" || c.kind() == "lifetime")
+                    .count()
+            })
+            .unwrap_or(0),
+        _ => 0, // Go doesn't have generics (until recently), Solidity doesn't
+    };
+
+    // Insert function facts with parameter and return type details
+    sql.push_str(&format!(
+        "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, '{}', '{}');\n",
+        escape_sql(file_path),
+        escape_sql(name),
+        takes_mut_self,
+        takes_mut_params,
+        returns_result,
+        returns_option,
+        is_async,
+        is_unsafe,
+        is_public,
+        parameter_count,
+        generic_count,
+        parameter_list,  // Already escaped with '' replacement
+        return_type      // Already escaped with '' replacement
+    ));
+
+    // Extract behavioral hints
+    if language == Language::Rust {
+        extract_behavioral_hints(node, source, file_path, name, sql);
+    }
+}
+
+/// Extract type definitions for vocabulary
+fn extract_type_definition(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    kind: &str,
+    sql: &mut String,
+    language: languages::Language,
+) {
+    use crate::commands::scrape::languages::Language;
+
+    // Get the full definition (first line for brevity)
+    let definition = node
+        .utf8_text(source)
+        .unwrap_or("")
+        .lines()
+        .next()
+        .unwrap_or("")
+        .replace('\'', "''");
+
+    // Determine visibility
+    let visibility = match language {
+        Language::Rust => {
+            if node.children(&mut node.walk()).any(|child| {
+                if child.kind() == "visibility_modifier" {
+                    let vis_text = child.utf8_text(source).unwrap_or("");
+                    vis_text.contains("pub(crate)")
+                } else {
+                    false
+                }
+            }) {
+                "pub(crate)"
+            } else if node
+                .children(&mut node.walk())
+                .any(|child| child.kind() == "visibility_modifier")
+            {
+                "pub"
+            } else {
+                "private"
+            }
+        }
+        Language::Go => {
+            // In Go, uppercase = public
+            if name.chars().next().is_some_and(|c| c.is_uppercase()) {
+                "pub"
+            } else {
+                "private"
+            }
+        }
+        Language::Solidity => "pub", // Most things in Solidity are public by default
+        Language::Python => {
+            // Python convention: _ prefix = private
+            if name.starts_with('_') {
+                "private"
+            } else {
+                "pub"
+            }
+        }
+        Language::JavaScript
+        | Language::JavaScriptJSX
+        | Language::TypeScript
+        | Language::TypeScriptTSX => {
+            // JS/TS: look for export keyword
+            let text = node.utf8_text(source).unwrap_or("");
+            if text.contains("export") {
+                "pub"
+            } else {
+                "private"
+            }
+        }
+        Language::Unknown => "private",
+    };
+
+    // Insert type vocabulary
+    sql.push_str(&format!(
+        "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', '{}', '{}', '{}');\n",
+        escape_sql(file_path),
+        escape_sql(name),
+        escape_sql(&definition),
+        kind,
+        visibility
+    ));
+}
+
+/// Extract import facts
+fn extract_import_fact(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    sql: &mut String,
+    language: languages::Language,
+) {
+    use crate::commands::scrape::languages::Language;
+
+    let import_text = node.utf8_text(source).unwrap_or("");
+
+    match language {
+        Language::Rust => {
+            // Parse Rust use statements
+            let import_clean = import_text.trim_start_matches("use ").trim_end_matches(';');
+
+            // Determine if external
+            let is_external = !import_clean.starts_with("crate::")
+                && !import_clean.starts_with("super::")
+                && !import_clean.starts_with("self::");
+
+            // Extract the imported item (last part after ::)
+            let imported_item = import_clean.split("::").last().unwrap_or(import_clean);
+
+            // Extract the source module
+            let imported_from = if import_clean.contains("::") {
+                import_clean
+                    .rsplit_once("::")
+                    .map(|(from, _)| from)
+                    .unwrap_or(import_clean)
+            } else {
+                import_clean
+            };
+
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');\n",
+                escape_sql(file_path),
+                escape_sql(imported_item),
+                escape_sql(imported_from),
+                is_external
+            ));
+        }
+        Language::Go => {
+            // Parse Go imports
+            let import_clean = import_text
+                .trim_start_matches("import ")
+                .trim()
+                .trim_matches('"');
+
+            let is_external = !import_clean.starts_with(".");
+
+            let imported_item = import_clean.split('/').next_back().unwrap_or(import_clean);
+
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
+                escape_sql(file_path),
+                escape_sql(imported_item),
+                escape_sql(import_clean),
+                is_external
+            ));
+        }
+        Language::Solidity => {
+            // Parse Solidity imports
+            if let Some(path_match) = import_text.split('"').nth(1) {
+                let is_external = path_match.starts_with('@') || path_match.starts_with("http");
+
+                sql.push_str(&format!(
+                    "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
+                    escape_sql(file_path),
+                    escape_sql(path_match),
+                    escape_sql(path_match),
+                    is_external
+                ));
+            }
+        }
+        Language::Python => {
+            // Python imports: import x or from x import y
+            // Simple extraction - just store the whole import for now
+            let import_clean = import_text.trim();
+            let is_external = !import_clean.contains("from .");
+
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
+                escape_sql(file_path),
+                escape_sql(import_clean),
+                escape_sql(import_clean),
+                is_external
+            ));
+        }
+        Language::JavaScript
+        | Language::JavaScriptJSX
+        | Language::TypeScript
+        | Language::TypeScriptTSX => {
+            // JS/TS imports: import x from 'y'
+            // Simple extraction - just store the module path
+            if let Some(module_match) = import_text
+                .split('\'')
+                .nth(1)
+                .or_else(|| import_text.split('"').nth(1))
+            {
+                let is_external = !module_match.starts_with('.');
+
+                sql.push_str(&format!(
+                    "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
+                    escape_sql(file_path),
+                    escape_sql(module_match),
+                    escape_sql(module_match),
+                    is_external
+                ));
+            }
+        }
+        Language::Unknown => {} // Skip unknown languages
+    }
+}
+
+/// Extract behavioral hints (code smells as facts)
+fn extract_behavioral_hints(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    function_name: &str,
+    sql: &mut String,
+) {
+    // Only extract for function bodies
+    if let Some(body) = node.child_by_field_name("body") {
+        let body_text = body.utf8_text(source).unwrap_or("");
+
+        // Count unwrap calls
+        let calls_unwrap = body_text.matches(".unwrap()").count();
+
+        // Count expect calls
+        let calls_expect = body_text.matches(".expect(").count();
+
+        // Check for panic! macro
+        let has_panic_macro = body_text.contains("panic!");
+
+        // Check for todo! macro
+        let has_todo_macro = body_text.contains("todo!");
+
+        // Check for unsafe blocks
+        let has_unsafe_block = body_text.contains("unsafe {");
+
+        // Check for Mutex usage
+        let has_mutex = body_text.contains("Mutex");
+
+        // Check for Arc usage
+        let has_arc = body_text.contains("Arc<") || body_text.contains("Arc::");
+
+        // Only insert if there are any behavioral hints
+        if calls_unwrap > 0
+            || calls_expect > 0
+            || has_panic_macro
+            || has_todo_macro
+            || has_unsafe_block
+            || has_mutex
+            || has_arc
+        {
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO behavioral_hints (file, function, calls_unwrap, calls_expect, has_panic_macro, has_todo_macro, has_unsafe_block, has_mutex, has_arc) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
+                escape_sql(file_path),
+                escape_sql(function_name),
+                calls_unwrap,
+                calls_expect,
+                has_panic_macro,
+                has_todo_macro,
+                has_unsafe_block,
+                has_mutex,
+                has_arc
+            ));
+        }
+    }
+}
+
+/// Escape SQL strings
+fn escape_sql(s: &str) -> String {
+    s.replace('\'', "''")
+}
+// ============================================================================
+// FINGERPRINT MODULE
+// ============================================================================
+mod fingerprint {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use tree_sitter::Node;
+
+    /// Compact 16-byte fingerprint for code patterns
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Fingerprint {
+        pub pattern: u32,    // AST shape hash
+        pub imports: u32,    // Dependency hash
+        pub complexity: u16, // Cyclomatic complexity
+        pub flags: u16,      // Feature flags
+    }
+
+    impl Fingerprint {
+        /// Generate fingerprint from tree-sitter AST node
+        pub fn from_ast(node: Node, source: &[u8]) -> Self {
+            let pattern = hash_ast_shape(node, source);
+            let imports = hash_imports(node, source);
+            let complexity = calculate_complexity(node) as u16;
+            let flags = detect_features(node, source);
+
+            Self {
+                pattern,
+                imports,
+                complexity,
+                flags,
+            }
+        }
+    }
+
+    /// Hash the AST structure (types only, not content)
+    fn hash_ast_shape(node: Node, _source: &[u8]) -> u32 {
+        let mut hasher = DefaultHasher::new();
+        hash_node_shape(&mut hasher, node);
+        (hasher.finish() & 0xFFFFFFFF) as u32
+    }
+
+    fn hash_node_shape(hasher: &mut impl Hasher, node: Node) {
+        // Hash node type (structure, not content)
+        node.kind().hash(hasher);
+
+        // Hash child structure recursively
+        let mut cursor = node.walk();
+        if cursor.goto_first_child() {
+            loop {
+                hash_node_shape(hasher, cursor.node());
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Hash imports/dependencies
+    fn hash_imports(node: Node, source: &[u8]) -> u32 {
+        let mut hasher = DefaultHasher::new();
+        let mut cursor = node.walk();
+
+        find_imports(&mut cursor, source, &mut hasher);
+        (hasher.finish() & 0xFFFFFFFF) as u32
+    }
+
+    fn find_imports(cursor: &mut tree_sitter::TreeCursor, source: &[u8], hasher: &mut impl Hasher) {
+        let node = cursor.node();
+
+        if node.kind() == "use_declaration" {
+            if let Ok(text) = node.utf8_text(source) {
+                text.hash(hasher);
+            }
+        }
+
+        if cursor.goto_first_child() {
+            loop {
+                find_imports(cursor, source, hasher);
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+            cursor.goto_parent();
+        }
+    }
+
+    /// Calculate cyclomatic complexity
+    fn calculate_complexity(node: Node) -> usize {
+        let mut complexity = 1; // Base complexity
+        let mut cursor = node.walk();
+
+        count_branches(&mut cursor, &mut complexity);
+        complexity
+    }
+
+    fn count_branches(cursor: &mut tree_sitter::TreeCursor, complexity: &mut usize) {
+        let node = cursor.node();
+
+        match node.kind() {
+            "if_expression" | "match_expression" | "while_expression" | "for_expression" => {
+                *complexity += 1;
+            }
+            "match_arm" => {
+                // Each arm adds a branch
+                *complexity += 1;
+            }
+            _ => {}
+        }
+
+        if cursor.goto_first_child() {
+            loop {
+                count_branches(cursor, complexity);
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+            cursor.goto_parent();
+        }
+    }
+
+    /// Detect feature flags (async, unsafe, etc.)
+    fn detect_features(node: Node, source: &[u8]) -> u16 {
+        let mut flags = 0u16;
+        let mut cursor = node.walk();
+
+        detect_features_recursive(&mut cursor, source, &mut flags);
+        flags
+    }
+
+    fn detect_features_recursive(
+        cursor: &mut tree_sitter::TreeCursor,
+        source: &[u8],
+        flags: &mut u16,
+    ) {
+        let node = cursor.node();
+
+        // Check for various features
+        match node.kind() {
+            "async" => *flags |= 0x0001,                   // Bit 0: async
+            "unsafe_block" | "unsafe" => *flags |= 0x0002, // Bit 1: unsafe
+            "macro_invocation" => {
+                if let Ok(text) = node.utf8_text(source) {
+                    if text.starts_with("panic!") || text.starts_with("unreachable!") {
+                        *flags |= 0x0004; // Bit 2: has panic
+                    }
+                    if text.starts_with("todo!") || text.starts_with("unimplemented!") {
+                        *flags |= 0x0008; // Bit 3: has todo
+                    }
+                }
+            }
+            "question_mark" => *flags |= 0x0010, // Bit 4: uses ?
+            "generic_type" | "generic_function" => *flags |= 0x0020, // Bit 5: generic
+            "trait_bounds" => *flags |= 0x0040,  // Bit 6: has trait bounds
+            "lifetime" => *flags |= 0x0080,      // Bit 7: has lifetimes
+            _ => {}
+        }
+
+        if cursor.goto_first_child() {
+            loop {
+                detect_features_recursive(cursor, source, flags);
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+            cursor.goto_parent();
+        }
+    }
+
+    /// Generate DuckDB schema for fingerprint storage
+    pub fn generate_schema() -> &'static str {
+        r#"
+-- Compact fingerprint storage (columnar for SIMD)
+CREATE TABLE IF NOT EXISTS code_fingerprints (
+    path VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    kind VARCHAR NOT NULL,  -- function, struct, trait, impl
+    pattern UINTEGER,       -- AST shape hash
+    imports UINTEGER,       -- Dependency hash  
+    complexity USMALLINT,   -- Cyclomatic complexity
+    flags USMALLINT,        -- Feature bitmask
+    PRIMARY KEY (path, name, kind)
+);
+
+-- Full-text search for actual code search
+CREATE TABLE IF NOT EXISTS code_search (
+    path VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    signature VARCHAR,      -- Function/struct signature
+    context VARCHAR,        -- Surrounding code snippet
+    PRIMARY KEY (path, name)
+);
+
+-- Type vocabulary: The domain language (compiler-verified truth)
+CREATE TABLE IF NOT EXISTS type_vocabulary (
+    file VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    definition TEXT,        -- 'type NodeId = u32' or 'struct User { ... }'
+    kind VARCHAR,          -- 'type_alias', 'struct', 'enum', 'const'
+    visibility VARCHAR,     -- 'pub', 'pub(crate)', 'private'
+    usage_count INTEGER DEFAULT 0,
+    PRIMARY KEY (file, name)
+);
+
+-- Function facts: Behavioral signals without interpretation
+CREATE TABLE IF NOT EXISTS function_facts (
+    file VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    takes_mut_self BOOLEAN,     -- Thread safety signal
+    takes_mut_params BOOLEAN,   -- Mutation indicator
+    returns_result BOOLEAN,     -- Error handling
+    returns_option BOOLEAN,     -- Nullability
+    is_async BOOLEAN,          -- Concurrency
+    is_unsafe BOOLEAN,         -- Safety requirements
+    is_public BOOLEAN,         -- API surface
+    parameter_count INTEGER,
+    generic_count INTEGER,      -- Complexity indicator
+    parameters TEXT,            -- Parameter names and types
+    return_type TEXT,           -- Return type signature
+    PRIMARY KEY (file, name)
+);
+
+-- Import facts: Navigation and dependencies
+CREATE TABLE IF NOT EXISTS import_facts (
+    importer_file VARCHAR NOT NULL,
+    imported_item VARCHAR NOT NULL,
+    imported_from VARCHAR,      -- Source module/crate
+    is_external BOOLEAN,       -- External crate?
+    import_kind VARCHAR,        -- 'use', 'mod', 'extern'
+    PRIMARY KEY (importer_file, imported_item)
+);
+
+-- Documentation: Searchable docs with keywords for LLM context retrieval
+CREATE TABLE IF NOT EXISTS documentation (
+    file VARCHAR NOT NULL,
+    symbol_name VARCHAR NOT NULL,
+    symbol_type VARCHAR,        -- 'function', 'struct', 'module', 'field'
+    line_number INTEGER,
+    doc_raw TEXT,              -- Original with comment markers
+    doc_clean TEXT,            -- Cleaned text for display
+    doc_summary VARCHAR,       -- First sentence (fast preview)
+    keywords VARCHAR[],        -- Extracted keywords for search
+    doc_length INTEGER,        -- Character count
+    has_examples BOOLEAN,      -- Contains code blocks
+    has_params BOOLEAN,        -- Documents parameters
+    parent_symbol VARCHAR,     -- For nested items (methods in impl blocks)
+    PRIMARY KEY (file, symbol_name)
+);
+
+-- Call graph: Function relationships for context traversal
+CREATE TABLE IF NOT EXISTS call_graph (
+    caller VARCHAR NOT NULL,
+    callee VARCHAR NOT NULL,
+    file VARCHAR NOT NULL,
+    call_type VARCHAR,         -- 'direct', 'method', 'async', 'callback'
+    line_number INTEGER        -- Where the call happens
+);
+
+CREATE INDEX IF NOT EXISTS idx_caller ON call_graph(caller);
+CREATE INDEX IF NOT EXISTS idx_callee ON call_graph(callee);
+
+-- Behavioral hints: Code smell detection (facts only)
+CREATE TABLE IF NOT EXISTS behavioral_hints (
+    file VARCHAR NOT NULL,
+    function VARCHAR NOT NULL,
+    calls_unwrap INTEGER DEFAULT 0,     -- Count of .unwrap()
+    calls_expect INTEGER DEFAULT 0,     -- Count of .expect()
+    has_panic_macro BOOLEAN,           -- Contains panic!()
+    has_todo_macro BOOLEAN,            -- Contains todo!()
+    has_unsafe_block BOOLEAN,          -- Contains unsafe {}
+    has_mutex BOOLEAN,                 -- Thread synchronization
+    has_arc BOOLEAN,                   -- Shared ownership
+    PRIMARY KEY (file, function)
+);
+
+-- Index metadata for incremental updates
+CREATE TABLE IF NOT EXISTS index_state (
+    path VARCHAR PRIMARY KEY,
+    mtime BIGINT NOT NULL,
+    hash VARCHAR,           -- File content hash
+    indexed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Track files we skipped due to missing language support
+CREATE TABLE IF NOT EXISTS skipped_files (
+    extension VARCHAR PRIMARY KEY,
+    file_count INTEGER DEFAULT 0,
+    total_bytes INTEGER DEFAULT 0,
+    example_path VARCHAR,
+    common_name VARCHAR     -- e.g., "Python", "TypeScript"
+);
+
+-- Create indexes for fast lookups
+CREATE INDEX IF NOT EXISTS idx_fingerprint_pattern ON code_fingerprints(pattern);
+CREATE INDEX IF NOT EXISTS idx_fingerprint_complexity ON code_fingerprints(complexity);
+CREATE INDEX IF NOT EXISTS idx_fingerprint_flags ON code_fingerprints(flags);
+CREATE INDEX IF NOT EXISTS idx_type_vocabulary_kind ON type_vocabulary(kind);
+CREATE INDEX IF NOT EXISTS idx_function_facts_public ON function_facts(is_public);
+CREATE INDEX IF NOT EXISTS idx_import_facts_external ON import_facts(is_external);
+CREATE INDEX IF NOT EXISTS idx_documentation_symbol ON documentation(symbol_name);
+CREATE INDEX IF NOT EXISTS idx_documentation_type ON documentation(symbol_type);
+"#
+    }
+}
+
+// ============================================================================
+// LANGUAGES MODULE
+// ============================================================================
+mod languages {
+    use anyhow::{Context, Result};
+    use std::path::Path;
+    use tree_sitter::Parser;
+
+    /// Supported programming languages
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub enum Language {
+        Rust,
+        Go,
+        Solidity,
+        Python,
+        JavaScript,
+        JavaScriptJSX, // .jsx files
+        TypeScript,
+        TypeScriptTSX, // .tsx files
+        Unknown,
+    }
+
+    impl Language {
+        /// Detect language from file extension
+        pub fn from_path(path: &Path) -> Self {
+            match path.extension().and_then(|ext| ext.to_str()) {
+                Some("rs") => Language::Rust,
+                Some("go") => Language::Go,
+                Some("sol") => Language::Solidity,
+                Some("py") => Language::Python,
+                Some("js") | Some("mjs") => Language::JavaScript,
+                Some("jsx") => Language::JavaScriptJSX,
+                Some("ts") => Language::TypeScript,
+                Some("tsx") => Language::TypeScriptTSX,
+                _ => Language::Unknown,
+            }
+        }
+
+        /// Convert to patina_metal::Metal enum
+        pub fn to_metal(self) -> Option<patina_metal::Metal> {
+            match self {
+                Language::Rust => Some(patina_metal::Metal::Rust),
+                Language::Go => Some(patina_metal::Metal::Go),
+                Language::Solidity => Some(patina_metal::Metal::Solidity),
+                Language::Python => Some(patina_metal::Metal::Python),
+                Language::JavaScript | Language::JavaScriptJSX => {
+                    Some(patina_metal::Metal::JavaScript)
+                }
+                Language::TypeScript | Language::TypeScriptTSX => {
+                    Some(patina_metal::Metal::TypeScript)
+                }
+                Language::Unknown => None,
+            }
+        }
+    }
+
+    /// Create a parser for a specific file path, handling TypeScript's tsx vs ts distinction
+    pub fn create_parser_for_path(path: &Path) -> Result<Parser> {
+        let language = Language::from_path(path);
+        let metal = language
+            .to_metal()
+            .ok_or_else(|| anyhow::anyhow!("Unsupported language: {:?}", language))?;
+
+        // Use the extension-aware method for TypeScript to get the right parser
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let ts_lang = metal
+            .tree_sitter_language_for_ext(ext)
+            .ok_or_else(|| anyhow::anyhow!("No parser available for {:?}", language))?;
+
+        let mut parser = Parser::new();
+        parser
+            .set_language(&ts_lang)
+            .context("Failed to set language")?;
+
+        Ok(parser)
+    }
 }

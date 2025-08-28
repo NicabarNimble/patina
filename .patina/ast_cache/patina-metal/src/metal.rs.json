@@ -1,0 +1,302 @@
+{
+  "file": "./patina-metal/src/metal.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "all",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 21,
+      "line_end": 31,
+      "doc_comment": null
+    },
+    {
+      "name": "from_path",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 34,
+      "line_end": 37,
+      "doc_comment": null
+    },
+    {
+      "name": "from_extension",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 40,
+      "line_end": 51,
+      "doc_comment": null
+    },
+    {
+      "name": "tree_sitter_language",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 54,
+      "line_end": 67,
+      "doc_comment": null
+    },
+    {
+      "name": "tree_sitter_language_for_ext",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 71,
+      "line_end": 79,
+      "doc_comment": null
+    },
+    {
+      "name": "file_pattern",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 82,
+      "line_end": 92,
+      "doc_comment": null
+    },
+    {
+      "name": "normalize_node_kind",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 95,
+      "line_end": 161,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "tree_sitter::Language as TSLanguage",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "crate::grammars",
+      "items": [],
+      "alias": null,
+      "line": 5
+    }
+  ],
+  "calls": [
+    {
+      "target": "vec!",
+      "caller": "all",
+      "line": 22,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "from_path",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extension",
+      "caller": "from_path",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Self::from_extension",
+      "caller": "from_path",
+      "line": 36,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "from_extension",
+      "line": 42,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "from_extension",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "from_extension",
+      "line": 44,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "from_extension",
+      "line": 45,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "from_extension",
+      "line": 46,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "from_extension",
+      "line": 47,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "from_extension",
+      "line": 48,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "tree_sitter_language",
+      "line": 56,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "grammars::language_rust",
+      "caller": "tree_sitter_language",
+      "line": 56,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "tree_sitter_language",
+      "line": 57,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "grammars::language_go",
+      "caller": "tree_sitter_language",
+      "line": 57,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "tree_sitter_language",
+      "line": 58,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "grammars::language_solidity",
+      "caller": "tree_sitter_language",
+      "line": 58,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "tree_sitter_language",
+      "line": 63,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "grammars::language_python",
+      "caller": "tree_sitter_language",
+      "line": 63,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "tree_sitter_language",
+      "line": 64,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "grammars::language_javascript",
+      "caller": "tree_sitter_language",
+      "line": 64,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "tree_sitter_language",
+      "line": 65,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "grammars::language_typescript",
+      "caller": "tree_sitter_language",
+      "line": 65,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "tree_sitter_language_for_ext",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "grammars::language_tsx",
+      "caller": "tree_sitter_language_for_ext",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "tree_sitter_language_for_ext",
+      "line": 75,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "grammars::language_typescript",
+      "caller": "tree_sitter_language_for_ext",
+      "line": 75,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "tree_sitter_language",
+      "caller": "tree_sitter_language_for_ext",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
+}

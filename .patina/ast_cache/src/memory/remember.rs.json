@@ -1,0 +1,952 @@
+{
+  "file": "./src/memory/remember.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 8,
+      "line_end": 58,
+      "doc_comment": null
+    },
+    {
+      "name": "read_active_session",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 71,
+      "line_end": 79,
+      "doc_comment": null
+    },
+    {
+      "name": "read_last_session",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 81,
+      "line_end": 115,
+      "doc_comment": null
+    },
+    {
+      "name": "parse_session_file",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 117,
+      "line_end": 164,
+      "doc_comment": null
+    },
+    {
+      "name": "show_relevant_files",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 166,
+      "line_end": 207,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "RememberCommand",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 5,
+      "line_end": 5,
+      "doc_comment": null
+    },
+    {
+      "name": "SessionInfo",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 62,
+      "line_end": 69,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "super::MemorySystem",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 3
+    }
+  ],
+  "calls": [
+    {
+      "target": "MemorySystem::new",
+      "caller": "execute",
+      "line": 9,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "remember",
+      "caller": "execute",
+      "line": 10,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "read_active_session",
+      "caller": "execute",
+      "line": 13,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "read_last_session",
+      "caller": "execute",
+      "line": 14,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 16,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 21,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "execute",
+      "line": 23,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 24,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 26,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 33,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 34,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 35,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "execute",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 38,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 40,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "execute",
+      "line": 46,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 47,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "execute",
+      "line": 48,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "execute",
+      "line": 48,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 54,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "show_relevant_files",
+      "caller": "execute",
+      "line": 55,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 57,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "read_active_session",
+      "line": 72,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "read_active_session",
+      "line": 73,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "read_active_session",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::read_to_string",
+      "caller": "read_active_session",
+      "line": 77,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "parse_session_file",
+      "caller": "read_active_session",
+      "line": 78,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "read_last_session",
+      "line": 82,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "read_last_session",
+      "line": 83,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "read_last_session",
+      "line": 84,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::read_to_string",
+      "caller": "read_last_session",
+      "line": 87,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "read_last_session",
+      "line": 90,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "read_last_session",
+      "line": 92,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "read_last_session",
+      "line": 93,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "read_last_session",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "read_last_session",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "read_last_session",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "read_last_session",
+      "line": 95,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "read_last_session",
+      "line": 97,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "read_last_session",
+      "line": 97,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "read_last_session",
+      "line": 103,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "read_last_session",
+      "line": 104,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "read_last_session",
+      "line": 104,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "read_last_session",
+      "line": 106,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "read_last_session",
+      "line": 107,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "read_last_session",
+      "line": 108,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "read_last_session",
+      "line": 109,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "read_last_session",
+      "line": 110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "read_last_session",
+      "line": 113,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "parse_session_file",
+      "line": 119,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "parse_session_file",
+      "line": 120,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "parse_session_file",
+      "line": 121,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "parse_session_file",
+      "line": 122,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "parse_session_file",
+      "line": 123,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "parse_session_file",
+      "line": 124,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "parse_session_file",
+      "line": 130,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "parse_session_file",
+      "line": 131,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "parse_session_file",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "parse_session_file",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "parse_session_file",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "parse_session_file",
+      "line": 133,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "parse_session_file",
+      "line": 134,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "parse_session_file",
+      "line": 134,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "parse_session_file",
+      "line": 134,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "parse_session_file",
+      "line": 135,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "parse_session_file",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "parse_session_file",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "parse_session_file",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "parse_session_file",
+      "line": 137,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "parse_session_file",
+      "line": 140,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "parse_session_file",
+      "line": 143,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "parse_session_file",
+      "line": 146,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "parse_session_file",
+      "line": 147,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "parse_session_file",
+      "line": 147,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "parse_session_file",
+      "line": 147,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "parse_session_file",
+      "line": 148,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "parse_session_file",
+      "line": 148,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "parse_session_file",
+      "line": 149,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "parse_session_file",
+      "line": 150,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "parse_session_file",
+      "line": 151,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "parse_session_file",
+      "line": 151,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "parse_session_file",
+      "line": 151,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "parse_session_file",
+      "line": 152,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "parse_session_file",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "parse_session_file",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "parse_session_file",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "parse_session_file",
+      "line": 154,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "parse_session_file",
+      "line": 154,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "parse_session_file",
+      "line": 159,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "parse_session_file",
+      "line": 160,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "parse_session_file",
+      "line": 160,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "parse_session_file",
+      "line": 162,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "show_relevant_files",
+      "line": 168,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "show_relevant_files",
+      "line": 168,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::process::Command::new",
+      "caller": "show_relevant_files",
+      "line": 168,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "show_relevant_files",
+      "line": 172,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "show_relevant_files",
+      "line": 173,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "show_relevant_files",
+      "line": 174,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "show_relevant_files",
+      "line": 174,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "show_relevant_files",
+      "line": 174,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "show_relevant_files",
+      "line": 176,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "show_relevant_files",
+      "line": 177,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "show_relevant_files",
+      "line": 179,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "show_relevant_files",
+      "line": 185,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "show_relevant_files",
+      "line": 185,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::process::Command::new",
+      "caller": "show_relevant_files",
+      "line": 185,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "show_relevant_files",
+      "line": 189,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "show_relevant_files",
+      "line": 190,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "show_relevant_files",
+      "line": 191,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "show_relevant_files",
+      "line": 191,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "show_relevant_files",
+      "line": 191,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "show_relevant_files",
+      "line": 191,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "show_relevant_files",
+      "line": 191,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "show_relevant_files",
+      "line": 193,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "show_relevant_files",
+      "line": 193,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "show_relevant_files",
+      "line": 198,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "show_relevant_files",
+      "line": 199,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "show_relevant_files",
+      "line": 201,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "show_relevant_files",
+      "line": 206,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

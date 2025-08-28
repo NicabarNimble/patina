@@ -1,0 +1,224 @@
+{
+  "file": "./modules/code-executor/executor.go",
+  "language": "go",
+  "functions": [
+    {
+      "name": "New",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 37,
+      "line_end": 41,
+      "doc_comment": null
+    },
+    {
+      "name": "Execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 44,
+      "line_end": 104,
+      "doc_comment": null
+    },
+    {
+      "name": "ExecuteSimple",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 107,
+      "line_end": 111,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "Options",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 13,
+      "line_end": 19,
+      "doc_comment": null
+    },
+    {
+      "name": "Result",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 22,
+      "line_end": 29,
+      "doc_comment": null
+    },
+    {
+      "name": "Executor",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 32,
+      "line_end": 34,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "context",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "fmt",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "io",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "time",
+      "items": [],
+      "alias": null,
+      "line": 7
+    },
+    {
+      "path": "dagger.io/dagger",
+      "items": [],
+      "alias": null,
+      "line": 9
+    }
+  ],
+  "calls": [
+    {
+      "target": "len",
+      "caller": "Execute",
+      "line": 45,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "Execute",
+      "line": 46,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WithTimeout",
+      "caller": "Execute",
+      "line": 52,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cancel",
+      "caller": "Execute",
+      "line": 53,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Now",
+      "caller": "Execute",
+      "line": 56,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WithWorkdir",
+      "caller": "Execute",
+      "line": 60,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WithEnvVariable",
+      "caller": "Execute",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WithExec",
+      "caller": "Execute",
+      "line": 68,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Stdout",
+      "caller": "Execute",
+      "line": 71,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Stderr",
+      "caller": "Execute",
+      "line": 74,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Now",
+      "caller": "Execute",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Sub",
+      "caller": "Execute",
+      "line": 82,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "Execute",
+      "line": 83,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Stderr",
+      "caller": "Execute",
+      "line": 86,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Now",
+      "caller": "Execute",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Sub",
+      "caller": "Execute",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Execute",
+      "caller": "ExecuteSimple",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
+}

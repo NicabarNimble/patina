@@ -1,0 +1,75 @@
+{
+  "file": "./test_simple_calls.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "simple_function",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 1,
+      "line_end": 5,
+      "doc_comment": null
+    },
+    {
+      "name": "helper_one",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 7,
+      "line_end": 7,
+      "doc_comment": null
+    },
+    {
+      "name": "helper_two",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 8,
+      "line_end": 8,
+      "doc_comment": null
+    },
+    {
+      "name": "helper_three",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 9,
+      "line_end": 9,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [],
+  "calls": [
+    {
+      "target": "helper_one",
+      "caller": "simple_function",
+      "line": 2,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "helper_two",
+      "caller": "simple_function",
+      "line": 3,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "helper_three",
+      "caller": "simple_function",
+      "line": 4,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

@@ -1,0 +1,600 @@
+{
+  "file": "./modules/git-manager/manager.go",
+  "language": "go",
+  "functions": [
+    {
+      "name": "NewManager",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 19,
+      "line_end": 35,
+      "doc_comment": null
+    },
+    {
+      "name": "CreateWorktree",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 38,
+      "line_end": 61,
+      "doc_comment": null
+    },
+    {
+      "name": "RemoveWorktree",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 64,
+      "line_end": 90,
+      "doc_comment": null
+    },
+    {
+      "name": "GetStatus",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 93,
+      "line_end": 142,
+      "doc_comment": null
+    },
+    {
+      "name": "CreateBranch",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 154,
+      "line_end": 163,
+      "doc_comment": null
+    },
+    {
+      "name": "Commit",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 166,
+      "line_end": 189,
+      "doc_comment": null
+    },
+    {
+      "name": "Push",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 192,
+      "line_end": 211,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "Manager",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 13,
+      "line_end": 16,
+      "doc_comment": null
+    },
+    {
+      "name": "Status",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 145,
+      "line_end": 151,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "context",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "fmt",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "os",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "os/exec",
+      "items": [],
+      "alias": null,
+      "line": 7
+    },
+    {
+      "path": "path/filepath",
+      "items": [],
+      "alias": null,
+      "line": 8
+    },
+    {
+      "path": "strings",
+      "items": [],
+      "alias": null,
+      "line": 9
+    }
+  ],
+  "calls": [
+    {
+      "target": "Command",
+      "caller": "NewManager",
+      "line": 21,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Run",
+      "caller": "NewManager",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "NewManager",
+      "line": 23,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "MkdirAll",
+      "caller": "NewManager",
+      "line": 27,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "NewManager",
+      "line": 28,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Join",
+      "caller": "CreateWorktree",
+      "line": 39,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CommandContext",
+      "caller": "CreateWorktree",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Run",
+      "caller": "CreateWorktree",
+      "line": 44,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CommandContext",
+      "caller": "CreateWorktree",
+      "line": 48,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CommandContext",
+      "caller": "CreateWorktree",
+      "line": 51,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CombinedOutput",
+      "caller": "CreateWorktree",
+      "line": 55,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "CreateWorktree",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Join",
+      "caller": "RemoveWorktree",
+      "line": 65,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CommandContext",
+      "caller": "RemoveWorktree",
+      "line": 68,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CombinedOutput",
+      "caller": "RemoveWorktree",
+      "line": 71,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Contains",
+      "caller": "RemoveWorktree",
+      "line": 74,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "string",
+      "caller": "RemoveWorktree",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Printf",
+      "caller": "RemoveWorktree",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "RemoveAll",
+      "caller": "RemoveWorktree",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "IsNotExist",
+      "caller": "RemoveWorktree",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Printf",
+      "caller": "RemoveWorktree",
+      "line": 82,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CommandContext",
+      "caller": "RemoveWorktree",
+      "line": 86,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Run",
+      "caller": "RemoveWorktree",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CommandContext",
+      "caller": "GetStatus",
+      "line": 95,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Output",
+      "caller": "GetStatus",
+      "line": 97,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "GetStatus",
+      "line": 99,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CommandContext",
+      "caller": "GetStatus",
+      "line": 103,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Output",
+      "caller": "GetStatus",
+      "line": 105,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "GetStatus",
+      "line": 107,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Split",
+      "caller": "GetStatus",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "string",
+      "caller": "GetStatus",
+      "line": 112,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "TrimSpace",
+      "caller": "GetStatus",
+      "line": 118,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Contains",
+      "caller": "GetStatus",
+      "line": 120,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "append",
+      "caller": "GetStatus",
+      "line": 121,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "append",
+      "caller": "GetStatus",
+      "line": 123,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "CommandContext",
+      "caller": "GetStatus",
+      "line": 128,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Output",
+      "caller": "GetStatus",
+      "line": 130,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "GetStatus",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "TrimSpace",
+      "caller": "GetStatus",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "string",
+      "caller": "GetStatus",
+      "line": 136,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "GetStatus",
+      "line": 137,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "GetStatus",
+      "line": 137,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "TrimSpace",
+      "caller": "GetStatus",
+      "line": 140,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "string",
+      "caller": "GetStatus",
+      "line": 140,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "CommandContext",
+      "caller": "CreateBranch",
+      "line": 155,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CombinedOutput",
+      "caller": "CreateBranch",
+      "line": 158,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "CreateBranch",
+      "line": 159,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CommandContext",
+      "caller": "Commit",
+      "line": 168,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CombinedOutput",
+      "caller": "Commit",
+      "line": 169,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "Commit",
+      "line": 170,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "append",
+      "caller": "Commit",
+      "line": 176,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Sprintf",
+      "caller": "Commit",
+      "line": 176,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CommandContext",
+      "caller": "Commit",
+      "line": 179,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CombinedOutput",
+      "caller": "Commit",
+      "line": 180,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Contains",
+      "caller": "Commit",
+      "line": 182,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "string",
+      "caller": "Commit",
+      "line": 182,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "Commit",
+      "line": 185,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CommandContext",
+      "caller": "Push",
+      "line": 194,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Output",
+      "caller": "Push",
+      "line": 196,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "Push",
+      "line": 198,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "TrimSpace",
+      "caller": "Push",
+      "line": 200,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "string",
+      "caller": "Push",
+      "line": 200,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "CommandContext",
+      "caller": "Push",
+      "line": 203,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CombinedOutput",
+      "caller": "Push",
+      "line": 206,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "Push",
+      "line": 207,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
+}

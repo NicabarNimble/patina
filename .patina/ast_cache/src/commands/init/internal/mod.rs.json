@@ -1,0 +1,1299 @@
+{
+  "file": "./src/commands/init/internal/mod.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "execute_init",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 25,
+      "line_end": 163,
+      "doc_comment": null
+    },
+    {
+      "name": "display_environment_info",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 165,
+      "line_end": 176,
+      "doc_comment": null
+    },
+    {
+      "name": "handle_project_design",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 178,
+      "line_end": 200,
+      "doc_comment": null
+    },
+    {
+      "name": "setup_project_path",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 202,
+      "line_end": 213,
+      "doc_comment": null
+    },
+    {
+      "name": "copy_design_file_if_needed",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 215,
+      "line_end": 227,
+      "doc_comment": null
+    },
+    {
+      "name": "create_init_session",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 229,
+      "line_end": 251,
+      "doc_comment": null
+    },
+    {
+      "name": "initialize_navigation",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 253,
+      "line_end": 265,
+      "doc_comment": null
+    },
+    {
+      "name": "should_update_components",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 267,
+      "line_end": 280,
+      "doc_comment": null
+    },
+    {
+      "name": "update_components",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 282,
+      "line_end": 299,
+      "doc_comment": null
+    },
+    {
+      "name": "suggest_missing_tools",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 301,
+      "line_end": 329,
+      "doc_comment": null
+    },
+    {
+      "name": "to_title_case",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 337,
+      "line_end": 343,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "TitleCase",
+      "kind": "trait",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 332,
+      "line_end": 334,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 8
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 9
+    },
+    {
+      "path": "std::io::Write",
+      "items": [],
+      "alias": null,
+      "line": 10
+    },
+    {
+      "path": "std::path::{Path, PathBuf}",
+      "items": [],
+      "alias": null,
+      "line": 11
+    },
+    {
+      "path": "toml::Value",
+      "items": [],
+      "alias": null,
+      "line": 12
+    },
+    {
+      "path": "patina::environment::Environment",
+      "items": [],
+      "alias": null,
+      "line": 14
+    },
+    {
+      "path": "patina::layer::Layer",
+      "items": [],
+      "alias": null,
+      "line": 15
+    },
+    {
+      "path": "self::backup::{backup_gitignored_dirs, restore_session_files}",
+      "items": [],
+      "alias": null,
+      "line": 17
+    },
+    {
+      "path": "self::config::{create_project_config, handle_version_manifest}",
+      "items": [],
+      "alias": null,
+      "line": 18
+    },
+    {
+      "path": "self::patterns::copy_core_patterns_safe",
+      "items": [],
+      "alias": null,
+      "line": 19
+    },
+    {
+      "path": "self::validation::{determine_dev_environment, validate_environment}",
+      "items": [],
+      "alias": null,
+      "line": 20
+    },
+    {
+      "path": "super::design_wizard::{confirm, create_project_design_wizard}",
+      "items": [],
+      "alias": null,
+      "line": 22
+    },
+    {
+      "path": "crate::commands::init::tool_installer",
+      "items": [],
+      "alias": null,
+      "line": 302
+    }
+  ],
+  "calls": [
+    {
+      "target": "exists",
+      "caller": "execute_init",
+      "line": 29,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "execute_init",
+      "line": 29,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "backup_gitignored_dirs",
+      "caller": "execute_init",
+      "line": 30,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "execute_init",
+      "line": 34,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "execute_init",
+      "line": 34,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "execute_init",
+      "line": 34,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "execute_init",
+      "line": 34,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 35,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 36,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "confirm",
+      "caller": "execute_init",
+      "line": 41,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 42,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute_init",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "execute_init",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "execute_init",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "execute_init",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "execute_init",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "execute_init",
+      "line": 51,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "execute_init",
+      "line": 52,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "execute_init",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "execute_init",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "execute_init",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "execute_init",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 57,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 59,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 63,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Environment::detect",
+      "caller": "execute_init",
+      "line": 64,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_else",
+      "caller": "execute_init",
+      "line": 65,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "determine_dev_environment",
+      "caller": "execute_init",
+      "line": 65,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "display_environment_info",
+      "caller": "execute_init",
+      "line": 68,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "handle_project_design",
+      "caller": "execute_init",
+      "line": 71,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "toml::from_str",
+      "caller": "execute_init",
+      "line": 72,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "setup_project_path",
+      "caller": "execute_init",
+      "line": 75,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "copy_design_file_if_needed",
+      "caller": "execute_init",
+      "line": 78,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "execute_init",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Layer::new",
+      "caller": "execute_init",
+      "line": 82,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "execute_init",
+      "line": 83,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "init",
+      "caller": "execute_init",
+      "line": 83,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 86,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "patina::dev_env::get_dev_env",
+      "caller": "execute_init",
+      "line": 89,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "create_project_config",
+      "caller": "execute_init",
+      "line": 90,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "as_ref",
+      "caller": "execute_init",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "handle_version_manifest",
+      "caller": "execute_init",
+      "line": 100,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "should_update_components",
+      "caller": "execute_init",
+      "line": 104,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "patina::adapters::get_adapter",
+      "caller": "execute_init",
+      "line": 114,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "init_project",
+      "caller": "execute_init",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 116,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "restore_session_files",
+      "caller": "execute_init",
+      "line": 119,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "init_project",
+      "caller": "execute_init",
+      "line": 122,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 123,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "copy_core_patterns_safe",
+      "caller": "execute_init",
+      "line": 126,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 128,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "create_init_session",
+      "caller": "execute_init",
+      "line": 132,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "initialize_navigation",
+      "caller": "execute_init",
+      "line": 135,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "post_init",
+      "caller": "execute_init",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "update_components",
+      "caller": "execute_init",
+      "line": 142,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "validate_environment",
+      "caller": "execute_init",
+      "line": 146,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 147,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 149,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "suggest_missing_tools",
+      "caller": "execute_init",
+      "line": 154,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 156,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 157,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 158,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 159,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute_init",
+      "line": 160,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute_init",
+      "line": 162,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_environment_info",
+      "line": 166,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "display_environment_info",
+      "line": 169,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "handle_project_design",
+      "line": 179,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "handle_project_design",
+      "line": 181,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "handle_project_design",
+      "line": 182,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "handle_project_design",
+      "line": 183,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "handle_project_design",
+      "line": 186,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "handle_project_design",
+      "line": 187,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "confirm",
+      "caller": "handle_project_design",
+      "line": 189,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "create_project_design_wizard",
+      "caller": "handle_project_design",
+      "line": 190,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "handle_project_design",
+      "line": 191,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "handle_project_design",
+      "line": 192,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "handle_project_design",
+      "line": 193,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "handle_project_design",
+      "line": 195,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "handle_project_design",
+      "line": 198,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::read_to_string",
+      "caller": "handle_project_design",
+      "line": 198,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::env::current_dir",
+      "caller": "setup_project_path",
+      "line": 204,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "setup_project_path",
+      "line": 206,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "setup_project_path",
+      "line": 207,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "setup_project_path",
+      "line": 208,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "canonicalize",
+      "caller": "setup_project_path",
+      "line": 210,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "setup_project_path",
+      "line": 212,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "copy_design_file_if_needed",
+      "line": 216,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "copy_design_file_if_needed",
+      "line": 217,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::canonicalize",
+      "caller": "copy_design_file_if_needed",
+      "line": 219,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok",
+      "caller": "copy_design_file_if_needed",
+      "line": 220,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::canonicalize",
+      "caller": "copy_design_file_if_needed",
+      "line": 220,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_none",
+      "caller": "copy_design_file_if_needed",
+      "line": 222,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "copy_design_file_if_needed",
+      "line": 222,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::copy",
+      "caller": "copy_design_file_if_needed",
+      "line": 223,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "copy_design_file_if_needed",
+      "line": 224,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "copy_design_file_if_needed",
+      "line": 226,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "create_init_session",
+      "line": 236,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "create_init_session",
+      "line": 237,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_init_session",
+      "line": 246,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "create_init_session",
+      "line": 247,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "create_init_session",
+      "line": 248,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_init_session",
+      "line": 248,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "create_init_session",
+      "line": 250,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "initialize_navigation",
+      "line": 256,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "initialize_navigation",
+      "line": 256,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "initialize_navigation",
+      "line": 257,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "initialize_navigation",
+      "line": 258,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "initialize_navigation",
+      "line": 260,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "initialize_navigation",
+      "line": 261,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "initialize_navigation",
+      "line": 262,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "initialize_navigation",
+      "line": 264,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "should_update_components",
+      "line": 269,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "print!",
+      "caller": "should_update_components",
+      "line": 272,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "flush",
+      "caller": "should_update_components",
+      "line": 273,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::io::stdout",
+      "caller": "should_update_components",
+      "line": 273,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "should_update_components",
+      "line": 275,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "read_line",
+      "caller": "should_update_components",
+      "line": 276,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::io::stdin",
+      "caller": "should_update_components",
+      "line": 276,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "should_update_components",
+      "line": 277,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "should_update_components",
+      "line": 277,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "should_update_components",
+      "line": 279,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "should_update_components",
+      "line": 279,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "update_components",
+      "line": 283,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "print!",
+      "caller": "update_components",
+      "line": 286,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "flush",
+      "caller": "update_components",
+      "line": 287,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::io::stdout",
+      "caller": "update_components",
+      "line": 287,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "patina::adapters::get_adapter",
+      "caller": "update_components",
+      "line": 289,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "check_for_updates",
+      "caller": "update_components",
+      "line": 290,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "update_adapter_files",
+      "caller": "update_components",
+      "line": 291,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "update_components",
+      "line": 292,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "update_components",
+      "line": 294,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "update_components",
+      "line": 297,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "update_components",
+      "line": 298,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "tool_installer::get_available_tools",
+      "caller": "suggest_missing_tools",
+      "line": 305,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "suggest_missing_tools",
+      "line": 308,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "suggest_missing_tools",
+      "line": 308,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "suggest_missing_tools",
+      "line": 308,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "suggest_missing_tools",
+      "line": 311,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "suggest_missing_tools",
+      "line": 311,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "suggest_missing_tools",
+      "line": 311,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "suggest_missing_tools",
+      "line": 319,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "suggest_missing_tools",
+      "line": 320,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "suggest_missing_tools",
+      "line": 322,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "suggest_missing_tools",
+      "line": 324,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "suggest_missing_tools",
+      "line": 325,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "suggest_missing_tools",
+      "line": 328,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "chars",
+      "caller": "to_title_case",
+      "line": 338,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "next",
+      "caller": "to_title_case",
+      "line": 339,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "to_title_case",
+      "line": 340,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "first.to_uppercase().collect::<String>",
+      "caller": "to_title_case",
+      "line": 341,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_uppercase",
+      "caller": "to_title_case",
+      "line": 341,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "to_title_case",
+      "line": 341,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
+}

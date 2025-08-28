@@ -1,0 +1,187 @@
+{
+  "file": "./src/commands/test.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 5,
+      "line_end": 42,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "patina::dev_env",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 3
+    }
+  ],
+  "calls": [
+    {
+      "target": "context",
+      "caller": "execute",
+      "line": 6,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::current_dir",
+      "caller": "execute",
+      "line": 6,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "execute",
+      "line": 9,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "execute",
+      "line": 10,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::read_to_string",
+      "caller": "execute",
+      "line": 11,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::from_str",
+      "caller": "execute",
+      "line": 12,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "execute",
+      "line": 14,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "execute",
+      "line": 14,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "execute",
+      "line": 14,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "execute",
+      "line": 14,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "execute",
+      "line": 16,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "execute",
+      "line": 20,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "dev_env::get_dev_env",
+      "caller": "execute",
+      "line": 24,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "test",
+      "caller": "execute",
+      "line": 27,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 28,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fallback",
+      "caller": "execute",
+      "line": 31,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 32,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 33,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "dev_env::get_dev_env",
+      "caller": "execute",
+      "line": 35,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "test",
+      "caller": "execute",
+      "line": 36,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Err",
+      "caller": "execute",
+      "line": 38,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

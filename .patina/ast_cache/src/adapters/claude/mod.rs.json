@@ -1,0 +1,355 @@
+{
+  "file": "./src/adapters/claude/mod.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "new",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 25,
+      "line_end": 27,
+      "doc_comment": null
+    },
+    {
+      "name": "default",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 31,
+      "line_end": 33,
+      "doc_comment": null
+    },
+    {
+      "name": "name",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 37,
+      "line_end": 39,
+      "doc_comment": null
+    },
+    {
+      "name": "init_project",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 41,
+      "line_end": 48,
+      "doc_comment": null
+    },
+    {
+      "name": "post_init",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 50,
+      "line_end": 52,
+      "doc_comment": null
+    },
+    {
+      "name": "get_custom_commands",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 54,
+      "line_end": 68,
+      "doc_comment": null
+    },
+    {
+      "name": "get_context_file_path",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 70,
+      "line_end": 72,
+      "doc_comment": null
+    },
+    {
+      "name": "check_for_updates",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 74,
+      "line_end": 76,
+      "doc_comment": null
+    },
+    {
+      "name": "update_adapter_files",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 78,
+      "line_end": 80,
+      "doc_comment": null
+    },
+    {
+      "name": "get_sessions_path",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 82,
+      "line_end": 84,
+      "doc_comment": null
+    },
+    {
+      "name": "version",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 86,
+      "line_end": 88,
+      "doc_comment": null
+    },
+    {
+      "name": "get_version_changes",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 90,
+      "line_end": 92,
+      "doc_comment": null
+    },
+    {
+      "name": "get_changelog_since",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 94,
+      "line_end": 96,
+      "doc_comment": null
+    },
+    {
+      "name": "test_adapter_name",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 104,
+      "line_end": 107,
+      "doc_comment": null
+    },
+    {
+      "name": "test_custom_commands",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 110,
+      "line_end": 116,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "ClaudeAdapter",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 21,
+      "line_end": 21,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "crate::adapters::LLMAdapter",
+      "items": [],
+      "alias": null,
+      "line": 9
+    },
+    {
+      "path": "crate::environment::Environment",
+      "items": [],
+      "alias": null,
+      "line": 10
+    },
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 11
+    },
+    {
+      "path": "std::path::{Path, PathBuf}",
+      "items": [],
+      "alias": null,
+      "line": 12
+    },
+    {
+      "path": "toml::Value",
+      "items": [],
+      "alias": null,
+      "line": 13
+    },
+    {
+      "path": "internal::CLAUDE_ADAPTER_VERSION",
+      "items": [],
+      "alias": null,
+      "line": 18
+    },
+    {
+      "path": "super::*",
+      "items": [],
+      "alias": null,
+      "line": 101
+    }
+  ],
+  "calls": [
+    {
+      "target": "Self::new",
+      "caller": "default",
+      "line": 32,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "internal::init_project",
+      "caller": "init_project",
+      "line": 47,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "internal::post_init",
+      "caller": "post_init",
+      "line": 51,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "get_custom_commands",
+      "line": 55,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "internal::get_context_file_path",
+      "caller": "get_context_file_path",
+      "line": 71,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "internal::check_for_updates",
+      "caller": "check_for_updates",
+      "line": 75,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "internal::update_adapter_files",
+      "caller": "update_adapter_files",
+      "line": 79,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "get_sessions_path",
+      "line": 83,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "internal::get_sessions_path",
+      "caller": "get_sessions_path",
+      "line": 83,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "internal::get_version_changes",
+      "caller": "get_version_changes",
+      "line": 91,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "internal::get_changelog_since",
+      "caller": "get_changelog_since",
+      "line": 95,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ClaudeAdapter::new",
+      "caller": "test_adapter_name",
+      "line": 105,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_adapter_name",
+      "line": 106,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ClaudeAdapter::new",
+      "caller": "test_custom_commands",
+      "line": 111,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_custom_commands",
+      "caller": "test_custom_commands",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_custom_commands",
+      "line": 113,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_custom_commands",
+      "line": 114,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_custom_commands",
+      "line": 115,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

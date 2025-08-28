@@ -1,0 +1,595 @@
+{
+  "file": "./modules/environment-registry/registry_test.go",
+  "language": "go",
+  "functions": [
+    {
+      "name": "TestNewRegistry",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 7,
+      "line_end": 17,
+      "doc_comment": null
+    },
+    {
+      "name": "TestRegistry_Register",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 19,
+      "line_end": 50,
+      "doc_comment": null
+    },
+    {
+      "name": "TestRegistry_Get",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 52,
+      "line_end": 99,
+      "doc_comment": null
+    },
+    {
+      "name": "TestRegistry_List",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 101,
+      "line_end": 137,
+      "doc_comment": null
+    },
+    {
+      "name": "TestRegistry_Deregister",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 139,
+      "line_end": 167,
+      "doc_comment": null
+    },
+    {
+      "name": "TestRegistry_UpdateStatus",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 169,
+      "line_end": 194,
+      "doc_comment": null
+    },
+    {
+      "name": "TestRegistry_EmptyList",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 196,
+      "line_end": 207,
+      "doc_comment": null
+    },
+    {
+      "name": "TestRegistry_Exists",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 209,
+      "line_end": 232,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "testing",
+      "items": [],
+      "alias": null,
+      "line": 4
+    }
+  ],
+  "calls": [
+    {
+      "target": "NewRegistry",
+      "caller": "TestNewRegistry",
+      "line": 8,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "TestNewRegistry",
+      "line": 11,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Count",
+      "caller": "TestNewRegistry",
+      "line": 14,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "TestNewRegistry",
+      "line": 15,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Count",
+      "caller": "TestNewRegistry",
+      "line": 15,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewRegistry",
+      "caller": "TestRegistry_Register",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Register",
+      "caller": "TestRegistry_Register",
+      "line": 32,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatalf",
+      "caller": "TestRegistry_Register",
+      "line": 33,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Count",
+      "caller": "TestRegistry_Register",
+      "line": 36,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "TestRegistry_Register",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Count",
+      "caller": "TestRegistry_Register",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Register",
+      "caller": "TestRegistry_Register",
+      "line": 41,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestRegistry_Register",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Register",
+      "caller": "TestRegistry_Register",
+      "line": 47,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestRegistry_Register",
+      "line": 48,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewRegistry",
+      "caller": "TestRegistry_Get",
+      "line": 53,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Register",
+      "caller": "TestRegistry_Get",
+      "line": 65,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Get",
+      "caller": "TestRegistry_Get",
+      "line": 68,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatalf",
+      "caller": "TestRegistry_Get",
+      "line": 70,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "TestRegistry_Get",
+      "line": 74,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "TestRegistry_Get",
+      "line": 78,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Get",
+      "caller": "TestRegistry_Get",
+      "line": 83,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestRegistry_Get",
+      "line": 85,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Get",
+      "caller": "TestRegistry_Get",
+      "line": 89,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestRegistry_Get",
+      "line": 91,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Get",
+      "caller": "TestRegistry_Get",
+      "line": 95,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestRegistry_Get",
+      "line": 97,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewRegistry",
+      "caller": "TestRegistry_List",
+      "line": 102,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Register",
+      "caller": "TestRegistry_List",
+      "line": 116,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Register",
+      "caller": "TestRegistry_List",
+      "line": 117,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "List",
+      "caller": "TestRegistry_List",
+      "line": 120,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatalf",
+      "caller": "TestRegistry_List",
+      "line": 122,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "TestRegistry_List",
+      "line": 125,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "TestRegistry_List",
+      "line": 126,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "TestRegistry_List",
+      "line": 126,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "List",
+      "caller": "TestRegistry_List",
+      "line": 131,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestRegistry_List",
+      "line": 134,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewRegistry",
+      "caller": "TestRegistry_Deregister",
+      "line": 140,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Register",
+      "caller": "TestRegistry_Deregister",
+      "line": 147,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Deregister",
+      "caller": "TestRegistry_Deregister",
+      "line": 150,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatalf",
+      "caller": "TestRegistry_Deregister",
+      "line": 151,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Count",
+      "caller": "TestRegistry_Deregister",
+      "line": 154,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "TestRegistry_Deregister",
+      "line": 155,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Count",
+      "caller": "TestRegistry_Deregister",
+      "line": 155,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Deregister",
+      "caller": "TestRegistry_Deregister",
+      "line": 159,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestRegistry_Deregister",
+      "line": 160,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Deregister",
+      "caller": "TestRegistry_Deregister",
+      "line": 164,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestRegistry_Deregister",
+      "line": 165,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewRegistry",
+      "caller": "TestRegistry_UpdateStatus",
+      "line": 170,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Register",
+      "caller": "TestRegistry_UpdateStatus",
+      "line": 178,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "UpdateStatus",
+      "caller": "TestRegistry_UpdateStatus",
+      "line": 181,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatalf",
+      "caller": "TestRegistry_UpdateStatus",
+      "line": 182,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Get",
+      "caller": "TestRegistry_UpdateStatus",
+      "line": 185,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "TestRegistry_UpdateStatus",
+      "line": 187,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "UpdateStatus",
+      "caller": "TestRegistry_UpdateStatus",
+      "line": 191,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestRegistry_UpdateStatus",
+      "line": 192,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewRegistry",
+      "caller": "TestRegistry_EmptyList",
+      "line": 197,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "List",
+      "caller": "TestRegistry_EmptyList",
+      "line": 199,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatalf",
+      "caller": "TestRegistry_EmptyList",
+      "line": 201,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "TestRegistry_EmptyList",
+      "line": 204,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "TestRegistry_EmptyList",
+      "line": 205,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "TestRegistry_EmptyList",
+      "line": 205,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "NewRegistry",
+      "caller": "TestRegistry_Exists",
+      "line": 210,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Register",
+      "caller": "TestRegistry_Exists",
+      "line": 213,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Exists",
+      "caller": "TestRegistry_Exists",
+      "line": 216,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatalf",
+      "caller": "TestRegistry_Exists",
+      "line": 218,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestRegistry_Exists",
+      "line": 221,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Exists",
+      "caller": "TestRegistry_Exists",
+      "line": 225,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatalf",
+      "caller": "TestRegistry_Exists",
+      "line": 227,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestRegistry_Exists",
+      "line": 230,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
+}

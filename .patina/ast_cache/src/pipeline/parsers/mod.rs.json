@@ -1,0 +1,96 @@
+{
+  "file": "./src/pipeline/parsers/mod.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "parse_file",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 12,
+      "line_end": 26,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 7
+    },
+    {
+      "path": "super::schema::AstData",
+      "items": [],
+      "alias": null,
+      "line": 9
+    }
+  ],
+  "calls": [
+    {
+      "target": "super::discovery::detect_language",
+      "caller": "parse_file",
+      "line": 13,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "rust::parse_rust_file",
+      "caller": "parse_file",
+      "line": 16,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "go::parse_go_file",
+      "caller": "parse_file",
+      "line": 17,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "python::parse_python_file",
+      "caller": "parse_file",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "javascript::parse_javascript_file",
+      "caller": "parse_file",
+      "line": 19,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "javascript::parse_javascript_file",
+      "caller": "parse_file",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "parse_file",
+      "line": 23,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "AstData::from_path",
+      "caller": "parse_file",
+      "line": 23,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}
