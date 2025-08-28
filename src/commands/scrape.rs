@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-
 /// Execute the scrape command to build semantic knowledge database
 pub fn execute(init: bool, query: Option<String>, repo: Option<String>, force: bool) -> Result<()> {
     // Determine paths based on whether we're scraping a repo
@@ -312,8 +311,8 @@ fn extract_pattern_references(db_path: &str, work_dir: &Path) -> Result<()> {
 fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
     println!("🧠 Generating semantic fingerprints and extracting truth data...");
 
-    use ignore::WalkBuilder;
     use crate::commands::scrape::languages::{create_parser, Language};
+    use ignore::WalkBuilder;
     use std::collections::HashMap;
     use std::time::SystemTime;
 
@@ -2221,7 +2220,11 @@ mod fingerprint {
         flags
     }
 
-    fn detect_features_recursive(cursor: &mut tree_sitter::TreeCursor, source: &[u8], flags: &mut u16) {
+    fn detect_features_recursive(
+        cursor: &mut tree_sitter::TreeCursor,
+        source: &[u8],
+        flags: &mut u16,
+    ) {
         let node = cursor.node();
 
         // Check for various features
@@ -2437,8 +2440,12 @@ mod languages {
                 Language::Go => Some(patina_metal::Metal::Go),
                 Language::Solidity => Some(patina_metal::Metal::Solidity),
                 Language::Python => Some(patina_metal::Metal::Python),
-                Language::JavaScript | Language::JavaScriptJSX => Some(patina_metal::Metal::JavaScript),
-                Language::TypeScript | Language::TypeScriptTSX => Some(patina_metal::Metal::TypeScript),
+                Language::JavaScript | Language::JavaScriptJSX => {
+                    Some(patina_metal::Metal::JavaScript)
+                }
+                Language::TypeScript | Language::TypeScriptTSX => {
+                    Some(patina_metal::Metal::TypeScript)
+                }
                 Language::Unknown => None,
             }
         }
