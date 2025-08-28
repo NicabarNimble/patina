@@ -311,7 +311,7 @@ fn extract_pattern_references(db_path: &str, work_dir: &Path) -> Result<()> {
 fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<()> {
     println!("🧠 Generating semantic fingerprints and extracting truth data...");
 
-    use crate::commands::scrape::languages::{create_parser, Language};
+    use crate::commands::scrape::languages::{create_parser_for_path, Language};
     use ignore::WalkBuilder;
     use std::collections::HashMap;
     use std::time::SystemTime;
@@ -485,14 +485,16 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<(
 
     // Process only new and modified files
     for (file, language) in files_to_process {
-        // Switch parser if language changed
-        if language != current_lang {
-            parser = Some(create_parser(language)?);
-            current_lang = language;
-        }
-
         // Check if file needs reindexing (mtime-based incremental)
         let file_path = work_dir.join(&file);
+        
+        // Create parser for this specific file path
+        // This correctly handles TSX vs TS and JSX vs JS distinctions
+        // We need to use create_parser_for_path because create_parser loses the TSX/JSX distinction
+        if language != current_lang {
+            parser = Some(create_parser_for_path(&file_path)?);
+            current_lang = language;
+        }
         let metadata = std::fs::metadata(&file_path)?;
         let mtime = metadata
             .modified()?
@@ -2102,27 +2104,6 @@ mod fingerprint {
                 flags,
             }
         }
-
-        /// Convert to bytes for storage
-        pub fn to_bytes(&self) -> [u8; 16] {
-            let mut bytes = [0u8; 16];
-            bytes[0..4].copy_from_slice(&self.pattern.to_le_bytes());
-            bytes[4..8].copy_from_slice(&self.imports.to_le_bytes());
-            bytes[8..10].copy_from_slice(&self.complexity.to_le_bytes());
-            bytes[10..12].copy_from_slice(&self.flags.to_le_bytes());
-            // bytes[12..16] reserved for future use
-            bytes
-        }
-
-        /// Parse from bytes
-        pub fn from_bytes(bytes: &[u8; 16]) -> Self {
-            Self {
-                pattern: u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
-                imports: u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]),
-                complexity: u16::from_le_bytes([bytes[8], bytes[9]]),
-                flags: u16::from_le_bytes([bytes[10], bytes[11]]),
-            }
-        }
     }
 
     /// Hash the AST structure (types only, not content)
@@ -2434,7 +2415,7 @@ mod languages {
         }
 
         /// Convert to patina_metal::Metal enum
-        pub fn to_metal(&self) -> Option<patina_metal::Metal> {
+        pub fn to_metal(self) -> Option<patina_metal::Metal> {
             match self {
                 Language::Rust => Some(patina_metal::Metal::Rust),
                 Language::Go => Some(patina_metal::Metal::Go),
@@ -2449,102 +2430,6 @@ mod languages {
                 Language::Unknown => None,
             }
         }
-
-        /// Get file extension pattern for finding files
-        pub fn file_pattern(&self) -> &'static str {
-            match self {
-                Language::Rust => "*.rs",
-                Language::Go => "*.go",
-                Language::Solidity => "*.sol",
-                Language::Python => "*.py",
-                Language::JavaScript => "*.js",
-                Language::JavaScriptJSX => "*.jsx",
-                Language::TypeScript => "*.ts",
-                Language::TypeScriptTSX => "*.tsx",
-                Language::Unknown => "*",
-            }
-        }
-
-        /// Map language-specific node types to generic categories
-        pub fn normalize_node_kind<'a>(&self, node_kind: &'a str) -> &'a str {
-            match self {
-                Language::Rust => match node_kind {
-                    "function_item" => "function",
-                    "struct_item" => "struct",
-                    "trait_item" => "trait",
-                    "impl_item" => "impl",
-                    "if_expression" => "if",
-                    "match_expression" => "switch",
-                    "while_expression" => "while",
-                    "for_expression" => "for",
-                    _ => node_kind,
-                },
-                Language::Go => match node_kind {
-                    "function_declaration" | "method_declaration" => "function",
-                    "type_declaration" => "struct",
-                    "interface_type" => "trait",
-                    "if_statement" => "if",
-                    "switch_statement" => "switch",
-                    "for_statement" => "for",
-                    _ => node_kind,
-                },
-                Language::Solidity => match node_kind {
-                    "function_definition" => "function",
-                    "contract_declaration" => "struct", // Contracts are like structs
-                    "interface_declaration" => "trait", // Interfaces are like traits
-                    "library_declaration" => "impl",    // Libraries are like impl blocks
-                    "modifier_definition" => "function", // Modifiers are special functions
-                    "event_definition" => "function",   // Events are like functions
-                    "if_statement" => "if",
-                    "for_statement" => "for",
-                    "while_statement" => "while",
-                    _ => node_kind,
-                },
-                Language::Python => match node_kind {
-                    "function_definition" => "function",
-                    "class_definition" => "struct",
-                    "decorated_definition" => "function",
-                    "if_statement" => "if",
-                    "for_statement" => "for",
-                    "while_statement" => "while",
-                    _ => node_kind,
-                },
-                Language::JavaScript
-                | Language::JavaScriptJSX
-                | Language::TypeScript
-                | Language::TypeScriptTSX => match node_kind {
-                    "function_declaration" | "function_expression" | "arrow_function" => "function",
-                    "method_definition" => "function",
-                    "class_declaration" => "struct",
-                    "interface_declaration" => "trait",
-                    "type_alias_declaration" => "type_alias",
-                    "if_statement" => "if",
-                    "for_statement" | "for_in_statement" | "for_of_statement" => "for",
-                    "while_statement" | "do_statement" => "while",
-                    "switch_statement" => "switch",
-                    _ => node_kind,
-                },
-                Language::Unknown => node_kind,
-            }
-        }
-    }
-
-    /// Create a parser for the given language using patina-metal
-    pub fn create_parser(language: Language) -> Result<Parser> {
-        let metal = language
-            .to_metal()
-            .ok_or_else(|| anyhow::anyhow!("Unsupported language: {:?}", language))?;
-
-        let ts_lang = metal
-            .tree_sitter_language()
-            .ok_or_else(|| anyhow::anyhow!("No parser available for {:?}", language))?;
-
-        let mut parser = Parser::new();
-        parser
-            .set_language(&ts_lang)
-            .context("Failed to set language")?;
-
-        Ok(parser)
     }
 
     /// Create a parser for a specific file path, handling TypeScript's tsx vs ts distinction
@@ -2566,35 +2451,5 @@ mod languages {
             .context("Failed to set language")?;
 
         Ok(parser)
-    }
-
-    /// Detect all languages in a directory
-    pub fn detect_languages(dir: &Path) -> Result<Vec<Language>> {
-        use std::collections::HashSet;
-        let mut languages = HashSet::new();
-
-        for entry in walkdir::WalkDir::new(dir)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-        {
-            let lang = Language::from_path(entry.path());
-            if lang != Language::Unknown {
-                languages.insert(lang as u8);
-            }
-        }
-
-        Ok(languages
-            .into_iter()
-            .map(|l| match l {
-                0 => Language::Rust,
-                1 => Language::Go,
-                2 => Language::Solidity,
-                3 => Language::Python,
-                4 => Language::JavaScript,
-                5 => Language::TypeScript,
-                _ => Language::Unknown,
-            })
-            .collect())
     }
 }
