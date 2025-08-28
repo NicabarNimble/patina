@@ -1,0 +1,143 @@
+{
+  "file": "./patina-metal/src/grammars.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "language_rust",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 13,
+      "line_end": 15,
+      "doc_comment": null
+    },
+    {
+      "name": "language_go",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 17,
+      "line_end": 19,
+      "doc_comment": null
+    },
+    {
+      "name": "language_solidity",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 21,
+      "line_end": 23,
+      "doc_comment": null
+    },
+    {
+      "name": "language_python",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 25,
+      "line_end": 27,
+      "doc_comment": null
+    },
+    {
+      "name": "language_javascript",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 29,
+      "line_end": 31,
+      "doc_comment": null
+    },
+    {
+      "name": "language_typescript",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 33,
+      "line_end": 35,
+      "doc_comment": null
+    },
+    {
+      "name": "language_tsx",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 37,
+      "line_end": 39,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "tree_sitter::Language",
+      "items": [],
+      "alias": null,
+      "line": 1
+    }
+  ],
+  "calls": [
+    {
+      "target": "tree_sitter_rust",
+      "caller": "language_rust",
+      "line": 14,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "tree_sitter_go",
+      "caller": "language_go",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "tree_sitter_solidity",
+      "caller": "language_solidity",
+      "line": 22,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "tree_sitter_python",
+      "caller": "language_python",
+      "line": 26,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "tree_sitter_javascript",
+      "caller": "language_javascript",
+      "line": 30,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "tree_sitter_typescript",
+      "caller": "language_typescript",
+      "line": 34,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "tree_sitter_tsx",
+      "caller": "language_tsx",
+      "line": 38,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

@@ -1,0 +1,393 @@
+{
+  "file": "./src/adapters/claude/internal/session_scripts.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "create_session_scripts",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 24,
+      "line_end": 53,
+      "doc_comment": null
+    },
+    {
+      "name": "write_script",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 56,
+      "line_end": 60,
+      "doc_comment": null
+    },
+    {
+      "name": "make_executable",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 64,
+      "line_end": 70,
+      "doc_comment": null
+    },
+    {
+      "name": "make_executable",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 74,
+      "line_end": 76,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "super::paths",
+      "items": [],
+      "alias": null,
+      "line": 7
+    },
+    {
+      "path": "std::os::unix::fs::PermissionsExt",
+      "items": [],
+      "alias": null,
+      "line": 65
+    }
+  ],
+  "calls": [
+    {
+      "target": "include_str!",
+      "caller": "<module>",
+      "line": 10,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "<module>",
+      "line": 11,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "<module>",
+      "line": 12,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "<module>",
+      "line": 13,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "<module>",
+      "line": 14,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "<module>",
+      "line": 15,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "<module>",
+      "line": 16,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "<module>",
+      "line": 17,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "<module>",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "include_str!",
+      "caller": "<module>",
+      "line": 21,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "paths::get_commands_path",
+      "caller": "create_session_scripts",
+      "line": 25,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "paths::get_bin_path",
+      "caller": "create_session_scripts",
+      "line": 26,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "create_session_scripts",
+      "line": 29,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "create_session_scripts",
+      "line": 30,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "write_script",
+      "caller": "create_session_scripts",
+      "line": 33,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_session_scripts",
+      "line": 33,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "create_session_scripts",
+      "line": 34,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_session_scripts",
+      "line": 34,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "write_script",
+      "caller": "create_session_scripts",
+      "line": 37,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_session_scripts",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "create_session_scripts",
+      "line": 38,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_session_scripts",
+      "line": 38,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "write_script",
+      "caller": "create_session_scripts",
+      "line": 41,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_session_scripts",
+      "line": 41,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "create_session_scripts",
+      "line": 42,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_session_scripts",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "write_script",
+      "caller": "create_session_scripts",
+      "line": 45,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_session_scripts",
+      "line": 45,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "create_session_scripts",
+      "line": 46,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_session_scripts",
+      "line": 46,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "write_script",
+      "caller": "create_session_scripts",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_session_scripts",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "create_session_scripts",
+      "line": 50,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "create_session_scripts",
+      "line": 50,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "create_session_scripts",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "write_script",
+      "line": 57,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "make_executable",
+      "caller": "write_script",
+      "line": 58,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "write_script",
+      "line": 59,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "permissions",
+      "caller": "make_executable",
+      "line": 66,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::metadata",
+      "caller": "make_executable",
+      "line": 66,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "set_mode",
+      "caller": "make_executable",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::set_permissions",
+      "caller": "make_executable",
+      "line": 68,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "make_executable",
+      "line": 69,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "make_executable",
+      "line": 75,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

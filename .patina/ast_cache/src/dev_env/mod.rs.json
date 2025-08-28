@@ -1,0 +1,91 @@
+{
+  "file": "./src/dev_env/mod.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "fallback",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 33,
+      "line_end": 35,
+      "doc_comment": null
+    },
+    {
+      "name": "get_dev_env",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 39,
+      "line_end": 45,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "DevEnvironment",
+      "kind": "trait",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 8,
+      "line_end": 36,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 5
+    }
+  ],
+  "calls": [
+    {
+      "target": "as_str",
+      "caller": "get_dev_env",
+      "line": 40,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "get_dev_env",
+      "line": 40,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Box::new",
+      "caller": "get_dev_env",
+      "line": 41,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Box::new",
+      "caller": "get_dev_env",
+      "line": 42,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Box::new",
+      "caller": "get_dev_env",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

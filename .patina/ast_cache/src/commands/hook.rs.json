@@ -1,0 +1,1422 @@
+{
+  "file": "./src/commands/hook.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "process_hook",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 13,
+      "line_end": 24,
+      "doc_comment": null
+    },
+    {
+      "name": "on_stop",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 27,
+      "line_end": 110,
+      "doc_comment": null
+    },
+    {
+      "name": "on_file_modified",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 113,
+      "line_end": 139,
+      "doc_comment": null
+    },
+    {
+      "name": "on_before_edit",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 142,
+      "line_end": 179,
+      "doc_comment": null
+    },
+    {
+      "name": "on_session_start",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 182,
+      "line_end": 215,
+      "doc_comment": null
+    },
+    {
+      "name": "check_file_survival",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 227,
+      "line_end": 270,
+      "doc_comment": null
+    },
+    {
+      "name": "track_comodification",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 272,
+      "line_end": 293,
+      "doc_comment": null
+    },
+    {
+      "name": "get_comodified_files",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 295,
+      "line_end": 314,
+      "doc_comment": null
+    },
+    {
+      "name": "append_to_active_session",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 316,
+      "line_end": 334,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "SurvivalMetrics",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 220,
+      "line_end": 225,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "serde_json::Value",
+      "items": [],
+      "alias": null,
+      "line": 7
+    },
+    {
+      "path": "std::io::Read",
+      "items": [],
+      "alias": null,
+      "line": 8
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 9
+    },
+    {
+      "path": "std::process::Command",
+      "items": [],
+      "alias": null,
+      "line": 10
+    },
+    {
+      "path": "std::io::Write",
+      "items": [],
+      "alias": null,
+      "line": 284
+    },
+    {
+      "path": "std::io::Write",
+      "items": [],
+      "alias": null,
+      "line": 323
+    },
+    {
+      "path": "std::io::Write",
+      "items": [],
+      "alias": null,
+      "line": 336
+    }
+  ],
+  "calls": [
+    {
+      "target": "on_stop",
+      "caller": "process_hook",
+      "line": 15,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "on_file_modified",
+      "caller": "process_hook",
+      "line": 16,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "on_before_edit",
+      "caller": "process_hook",
+      "line": 17,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "on_session_start",
+      "caller": "process_hook",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "process_hook",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "process_hook",
+      "line": 21,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "on_stop",
+      "line": 29,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "read_to_string",
+      "caller": "on_stop",
+      "line": 30,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::io::stdin",
+      "caller": "on_stop",
+      "line": 30,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_else",
+      "caller": "on_stop",
+      "line": 32,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::from_str",
+      "caller": "on_stop",
+      "line": 32,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::json!",
+      "caller": "on_stop",
+      "line": 32,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "on_stop",
+      "line": 34,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "on_stop",
+      "line": 34,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "on_stop",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "on_stop",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::set_current_dir",
+      "caller": "on_stop",
+      "line": 38,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "on_stop",
+      "line": 41,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "on_stop",
+      "line": 45,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "on_stop",
+      "line": 45,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "on_stop",
+      "line": 46,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "on_stop",
+      "line": 50,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "write_all",
+      "caller": "on_stop",
+      "line": 56,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "open",
+      "caller": "on_stop",
+      "line": 56,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "append",
+      "caller": "on_stop",
+      "line": 56,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::OpenOptions::new",
+      "caller": "on_stop",
+      "line": 56,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "as_bytes",
+      "caller": "on_stop",
+      "line": 59,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "on_stop",
+      "line": 62,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "on_stop",
+      "line": 62,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "on_stop",
+      "line": 62,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "on_stop",
+      "line": 62,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "on_stop",
+      "line": 71,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "on_stop",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "on_stop",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "on_stop",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "on_stop",
+      "line": 75,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "on_stop",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "on_stop",
+      "line": 81,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "on_stop",
+      "line": 84,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "on_stop",
+      "line": 84,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "on_stop",
+      "line": 85,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "on_stop",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "on_stop",
+      "line": 94,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "on_stop",
+      "line": 95,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "on_stop",
+      "line": 95,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "on_stop",
+      "line": 95,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "on_stop",
+      "line": 99,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "on_stop",
+      "line": 100,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "on_stop",
+      "line": 100,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "on_stop",
+      "line": 100,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok",
+      "caller": "on_stop",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "on_stop",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "on_stop",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "on_stop",
+      "line": 102,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "on_stop",
+      "line": 109,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "on_file_modified",
+      "line": 115,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "read_to_string",
+      "caller": "on_file_modified",
+      "line": 116,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::io::stdin",
+      "caller": "on_file_modified",
+      "line": 116,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_else",
+      "caller": "on_file_modified",
+      "line": 118,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::from_str",
+      "caller": "on_file_modified",
+      "line": 118,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::json!",
+      "caller": "on_file_modified",
+      "line": 118,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "on_file_modified",
+      "line": 120,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "on_file_modified",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "on_file_modified",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "track_comodification",
+      "caller": "on_file_modified",
+      "line": 125,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "check_file_survival",
+      "caller": "on_file_modified",
+      "line": 128,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "append_to_active_session",
+      "caller": "on_file_modified",
+      "line": 130,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "on_file_modified",
+      "line": 130,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "on_file_modified",
+      "line": 138,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "on_before_edit",
+      "line": 144,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "read_to_string",
+      "caller": "on_before_edit",
+      "line": 145,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::io::stdin",
+      "caller": "on_before_edit",
+      "line": 145,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_else",
+      "caller": "on_before_edit",
+      "line": 147,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::from_str",
+      "caller": "on_before_edit",
+      "line": 147,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::json!",
+      "caller": "on_before_edit",
+      "line": 147,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "on_before_edit",
+      "line": 149,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "on_before_edit",
+      "line": 149,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "on_before_edit",
+      "line": 150,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "on_before_edit",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "on_before_edit",
+      "line": 154,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "check_file_survival",
+      "caller": "on_before_edit",
+      "line": 158,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "on_before_edit",
+      "line": 160,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "on_before_edit",
+      "line": 161,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "on_before_edit",
+      "line": 162,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "on_before_edit",
+      "line": 163,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_comodified_files",
+      "caller": "on_before_edit",
+      "line": 166,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "on_before_edit",
+      "line": 167,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "on_before_edit",
+      "line": 168,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "on_before_edit",
+      "line": 169,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "on_before_edit",
+      "line": 169,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "on_before_edit",
+      "line": 170,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "on_before_edit",
+      "line": 178,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "on_session_start",
+      "line": 184,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "read_to_string",
+      "caller": "on_session_start",
+      "line": 185,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::io::stdin",
+      "caller": "on_session_start",
+      "line": 185,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_else",
+      "caller": "on_session_start",
+      "line": 187,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::from_str",
+      "caller": "on_session_start",
+      "line": 187,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::json!",
+      "caller": "on_session_start",
+      "line": 187,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "on_session_start",
+      "line": 189,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "on_session_start",
+      "line": 189,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "on_session_start",
+      "line": 190,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "on_session_start",
+      "line": 190,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::set_current_dir",
+      "caller": "on_session_start",
+      "line": 192,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "on_session_start",
+      "line": 195,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "on_session_start",
+      "line": 195,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "on_session_start",
+      "line": 195,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "on_session_start",
+      "line": 199,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "on_session_start",
+      "line": 199,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "on_session_start",
+      "line": 199,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "on_session_start",
+      "line": 203,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "on_session_start",
+      "line": 205,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "on_session_start",
+      "line": 205,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "on_session_start",
+      "line": 205,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "success",
+      "caller": "on_session_start",
+      "line": 209,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "on_session_start",
+      "line": 210,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "on_session_start",
+      "line": 214,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "check_file_survival",
+      "line": 229,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "check_file_survival",
+      "line": 229,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "check_file_survival",
+      "line": 229,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "check_file_survival",
+      "line": 233,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "check_file_survival",
+      "line": 233,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "check_file_survival",
+      "line": 233,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "check_file_survival",
+      "line": 238,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "check_file_survival",
+      "line": 238,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "check_file_survival",
+      "line": 238,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "count",
+      "caller": "check_file_survival",
+      "line": 242,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "check_file_survival",
+      "line": 242,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "check_file_survival",
+      "line": 242,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "check_file_survival",
+      "line": 247,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "check_file_survival",
+      "line": 249,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "check_file_survival",
+      "line": 250,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "check_file_survival",
+      "line": 250,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "next",
+      "caller": "check_file_survival",
+      "line": 250,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split_whitespace",
+      "caller": "check_file_survival",
+      "line": 250,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ok",
+      "caller": "check_file_survival",
+      "line": 252,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "s.parse::<usize>",
+      "caller": "check_file_survival",
+      "line": 252,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "check_file_survival",
+      "line": 258,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "check_file_survival",
+      "line": 258,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "check_file_survival",
+      "line": 260,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "check_file_survival",
+      "line": 261,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "check_file_survival",
+      "line": 262,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::create_dir_all",
+      "caller": "track_comodification",
+      "line": 274,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "track_comodification",
+      "line": 277,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "open",
+      "caller": "track_comodification",
+      "line": 285,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "append",
+      "caller": "track_comodification",
+      "line": 285,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "create",
+      "caller": "track_comodification",
+      "line": 285,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::OpenOptions::new",
+      "caller": "track_comodification",
+      "line": 285,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "write_all",
+      "caller": "track_comodification",
+      "line": 290,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "as_bytes",
+      "caller": "track_comodification",
+      "line": 290,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "track_comodification",
+      "line": 292,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_comodified_files",
+      "line": 297,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_comodified_files",
+      "line": 297,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_comodified_files",
+      "line": 297,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::collections::HashMap::new",
+      "caller": "get_comodified_files",
+      "line": 301,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "get_comodified_files",
+      "line": 303,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_comodified_files",
+      "line": 303,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "get_comodified_files",
+      "line": 304,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "or_insert",
+      "caller": "get_comodified_files",
+      "line": 305,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "entry",
+      "caller": "get_comodified_files",
+      "line": 305,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_comodified_files",
+      "line": 305,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "get_comodified_files",
+      "line": 310,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "into_iter",
+      "caller": "get_comodified_files",
+      "line": 310,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "sort_by",
+      "caller": "get_comodified_files",
+      "line": 311,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cmp",
+      "caller": "get_comodified_files",
+      "line": 311,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_comodified_files",
+      "line": 313,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "get_comodified_files",
+      "line": 313,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "get_comodified_files",
+      "line": 313,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "get_comodified_files",
+      "line": 313,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "into_iter",
+      "caller": "get_comodified_files",
+      "line": 313,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "append_to_active_session",
+      "line": 318,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "append_to_active_session",
+      "line": 321,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "append_to_active_session",
+      "line": 321,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "append_to_active_session",
+      "line": 322,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "open",
+      "caller": "append_to_active_session",
+      "line": 324,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "append",
+      "caller": "append_to_active_session",
+      "line": 324,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::OpenOptions::new",
+      "caller": "append_to_active_session",
+      "line": 324,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "writeln!",
+      "caller": "append_to_active_session",
+      "line": 328,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "append_to_active_session",
+      "line": 329,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "append_to_active_session",
+      "line": 333,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

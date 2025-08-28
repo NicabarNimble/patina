@@ -1,0 +1,8 @@
+{
+  "file": "./patina-metal/grammars/rust/src/parser.c",
+  "language": "c",
+  "functions": [],
+  "types": [],
+  "imports": [],
+  "calls": []
+}

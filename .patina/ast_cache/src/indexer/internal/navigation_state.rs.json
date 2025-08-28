@@ -1,0 +1,868 @@
+{
+  "file": "./src/indexer/internal/navigation_state.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "default",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 61,
+      "line_end": 63,
+      "doc_comment": null
+    },
+    {
+      "name": "new",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 68,
+      "line_end": 77,
+      "doc_comment": null
+    },
+    {
+      "name": "navigate",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 80,
+      "line_end": 122,
+      "doc_comment": null
+    },
+    {
+      "name": "insert_document",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 125,
+      "line_end": 147,
+      "doc_comment": null
+    },
+    {
+      "name": "update_git_state",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 150,
+      "line_end": 153,
+      "doc_comment": null
+    },
+    {
+      "name": "update_workspace_state",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 156,
+      "line_end": 159,
+      "doc_comment": null
+    },
+    {
+      "name": "extract_concepts",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 162,
+      "line_end": 176,
+      "doc_comment": null
+    },
+    {
+      "name": "calculate_confidence",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 179,
+      "line_end": 182,
+      "doc_comment": null
+    },
+    {
+      "name": "build_workspace_hints",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 185,
+      "line_end": 205,
+      "doc_comment": null
+    },
+    {
+      "name": "explain_confidence",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 208,
+      "line_end": 210,
+      "doc_comment": null
+    },
+    {
+      "name": "stats",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 213,
+      "line_end": 222,
+      "doc_comment": null
+    },
+    {
+      "name": "test_navigation_map_creation",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 241,
+      "line_end": 246,
+      "doc_comment": null
+    },
+    {
+      "name": "test_document_insertion",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 249,
+      "line_end": 267,
+      "doc_comment": null
+    },
+    {
+      "name": "test_navigation_query",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 270,
+      "line_end": 293,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "GitAwareNavigationMap",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 9,
+      "line_end": 25,
+      "doc_comment": null
+    },
+    {
+      "name": "DocumentInfo",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 29,
+      "line_end": 37,
+      "doc_comment": null
+    },
+    {
+      "name": "WorkspaceNavigationState",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 41,
+      "line_end": 49,
+      "doc_comment": null
+    },
+    {
+      "name": "DiscoveredPattern",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 53,
+      "line_end": 58,
+      "doc_comment": null
+    },
+    {
+      "name": "NavigationStats",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 227,
+      "line_end": 234,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "super::{Confidence, GitState, Layer, Location, NavigationResponse, WorkspaceHint}",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "std::collections::HashMap",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::path::{Path, PathBuf}",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "std::time::Instant",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "std::collections::HashSet",
+      "items": [],
+      "alias": null,
+      "line": 81
+    },
+    {
+      "path": "super::*",
+      "items": [],
+      "alias": null,
+      "line": 238
+    }
+  ],
+  "calls": [
+    {
+      "target": "Self::new",
+      "caller": "default",
+      "line": 62,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "new",
+      "line": 70,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "new",
+      "line": 71,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "new",
+      "line": 72,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "new",
+      "line": 73,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Instant::now",
+      "caller": "new",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "navigate",
+      "line": 82,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashSet::new",
+      "caller": "navigate",
+      "line": 83,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "extract_concepts",
+      "caller": "navigate",
+      "line": 86,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "navigate",
+      "line": 89,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "navigate",
+      "line": 92,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "navigate",
+      "line": 92,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "navigate",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "navigate",
+      "line": 99,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "calculate_confidence",
+      "caller": "navigate",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "navigate",
+      "line": 102,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "navigate",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "navigate",
+      "line": 105,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "sort_by",
+      "caller": "navigate",
+      "line": 111,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "then",
+      "caller": "navigate",
+      "line": 111,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cmp",
+      "caller": "navigate",
+      "line": 111,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cmp",
+      "caller": "navigate",
+      "line": 111,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "build_workspace_hints",
+      "caller": "navigate",
+      "line": 114,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "navigate",
+      "line": 117,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "explain_confidence",
+      "caller": "navigate",
+      "line": 120,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "insert_document",
+      "line": 130,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "insert_document",
+      "line": 131,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "insert_document",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "or_default",
+      "caller": "insert_document",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "entry",
+      "caller": "insert_document",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "insert_document",
+      "line": 137,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "insert_document",
+      "line": 143,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "insert_document",
+      "line": 143,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "update_git_state",
+      "line": 151,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_path_buf",
+      "caller": "update_git_state",
+      "line": 151,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "update_workspace_state",
+      "line": 157,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "update_workspace_state",
+      "line": 158,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "extract_concepts",
+      "line": 164,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "extract_concepts",
+      "line": 164,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "extract_concepts",
+      "line": 164,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "extract_concepts",
+      "line": 164,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split_whitespace",
+      "caller": "extract_concepts",
+      "line": 164,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "extract_concepts",
+      "line": 164,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "extract_concepts",
+      "line": 167,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "matches!",
+      "caller": "extract_concepts",
+      "line": 169,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "confidence",
+      "caller": "calculate_confidence",
+      "line": 181,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "build_workspace_hints",
+      "line": 186,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "any",
+      "caller": "build_workspace_hints",
+      "line": 190,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "build_workspace_hints",
+      "line": 190,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "build_workspace_hints",
+      "line": 193,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "build_workspace_hints",
+      "line": 193,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "build_workspace_hints",
+      "line": 193,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "build_workspace_hints",
+      "line": 196,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "build_workspace_hints",
+      "line": 197,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "build_workspace_hints",
+      "line": 198,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "build_workspace_hints",
+      "line": 199,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "explain_confidence",
+      "line": 209,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "stats",
+      "line": 215,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "stats",
+      "line": 216,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "stats",
+      "line": 217,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "stats",
+      "line": 218,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "GitAwareNavigationMap::new",
+      "caller": "test_navigation_map_creation",
+      "line": 242,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "stats",
+      "caller": "test_navigation_map_creation",
+      "line": 243,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_navigation_map_creation",
+      "line": 244,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_navigation_map_creation",
+      "line": 245,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "GitAwareNavigationMap::new",
+      "caller": "test_document_insertion",
+      "line": 250,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_document_insertion",
+      "line": 253,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "test_document_insertion",
+      "line": 254,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_document_insertion",
+      "line": 256,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_document_insertion",
+      "line": 257,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "test_document_insertion",
+      "line": 258,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "test_document_insertion",
+      "line": 259,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert_document",
+      "caller": "test_document_insertion",
+      "line": 262,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "stats",
+      "caller": "test_document_insertion",
+      "line": 264,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_document_insertion",
+      "line": 265,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_document_insertion",
+      "line": 266,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "GitAwareNavigationMap::new",
+      "caller": "test_navigation_query",
+      "line": 271,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_navigation_query",
+      "line": 275,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "test_navigation_query",
+      "line": 276,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_navigation_query",
+      "line": 278,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test_navigation_query",
+      "line": 279,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "test_navigation_query",
+      "line": 280,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "test_navigation_query",
+      "line": 281,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert_document",
+      "caller": "test_navigation_query",
+      "line": 284,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "navigate",
+      "caller": "test_navigation_query",
+      "line": 287,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_navigation_query",
+      "line": 288,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_navigation_query",
+      "line": 289,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_navigation_query",
+      "line": 292,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

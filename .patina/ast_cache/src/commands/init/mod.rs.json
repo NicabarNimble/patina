@@ -1,0 +1,113 @@
+{
+  "file": "./src/commands/init/mod.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 66,
+      "line_end": 68,
+      "doc_comment": null
+    },
+    {
+      "name": "test_init_creates_structure",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 77,
+      "line_end": 106,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 25
+    },
+    {
+      "path": "super::*",
+      "items": [],
+      "alias": null,
+      "line": 72
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 73
+    },
+    {
+      "path": "tempfile::TempDir",
+      "items": [],
+      "alias": null,
+      "line": 74
+    }
+  ],
+  "calls": [
+    {
+      "target": "internal::execute_init",
+      "caller": "execute",
+      "line": 67,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "TempDir::new",
+      "caller": "test_init_creates_structure",
+      "line": 78,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "test_init_creates_structure",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "test_init_creates_structure",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "test_init_creates_structure",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "test_init_creates_structure",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "test_init_creates_structure",
+      "line": 95,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "test_init_creates_structure",
+      "line": 105,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

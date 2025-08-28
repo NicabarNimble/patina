@@ -1,0 +1,721 @@
+{
+  "file": "./patina-metal/build.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "main",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 3,
+      "line_end": 120,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "std::path::PathBuf",
+      "items": [],
+      "alias": null,
+      "line": 1
+    }
+  ],
+  "calls": [
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 5,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 6,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 7,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 8,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 9,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 10,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 11,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "main",
+      "line": 14,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 15,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 17,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "compile",
+      "caller": "main",
+      "line": 20,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 20,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 20,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 20,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file",
+      "caller": "main",
+      "line": 20,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file",
+      "caller": "main",
+      "line": 20,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "include",
+      "caller": "main",
+      "line": 20,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cc::Build::new",
+      "caller": "main",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 23,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "main",
+      "line": 30,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 31,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 33,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "compile",
+      "caller": "main",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file",
+      "caller": "main",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "include",
+      "caller": "main",
+      "line": 35,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cc::Build::new",
+      "caller": "main",
+      "line": 35,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "main",
+      "line": 44,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 45,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 47,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "compile",
+      "caller": "main",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file",
+      "caller": "main",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "include",
+      "caller": "main",
+      "line": 49,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cc::Build::new",
+      "caller": "main",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 51,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "main",
+      "line": 58,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 59,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 61,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 62,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "compile",
+      "caller": "main",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file",
+      "caller": "main",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file",
+      "caller": "main",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "include",
+      "caller": "main",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cc::Build::new",
+      "caller": "main",
+      "line": 64,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 66,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "main",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 77,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 78,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "compile",
+      "caller": "main",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file",
+      "caller": "main",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file",
+      "caller": "main",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "include",
+      "caller": "main",
+      "line": 80,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cc::Build::new",
+      "caller": "main",
+      "line": 80,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 82,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 83,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "main",
+      "line": 90,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 91,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 93,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 94,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "compile",
+      "caller": "main",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file",
+      "caller": "main",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file",
+      "caller": "main",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "include",
+      "caller": "main",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cc::Build::new",
+      "caller": "main",
+      "line": 96,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 98,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 99,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "main",
+      "line": 106,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 107,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 109,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "compile",
+      "caller": "main",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "flag_if_supported",
+      "caller": "main",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file",
+      "caller": "main",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file",
+      "caller": "main",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "include",
+      "caller": "main",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cc::Build::new",
+      "caller": "main",
+      "line": 112,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 114,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "main",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
+}

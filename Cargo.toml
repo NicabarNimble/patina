@@ -44,6 +44,9 @@ notify = "6.1"
 # Database - embedded SQLite for pattern storage
 rusqlite = { version = "0.32", features = ["bundled", "chrono", "serde_json", "load_extension"] }
 
+# DuckDB for semantic analysis database
+duckdb = { version = "1.1", features = ["bundled"] }
+
 # Parallel processing (better than async for our use case)
 rayon = "1.10"
 

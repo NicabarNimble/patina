@@ -1,0 +1,653 @@
+{
+  "file": "./src/dev_env/dagger.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "name",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 13,
+      "line_end": 15,
+      "doc_comment": null
+    },
+    {
+      "name": "version",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 17,
+      "line_end": 19,
+      "doc_comment": null
+    },
+    {
+      "name": "init_project",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 21,
+      "line_end": 32,
+      "doc_comment": null
+    },
+    {
+      "name": "build",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 34,
+      "line_end": 120,
+      "doc_comment": null
+    },
+    {
+      "name": "test",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 122,
+      "line_end": 193,
+      "doc_comment": null
+    },
+    {
+      "name": "is_available",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 195,
+      "line_end": 198,
+      "doc_comment": null
+    },
+    {
+      "name": "fallback",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 200,
+      "line_end": 202,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "DaggerEnvironment",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 10,
+      "line_end": 10,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "super::DevEnvironment",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "crate::workspace_client::{self, CreateWorkspaceRequest, ExecRequest, WorkspaceClient}",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "uuid::Uuid",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "which",
+      "items": [],
+      "alias": null,
+      "line": 6
+    }
+  ],
+  "calls": [
+    {
+      "target": "println!",
+      "caller": "init_project",
+      "line": 29,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "init_project",
+      "line": 30,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "init_project",
+      "line": 31,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "workspace_client::is_service_running",
+      "caller": "build",
+      "line": 36,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "build",
+      "line": 37,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "WorkspaceClient::new",
+      "caller": "build",
+      "line": 42,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "build",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "build",
+      "line": 45,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "build",
+      "line": 45,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file_name",
+      "caller": "build",
+      "line": 45,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "build",
+      "line": 47,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "build",
+      "line": 50,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "build",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "build",
+      "line": 55,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "build",
+      "line": 56,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "build",
+      "line": 56,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "build",
+      "line": 60,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "create_workspace",
+      "caller": "build",
+      "line": 60,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "build",
+      "line": 64,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_workspace",
+      "caller": "build",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "build",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "build",
+      "line": 77,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::thread::sleep",
+      "caller": "build",
+      "line": 79,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::time::Duration::from_secs",
+      "caller": "build",
+      "line": 79,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "build",
+      "line": 83,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "build",
+      "line": 87,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "build",
+      "line": 92,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "build",
+      "line": 92,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "build",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "execute",
+      "caller": "build",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "build",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "build",
+      "line": 102,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "build",
+      "line": 104,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "build",
+      "line": 105,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "build",
+      "line": 110,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "build",
+      "line": 113,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "build",
+      "line": 116,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "delete_workspace",
+      "caller": "build",
+      "line": 117,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "build",
+      "line": 119,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "workspace_client::is_service_running",
+      "caller": "test",
+      "line": 124,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "test",
+      "line": 125,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "WorkspaceClient::new",
+      "caller": "test",
+      "line": 130,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test",
+      "line": 130,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or",
+      "caller": "test",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "test",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file_name",
+      "caller": "test",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "test",
+      "line": 134,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "test",
+      "line": 137,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "test",
+      "line": 139,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "test",
+      "line": 142,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "test",
+      "line": 143,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test",
+      "line": 143,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "create_workspace",
+      "caller": "test",
+      "line": 147,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_workspace",
+      "caller": "test",
+      "line": 152,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "test",
+      "line": 157,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "test",
+      "line": 160,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::thread::sleep",
+      "caller": "test",
+      "line": 162,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::time::Duration::from_secs",
+      "caller": "test",
+      "line": 162,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "test",
+      "line": 166,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "test",
+      "line": 169,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "test",
+      "line": 170,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "test",
+      "line": 170,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "execute",
+      "caller": "test",
+      "line": 174,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "test",
+      "line": 177,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "test",
+      "line": 178,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "test",
+      "line": 180,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "test",
+      "line": 181,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "delete_workspace",
+      "caller": "test",
+      "line": 185,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "test",
+      "line": 188,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "test",
+      "line": 191,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "test",
+      "line": 192,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_ok",
+      "caller": "is_available",
+      "line": 197,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "which::which",
+      "caller": "is_available",
+      "line": 197,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "fallback",
+      "line": 201,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

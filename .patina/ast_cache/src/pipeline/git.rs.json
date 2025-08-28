@@ -1,0 +1,956 @@
+{
+  "file": "./src/pipeline/git.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "analyze_git",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 41,
+      "line_end": 72,
+      "doc_comment": null
+    },
+    {
+      "name": "get_current_branch",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 74,
+      "line_end": 84,
+      "doc_comment": null
+    },
+    {
+      "name": "get_current_commit",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 86,
+      "line_end": 95,
+      "doc_comment": null
+    },
+    {
+      "name": "get_file_metrics",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 97,
+      "line_end": 189,
+      "doc_comment": null
+    },
+    {
+      "name": "get_author_stats",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 191,
+      "line_end": 255,
+      "doc_comment": null
+    },
+    {
+      "name": "count_total_commits",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 257,
+      "line_end": 266,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "GitMetrics",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 9,
+      "line_end": 18,
+      "doc_comment": null
+    },
+    {
+      "name": "FileMetrics",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 21,
+      "line_end": 29,
+      "doc_comment": null
+    },
+    {
+      "name": "AuthorStats",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 32,
+      "line_end": 38,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "chrono::{DateTime, Utc}",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "serde::{Deserialize, Serialize}",
+      "items": [],
+      "alias": null,
+      "line": 3
+    },
+    {
+      "path": "std::collections::HashMap",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "std::process::Command",
+      "items": [],
+      "alias": null,
+      "line": 6
+    }
+  ],
+  "calls": [
+    {
+      "target": "get_current_branch",
+      "caller": "analyze_git",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_current_commit",
+      "caller": "analyze_git",
+      "line": 46,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_file_metrics",
+      "caller": "analyze_git",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_author_stats",
+      "caller": "analyze_git",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "count_total_commits",
+      "caller": "analyze_git",
+      "line": 55,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "sum",
+      "caller": "analyze_git",
+      "line": 58,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "analyze_git",
+      "line": 58,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "values",
+      "caller": "analyze_git",
+      "line": 58,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "saturating_sub",
+      "caller": "analyze_git",
+      "line": 59,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "analyze_git",
+      "line": 62,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "analyze_git",
+      "line": 63,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "display",
+      "caller": "analyze_git",
+      "line": 63,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "analyze_git",
+      "line": 66,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "get_current_branch",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_current_branch",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "get_current_branch",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "get_current_branch",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "get_current_branch",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "get_current_branch",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_current_branch",
+      "line": 75,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_current_branch",
+      "line": 83,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_current_branch",
+      "line": 83,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_current_branch",
+      "line": 83,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_current_branch",
+      "line": 83,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "get_current_commit",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_current_commit",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "get_current_commit",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "get_current_commit",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "arg",
+      "caller": "get_current_commit",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_current_commit",
+      "line": 87,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_current_commit",
+      "line": 94,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_current_commit",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_current_commit",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_current_commit",
+      "line": 94,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "get_file_metrics",
+      "line": 98,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "get_file_metrics",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_file_metrics",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "get_file_metrics",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_file_metrics",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_file_metrics",
+      "line": 101,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_file_metrics",
+      "line": 107,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "get_file_metrics",
+      "line": 109,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "get_file_metrics",
+      "line": 110,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "get_file_metrics",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_file_metrics",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "get_file_metrics",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_file_metrics",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_file_metrics",
+      "line": 115,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_file_metrics",
+      "line": 128,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "get_file_metrics",
+      "line": 130,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "get_file_metrics",
+      "line": 135,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "next",
+      "caller": "get_file_metrics",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "get_file_metrics",
+      "line": 137,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "get_file_metrics",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "get_file_metrics",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "get_file_metrics",
+      "line": 139,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_file_metrics",
+      "line": 142,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "get_file_metrics",
+      "line": 143,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "get_file_metrics",
+      "line": 144,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parts[2].parse::<i64>",
+      "caller": "get_file_metrics",
+      "line": 147,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "next",
+      "caller": "get_file_metrics",
+      "line": 155,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "get_file_metrics",
+      "line": 156,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split_whitespace",
+      "caller": "get_file_metrics",
+      "line": 156,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "get_file_metrics",
+      "line": 157,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "stat_parts[0].parse::<usize>",
+      "caller": "get_file_metrics",
+      "line": 158,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "stat_parts[1].parse::<usize>",
+      "caller": "get_file_metrics",
+      "line": 161,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "get_file_metrics",
+      "line": 172,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_file_metrics",
+      "line": 173,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_file_metrics",
+      "line": 175,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_else",
+      "caller": "get_file_metrics",
+      "line": 178,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "DateTime::from_timestamp",
+      "caller": "get_file_metrics",
+      "line": 178,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "get_file_metrics",
+      "line": 179,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_file_metrics",
+      "line": 188,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HashMap::new",
+      "caller": "get_author_stats",
+      "line": 192,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "get_author_stats",
+      "line": 195,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_author_stats",
+      "line": 195,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "get_author_stats",
+      "line": 195,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_author_stats",
+      "line": 195,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_author_stats",
+      "line": 195,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_author_stats",
+      "line": 201,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "get_author_stats",
+      "line": 203,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "get_author_stats",
+      "line": 204,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "splitn",
+      "caller": "get_author_stats",
+      "line": 204,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_author_stats",
+      "line": 204,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "get_author_stats",
+      "line": 205,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parts[0].trim().parse::<usize>",
+      "caller": "get_author_stats",
+      "line": 206,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "get_author_stats",
+      "line": 206,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_author_stats",
+      "line": 207,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "get_author_stats",
+      "line": 210,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "get_author_stats",
+      "line": 210,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "get_author_stats",
+      "line": 210,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "get_author_stats",
+      "line": 210,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "get_author_stats",
+      "line": 210,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "get_author_stats",
+      "line": 222,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::collections::HashSet::new",
+      "caller": "get_author_stats",
+      "line": 223,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "get_author_stats",
+      "line": 227,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "get_author_stats",
+      "line": 228,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split_whitespace",
+      "caller": "get_author_stats",
+      "line": 228,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "get_author_stats",
+      "line": 229,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parts[0].parse::<usize>",
+      "caller": "get_author_stats",
+      "line": 230,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "parts[1].parse::<usize>",
+      "caller": "get_author_stats",
+      "line": 233,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "get_author_stats",
+      "line": 236,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "get_author_stats",
+      "line": 236,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "get_author_stats",
+      "line": 240,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "get_author_stats",
+      "line": 241,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "get_author_stats",
+      "line": 245,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_author_stats",
+      "line": 254,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "count_total_commits",
+      "line": 258,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "output",
+      "caller": "count_total_commits",
+      "line": 258,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "current_dir",
+      "caller": "count_total_commits",
+      "line": 258,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "args",
+      "caller": "count_total_commits",
+      "line": 258,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command::new",
+      "caller": "count_total_commits",
+      "line": 258,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::from_utf8_lossy",
+      "caller": "count_total_commits",
+      "line": 264,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "count_total_commits",
+      "line": 265,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "count_total_commits",
+      "line": 265,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "count_total_commits",
+      "line": 265,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
+}

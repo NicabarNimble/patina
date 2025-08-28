@@ -1,0 +1,481 @@
+{
+  "file": "./src/session.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "find_project_root",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 38,
+      "line_end": 52,
+      "doc_comment": null
+    },
+    {
+      "name": "test_find_project_root_from_subdirectory",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 62,
+      "line_end": 83,
+      "doc_comment": null
+    },
+    {
+      "name": "test_find_project_root_not_in_project",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 86,
+      "line_end": 102,
+      "doc_comment": null
+    },
+    {
+      "name": "test_find_project_root_at_root",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 105,
+      "line_end": 122,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "SessionManager",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 14,
+      "line_end": 14,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 10
+    },
+    {
+      "path": "std::path::PathBuf",
+      "items": [],
+      "alias": null,
+      "line": 11
+    },
+    {
+      "path": "super::*",
+      "items": [],
+      "alias": null,
+      "line": 57
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 58
+    },
+    {
+      "path": "tempfile::TempDir",
+      "items": [],
+      "alias": null,
+      "line": 59
+    }
+  ],
+  "calls": [
+    {
+      "target": "std::env::current_dir",
+      "caller": "find_project_root",
+      "line": 39,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "find_project_root",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "find_project_root",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "find_project_root",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "parent",
+      "caller": "find_project_root",
+      "line": 46,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_path_buf",
+      "caller": "find_project_root",
+      "line": 47,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "anyhow::bail!",
+      "caller": "find_project_root",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 64,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "TempDir::new",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 64,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 65,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 65,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 66,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 66,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 70,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 70,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 72,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::current_dir",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 72,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 73,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::set_current_dir",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 73,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 76,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "SessionManager::find_project_root",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 76,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 77,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 82,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::set_current_dir",
+      "caller": "test_find_project_root_from_subdirectory",
+      "line": 82,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_not_in_project",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "TempDir::new",
+      "caller": "test_find_project_root_not_in_project",
+      "line": 88,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_not_in_project",
+      "line": 89,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::current_dir",
+      "caller": "test_find_project_root_not_in_project",
+      "line": 89,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_not_in_project",
+      "line": 91,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::set_current_dir",
+      "caller": "test_find_project_root_not_in_project",
+      "line": 91,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "test_find_project_root_not_in_project",
+      "line": 91,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "SessionManager::find_project_root",
+      "caller": "test_find_project_root_not_in_project",
+      "line": 94,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_find_project_root_not_in_project",
+      "line": 95,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert!",
+      "caller": "test_find_project_root_not_in_project",
+      "line": 96,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_not_in_project",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::set_current_dir",
+      "caller": "test_find_project_root_not_in_project",
+      "line": 101,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_at_root",
+      "line": 107,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "TempDir::new",
+      "caller": "test_find_project_root_at_root",
+      "line": 107,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "join",
+      "caller": "test_find_project_root_at_root",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "test_find_project_root_at_root",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_at_root",
+      "line": 109,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir",
+      "caller": "test_find_project_root_at_root",
+      "line": 109,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_at_root",
+      "line": 111,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::current_dir",
+      "caller": "test_find_project_root_at_root",
+      "line": 111,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_at_root",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::set_current_dir",
+      "caller": "test_find_project_root_at_root",
+      "line": 112,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "test_find_project_root_at_root",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_at_root",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "SessionManager::find_project_root",
+      "caller": "test_find_project_root_at_root",
+      "line": 115,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "assert_eq!",
+      "caller": "test_find_project_root_at_root",
+      "line": 116,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "test_find_project_root_at_root",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::env::set_current_dir",
+      "caller": "test_find_project_root_at_root",
+      "line": 121,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

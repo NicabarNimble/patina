@@ -1,0 +1,403 @@
+{
+  "file": "./src/commands/dev/update_fixtures.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 5,
+      "line_end": 32,
+      "doc_comment": null
+    },
+    {
+      "name": "update_fixture",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 34,
+      "line_end": 48,
+      "doc_comment": null
+    },
+    {
+      "name": "update_project_design_fixture",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 50,
+      "line_end": 66,
+      "doc_comment": null
+    },
+    {
+      "name": "update_environment_fixture",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 68,
+      "line_end": 102,
+      "doc_comment": null
+    },
+    {
+      "name": "update_claude_context_fixture",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 104,
+      "line_end": 129,
+      "doc_comment": null
+    },
+    {
+      "name": "update_version_manifest_fixture",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 131,
+      "line_end": 154,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 3
+    }
+  ],
+  "calls": [
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 6,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 7,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "execute",
+      "line": 10,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "execute",
+      "line": 11,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "update_fixture",
+      "caller": "execute",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 23,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 24,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 25,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 26,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 27,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 28,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 29,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 31,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "update_fixture",
+      "line": 35,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "update_project_design_fixture",
+      "caller": "update_fixture",
+      "line": 38,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "update_environment_fixture",
+      "caller": "update_fixture",
+      "line": 39,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "update_claude_context_fixture",
+      "caller": "update_fixture",
+      "line": 40,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "update_version_manifest_fixture",
+      "caller": "update_fixture",
+      "line": 41,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "update_fixture",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "update_fixture",
+      "line": 47,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "update_project_design_fixture",
+      "line": 54,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "update_project_design_fixture",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "update_project_design_fixture",
+      "line": 57,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::read_to_string",
+      "caller": "update_project_design_fixture",
+      "line": 58,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "update_project_design_fixture",
+      "line": 59,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "update_project_design_fixture",
+      "line": 60,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "update_project_design_fixture",
+      "line": 62,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "update_project_design_fixture",
+      "line": 65,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::json!",
+      "caller": "update_environment_fixture",
+      "line": 72,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "update_environment_fixture",
+      "line": 97,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "update_environment_fixture",
+      "line": 98,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::to_string_pretty",
+      "caller": "update_environment_fixture",
+      "line": 98,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "update_environment_fixture",
+      "line": 99,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "update_environment_fixture",
+      "line": 101,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "update_claude_context_fixture",
+      "line": 124,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "update_claude_context_fixture",
+      "line": 125,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "update_claude_context_fixture",
+      "line": 126,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "update_claude_context_fixture",
+      "line": 128,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::json!",
+      "caller": "update_version_manifest_fixture",
+      "line": 134,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::create_dir_all",
+      "caller": "update_version_manifest_fixture",
+      "line": 146,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "update_version_manifest_fixture",
+      "line": 147,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::to_string_pretty",
+      "caller": "update_version_manifest_fixture",
+      "line": 149,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "update_version_manifest_fixture",
+      "line": 151,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "update_version_manifest_fixture",
+      "line": 153,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

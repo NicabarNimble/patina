@@ -1,0 +1,791 @@
+{
+  "file": "./modules/api-gateway/handlers.go",
+  "language": "go",
+  "functions": [
+    {
+      "name": "NewHTTPHandlers",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 17,
+      "line_end": 19,
+      "doc_comment": null
+    },
+    {
+      "name": "HandleCreateWorkspace",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 40,
+      "line_end": 59,
+      "doc_comment": null
+    },
+    {
+      "name": "HandleGetWorkspace",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 62,
+      "line_end": 73,
+      "doc_comment": null
+    },
+    {
+      "name": "HandleListWorkspaces",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 76,
+      "line_end": 90,
+      "doc_comment": null
+    },
+    {
+      "name": "HandleDeleteWorkspace",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 93,
+      "line_end": 102,
+      "doc_comment": null
+    },
+    {
+      "name": "HandleExecute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 105,
+      "line_end": 127,
+      "doc_comment": null
+    },
+    {
+      "name": "HandleGitStatus",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 130,
+      "line_end": 146,
+      "doc_comment": null
+    },
+    {
+      "name": "HandleGitCommit",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 149,
+      "line_end": 169,
+      "doc_comment": null
+    },
+    {
+      "name": "RegisterRoutes",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 172,
+      "line_end": 218,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "HTTPHandlers",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 12,
+      "line_end": 14,
+      "doc_comment": null
+    },
+    {
+      "name": "CreateWorkspaceRequest",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 22,
+      "line_end": 25,
+      "doc_comment": null
+    },
+    {
+      "name": "ExecuteRequest",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 28,
+      "line_end": 30,
+      "doc_comment": null
+    },
+    {
+      "name": "GitCommitRequest",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 33,
+      "line_end": 37,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "encoding/json",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "net/http",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "strings",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "github.com/your-org/patina/modules/environment-registry",
+      "items": [],
+      "alias": null,
+      "line": 8
+    }
+  ],
+  "calls": [
+    {
+      "target": "Decode",
+      "caller": "HandleCreateWorkspace",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewDecoder",
+      "caller": "HandleCreateWorkspace",
+      "line": 42,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleCreateWorkspace",
+      "line": 43,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleCreateWorkspace",
+      "line": 43,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CreateWorkspace",
+      "caller": "HandleCreateWorkspace",
+      "line": 51,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Context",
+      "caller": "HandleCreateWorkspace",
+      "line": 51,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleCreateWorkspace",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleCreateWorkspace",
+      "line": 53,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Set",
+      "caller": "HandleCreateWorkspace",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Header",
+      "caller": "HandleCreateWorkspace",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Encode",
+      "caller": "HandleCreateWorkspace",
+      "line": 58,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewEncoder",
+      "caller": "HandleCreateWorkspace",
+      "line": 58,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "TrimPrefix",
+      "caller": "HandleGetWorkspace",
+      "line": 63,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "GetWorkspace",
+      "caller": "HandleGetWorkspace",
+      "line": 65,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleGetWorkspace",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleGetWorkspace",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Set",
+      "caller": "HandleGetWorkspace",
+      "line": 71,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Header",
+      "caller": "HandleGetWorkspace",
+      "line": 71,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Encode",
+      "caller": "HandleGetWorkspace",
+      "line": 72,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewEncoder",
+      "caller": "HandleGetWorkspace",
+      "line": 72,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ListWorkspaces",
+      "caller": "HandleListWorkspaces",
+      "line": 77,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleListWorkspaces",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleListWorkspaces",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Set",
+      "caller": "HandleListWorkspaces",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Header",
+      "caller": "HandleListWorkspaces",
+      "line": 88,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Encode",
+      "caller": "HandleListWorkspaces",
+      "line": 89,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewEncoder",
+      "caller": "HandleListWorkspaces",
+      "line": 89,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "TrimPrefix",
+      "caller": "HandleDeleteWorkspace",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "DeleteWorkspace",
+      "caller": "HandleDeleteWorkspace",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Context",
+      "caller": "HandleDeleteWorkspace",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleDeleteWorkspace",
+      "line": 97,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleDeleteWorkspace",
+      "line": 97,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WriteHeader",
+      "caller": "HandleDeleteWorkspace",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Split",
+      "caller": "HandleExecute",
+      "line": 106,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "HandleExecute",
+      "line": 107,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleExecute",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Decode",
+      "caller": "HandleExecute",
+      "line": 114,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewDecoder",
+      "caller": "HandleExecute",
+      "line": 114,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleExecute",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleExecute",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Execute",
+      "caller": "HandleExecute",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Context",
+      "caller": "HandleExecute",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleExecute",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleExecute",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Set",
+      "caller": "HandleExecute",
+      "line": 125,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Header",
+      "caller": "HandleExecute",
+      "line": 125,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Encode",
+      "caller": "HandleExecute",
+      "line": 126,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewEncoder",
+      "caller": "HandleExecute",
+      "line": 126,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Split",
+      "caller": "HandleGitStatus",
+      "line": 131,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "HandleGitStatus",
+      "line": 132,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleGitStatus",
+      "line": 133,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "GetGitStatus",
+      "caller": "HandleGitStatus",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Context",
+      "caller": "HandleGitStatus",
+      "line": 138,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleGitStatus",
+      "line": 140,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleGitStatus",
+      "line": 140,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Set",
+      "caller": "HandleGitStatus",
+      "line": 144,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Header",
+      "caller": "HandleGitStatus",
+      "line": 144,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Encode",
+      "caller": "HandleGitStatus",
+      "line": 145,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewEncoder",
+      "caller": "HandleGitStatus",
+      "line": 145,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Split",
+      "caller": "HandleGitCommit",
+      "line": 150,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "HandleGitCommit",
+      "line": 151,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleGitCommit",
+      "line": 152,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Decode",
+      "caller": "HandleGitCommit",
+      "line": 158,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewDecoder",
+      "caller": "HandleGitCommit",
+      "line": 158,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleGitCommit",
+      "line": 159,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleGitCommit",
+      "line": 159,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CommitChanges",
+      "caller": "HandleGitCommit",
+      "line": 163,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Context",
+      "caller": "HandleGitCommit",
+      "line": 163,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleGitCommit",
+      "line": 164,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "HandleGitCommit",
+      "line": 164,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WriteHeader",
+      "caller": "HandleGitCommit",
+      "line": 168,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HandleFunc",
+      "caller": "RegisterRoutes",
+      "line": 173,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HandleCreateWorkspace",
+      "caller": "RegisterRoutes",
+      "line": 176,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HandleListWorkspaces",
+      "caller": "RegisterRoutes",
+      "line": 178,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "RegisterRoutes",
+      "line": 180,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HandleFunc",
+      "caller": "RegisterRoutes",
+      "line": 185,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HasSuffix",
+      "caller": "RegisterRoutes",
+      "line": 188,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HandleExecute",
+      "caller": "RegisterRoutes",
+      "line": 190,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "RegisterRoutes",
+      "line": 192,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HasSuffix",
+      "caller": "RegisterRoutes",
+      "line": 194,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HandleGitStatus",
+      "caller": "RegisterRoutes",
+      "line": 196,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "RegisterRoutes",
+      "line": 198,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HasSuffix",
+      "caller": "RegisterRoutes",
+      "line": 200,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HandleGitCommit",
+      "caller": "RegisterRoutes",
+      "line": 202,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "RegisterRoutes",
+      "line": 204,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HandleGetWorkspace",
+      "caller": "RegisterRoutes",
+      "line": 210,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "HandleDeleteWorkspace",
+      "caller": "RegisterRoutes",
+      "line": 212,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "RegisterRoutes",
+      "line": 214,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
+}

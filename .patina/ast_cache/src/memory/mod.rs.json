@@ -1,0 +1,639 @@
+{
+  "file": "./src/memory/mod.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "new",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 73,
+      "line_end": 77,
+      "doc_comment": null
+    },
+    {
+      "name": "remember",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 80,
+      "line_end": 92,
+      "doc_comment": null
+    },
+    {
+      "name": "context",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 95,
+      "line_end": 99,
+      "doc_comment": null
+    },
+    {
+      "name": "learn",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 102,
+      "line_end": 113,
+      "doc_comment": null
+    },
+    {
+      "name": "decide",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 116,
+      "line_end": 132,
+      "doc_comment": null
+    },
+    {
+      "name": "get_last_session",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 135,
+      "line_end": 139,
+      "doc_comment": null
+    },
+    {
+      "name": "get_active_context",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 141,
+      "line_end": 144,
+      "doc_comment": null
+    },
+    {
+      "name": "get_relevant_lessons",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 146,
+      "line_end": 149,
+      "doc_comment": null
+    },
+    {
+      "name": "get_active_decisions",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 151,
+      "line_end": 154,
+      "doc_comment": null
+    },
+    {
+      "name": "find_context",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 156,
+      "line_end": 159,
+      "doc_comment": null
+    },
+    {
+      "name": "save_lesson",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 161,
+      "line_end": 164,
+      "doc_comment": null
+    },
+    {
+      "name": "save_decision",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 166,
+      "line_end": 169,
+      "doc_comment": null
+    },
+    {
+      "name": "extract_tags",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 171,
+      "line_end": 174,
+      "doc_comment": null
+    },
+    {
+      "name": "format_for_llm",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 179,
+      "line_end": 219,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "Memory",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 20,
+      "line_end": 25,
+      "doc_comment": null
+    },
+    {
+      "name": "SessionSummary",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 28,
+      "line_end": 36,
+      "doc_comment": null
+    },
+    {
+      "name": "ContextItem",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 39,
+      "line_end": 46,
+      "doc_comment": null
+    },
+    {
+      "name": "Lesson",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 49,
+      "line_end": 56,
+      "doc_comment": null
+    },
+    {
+      "name": "Decision",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 59,
+      "line_end": 66,
+      "doc_comment": null
+    },
+    {
+      "name": "MemorySystem",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 68,
+      "line_end": 70,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "chrono::{DateTime, Utc}",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "serde::{Deserialize, Serialize}",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "std::path::PathBuf",
+      "items": [],
+      "alias": null,
+      "line": 7
+    },
+    {
+      "path": "context::ContextCommand",
+      "items": [],
+      "alias": null,
+      "line": 14
+    },
+    {
+      "path": "learn::LearnCommand",
+      "items": [],
+      "alias": null,
+      "line": 15
+    },
+    {
+      "path": "remember::RememberCommand",
+      "items": [],
+      "alias": null,
+      "line": 16
+    }
+  ],
+  "calls": [
+    {
+      "target": "PathBuf::from",
+      "caller": "new",
+      "line": 74,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::create_dir_all",
+      "caller": "new",
+      "line": 75,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "new",
+      "line": 76,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_last_session",
+      "caller": "remember",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_active_context",
+      "caller": "remember",
+      "line": 82,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_relevant_lessons",
+      "caller": "remember",
+      "line": 83,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_active_decisions",
+      "caller": "remember",
+      "line": 84,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "remember",
+      "line": 86,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "find_context",
+      "caller": "context",
+      "line": 98,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "learn",
+      "line": 104,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "learn",
+      "line": 105,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "learn",
+      "line": 106,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "learn",
+      "line": 107,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extract_tags",
+      "caller": "learn",
+      "line": 108,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "save_lesson",
+      "caller": "learn",
+      "line": 112,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "decide",
+      "line": 123,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Utc::now",
+      "caller": "decide",
+      "line": 124,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "decide",
+      "line": 125,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "decide",
+      "line": 126,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "save_decision",
+      "caller": "decide",
+      "line": 131,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_last_session",
+      "line": 138,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_active_context",
+      "line": 143,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "get_active_context",
+      "line": 143,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_relevant_lessons",
+      "line": 148,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "get_relevant_lessons",
+      "line": 148,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "get_active_decisions",
+      "line": 153,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "get_active_decisions",
+      "line": 153,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "find_context",
+      "line": 158,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "find_context",
+      "line": 158,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "save_lesson",
+      "line": 163,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "save_decision",
+      "line": 168,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "extract_tags",
+      "line": 173,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "format_for_llm",
+      "line": 180,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "format_for_llm",
+      "line": 183,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "format_for_llm",
+      "line": 183,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "format_for_llm",
+      "line": 184,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "format_for_llm",
+      "line": 184,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "format_for_llm",
+      "line": 186,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "format_for_llm",
+      "line": 187,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "format_for_llm",
+      "line": 189,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "format_for_llm",
+      "line": 189,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "format_for_llm",
+      "line": 193,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "format_for_llm",
+      "line": 194,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "format_for_llm",
+      "line": 196,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "format_for_llm",
+      "line": 196,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "format_for_llm",
+      "line": 201,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "format_for_llm",
+      "line": 202,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "format_for_llm",
+      "line": 204,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "format_for_llm",
+      "line": 204,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "format_for_llm",
+      "line": 208,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "format_for_llm",
+      "line": 209,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "format_for_llm",
+      "line": 211,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "format_for_llm",
+      "line": 211,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "file": "./patina-metal/grammars/javascript/src/tree_sitter/array.h",
+  "language": "c",
+  "functions": [],
+  "types": [],
+  "imports": [],
+  "calls": []
+}

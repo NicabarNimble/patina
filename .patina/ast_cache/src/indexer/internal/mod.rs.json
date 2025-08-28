@@ -1,0 +1,1883 @@
+{
+  "file": "./src/indexer/internal/mod.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "new",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 48,
+      "line_end": 57,
+      "doc_comment": null
+    },
+    {
+      "name": "with_database",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 60,
+      "line_end": 104,
+      "doc_comment": null
+    },
+    {
+      "name": "with_hybrid_database",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 107,
+      "line_end": 124,
+      "doc_comment": null
+    },
+    {
+      "name": "navigate",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 127,
+      "line_end": 144,
+      "doc_comment": null
+    },
+    {
+      "name": "index_document",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 147,
+      "line_end": 180,
+      "doc_comment": null
+    },
+    {
+      "name": "index_directory",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 183,
+      "line_end": 185,
+      "doc_comment": null
+    },
+    {
+      "name": "index_directory_with_threads",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 188,
+      "line_end": 206,
+      "doc_comment": null
+    },
+    {
+      "name": "_index_directory_impl",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 209,
+      "line_end": 271,
+      "doc_comment": null
+    },
+    {
+      "name": "analyze_document",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 274,
+      "line_end": 312,
+      "doc_comment": null
+    },
+    {
+      "name": "parse_frontmatter",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 315,
+      "line_end": 339,
+      "doc_comment": null
+    },
+    {
+      "name": "extract_concepts",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 342,
+      "line_end": 393,
+      "doc_comment": null
+    },
+    {
+      "name": "extract_summary",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 396,
+      "line_end": 424,
+      "doc_comment": null
+    },
+    {
+      "name": "determine_layer",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 427,
+      "line_end": 437,
+      "doc_comment": null
+    },
+    {
+      "name": "generate_document_id",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 440,
+      "line_end": 448,
+      "doc_comment": null
+    },
+    {
+      "name": "calculate_git_confidence",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 451,
+      "line_end": 461,
+      "doc_comment": null
+    },
+    {
+      "name": "explain_confidence_scoring",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 464,
+      "line_end": 469,
+      "doc_comment": null
+    },
+    {
+      "name": "process_git_event",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 472,
+      "line_end": 480,
+      "doc_comment": null
+    }
+  ],
+  "types": [
+    {
+      "name": "PatternIndexer",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 37,
+      "line_end": 44,
+      "doc_comment": null
+    },
+    {
+      "name": "NavigationResponse",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 485,
+      "line_end": 490,
+      "doc_comment": null
+    },
+    {
+      "name": "Location",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 494,
+      "line_end": 500,
+      "doc_comment": null
+    },
+    {
+      "name": "WorkspaceHint",
+      "kind": "struct",
+      "visibility": "public",
+      "fields": [],
+      "methods": [],
+      "line_start": 512,
+      "line_end": 516,
+      "doc_comment": null
+    }
+  ],
+  "imports": [
+    {
+      "path": "git_state::{Confidence, GitEvent, GitState}",
+      "items": [],
+      "alias": null,
+      "line": 14
+    },
+    {
+      "path": "hybrid_database::{HybridDatabase, NavigationCRDT, Pattern, WorkspaceState}",
+      "items": [],
+      "alias": null,
+      "line": 15
+    },
+    {
+      "path": "navigation_state::{DocumentInfo, GitAwareNavigationMap, WorkspaceNavigationState}",
+      "items": [],
+      "alias": null,
+      "line": 16
+    },
+    {
+      "path": "sqlite_database::SqliteClient",
+      "items": [],
+      "alias": null,
+      "line": 17
+    },
+    {
+      "path": "state_machine::GitNavigationStateMachine",
+      "items": [],
+      "alias": null,
+      "line": 18
+    },
+    {
+      "path": "anyhow::{Context, Result}",
+      "items": [],
+      "alias": null,
+      "line": 20
+    },
+    {
+      "path": "parking_lot::Mutex as ParkingMutex",
+      "items": [],
+      "alias": null,
+      "line": 21
+    },
+    {
+      "path": "rayon::prelude::*",
+      "items": [],
+      "alias": null,
+      "line": 22
+    },
+    {
+      "path": "serde::{Deserialize, Serialize}",
+      "items": [],
+      "alias": null,
+      "line": 23
+    },
+    {
+      "path": "std::path::{Path, PathBuf}",
+      "items": [],
+      "alias": null,
+      "line": 24
+    },
+    {
+      "path": "std::sync::atomic::{AtomicUsize, Ordering}",
+      "items": [],
+      "alias": null,
+      "line": 25
+    },
+    {
+      "path": "std::sync::{Arc, Mutex}",
+      "items": [],
+      "alias": null,
+      "line": 26
+    },
+    {
+      "path": "walkdir::WalkDir",
+      "items": [],
+      "alias": null,
+      "line": 210
+    },
+    {
+      "path": "std::collections::hash_map::DefaultHasher",
+      "items": [],
+      "alias": null,
+      "line": 442
+    },
+    {
+      "path": "std::hash::{Hash, Hasher}",
+      "items": [],
+      "alias": null,
+      "line": 443
+    }
+  ],
+  "calls": [
+    {
+      "target": "Arc::new",
+      "caller": "new",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Mutex::new",
+      "caller": "new",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "GitAwareNavigationMap::new",
+      "caller": "new",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Arc::new",
+      "caller": "new",
+      "line": 50,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Mutex::new",
+      "caller": "new",
+      "line": 50,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "GitNavigationStateMachine::new",
+      "caller": "new",
+      "line": 50,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "new",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "SqliteClient::new",
+      "caller": "with_database",
+      "line": 61,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "initialize_schema",
+      "caller": "with_database",
+      "line": 62,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "GitAwareNavigationMap::new",
+      "caller": "with_database",
+      "line": 65,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Arc::new",
+      "caller": "with_database",
+      "line": 66,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Mutex::new",
+      "caller": "with_database",
+      "line": 66,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "GitNavigationStateMachine::new",
+      "caller": "with_database",
+      "line": 66,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "get_all_documents",
+      "caller": "with_database",
+      "line": 69,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_all_concepts",
+      "caller": "with_database",
+      "line": 70,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "with_database",
+      "line": 75,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "PathBuf::from",
+      "caller": "with_database",
+      "line": 78,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "as_str",
+      "caller": "with_database",
+      "line": 79,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "with_database",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "with_database",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "with_database",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "with_database",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "with_database",
+      "line": 90,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_default",
+      "caller": "with_database",
+      "line": 92,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "serde_json::from_str",
+      "caller": "with_database",
+      "line": 92,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "insert_document",
+      "caller": "with_database",
+      "line": 94,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Arc::new",
+      "caller": "with_database",
+      "line": 97,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Mutex::new",
+      "caller": "with_database",
+      "line": 97,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "with_database",
+      "line": 99,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "with_database",
+      "line": 101,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "DatabaseBackend::Sqlite",
+      "caller": "with_database",
+      "line": 101,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Arc::new",
+      "caller": "with_database",
+      "line": 101,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "HybridDatabase::new",
+      "caller": "with_hybrid_database",
+      "line": 108,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "initialize_schema",
+      "caller": "with_hybrid_database",
+      "line": 109,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "GitAwareNavigationMap::new",
+      "caller": "with_hybrid_database",
+      "line": 112,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Arc::new",
+      "caller": "with_hybrid_database",
+      "line": 113,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Mutex::new",
+      "caller": "with_hybrid_database",
+      "line": 113,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "GitNavigationStateMachine::new",
+      "caller": "with_hybrid_database",
+      "line": 113,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Arc::new",
+      "caller": "with_hybrid_database",
+      "line": 117,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Mutex::new",
+      "caller": "with_hybrid_database",
+      "line": 117,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "with_hybrid_database",
+      "line": 119,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "with_hybrid_database",
+      "line": 121,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "DatabaseBackend::Hybrid",
+      "caller": "with_hybrid_database",
+      "line": 121,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Arc::new",
+      "caller": "with_hybrid_database",
+      "line": 121,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "navigate",
+      "line": 128,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lock",
+      "caller": "navigate",
+      "line": 128,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "navigate",
+      "caller": "navigate",
+      "line": 129,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "navigate",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lock",
+      "caller": "navigate",
+      "line": 132,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get_git_state",
+      "caller": "navigate",
+      "line": 134,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "navigate",
+      "line": 135,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "navigate",
+      "line": 135,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "calculate_git_confidence",
+      "caller": "navigate",
+      "line": 136,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "explain_confidence_scoring",
+      "caller": "navigate",
+      "line": 141,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "analyze_document",
+      "caller": "index_document",
+      "line": 149,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "index_document",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lock",
+      "caller": "index_document",
+      "line": 153,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert_document",
+      "caller": "index_document",
+      "line": 154,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "index_document",
+      "line": 154,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "index_document",
+      "line": 161,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "store_document",
+      "caller": "index_document",
+      "line": 161,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "index_document",
+      "line": 166,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "store_document",
+      "caller": "index_document",
+      "line": 166,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "index_document",
+      "line": 175,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lock",
+      "caller": "index_document",
+      "line": 175,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "track_document",
+      "caller": "index_document",
+      "line": 176,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "index_document",
+      "line": 179,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "index_directory_with_threads",
+      "caller": "index_directory",
+      "line": 184,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "index_directory_with_threads",
+      "line": 195,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "build",
+      "caller": "index_directory_with_threads",
+      "line": 195,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "num_threads",
+      "caller": "index_directory_with_threads",
+      "line": 195,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "rayon::ThreadPoolBuilder::new",
+      "caller": "index_directory_with_threads",
+      "line": 195,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "_index_directory_impl",
+      "caller": "index_directory_with_threads",
+      "line": 201,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "install",
+      "caller": "index_directory_with_threads",
+      "line": 205,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "_index_directory_impl",
+      "caller": "index_directory_with_threads",
+      "line": 205,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "collect",
+      "caller": "_index_directory_impl",
+      "line": 213,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "_index_directory_impl",
+      "line": 213,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter",
+      "caller": "_index_directory_impl",
+      "line": 213,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "filter_map",
+      "caller": "_index_directory_impl",
+      "line": 213,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "into_iter",
+      "caller": "_index_directory_impl",
+      "line": 213,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "follow_links",
+      "caller": "_index_directory_impl",
+      "line": 213,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WalkDir::new",
+      "caller": "_index_directory_impl",
+      "line": 213,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ok",
+      "caller": "_index_directory_impl",
+      "line": 216,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "_index_directory_impl",
+      "line": 218,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "and_then",
+      "caller": "_index_directory_impl",
+      "line": 220,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extension",
+      "caller": "_index_directory_impl",
+      "line": 220,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_str",
+      "caller": "_index_directory_impl",
+      "line": 220,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "_index_directory_impl",
+      "line": 220,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "_index_directory_impl",
+      "line": 222,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string_lossy",
+      "caller": "_index_directory_impl",
+      "line": 222,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_path_buf",
+      "caller": "_index_directory_impl",
+      "line": 224,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "path",
+      "caller": "_index_directory_impl",
+      "line": 224,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "_index_directory_impl",
+      "line": 227,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "_index_directory_impl",
+      "line": 229,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Arc::new",
+      "caller": "_index_directory_impl",
+      "line": 233,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "AtomicUsize::new",
+      "caller": "_index_directory_impl",
+      "line": 233,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Arc::new",
+      "caller": "_index_directory_impl",
+      "line": 234,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "ParkingMutex::new",
+      "caller": "_index_directory_impl",
+      "line": 234,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "_index_directory_impl",
+      "line": 234,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "for_each",
+      "caller": "_index_directory_impl",
+      "line": 237,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "par_iter",
+      "caller": "_index_directory_impl",
+      "line": 237,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "index_document",
+      "caller": "_index_directory_impl",
+      "line": 238,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fetch_add",
+      "caller": "_index_directory_impl",
+      "line": 240,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "_index_directory_impl",
+      "line": 243,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lock",
+      "caller": "_index_directory_impl",
+      "line": 247,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "_index_directory_impl",
+      "line": 248,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "clone",
+      "caller": "_index_directory_impl",
+      "line": 248,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_default",
+      "caller": "_index_directory_impl",
+      "line": 253,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "_index_directory_impl",
+      "line": 253,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "ok",
+      "caller": "_index_directory_impl",
+      "line": 253,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Arc::try_unwrap",
+      "caller": "_index_directory_impl",
+      "line": 253,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "into_inner",
+      "caller": "_index_directory_impl",
+      "line": 255,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "_index_directory_impl",
+      "line": 259,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "_index_directory_impl",
+      "line": 260,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "take",
+      "caller": "_index_directory_impl",
+      "line": 261,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "iter",
+      "caller": "_index_directory_impl",
+      "line": 261,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "_index_directory_impl",
+      "line": 262,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "_index_directory_impl",
+      "line": 264,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "_index_directory_impl",
+      "line": 265,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "eprintln!",
+      "caller": "_index_directory_impl",
+      "line": 269,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "_index_directory_impl",
+      "line": 270,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "context",
+      "caller": "analyze_document",
+      "line": 275,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::fs::read_to_string",
+      "caller": "analyze_document",
+      "line": 275,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "parse_frontmatter",
+      "caller": "analyze_document",
+      "line": 278,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extract_concepts",
+      "caller": "analyze_document",
+      "line": 281,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "determine_layer",
+      "caller": "analyze_document",
+      "line": 284,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_else",
+      "caller": "analyze_document",
+      "line": 287,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cloned",
+      "caller": "analyze_document",
+      "line": 287,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "or_else",
+      "caller": "analyze_document",
+      "line": 287,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "analyze_document",
+      "line": 287,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "analyze_document",
+      "line": 289,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_default",
+      "caller": "analyze_document",
+      "line": 292,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "map",
+      "caller": "analyze_document",
+      "line": 292,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "file_stem",
+      "caller": "analyze_document",
+      "line": 292,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "analyze_document",
+      "line": 293,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string_lossy",
+      "caller": "analyze_document",
+      "line": 293,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap_or_default",
+      "caller": "analyze_document",
+      "line": 297,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "or_else",
+      "caller": "analyze_document",
+      "line": 297,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "cloned",
+      "caller": "analyze_document",
+      "line": 297,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "get",
+      "caller": "analyze_document",
+      "line": 297,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "extract_summary",
+      "caller": "analyze_document",
+      "line": 300,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "analyze_document",
+      "line": 303,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "generate_document_id",
+      "caller": "analyze_document",
+      "line": 304,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_path_buf",
+      "caller": "analyze_document",
+      "line": 305,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "std::collections::HashMap::new",
+      "caller": "parse_frontmatter",
+      "line": 319,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "strip_prefix",
+      "caller": "parse_frontmatter",
+      "line": 322,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "find",
+      "caller": "parse_frontmatter",
+      "line": 323,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "parse_frontmatter",
+      "line": 328,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split_once",
+      "caller": "parse_frontmatter",
+      "line": 329,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "parse_frontmatter",
+      "line": 330,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "parse_frontmatter",
+      "line": 330,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "parse_frontmatter",
+      "line": 331,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim_matches",
+      "caller": "parse_frontmatter",
+      "line": 331,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "parse_frontmatter",
+      "line": 331,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "insert",
+      "caller": "parse_frontmatter",
+      "line": 332,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "parse_frontmatter",
+      "line": 338,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Vec::new",
+      "caller": "extract_concepts",
+      "line": 343,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "extract_concepts",
+      "line": 346,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "strip_prefix",
+      "caller": "extract_concepts",
+      "line": 347,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "extract_concepts",
+      "line": 348,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_concepts",
+      "line": 349,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "extract_concepts",
+      "line": 349,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split_whitespace",
+      "caller": "extract_concepts",
+      "line": 351,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "extract_concepts",
+      "line": 352,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_concepts",
+      "line": 353,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "extract_concepts",
+      "line": 353,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "strip_prefix",
+      "caller": "extract_concepts",
+      "line": 356,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "extract_concepts",
+      "line": 357,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_concepts",
+      "line": 358,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "extract_concepts",
+      "line": 358,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split_whitespace",
+      "caller": "extract_concepts",
+      "line": 360,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "extract_concepts",
+      "line": 361,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_concepts",
+      "line": 362,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "extract_concepts",
+      "line": 362,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "find",
+      "caller": "extract_concepts",
+      "line": 369,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "extract_concepts",
+      "line": 369,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "extract_concepts",
+      "line": 369,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim_end_matches",
+      "caller": "extract_concepts",
+      "line": 370,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim_start_matches",
+      "caller": "extract_concepts",
+      "line": 370,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "extract_concepts",
+      "line": 370,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "extract_concepts",
+      "line": 374,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_concepts",
+      "line": 375,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "extract_concepts",
+      "line": 375,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "extract_concepts",
+      "line": 375,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "find",
+      "caller": "extract_concepts",
+      "line": 380,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "extract_concepts",
+      "line": 380,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "extract_concepts",
+      "line": 380,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "extract_concepts",
+      "line": 381,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_concepts",
+      "line": 382,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "extract_concepts",
+      "line": 382,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "split",
+      "caller": "extract_concepts",
+      "line": 384,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "extract_concepts",
+      "line": 385,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_concepts",
+      "line": 386,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_lowercase",
+      "caller": "extract_concepts",
+      "line": 386,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "dedup",
+      "caller": "extract_concepts",
+      "line": 391,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "String::new",
+      "caller": "extract_summary",
+      "line": 399,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "lines",
+      "caller": "extract_summary",
+      "line": 401,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "starts_with",
+      "caller": "extract_summary",
+      "line": 402,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "extract_summary",
+      "line": 407,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "extract_summary",
+      "line": 407,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push_str",
+      "caller": "extract_summary",
+      "line": 408,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "push",
+      "caller": "extract_summary",
+      "line": 409,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "extract_summary",
+      "line": 411,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "extract_summary",
+      "line": 414,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "extract_summary",
+      "line": 414,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "extract_summary",
+      "line": 414,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "is_empty",
+      "caller": "extract_summary",
+      "line": 419,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Some",
+      "caller": "extract_summary",
+      "line": 422,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "extract_summary",
+      "line": 422,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "trim",
+      "caller": "extract_summary",
+      "line": 422,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "to_string_lossy",
+      "caller": "determine_layer",
+      "line": 428,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "determine_layer",
+      "line": 430,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "determine_layer",
+      "line": 432,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "contains",
+      "caller": "determine_layer",
+      "line": 432,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "DefaultHasher::new",
+      "caller": "generate_document_id",
+      "line": 445,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "hash",
+      "caller": "generate_document_id",
+      "line": 446,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "format!",
+      "caller": "generate_document_id",
+      "line": 447,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "to_string",
+      "caller": "explain_confidence_scoring",
+      "line": 465,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "unwrap",
+      "caller": "process_git_event",
+      "line": 473,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "lock",
+      "caller": "process_git_event",
+      "line": 473,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "process_git_event",
+      "caller": "process_git_event",
+      "line": 474,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "process_git_event",
+      "line": 479,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

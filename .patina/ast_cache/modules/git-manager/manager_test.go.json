@@ -1,0 +1,547 @@
+{
+  "file": "./modules/git-manager/manager_test.go",
+  "language": "go",
+  "functions": [
+    {
+      "name": "setupTestRepo",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 11,
+      "line_end": 45,
+      "doc_comment": null
+    },
+    {
+      "name": "TestManager_CreateWorktree",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 47,
+      "line_end": 75,
+      "doc_comment": null
+    },
+    {
+      "name": "TestManager_RemoveWorktree",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 77,
+      "line_end": 104,
+      "doc_comment": null
+    },
+    {
+      "name": "TestManager_GetStatus",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 106,
+      "line_end": 157,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "context",
+      "items": [],
+      "alias": null,
+      "line": 4
+    },
+    {
+      "path": "os",
+      "items": [],
+      "alias": null,
+      "line": 5
+    },
+    {
+      "path": "os/exec",
+      "items": [],
+      "alias": null,
+      "line": 6
+    },
+    {
+      "path": "path/filepath",
+      "items": [],
+      "alias": null,
+      "line": 7
+    },
+    {
+      "path": "testing",
+      "items": [],
+      "alias": null,
+      "line": 8
+    }
+  ],
+  "calls": [
+    {
+      "target": "MkdirTemp",
+      "caller": "setupTestRepo",
+      "line": 13,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "setupTestRepo",
+      "line": 15,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command",
+      "caller": "setupTestRepo",
+      "line": 19,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Run",
+      "caller": "setupTestRepo",
+      "line": 21,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "RemoveAll",
+      "caller": "setupTestRepo",
+      "line": 22,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "setupTestRepo",
+      "line": 23,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Run",
+      "caller": "setupTestRepo",
+      "line": 27,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command",
+      "caller": "setupTestRepo",
+      "line": 27,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Run",
+      "caller": "setupTestRepo",
+      "line": 28,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command",
+      "caller": "setupTestRepo",
+      "line": 28,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Join",
+      "caller": "setupTestRepo",
+      "line": 31,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WriteFile",
+      "caller": "setupTestRepo",
+      "line": 32,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "RemoveAll",
+      "caller": "setupTestRepo",
+      "line": 33,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "setupTestRepo",
+      "line": 34,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Run",
+      "caller": "setupTestRepo",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command",
+      "caller": "setupTestRepo",
+      "line": 37,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Run",
+      "caller": "setupTestRepo",
+      "line": 38,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command",
+      "caller": "setupTestRepo",
+      "line": 38,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "RemoveAll",
+      "caller": "setupTestRepo",
+      "line": 41,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "setupTestRepo",
+      "caller": "TestManager_CreateWorktree",
+      "line": 48,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "cleanup",
+      "caller": "TestManager_CreateWorktree",
+      "line": 49,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Join",
+      "caller": "TestManager_CreateWorktree",
+      "line": 51,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewManager",
+      "caller": "TestManager_CreateWorktree",
+      "line": 52,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "TestManager_CreateWorktree",
+      "line": 54,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Background",
+      "caller": "TestManager_CreateWorktree",
+      "line": 57,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CreateWorktree",
+      "caller": "TestManager_CreateWorktree",
+      "line": 60,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatalf",
+      "caller": "TestManager_CreateWorktree",
+      "line": 62,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Stat",
+      "caller": "TestManager_CreateWorktree",
+      "line": 66,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "IsNotExist",
+      "caller": "TestManager_CreateWorktree",
+      "line": 66,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestManager_CreateWorktree",
+      "line": 67,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Command",
+      "caller": "TestManager_CreateWorktree",
+      "line": 71,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Run",
+      "caller": "TestManager_CreateWorktree",
+      "line": 72,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestManager_CreateWorktree",
+      "line": 73,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "setupTestRepo",
+      "caller": "TestManager_RemoveWorktree",
+      "line": 78,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "cleanup",
+      "caller": "TestManager_RemoveWorktree",
+      "line": 79,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Join",
+      "caller": "TestManager_RemoveWorktree",
+      "line": 81,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewManager",
+      "caller": "TestManager_RemoveWorktree",
+      "line": 82,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "TestManager_RemoveWorktree",
+      "line": 84,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Background",
+      "caller": "TestManager_RemoveWorktree",
+      "line": 87,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CreateWorktree",
+      "caller": "TestManager_RemoveWorktree",
+      "line": 90,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "TestManager_RemoveWorktree",
+      "line": 92,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "RemoveWorktree",
+      "caller": "TestManager_RemoveWorktree",
+      "line": 96,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatalf",
+      "caller": "TestManager_RemoveWorktree",
+      "line": 97,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Stat",
+      "caller": "TestManager_RemoveWorktree",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "IsNotExist",
+      "caller": "TestManager_RemoveWorktree",
+      "line": 101,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestManager_RemoveWorktree",
+      "line": 102,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "setupTestRepo",
+      "caller": "TestManager_GetStatus",
+      "line": 107,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "cleanup",
+      "caller": "TestManager_GetStatus",
+      "line": 108,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Join",
+      "caller": "TestManager_GetStatus",
+      "line": 110,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "NewManager",
+      "caller": "TestManager_GetStatus",
+      "line": 111,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "TestManager_GetStatus",
+      "line": 113,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Background",
+      "caller": "TestManager_GetStatus",
+      "line": 116,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "CreateWorktree",
+      "caller": "TestManager_GetStatus",
+      "line": 119,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "TestManager_GetStatus",
+      "line": 121,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "GetStatus",
+      "caller": "TestManager_GetStatus",
+      "line": 125,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatalf",
+      "caller": "TestManager_GetStatus",
+      "line": 127,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "TestManager_GetStatus",
+      "line": 131,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestManager_GetStatus",
+      "line": 135,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Join",
+      "caller": "TestManager_GetStatus",
+      "line": 139,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "WriteFile",
+      "caller": "TestManager_GetStatus",
+      "line": 140,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "TestManager_GetStatus",
+      "line": 141,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "GetStatus",
+      "caller": "TestManager_GetStatus",
+      "line": 145,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Fatal",
+      "caller": "TestManager_GetStatus",
+      "line": 147,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Error",
+      "caller": "TestManager_GetStatus",
+      "line": 151,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "len",
+      "caller": "TestManager_GetStatus",
+      "line": 154,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Errorf",
+      "caller": "TestManager_GetStatus",
+      "line": 155,
+      "is_method": true,
+      "is_async": false
+    }
+  ]
+}

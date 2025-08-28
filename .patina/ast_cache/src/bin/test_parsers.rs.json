@@ -1,0 +1,98 @@
+{
+  "file": "./src/bin/test_parsers.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "main",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 3,
+      "line_end": 47,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "patina::semantic::languages::{create_parser, Language}",
+      "items": [],
+      "alias": null,
+      "line": 1
+    }
+  ],
+  "calls": [
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 4,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "main",
+      "line": 7,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "print!",
+      "caller": "main",
+      "line": 17,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "create_parser",
+      "caller": "main",
+      "line": 18,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "parse",
+      "caller": "main",
+      "line": 32,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 33,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 37,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "main",
+      "line": 41,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "main",
+      "line": 46,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}

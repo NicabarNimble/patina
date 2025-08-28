@@ -1,0 +1,318 @@
+{
+  "file": "./src/commands/dev/sync_adapters.rs",
+  "language": "rust",
+  "functions": [
+    {
+      "name": "execute",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 5,
+      "line_end": 29,
+      "doc_comment": null
+    },
+    {
+      "name": "sync_adapter",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 31,
+      "line_end": 48,
+      "doc_comment": null
+    },
+    {
+      "name": "sync_claude_adapter",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 50,
+      "line_end": 107,
+      "doc_comment": null
+    },
+    {
+      "name": "update_claude_version",
+      "visibility": "public",
+      "async": false,
+      "unsafe": false,
+      "params": [],
+      "returns": null,
+      "line_start": 109,
+      "line_end": 125,
+      "doc_comment": null
+    }
+  ],
+  "types": [],
+  "imports": [
+    {
+      "path": "anyhow::Result",
+      "items": [],
+      "alias": null,
+      "line": 1
+    },
+    {
+      "path": "std::fs",
+      "items": [],
+      "alias": null,
+      "line": 2
+    },
+    {
+      "path": "std::path::Path",
+      "items": [],
+      "alias": null,
+      "line": 3
+    }
+  ],
+  "calls": [
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 6,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 7,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "execute",
+      "line": 10,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "execute",
+      "line": 11,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "sync_adapter",
+      "caller": "execute",
+      "line": 15,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 19,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 20,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 21,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 22,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 23,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 24,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "execute",
+      "line": 25,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "execute",
+      "line": 28,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "sync_adapter",
+      "line": 32,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "sync_claude_adapter",
+      "caller": "sync_adapter",
+      "line": 35,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "sync_adapter",
+      "line": 37,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "sync_adapter",
+      "line": 40,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "sync_adapter",
+      "line": 43,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "sync_adapter",
+      "line": 47,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "vec!",
+      "caller": "sync_claude_adapter",
+      "line": 56,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "sync_claude_adapter",
+      "line": 83,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "sync_claude_adapter",
+      "line": 83,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "sync_claude_adapter",
+      "line": 85,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "sync_claude_adapter",
+      "line": 88,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "sync_claude_adapter",
+      "line": 91,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "exists",
+      "caller": "sync_claude_adapter",
+      "line": 97,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "Path::new",
+      "caller": "sync_claude_adapter",
+      "line": 97,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "sync_claude_adapter",
+      "line": 99,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "update_claude_version",
+      "caller": "sync_claude_adapter",
+      "line": 101,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "println!",
+      "caller": "sync_claude_adapter",
+      "line": 102,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "sync_claude_adapter",
+      "line": 106,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "fs::read_to_string",
+      "caller": "update_claude_version",
+      "line": 112,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "replace",
+      "caller": "update_claude_version",
+      "line": 115,
+      "is_method": true,
+      "is_async": false
+    },
+    {
+      "target": "fs::write",
+      "caller": "update_claude_version",
+      "line": 121,
+      "is_method": false,
+      "is_async": false
+    },
+    {
+      "target": "Ok",
+      "caller": "update_claude_version",
+      "line": 124,
+      "is_method": false,
+      "is_async": false
+    }
+  ]
+}
