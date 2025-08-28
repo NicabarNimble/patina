@@ -37,40 +37,36 @@ Project patterns that prove successful can be promoted to topics, making them av
 # Initialize a new project
 patina init my-project
 
-# Navigate your knowledge base
-patina navigate "authentication patterns"
-patina navigate "testing" --layer core
-patina navigate "docker" --json
+# Build semantic knowledge database
+patina scrape --init              # Initialize database
+patina scrape                     # Index codebase
 
-# Add patterns to your session
-patina add pattern "jwt-refresh-tokens"
+# Check project health
+patina doctor
 
-# Commit patterns to your brain
-patina commit -m "Add JWT refresh token pattern"
-
-# Update context for AI
-patina update
+# Manage development environments
+patina agent start                # Start container orchestration
+patina build                      # Build in container
+patina test                       # Test in container
 
 # Work with your AI assistant using consistent context
 ```
 
-### Git-Aware Navigation
+### Semantic Knowledge Database
 
-Patina's navigation system understands your git workflow:
-- **Untracked** (?) - Experimental patterns
-- **Modified** (M) - Work in progress
-- **Committed** - Locally validated
-- **Pushed** (↑) - Shared with team
-- **Merged** - Production ready
+Patina's scrape command builds a searchable database from your codebase:
+- Indexes code structure and documentation
+- Tracks incremental changes for efficiency  
+- Uses DuckDB for fast semantic queries
+- Integrates with Git for freshness checks
 
 ```bash
-# Start rqlite for persistence (currently manual)
-docker compose up -d
+# Initialize and build knowledge base
+patina scrape --init
+patina scrape
 
-# Navigate with git awareness
-patina navigate "pattern name"
-
-# Future: This will auto-start rqlite when needed
+# Query the database directly
+patina scrape --query "SELECT * FROM symbols WHERE kind = 'function'"
 ```
 
 ## Architecture
