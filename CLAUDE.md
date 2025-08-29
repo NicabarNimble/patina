@@ -57,7 +57,7 @@ patina init . --llm=claude --dev=dagger       # Update or switch both adapters
 patina build                # Smart build (Dagger or Docker)
 patina test                 # Run tests in container
 patina doctor               # Check project health
-patina navigate <pattern>   # Search patterns with Git awareness
+patina scrape                # Build semantic knowledge database
 patina agent <command>      # Manage modular workspace environments
 
 # Session Management (Claude adapter)
