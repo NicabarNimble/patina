@@ -13,11 +13,11 @@ Consolidate all language-specific logic scattered across 19+ locations in `src/c
 ## Refactor Steps
 
 ### Phase 1: Setup Registry Infrastructure
-- [ ] Add LanguageSpec struct definition (lines ~100-150)
-- [ ] Define all required function signatures in LanguageSpec
-- [ ] Add lazy_static dependency if not present
-- [ ] Create empty LANGUAGE_REGISTRY HashMap
-- [ ] Commit: "refactor: add language registry infrastructure"
+- [x] Add LanguageSpec struct definition (lines ~100-150)
+- [x] Define all required function signatures in LanguageSpec
+- [x] Add lazy_static dependency if not present (used std::sync::LazyLock instead)
+- [x] Create empty LANGUAGE_REGISTRY HashMap
+- [x] Commit: "refactor: add language registry infrastructure"
 
 ### Phase 2: Create Rust Language Specification
 - [ ] Define RUST_SPEC constant with all Rust rules
