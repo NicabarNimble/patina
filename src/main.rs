@@ -72,13 +72,11 @@ enum Commands {
         components: bool,
     },
 
-
     /// Manage agent environments
     Agent {
         #[command(subcommand)]
         command: AgentCommands,
     },
-
 
     /// Build semantic knowledge database from code
     Scrape {
