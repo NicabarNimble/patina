@@ -89,8 +89,11 @@ struct LanguageSpec {
     /// Extract generic parameters
     extract_generics: fn(&Node, &[u8]) -> Option<String>,
     
-    /// Map node kind to symbol kind
+    /// Map node kind to symbol kind (simple mapping)
     get_symbol_kind: fn(&str) -> &'static str,
+    
+    /// Map node to symbol kind (complex cases that need node inspection)
+    get_symbol_kind_complex: fn(&Node, &[u8]) -> Option<&'static str>,
     
     /// Extract call target from call expression
     extract_call_target: fn(&Node, &[u8]) -> Option<String>,
@@ -169,6 +172,11 @@ static RUST_SPEC: LanguageSpec = LanguageSpec {
             "use_declaration" => "import",
             _ => "unknown"
         }
+    },
+    
+    get_symbol_kind_complex: |_node, _source| {
+        // Rust doesn't need complex symbol kind detection
+        None
     },
     
     extract_call_target: |node, source| {
@@ -251,10 +259,26 @@ static GO_SPEC: LanguageSpec = LanguageSpec {
         match node_kind {
             "function_declaration" => "function",
             "method_declaration" => "function",
-            "type_spec" => "type",
             "const_declaration" => "const",
             "import_declaration" => "import",
             _ => "unknown"
+        }
+    },
+    
+    get_symbol_kind_complex: |node, _source| {
+        // Special handling for type_spec
+        if node.kind() == "type_spec" {
+            if node.child_by_field_name("type")
+                .is_some_and(|n| n.kind() == "struct_type") {
+                Some("struct")
+            } else if node.child_by_field_name("type")
+                .is_some_and(|n| n.kind() == "interface_type") {
+                Some("trait")
+            } else {
+                Some("type_alias")
+            }
+        } else {
+            None
         }
     },
     
@@ -343,9 +367,25 @@ static PYTHON_SPEC: LanguageSpec = LanguageSpec {
         match node_kind {
             "function_definition" | "async_function_definition" => "function",
             "class_definition" => "struct",
-            "decorated_definition" => "function", // Usually decorates functions
             "import_statement" | "import_from_statement" => "import",
             _ => "unknown"
+        }
+    },
+    
+    get_symbol_kind_complex: |node, _source| {
+        // Special handling for decorated_definition
+        if node.kind() == "decorated_definition" {
+            if node.child_by_field_name("definition")
+                .is_some_and(|n| n.kind() == "function_definition" || n.kind() == "async_function_definition") {
+                Some("function")
+            } else if node.child_by_field_name("definition")
+                .is_some_and(|n| n.kind() == "class_definition") {
+                Some("struct")
+            } else {
+                None
+            }
+        } else {
+            None
         }
     },
     
@@ -431,6 +471,23 @@ static JS_SPEC: LanguageSpec = LanguageSpec {
             "import_statement" => "import",
             "const_declaration" | "let_declaration" => "const",
             _ => "unknown"
+        }
+    },
+    
+    get_symbol_kind_complex: |node, _source| {
+        // Special handling for variable_declarator
+        if node.kind() == "variable_declarator" {
+            if node.child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression") {
+                Some("function")
+            } else if node.child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "class_expression") {
+                Some("struct")
+            } else {
+                None
+            }
+        } else {
+            None
         }
     },
     
@@ -521,7 +578,25 @@ static TS_SPEC: LanguageSpec = LanguageSpec {
             "type_alias_declaration" => "type_alias",
             "import_statement" => "import",
             "const_statement" | "let_statement" => "const",
+            "enum_declaration" => "struct",
             _ => "unknown"
+        }
+    },
+    
+    get_symbol_kind_complex: |node, _source| {
+        // Special handling for variable_declarator (same as JS)
+        if node.kind() == "variable_declarator" {
+            if node.child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression") {
+                Some("function")
+            } else if node.child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "class_expression") {
+                Some("struct")
+            } else {
+                None
+            }
+        } else {
+            None
         }
     },
     
@@ -606,13 +681,20 @@ static SOLIDITY_SPEC: LanguageSpec = LanguageSpec {
         match node_kind {
             "function_definition" => "function",
             "modifier_definition" => "function",
+            "event_definition" => "function",
             "contract_declaration" => "struct",
             "struct_declaration" => "struct",
             "interface_declaration" => "trait",
+            "library_declaration" => "impl",
             "import_directive" => "import",
             "state_variable_declaration" => "const",
             _ => "unknown"
         }
+    },
+    
+    get_symbol_kind_complex: |_node, _source| {
+        // Solidity doesn't need complex symbol kind detection
+        None
     },
     
     extract_call_target: |node, source| {
@@ -1900,129 +1982,44 @@ fn process_ast_node(
     let mut count = 0;
 
     // Check if this is a symbol we want to fingerprint
-    let kind = match (language, node.kind()) {
-        // Rust mappings
-        (Language::Rust, "function_item") => "function",
-        (Language::Rust, "struct_item") => "struct",
-        (Language::Rust, "trait_item") => "trait",
-        (Language::Rust, "impl_item") => "impl",
-        (Language::Rust, "type_alias") => "type_alias",
-        (Language::Rust, "const_item") => "const",
-        (Language::Rust, "use_declaration") => "import",
-        // Go mappings
-        (Language::Go, "function_declaration") => "function",
-        (Language::Go, "method_declaration") => "function",
-        (Language::Go, "const_declaration") => "const",
-        (Language::Go, "import_declaration") => "import",
-        (Language::Go, "type_spec") => {
-            // Check if it's a struct or interface
-            if node
-                .child_by_field_name("type")
-                .is_some_and(|n| n.kind() == "struct_type")
-            {
-                "struct"
-            } else if node
-                .child_by_field_name("type")
-                .is_some_and(|n| n.kind() == "interface_type")
-            {
-                "trait"
+    let kind = if let Some(spec) = get_language_spec(language) {
+        // First try the simple mapping
+        let basic_kind = (spec.get_symbol_kind)(node.kind());
+        
+        if basic_kind != "unknown" {
+            basic_kind
+        } else {
+            // Try complex mapping that needs node inspection
+            if let Some(complex_kind) = (spec.get_symbol_kind_complex)(&node, source) {
+                complex_kind
             } else {
-                "type_alias" // Type aliases in Go
-            }
-        }
-        // Solidity mappings
-        (Language::Solidity, "function_definition") => "function",
-        (Language::Solidity, "contract_declaration") => "struct",
-        (Language::Solidity, "interface_declaration") => "trait",
-        (Language::Solidity, "library_declaration") => "impl",
-        (Language::Solidity, "modifier_definition") => "function",
-        (Language::Solidity, "event_definition") => "function",
-        // Python mappings
-        (Language::Python, "function_definition") => "function",
-        (Language::Python, "class_definition") => "struct",
-        (Language::Python, "decorated_definition") => {
-            // Check if it's a decorated function or class
-            if node
-                .child_by_field_name("definition")
-                .is_some_and(|n| n.kind() == "function_definition")
-            {
-                "function"
-            } else if node
-                .child_by_field_name("definition")
-                .is_some_and(|n| n.kind() == "class_definition")
-            {
-                "struct"
-            } else {
-                ""
-            }
-        }
-        (Language::Python, "import_statement") => "import",
-        (Language::Python, "import_from_statement") => "import",
-        // JavaScript/JSX mappings
-        (Language::JavaScript | Language::JavaScriptJSX, "function_declaration") => "function",
-        (Language::JavaScript | Language::JavaScriptJSX, "function_expression") => "function",
-        (Language::JavaScript | Language::JavaScriptJSX, "arrow_function") => "function",
-        (Language::JavaScript | Language::JavaScriptJSX, "method_definition") => "function",
-        (Language::JavaScript | Language::JavaScriptJSX, "class_declaration") => "struct",
-        (Language::JavaScript | Language::JavaScriptJSX, "import_statement") => "import",
-        (Language::JavaScript | Language::JavaScriptJSX, "variable_declarator") => {
-            // Check if it's a const/let/var with a function value
-            if node
-                .child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression")
-            {
-                "function"
-            } else if node
-                .child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "class_expression")
-            {
-                "struct"
-            } else {
-                ""
-            }
-        }
-        // TypeScript/TSX mappings
-        (Language::TypeScript | Language::TypeScriptTSX, "function_declaration") => "function",
-        (Language::TypeScript | Language::TypeScriptTSX, "function_expression") => "function",
-        (Language::TypeScript | Language::TypeScriptTSX, "arrow_function") => "function",
-        (Language::TypeScript | Language::TypeScriptTSX, "method_definition") => "function",
-        (Language::TypeScript | Language::TypeScriptTSX, "class_declaration") => "struct",
-        (Language::TypeScript | Language::TypeScriptTSX, "interface_declaration") => "trait",
-        (Language::TypeScript | Language::TypeScriptTSX, "type_alias_declaration") => "type_alias",
-        (Language::TypeScript | Language::TypeScriptTSX, "enum_declaration") => "struct",
-        (Language::TypeScript | Language::TypeScriptTSX, "import_statement") => "import",
-        (Language::TypeScript | Language::TypeScriptTSX, "variable_declarator") => {
-            // Check if it's a const/let/var with a function value
-            if node
-                .child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression")
-            {
-                "function"
-            } else if node
-                .child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "class_expression")
-            {
-                "struct"
-            } else {
-                ""
-            }
-        }
-        _ => {
-            // Check for call expressions before recursing
-            extract_call_expressions(node, source, language, context);
-
-            // Recurse into children
-            if cursor.goto_first_child() {
-                loop {
-                    count += process_ast_node(cursor, source, file_path, sql, language, context);
-                    if !cursor.goto_next_sibling() {
-                        break;
+                // Not a symbol we care about - recurse into children
+                extract_call_expressions(node, source, language, context);
+                
+                if cursor.goto_first_child() {
+                    loop {
+                        count += process_ast_node(cursor, source, file_path, sql, language, context);
+                        if !cursor.goto_next_sibling() {
+                            break;
+                        }
                     }
+                    cursor.goto_parent();
                 }
-                cursor.goto_parent();
+                return count;
             }
-            return count;
         }
+    } else {
+        // Unknown language - just recurse
+        if cursor.goto_first_child() {
+            loop {
+                count += process_ast_node(cursor, source, file_path, sql, language, context);
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+            cursor.goto_parent();
+        }
+        return count;
     };
 
     // Skip empty kinds
