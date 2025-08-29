@@ -276,17 +276,369 @@ static GO_SPEC: LanguageSpec = LanguageSpec {
     },
 };
 
+/// Python language specification
+static PYTHON_SPEC: LanguageSpec = LanguageSpec {
+    extensions: &["py"],
+    
+    function_nodes: &["function_definition", "async_function_definition"],
+    struct_nodes: &["class_definition"],
+    trait_nodes: &[], // Python doesn't have traits
+    import_nodes: &["import_statement", "import_from_statement"],
+    
+    is_doc_comment: |text| {
+        // Python uses docstrings (triple quotes)
+        text.starts_with("\"\"\"") || text.starts_with("'''")
+    },
+    
+    parse_visibility: |_node, name, _source| {
+        // Python convention: _ prefix = private
+        !name.starts_with('_')
+    },
+    
+    has_async: |node, source| {
+        // Python uses async def
+        node.kind() == "async_function_definition" ||
+        node.utf8_text(source).unwrap_or("").starts_with("async ")
+    },
+    
+    has_unsafe: |_node, _source| {
+        // Python doesn't have unsafe
+        false
+    },
+    
+    extract_params: |node, source| {
+        if let Some(params_node) = node.child_by_field_name("parameters") {
+            let mut params = Vec::new();
+            let mut cursor = params_node.walk();
+            for child in params_node.children(&mut cursor) {
+                // Skip punctuation
+                if matches!(child.kind(), "," | "(" | ")") {
+                    continue;
+                }
+                if let Ok(param_text) = child.utf8_text(source) {
+                    if !param_text.trim().is_empty() {
+                        params.push(param_text.to_string());
+                    }
+                }
+            }
+            params
+        } else {
+            Vec::new()
+        }
+    },
+    
+    extract_return_type: |node, source| {
+        // Python has optional type hints -> ReturnType
+        node.child_by_field_name("return_type")
+            .and_then(|rt| rt.utf8_text(source).ok())
+            .map(|s| s.trim_start_matches("->").trim().to_string())
+    },
+    
+    extract_generics: |_node, _source| {
+        // Python doesn't have explicit generics in function definitions
+        None
+    },
+    
+    get_symbol_kind: |node_kind| {
+        match node_kind {
+            "function_definition" | "async_function_definition" => "function",
+            "class_definition" => "struct",
+            "decorated_definition" => "function", // Usually decorates functions
+            "import_statement" | "import_from_statement" => "import",
+            _ => "unknown"
+        }
+    },
+    
+    extract_call_target: |node, source| {
+        match node.kind() {
+            "call" => {
+                node.child_by_field_name("function")
+                    .and_then(|f| f.utf8_text(source).ok())
+                    .map(String::from)
+            }
+            "attribute" => {
+                // For method calls like obj.method()
+                node.child_by_field_name("attribute")
+                    .and_then(|a| a.utf8_text(source).ok())
+                    .map(String::from)
+            }
+            _ => None
+        }
+    },
+};
+
+/// JavaScript language specification (shared base for JS/JSX)
+static JS_SPEC: LanguageSpec = LanguageSpec {
+    extensions: &["js", "mjs"],
+    
+    function_nodes: &["function_declaration", "arrow_function", "function_expression"],
+    struct_nodes: &["class_declaration"],
+    trait_nodes: &[], // JS doesn't have traits
+    import_nodes: &["import_statement"],
+    
+    is_doc_comment: |text| {
+        // JSDoc comments
+        text.starts_with("/**") || text.starts_with("///")
+    },
+    
+    parse_visibility: |_node, _name, _source| {
+        // JavaScript doesn't have explicit visibility modifiers
+        // Everything is public unless using closures/modules
+        true
+    },
+    
+    has_async: |node, source| {
+        // Check for async keyword
+        node.utf8_text(source).unwrap_or("").contains("async")
+    },
+    
+    has_unsafe: |_node, _source| {
+        // JavaScript doesn't have unsafe
+        false
+    },
+    
+    extract_params: |node, source| {
+        if let Some(params_node) = node.child_by_field_name("parameters") {
+            let mut params = Vec::new();
+            let mut cursor = params_node.walk();
+            for child in params_node.children(&mut cursor) {
+                if matches!(child.kind(), "identifier" | "rest_pattern" | "object_pattern" | "array_pattern") {
+                    if let Ok(param_text) = child.utf8_text(source) {
+                        params.push(param_text.to_string());
+                    }
+                }
+            }
+            params
+        } else {
+            Vec::new()
+        }
+    },
+    
+    extract_return_type: |_node, _source| {
+        // JavaScript doesn't have return type annotations
+        None
+    },
+    
+    extract_generics: |_node, _source| {
+        // JavaScript doesn't have generics
+        None
+    },
+    
+    get_symbol_kind: |node_kind| {
+        match node_kind {
+            "function_declaration" | "arrow_function" | "function_expression" => "function",
+            "class_declaration" => "struct",
+            "import_statement" => "import",
+            "const_declaration" | "let_declaration" => "const",
+            _ => "unknown"
+        }
+    },
+    
+    extract_call_target: |node, source| {
+        match node.kind() {
+            "call_expression" => {
+                node.child_by_field_name("function")
+                    .and_then(|f| f.utf8_text(source).ok())
+                    .map(String::from)
+            }
+            "member_expression" => {
+                // For method calls like obj.method()
+                node.child_by_field_name("property")
+                    .and_then(|p| p.utf8_text(source).ok())
+                    .map(String::from)
+            }
+            _ => None
+        }
+    },
+};
+
+/// TypeScript language specification
+static TS_SPEC: LanguageSpec = LanguageSpec {
+    extensions: &["ts"],
+    
+    function_nodes: &["function_declaration", "arrow_function", "function_expression", "method_definition"],
+    struct_nodes: &["class_declaration", "interface_declaration", "type_alias_declaration"],
+    trait_nodes: &["interface_declaration"],
+    import_nodes: &["import_statement"],
+    
+    is_doc_comment: |text| {
+        // TSDoc/JSDoc comments
+        text.starts_with("/**") || text.starts_with("///")
+    },
+    
+    parse_visibility: |node, _name, source| {
+        // TypeScript has explicit visibility modifiers
+        let text = node.utf8_text(source).unwrap_or("");
+        !text.contains("private") && !text.contains("protected")
+    },
+    
+    has_async: |node, source| {
+        // Check for async keyword
+        node.utf8_text(source).unwrap_or("").contains("async")
+    },
+    
+    has_unsafe: |_node, _source| {
+        // TypeScript doesn't have unsafe
+        false
+    },
+    
+    extract_params: |node, source| {
+        if let Some(params_node) = node.child_by_field_name("parameters") {
+            let mut params = Vec::new();
+            let mut cursor = params_node.walk();
+            for child in params_node.children(&mut cursor) {
+                if matches!(child.kind(), "required_parameter" | "optional_parameter" | "rest_parameter") {
+                    if let Ok(param_text) = child.utf8_text(source) {
+                        params.push(param_text.to_string());
+                    }
+                }
+            }
+            params
+        } else {
+            Vec::new()
+        }
+    },
+    
+    extract_return_type: |node, source| {
+        // TypeScript has return type annotations
+        node.child_by_field_name("return_type")
+            .and_then(|rt| rt.utf8_text(source).ok())
+            .map(|s| s.trim_start_matches(":").trim().to_string())
+    },
+    
+    extract_generics: |node, source| {
+        // TypeScript has generics
+        node.child_by_field_name("type_parameters")
+            .and_then(|tp| tp.utf8_text(source).ok())
+            .map(String::from)
+    },
+    
+    get_symbol_kind: |node_kind| {
+        match node_kind {
+            "function_declaration" | "arrow_function" | "function_expression" | "method_definition" => "function",
+            "class_declaration" => "struct",
+            "interface_declaration" => "trait",
+            "type_alias_declaration" => "type_alias",
+            "import_statement" => "import",
+            "const_statement" | "let_statement" => "const",
+            _ => "unknown"
+        }
+    },
+    
+    extract_call_target: |node, source| {
+        match node.kind() {
+            "call_expression" => {
+                node.child_by_field_name("function")
+                    .and_then(|f| f.utf8_text(source).ok())
+                    .map(String::from)
+            }
+            "member_expression" => {
+                // For method calls like obj.method()
+                node.child_by_field_name("property")
+                    .and_then(|p| p.utf8_text(source).ok())
+                    .map(String::from)
+            }
+            _ => None
+        }
+    },
+};
+
+/// Solidity language specification
+static SOLIDITY_SPEC: LanguageSpec = LanguageSpec {
+    extensions: &["sol"],
+    
+    function_nodes: &["function_definition", "modifier_definition"],
+    struct_nodes: &["contract_declaration", "struct_declaration"],
+    trait_nodes: &["interface_declaration"],
+    import_nodes: &["import_directive"],
+    
+    is_doc_comment: |text| {
+        // Solidity uses NatSpec comments
+        text.starts_with("///") || text.starts_with("/**")
+    },
+    
+    parse_visibility: |node, _name, source| {
+        // Solidity defaults to public, check for private/internal
+        let text = node.utf8_text(source).unwrap_or("");
+        !text.contains("private") && !text.contains("internal")
+    },
+    
+    has_async: |_node, _source| {
+        // Solidity doesn't have async
+        false
+    },
+    
+    has_unsafe: |node, source| {
+        // In Solidity, unchecked blocks are similar to unsafe
+        node.utf8_text(source).unwrap_or("").contains("unchecked")
+    },
+    
+    extract_params: |node, source| {
+        if let Some(params_node) = node.child_by_field_name("parameters") {
+            let mut params = Vec::new();
+            let mut cursor = params_node.walk();
+            for child in params_node.children(&mut cursor) {
+                if child.kind() == "parameter" {
+                    if let Ok(param_text) = child.utf8_text(source) {
+                        params.push(param_text.to_string());
+                    }
+                }
+            }
+            params
+        } else {
+            Vec::new()
+        }
+    },
+    
+    extract_return_type: |node, source| {
+        // Solidity has return parameters
+        node.child_by_field_name("return_parameters")
+            .and_then(|rp| rp.utf8_text(source).ok())
+            .map(String::from)
+    },
+    
+    extract_generics: |_node, _source| {
+        // Solidity doesn't have generics
+        None
+    },
+    
+    get_symbol_kind: |node_kind| {
+        match node_kind {
+            "function_definition" => "function",
+            "modifier_definition" => "function",
+            "contract_declaration" => "struct",
+            "struct_declaration" => "struct",
+            "interface_declaration" => "trait",
+            "import_directive" => "import",
+            "state_variable_declaration" => "const",
+            _ => "unknown"
+        }
+    },
+    
+    extract_call_target: |node, source| {
+        if node.kind() == "call_expression" {
+            node.child_by_field_name("function")
+                .and_then(|f| f.utf8_text(source).ok())
+                .map(String::from)
+        } else {
+            None
+        }
+    },
+};
+
 /// Central registry of all language specifications
 static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> = LazyLock::new(|| {
     let mut registry = HashMap::new();
     
-    // Register language specifications
+    // Register all language specifications
     registry.insert(Language::Rust, &RUST_SPEC);
     registry.insert(Language::Go, &GO_SPEC);
-    
-    // Other languages will be added in subsequent phases
-    // registry.insert(Language::Python, &PYTHON_SPEC);
-    // etc...
+    registry.insert(Language::Python, &PYTHON_SPEC);
+    registry.insert(Language::JavaScript, &JS_SPEC);
+    registry.insert(Language::JavaScriptJSX, &JS_SPEC); // JSX uses same spec as JS
+    registry.insert(Language::TypeScript, &TS_SPEC);
+    registry.insert(Language::TypeScriptTSX, &TS_SPEC); // TSX uses same spec as TS
+    registry.insert(Language::Solidity, &SOLIDITY_SPEC);
     
     registry
 });
