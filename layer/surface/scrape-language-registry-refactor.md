@@ -20,19 +20,19 @@ Consolidate all language-specific logic scattered across 19+ locations in `src/c
 - [x] Commit: "refactor: add language registry infrastructure"
 
 ### Phase 2: Create Rust Language Specification
-- [ ] Define RUST_SPEC constant with all Rust rules
-- [ ] Implement all function fields for Rust:
-  - [ ] is_doc_comment
-  - [ ] parse_visibility  
-  - [ ] has_async
-  - [ ] has_unsafe
-  - [ ] extract_params
-  - [ ] extract_return_type
-  - [ ] extract_generics
-  - [ ] get_symbol_kind
-  - [ ] extract_call_target
-- [ ] Add RUST_SPEC to registry
-- [ ] Commit: "refactor: implement Rust language specification"
+- [x] Define RUST_SPEC constant with all Rust rules
+- [x] Implement all function fields for Rust:
+  - [x] is_doc_comment
+  - [x] parse_visibility  
+  - [x] has_async
+  - [x] has_unsafe
+  - [x] extract_params
+  - [x] extract_return_type
+  - [x] extract_generics
+  - [x] get_symbol_kind
+  - [x] extract_call_target
+- [x] Add RUST_SPEC to registry
+- [x] Commit: "refactor: implement Rust language specification"
 
 ### Phase 3: Create Go Language Specification
 - [ ] Define GO_SPEC constant with all Go rules
