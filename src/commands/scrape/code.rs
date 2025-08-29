@@ -643,6 +643,11 @@ static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> = L
     registry
 });
 
+/// Get language specification from registry
+fn get_language_spec(language: Language) -> Option<&'static LanguageSpec> {
+    LANGUAGE_REGISTRY.get(&language).copied()
+}
+
 // ============================================================================
 // CHAPTER 1: PUBLIC INTERFACE
 // ============================================================================
@@ -1574,9 +1579,10 @@ fn extract_doc_comment(
                     || child.kind() == "block_comment"
                 {
                     let text = child.utf8_text(source).unwrap_or("");
-                    let is_doc = match language {
-                        Language::Rust => text.starts_with("///") || text.starts_with("//!"),
-                        _ => text.starts_with("/**") || text.starts_with("///"),
+                    let is_doc = if let Some(spec) = get_language_spec(language) {
+                        (spec.is_doc_comment)(text)
+                    } else {
+                        false
                     };
                     if is_doc {
                         let raw = text.to_string();
@@ -2280,65 +2286,24 @@ fn extract_function_facts(
     use languages::Language;
 
     // Extract visibility
-    let is_public = match language {
-        Language::Rust => {
-            // Check for pub keyword
-            node.children(&mut node.walk())
-                .any(|child| child.kind() == "visibility_modifier")
-        }
-        Language::Go => {
-            // In Go, uppercase first letter = public
-            name.chars().next().is_some_and(|c| c.is_uppercase())
-        }
-        Language::Solidity => {
-            // Solidity defaults to public
-            !node.utf8_text(source).unwrap_or("").contains("private")
-        }
-        Language::Python => {
-            // Python uses convention: _ prefix = private
-            !name.starts_with('_')
-        }
-        Language::JavaScript
-        | Language::JavaScriptJSX
-        | Language::TypeScript
-        | Language::TypeScriptTSX => {
-            // JS/TS: export = public, TypeScript can have public/private keywords
-            let text = node.utf8_text(source).unwrap_or("");
-            text.contains("export") || text.contains("public")
-        }
-        Language::Unknown => false,
+    let is_public = if let Some(spec) = get_language_spec(language) {
+        (spec.parse_visibility)(&node, name, source)
+    } else {
+        false // Unknown language defaults to private
     };
 
     // Extract async
-    let is_async = match language {
-        Language::Rust => node
-            .children(&mut node.walk())
-            .any(|child| child.kind() == "async"),
-        Language::JavaScript
-        | Language::JavaScriptJSX
-        | Language::TypeScript
-        | Language::TypeScriptTSX => {
-            // JS/TS have async functions
-            let text = node.utf8_text(source).unwrap_or("");
-            text.starts_with("async ") || text.contains(" async ")
-        }
-        Language::Python => {
-            // Python uses async def
-            node.kind() == "async_function_definition"
-                || node
-                    .utf8_text(source)
-                    .unwrap_or("")
-                    .starts_with("async def")
-        }
-        _ => false, // Go and Solidity don't have async keyword
+    let is_async = if let Some(spec) = get_language_spec(language) {
+        (spec.has_async)(&node, source)
+    } else {
+        false
     };
 
     // Extract unsafe
-    let is_unsafe = match language {
-        Language::Rust => node
-            .children(&mut node.walk())
-            .any(|child| child.kind() == "unsafe"),
-        _ => false,
+    let is_unsafe = if let Some(spec) = get_language_spec(language) {
+        (spec.has_unsafe)(&node, source)
+    } else {
+        false
     };
 
     // Extract parameters with details

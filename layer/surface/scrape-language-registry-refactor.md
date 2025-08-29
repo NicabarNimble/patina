@@ -35,30 +35,29 @@ Consolidate all language-specific logic scattered across 19+ locations in `src/c
 - [x] Commit: "refactor: implement Rust language specification"
 
 ### Phase 3: Create Go Language Specification
-- [ ] Define GO_SPEC constant with all Go rules
-- [ ] Implement all function fields for Go
-- [ ] Add GO_SPEC to registry
-- [ ] Commit: "refactor: implement Go language specification"
+- [x] Define GO_SPEC constant with all Go rules
+- [x] Implement all function fields for Go
+- [x] Add GO_SPEC to registry
+- [x] Commit: "refactor: implement Go language specification"
 
 ### Phase 4: Create Python Language Specification
-- [ ] Define PYTHON_SPEC constant with all Python rules
-- [ ] Implement all function fields for Python
-- [ ] Add PYTHON_SPEC to registry
-- [ ] Commit: "refactor: implement Python language specification"
+- [x] Define PYTHON_SPEC constant with all Python rules
+- [x] Implement all function fields for Python
+- [x] Add PYTHON_SPEC to registry
+- [x] Commit: "refactor: implement Python language specification" (combined)
 
 ### Phase 5: Create JavaScript/TypeScript Specifications
-- [ ] Define JS_SPEC constant
-- [ ] Define TS_SPEC constant
-- [ ] Define JSX_SPEC constant
-- [ ] Define TSX_SPEC constant
-- [ ] Add all to registry
-- [ ] Commit: "refactor: implement JavaScript/TypeScript specifications"
+- [x] Define JS_SPEC constant
+- [x] Define TS_SPEC constant
+- [x] JSX/TSX use parent specs (not separate)
+- [x] Add all to registry
+- [x] Commit: "refactor: implement JavaScript/TypeScript specifications" (combined)
 
 ### Phase 6: Create Solidity Specification
-- [ ] Define SOLIDITY_SPEC constant
-- [ ] Implement all function fields for Solidity
-- [ ] Add SOLIDITY_SPEC to registry
-- [ ] Commit: "refactor: implement Solidity specification"
+- [x] Define SOLIDITY_SPEC constant
+- [x] Implement all function fields for Solidity
+- [x] Add SOLIDITY_SPEC to registry
+- [x] Commit: "refactor: implement Solidity specification" (combined)
 
 ### Phase 7: Replace Scattered Logic with Registry Lookups
 - [ ] Replace parse_visibility match statements (line ~1677)
