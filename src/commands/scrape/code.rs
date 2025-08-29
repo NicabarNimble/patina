@@ -37,6 +37,78 @@ use std::process::Command;
 use super::{ScrapeConfig, ScrapeStats};
 
 // ============================================================================
+// LANGUAGE REGISTRY - Centralized language configuration
+// ============================================================================
+// All language-specific logic consolidated in ONE place.
+// To add a new language: 
+// 1. Create a LanguageSpec constant
+// 2. Add it to LANGUAGE_REGISTRY
+// That's it! No scattered match statements to update.
+
+use std::sync::LazyLock;
+use tree_sitter::Node;
+
+// Import Language enum from the languages module at the end of this file
+use self::languages::Language;
+
+/// Specification for how to parse and extract information from a language
+struct LanguageSpec {
+    /// File extensions for this language
+    extensions: &'static [&'static str],
+    
+    /// AST node types that represent functions
+    function_nodes: &'static [&'static str],
+    
+    /// AST node types that represent structs/classes
+    struct_nodes: &'static [&'static str],
+    
+    /// AST node types that represent traits/interfaces
+    trait_nodes: &'static [&'static str],
+    
+    /// AST node types that represent imports
+    import_nodes: &'static [&'static str],
+    
+    /// Check if a comment is a documentation comment
+    is_doc_comment: fn(&str) -> bool,
+    
+    /// Parse visibility from node and name
+    parse_visibility: fn(&Node, &str, &[u8]) -> bool,
+    
+    /// Check if function is async
+    has_async: fn(&Node, &[u8]) -> bool,
+    
+    /// Check if function is unsafe
+    has_unsafe: fn(&Node, &[u8]) -> bool,
+    
+    /// Extract function parameters
+    extract_params: fn(&Node, &[u8]) -> Vec<String>,
+    
+    /// Extract return type
+    extract_return_type: fn(&Node, &[u8]) -> Option<String>,
+    
+    /// Extract generic parameters
+    extract_generics: fn(&Node, &[u8]) -> Option<String>,
+    
+    /// Map node kind to symbol kind
+    get_symbol_kind: fn(&str) -> &'static str,
+    
+    /// Extract call target from call expression
+    extract_call_target: fn(&Node, &[u8]) -> Option<String>,
+}
+
+/// Central registry of all language specifications
+static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> = LazyLock::new(|| {
+    let mut registry = HashMap::new();
+    
+    // Language specifications will be added here in subsequent phases
+    // registry.insert(Language::Rust, &RUST_SPEC);
+    // registry.insert(Language::Go, &GO_SPEC);
+    // etc...
+    
+    registry
+});
+
+// ============================================================================
 // CHAPTER 1: PUBLIC INTERFACE
 // ============================================================================
 
@@ -2527,7 +2599,7 @@ pub(crate) mod languages {
     use tree_sitter::Parser;
 
     /// Supported programming languages
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum Language {
         Rust,
         Go,
