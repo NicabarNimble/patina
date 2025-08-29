@@ -113,7 +113,7 @@ static RUST_SPEC: LanguageSpec = LanguageSpec {
         text.starts_with("///") || text.starts_with("//!")
     },
     
-    parse_visibility: |node, _name, source| {
+    parse_visibility: |node, _name, _source| {
         // Check for pub keyword via visibility_modifier node
         node.children(&mut node.walk())
             .any(|child| child.kind() == "visibility_modifier")
@@ -188,15 +188,104 @@ static RUST_SPEC: LanguageSpec = LanguageSpec {
     },
 };
 
+/// Go language specification
+static GO_SPEC: LanguageSpec = LanguageSpec {
+    extensions: &["go"],
+    
+    function_nodes: &["function_declaration", "method_declaration"],
+    struct_nodes: &["type_spec"],
+    trait_nodes: &[], // Go has interfaces but handled via type_spec
+    import_nodes: &["import_declaration"],
+    
+    is_doc_comment: |text| {
+        // Go uses // for doc comments (before declarations)
+        text.starts_with("//")
+    },
+    
+    parse_visibility: |_node, name, _source| {
+        // In Go, uppercase first letter = public
+        name.chars().next().map_or(false, |c| c.is_uppercase())
+    },
+    
+    has_async: |_node, _source| {
+        // Go doesn't have async keyword, uses goroutines
+        false
+    },
+    
+    has_unsafe: |_node, _source| {
+        // Go doesn't have unsafe keyword in function declarations
+        false
+    },
+    
+    extract_params: |node, source| {
+        if let Some(params_node) = node.child_by_field_name("parameters") {
+            let mut params = Vec::new();
+            let mut cursor = params_node.walk();
+            for child in params_node.children(&mut cursor) {
+                if child.kind() == "parameter_declaration" {
+                    if let Ok(param_text) = child.utf8_text(source) {
+                        params.push(param_text.to_string());
+                    }
+                }
+            }
+            params
+        } else {
+            Vec::new()
+        }
+    },
+    
+    extract_return_type: |node, source| {
+        node.child_by_field_name("result")
+            .and_then(|r| r.utf8_text(source).ok())
+            .map(String::from)
+    },
+    
+    extract_generics: |node, source| {
+        // Go uses type parameters (generics added in Go 1.18)
+        node.child_by_field_name("type_parameters")
+            .and_then(|tp| tp.utf8_text(source).ok())
+            .map(String::from)
+    },
+    
+    get_symbol_kind: |node_kind| {
+        match node_kind {
+            "function_declaration" => "function",
+            "method_declaration" => "function",
+            "type_spec" => "type",
+            "const_declaration" => "const",
+            "import_declaration" => "import",
+            _ => "unknown"
+        }
+    },
+    
+    extract_call_target: |node, source| {
+        match node.kind() {
+            "call_expression" => {
+                node.child_by_field_name("function")
+                    .and_then(|f| f.utf8_text(source).ok())
+                    .map(String::from)
+            }
+            "selector_expression" => {
+                // For method calls like obj.Method()
+                node.child_by_field_name("field")
+                    .and_then(|f| f.utf8_text(source).ok())
+                    .map(String::from)
+            }
+            _ => None
+        }
+    },
+};
+
 /// Central registry of all language specifications
 static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> = LazyLock::new(|| {
     let mut registry = HashMap::new();
     
-    // Register Rust specification
+    // Register language specifications
     registry.insert(Language::Rust, &RUST_SPEC);
+    registry.insert(Language::Go, &GO_SPEC);
     
     // Other languages will be added in subsequent phases
-    // registry.insert(Language::Go, &GO_SPEC);
+    // registry.insert(Language::Python, &PYTHON_SPEC);
     // etc...
     
     registry
