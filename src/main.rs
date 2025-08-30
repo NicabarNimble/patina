@@ -1,5 +1,5 @@
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 mod commands;
 
@@ -78,23 +78,51 @@ enum Commands {
         command: AgentCommands,
     },
 
-    /// Build semantic knowledge database from code
+    /// Build semantic knowledge database
     Scrape {
-        /// Initialize the knowledge database
-        #[arg(long)]
-        init: bool,
+        #[command(subcommand)]
+        command: Option<ScrapeCommands>,
+    },
+}
 
-        /// Run a custom SQL query against the database
-        #[arg(long)]
-        query: Option<String>,
+/// Common arguments for all scrape subcommands
+#[derive(Args)]
+struct ScrapeArgs {
+    /// Initialize the knowledge database
+    #[arg(long)]
+    init: bool,
 
-        /// Scrape a reference repo from layer/dust/repos/<name>
-        #[arg(long)]
-        repo: Option<String>,
+    /// Run a custom SQL query against the database
+    #[arg(long)]
+    query: Option<String>,
 
-        /// Force full re-index (ignore incremental updates)
-        #[arg(long)]
-        force: bool,
+    /// Scrape a reference repo from layer/dust/repos/<name>
+    #[arg(long)]
+    repo: Option<String>,
+
+    /// Force full re-index (ignore incremental updates)
+    #[arg(long)]
+    force: bool,
+}
+
+#[derive(Subcommand)]
+enum ScrapeCommands {
+    /// Extract semantic information from source code
+    Code {
+        #[command(flatten)]
+        args: ScrapeArgs,
+    },
+
+    /// Extract knowledge from markdown/text files (coming soon)
+    Docs {
+        #[command(flatten)]
+        args: ScrapeArgs,
+    },
+
+    /// Extract content from PDF documents (coming soon)
+    Pdf {
+        #[command(flatten)]
+        args: ScrapeArgs,
     },
 }
 
@@ -234,13 +262,27 @@ fn main() -> Result<()> {
             AgentCommands::Status => commands::agent::status()?,
             AgentCommands::List => commands::agent::list()?,
         },
-        Commands::Scrape {
-            init,
-            query,
-            repo,
-            force,
-        } => {
-            commands::scrape::execute(init, query, repo, force)?;
+        Commands::Scrape { command } => {
+            // Default to Code subcommand with default args for backward compatibility
+            let subcommand = command.unwrap_or(ScrapeCommands::Code {
+                args: ScrapeArgs {
+                    init: false,
+                    query: None,
+                    repo: None,
+                    force: false,
+                },
+            });
+            match subcommand {
+                ScrapeCommands::Code { args } => {
+                    commands::scrape::execute(args.init, args.query, args.repo, args.force)?;
+                }
+                ScrapeCommands::Docs { args } => {
+                    commands::scrape::execute_docs(args.init, args.query, args.repo, args.force)?;
+                }
+                ScrapeCommands::Pdf { args } => {
+                    commands::scrape::execute_pdf(args.init, args.query, args.repo, args.force)?;
+                }
+            }
         }
         Commands::Doctor { json } => {
             let exit_code = commands::doctor::execute(json)?;
