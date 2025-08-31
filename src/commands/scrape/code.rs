@@ -1196,7 +1196,8 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
             | Language::JavaScript
             | Language::JavaScriptJSX
             | Language::TypeScript
-            | Language::TypeScriptTSX => {
+            | Language::TypeScriptTSX
+            | Language::Cairo => {
                 // Supported language - add to processing list with relative path
                 all_files.push((format!("./{}", relative_path_str), language));
             }
@@ -1225,7 +1226,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
     }
 
     println!(
-        "  📂 Found {} files ({} Rust, {} Go, {} Solidity, {} Python, {} JS, {} JSX, {} TS, {} TSX)",
+        "  📂 Found {} files ({} Rust, {} Go, {} Solidity, {} Python, {} JS, {} JSX, {} TS, {} TSX, {} Cairo)",
         all_files.len(),
         all_files
             .iter()
@@ -1255,6 +1256,10 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
         all_files
             .iter()
             .filter(|(_, l)| *l == Language::TypeScriptTSX)
+            .count(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::Cairo)
             .count()
     );
 
@@ -1324,25 +1329,95 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
         // Check if file needs reindexing (mtime-based incremental)
         let file_path = work_dir.join(&file);
 
-        // Create parser for this specific file path
-        // This correctly handles TSX vs TS and JSX vs JS distinctions
-        // We need to use create_parser_for_path because create_parser loses the TSX/JSX distinction
-        if language != current_lang {
-            parser = Some(create_parser_for_path(&file_path)?);
-            current_lang = language;
-        }
-        let metadata = std::fs::metadata(&file_path)?;
-        let mtime = metadata
-            .modified()?
-            .duration_since(SystemTime::UNIX_EPOCH)?
-            .as_secs() as i64;
+        // Cairo needs special handling - use cairo-lang-parser instead of tree-sitter
+        if language == Language::Cairo {
+            // Parse Cairo file using our custom parser
+            let metadata = std::fs::metadata(&file_path)?;
+            let mtime = metadata
+                .modified()?
+                .duration_since(SystemTime::UNIX_EPOCH)?
+                .as_secs() as i64;
+            
+            let content = std::fs::read_to_string(&file_path)?;
+            
+            // Parse Cairo code
+            if let Ok(symbols) = patina_metal::cairo::parse_cairo(&content, &file) {
+                // Convert Cairo symbols to SQL inserts
+                for func in symbols.functions {
+                    let fingerprint = fingerprint::Fingerprint {
+                        pattern: 0, // TODO: compute pattern hash
+                        imports: 0, // TODO: compute imports hash
+                        complexity: 1, // TODO: compute complexity
+                        flags: if func.is_public { 1 } else { 0 },
+                    };
+                    sql.push_str(&format!(
+                        "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', 'function', {}, {}, {}, {});\n",
+                        file, func.name,
+                        fingerprint.pattern, fingerprint.imports,
+                        fingerprint.complexity, fingerprint.flags
+                    ));
+                    symbol_count += 1;
+                }
+                
+                for s in symbols.structs {
+                    let fingerprint = fingerprint::Fingerprint {
+                        pattern: 0,
+                        imports: 0,
+                        complexity: 1,
+                        flags: if s.is_public { 1 } else { 0 },
+                    };
+                    sql.push_str(&format!(
+                        "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', 'struct', {}, {}, {}, {});\n",
+                        file, s.name,
+                        fingerprint.pattern, fingerprint.imports,
+                        fingerprint.complexity, fingerprint.flags
+                    ));
+                    symbol_count += 1;
+                }
+                
+                for t in symbols.traits {
+                    let fingerprint = fingerprint::Fingerprint {
+                        pattern: 0,
+                        imports: 0,
+                        complexity: 1,
+                        flags: if t.is_public { 1 } else { 0 },
+                    };
+                    sql.push_str(&format!(
+                        "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', 'trait', {}, {}, {}, {});\n",
+                        file, t.name,
+                        fingerprint.pattern, fingerprint.imports,
+                        fingerprint.complexity, fingerprint.flags
+                    ));
+                    symbol_count += 1;
+                }
+                
+                // Record index state
+                sql.push_str(&format!(
+                    "INSERT INTO index_state (path, mtime) VALUES ('{}', {});\n",
+                    file, mtime
+                ));
+            }
+        } else {
+            // Use tree-sitter for other languages
+            // Create parser for this specific file path
+            // This correctly handles TSX vs TS and JSX vs JS distinctions
+            // We need to use create_parser_for_path because create_parser loses the TSX/JSX distinction
+            if language != current_lang {
+                parser = Some(create_parser_for_path(&file_path)?);
+                current_lang = language;
+            }
+            let metadata = std::fs::metadata(&file_path)?;
+            let mtime = metadata
+                .modified()?
+                .duration_since(SystemTime::UNIX_EPOCH)?
+                .as_secs() as i64;
 
-        // TODO: Check index_state to skip unchanged files
+            // TODO: Check index_state to skip unchanged files
 
-        // Parse and fingerprint
-        let content = std::fs::read_to_string(&file_path)?;
-        if let Some(ref mut p) = parser {
-            if let Some(tree) = p.parse(&content, None) {
+            // Parse and fingerprint
+            let content = std::fs::read_to_string(&file_path)?;
+            if let Some(ref mut p) = parser {
+                if let Some(tree) = p.parse(&content, None) {
                 let mut cursor = tree.walk();
                 let mut context = ParseContext::new();
                 symbol_count += process_ast_node(
@@ -1362,6 +1437,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
                     "INSERT INTO index_state (path, mtime) VALUES ('{}', {});\n",
                     file, mtime
                 ));
+            }
             }
         }
 
@@ -2423,7 +2499,7 @@ fn extract_function_facts(
                     }
                 }
             }
-            Language::Solidity | Language::Unknown => {} // Solidity handled earlier, Unknown skipped
+            Language::Solidity | Language::Cairo | Language::Unknown => {} // Solidity handled earlier, Cairo uses different parser, Unknown skipped
         }
 
         // Create parameter list string (escape for SQL)
@@ -2582,6 +2658,7 @@ fn extract_type_definition(
                 "private"
             }
         }
+        Language::Cairo => "pub", // Cairo defaults to public
         Language::Unknown => "private",
     };
 
@@ -2707,6 +2784,23 @@ fn extract_import_fact(
                     is_external
                 ));
             }
+        }
+        Language::Cairo => {
+            // Parse Cairo use statements
+            let import_clean = import_text.trim_start_matches("use ").trim_end_matches(';');
+            
+            // Cairo imports are typically external unless they're relative
+            let is_external = !import_clean.starts_with("super::") && !import_clean.starts_with("self::");
+            
+            let imported_item = import_clean.split("::").last().unwrap_or(import_clean);
+            
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');\n",
+                escape_sql(file_path),
+                escape_sql(imported_item),
+                escape_sql(import_clean),
+                is_external
+            ));
         }
         Language::Unknown => {} // Skip unknown languages
     }
@@ -3106,6 +3200,7 @@ pub(crate) mod languages {
         JavaScriptJSX, // .jsx files
         TypeScript,
         TypeScriptTSX, // .tsx files
+        Cairo,
         Unknown,
     }
 
@@ -3121,6 +3216,7 @@ pub(crate) mod languages {
                 Some("jsx") => Language::JavaScriptJSX,
                 Some("ts") => Language::TypeScript,
                 Some("tsx") => Language::TypeScriptTSX,
+                Some("cairo") => Language::Cairo,
                 _ => Language::Unknown,
             }
         }
@@ -3138,6 +3234,7 @@ pub(crate) mod languages {
                 Language::TypeScript | Language::TypeScriptTSX => {
                     Some(patina_metal::Metal::TypeScript)
                 }
+                Language::Cairo => Some(patina_metal::Metal::Cairo),
                 Language::Unknown => None,
             }
         }
