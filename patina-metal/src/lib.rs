@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, Parser, Query, QueryCursor, Tree};
 
+pub mod cairo;
 pub mod grammars;
 pub mod metal;
 pub mod parser;
