@@ -154,8 +154,12 @@ impl CairoParser {
                 let name = struct_item.name(&self.db).text(&self.db).to_string();
                 let (start_line, end_line) = self.get_line_range(node, content);
 
-                // Extract field names - simplified approach for now
-                let fields = vec![]; // TODO: Extract actual fields when API is clear
+                // Extract field names
+                let fields = struct_item
+                    .members(&self.db)
+                    .elements(&self.db)
+                    .map(|member| member.name(&self.db).text(&self.db).to_string())
+                    .collect();
 
                 symbols.structs.push(StructSymbol {
                     name,
