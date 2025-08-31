@@ -1948,63 +1948,10 @@ fn extract_doc_comment(
 
 /// Clean doc text by removing comment markers
 fn clean_doc_text(raw: &str, language: languages::Language) -> String {
-    use languages::Language;
-
-    match language {
-        Language::Rust => raw
-            .lines()
-            .map(|line| {
-                line.trim_start()
-                    .strip_prefix("///")
-                    .or_else(|| line.strip_prefix("//!"))
-                    .unwrap_or(line)
-                    .trim()
-            })
-            .collect::<Vec<_>>()
-            .join(" "),
-        Language::Go | Language::Solidity => raw
-            .lines()
-            .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join(" "),
-        Language::Python => {
-            // Remove triple quotes
-            raw.trim()
-                .strip_prefix("\"\"\"")
-                .and_then(|s| s.strip_suffix("\"\"\""))
-                .or_else(|| {
-                    raw.trim()
-                        .strip_prefix("'''")
-                        .and_then(|s| s.strip_suffix("'''"))
-                })
-                .unwrap_or(raw)
-                .trim()
-                .to_string()
-        }
-        Language::JavaScript
-        | Language::JavaScriptJSX
-        | Language::TypeScript
-        | Language::TypeScriptTSX => {
-            if raw.starts_with("/**") {
-                raw.strip_prefix("/**")
-                    .and_then(|s| s.strip_suffix("*/"))
-                    .map(|s| {
-                        s.lines()
-                            .map(|line| line.trim().strip_prefix("*").unwrap_or(line).trim())
-                            .filter(|line| !line.is_empty())
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                    })
-                    .unwrap_or_else(|| raw.to_string())
-            } else {
-                raw.lines()
-                    .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            }
-        }
-        _ => raw.to_string(),
+    if let Some(spec) = get_language_spec(language) {
+        (spec.clean_doc_comment)(raw)
+    } else {
+        raw.to_string()
     }
 }
 
@@ -2791,127 +2738,36 @@ fn extract_import_fact(
 ) {
     use languages::Language;
 
-    let import_text = node.utf8_text(source).unwrap_or("");
-
-    match language {
-        Language::Rust => {
-            // Parse Rust use statements
-            let import_clean = import_text.trim_start_matches("use ").trim_end_matches(';');
-
-            // Determine if external
-            let is_external = !import_clean.starts_with("crate::")
-                && !import_clean.starts_with("super::")
-                && !import_clean.starts_with("self::");
-
-            // Extract the imported item (last part after ::)
-            let imported_item = import_clean.split("::").last().unwrap_or(import_clean);
-
-            // Extract the source module
-            let imported_from = if import_clean.contains("::") {
-                import_clean
-                    .rsplit_once("::")
-                    .map(|(from, _)| from)
-                    .unwrap_or(import_clean)
-            } else {
-                import_clean
-            };
-
-            sql.push_str(&format!(
-                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');\n",
-                escape_sql(file_path),
-                escape_sql(imported_item),
-                escape_sql(imported_from),
-                is_external
-            ));
-        }
-        Language::Go => {
-            // Parse Go imports
-            let import_clean = import_text
-                .trim_start_matches("import ")
-                .trim()
-                .trim_matches('"');
-
-            let is_external = !import_clean.starts_with(".");
-
-            let imported_item = import_clean.split('/').next_back().unwrap_or(import_clean);
-
+    if let Some(spec) = get_language_spec(language) {
+        let (imported_item, imported_from, is_external) = (spec.extract_import_details)(&node, source);
+        
+        if !imported_item.is_empty() {
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
                 escape_sql(file_path),
-                escape_sql(imported_item),
-                escape_sql(import_clean),
+                escape_sql(&imported_item),
+                escape_sql(&imported_from),
                 is_external
             ));
         }
-        Language::Solidity => {
-            // Parse Solidity imports
-            if let Some(path_match) = import_text.split('"').nth(1) {
-                let is_external = path_match.starts_with('@') || path_match.starts_with("http");
+    } else if language == Language::Cairo {
+        // Parse Cairo use statements (Cairo doesn't use tree-sitter so handle separately)
+        let import_text = node.utf8_text(source).unwrap_or("");
+        let import_clean = import_text.trim_start_matches("use ").trim_end_matches(';');
 
-                sql.push_str(&format!(
-                    "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
-                    escape_sql(file_path),
-                    escape_sql(path_match),
-                    escape_sql(path_match),
-                    is_external
-                ));
-            }
-        }
-        Language::Python => {
-            // Python imports: import x or from x import y
-            // Simple extraction - just store the whole import for now
-            let import_clean = import_text.trim();
-            let is_external = !import_clean.contains("from .");
+        // Cairo imports are typically external unless they're relative
+        let is_external =
+            !import_clean.starts_with("super::") && !import_clean.starts_with("self::");
 
-            sql.push_str(&format!(
-                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
-                escape_sql(file_path),
-                escape_sql(import_clean),
-                escape_sql(import_clean),
-                is_external
-            ));
-        }
-        Language::JavaScript
-        | Language::JavaScriptJSX
-        | Language::TypeScript
-        | Language::TypeScriptTSX => {
-            // JS/TS imports: import x from 'y'
-            // Simple extraction - just store the module path
-            if let Some(module_match) = import_text
-                .split('\'')
-                .nth(1)
-                .or_else(|| import_text.split('"').nth(1))
-            {
-                let is_external = !module_match.starts_with('.');
+        let imported_item = import_clean.split("::").last().unwrap_or(import_clean);
 
-                sql.push_str(&format!(
-                    "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
-                    escape_sql(file_path),
-                    escape_sql(module_match),
-                    escape_sql(module_match),
-                    is_external
-                ));
-            }
-        }
-        Language::Cairo => {
-            // Parse Cairo use statements
-            let import_clean = import_text.trim_start_matches("use ").trim_end_matches(';');
-
-            // Cairo imports are typically external unless they're relative
-            let is_external =
-                !import_clean.starts_with("super::") && !import_clean.starts_with("self::");
-
-            let imported_item = import_clean.split("::").last().unwrap_or(import_clean);
-
-            sql.push_str(&format!(
-                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');\n",
-                escape_sql(file_path),
-                escape_sql(imported_item),
-                escape_sql(import_clean),
-                is_external
-            ));
-        }
-        Language::Unknown => {} // Skip unknown languages
+        sql.push_str(&format!(
+            "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');\n",
+            escape_sql(file_path),
+            escape_sql(imported_item),
+            escape_sql(import_clean),
+            is_external
+        ));
     }
 }
 
