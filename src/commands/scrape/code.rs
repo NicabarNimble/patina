@@ -97,6 +97,12 @@ struct LanguageSpec {
 
     /// Extract call target from call expression
     extract_call_target: fn(&Node, &[u8]) -> Option<String>,
+
+    /// Clean documentation text for a language
+    clean_doc_comment: fn(&str) -> String,
+
+    /// Extract import details from an import node
+    extract_import_details: fn(&Node, &[u8]) -> (String, String, bool),
 }
 
 // ============================================================================
@@ -185,6 +191,44 @@ static RUST_SPEC: LanguageSpec = LanguageSpec {
             .and_then(|n| n.utf8_text(source).ok())
             .map(String::from),
         _ => None,
+    },
+
+    clean_doc_comment: |raw| {
+        raw.lines()
+            .map(|line| {
+                line.trim_start()
+                    .strip_prefix("///")
+                    .or_else(|| line.strip_prefix("//!"))
+                    .unwrap_or(line)
+                    .trim()
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    },
+
+    extract_import_details: |node, source| {
+        let import_text = node.utf8_text(source).unwrap_or("");
+        let import_clean = import_text.trim_start_matches("use ").trim_end_matches(';');
+        
+        // Determine if external
+        let is_external = !import_clean.starts_with("crate::")
+            && !import_clean.starts_with("super::")
+            && !import_clean.starts_with("self::");
+        
+        // Extract the imported item (last part after ::)
+        let imported_item = import_clean.split("::").last().unwrap_or(import_clean);
+        
+        // Extract the source module
+        let imported_from = if import_clean.contains("::") {
+            import_clean
+                .rsplit_once("::")
+                .map(|(from, _)| from)
+                .unwrap_or(import_clean)
+        } else {
+            import_clean
+        };
+        
+        (imported_item.to_string(), imported_from.to_string(), is_external)
     },
 };
 
@@ -290,6 +334,27 @@ static GO_SPEC: LanguageSpec = LanguageSpec {
             }
             _ => None,
         }
+    },
+
+    clean_doc_comment: |raw| {
+        raw.lines()
+            .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ")
+    },
+
+    extract_import_details: |node, source| {
+        let import_text = node.utf8_text(source).unwrap_or("");
+        let import_clean = import_text
+            .trim_start_matches("import ")
+            .trim()
+            .trim_matches('"');
+        
+        let is_external = !import_clean.starts_with(".");
+        let imported_item = import_clean.split('/').next_back().unwrap_or(import_clean);
+        
+        (imported_item.to_string(), import_clean.to_string(), is_external)
     },
 };
 
@@ -397,6 +462,30 @@ static PYTHON_SPEC: LanguageSpec = LanguageSpec {
             }
             _ => None,
         }
+    },
+
+    clean_doc_comment: |raw| {
+        // Remove triple quotes
+        raw.trim()
+            .strip_prefix("\"\"\"")
+            .and_then(|s| s.strip_suffix("\"\"\""))
+            .or_else(|| {
+                raw.trim()
+                    .strip_prefix("'''")
+                    .and_then(|s| s.strip_suffix("'''"))
+            })
+            .unwrap_or(raw)
+            .trim()
+            .to_string()
+    },
+
+    extract_import_details: |node, source| {
+        let import_text = node.utf8_text(source).unwrap_or("");
+        let import_clean = import_text.trim();
+        let is_external = !import_clean.contains("from .");
+        
+        // For now, just use the whole import text as both item and from
+        (import_clean.to_string(), import_clean.to_string(), is_external)
     },
 };
 
@@ -506,6 +595,40 @@ static JS_SPEC: LanguageSpec = LanguageSpec {
                     .map(String::from)
             }
             _ => None,
+        }
+    },
+
+    clean_doc_comment: |raw| {
+        if raw.starts_with("/**") {
+            raw.strip_prefix("/**")
+                .and_then(|s| s.strip_suffix("*/"))
+                .map(|s| {
+                    s.lines()
+                        .map(|line| line.trim().strip_prefix("*").unwrap_or(line).trim())
+                        .filter(|line| !line.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .unwrap_or_else(|| raw.to_string())
+        } else {
+            raw.lines()
+                .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+    },
+
+    extract_import_details: |node, source| {
+        let import_text = node.utf8_text(source).unwrap_or("");
+        if let Some(module_match) = import_text
+            .split('\'')
+            .nth(1)
+            .or_else(|| import_text.split('"').nth(1))
+        {
+            let is_external = !module_match.starts_with('.');
+            (module_match.to_string(), module_match.to_string(), is_external)
+        } else {
+            (String::new(), String::new(), false)
         }
     },
 };
@@ -632,6 +755,40 @@ static TS_SPEC: LanguageSpec = LanguageSpec {
             _ => None,
         }
     },
+
+    clean_doc_comment: |raw| {
+        if raw.starts_with("/**") {
+            raw.strip_prefix("/**")
+                .and_then(|s| s.strip_suffix("*/"))
+                .map(|s| {
+                    s.lines()
+                        .map(|line| line.trim().strip_prefix("*").unwrap_or(line).trim())
+                        .filter(|line| !line.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .unwrap_or_else(|| raw.to_string())
+        } else {
+            raw.lines()
+                .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+    },
+
+    extract_import_details: |node, source| {
+        let import_text = node.utf8_text(source).unwrap_or("");
+        if let Some(module_match) = import_text
+            .split('\'')
+            .nth(1)
+            .or_else(|| import_text.split('"').nth(1))
+        {
+            let is_external = !module_match.starts_with('.');
+            (module_match.to_string(), module_match.to_string(), is_external)
+        } else {
+            (String::new(), String::new(), false)
+        }
+    },
 };
 
 /// Solidity language specification
@@ -718,6 +875,24 @@ static SOLIDITY_SPEC: LanguageSpec = LanguageSpec {
                 .map(String::from)
         } else {
             None
+        }
+    },
+
+    clean_doc_comment: |raw| {
+        raw.lines()
+            .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ")
+    },
+
+    extract_import_details: |node, source| {
+        let import_text = node.utf8_text(source).unwrap_or("");
+        if let Some(path_match) = import_text.split('"').nth(1) {
+            let is_external = path_match.starts_with('@') || path_match.starts_with("http");
+            (path_match.to_string(), path_match.to_string(), is_external)
+        } else {
+            (String::new(), String::new(), false)
         }
     },
 };
