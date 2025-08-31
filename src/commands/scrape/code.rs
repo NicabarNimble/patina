@@ -53,21 +53,6 @@ use self::languages::Language;
 
 /// Specification for how to parse and extract information from a language
 struct LanguageSpec {
-    /// File extensions for this language
-    extensions: &'static [&'static str],
-
-    /// AST node types that represent functions
-    function_nodes: &'static [&'static str],
-
-    /// AST node types that represent structs/classes
-    struct_nodes: &'static [&'static str],
-
-    /// AST node types that represent traits/interfaces
-    trait_nodes: &'static [&'static str],
-
-    /// AST node types that represent imports
-    import_nodes: &'static [&'static str],
-
     /// Check if a comment is a documentation comment
     is_doc_comment: fn(&str) -> bool,
 
@@ -111,13 +96,6 @@ struct LanguageSpec {
 
 /// Rust language specification
 static RUST_SPEC: LanguageSpec = LanguageSpec {
-    extensions: &["rs"],
-
-    function_nodes: &["function_item", "impl_item"],
-    struct_nodes: &["struct_item"],
-    trait_nodes: &["trait_item"],
-    import_nodes: &["use_declaration"],
-
     is_doc_comment: |text| text.starts_with("///") || text.starts_with("//!"),
 
     parse_visibility: |node, _name, _source| {
@@ -234,13 +212,6 @@ static RUST_SPEC: LanguageSpec = LanguageSpec {
 
 /// Go language specification
 static GO_SPEC: LanguageSpec = LanguageSpec {
-    extensions: &["go"],
-
-    function_nodes: &["function_declaration", "method_declaration"],
-    struct_nodes: &["type_spec"],
-    trait_nodes: &[], // Go has interfaces but handled via type_spec
-    import_nodes: &["import_declaration"],
-
     is_doc_comment: |text| {
         // Go uses // for doc comments (before declarations)
         text.starts_with("//")
@@ -360,13 +331,6 @@ static GO_SPEC: LanguageSpec = LanguageSpec {
 
 /// Python language specification
 static PYTHON_SPEC: LanguageSpec = LanguageSpec {
-    extensions: &["py"],
-
-    function_nodes: &["function_definition", "async_function_definition"],
-    struct_nodes: &["class_definition"],
-    trait_nodes: &[], // Python doesn't have traits
-    import_nodes: &["import_statement", "import_from_statement"],
-
     is_doc_comment: |text| {
         // Python uses docstrings (triple quotes)
         text.starts_with("\"\"\"") || text.starts_with("'''")
@@ -491,17 +455,6 @@ static PYTHON_SPEC: LanguageSpec = LanguageSpec {
 
 /// JavaScript language specification (shared base for JS/JSX)
 static JS_SPEC: LanguageSpec = LanguageSpec {
-    extensions: &["js", "mjs"],
-
-    function_nodes: &[
-        "function_declaration",
-        "arrow_function",
-        "function_expression",
-    ],
-    struct_nodes: &["class_declaration"],
-    trait_nodes: &[], // JS doesn't have traits
-    import_nodes: &["import_statement"],
-
     is_doc_comment: |text| {
         // JSDoc comments
         text.starts_with("/**") || text.starts_with("///")
@@ -635,22 +588,6 @@ static JS_SPEC: LanguageSpec = LanguageSpec {
 
 /// TypeScript language specification
 static TS_SPEC: LanguageSpec = LanguageSpec {
-    extensions: &["ts"],
-
-    function_nodes: &[
-        "function_declaration",
-        "arrow_function",
-        "function_expression",
-        "method_definition",
-    ],
-    struct_nodes: &[
-        "class_declaration",
-        "interface_declaration",
-        "type_alias_declaration",
-    ],
-    trait_nodes: &["interface_declaration"],
-    import_nodes: &["import_statement"],
-
     is_doc_comment: |text| {
         // TSDoc/JSDoc comments
         text.starts_with("/**") || text.starts_with("///")
@@ -793,13 +730,6 @@ static TS_SPEC: LanguageSpec = LanguageSpec {
 
 /// Solidity language specification
 static SOLIDITY_SPEC: LanguageSpec = LanguageSpec {
-    extensions: &["sol"],
-
-    function_nodes: &["function_definition", "modifier_definition"],
-    struct_nodes: &["contract_declaration", "struct_declaration"],
-    trait_nodes: &["interface_declaration"],
-    import_nodes: &["import_directive"],
-
     is_doc_comment: |text| {
         // Solidity uses NatSpec comments
         text.starts_with("///") || text.starts_with("/**")
