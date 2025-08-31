@@ -1,13 +1,13 @@
 //! Cairo language parser using SimpleParserDatabase
-//! 
+//!
 //! This module provides Cairo 2.x parsing capabilities without the complexity
 //! of the full Salsa database system. It uses cairo-lang-parser's SimpleParserDatabase
 //! for straightforward AST extraction.
 
 use anyhow::Result;
 use cairo_lang_parser::utils::SimpleParserDatabase;
-use cairo_lang_syntax::node::{ast, SyntaxNode, TypedSyntaxNode, Terminal};
 use cairo_lang_syntax::node::kind::SyntaxKind;
+use cairo_lang_syntax::node::{ast, SyntaxNode, Terminal, TypedSyntaxNode};
 
 /// Symbols extracted from Cairo source code
 #[derive(Debug, Default)]
@@ -92,11 +92,11 @@ impl CairoParser {
     pub fn parse(&mut self, content: &str, _filename: &str) -> Result<CairoSymbols> {
         // Parse the content using parse_virtual_with_diagnostics
         let (syntax_node, _diagnostics) = self.db.parse_virtual_with_diagnostics(content);
-        
+
         // Extract symbols from the AST
         let mut symbols = CairoSymbols::default();
         self.extract_symbols_from_node(&syntax_node, content, &mut symbols)?;
-        
+
         Ok(symbols)
     }
 
@@ -111,29 +111,35 @@ impl CairoParser {
 
         match node.kind(&self.db) {
             FunctionWithBody => {
-                let func = ast::FunctionWithBody::from_syntax_node(&self.db, node.clone());
-                let name = func.declaration(&self.db).name(&self.db).text(&self.db).to_string();
+                let func = ast::FunctionWithBody::from_syntax_node(&self.db, *node);
+                let name = func
+                    .declaration(&self.db)
+                    .name(&self.db)
+                    .text(&self.db)
+                    .to_string();
                 let (start_line, end_line) = self.get_line_range(node, content);
-                
+
                 // Extract parameters
-                let params = func.declaration(&self.db)
+                let params = func
+                    .declaration(&self.db)
                     .signature(&self.db)
                     .parameters(&self.db)
                     .elements(&self.db)
-                    .into_iter()
                     .map(|p| p.name(&self.db).text(&self.db).to_string())
                     .collect();
-                
+
                 // Extract return type if present - simplified approach
-                let return_type = match func.declaration(&self.db)
+                let return_type = match func
+                    .declaration(&self.db)
                     .signature(&self.db)
-                    .ret_ty(&self.db) {
+                    .ret_ty(&self.db)
+                {
                     ast::OptionReturnTypeClause::Empty(_) => None,
                     ast::OptionReturnTypeClause::ReturnTypeClause(clause) => {
                         Some(clause.ty(&self.db).as_syntax_node().get_text(&self.db))
                     }
                 };
-                
+
                 symbols.functions.push(FunctionSymbol {
                     name,
                     start_line,
@@ -144,13 +150,13 @@ impl CairoParser {
                 });
             }
             ItemStruct => {
-                let struct_item = ast::ItemStruct::from_syntax_node(&self.db, node.clone());
+                let struct_item = ast::ItemStruct::from_syntax_node(&self.db, *node);
                 let name = struct_item.name(&self.db).text(&self.db).to_string();
                 let (start_line, end_line) = self.get_line_range(node, content);
-                
+
                 // Extract field names - simplified approach for now
                 let fields = vec![]; // TODO: Extract actual fields when API is clear
-                
+
                 symbols.structs.push(StructSymbol {
                     name,
                     start_line,
@@ -160,10 +166,10 @@ impl CairoParser {
                 });
             }
             ItemTrait => {
-                let trait_item = ast::ItemTrait::from_syntax_node(&self.db, node.clone());
+                let trait_item = ast::ItemTrait::from_syntax_node(&self.db, *node);
                 let name = trait_item.name(&self.db).text(&self.db).to_string();
                 let (start_line, end_line) = self.get_line_range(node, content);
-                
+
                 symbols.traits.push(TraitSymbol {
                     name,
                     start_line,
@@ -172,13 +178,18 @@ impl CairoParser {
                 });
             }
             ItemImpl => {
-                let impl_item = ast::ItemImpl::from_syntax_node(&self.db, node.clone());
+                let impl_item = ast::ItemImpl::from_syntax_node(&self.db, *node);
                 let type_name = impl_item.name(&self.db).as_syntax_node().get_text(&self.db);
                 let (start_line, end_line) = self.get_line_range(node, content);
-                
+
                 // Check if this is a trait impl - simplified approach
-                let trait_name = Some(impl_item.trait_path(&self.db).as_syntax_node().get_text(&self.db));
-                
+                let trait_name = Some(
+                    impl_item
+                        .trait_path(&self.db)
+                        .as_syntax_node()
+                        .get_text(&self.db),
+                );
+
                 symbols.impls.push(ImplSymbol {
                     trait_name,
                     type_name,
@@ -187,10 +198,10 @@ impl CairoParser {
                 });
             }
             ItemModule => {
-                let module = ast::ItemModule::from_syntax_node(&self.db, node.clone());
+                let module = ast::ItemModule::from_syntax_node(&self.db, *node);
                 let name = module.name(&self.db).text(&self.db).to_string();
                 let (start_line, end_line) = self.get_line_range(node, content);
-                
+
                 symbols.modules.push(ModuleSymbol {
                     name,
                     start_line,
@@ -199,14 +210,14 @@ impl CairoParser {
                 });
             }
             ItemUse => {
-                let use_item = ast::ItemUse::from_syntax_node(&self.db, node.clone());
-                let path = use_item.use_path(&self.db).as_syntax_node().get_text(&self.db);
+                let use_item = ast::ItemUse::from_syntax_node(&self.db, *node);
+                let path = use_item
+                    .use_path(&self.db)
+                    .as_syntax_node()
+                    .get_text(&self.db);
                 let (line, _) = self.get_line_range(node, content);
-                
-                symbols.imports.push(ImportSymbol {
-                    path,
-                    line,
-                });
+
+                symbols.imports.push(ImportSymbol { path, line });
             }
             _ => {}
         }
@@ -225,7 +236,7 @@ impl CairoParser {
         // This is a simplified approach until we can properly handle the new span API
         let node_text = node.get_text(&self.db);
         let node_lines = node_text.lines().count().max(1);
-        
+
         // Try to find the node text in the content to estimate position
         if let Some(position) = content.find(&node_text) {
             let prefix = &content[..position];
@@ -263,7 +274,7 @@ fn main() {
     println!("Hello, Cairo!");
 }
 "#;
-        
+
         let symbols = parse_cairo(code, "test.cairo").unwrap();
         assert_eq!(symbols.functions.len(), 1);
         assert_eq!(symbols.functions[0].name, "main");
@@ -278,7 +289,7 @@ struct Point {
     y: felt252,
 }
 "#;
-        
+
         let symbols = parse_cairo(code, "test.cairo").unwrap();
         assert_eq!(symbols.structs.len(), 1);
         assert_eq!(symbols.structs[0].name, "Point");
@@ -292,7 +303,7 @@ trait Display {
     fn fmt(self: @Self) -> ByteArray;
 }
 "#;
-        
+
         let symbols = parse_cairo(code, "test.cairo").unwrap();
         assert_eq!(symbols.traits.len(), 1);
         assert_eq!(symbols.traits[0].name, "Display");
