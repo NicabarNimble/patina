@@ -40,7 +40,7 @@ use super::{ScrapeConfig, ScrapeStats};
 // LANGUAGE REGISTRY - Centralized language configuration
 // ============================================================================
 // All language-specific logic consolidated in ONE place.
-// To add a new language: 
+// To add a new language:
 // 1. Create a LanguageSpec constant
 // 2. Add it to LANGUAGE_REGISTRY
 // That's it! No scattered match statements to update.
@@ -55,46 +55,46 @@ use self::languages::Language;
 struct LanguageSpec {
     /// File extensions for this language
     extensions: &'static [&'static str],
-    
+
     /// AST node types that represent functions
     function_nodes: &'static [&'static str],
-    
+
     /// AST node types that represent structs/classes
     struct_nodes: &'static [&'static str],
-    
+
     /// AST node types that represent traits/interfaces
     trait_nodes: &'static [&'static str],
-    
+
     /// AST node types that represent imports
     import_nodes: &'static [&'static str],
-    
+
     /// Check if a comment is a documentation comment
     is_doc_comment: fn(&str) -> bool,
-    
+
     /// Parse visibility from node and name
     parse_visibility: fn(&Node, &str, &[u8]) -> bool,
-    
+
     /// Check if function is async
     has_async: fn(&Node, &[u8]) -> bool,
-    
+
     /// Check if function is unsafe
     has_unsafe: fn(&Node, &[u8]) -> bool,
-    
+
     /// Extract function parameters
     extract_params: fn(&Node, &[u8]) -> Vec<String>,
-    
+
     /// Extract return type
     extract_return_type: fn(&Node, &[u8]) -> Option<String>,
-    
+
     /// Extract generic parameters
     extract_generics: fn(&Node, &[u8]) -> Option<String>,
-    
+
     /// Map node kind to symbol kind (simple mapping)
     get_symbol_kind: fn(&str) -> &'static str,
-    
+
     /// Map node to symbol kind (complex cases that need node inspection)
     get_symbol_kind_complex: fn(&Node, &[u8]) -> Option<&'static str>,
-    
+
     /// Extract call target from call expression
     extract_call_target: fn(&Node, &[u8]) -> Option<String>,
 }
@@ -106,32 +106,30 @@ struct LanguageSpec {
 /// Rust language specification
 static RUST_SPEC: LanguageSpec = LanguageSpec {
     extensions: &["rs"],
-    
+
     function_nodes: &["function_item", "impl_item"],
     struct_nodes: &["struct_item"],
     trait_nodes: &["trait_item"],
     import_nodes: &["use_declaration"],
-    
-    is_doc_comment: |text| {
-        text.starts_with("///") || text.starts_with("//!")
-    },
-    
+
+    is_doc_comment: |text| text.starts_with("///") || text.starts_with("//!"),
+
     parse_visibility: |node, _name, _source| {
         // Check for pub keyword via visibility_modifier node
         node.children(&mut node.walk())
             .any(|child| child.kind() == "visibility_modifier")
     },
-    
+
     has_async: |node, _source| {
         node.children(&mut node.walk())
             .any(|child| child.kind() == "async")
     },
-    
+
     has_unsafe: |node, _source| {
         node.children(&mut node.walk())
             .any(|child| child.kind() == "unsafe")
     },
-    
+
     extract_params: |node, source| {
         if let Some(params_node) = node.child_by_field_name("parameters") {
             let mut params = Vec::new();
@@ -148,83 +146,77 @@ static RUST_SPEC: LanguageSpec = LanguageSpec {
             Vec::new()
         }
     },
-    
+
     extract_return_type: |node, source| {
         node.child_by_field_name("return_type")
             .and_then(|rt| rt.utf8_text(source).ok())
             .map(|s| s.trim_start_matches("->").trim().to_string())
     },
-    
+
     extract_generics: |node, source| {
         node.child_by_field_name("type_parameters")
             .and_then(|tp| tp.utf8_text(source).ok())
             .map(String::from)
     },
-    
-    get_symbol_kind: |node_kind| {
-        match node_kind {
-            "function_item" => "function",
-            "struct_item" => "struct",
-            "trait_item" => "trait",
-            "impl_item" => "impl",
-            "type_alias" => "type_alias",
-            "const_item" => "const",
-            "use_declaration" => "import",
-            _ => "unknown"
-        }
+
+    get_symbol_kind: |node_kind| match node_kind {
+        "function_item" => "function",
+        "struct_item" => "struct",
+        "trait_item" => "trait",
+        "impl_item" => "impl",
+        "type_alias" => "type_alias",
+        "const_item" => "const",
+        "use_declaration" => "import",
+        _ => "unknown",
     },
-    
+
     get_symbol_kind_complex: |_node, _source| {
         // Rust doesn't need complex symbol kind detection
         None
     },
-    
-    extract_call_target: |node, source| {
-        match node.kind() {
-            "call_expression" => {
-                node.child_by_field_name("function")
-                    .and_then(|f| f.utf8_text(source).ok())
-                    .map(String::from)
-            }
-            "method_call_expression" => {
-                node.child_by_field_name("name")
-                    .and_then(|n| n.utf8_text(source).ok())
-                    .map(String::from)
-            }
-            _ => None
-        }
+
+    extract_call_target: |node, source| match node.kind() {
+        "call_expression" => node
+            .child_by_field_name("function")
+            .and_then(|f| f.utf8_text(source).ok())
+            .map(String::from),
+        "method_call_expression" => node
+            .child_by_field_name("name")
+            .and_then(|n| n.utf8_text(source).ok())
+            .map(String::from),
+        _ => None,
     },
 };
 
 /// Go language specification
 static GO_SPEC: LanguageSpec = LanguageSpec {
     extensions: &["go"],
-    
+
     function_nodes: &["function_declaration", "method_declaration"],
     struct_nodes: &["type_spec"],
     trait_nodes: &[], // Go has interfaces but handled via type_spec
     import_nodes: &["import_declaration"],
-    
+
     is_doc_comment: |text| {
         // Go uses // for doc comments (before declarations)
         text.starts_with("//")
     },
-    
+
     parse_visibility: |_node, name, _source| {
         // In Go, uppercase first letter = public
-        name.chars().next().map_or(false, |c| c.is_uppercase())
+        name.chars().next().is_some_and(|c| c.is_uppercase())
     },
-    
+
     has_async: |_node, _source| {
         // Go doesn't have async keyword, uses goroutines
         false
     },
-    
+
     has_unsafe: |_node, _source| {
         // Go doesn't have unsafe keyword in function declarations
         false
     },
-    
+
     extract_params: |node, source| {
         if let Some(params_node) = node.child_by_field_name("parameters") {
             let mut params = Vec::new();
@@ -241,38 +233,40 @@ static GO_SPEC: LanguageSpec = LanguageSpec {
             Vec::new()
         }
     },
-    
+
     extract_return_type: |node, source| {
         node.child_by_field_name("result")
             .and_then(|r| r.utf8_text(source).ok())
             .map(String::from)
     },
-    
+
     extract_generics: |node, source| {
         // Go uses type parameters (generics added in Go 1.18)
         node.child_by_field_name("type_parameters")
             .and_then(|tp| tp.utf8_text(source).ok())
             .map(String::from)
     },
-    
-    get_symbol_kind: |node_kind| {
-        match node_kind {
-            "function_declaration" => "function",
-            "method_declaration" => "function",
-            "const_declaration" => "const",
-            "import_declaration" => "import",
-            _ => "unknown"
-        }
+
+    get_symbol_kind: |node_kind| match node_kind {
+        "function_declaration" => "function",
+        "method_declaration" => "function",
+        "const_declaration" => "const",
+        "import_declaration" => "import",
+        _ => "unknown",
     },
-    
+
     get_symbol_kind_complex: |node, _source| {
         // Special handling for type_spec
         if node.kind() == "type_spec" {
-            if node.child_by_field_name("type")
-                .is_some_and(|n| n.kind() == "struct_type") {
+            if node
+                .child_by_field_name("type")
+                .is_some_and(|n| n.kind() == "struct_type")
+            {
                 Some("struct")
-            } else if node.child_by_field_name("type")
-                .is_some_and(|n| n.kind() == "interface_type") {
+            } else if node
+                .child_by_field_name("type")
+                .is_some_and(|n| n.kind() == "interface_type")
+            {
                 Some("trait")
             } else {
                 Some("type_alias")
@@ -281,21 +275,20 @@ static GO_SPEC: LanguageSpec = LanguageSpec {
             None
         }
     },
-    
+
     extract_call_target: |node, source| {
         match node.kind() {
-            "call_expression" => {
-                node.child_by_field_name("function")
-                    .and_then(|f| f.utf8_text(source).ok())
-                    .map(String::from)
-            }
+            "call_expression" => node
+                .child_by_field_name("function")
+                .and_then(|f| f.utf8_text(source).ok())
+                .map(String::from),
             "selector_expression" => {
                 // For method calls like obj.Method()
                 node.child_by_field_name("field")
                     .and_then(|f| f.utf8_text(source).ok())
                     .map(String::from)
             }
-            _ => None
+            _ => None,
         }
     },
 };
@@ -303,33 +296,33 @@ static GO_SPEC: LanguageSpec = LanguageSpec {
 /// Python language specification
 static PYTHON_SPEC: LanguageSpec = LanguageSpec {
     extensions: &["py"],
-    
+
     function_nodes: &["function_definition", "async_function_definition"],
     struct_nodes: &["class_definition"],
     trait_nodes: &[], // Python doesn't have traits
     import_nodes: &["import_statement", "import_from_statement"],
-    
+
     is_doc_comment: |text| {
         // Python uses docstrings (triple quotes)
         text.starts_with("\"\"\"") || text.starts_with("'''")
     },
-    
+
     parse_visibility: |_node, name, _source| {
         // Python convention: _ prefix = private
         !name.starts_with('_')
     },
-    
+
     has_async: |node, source| {
         // Python uses async def
-        node.kind() == "async_function_definition" ||
-        node.utf8_text(source).unwrap_or("").starts_with("async ")
+        node.kind() == "async_function_definition"
+            || node.utf8_text(source).unwrap_or("").starts_with("async ")
     },
-    
+
     has_unsafe: |_node, _source| {
         // Python doesn't have unsafe
         false
     },
-    
+
     extract_params: |node, source| {
         if let Some(params_node) = node.child_by_field_name("parameters") {
             let mut params = Vec::new();
@@ -350,36 +343,37 @@ static PYTHON_SPEC: LanguageSpec = LanguageSpec {
             Vec::new()
         }
     },
-    
+
     extract_return_type: |node, source| {
         // Python has optional type hints -> ReturnType
         node.child_by_field_name("return_type")
             .and_then(|rt| rt.utf8_text(source).ok())
             .map(|s| s.trim_start_matches("->").trim().to_string())
     },
-    
+
     extract_generics: |_node, _source| {
         // Python doesn't have explicit generics in function definitions
         None
     },
-    
-    get_symbol_kind: |node_kind| {
-        match node_kind {
-            "function_definition" | "async_function_definition" => "function",
-            "class_definition" => "struct",
-            "import_statement" | "import_from_statement" => "import",
-            _ => "unknown"
-        }
+
+    get_symbol_kind: |node_kind| match node_kind {
+        "function_definition" | "async_function_definition" => "function",
+        "class_definition" => "struct",
+        "import_statement" | "import_from_statement" => "import",
+        _ => "unknown",
     },
-    
+
     get_symbol_kind_complex: |node, _source| {
         // Special handling for decorated_definition
         if node.kind() == "decorated_definition" {
-            if node.child_by_field_name("definition")
-                .is_some_and(|n| n.kind() == "function_definition" || n.kind() == "async_function_definition") {
+            if node.child_by_field_name("definition").is_some_and(|n| {
+                n.kind() == "function_definition" || n.kind() == "async_function_definition"
+            }) {
                 Some("function")
-            } else if node.child_by_field_name("definition")
-                .is_some_and(|n| n.kind() == "class_definition") {
+            } else if node
+                .child_by_field_name("definition")
+                .is_some_and(|n| n.kind() == "class_definition")
+            {
                 Some("struct")
             } else {
                 None
@@ -388,21 +382,20 @@ static PYTHON_SPEC: LanguageSpec = LanguageSpec {
             None
         }
     },
-    
+
     extract_call_target: |node, source| {
         match node.kind() {
-            "call" => {
-                node.child_by_field_name("function")
-                    .and_then(|f| f.utf8_text(source).ok())
-                    .map(String::from)
-            }
+            "call" => node
+                .child_by_field_name("function")
+                .and_then(|f| f.utf8_text(source).ok())
+                .map(String::from),
             "attribute" => {
                 // For method calls like obj.method()
                 node.child_by_field_name("attribute")
                     .and_then(|a| a.utf8_text(source).ok())
                     .map(String::from)
             }
-            _ => None
+            _ => None,
         }
     },
 };
@@ -410,39 +403,46 @@ static PYTHON_SPEC: LanguageSpec = LanguageSpec {
 /// JavaScript language specification (shared base for JS/JSX)
 static JS_SPEC: LanguageSpec = LanguageSpec {
     extensions: &["js", "mjs"],
-    
-    function_nodes: &["function_declaration", "arrow_function", "function_expression"],
+
+    function_nodes: &[
+        "function_declaration",
+        "arrow_function",
+        "function_expression",
+    ],
     struct_nodes: &["class_declaration"],
     trait_nodes: &[], // JS doesn't have traits
     import_nodes: &["import_statement"],
-    
+
     is_doc_comment: |text| {
         // JSDoc comments
         text.starts_with("/**") || text.starts_with("///")
     },
-    
+
     parse_visibility: |_node, _name, _source| {
         // JavaScript doesn't have explicit visibility modifiers
         // Everything is public unless using closures/modules
         true
     },
-    
+
     has_async: |node, source| {
         // Check for async keyword
         node.utf8_text(source).unwrap_or("").contains("async")
     },
-    
+
     has_unsafe: |_node, _source| {
         // JavaScript doesn't have unsafe
         false
     },
-    
+
     extract_params: |node, source| {
         if let Some(params_node) = node.child_by_field_name("parameters") {
             let mut params = Vec::new();
             let mut cursor = params_node.walk();
             for child in params_node.children(&mut cursor) {
-                if matches!(child.kind(), "identifier" | "rest_pattern" | "object_pattern" | "array_pattern") {
+                if matches!(
+                    child.kind(),
+                    "identifier" | "rest_pattern" | "object_pattern" | "array_pattern"
+                ) {
                     if let Ok(param_text) = child.utf8_text(source) {
                         params.push(param_text.to_string());
                     }
@@ -453,35 +453,37 @@ static JS_SPEC: LanguageSpec = LanguageSpec {
             Vec::new()
         }
     },
-    
+
     extract_return_type: |_node, _source| {
         // JavaScript doesn't have return type annotations
         None
     },
-    
+
     extract_generics: |_node, _source| {
         // JavaScript doesn't have generics
         None
     },
-    
-    get_symbol_kind: |node_kind| {
-        match node_kind {
-            "function_declaration" | "arrow_function" | "function_expression" => "function",
-            "class_declaration" => "struct",
-            "import_statement" => "import",
-            "const_declaration" | "let_declaration" => "const",
-            _ => "unknown"
-        }
+
+    get_symbol_kind: |node_kind| match node_kind {
+        "function_declaration" | "arrow_function" | "function_expression" => "function",
+        "class_declaration" => "struct",
+        "import_statement" => "import",
+        "const_declaration" | "let_declaration" => "const",
+        _ => "unknown",
     },
-    
+
     get_symbol_kind_complex: |node, _source| {
         // Special handling for variable_declarator
         if node.kind() == "variable_declarator" {
-            if node.child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression") {
+            if node
+                .child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression")
+            {
                 Some("function")
-            } else if node.child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "class_expression") {
+            } else if node
+                .child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "class_expression")
+            {
                 Some("struct")
             } else {
                 None
@@ -490,21 +492,20 @@ static JS_SPEC: LanguageSpec = LanguageSpec {
             None
         }
     },
-    
+
     extract_call_target: |node, source| {
         match node.kind() {
-            "call_expression" => {
-                node.child_by_field_name("function")
-                    .and_then(|f| f.utf8_text(source).ok())
-                    .map(String::from)
-            }
+            "call_expression" => node
+                .child_by_field_name("function")
+                .and_then(|f| f.utf8_text(source).ok())
+                .map(String::from),
             "member_expression" => {
                 // For method calls like obj.method()
                 node.child_by_field_name("property")
                     .and_then(|p| p.utf8_text(source).ok())
                     .map(String::from)
             }
-            _ => None
+            _ => None,
         }
     },
 };
@@ -512,39 +513,51 @@ static JS_SPEC: LanguageSpec = LanguageSpec {
 /// TypeScript language specification
 static TS_SPEC: LanguageSpec = LanguageSpec {
     extensions: &["ts"],
-    
-    function_nodes: &["function_declaration", "arrow_function", "function_expression", "method_definition"],
-    struct_nodes: &["class_declaration", "interface_declaration", "type_alias_declaration"],
+
+    function_nodes: &[
+        "function_declaration",
+        "arrow_function",
+        "function_expression",
+        "method_definition",
+    ],
+    struct_nodes: &[
+        "class_declaration",
+        "interface_declaration",
+        "type_alias_declaration",
+    ],
     trait_nodes: &["interface_declaration"],
     import_nodes: &["import_statement"],
-    
+
     is_doc_comment: |text| {
         // TSDoc/JSDoc comments
         text.starts_with("/**") || text.starts_with("///")
     },
-    
+
     parse_visibility: |node, _name, source| {
         // TypeScript has explicit visibility modifiers
         let text = node.utf8_text(source).unwrap_or("");
         !text.contains("private") && !text.contains("protected")
     },
-    
+
     has_async: |node, source| {
         // Check for async keyword
         node.utf8_text(source).unwrap_or("").contains("async")
     },
-    
+
     has_unsafe: |_node, _source| {
         // TypeScript doesn't have unsafe
         false
     },
-    
+
     extract_params: |node, source| {
         if let Some(params_node) = node.child_by_field_name("parameters") {
             let mut params = Vec::new();
             let mut cursor = params_node.walk();
             for child in params_node.children(&mut cursor) {
-                if matches!(child.kind(), "required_parameter" | "optional_parameter" | "rest_parameter") {
+                if matches!(
+                    child.kind(),
+                    "required_parameter" | "optional_parameter" | "rest_parameter"
+                ) {
                     if let Ok(param_text) = child.utf8_text(source) {
                         params.push(param_text.to_string());
                     }
@@ -555,42 +568,46 @@ static TS_SPEC: LanguageSpec = LanguageSpec {
             Vec::new()
         }
     },
-    
+
     extract_return_type: |node, source| {
         // TypeScript has return type annotations
         node.child_by_field_name("return_type")
             .and_then(|rt| rt.utf8_text(source).ok())
             .map(|s| s.trim_start_matches(":").trim().to_string())
     },
-    
+
     extract_generics: |node, source| {
         // TypeScript has generics
         node.child_by_field_name("type_parameters")
             .and_then(|tp| tp.utf8_text(source).ok())
             .map(String::from)
     },
-    
-    get_symbol_kind: |node_kind| {
-        match node_kind {
-            "function_declaration" | "arrow_function" | "function_expression" | "method_definition" => "function",
-            "class_declaration" => "struct",
-            "interface_declaration" => "trait",
-            "type_alias_declaration" => "type_alias",
-            "import_statement" => "import",
-            "const_statement" | "let_statement" => "const",
-            "enum_declaration" => "struct",
-            _ => "unknown"
+
+    get_symbol_kind: |node_kind| match node_kind {
+        "function_declaration" | "arrow_function" | "function_expression" | "method_definition" => {
+            "function"
         }
+        "class_declaration" => "struct",
+        "interface_declaration" => "trait",
+        "type_alias_declaration" => "type_alias",
+        "import_statement" => "import",
+        "const_statement" | "let_statement" => "const",
+        "enum_declaration" => "struct",
+        _ => "unknown",
     },
-    
+
     get_symbol_kind_complex: |node, _source| {
         // Special handling for variable_declarator (same as JS)
         if node.kind() == "variable_declarator" {
-            if node.child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression") {
+            if node
+                .child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression")
+            {
                 Some("function")
-            } else if node.child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "class_expression") {
+            } else if node
+                .child_by_field_name("value")
+                .is_some_and(|n| n.kind() == "class_expression")
+            {
                 Some("struct")
             } else {
                 None
@@ -599,21 +616,20 @@ static TS_SPEC: LanguageSpec = LanguageSpec {
             None
         }
     },
-    
+
     extract_call_target: |node, source| {
         match node.kind() {
-            "call_expression" => {
-                node.child_by_field_name("function")
-                    .and_then(|f| f.utf8_text(source).ok())
-                    .map(String::from)
-            }
+            "call_expression" => node
+                .child_by_field_name("function")
+                .and_then(|f| f.utf8_text(source).ok())
+                .map(String::from),
             "member_expression" => {
                 // For method calls like obj.method()
                 node.child_by_field_name("property")
                     .and_then(|p| p.utf8_text(source).ok())
                     .map(String::from)
             }
-            _ => None
+            _ => None,
         }
     },
 };
@@ -621,33 +637,33 @@ static TS_SPEC: LanguageSpec = LanguageSpec {
 /// Solidity language specification
 static SOLIDITY_SPEC: LanguageSpec = LanguageSpec {
     extensions: &["sol"],
-    
+
     function_nodes: &["function_definition", "modifier_definition"],
     struct_nodes: &["contract_declaration", "struct_declaration"],
     trait_nodes: &["interface_declaration"],
     import_nodes: &["import_directive"],
-    
+
     is_doc_comment: |text| {
         // Solidity uses NatSpec comments
         text.starts_with("///") || text.starts_with("/**")
     },
-    
+
     parse_visibility: |node, _name, source| {
         // Solidity defaults to public, check for private/internal
         let text = node.utf8_text(source).unwrap_or("");
         !text.contains("private") && !text.contains("internal")
     },
-    
+
     has_async: |_node, _source| {
         // Solidity doesn't have async
         false
     },
-    
+
     has_unsafe: |node, source| {
         // In Solidity, unchecked blocks are similar to unsafe
         node.utf8_text(source).unwrap_or("").contains("unchecked")
     },
-    
+
     extract_params: |node, source| {
         if let Some(params_node) = node.child_by_field_name("parameters") {
             let mut params = Vec::new();
@@ -664,39 +680,37 @@ static SOLIDITY_SPEC: LanguageSpec = LanguageSpec {
             Vec::new()
         }
     },
-    
+
     extract_return_type: |node, source| {
         // Solidity has return parameters
         node.child_by_field_name("return_parameters")
             .and_then(|rp| rp.utf8_text(source).ok())
             .map(String::from)
     },
-    
+
     extract_generics: |_node, _source| {
         // Solidity doesn't have generics
         None
     },
-    
-    get_symbol_kind: |node_kind| {
-        match node_kind {
-            "function_definition" => "function",
-            "modifier_definition" => "function",
-            "event_definition" => "function",
-            "contract_declaration" => "struct",
-            "struct_declaration" => "struct",
-            "interface_declaration" => "trait",
-            "library_declaration" => "impl",
-            "import_directive" => "import",
-            "state_variable_declaration" => "const",
-            _ => "unknown"
-        }
+
+    get_symbol_kind: |node_kind| match node_kind {
+        "function_definition" => "function",
+        "modifier_definition" => "function",
+        "event_definition" => "function",
+        "contract_declaration" => "struct",
+        "struct_declaration" => "struct",
+        "interface_declaration" => "trait",
+        "library_declaration" => "impl",
+        "import_directive" => "import",
+        "state_variable_declaration" => "const",
+        _ => "unknown",
     },
-    
+
     get_symbol_kind_complex: |_node, _source| {
         // Solidity doesn't need complex symbol kind detection
         None
     },
-    
+
     extract_call_target: |node, source| {
         if node.kind() == "call_expression" {
             node.child_by_field_name("function")
@@ -709,21 +723,22 @@ static SOLIDITY_SPEC: LanguageSpec = LanguageSpec {
 };
 
 /// Central registry of all language specifications
-static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> = LazyLock::new(|| {
-    let mut registry = HashMap::new();
-    
-    // Register all language specifications
-    registry.insert(Language::Rust, &RUST_SPEC);
-    registry.insert(Language::Go, &GO_SPEC);
-    registry.insert(Language::Python, &PYTHON_SPEC);
-    registry.insert(Language::JavaScript, &JS_SPEC);
-    registry.insert(Language::JavaScriptJSX, &JS_SPEC); // JSX uses same spec as JS
-    registry.insert(Language::TypeScript, &TS_SPEC);
-    registry.insert(Language::TypeScriptTSX, &TS_SPEC); // TSX uses same spec as TS
-    registry.insert(Language::Solidity, &SOLIDITY_SPEC);
-    
-    registry
-});
+static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> =
+    LazyLock::new(|| {
+        let mut registry = HashMap::new();
+
+        // Register all language specifications
+        registry.insert(Language::Rust, &RUST_SPEC);
+        registry.insert(Language::Go, &GO_SPEC);
+        registry.insert(Language::Python, &PYTHON_SPEC);
+        registry.insert(Language::JavaScript, &JS_SPEC);
+        registry.insert(Language::JavaScriptJSX, &JS_SPEC); // JSX uses same spec as JS
+        registry.insert(Language::TypeScript, &TS_SPEC);
+        registry.insert(Language::TypeScriptTSX, &TS_SPEC); // TSX uses same spec as TS
+        registry.insert(Language::Solidity, &SOLIDITY_SPEC);
+
+        registry
+    });
 
 /// Get language specification from registry
 fn get_language_spec(language: Language) -> Option<&'static LanguageSpec> {
@@ -1337,16 +1352,16 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
                 .modified()?
                 .duration_since(SystemTime::UNIX_EPOCH)?
                 .as_secs() as i64;
-            
+
             let content = std::fs::read_to_string(&file_path)?;
-            
+
             // Parse Cairo code
             if let Ok(symbols) = patina_metal::cairo::parse_cairo(&content, &file) {
                 // Convert Cairo symbols to SQL inserts
                 for func in symbols.functions {
                     let fingerprint = fingerprint::Fingerprint {
-                        pattern: 0, // TODO: compute pattern hash
-                        imports: 0, // TODO: compute imports hash
+                        pattern: 0,    // TODO: compute pattern hash
+                        imports: 0,    // TODO: compute imports hash
                         complexity: 1, // TODO: compute complexity
                         flags: if func.is_public { 1 } else { 0 },
                     };
@@ -1358,7 +1373,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
                     ));
                     symbol_count += 1;
                 }
-                
+
                 for s in symbols.structs {
                     let fingerprint = fingerprint::Fingerprint {
                         pattern: 0,
@@ -1374,7 +1389,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
                     ));
                     symbol_count += 1;
                 }
-                
+
                 for t in symbols.traits {
                     let fingerprint = fingerprint::Fingerprint {
                         pattern: 0,
@@ -1390,7 +1405,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
                     ));
                     symbol_count += 1;
                 }
-                
+
                 // Record index state
                 sql.push_str(&format!(
                     "INSERT INTO index_state (path, mtime) VALUES ('{}', {});\n",
@@ -1418,26 +1433,26 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
             let content = std::fs::read_to_string(&file_path)?;
             if let Some(ref mut p) = parser {
                 if let Some(tree) = p.parse(&content, None) {
-                let mut cursor = tree.walk();
-                let mut context = ParseContext::new();
-                symbol_count += process_ast_node(
-                    &mut cursor,
-                    content.as_bytes(),
-                    &file,
-                    &mut sql,
-                    language,
-                    &mut context,
-                );
+                    let mut cursor = tree.walk();
+                    let mut context = ParseContext::new();
+                    symbol_count += process_ast_node(
+                        &mut cursor,
+                        content.as_bytes(),
+                        &file,
+                        &mut sql,
+                        language,
+                        &mut context,
+                    );
 
-                // Flush call graph entries for this file
-                context.flush_to_sql(&file, &mut sql);
+                    // Flush call graph entries for this file
+                    context.flush_to_sql(&file, &mut sql);
 
-                // Record index state
-                sql.push_str(&format!(
-                    "INSERT INTO index_state (path, mtime) VALUES ('{}', {});\n",
-                    file, mtime
-                ));
-            }
+                    // Record index state
+                    sql.push_str(&format!(
+                        "INSERT INTO index_state (path, mtime) VALUES ('{}', {});\n",
+                        file, mtime
+                    ));
+                }
             }
         }
 
@@ -2061,7 +2076,7 @@ fn process_ast_node(
     let kind = if let Some(spec) = get_language_spec(language) {
         // First try the simple mapping
         let basic_kind = (spec.get_symbol_kind)(node.kind());
-        
+
         if basic_kind != "unknown" {
             basic_kind
         } else {
@@ -2071,10 +2086,11 @@ fn process_ast_node(
             } else {
                 // Not a symbol we care about - recurse into children
                 extract_call_expressions(node, source, language, context);
-                
+
                 if cursor.goto_first_child() {
                     loop {
-                        count += process_ast_node(cursor, source, file_path, sql, language, context);
+                        count +=
+                            process_ast_node(cursor, source, file_path, sql, language, context);
                         if !cursor.goto_next_sibling() {
                             break;
                         }
@@ -2788,12 +2804,13 @@ fn extract_import_fact(
         Language::Cairo => {
             // Parse Cairo use statements
             let import_clean = import_text.trim_start_matches("use ").trim_end_matches(';');
-            
+
             // Cairo imports are typically external unless they're relative
-            let is_external = !import_clean.starts_with("super::") && !import_clean.starts_with("self::");
-            
+            let is_external =
+                !import_clean.starts_with("super::") && !import_clean.starts_with("self::");
+
             let imported_item = import_clean.split("::").last().unwrap_or(import_clean);
-            
+
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');\n",
                 escape_sql(file_path),

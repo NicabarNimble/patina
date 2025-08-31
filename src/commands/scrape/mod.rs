@@ -79,7 +79,12 @@ pub fn execute(init: bool, query: Option<String>, repo: Option<String>, force: b
 }
 
 /// Execute docs scraper
-pub fn execute_docs(init: bool, query: Option<String>, repo: Option<String>, force: bool) -> Result<()> {
+pub fn execute_docs(
+    init: bool,
+    query: Option<String>,
+    repo: Option<String>,
+    force: bool,
+) -> Result<()> {
     let mut config = ScrapeConfig::new(force);
     if let Some(r) = repo.as_ref() {
         config.for_repo(r);
@@ -91,7 +96,7 @@ pub fn execute_docs(init: bool, query: Option<String>, repo: Option<String>, for
         bail!("Query functionality has moved. Use 'patina ask' instead.");
     } else {
         let stats = docs::extract(&config)?;
-        
+
         println!("\n📊 Document Extraction Summary:");
         println!("  • Documents found: {}", stats.items_processed);
         println!("  • Time elapsed: {:?}", stats.time_elapsed);
@@ -101,7 +106,12 @@ pub fn execute_docs(init: bool, query: Option<String>, repo: Option<String>, for
 }
 
 /// Execute PDF scraper
-pub fn execute_pdf(init: bool, query: Option<String>, repo: Option<String>, force: bool) -> Result<()> {
+pub fn execute_pdf(
+    init: bool,
+    query: Option<String>,
+    repo: Option<String>,
+    force: bool,
+) -> Result<()> {
     let mut config = ScrapeConfig::new(force);
     if let Some(r) = repo.as_ref() {
         config.for_repo(r);
@@ -113,7 +123,7 @@ pub fn execute_pdf(init: bool, query: Option<String>, repo: Option<String>, forc
         bail!("Query functionality has moved. Use 'patina ask' instead.");
     } else {
         let stats = pdf::extract(&config)?;
-        
+
         println!("\n📊 PDF Extraction Summary:");
         println!("  • PDFs found: {}", stats.items_processed);
         println!("  • Time elapsed: {:?}", stats.time_elapsed);
