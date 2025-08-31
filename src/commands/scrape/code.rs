@@ -2403,6 +2403,7 @@ fn extract_function_facts(
         None
     };
 
+    // Extract parameters using language spec
     let (takes_mut_self, takes_mut_params, parameter_count, parameter_list) = if language
         == Language::Solidity
     {
@@ -2425,98 +2426,23 @@ fn extract_function_facts(
         };
 
         (false, false, param_count, param_list)
-    } else if let Some(params) = params_node {
-        let mut has_mut_self = false;
-        let mut has_mut_params = false;
-        let mut param_count = 0;
-        let mut param_details = Vec::new();
-
-        let params_text = params.utf8_text(source).unwrap_or("");
-
-        match language {
-            Language::Rust => {
-                // Check for &mut self
-                if params_text.contains("&mut self") {
-                    has_mut_self = true;
-                }
-                // Check for other mut params
-                if params_text.contains("mut ") && !params_text.contains("&mut self") {
-                    has_mut_params = true;
-                }
-                // Extract each parameter
-                for child in params.children(&mut params.walk()) {
-                    if child.kind() == "parameter" {
-                        // Get parameter name and type
-                        if let Some(pattern) = child.child_by_field_name("pattern") {
-                            let param_name = pattern.utf8_text(source).unwrap_or("").to_string();
-                            let param_type = child
-                                .child_by_field_name("type")
-                                .and_then(|t| t.utf8_text(source).ok())
-                                .unwrap_or("")
-                                .to_string();
-                            param_details.push(format!("{}:{}", param_name, param_type));
-                        }
-                        param_count += 1;
-                    } else if child.kind() == "self_parameter" {
-                        param_details.push("self".to_string());
-                        param_count += 1;
-                    }
-                }
-            }
-            Language::Go => {
-                // Extract Go parameters
-                for child in params.children(&mut params.walk()) {
-                    if child.kind() == "parameter_declaration" {
-                        let param_text = child.utf8_text(source).unwrap_or("").to_string();
-                        param_details.push(param_text);
-                        param_count += 1;
-                    }
-                }
-            }
-            Language::Python => {
-                // Extract Python parameters - simpler approach
-                for child in params.children(&mut params.walk()) {
-                    // Skip punctuation
-                    if child.kind() == "," || child.kind() == "(" || child.kind() == ")" {
-                        continue;
-                    }
-
-                    // Get any parameter-like text
-                    if child.kind().contains("parameter") || child.kind() == "identifier" {
-                        let param_text = child.utf8_text(source).unwrap_or("").trim().to_string();
-                        if !param_text.is_empty() {
-                            param_count += 1;
-                            if param_text != "self" {
-                                // Skip 'self' in param list but count it
-                                param_details.push(param_text);
-                            }
-                        }
-                    }
-                }
-            }
-            Language::JavaScript
-            | Language::JavaScriptJSX
-            | Language::TypeScript
-            | Language::TypeScriptTSX => {
-                // Extract JS/TS parameters - they can be formal_parameter, required_parameter, optional_parameter, or just identifier
-                for child in params.children(&mut params.walk()) {
-                    // Skip punctuation like commas and parentheses
-                    if child.kind() == "," || child.kind() == "(" || child.kind() == ")" {
-                        continue;
-                    }
-
-                    // Get the parameter text for any parameter-like node
-                    if child.kind().contains("parameter") || child.kind() == "identifier" {
-                        let param_text = child.utf8_text(source).unwrap_or("").trim().to_string();
-                        if !param_text.is_empty() {
-                            param_details.push(param_text);
-                            param_count += 1;
-                        }
-                    }
-                }
-            }
-            Language::Solidity | Language::Cairo | Language::Unknown => {} // Solidity handled earlier, Cairo uses different parser, Unknown skipped
-        }
+    } else if let Some(spec) = get_language_spec(language) {
+        // Use the language spec's extract_params function
+        let param_details = (spec.extract_params)(&node, source);
+        let param_count = param_details.len();
+        
+        // Check for Rust-specific mut patterns
+        let (has_mut_self, has_mut_params) = if language == Language::Rust && params_node.is_some() {
+            let params_text = params_node
+                .unwrap()
+                .utf8_text(source)
+                .unwrap_or("");
+            let has_mut_self = params_text.contains("&mut self");
+            let has_mut_params = params_text.contains("mut ") && !params_text.contains("&mut self");
+            (has_mut_self, has_mut_params)
+        } else {
+            (false, false)
+        };
 
         // Create parameter list string (escape for SQL)
         let param_list = if !param_details.is_empty() {
@@ -2530,53 +2456,44 @@ fn extract_function_facts(
         (false, false, 0, String::new())
     };
 
-    // Extract return type with full details
-    let (returns_result, returns_option, return_type) = match language {
-        Language::Rust => {
-            if let Some(return_type_node) = node.child_by_field_name("return_type") {
-                let ret_text = return_type_node.utf8_text(source).unwrap_or("");
-                let ret_clean = ret_text.replace('\'', "''");
-                (
+    // Extract return type using language spec
+    let (returns_result, returns_option, return_type) = if let Some(spec) = get_language_spec(language) {
+        let ret_type_opt = (spec.extract_return_type)(&node, source);
+        if let Some(ret_text) = ret_type_opt {
+            let ret_clean = ret_text.replace('\'', "''");
+            match language {
+                Language::Rust => (
                     ret_text.contains("Result"),
                     ret_text.contains("Option"),
                     ret_clean,
-                )
-            } else {
-                (false, false, String::new())
+                ),
+                Language::Go => (ret_text.contains("error"), false, ret_clean),
+                _ => (false, false, ret_clean),
             }
+        } else {
+            (false, false, String::new())
         }
-        Language::Go => {
-            if let Some(result) = node.child_by_field_name("result") {
-                let ret_text = result.utf8_text(source).unwrap_or("");
-                let ret_clean = ret_text.replace('\'', "''");
-                (ret_text.contains("error"), false, ret_clean) // Go uses error, not Result/Option
-            } else {
-                (false, false, String::new())
-            }
-        }
-        Language::TypeScript | Language::TypeScriptTSX => {
-            if let Some(return_type_node) = node.child_by_field_name("return_type") {
-                let ret_text = return_type_node.utf8_text(source).unwrap_or("");
-                let ret_clean = ret_text.replace('\'', "''");
-                (false, false, ret_clean) // TypeScript has explicit return types
-            } else {
-                (false, false, String::new())
-            }
-        }
-        _ => (false, false, String::new()),
+    } else {
+        (false, false, String::new())
     };
 
-    // Count generics
-    let generic_count = match language {
-        Language::Rust => node
-            .child_by_field_name("type_parameters")
-            .map(|tp| {
-                tp.children(&mut tp.walk())
-                    .filter(|c| c.kind() == "type_identifier" || c.kind() == "lifetime")
-                    .count()
-            })
-            .unwrap_or(0),
-        _ => 0, // Go doesn't have generics (until recently), Solidity doesn't
+    // Extract generics using language spec
+    let generic_count = if let Some(spec) = get_language_spec(language) {
+        if let Some(generics_text) = (spec.extract_generics)(&node, source) {
+            // For Rust, count the type parameters and lifetimes
+            if language == Language::Rust {
+                // Parse the generics text to count items
+                // This is a simple approximation - count commas + 1
+                generics_text.matches(',').count() + 1
+            } else {
+                // For other languages, just check if generics exist
+                if generics_text.is_empty() { 0 } else { 1 }
+            }
+        } else {
+            0
+        }
+    } else {
+        0
     };
 
     // Insert function facts with parameter and return type details
