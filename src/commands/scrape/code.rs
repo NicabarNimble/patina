@@ -2210,9 +2210,8 @@ fn extract_keywords(doc: &str) -> Vec<String> {
     words.into_iter().collect()
 }
 
-/// Process AST nodes and generate fingerprints
-/// Extract call expressions from AST nodes
 /// Iterative tree processing for C/C++ to avoid stack overflow on deeply nested code
+/// Uses a queue-based approach instead of recursion to handle deeply nested AST trees
 fn process_c_cpp_iterative(
     tree: tree_sitter::Tree,
     source: &[u8],
