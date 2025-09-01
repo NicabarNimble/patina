@@ -1711,7 +1711,47 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
         let file_path = work_dir.join(&file);
 
         // Cairo needs special handling - use cairo-lang-parser instead of tree-sitter
-        if language == Language::Cairo {
+        if language == Language::C || language == Language::Cpp {
+            // Use iterative tree walking for C/C++ to avoid stack overflow on deeply nested code
+            let metadata = std::fs::metadata(&file_path)?;
+            let mtime = metadata
+                .modified()?
+                .duration_since(SystemTime::UNIX_EPOCH)?
+                .as_secs() as i64;
+
+            let content = std::fs::read_to_string(&file_path)?;
+            
+            // Create parser for C/C++
+            if language != current_lang {
+                parser = Some(create_parser_for_path(&file_path)?);
+                current_lang = language;
+            }
+            
+            if let Some(ref mut p) = parser {
+                if let Some(tree) = p.parse(&content, None) {
+                    let mut context = ParseContext::new();
+                    
+                    // Use iterative processing for C/C++ to avoid stack overflow
+                    symbol_count += process_c_cpp_iterative(
+                        tree,
+                        content.as_bytes(),
+                        &file,
+                        &mut sql,
+                        language,
+                        &mut context,
+                    );
+                    
+                    // Flush call graph entries for this file
+                    context.flush_to_sql(&file, &mut sql);
+                    
+                    // Record index state
+                    sql.push_str(&format!(
+                        "INSERT INTO index_state (path, mtime) VALUES ('{}', {});\n",
+                        file, mtime
+                    ));
+                }
+            }
+        } else if language == Language::Cairo {
             // Parse Cairo file using our custom parser
             let metadata = std::fs::metadata(&file_path)?;
             let mtime = metadata
@@ -2172,6 +2212,154 @@ fn extract_keywords(doc: &str) -> Vec<String> {
 
 /// Process AST nodes and generate fingerprints
 /// Extract call expressions from AST nodes
+/// Iterative tree processing for C/C++ to avoid stack overflow on deeply nested code
+fn process_c_cpp_iterative(
+    tree: tree_sitter::Tree,
+    source: &[u8],
+    file_path: &str,
+    sql: &mut String,
+    language: languages::Language,
+    context: &mut ParseContext,
+) -> usize {
+    use fingerprint::Fingerprint;
+    use std::collections::VecDeque;
+    
+    let mut count = 0;
+    let mut work_queue = VecDeque::new();
+    
+    // Start with root node
+    work_queue.push_back(tree.root_node());
+    
+    while let Some(node) = work_queue.pop_front() {
+        // First, extract any call expressions from this node
+        extract_call_expressions(node, source, language, context);
+        
+        // Check if this is a symbol we want to fingerprint
+        let kind = if let Some(spec) = get_language_spec(language) {
+            // First try the simple mapping
+            let basic_kind = (spec.get_symbol_kind)(node.kind());
+            
+            if basic_kind != "unknown" {
+                basic_kind
+            } else {
+                // Try complex mapping that needs node inspection
+                if let Some(complex_kind) = (spec.get_symbol_kind_complex)(&node, source) {
+                    complex_kind
+                } else {
+                    // Not a symbol we care about - just add children to queue
+                    for i in 0..node.child_count() {
+                        if let Some(child) = node.child(i) {
+                            work_queue.push_back(child);
+                        }
+                    }
+                    continue;
+                }
+            }
+        } else {
+            // Should not happen for C/C++, but handle gracefully
+            for i in 0..node.child_count() {
+                if let Some(child) = node.child(i) {
+                    work_queue.push_back(child);
+                }
+            }
+            continue;
+        };
+        
+        // Skip empty kinds
+        if kind.is_empty() {
+            // Still need to process children
+            for i in 0..node.child_count() {
+                if let Some(child) = node.child(i) {
+                    work_queue.push_back(child);
+                }
+            }
+            continue;
+        }
+        
+        // Handle imports separately
+        if kind == "import" {
+            extract_import_fact(node, source, file_path, sql, language);
+            count += 1;
+            // Still process children
+            for i in 0..node.child_count() {
+                if let Some(child) = node.child(i) {
+                    work_queue.push_back(child);
+                }
+            }
+            continue;
+        }
+        
+        // Extract name for other symbols - C/C++ specific handling
+        let name_node = if node.kind() == "function_definition" {
+            node.child_by_field_name("declarator")
+                .and_then(|d| extract_c_function_name(d))
+        } else {
+            node.child_by_field_name("name")
+                .or_else(|| node.child_by_field_name("declarator"))
+        };
+        
+        if let Some(name_node) = name_node {
+            let name = String::from_utf8_lossy(&source[name_node.byte_range()]).to_string();
+            
+            // Only process if we have a valid name
+            if !name.is_empty() && !name.contains('\n') {
+                // Create fingerprint
+                let fingerprint = Fingerprint::from_ast(node, source);
+                
+                sql.push_str(&format!(
+                    "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
+                    file_path, name.replace('\'', "''"), kind,
+                    fingerprint.pattern, fingerprint.imports,
+                    fingerprint.complexity, fingerprint.flags
+                ));
+                
+                count += 1;
+            }
+        }
+        
+        // Add children to work queue for further processing
+        for i in 0..node.child_count() {
+            if let Some(child) = node.child(i) {
+                work_queue.push_back(child);
+            }
+        }
+    }
+    
+    count
+}
+
+/// Extract function name from C/C++ declarator (handles nested declarators)
+fn extract_c_function_name(declarator: tree_sitter::Node) -> Option<tree_sitter::Node> {
+    // C function declarators can be nested (function pointers, etc.)
+    // Look for the identifier
+    if declarator.kind() == "identifier" {
+        return Some(declarator);
+    }
+    
+    // For function_declarator, check the declarator field
+    if declarator.kind() == "function_declarator" {
+        if let Some(inner) = declarator.child_by_field_name("declarator") {
+            return extract_c_function_name(inner);
+        }
+    }
+    
+    // For pointer_declarator, check the declarator field
+    if declarator.kind() == "pointer_declarator" {
+        if let Some(inner) = declarator.child_by_field_name("declarator") {
+            return extract_c_function_name(inner);
+        }
+    }
+    
+    // Try first child as fallback
+    if let Some(child) = declarator.child(0) {
+        if child.kind() == "identifier" {
+            return Some(child);
+        }
+    }
+    
+    None
+}
+
 fn extract_call_expressions(
     node: tree_sitter::Node,
     source: &[u8],
