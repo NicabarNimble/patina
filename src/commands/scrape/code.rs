@@ -971,9 +971,8 @@ static CPP_SPEC: LanguageSpec = LanguageSpec {
         let parent = node.parent();
 
         // Check if we're in a class (default private) or struct (default public)
-        let default_public = parent.is_none_or(|p| {
-            p.kind() == "struct_specifier" || p.kind() == "namespace_definition"
-        });
+        let default_public = parent
+            .is_none_or(|p| p.kind() == "struct_specifier" || p.kind() == "namespace_definition");
 
         // Look for explicit access specifiers
         for child in node.children(&mut cursor) {
