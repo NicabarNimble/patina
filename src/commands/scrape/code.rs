@@ -1576,7 +1576,9 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
             | Language::JavaScriptJSX
             | Language::TypeScript
             | Language::TypeScriptTSX
-            | Language::Cairo => {
+            | Language::Cairo
+            | Language::C
+            | Language::Cpp => {
                 // Supported language - add to processing list with relative path
                 all_files.push((format!("./{}", relative_path_str), language));
             }
@@ -2903,6 +2905,8 @@ fn extract_type_definition(
             }
         }
         Language::Cairo => "pub", // Cairo defaults to public
+        Language::C => "pub", // C functions in headers are public
+        Language::Cpp => "private", // C++ defaults to private
         Language::Unknown => "private",
     };
 
