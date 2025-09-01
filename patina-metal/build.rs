@@ -9,6 +9,8 @@ fn main() {
     println!("cargo:rustc-env=TYPESCRIPT_GRAMMAR_COMMIT=75b3874edb2dc714fb1fd77a32013d0f8699989f");
     println!("cargo:rustc-env=SOLIDITY_GRAMMAR_COMMIT=c3da7d989747679305ec1c84b68082f01089d49f");
     println!("cargo:rustc-env=GRAMMAR_PACK_VERSION=1.0.0");
+    println!("cargo:rustc-env=C_GRAMMAR_COMMIT=212bdfe7e69e7b1a1ee29aeb6d16a7d6128c1209");
+    println!("cargo:rustc-env=CPP_GRAMMAR_COMMIT=2369fa8a2b81e16b62f087c59e223fdaa693cf77");
 
     // Build Rust grammar
     let rust_dir = PathBuf::from("grammars/rust");
@@ -117,4 +119,34 @@ fn main() {
         .flag_if_supported("-Wno-unused-but-set-variable")
         .flag_if_supported("-Wno-trigraphs")
         .compile("tree-sitter-tsx");
+
+    // Build C grammar
+    let c_dir = PathBuf::from("grammars/c");
+    let c_src = c_dir.join("src");
+
+    println!("cargo:rerun-if-changed=grammars/c/src/parser.c");
+
+    cc::Build::new()
+        .include(&c_src)
+        .file(c_src.join("parser.c"))
+        .flag_if_supported("-Wno-unused-parameter")
+        .flag_if_supported("-Wno-unused-but-set-variable")
+        .flag_if_supported("-Wno-trigraphs")
+        .compile("tree-sitter-c");
+
+    // Build C++ grammar
+    let cpp_dir = PathBuf::from("grammars/cpp");
+    let cpp_src = cpp_dir.join("src");
+
+    println!("cargo:rerun-if-changed=grammars/cpp/src/parser.c");
+    println!("cargo:rerun-if-changed=grammars/cpp/src/scanner.c");
+
+    cc::Build::new()
+        .include(&cpp_src)
+        .file(cpp_src.join("parser.c"))
+        .file(cpp_src.join("scanner.c"))
+        .flag_if_supported("-Wno-unused-parameter")
+        .flag_if_supported("-Wno-unused-but-set-variable")
+        .flag_if_supported("-Wno-trigraphs")
+        .compile("tree-sitter-cpp");
 }
