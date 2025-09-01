@@ -9,7 +9,7 @@ fn main() {
     println!("cargo:rustc-env=TYPESCRIPT_GRAMMAR_COMMIT=75b3874edb2dc714fb1fd77a32013d0f8699989f");
     println!("cargo:rustc-env=SOLIDITY_GRAMMAR_COMMIT=c3da7d989747679305ec1c84b68082f01089d49f");
     println!("cargo:rustc-env=GRAMMAR_PACK_VERSION=1.0.0");
-    println!("cargo:rustc-env=C_GRAMMAR_COMMIT=212bdfe7e69e7b1a1ee29aeb6d16a7d6128c1209");
+    println!("cargo:rustc-env=C_GRAMMAR_COMMIT=ec69f91b23dd8630d68710b911d77127146ff7ef");
     println!("cargo:rustc-env=CPP_GRAMMAR_COMMIT=2369fa8a2b81e16b62f087c59e223fdaa693cf77");
 
     // Build Rust grammar

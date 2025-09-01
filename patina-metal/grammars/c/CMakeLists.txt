@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.13)
 
 project(tree-sitter-c
-        VERSION "0.24.1"
+        VERSION "0.23.6"
         DESCRIPTION "C grammar for tree-sitter"
         HOMEPAGE_URL "https://github.com/tree-sitter/tree-sitter-c"
         LANGUAGES C)
@@ -28,11 +28,7 @@ add_library(tree-sitter-c src/parser.c)
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/scanner.c)
   target_sources(tree-sitter-c PRIVATE src/scanner.c)
 endif()
-target_include_directories(tree-sitter-c
-                           PRIVATE src
-                           INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/bindings/c>
-                                     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-
+target_include_directories(tree-sitter-c PRIVATE src)
 
 target_compile_definitions(tree-sitter-c PRIVATE
                            $<$<BOOL:${TREE_SITTER_REUSE_ALLOCATOR}>:TREE_SITTER_REUSE_ALLOCATOR>
@@ -50,9 +46,8 @@ configure_file(bindings/c/tree-sitter-c.pc.in
 
 include(GNUInstallDirs)
 
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/bindings/c/tree_sitter"
-        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
-        FILES_MATCHING PATTERN "*.h")
+install(FILES bindings/c/tree-sitter-c.h
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/tree_sitter")
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/tree-sitter-c.pc"
         DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/pkgconfig")
 install(TARGETS tree-sitter-c

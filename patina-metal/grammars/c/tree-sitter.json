@@ -15,7 +15,7 @@
     }
   ],
   "metadata": {
-    "version": "0.24.1",
+    "version": "0.23.6",
     "license": "MIT",
     "description": "C grammar for tree-sitter",
     "authors": [
@@ -38,6 +38,7 @@
     "node": true,
     "python": true,
     "rust": true,
-    "swift": true
+    "swift": true,
+    "zig": true
   }
 }
