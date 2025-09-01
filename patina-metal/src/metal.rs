@@ -96,7 +96,7 @@ impl Metal {
             Metal::Python => "*.py",
             Metal::JavaScript => "*.js", // Note: also handles .jsx, .mjs
             Metal::TypeScript => "*.ts", // Note: also handles .tsx
-            Metal::C => "*.c",          // Note: also handles .h
+            Metal::C => "*.c",           // Note: also handles .h
             Metal::Cpp => "*.cpp",       // Note: also handles .cc, .cxx, .hpp, etc.
         }
     }

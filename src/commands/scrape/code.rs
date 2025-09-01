@@ -187,15 +187,15 @@ static RUST_SPEC: LanguageSpec = LanguageSpec {
     extract_import_details: |node, source| {
         let import_text = node.utf8_text(source).unwrap_or("");
         let import_clean = import_text.trim_start_matches("use ").trim_end_matches(';');
-        
+
         // Determine if external
         let is_external = !import_clean.starts_with("crate::")
             && !import_clean.starts_with("super::")
             && !import_clean.starts_with("self::");
-        
+
         // Extract the imported item (last part after ::)
         let imported_item = import_clean.split("::").last().unwrap_or(import_clean);
-        
+
         // Extract the source module
         let imported_from = if import_clean.contains("::") {
             import_clean
@@ -205,8 +205,12 @@ static RUST_SPEC: LanguageSpec = LanguageSpec {
         } else {
             import_clean
         };
-        
-        (imported_item.to_string(), imported_from.to_string(), is_external)
+
+        (
+            imported_item.to_string(),
+            imported_from.to_string(),
+            is_external,
+        )
     },
 };
 
@@ -321,11 +325,15 @@ static GO_SPEC: LanguageSpec = LanguageSpec {
             .trim_start_matches("import ")
             .trim()
             .trim_matches('"');
-        
+
         let is_external = !import_clean.starts_with(".");
         let imported_item = import_clean.split('/').next_back().unwrap_or(import_clean);
-        
-        (imported_item.to_string(), import_clean.to_string(), is_external)
+
+        (
+            imported_item.to_string(),
+            import_clean.to_string(),
+            is_external,
+        )
     },
 };
 
@@ -447,9 +455,13 @@ static PYTHON_SPEC: LanguageSpec = LanguageSpec {
         let import_text = node.utf8_text(source).unwrap_or("");
         let import_clean = import_text.trim();
         let is_external = !import_clean.contains("from .");
-        
+
         // For now, just use the whole import text as both item and from
-        (import_clean.to_string(), import_clean.to_string(), is_external)
+        (
+            import_clean.to_string(),
+            import_clean.to_string(),
+            is_external,
+        )
     },
 };
 
@@ -579,7 +591,11 @@ static JS_SPEC: LanguageSpec = LanguageSpec {
             .or_else(|| import_text.split('"').nth(1))
         {
             let is_external = !module_match.starts_with('.');
-            (module_match.to_string(), module_match.to_string(), is_external)
+            (
+                module_match.to_string(),
+                module_match.to_string(),
+                is_external,
+            )
         } else {
             (String::new(), String::new(), false)
         }
@@ -721,7 +737,11 @@ static TS_SPEC: LanguageSpec = LanguageSpec {
             .or_else(|| import_text.split('"').nth(1))
         {
             let is_external = !module_match.starts_with('.');
-            (module_match.to_string(), module_match.to_string(), is_external)
+            (
+                module_match.to_string(),
+                module_match.to_string(),
+                is_external,
+            )
         } else {
             (String::new(), String::new(), false)
         }
@@ -850,8 +870,10 @@ static C_SPEC: LanguageSpec = LanguageSpec {
     },
 
     extract_params: |node, source| {
-        if let Some(params_node) = node.child_by_field_name("declarator")
-            .and_then(|d| d.child_by_field_name("parameters")) {
+        if let Some(params_node) = node
+            .child_by_field_name("declarator")
+            .and_then(|d| d.child_by_field_name("parameters"))
+        {
             let mut params = Vec::new();
             let mut cursor = params_node.walk();
             for child in params_node.children(&mut cursor) {
@@ -881,7 +903,7 @@ static C_SPEC: LanguageSpec = LanguageSpec {
     get_symbol_kind: |node_kind| match node_kind {
         "function_definition" => "function",
         "struct_specifier" => "struct",
-        "union_specifier" => "union", 
+        "union_specifier" => "union",
         "enum_specifier" => "enum",
         "type_definition" => "type_alias",
         "declaration" => "variable",
@@ -923,11 +945,15 @@ static C_SPEC: LanguageSpec = LanguageSpec {
             .trim_start_matches('"')
             .trim_end_matches('>')
             .trim_end_matches('"');
-        
+
         // System headers use <>, local headers use ""
         let is_external = import_text.contains('<');
-        
-        (import_clean.to_string(), import_clean.to_string(), is_external)
+
+        (
+            import_clean.to_string(),
+            import_clean.to_string(),
+            is_external,
+        )
     },
 };
 
@@ -943,12 +969,12 @@ static CPP_SPEC: LanguageSpec = LanguageSpec {
         // Default is private for class, public for struct
         let mut cursor = node.walk();
         let parent = node.parent();
-        
+
         // Check if we're in a class (default private) or struct (default public)
-        let default_public = parent.map_or(true, |p| {
+        let default_public = parent.is_none_or(|p| {
             p.kind() == "struct_specifier" || p.kind() == "namespace_definition"
         });
-        
+
         // Look for explicit access specifiers
         for child in node.children(&mut cursor) {
             if let Ok(text) = child.utf8_text(source) {
@@ -959,7 +985,7 @@ static CPP_SPEC: LanguageSpec = LanguageSpec {
                 }
             }
         }
-        
+
         default_public
     },
 
@@ -974,12 +1000,16 @@ static CPP_SPEC: LanguageSpec = LanguageSpec {
     },
 
     extract_params: |node, source| {
-        if let Some(params_node) = node.child_by_field_name("declarator")
-            .and_then(|d| d.child_by_field_name("parameters")) {
+        if let Some(params_node) = node
+            .child_by_field_name("declarator")
+            .and_then(|d| d.child_by_field_name("parameters"))
+        {
             let mut params = Vec::new();
             let mut cursor = params_node.walk();
             for child in params_node.children(&mut cursor) {
-                if child.kind() == "parameter_declaration" || child.kind() == "optional_parameter_declaration" {
+                if child.kind() == "parameter_declaration"
+                    || child.kind() == "optional_parameter_declaration"
+                {
                     if let Ok(param_text) = child.utf8_text(source) {
                         params.push(param_text.to_string());
                     }
@@ -1055,11 +1085,13 @@ static CPP_SPEC: LanguageSpec = LanguageSpec {
             .map(|line| {
                 line.trim()
                     .strip_prefix("///")
-                    .or_else(|| line.strip_prefix("//!")
-                    .or_else(|| line.strip_prefix("/**"))
-                    .or_else(|| line.strip_prefix("/*"))
-                    .or_else(|| line.strip_prefix("*"))
-                    .or_else(|| line.strip_suffix("*/")))
+                    .or_else(|| {
+                        line.strip_prefix("//!")
+                            .or_else(|| line.strip_prefix("/**"))
+                            .or_else(|| line.strip_prefix("/*"))
+                            .or_else(|| line.strip_prefix("*"))
+                            .or_else(|| line.strip_suffix("*/"))
+                    })
                     .unwrap_or(line)
                     .trim()
             })
@@ -1076,11 +1108,15 @@ static CPP_SPEC: LanguageSpec = LanguageSpec {
             .trim_start_matches('"')
             .trim_end_matches('>')
             .trim_end_matches('"');
-        
+
         // System headers use <>, local headers use ""
         let is_external = import_text.contains('<');
-        
-        (import_clean.to_string(), import_clean.to_string(), is_external)
+
+        (
+            import_clean.to_string(),
+            import_clean.to_string(),
+            is_external,
+        )
     },
 };
 
@@ -1720,17 +1756,17 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
                 .as_secs() as i64;
 
             let content = std::fs::read_to_string(&file_path)?;
-            
+
             // Create parser for C/C++
             if language != current_lang {
                 parser = Some(create_parser_for_path(&file_path)?);
                 current_lang = language;
             }
-            
+
             if let Some(ref mut p) = parser {
                 if let Some(tree) = p.parse(&content, None) {
                     let mut context = ParseContext::new();
-                    
+
                     // Use iterative processing for C/C++ to avoid stack overflow
                     symbol_count += process_c_cpp_iterative(
                         tree,
@@ -1740,10 +1776,10 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
                         language,
                         &mut context,
                     );
-                    
+
                     // Flush call graph entries for this file
                     context.flush_to_sql(&file, &mut sql);
-                    
+
                     // Record index state
                     sql.push_str(&format!(
                         "INSERT INTO index_state (path, mtime) VALUES ('{}', {});\n",
@@ -2222,22 +2258,22 @@ fn process_c_cpp_iterative(
 ) -> usize {
     use fingerprint::Fingerprint;
     use std::collections::VecDeque;
-    
+
     let mut count = 0;
     let mut work_queue = VecDeque::new();
-    
+
     // Start with root node
     work_queue.push_back(tree.root_node());
-    
+
     while let Some(node) = work_queue.pop_front() {
         // First, extract any call expressions from this node
         extract_call_expressions(node, source, language, context);
-        
+
         // Check if this is a symbol we want to fingerprint
         let kind = if let Some(spec) = get_language_spec(language) {
             // First try the simple mapping
             let basic_kind = (spec.get_symbol_kind)(node.kind());
-            
+
             if basic_kind != "unknown" {
                 basic_kind
             } else {
@@ -2263,7 +2299,7 @@ fn process_c_cpp_iterative(
             }
             continue;
         };
-        
+
         // Skip empty kinds
         if kind.is_empty() {
             // Still need to process children
@@ -2274,7 +2310,7 @@ fn process_c_cpp_iterative(
             }
             continue;
         }
-        
+
         // Handle imports separately
         if kind == "import" {
             extract_import_fact(node, source, file_path, sql, language);
@@ -2287,7 +2323,7 @@ fn process_c_cpp_iterative(
             }
             continue;
         }
-        
+
         // Extract name for other symbols - C/C++ specific handling
         let name_node = if node.kind() == "function_definition" {
             node.child_by_field_name("declarator")
@@ -2296,26 +2332,26 @@ fn process_c_cpp_iterative(
             node.child_by_field_name("name")
                 .or_else(|| node.child_by_field_name("declarator"))
         };
-        
+
         if let Some(name_node) = name_node {
             let name = String::from_utf8_lossy(&source[name_node.byte_range()]).to_string();
-            
+
             // Only process if we have a valid name
             if !name.is_empty() && !name.contains('\n') {
                 // Create fingerprint
                 let fingerprint = Fingerprint::from_ast(node, source);
-                
+
                 sql.push_str(&format!(
                     "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
                     file_path, name.replace('\'', "''"), kind,
                     fingerprint.pattern, fingerprint.imports,
                     fingerprint.complexity, fingerprint.flags
                 ));
-                
+
                 count += 1;
             }
         }
-        
+
         // Add children to work queue for further processing
         for i in 0..node.child_count() {
             if let Some(child) = node.child(i) {
@@ -2323,7 +2359,7 @@ fn process_c_cpp_iterative(
             }
         }
     }
-    
+
     count
 }
 
@@ -2334,28 +2370,28 @@ fn extract_c_function_name(declarator: tree_sitter::Node) -> Option<tree_sitter:
     if declarator.kind() == "identifier" {
         return Some(declarator);
     }
-    
+
     // For function_declarator, check the declarator field
     if declarator.kind() == "function_declarator" {
         if let Some(inner) = declarator.child_by_field_name("declarator") {
             return extract_c_function_name(inner);
         }
     }
-    
+
     // For pointer_declarator, check the declarator field
     if declarator.kind() == "pointer_declarator" {
         if let Some(inner) = declarator.child_by_field_name("declarator") {
             return extract_c_function_name(inner);
         }
     }
-    
+
     // Try first child as fallback
     if let Some(child) = declarator.child(0) {
         if child.kind() == "identifier" {
             return Some(child);
         }
     }
-    
+
     None
 }
 
@@ -2930,13 +2966,11 @@ fn extract_function_facts(
         // Use the language spec's extract_params function
         let param_details = (spec.extract_params)(&node, source);
         let param_count = param_details.len();
-        
+
         // Check for Rust-specific mut patterns
-        let (has_mut_self, has_mut_params) = if language == Language::Rust && params_node.is_some() {
-            let params_text = params_node
-                .unwrap()
-                .utf8_text(source)
-                .unwrap_or("");
+        let (has_mut_self, has_mut_params) = if language == Language::Rust && params_node.is_some()
+        {
+            let params_text = params_node.unwrap().utf8_text(source).unwrap_or("");
             let has_mut_self = params_text.contains("&mut self");
             let has_mut_params = params_text.contains("mut ") && !params_text.contains("&mut self");
             (has_mut_self, has_mut_params)
@@ -2957,25 +2991,26 @@ fn extract_function_facts(
     };
 
     // Extract return type using language spec
-    let (returns_result, returns_option, return_type) = if let Some(spec) = get_language_spec(language) {
-        let ret_type_opt = (spec.extract_return_type)(&node, source);
-        if let Some(ret_text) = ret_type_opt {
-            let ret_clean = ret_text.replace('\'', "''");
-            match language {
-                Language::Rust => (
-                    ret_text.contains("Result"),
-                    ret_text.contains("Option"),
-                    ret_clean,
-                ),
-                Language::Go => (ret_text.contains("error"), false, ret_clean),
-                _ => (false, false, ret_clean),
+    let (returns_result, returns_option, return_type) =
+        if let Some(spec) = get_language_spec(language) {
+            let ret_type_opt = (spec.extract_return_type)(&node, source);
+            if let Some(ret_text) = ret_type_opt {
+                let ret_clean = ret_text.replace('\'', "''");
+                match language {
+                    Language::Rust => (
+                        ret_text.contains("Result"),
+                        ret_text.contains("Option"),
+                        ret_clean,
+                    ),
+                    Language::Go => (ret_text.contains("error"), false, ret_clean),
+                    _ => (false, false, ret_clean),
+                }
+            } else {
+                (false, false, String::new())
             }
         } else {
             (false, false, String::new())
-        }
-    } else {
-        (false, false, String::new())
-    };
+        };
 
     // Extract generics using language spec
     let generic_count = if let Some(spec) = get_language_spec(language) {
@@ -2987,7 +3022,11 @@ fn extract_function_facts(
                 generics_text.matches(',').count() + 1
             } else {
                 // For other languages, just check if generics exist
-                if generics_text.is_empty() { 0 } else { 1 }
+                if generics_text.is_empty() {
+                    0
+                } else {
+                    1
+                }
             }
         } else {
             0
@@ -3091,8 +3130,8 @@ fn extract_type_definition(
                 "private"
             }
         }
-        Language::Cairo => "pub", // Cairo defaults to public
-        Language::C => "pub", // C functions in headers are public
+        Language::Cairo => "pub",   // Cairo defaults to public
+        Language::C => "pub",       // C functions in headers are public
         Language::Cpp => "private", // C++ defaults to private
         Language::Unknown => "private",
     };
@@ -3119,8 +3158,9 @@ fn extract_import_fact(
     use languages::Language;
 
     if let Some(spec) = get_language_spec(language) {
-        let (imported_item, imported_from, is_external) = (spec.extract_import_details)(&node, source);
-        
+        let (imported_item, imported_from, is_external) =
+            (spec.extract_import_details)(&node, source);
+
         if !imported_item.is_empty() {
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'import');\n",
