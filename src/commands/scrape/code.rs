@@ -2079,7 +2079,9 @@ fn extract_doc_comment(
                 // C/C++ doc comments: /** */ or /// or //
                 prev.kind() == "comment" && {
                     let text = prev.utf8_text(source).unwrap_or("");
-                    text.starts_with("/**") || text.starts_with("///") || text.starts_with("//!")
+                    text.starts_with("/**")
+                        || text.starts_with("///")
+                        || text.starts_with("//!")
                         || text.starts_with("//")
                 }
             }
@@ -2255,10 +2257,15 @@ fn process_c_cpp_iterative(
                 // If this is a function, update the context and extract additional data
                 if kind == "function" {
                     context.current_function = Some(name.clone());
-                    
+
                     // Extract function facts for C/C++
                     extract_function_facts(node, source, file_path, &name, sql, language);
-                    
+
+                    // Extract behavioral hints for C/C++
+                    extract_behavioral_hints_for_language(
+                        node, source, file_path, &name, sql, language,
+                    );
+
                     // Add to code_search
                     let signature = node
                         .utf8_text(source)
@@ -2267,7 +2274,7 @@ fn process_c_cpp_iterative(
                         .next()
                         .unwrap_or("")
                         .replace('\'', "''");
-                    
+
                     sql.push_str(&format!(
                         "INSERT OR REPLACE INTO code_search (path, name, signature) VALUES ('{}', '{}', '{}');\n",
                         file_path, name.replace('\'', "''"), signature
@@ -2275,11 +2282,14 @@ fn process_c_cpp_iterative(
                 }
 
                 // Extract documentation if present
-                if let Some((doc_raw, doc_clean, keywords)) = extract_doc_comment(node, source, language) {
+                if let Some((doc_raw, doc_clean, keywords)) =
+                    extract_doc_comment(node, source, language)
+                {
                     let doc_summary = extract_summary(&doc_clean);
-                    let keywords_str = keywords.join(",");
+                    let _keywords_str = keywords.join(",");
                     let doc_length = doc_clean.len() as i32;
-                    let has_examples = doc_clean.contains("example") || doc_clean.contains("Example");
+                    let has_examples =
+                        doc_clean.contains("example") || doc_clean.contains("Example");
                     let has_params = doc_clean.contains("param") || doc_clean.contains("@param");
                     let line_number = (node.start_position().row + 1) as i32;
 
@@ -2292,9 +2302,9 @@ fn process_c_cpp_iterative(
                         doc_raw.replace('\'', "''"),
                         doc_clean.replace('\'', "''"),
                         doc_summary.replace('\'', "''"),
-                        if keywords.is_empty() { 
-                            String::new() 
-                        } else { 
+                        if keywords.is_empty() {
+                            String::new()
+                        } else {
                             keywords.iter().map(|k| format!("'{}'", k.replace('\'', "''"))).collect::<Vec<_>>().join(",")
                         },
                         doc_length,
@@ -3054,10 +3064,8 @@ fn extract_function_facts(
         return_type      // Already escaped with '' replacement
     ));
 
-    // Extract behavioral hints
-    if language == Language::Rust {
-        extract_behavioral_hints(node, source, file_path, name, sql);
-    }
+    // Extract behavioral hints for all supported languages
+    extract_behavioral_hints_for_language(node, source, file_path, name, sql, language);
 }
 
 /// Extract type definitions for vocabulary
@@ -3247,6 +3255,232 @@ fn extract_behavioral_hints(
                 has_arc
             ));
         }
+    }
+}
+
+/// Extract behavioral hints for C/C++
+fn extract_behavioral_hints_c_cpp(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    function_name: &str,
+    sql: &mut String,
+) {
+    if let Some(body) = node.child_by_field_name("body") {
+        let body_text = body.utf8_text(source).unwrap_or("");
+
+        // Reinterpret columns for C/C++
+        let malloc_count =
+            body_text.matches("malloc(").count() + body_text.matches("calloc(").count();
+        let free_count = body_text.matches("free(").count();
+        let calls_unwrap = malloc_count.saturating_sub(free_count);
+        let calls_expect = body_text.matches("assert(").count();
+        let has_panic_macro = body_text.contains("abort()") || body_text.contains("exit(");
+        let has_todo_macro = body_text.contains("TODO") || body_text.contains("FIXME");
+        let has_unsafe_block = body_text.contains("strcpy(")
+            || body_text.contains("gets(")
+            || body_text.contains("sprintf(");
+        let has_mutex = body_text.contains("pthread_mutex");
+        let has_arc = body_text.contains("shared_ptr");
+
+        // Only insert if patterns found
+        if calls_unwrap > 0
+            || calls_expect > 0
+            || has_panic_macro
+            || has_todo_macro
+            || has_unsafe_block
+            || has_mutex
+            || has_arc
+        {
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO behavioral_hints (file, function, calls_unwrap, calls_expect, has_panic_macro, has_todo_macro, has_unsafe_block, has_mutex, has_arc) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
+                escape_sql(file_path),
+                escape_sql(function_name),
+                calls_unwrap,
+                calls_expect,
+                has_panic_macro,
+                has_todo_macro,
+                has_unsafe_block,
+                has_mutex,
+                has_arc
+            ));
+        }
+    }
+}
+
+/// Extract behavioral hints for Python
+fn extract_behavioral_hints_python(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    function_name: &str,
+    sql: &mut String,
+) {
+    if let Some(body) = node.child_by_field_name("body") {
+        let body_text = body.utf8_text(source).unwrap_or("");
+
+        // Reinterpret columns for Python
+        let calls_unwrap =
+            body_text.matches("except:").count() + body_text.matches("except Exception:").count();
+        let calls_expect = body_text
+            .matches("except")
+            .count()
+            .saturating_sub(calls_unwrap);
+        let has_panic_macro = body_text.contains("sys.exit(") || body_text.contains("os._exit(");
+        let has_todo_macro = body_text.contains("TODO") || body_text.contains("FIXME");
+        let has_unsafe_block = body_text.contains("eval(")
+            || body_text.contains("exec(")
+            || body_text.contains("__import__(");
+        let has_mutex =
+            body_text.contains("threading.Lock") || body_text.contains("threading.RLock");
+        let has_arc = false; // No direct equivalent
+
+        // Only insert if patterns found
+        if calls_unwrap > 0
+            || calls_expect > 0
+            || has_panic_macro
+            || has_todo_macro
+            || has_unsafe_block
+            || has_mutex
+            || has_arc
+        {
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO behavioral_hints (file, function, calls_unwrap, calls_expect, has_panic_macro, has_todo_macro, has_unsafe_block, has_mutex, has_arc) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
+                escape_sql(file_path),
+                escape_sql(function_name),
+                calls_unwrap,
+                calls_expect,
+                has_panic_macro,
+                has_todo_macro,
+                has_unsafe_block,
+                has_mutex,
+                has_arc
+            ));
+        }
+    }
+}
+
+/// Extract behavioral hints for Go
+fn extract_behavioral_hints_go(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    function_name: &str,
+    sql: &mut String,
+) {
+    if let Some(body) = node.child_by_field_name("body") {
+        let body_text = body.utf8_text(source).unwrap_or("");
+
+        // Reinterpret columns for Go
+        let calls_unwrap = body_text.matches(", _").count()
+            + body_text.matches("_ =").count()
+            + body_text.matches("_ :=").count();
+        let calls_expect = body_text.matches("panic(").count();
+        let has_panic_macro = body_text.contains("panic(") || body_text.contains("os.Exit(");
+        let has_todo_macro = body_text.contains("TODO") || body_text.contains("FIXME");
+        let has_unsafe_block = body_text.contains("unsafe.");
+        let has_mutex = body_text.contains("sync.Mutex") || body_text.contains("sync.RWMutex");
+        let has_arc = false; // No direct equivalent
+
+        // Only insert if patterns found
+        if calls_unwrap > 0
+            || calls_expect > 0
+            || has_panic_macro
+            || has_todo_macro
+            || has_unsafe_block
+            || has_mutex
+            || has_arc
+        {
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO behavioral_hints (file, function, calls_unwrap, calls_expect, has_panic_macro, has_todo_macro, has_unsafe_block, has_mutex, has_arc) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
+                escape_sql(file_path),
+                escape_sql(function_name),
+                calls_unwrap,
+                calls_expect,
+                has_panic_macro,
+                has_todo_macro,
+                has_unsafe_block,
+                has_mutex,
+                has_arc
+            ));
+        }
+    }
+}
+
+/// Extract behavioral hints for JavaScript/TypeScript
+fn extract_behavioral_hints_javascript(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    function_name: &str,
+    sql: &mut String,
+) {
+    if let Some(body) = node.child_by_field_name("body") {
+        let body_text = body.utf8_text(source).unwrap_or("");
+
+        // Reinterpret columns for JavaScript/TypeScript
+        let then_count = body_text.matches(".then(").count();
+        let catch_count = body_text.matches(".catch(").count();
+        let calls_unwrap = then_count.saturating_sub(catch_count);
+        let calls_expect = body_text.matches("console.error(").count();
+        let has_panic_macro = body_text.contains("throw ") || body_text.contains("process.exit(");
+        let has_todo_macro = body_text.contains("TODO") || body_text.contains("FIXME");
+        let has_unsafe_block = body_text.contains("eval(") || body_text.contains("new Function(");
+        let has_mutex = false; // No direct equivalent in JS
+        let has_arc = false; // No direct equivalent
+
+        // Only insert if patterns found
+        if calls_unwrap > 0
+            || calls_expect > 0
+            || has_panic_macro
+            || has_todo_macro
+            || has_unsafe_block
+            || has_mutex
+            || has_arc
+        {
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO behavioral_hints (file, function, calls_unwrap, calls_expect, has_panic_macro, has_todo_macro, has_unsafe_block, has_mutex, has_arc) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
+                escape_sql(file_path),
+                escape_sql(function_name),
+                calls_unwrap,
+                calls_expect,
+                has_panic_macro,
+                has_todo_macro,
+                has_unsafe_block,
+                has_mutex,
+                has_arc
+            ));
+        }
+    }
+}
+
+/// Dispatch to appropriate behavioral hint extractor based on language
+fn extract_behavioral_hints_for_language(
+    node: tree_sitter::Node,
+    source: &[u8],
+    file_path: &str,
+    function_name: &str,
+    sql: &mut String,
+    language: languages::Language,
+) {
+    use languages::Language;
+
+    match language {
+        Language::Rust => extract_behavioral_hints(node, source, file_path, function_name, sql),
+        Language::C | Language::Cpp => {
+            extract_behavioral_hints_c_cpp(node, source, file_path, function_name, sql)
+        }
+        Language::Python => {
+            extract_behavioral_hints_python(node, source, file_path, function_name, sql)
+        }
+        Language::Go => extract_behavioral_hints_go(node, source, file_path, function_name, sql),
+        Language::TypeScript
+        | Language::TypeScriptTSX
+        | Language::JavaScript
+        | Language::JavaScriptJSX => {
+            extract_behavioral_hints_javascript(node, source, file_path, function_name, sql)
+        }
+        _ => {} // No behavioral hints for other languages yet
     }
 }
 
@@ -3523,17 +3757,17 @@ CREATE TABLE IF NOT EXISTS call_graph (
 CREATE INDEX IF NOT EXISTS idx_caller ON call_graph(caller);
 CREATE INDEX IF NOT EXISTS idx_callee ON call_graph(callee);
 
--- Behavioral hints: Code smell detection (facts only)
+-- Behavioral hints: Code smell detection (multi-language, column reinterpretation)
 CREATE TABLE IF NOT EXISTS behavioral_hints (
     file VARCHAR NOT NULL,
     function VARCHAR NOT NULL,
-    calls_unwrap INTEGER DEFAULT 0,     -- Count of .unwrap()
-    calls_expect INTEGER DEFAULT 0,     -- Count of .expect()
-    has_panic_macro BOOLEAN,           -- Contains panic!()
-    has_todo_macro BOOLEAN,            -- Contains todo!()
-    has_unsafe_block BOOLEAN,          -- Contains unsafe {}
-    has_mutex BOOLEAN,                 -- Thread synchronization
-    has_arc BOOLEAN,                   -- Shared ownership
+    calls_unwrap INTEGER DEFAULT 0,     -- Error suppression: unwrap/unchecked malloc/bare except/ignored errors
+    calls_expect INTEGER DEFAULT 0,     -- Assertions: expect/assert/panic calls
+    has_panic_macro BOOLEAN,           -- Explicit exit: panic/abort/exit/sys.exit
+    has_todo_macro BOOLEAN,            -- TODO/FIXME markers (all languages)
+    has_unsafe_block BOOLEAN,          -- Dangerous ops: unsafe/strcpy/eval
+    has_mutex BOOLEAN,                 -- Concurrency: Mutex/pthread_mutex/threading.Lock
+    has_arc BOOLEAN,                   -- Shared ownership: Arc/shared_ptr (C++/Rust only)
     PRIMARY KEY (file, function)
 );
 

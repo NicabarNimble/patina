@@ -1,5 +1,5 @@
-# Exclude grammar test files from indexing
-patina-metal/grammars/*/test/
-patina-metal/grammars/*/tests/
-patina-metal/grammars/*/examples/
-patina-metal/grammars/*/bindings/
+# Exclude all grammar subdirectories (third-party tree-sitter implementations)
+patina-metal/grammars/*/
+
+# Exclude dust layer (archived/historical content)
+layer/dust/
