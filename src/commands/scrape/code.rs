@@ -80,11 +80,6 @@ struct LanguageSpec {
     /// Map node to symbol kind (complex cases that need node inspection)
     get_symbol_kind_complex: fn(&Node, &[u8]) -> Option<&'static str>,
 
-    /// Extract call target from call expression
-    /// TODO: Implement call graph feature using this field (planned feature)
-    #[allow(dead_code)]
-    extract_call_target: fn(&Node, &[u8]) -> Option<String>,
-
     /// Clean documentation text for a language
     clean_doc_comment: fn(&str) -> String,
 
@@ -159,18 +154,6 @@ static RUST_SPEC: LanguageSpec = LanguageSpec {
     get_symbol_kind_complex: |_node, _source| {
         // Rust doesn't need complex symbol kind detection
         None
-    },
-
-    extract_call_target: |node, source| match node.kind() {
-        "call_expression" => node
-            .child_by_field_name("function")
-            .and_then(|f| f.utf8_text(source).ok())
-            .map(String::from),
-        "method_call_expression" => node
-            .child_by_field_name("name")
-            .and_then(|n| n.utf8_text(source).ok())
-            .map(String::from),
-        _ => None,
     },
 
     clean_doc_comment: |raw| {
@@ -297,22 +280,6 @@ static GO_SPEC: LanguageSpec = LanguageSpec {
         }
     },
 
-    extract_call_target: |node, source| {
-        match node.kind() {
-            "call_expression" => node
-                .child_by_field_name("function")
-                .and_then(|f| f.utf8_text(source).ok())
-                .map(String::from),
-            "selector_expression" => {
-                // For method calls like obj.Method()
-                node.child_by_field_name("field")
-                    .and_then(|f| f.utf8_text(source).ok())
-                    .map(String::from)
-            }
-            _ => None,
-        }
-    },
-
     clean_doc_comment: |raw| {
         raw.lines()
             .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
@@ -419,22 +386,6 @@ static PYTHON_SPEC: LanguageSpec = LanguageSpec {
             }
         } else {
             None
-        }
-    },
-
-    extract_call_target: |node, source| {
-        match node.kind() {
-            "call" => node
-                .child_by_field_name("function")
-                .and_then(|f| f.utf8_text(source).ok())
-                .map(String::from),
-            "attribute" => {
-                // For method calls like obj.method()
-                node.child_by_field_name("attribute")
-                    .and_then(|a| a.utf8_text(source).ok())
-                    .map(String::from)
-            }
-            _ => None,
         }
     },
 
@@ -546,22 +497,6 @@ static JS_SPEC: LanguageSpec = LanguageSpec {
             }
         } else {
             None
-        }
-    },
-
-    extract_call_target: |node, source| {
-        match node.kind() {
-            "call_expression" => node
-                .child_by_field_name("function")
-                .and_then(|f| f.utf8_text(source).ok())
-                .map(String::from),
-            "member_expression" => {
-                // For method calls like obj.method()
-                node.child_by_field_name("property")
-                    .and_then(|p| p.utf8_text(source).ok())
-                    .map(String::from)
-            }
-            _ => None,
         }
     },
 
@@ -695,22 +630,6 @@ static TS_SPEC: LanguageSpec = LanguageSpec {
         }
     },
 
-    extract_call_target: |node, source| {
-        match node.kind() {
-            "call_expression" => node
-                .child_by_field_name("function")
-                .and_then(|f| f.utf8_text(source).ok())
-                .map(String::from),
-            "member_expression" => {
-                // For method calls like obj.method()
-                node.child_by_field_name("property")
-                    .and_then(|p| p.utf8_text(source).ok())
-                    .map(String::from)
-            }
-            _ => None,
-        }
-    },
-
     clean_doc_comment: |raw| {
         if raw.starts_with("/**") {
             raw.strip_prefix("/**")
@@ -820,16 +739,6 @@ static SOLIDITY_SPEC: LanguageSpec = LanguageSpec {
         None
     },
 
-    extract_call_target: |node, source| {
-        if node.kind() == "call_expression" {
-            node.child_by_field_name("function")
-                .and_then(|f| f.utf8_text(source).ok())
-                .map(String::from)
-        } else {
-            None
-        }
-    },
-
     clean_doc_comment: |raw| {
         raw.lines()
             .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
@@ -915,25 +824,21 @@ static C_SPEC: LanguageSpec = LanguageSpec {
 
     get_symbol_kind_complex: |_node, _source| None,
 
-    extract_call_target: |node, source| match node.kind() {
-        "call_expression" => node
-            .child_by_field_name("function")
-            .and_then(|f| f.utf8_text(source).ok())
-            .map(String::from),
-        _ => None,
-    },
-
     clean_doc_comment: |raw| {
         raw.lines()
             .map(|line| {
                 line.trim()
-                    .strip_prefix("/**")
+                    .strip_prefix("///")
+                    .or_else(|| line.strip_prefix("//!"))
+                    .or_else(|| line.strip_prefix("//"))
+                    .or_else(|| line.strip_prefix("/**"))
                     .or_else(|| line.strip_prefix("/*"))
                     .or_else(|| line.strip_prefix("*"))
                     .or_else(|| line.strip_suffix("*/"))
                     .unwrap_or(line)
                     .trim()
             })
+            .filter(|line| !line.is_empty())
             .collect::<Vec<_>>()
             .join(" ")
     },
@@ -1073,29 +978,21 @@ static CPP_SPEC: LanguageSpec = LanguageSpec {
         None
     },
 
-    extract_call_target: |node, source| match node.kind() {
-        "call_expression" => node
-            .child_by_field_name("function")
-            .and_then(|f| f.utf8_text(source).ok())
-            .map(String::from),
-        _ => None,
-    },
-
     clean_doc_comment: |raw| {
         raw.lines()
             .map(|line| {
                 line.trim()
                     .strip_prefix("///")
-                    .or_else(|| {
-                        line.strip_prefix("//!")
-                            .or_else(|| line.strip_prefix("/**"))
-                            .or_else(|| line.strip_prefix("/*"))
-                            .or_else(|| line.strip_prefix("*"))
-                            .or_else(|| line.strip_suffix("*/"))
-                    })
+                    .or_else(|| line.strip_prefix("//!"))
+                    .or_else(|| line.strip_prefix("//"))
+                    .or_else(|| line.strip_prefix("/**"))
+                    .or_else(|| line.strip_prefix("/*"))
+                    .or_else(|| line.strip_prefix("*"))
+                    .or_else(|| line.strip_suffix("*/"))
                     .unwrap_or(line)
                     .trim()
             })
+            .filter(|line| !line.is_empty())
             .collect::<Vec<_>>()
             .join(" ")
     },
@@ -1644,7 +1541,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
     }
 
     println!(
-        "  📂 Found {} files ({} Rust, {} Go, {} Solidity, {} Python, {} JS, {} JSX, {} TS, {} TSX, {} Cairo)",
+        "  📂 Found {} files ({} Rust, {} Go, {} Solidity, {} Python, {} JS, {} JSX, {} TS, {} TSX, {} Cairo, {} C, {} C++)",
         all_files.len(),
         all_files
             .iter()
@@ -1678,6 +1575,14 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
         all_files
             .iter()
             .filter(|(_, l)| *l == Language::Cairo)
+            .count(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::C)
+            .count(),
+        all_files
+            .iter()
+            .filter(|(_, l)| *l == Language::Cpp)
             .count()
     );
 
@@ -2170,6 +2075,14 @@ fn extract_doc_comment(
                     text.starts_with("///") || text.starts_with("/**")
                 }
             }
+            Language::C | Language::Cpp => {
+                // C/C++ doc comments: /** */ or /// or //
+                prev.kind() == "comment" && {
+                    let text = prev.utf8_text(source).unwrap_or("");
+                    text.starts_with("/**") || text.starts_with("///") || text.starts_with("//!")
+                        || text.starts_with("//")
+                }
+            }
             _ => false,
         };
 
@@ -2339,6 +2252,57 @@ fn process_c_cpp_iterative(
 
             // Only process if we have a valid name
             if !name.is_empty() && !name.contains('\n') {
+                // If this is a function, update the context and extract additional data
+                if kind == "function" {
+                    context.current_function = Some(name.clone());
+                    
+                    // Extract function facts for C/C++
+                    extract_function_facts(node, source, file_path, &name, sql, language);
+                    
+                    // Add to code_search
+                    let signature = node
+                        .utf8_text(source)
+                        .unwrap_or("")
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .replace('\'', "''");
+                    
+                    sql.push_str(&format!(
+                        "INSERT OR REPLACE INTO code_search (path, name, signature) VALUES ('{}', '{}', '{}');\n",
+                        file_path, name.replace('\'', "''"), signature
+                    ));
+                }
+
+                // Extract documentation if present
+                if let Some((doc_raw, doc_clean, keywords)) = extract_doc_comment(node, source, language) {
+                    let doc_summary = extract_summary(&doc_clean);
+                    let keywords_str = keywords.join(",");
+                    let doc_length = doc_clean.len() as i32;
+                    let has_examples = doc_clean.contains("example") || doc_clean.contains("Example");
+                    let has_params = doc_clean.contains("param") || doc_clean.contains("@param");
+                    let line_number = (node.start_position().row + 1) as i32;
+
+                    sql.push_str(&format!(
+                        "INSERT OR REPLACE INTO documentation (file, symbol_name, symbol_type, line_number, doc_raw, doc_clean, doc_summary, keywords, doc_length, has_examples, has_params) VALUES ('{}', '{}', '{}', {}, '{}', '{}', '{}', ARRAY[{}], {}, {}, {});\n",
+                        file_path,
+                        name.replace('\'', "''"),
+                        kind,
+                        line_number,
+                        doc_raw.replace('\'', "''"),
+                        doc_clean.replace('\'', "''"),
+                        doc_summary.replace('\'', "''"),
+                        if keywords.is_empty() { 
+                            String::new() 
+                        } else { 
+                            keywords.iter().map(|k| format!("'{}'", k.replace('\'', "''"))).collect::<Vec<_>>().join(",")
+                        },
+                        doc_length,
+                        has_examples,
+                        has_params
+                    ));
+                }
+
                 // Create fingerprint
                 let fingerprint = Fingerprint::from_ast(node, source);
 
@@ -2538,6 +2502,39 @@ fn extract_call_expressions(
                     if let Some(member_node) = node.child_by_field_name("property") {
                         let callee = member_node.utf8_text(source).unwrap_or("").to_string();
                         context.add_call(callee, "method".to_string(), line_number);
+                    }
+                }
+            }
+        }
+
+        // C/C++ call expressions
+        (Language::C | Language::Cpp, "call_expression") => {
+            // C/C++ call: func() or obj->method() or obj.method()
+            if let Some(func_node) = node.child_by_field_name("function") {
+                match func_node.kind() {
+                    "identifier" => {
+                        // Direct function call
+                        let callee = func_node.utf8_text(source).unwrap_or("").to_string();
+                        context.add_call(callee, "direct".to_string(), line_number);
+                    }
+                    "field_expression" => {
+                        // Method call: obj.method() or obj->method()
+                        if let Some(field_node) = func_node.child_by_field_name("field") {
+                            let callee = field_node.utf8_text(source).unwrap_or("").to_string();
+                            context.add_call(callee, "method".to_string(), line_number);
+                        }
+                    }
+                    "qualified_identifier" | "scoped_identifier" => {
+                        // Namespace or class qualified call: std::function() or Class::method()
+                        let callee = func_node.utf8_text(source).unwrap_or("").to_string();
+                        context.add_call(callee, "direct".to_string(), line_number);
+                    }
+                    _ => {
+                        // Try to get the full text for other cases (function pointers, etc.)
+                        let callee = func_node.utf8_text(source).unwrap_or("").to_string();
+                        if !callee.is_empty() {
+                            context.add_call(callee, "direct".to_string(), line_number);
+                        }
                     }
                 }
             }
