@@ -1,6 +1,8 @@
 // Shared utilities for all scrape subcommands
 
 pub mod code;
+pub mod docs;
+pub mod pdf;
 
 use anyhow::{bail, Result};
 
@@ -72,6 +74,60 @@ pub fn execute(init: bool, query: Option<String>, repo: Option<String>, force: b
         println!("  • Processed {} items", stats.items_processed);
         println!("  • Time elapsed: {:?}", stats.time_elapsed);
         println!("  • Database size: {} KB", stats.database_size_kb);
+    }
+    Ok(())
+}
+
+/// Execute docs scraper
+pub fn execute_docs(
+    init: bool,
+    query: Option<String>,
+    repo: Option<String>,
+    force: bool,
+) -> Result<()> {
+    let mut config = ScrapeConfig::new(force);
+    if let Some(r) = repo.as_ref() {
+        config.for_repo(r);
+    }
+
+    if init {
+        docs::initialize(&config)?;
+    } else if let Some(_q) = query {
+        bail!("Query functionality has moved. Use 'patina ask' instead.");
+    } else {
+        let stats = docs::extract(&config)?;
+
+        println!("\n📊 Document Extraction Summary:");
+        println!("  • Documents found: {}", stats.items_processed);
+        println!("  • Time elapsed: {:?}", stats.time_elapsed);
+        println!("  • Total size: {} KB", stats.database_size_kb);
+    }
+    Ok(())
+}
+
+/// Execute PDF scraper
+pub fn execute_pdf(
+    init: bool,
+    query: Option<String>,
+    repo: Option<String>,
+    force: bool,
+) -> Result<()> {
+    let mut config = ScrapeConfig::new(force);
+    if let Some(r) = repo.as_ref() {
+        config.for_repo(r);
+    }
+
+    if init {
+        pdf::initialize(&config)?;
+    } else if let Some(_q) = query {
+        bail!("Query functionality has moved. Use 'patina ask' instead.");
+    } else {
+        let stats = pdf::extract(&config)?;
+
+        println!("\n📊 PDF Extraction Summary:");
+        println!("  • PDFs found: {}", stats.items_processed);
+        println!("  • Time elapsed: {:?}", stats.time_elapsed);
+        println!("  • Total size: {} KB", stats.database_size_kb);
     }
     Ok(())
 }
