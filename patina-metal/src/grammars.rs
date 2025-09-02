@@ -8,6 +8,8 @@ extern "C" {
     fn tree_sitter_javascript() -> Language;
     fn tree_sitter_typescript() -> Language;
     fn tree_sitter_tsx() -> Language;
+    fn tree_sitter_c() -> Language;
+    fn tree_sitter_cpp() -> Language;
 }
 
 pub fn language_rust() -> Language {
@@ -36,4 +38,12 @@ pub fn language_typescript() -> Language {
 
 pub fn language_tsx() -> Language {
     unsafe { tree_sitter_tsx() }
+}
+
+pub fn language_c() -> Language {
+    unsafe { tree_sitter_c() }
+}
+
+pub fn language_cpp() -> Language {
+    unsafe { tree_sitter_cpp() }
 }

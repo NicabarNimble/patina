@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, Parser, Query, QueryCursor, Tree};
 
+pub mod cairo;
 pub mod grammars;
 pub mod metal;
 pub mod parser;
@@ -14,7 +15,6 @@ pub use parser::MetalParser;
 /// Unified interface for parsing different languages
 pub struct Analyzer {
     parsers: HashMap<Metal, Parser>,
-    #[allow(dead_code)]
     queries: HashMap<(Metal, QueryType), Query>,
 }
 

@@ -14,6 +14,8 @@ pub enum Metal {
     Python,
     JavaScript, // .js, .jsx
     TypeScript, // .ts, .tsx (internally uses typescript or tsx parser)
+    C,
+    Cpp,
 }
 
 impl Metal {
@@ -27,6 +29,8 @@ impl Metal {
             Metal::Python,
             Metal::JavaScript,
             Metal::TypeScript,
+            Metal::C,
+            Metal::Cpp,
         ]
     }
 
@@ -46,6 +50,8 @@ impl Metal {
             "py" => Some(Metal::Python),
             "js" | "jsx" | "mjs" => Some(Metal::JavaScript),
             "ts" | "tsx" => Some(Metal::TypeScript),
+            "c" | "h" => Some(Metal::C),
+            "cpp" | "cc" | "cxx" | "hpp" | "hxx" | "h++" => Some(Metal::Cpp),
             _ => None,
         }
     }
@@ -63,6 +69,8 @@ impl Metal {
             Metal::Python => Some(grammars::language_python()),
             Metal::JavaScript => Some(grammars::language_javascript()),
             Metal::TypeScript => Some(grammars::language_typescript()),
+            Metal::C => Some(grammars::language_c()),
+            Metal::Cpp => Some(grammars::language_cpp()),
         }
     }
 
@@ -88,6 +96,8 @@ impl Metal {
             Metal::Python => "*.py",
             Metal::JavaScript => "*.js", // Note: also handles .jsx, .mjs
             Metal::TypeScript => "*.ts", // Note: also handles .tsx
+            Metal::C => "*.c",           // Note: also handles .h
+            Metal::Cpp => "*.cpp",       // Note: also handles .cc, .cxx, .hpp, etc.
         }
     }
 
@@ -153,6 +163,31 @@ impl Metal {
                 "type_alias_declaration" => "type_alias", // TypeScript only
                 "if_statement" => "if",
                 "for_statement" | "for_in_statement" | "for_of_statement" => "for",
+                "while_statement" | "do_statement" => "while",
+                "switch_statement" => "switch",
+                _ => node_kind,
+            },
+            Metal::C => match node_kind {
+                "function_definition" => "function",
+                "struct_specifier" => "struct",
+                "union_specifier" => "union",
+                "enum_specifier" => "enum",
+                "if_statement" => "if",
+                "for_statement" => "for",
+                "while_statement" | "do_statement" => "while",
+                "switch_statement" => "switch",
+                _ => node_kind,
+            },
+            Metal::Cpp => match node_kind {
+                "function_definition" => "function",
+                "class_specifier" => "struct",
+                "struct_specifier" => "struct",
+                "union_specifier" => "union",
+                "enum_specifier" => "enum",
+                "namespace_definition" => "namespace",
+                "template_declaration" => "template",
+                "if_statement" => "if",
+                "for_statement" | "for_range_loop" => "for",
                 "while_statement" | "do_statement" => "while",
                 "switch_statement" => "switch",
                 _ => node_kind,
