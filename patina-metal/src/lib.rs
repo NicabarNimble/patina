@@ -15,7 +15,6 @@ pub use parser::MetalParser;
 /// Unified interface for parsing different languages
 pub struct Analyzer {
     parsers: HashMap<Metal, Parser>,
-    #[allow(dead_code)]
     queries: HashMap<(Metal, QueryType), Query>,
 }
 

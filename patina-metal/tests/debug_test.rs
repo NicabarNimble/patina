@@ -1,4 +1,4 @@
-use patina_metal::{Analyzer, Metal};
+use patina_metal::Analyzer;
 
 #[test]
 fn debug_analyzer_creation() {
