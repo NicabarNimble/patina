@@ -357,3 +357,184 @@ The scrape command should be renamed to `learn` because that's what it's actuall
 ---
 
 *"Patina isn't about what the code does. It's about how the code feels."*
+
+## Implementation Context for LLMs
+
+### Critical Lessons from Failed Attempts
+
+#### 1. The Monolith Works - Don't Break It
+From `layer/surface/scrape-pipeline-lessons.md`:
+- **2000-line monolith works perfectly** - processes 6000+ functions reliably
+- **Multiple modularization attempts failed** - schema mismatches, serialization overhead
+- **Lesson**: Wrap the monolith with an API, don't refactor it
+- **Time waste**: 2-3 days of failed modularization vs few hours for working monolith
+
+#### 2. Language Registry Pattern Succeeded
+From git history (Aug 27-30):
+- **LanguageSpec with function pointers** centralized all language logic
+- **Replaced scattered match statements** with registry lookups
+- **This worked** because it organized without breaking the monolith
+- **Pattern to follow**: Add abstractions on top, don't restructure core
+
+#### 3. Column Reinterpretation is Genius but Confusing
+From today's behavioral hints implementation:
+- **Same table, different meanings per language** works technically
+- **But it's lying** - `calls_unwrap` in C isn't about unwrap
+- **Better approach**: Be explicit about what we're measuring
+- **Consider**: `error_suppression_count` instead of `calls_unwrap`
+
+#### 4. Tree-Sitter Limitations Are Real
+From Sep 1 session (`20250901-164140.md`):
+- **Version conflicts**: Solidity needs v0.24, C/C++ needs v0.25
+- **Stack overflows**: Deeply nested C code crashes recursive walking
+- **Solution**: Language-specific escape hatches (iterative walker for C/C++)
+- **Principle**: Accept that languages are different, don't force uniformity
+
+### Architecture Constraints
+
+#### Current File Structure (`code.rs`)
+```rust
+// 3,889 lines organized as:
+// Lines 1-1050: Language registry and specs
+// Lines 1050-1460: Main execution flow
+// Lines 1460-2600: File processing and extraction
+// Lines 2600-3500: AST processing and SQL generation
+// Lines 3500-3800: Database schema
+// Lines 3800-3889: Languages module
+```
+
+#### What Can't Change (Risk of Breaking)
+1. **SQL string generation** - Deeply embedded, changing risks schema breaks
+2. **File processing order** - Dependencies between extraction phases
+3. **Parse context passing** - Mutable references threaded through calls
+4. **The fingerprint counter** - It's just counting SQL inserts, not real fingerprints
+
+#### What Can Change Safely
+1. **Add new extraction functions** - Follow behavioral hints pattern
+2. **Add new tables** - Don't modify existing schema
+3. **Add analysis passes** - After existing extraction
+4. **Wrap with API** - The monolith becomes implementation detail
+
+### Technical Gotchas
+
+#### The Fingerprint Lie
+```rust
+// What code says:
+"✓ Fingerprinted 1677 symbols"
+
+// What actually happens:
+symbol_count += 1;  // Just counting SQL INSERTs
+```
+**Don't try to make real fingerprints** - the entire system assumes they're just counts.
+
+#### The Ignore System
+- Uses `ignore` crate which respects `.gitignore` and `.ignore`
+- Currently excluding `patina-metal/grammars/*/` and `layer/dust/`
+- **Working well** - reduced processing from 150 files to 80
+
+#### Database Choice
+- **DuckDB not SQLite** - Column store, better for analytics
+- **16KB blocks** - Optimized in previous work
+- **Direct SQL generation** - No ORM, just string concatenation
+- **Risk**: SQL injection if `escape_sql()` isn't used properly
+
+### Pragmatic Implementation Path
+
+#### Phase 1: Add Pattern Detection (Don't Remove Anything)
+```rust
+// Add new functions alongside existing
+fn detect_naming_patterns(node: Node, source: &[u8]) -> NamingPatterns {
+    // Start simple: just count prefixes
+    // is_ -> 45, has_ -> 23, get_ -> 67
+}
+
+// Add to existing SQL generation
+sql.push_str(&format!(
+    "INSERT INTO naming_patterns VALUES ('{}', '{}', {});\n",
+    escape_sql(pattern_type),
+    escape_sql(pattern),
+    count
+));
+```
+
+#### Phase 2: Build Ask Command First
+- **Create ask command that queries existing tables**
+- **See what patterns emerge from real queries**
+- **Learn what LLMs actually need before redesigning schema**
+
+#### Phase 3: Incremental Schema Evolution
+```sql
+-- Add new tables, don't modify existing
+CREATE TABLE IF NOT EXISTS style_patterns ( ... );
+CREATE TABLE IF NOT EXISTS codebase_rules ( ... );
+
+-- Create views for backward compatibility
+CREATE VIEW behavioral_hints AS 
+SELECT * FROM style_patterns WHERE ...;
+```
+
+### Failed Patterns to Avoid
+
+#### Don't Separate Parse and Load
+```rust
+// This failed multiple times:
+parse_to_json() -> validate() -> generate_sql() -> execute()
+
+// Keep the working pattern:
+parse_and_generate_sql_in_one_pass()
+```
+
+#### Don't Create Intermediate Representations
+```rust
+// Failed: AstData struct with required fields
+// Working: Direct SQL string generation during tree walk
+```
+
+#### Don't Trust Tree-Sitter for Semantics
+- **It's a syntax parser, not a semantic analyzer**
+- **Can't resolve types, imports, or symbols**
+- **String matching in comments counts as "usage"**
+
+### The Escape Hatch Pattern
+
+Every successful addition has used escape hatches:
+1. **Cairo**: Separate parser path, bypasses tree-sitter
+2. **C/C++**: Iterative walker to prevent stack overflow
+3. **Behavioral hints**: Column reinterpretation per language
+
+**Apply this**: When adding pattern detection, make it optional and language-specific.
+
+### Testing Approach
+
+#### Use Real Repositories
+- **SDL**: 679 C files, tests C/C++ handling
+- **Dojo**: 107 Cairo files, tests non-tree-sitter path
+- **Dust**: TypeScript/Solidity mix, tests JS ecosystem
+
+#### Success Metrics
+```bash
+# Current (meaningless)
+"✓ Fingerprinted 1677 symbols"
+
+# Should measure
+"✓ Detected 23 naming patterns with >80% consistency"
+"✓ Inferred 15 architectural rules with >90% confidence"
+"✓ Learned 8 error handling patterns"
+```
+
+### The Philosophy
+
+From Eskil Steenberg principle (`layer/surface/eskil-steenberg-rust.md`):
+> "Make it work, make it right, make it fast"
+
+We're at "make it work" - the monolith works. Don't jump to "make it right" (modularization) until we know what "right" means for LLM code intelligence.
+
+### Final Warning
+
+**The code has accumulated wisdom through pain:**
+- 10,358 lines of dead code removed (Aug 28)
+- Multiple failed modularization attempts
+- Pattern recognition experiments abandoned
+- Navigation command removed
+
+**Respect what survived** - it survived for a reason.
