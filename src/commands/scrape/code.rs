@@ -81,6 +81,8 @@ struct LanguageSpec {
     get_symbol_kind_complex: fn(&Node, &[u8]) -> Option<&'static str>,
 
     /// Extract call target from call expression
+    /// TODO: Implement call graph feature using this field (planned feature)
+    #[allow(dead_code)]
     extract_call_target: fn(&Node, &[u8]) -> Option<String>,
 
     /// Clean documentation text for a language
@@ -2939,55 +2941,58 @@ fn extract_function_facts(
     };
 
     // Extract parameters using language spec
-    let (takes_mut_self, takes_mut_params, parameter_count, parameter_list) = if language
-        == Language::Solidity
-    {
-        // Special handling for Solidity - parameters are direct children of type "parameter"
-        let mut param_count = 0;
-        let mut param_details = Vec::new();
+    let (takes_mut_self, takes_mut_params, parameter_count, parameter_list) =
+        if language == Language::Solidity {
+            // Special handling for Solidity - parameters are direct children of type "parameter"
+            let mut param_count = 0;
+            let mut param_details = Vec::new();
 
-        for child in node.children(&mut node.walk()) {
-            if child.kind() == "parameter" {
-                let param_text = child.utf8_text(source).unwrap_or("").to_string();
-                param_details.push(param_text);
-                param_count += 1;
+            for child in node.children(&mut node.walk()) {
+                if child.kind() == "parameter" {
+                    let param_text = child.utf8_text(source).unwrap_or("").to_string();
+                    param_details.push(param_text);
+                    param_count += 1;
+                }
             }
-        }
 
-        let param_list = if param_details.is_empty() {
-            "[]".to_string()
+            let param_list = if param_details.is_empty() {
+                "[]".to_string()
+            } else {
+                serde_json::to_string(&param_details).unwrap_or_else(|_| "[]".to_string())
+            };
+
+            (false, false, param_count, param_list)
+        } else if let Some(spec) = get_language_spec(language) {
+            // Use the language spec's extract_params function
+            let param_details = (spec.extract_params)(&node, source);
+            let param_count = param_details.len();
+
+            // Check for Rust-specific mut patterns
+            let (has_mut_self, has_mut_params) = if language == Language::Rust {
+                if let Some(params) = params_node {
+                    let params_text = params.utf8_text(source).unwrap_or("");
+                    let has_mut_self = params_text.contains("&mut self");
+                    let has_mut_params =
+                        params_text.contains("mut ") && !params_text.contains("&mut self");
+                    (has_mut_self, has_mut_params)
+                } else {
+                    (false, false)
+                }
+            } else {
+                (false, false)
+            };
+
+            // Create parameter list string (escape for SQL)
+            let param_list = if !param_details.is_empty() {
+                param_details.join(", ").replace('\'', "''")
+            } else {
+                String::new()
+            };
+
+            (has_mut_self, has_mut_params, param_count, param_list)
         } else {
-            serde_json::to_string(&param_details).unwrap_or_else(|_| "[]".to_string())
+            (false, false, 0, String::new())
         };
-
-        (false, false, param_count, param_list)
-    } else if let Some(spec) = get_language_spec(language) {
-        // Use the language spec's extract_params function
-        let param_details = (spec.extract_params)(&node, source);
-        let param_count = param_details.len();
-
-        // Check for Rust-specific mut patterns
-        let (has_mut_self, has_mut_params) = if language == Language::Rust && params_node.is_some()
-        {
-            let params_text = params_node.unwrap().utf8_text(source).unwrap_or("");
-            let has_mut_self = params_text.contains("&mut self");
-            let has_mut_params = params_text.contains("mut ") && !params_text.contains("&mut self");
-            (has_mut_self, has_mut_params)
-        } else {
-            (false, false)
-        };
-
-        // Create parameter list string (escape for SQL)
-        let param_list = if !param_details.is_empty() {
-            param_details.join(", ").replace('\'', "''")
-        } else {
-            String::new()
-        };
-
-        (has_mut_self, has_mut_params, param_count, param_list)
-    } else {
-        (false, false, 0, String::new())
-    };
 
     // Extract return type using language spec
     let (returns_result, returns_option, return_type) =
