@@ -12,11 +12,13 @@
 //! - **Load**: Store in DuckDB for querying via Ask command
 //!
 //! ## Database Tables
-//! - `code_fingerprints`: AST patterns and complexity metrics
 //! - `function_facts`: Behavioral signals (async, unsafe, mutability)
 //! - `git_metrics`: Code survival and evolution tracking
 //! - `call_graph`: Function dependency relationships
 //! - `documentation`: Extracted doc comments with keywords
+//! - `style_patterns`: Naming conventions and code style patterns
+//! - `architectural_patterns`: Code organization and structure
+//! - `codebase_conventions`: Inferred team preferences
 //!
 //! ## Supported Languages
 //! Rust, Go, Python, JavaScript, TypeScript, Solidity
@@ -1182,7 +1184,7 @@ CREATE TABLE IF NOT EXISTS pattern_references (
 -- Pattern Detection Tables for LLM Code Intelligence
 {}
 "#,
-        fingerprint::generate_schema(),
+        schema::generate_schema(),
         patterns::generate_schema(),
         db_path = db_path
     );
@@ -1613,7 +1615,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
         Command::new("duckdb")
             .arg(db_path)
             .arg("-c")
-            .arg("DELETE FROM code_fingerprints; DELETE FROM code_search; DELETE FROM index_state;")
+            .arg("DELETE FROM code_search; DELETE FROM index_state;")
             .output()?;
 
         all_files
@@ -1726,51 +1728,15 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
             // Parse Cairo code
             if let Ok(symbols) = patina_metal::cairo::parse_cairo(&content, &file) {
                 // Convert Cairo symbols to SQL inserts
-                for func in symbols.functions {
-                    let fingerprint = fingerprint::Fingerprint {
-                        pattern: 0,    // TODO: compute pattern hash
-                        imports: 0,    // TODO: compute imports hash
-                        complexity: 1, // TODO: compute complexity
-                        flags: if func.is_public { 1 } else { 0 },
-                    };
-                    sql.push_str(&format!(
-                        "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', 'function', {}, {}, {}, {});\n",
-                        file, func.name,
-                        fingerprint.pattern, fingerprint.imports,
-                        fingerprint.complexity, fingerprint.flags
-                    ));
+                for _func in symbols.functions {
                     symbol_count += 1;
                 }
 
-                for s in symbols.structs {
-                    let fingerprint = fingerprint::Fingerprint {
-                        pattern: 0,
-                        imports: 0,
-                        complexity: 1,
-                        flags: if s.is_public { 1 } else { 0 },
-                    };
-                    sql.push_str(&format!(
-                        "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', 'struct', {}, {}, {}, {});\n",
-                        file, s.name,
-                        fingerprint.pattern, fingerprint.imports,
-                        fingerprint.complexity, fingerprint.flags
-                    ));
+                for _s in symbols.structs {
                     symbol_count += 1;
                 }
 
-                for t in symbols.traits {
-                    let fingerprint = fingerprint::Fingerprint {
-                        pattern: 0,
-                        imports: 0,
-                        complexity: 1,
-                        flags: if t.is_public { 1 } else { 0 },
-                    };
-                    sql.push_str(&format!(
-                        "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', 'trait', {}, {}, {}, {});\n",
-                        file, t.name,
-                        fingerprint.pattern, fingerprint.imports,
-                        fingerprint.complexity, fingerprint.flags
-                    ));
+                for _t in symbols.traits {
                     symbol_count += 1;
                 }
 
@@ -1895,7 +1861,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
         }
     }
 
-    println!("  ✓ Fingerprinted {} symbols", symbol_count);
+    println!("  ✓ Processed {} symbols", symbol_count);
 
     // Generate and execute pattern SQL after all files are processed
     if symbol_count > 0 {
@@ -2263,7 +2229,6 @@ fn process_c_cpp_iterative(
     language: languages::Language,
     context: &mut ParseContext,
 ) -> usize {
-    use fingerprint::Fingerprint;
     use std::collections::VecDeque;
 
     let mut count = 0;
@@ -2403,16 +2368,6 @@ fn process_c_cpp_iterative(
                         has_params
                     ));
                 }
-
-                // Create fingerprint
-                let fingerprint = Fingerprint::from_ast(node, source);
-
-                sql.push_str(&format!(
-                    "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
-                    file_path, name.replace('\'', "''"), kind,
-                    fingerprint.pattern, fingerprint.imports,
-                    fingerprint.complexity, fingerprint.flags
-                ));
 
                 count += 1;
             }
@@ -2701,7 +2656,6 @@ fn process_ast_node(
     language: languages::Language,
     context: &mut ParseContext,
 ) -> usize {
-    use fingerprint::Fingerprint;
     use languages::Language;
 
     let node = cursor.node();
@@ -2878,8 +2832,6 @@ fn process_ast_node(
                 // For now, we'll add a TODO comment
                 // TODO: Add pattern detection here once we pass pattern trackers through
 
-                // Also generate fingerprint for functions
-                let fingerprint = Fingerprint::from_ast(node, source);
                 let signature = node
                     .utf8_text(source)
                     .unwrap_or("")
@@ -2887,13 +2839,6 @@ fn process_ast_node(
                     .next()
                     .unwrap_or("")
                     .replace('\'', "''");
-
-                sql.push_str(&format!(
-                    "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
-                    file_path, name, kind,
-                    fingerprint.pattern, fingerprint.imports,
-                    fingerprint.complexity, fingerprint.flags
-                ));
 
                 sql.push_str(&format!(
                     "INSERT OR REPLACE INTO code_search (path, name, signature) VALUES ('{}', '{}', '{}');\n",
@@ -2904,27 +2849,8 @@ fn process_ast_node(
                 // Extract type vocabulary
                 extract_type_definition(node, source, file_path, name, kind, sql, language);
 
-                // Also generate fingerprint for structs/traits
-                if kind == "struct" || kind == "trait" {
-                    let fingerprint = Fingerprint::from_ast(node, source);
-                    sql.push_str(&format!(
-                        "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
-                        file_path, name, kind,
-                        fingerprint.pattern, fingerprint.imports,
-                        fingerprint.complexity, fingerprint.flags
-                    ));
-                }
             }
-            "impl" => {
-                // Keep fingerprinting for impl blocks
-                let fingerprint = Fingerprint::from_ast(node, source);
-                sql.push_str(&format!(
-                    "INSERT OR REPLACE INTO code_fingerprints (path, name, kind, pattern, imports, complexity, flags) VALUES ('{}', '{}', '{}', {}, {}, {}, {});\n",
-                    file_path, name, kind,
-                    fingerprint.pattern, fingerprint.imports,
-                    fingerprint.complexity, fingerprint.flags
-                ));
-            }
+            "impl" => {}
             _ => {}
         }
 
@@ -2942,19 +2868,17 @@ fn show_summary(db_path: &str) -> Result<()> {
 SELECT 
     'Functions indexed' as metric,
     COUNT(*) as value
-FROM code_fingerprints
-WHERE kind = 'function'
+FROM function_facts
 UNION ALL
 SELECT 
-    'Average complexity' as metric,
-    CAST(AVG(complexity) AS INTEGER) as value
-FROM code_fingerprints
-WHERE kind = 'function'
+    'Types defined' as metric,
+    COUNT(*) as value
+FROM type_vocabulary
 UNION ALL
 SELECT 
-    'Unique patterns' as metric,
-    COUNT(DISTINCT pattern) as value
-FROM code_fingerprints
+    'Imports tracked' as metric,
+    COUNT(*) as value
+FROM import_facts
 UNION ALL
 SELECT 
     'Files with 10+ commits' as metric,
@@ -3594,188 +3518,12 @@ fn escape_sql(s: &str) -> String {
 // ============================================================================
 
 // ============================================================================
-// FINGERPRINT MODULE
+// DATABASE SCHEMA MODULE
 // ============================================================================
-pub(crate) mod fingerprint {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    use tree_sitter::Node;
-
-    /// Compact 16-byte fingerprint for code patterns
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct Fingerprint {
-        pub pattern: u32,    // AST shape hash
-        pub imports: u32,    // Dependency hash
-        pub complexity: u16, // Cyclomatic complexity
-        pub flags: u16,      // Feature flags
-    }
-
-    impl Fingerprint {
-        /// Generate fingerprint from tree-sitter AST node
-        pub fn from_ast(node: Node, source: &[u8]) -> Self {
-            let pattern = hash_ast_shape(node, source);
-            let imports = hash_imports(node, source);
-            let complexity = calculate_complexity(node) as u16;
-            let flags = detect_features(node, source);
-
-            Self {
-                pattern,
-                imports,
-                complexity,
-                flags,
-            }
-        }
-    }
-
-    /// Hash the AST structure (types only, not content)
-    fn hash_ast_shape(node: Node, _source: &[u8]) -> u32 {
-        let mut hasher = DefaultHasher::new();
-        hash_node_shape(&mut hasher, node);
-        (hasher.finish() & 0xFFFFFFFF) as u32
-    }
-
-    fn hash_node_shape(hasher: &mut impl Hasher, node: Node) {
-        // Hash node type (structure, not content)
-        node.kind().hash(hasher);
-
-        // Hash child structure recursively
-        let mut cursor = node.walk();
-        if cursor.goto_first_child() {
-            loop {
-                hash_node_shape(hasher, cursor.node());
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
-            }
-        }
-    }
-
-    /// Hash imports/dependencies
-    fn hash_imports(node: Node, source: &[u8]) -> u32 {
-        let mut hasher = DefaultHasher::new();
-        let mut cursor = node.walk();
-
-        find_imports(&mut cursor, source, &mut hasher);
-        (hasher.finish() & 0xFFFFFFFF) as u32
-    }
-
-    fn find_imports(cursor: &mut tree_sitter::TreeCursor, source: &[u8], hasher: &mut impl Hasher) {
-        let node = cursor.node();
-
-        if node.kind() == "use_declaration" {
-            if let Ok(text) = node.utf8_text(source) {
-                text.hash(hasher);
-            }
-        }
-
-        if cursor.goto_first_child() {
-            loop {
-                find_imports(cursor, source, hasher);
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
-            }
-            cursor.goto_parent();
-        }
-    }
-
-    /// Calculate cyclomatic complexity
-    fn calculate_complexity(node: Node) -> usize {
-        let mut complexity = 1; // Base complexity
-        let mut cursor = node.walk();
-
-        count_branches(&mut cursor, &mut complexity);
-        complexity
-    }
-
-    fn count_branches(cursor: &mut tree_sitter::TreeCursor, complexity: &mut usize) {
-        let node = cursor.node();
-
-        match node.kind() {
-            "if_expression" | "match_expression" | "while_expression" | "for_expression" => {
-                *complexity += 1;
-            }
-            "match_arm" => {
-                // Each arm adds a branch
-                *complexity += 1;
-            }
-            _ => {}
-        }
-
-        if cursor.goto_first_child() {
-            loop {
-                count_branches(cursor, complexity);
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
-            }
-            cursor.goto_parent();
-        }
-    }
-
-    /// Detect feature flags (async, unsafe, etc.)
-    fn detect_features(node: Node, source: &[u8]) -> u16 {
-        let mut flags = 0u16;
-        let mut cursor = node.walk();
-
-        detect_features_recursive(&mut cursor, source, &mut flags);
-        flags
-    }
-
-    fn detect_features_recursive(
-        cursor: &mut tree_sitter::TreeCursor,
-        source: &[u8],
-        flags: &mut u16,
-    ) {
-        let node = cursor.node();
-
-        // Check for various features
-        match node.kind() {
-            "async" => *flags |= 0x0001,                   // Bit 0: async
-            "unsafe_block" | "unsafe" => *flags |= 0x0002, // Bit 1: unsafe
-            "macro_invocation" => {
-                if let Ok(text) = node.utf8_text(source) {
-                    if text.starts_with("panic!") || text.starts_with("unreachable!") {
-                        *flags |= 0x0004; // Bit 2: has panic
-                    }
-                    if text.starts_with("todo!") || text.starts_with("unimplemented!") {
-                        *flags |= 0x0008; // Bit 3: has todo
-                    }
-                }
-            }
-            "question_mark" => *flags |= 0x0010, // Bit 4: uses ?
-            "generic_type" | "generic_function" => *flags |= 0x0020, // Bit 5: generic
-            "trait_bounds" => *flags |= 0x0040,  // Bit 6: has trait bounds
-            "lifetime" => *flags |= 0x0080,      // Bit 7: has lifetimes
-            _ => {}
-        }
-
-        if cursor.goto_first_child() {
-            loop {
-                detect_features_recursive(cursor, source, flags);
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
-            }
-            cursor.goto_parent();
-        }
-    }
-
-    /// Generate DuckDB schema for fingerprint storage
+pub(crate) mod schema {
+    /// Generate DuckDB schema for code intelligence storage
     pub fn generate_schema() -> &'static str {
         r#"
--- Compact fingerprint storage (columnar for SIMD)
-CREATE TABLE IF NOT EXISTS code_fingerprints (
-    path VARCHAR NOT NULL,
-    name VARCHAR NOT NULL,
-    kind VARCHAR NOT NULL,  -- function, struct, trait, impl
-    pattern UINTEGER,       -- AST shape hash
-    imports UINTEGER,       -- Dependency hash  
-    complexity USMALLINT,   -- Cyclomatic complexity
-    flags USMALLINT,        -- Feature bitmask
-    PRIMARY KEY (path, name, kind)
-);
-
 -- Full-text search for actual code search
 CREATE TABLE IF NOT EXISTS code_search (
     path VARCHAR NOT NULL,
@@ -3885,9 +3633,6 @@ CREATE TABLE IF NOT EXISTS skipped_files (
 );
 
 -- Create indexes for fast lookups
-CREATE INDEX IF NOT EXISTS idx_fingerprint_pattern ON code_fingerprints(pattern);
-CREATE INDEX IF NOT EXISTS idx_fingerprint_complexity ON code_fingerprints(complexity);
-CREATE INDEX IF NOT EXISTS idx_fingerprint_flags ON code_fingerprints(flags);
 CREATE INDEX IF NOT EXISTS idx_type_vocabulary_kind ON type_vocabulary(kind);
 CREATE INDEX IF NOT EXISTS idx_function_facts_public ON function_facts(is_public);
 CREATE INDEX IF NOT EXISTS idx_import_facts_external ON import_facts(is_external);
