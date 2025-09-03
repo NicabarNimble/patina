@@ -118,10 +118,6 @@ pub fn cleanup_changed_files(db_path: &str, changes: &FileChanges) -> Result<()>
 
         // Delete from all relevant tables
         sql.push_str(&format!(
-            "DELETE FROM code_fingerprints WHERE path IN ({});\n",
-            path_list
-        ));
-        sql.push_str(&format!(
             "DELETE FROM code_search WHERE path IN ({});\n",
             path_list
         ));
