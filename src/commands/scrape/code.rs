@@ -1178,8 +1178,12 @@ CREATE TABLE IF NOT EXISTS pattern_references (
     context VARCHAR,
     PRIMARY KEY (from_pattern, to_pattern, reference_type)
 );
+
+-- Pattern Detection Tables for LLM Code Intelligence
+{}
 "#,
         fingerprint::generate_schema(),
+        patterns::generate_schema(),
         db_path = db_path
     );
 
@@ -1647,6 +1651,13 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
     let mut parser: Option<tree_sitter::Parser> = None;
     let mut batch_count = 0;
 
+    // Initialize pattern detection accumulators
+    let mut naming_patterns = patterns::NamingPatterns::default();
+    let mut architectural_patterns = patterns::ArchitecturalPatterns::default();
+    let total_functions = 0;
+    let async_count = 0;
+    let doc_count = 0;
+
     // Process only new and modified files
     for (file, language) in files_to_process {
         // Check if file needs reindexing (mtime-based incremental)
@@ -1671,6 +1682,15 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
 
             if let Some(ref mut p) = parser {
                 if let Some(tree) = p.parse(&content, None) {
+                    // Detect patterns for LLM code intelligence
+                    patterns::detect_naming_patterns(
+                        tree.root_node(),
+                        content.as_bytes(),
+                        &mut naming_patterns,
+                        language,
+                    );
+                    patterns::detect_architectural_patterns(&file, &mut architectural_patterns);
+
                     let mut context = ParseContext::new();
 
                     // Use iterative processing for C/C++ to avoid stack overflow
@@ -1781,6 +1801,15 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
             let content = std::fs::read_to_string(&file_path)?;
             if let Some(ref mut p) = parser {
                 if let Some(tree) = p.parse(&content, None) {
+                    // Detect patterns for LLM code intelligence
+                    patterns::detect_naming_patterns(
+                        tree.root_node(),
+                        content.as_bytes(),
+                        &mut naming_patterns,
+                        language,
+                    );
+                    patterns::detect_architectural_patterns(&file, &mut architectural_patterns);
+
                     let mut cursor = tree.walk();
                     let mut context = ParseContext::new();
                     symbol_count += process_ast_node(
@@ -1867,6 +1896,68 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
     }
 
     println!("  ✓ Fingerprinted {} symbols", symbol_count);
+
+    // Generate and execute pattern SQL after all files are processed
+    if symbol_count > 0 {
+        // Infer conventions from collected patterns
+        let conventions = patterns::infer_conventions(
+            &naming_patterns,
+            &architectural_patterns,
+            total_functions,
+            async_count,
+            doc_count,
+        );
+
+        // Generate SQL for pattern tables
+        let pattern_sql =
+            patterns::generate_pattern_sql(&naming_patterns, &architectural_patterns, &conventions);
+
+        if !pattern_sql.is_empty() {
+            // Clear existing patterns and insert new ones
+            let mut pattern_batch = String::from("BEGIN TRANSACTION;\n");
+            pattern_batch.push_str("DELETE FROM style_patterns;\n");
+            pattern_batch.push_str("DELETE FROM architectural_patterns;\n");
+            pattern_batch.push_str("DELETE FROM codebase_conventions;\n");
+            pattern_batch.push_str(&pattern_sql);
+            pattern_batch.push_str("COMMIT;\n");
+
+            // Execute pattern SQL
+            let mut child = Command::new("duckdb")
+                .arg(db_path)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .context("Failed to start DuckDB for patterns")?;
+
+            if let Some(mut stdin) = child.stdin.take() {
+                use std::io::Write;
+                stdin
+                    .write_all(pattern_batch.as_bytes())
+                    .context("Failed to write pattern SQL")?;
+            }
+
+            let output = child
+                .wait_with_output()
+                .context("Failed to insert patterns")?;
+
+            if !output.status.success() {
+                eprintln!(
+                    "Pattern SQL error: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+            } else {
+                println!(
+                    "  ✓ Detected {} naming patterns",
+                    naming_patterns.function_prefixes.len() + naming_patterns.type_suffixes.len()
+                );
+                println!(
+                    "  ✓ Identified {} architectural layers",
+                    architectural_patterns.layer_locations.len()
+                );
+            }
+        }
+    }
 
     // Save and report skipped files
     if !skipped_files.is_empty() {
@@ -2781,6 +2872,11 @@ fn process_ast_node(
             "function" => {
                 // Extract function facts
                 extract_function_facts(node, source, file_path, name, sql, language);
+
+                // Detect patterns for LLM code intelligence (if we have access to pattern trackers)
+                // Note: This is a local detection - we'll need to pass pattern trackers through
+                // For now, we'll add a TODO comment
+                // TODO: Add pattern detection here once we pass pattern trackers through
 
                 // Also generate fingerprint for functions
                 let fingerprint = Fingerprint::from_ast(node, source);
@@ -3798,6 +3894,410 @@ CREATE INDEX IF NOT EXISTS idx_import_facts_external ON import_facts(is_external
 CREATE INDEX IF NOT EXISTS idx_documentation_symbol ON documentation(symbol_name);
 CREATE INDEX IF NOT EXISTS idx_documentation_type ON documentation(symbol_type);
 "#
+    }
+}
+
+// ============================================================================
+// PATTERN DETECTION MODULE - LLM Code Intelligence
+// ============================================================================
+pub(crate) mod patterns {
+    use std::collections::HashMap;
+    use tree_sitter::Node;
+
+    /// Naming patterns found in the codebase
+    #[derive(Debug, Default)]
+    pub struct NamingPatterns {
+        /// Function prefixes and their usage count (e.g., "is_" -> 45, "get_" -> 23)
+        pub function_prefixes: HashMap<String, usize>,
+        /// Parameter naming conventions (e.g., "ctx" -> 30, "config" -> 15)
+        pub parameter_patterns: HashMap<String, usize>,
+        /// Type suffixes (e.g., "Error" -> 12, "Config" -> 8)
+        pub type_suffixes: HashMap<String, usize>,
+        /// Method prefixes for different types (e.g., "new" -> 50, "with_" -> 20)
+        pub method_prefixes: HashMap<String, usize>,
+    }
+
+    /// Architectural patterns detected from file organization
+    #[derive(Debug, Default)]
+    pub struct ArchitecturalPatterns {
+        /// Layer mappings (e.g., "handlers" -> ["src/handlers/*.rs"])
+        pub layer_locations: HashMap<String, Vec<String>>,
+        /// Import patterns between layers
+        pub layer_dependencies: HashMap<String, Vec<String>>,
+        /// Common module structures
+        pub module_patterns: Vec<String>,
+    }
+
+    /// Coding conventions inferred from patterns
+    #[derive(Debug)]
+    pub struct CodebaseConventions {
+        /// Error handling style (Result, Option, panic, mixed)
+        pub error_style: String,
+        /// Test organization (inline, mod tests, separate files)
+        pub test_organization: String,
+        /// Async usage percentage
+        pub async_percentage: f32,
+        /// Documentation coverage
+        pub doc_coverage: f32,
+    }
+
+    /// Generate schema for pattern storage
+    pub fn generate_schema() -> &'static str {
+        r#"
+-- LLM Code Intelligence: Pattern Detection Tables
+-- These tables capture the "personality" of a codebase, not just its syntax
+
+-- Style patterns: How this codebase writes code
+CREATE TABLE IF NOT EXISTS style_patterns (
+    pattern_type VARCHAR NOT NULL,      -- 'function_prefix', 'type_suffix', 'parameter_name'
+    pattern VARCHAR NOT NULL,           -- 'is_', 'Error', 'ctx'
+    frequency INTEGER DEFAULT 0,        -- How often this pattern occurs
+    context VARCHAR,                    -- Additional context (e.g., 'functions', 'types')
+    PRIMARY KEY (pattern_type, pattern)
+);
+
+-- Architectural patterns: How this codebase organizes code
+CREATE TABLE IF NOT EXISTS architectural_patterns (
+    layer VARCHAR NOT NULL,             -- 'handlers', 'services', 'models'
+    typical_location VARCHAR,           -- '**/handlers/*'
+    file_count INTEGER DEFAULT 0,       -- Number of files in this layer
+    example_files VARCHAR[],            -- Example files following this pattern
+    PRIMARY KEY (layer)
+);
+
+-- Codebase conventions: Inferred rules about how code is written
+CREATE TABLE IF NOT EXISTS codebase_conventions (
+    convention_type VARCHAR NOT NULL,   -- 'error_handling', 'testing', 'async'
+    rule TEXT NOT NULL,                -- 'Functions returning Result use ? operator'
+    confidence FLOAT DEFAULT 0.0,       -- 0.0 to 1.0 confidence in this rule
+    context VARCHAR,                    -- Additional context or explanation
+    PRIMARY KEY (convention_type, rule)
+);
+"#
+    }
+
+    /// Detect naming patterns in functions and types
+    pub fn detect_naming_patterns(
+        node: Node,
+        source: &[u8],
+        patterns: &mut NamingPatterns,
+        language: crate::commands::scrape::code::languages::Language,
+    ) {
+        match node.kind() {
+            "function_item"
+            | "function_declaration"
+            | "method_definition"
+            | "function_definition" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    if let Ok(name) = name_node.utf8_text(source) {
+                        // Extract function prefix patterns
+                        if let Some(prefix) = extract_prefix(name) {
+                            *patterns.function_prefixes.entry(prefix).or_insert(0) += 1;
+                        }
+
+                        // Extract parameter patterns
+                        if let Some(params_node) = node.child_by_field_name("parameters") {
+                            extract_parameter_patterns(params_node, source, patterns);
+                        }
+                    }
+                }
+            }
+            "struct_item" | "class_definition" | "interface_declaration" | "type_alias" => {
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    if let Ok(name) = name_node.utf8_text(source) {
+                        // Extract type suffix patterns
+                        if let Some(suffix) = extract_suffix(name) {
+                            *patterns.type_suffixes.entry(suffix).or_insert(0) += 1;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        // Recursively process children
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            detect_naming_patterns(child, source, patterns, language);
+        }
+    }
+
+    /// Extract common prefixes from function names
+    fn extract_prefix(name: &str) -> Option<String> {
+        // Common prefixes that indicate function purpose
+        let prefixes = [
+            "is_",
+            "has_",
+            "get_",
+            "set_",
+            "create_",
+            "update_",
+            "delete_",
+            "fetch_",
+            "find_",
+            "check_",
+            "validate_",
+            "parse_",
+            "build_",
+            "init_",
+            "handle_",
+            "process_",
+            "render_",
+            "test_",
+        ];
+
+        for prefix in &prefixes {
+            if name.starts_with(prefix) {
+                return Some(prefix.to_string());
+            }
+        }
+
+        // Check for camelCase prefixes
+        if let Some(idx) = name.find(|c: char| c.is_uppercase()) {
+            if idx > 0 && idx < 10 {
+                // Reasonable prefix length
+                return Some(name[..idx].to_string());
+            }
+        }
+
+        None
+    }
+
+    /// Extract common suffixes from type names
+    fn extract_suffix(name: &str) -> Option<String> {
+        // Common suffixes that indicate type purpose
+        let suffixes = [
+            "Error",
+            "Config",
+            "Options",
+            "Builder",
+            "Factory",
+            "Handler",
+            "Manager",
+            "Service",
+            "Repository",
+            "Controller",
+            "Model",
+            "View",
+            "Component",
+            "Module",
+            "Plugin",
+            "Extension",
+        ];
+
+        for suffix in &suffixes {
+            if name.ends_with(suffix) {
+                return Some(suffix.to_string());
+            }
+        }
+
+        None
+    }
+
+    /// Extract parameter naming patterns
+    fn extract_parameter_patterns(params_node: Node, source: &[u8], patterns: &mut NamingPatterns) {
+        let mut cursor = params_node.walk();
+        for child in params_node.children(&mut cursor) {
+            if child.kind() == "parameter" || child.kind() == "formal_parameter" {
+                if let Some(pattern_node) = child
+                    .child_by_field_name("pattern")
+                    .or_else(|| child.child_by_field_name("name"))
+                {
+                    if let Ok(param_name) = pattern_node.utf8_text(source) {
+                        // Clean up parameter name (remove type annotations, etc.)
+                        let clean_name = param_name.split(':').next().unwrap_or(param_name).trim();
+
+                        // Track common parameter names
+                        if !clean_name.is_empty() && clean_name != "self" {
+                            *patterns
+                                .parameter_patterns
+                                .entry(clean_name.to_string())
+                                .or_insert(0) += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Detect architectural patterns from file paths
+    pub fn detect_architectural_patterns(file_path: &str, patterns: &mut ArchitecturalPatterns) {
+        // Extract layer from path (e.g., src/handlers/user.rs -> handlers)
+        let path_parts: Vec<&str> = file_path.split('/').collect();
+
+        if path_parts.len() >= 2 {
+            // Look for common architectural layers
+            let layer_names = [
+                "handlers",
+                "services",
+                "models",
+                "controllers",
+                "repositories",
+                "views",
+                "components",
+                "utils",
+                "helpers",
+                "middleware",
+                "routes",
+                "api",
+            ];
+
+            for (i, part) in path_parts.iter().enumerate() {
+                if layer_names.contains(part) {
+                    // Record this file as belonging to this layer
+                    patterns
+                        .layer_locations
+                        .entry(part.to_string())
+                        .or_default()
+                        .push(file_path.to_string());
+
+                    // Track module structure pattern
+                    if i > 0 {
+                        let structure = path_parts[..=i].join("/");
+                        if !patterns.module_patterns.contains(&structure) {
+                            patterns.module_patterns.push(structure);
+                        }
+                    }
+
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Infer codebase conventions from collected patterns
+    pub fn infer_conventions(
+        naming_patterns: &NamingPatterns,
+        architectural_patterns: &ArchitecturalPatterns,
+        total_functions: usize,
+        async_count: usize,
+        doc_count: usize,
+    ) -> CodebaseConventions {
+        // Determine error handling style based on most common patterns
+        let error_style = if naming_patterns.function_prefixes.get("try_").unwrap_or(&0) > &5 {
+            "Result-heavy"
+        } else if naming_patterns.function_prefixes.get("get_").unwrap_or(&0)
+            > naming_patterns
+                .function_prefixes
+                .get("fetch_")
+                .unwrap_or(&0)
+        {
+            "Option-preferred"
+        } else {
+            "Mixed"
+        }
+        .to_string();
+
+        // Determine test organization
+        let test_organization = if architectural_patterns.layer_locations.contains_key("tests") {
+            "Separate files"
+        } else {
+            "Inline modules"
+        }
+        .to_string();
+
+        // Calculate percentages
+        let async_percentage = if total_functions > 0 {
+            (async_count as f32 / total_functions as f32) * 100.0
+        } else {
+            0.0
+        };
+
+        let doc_coverage = if total_functions > 0 {
+            (doc_count as f32 / total_functions as f32) * 100.0
+        } else {
+            0.0
+        };
+
+        CodebaseConventions {
+            error_style,
+            test_organization,
+            async_percentage,
+            doc_coverage,
+        }
+    }
+
+    /// Generate SQL for pattern data
+    pub fn generate_pattern_sql(
+        naming: &NamingPatterns,
+        architectural: &ArchitecturalPatterns,
+        conventions: &CodebaseConventions,
+    ) -> String {
+        let mut sql = String::new();
+
+        // Insert naming patterns - function prefixes
+        for (prefix, count) in &naming.function_prefixes {
+            sql.push_str(&format!(
+                "INSERT INTO style_patterns (pattern_type, pattern, frequency, context) VALUES ('function_prefix', '{}', {}, 'functions');\n",
+                crate::commands::scrape::code::escape_sql(prefix),
+                count,
+            ));
+        }
+
+        // Insert type suffixes
+        for (suffix, count) in &naming.type_suffixes {
+            sql.push_str(&format!(
+                "INSERT INTO style_patterns (pattern_type, pattern, frequency, context) VALUES ('type_suffix', '{}', {}, 'types');\n",
+                crate::commands::scrape::code::escape_sql(suffix),
+                count,
+            ));
+        }
+
+        // Insert parameter patterns
+        for (param, count) in &naming.parameter_patterns {
+            if *count > 5 {
+                // Only track common parameters
+                sql.push_str(&format!(
+                    "INSERT INTO style_patterns (pattern_type, pattern, frequency, context) VALUES ('parameter_name', '{}', {}, 'parameters');\n",
+                    crate::commands::scrape::code::escape_sql(param),
+                    count,
+                ));
+            }
+        }
+
+        // Insert architectural patterns
+        for (layer, files) in &architectural.layer_locations {
+            let file_count = files.len();
+            if file_count > 0 {
+                let example_files = files
+                    .iter()
+                    .take(3)
+                    .map(|f| format!("'{}'", crate::commands::scrape::code::escape_sql(f)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                sql.push_str(&format!(
+                    "INSERT INTO architectural_patterns (layer, typical_location, file_count, example_files) VALUES ('{}', '{}', {}, ARRAY[{}]);\n",
+                    crate::commands::scrape::code::escape_sql(layer),
+                    crate::commands::scrape::code::escape_sql(&format!("**/{}/*", layer)),
+                    file_count,
+                    example_files,
+                ));
+            }
+        }
+
+        // Insert codebase conventions
+        sql.push_str(&format!(
+            "INSERT INTO codebase_conventions (convention_type, rule, confidence, context) VALUES ('error_handling', '{}', {:.2}, 'inferred from patterns');\n",
+            crate::commands::scrape::code::escape_sql(&conventions.error_style),
+            0.75,  // Default confidence for now
+        ));
+
+        sql.push_str(&format!(
+            "INSERT INTO codebase_conventions (convention_type, rule, confidence, context) VALUES ('testing', '{}', {:.2}, 'file organization');\n",
+            crate::commands::scrape::code::escape_sql(&conventions.test_organization),
+            0.85,
+        ));
+
+        if conventions.async_percentage > 10.0 {
+            sql.push_str(&format!(
+                "INSERT INTO codebase_conventions (convention_type, rule, confidence, context) VALUES ('async', '{:.1}% of functions are async', {:.2}, 'measured');\n",
+                conventions.async_percentage,
+                1.0,  // This is measured, not inferred
+            ));
+        }
+
+        sql
     }
 }
 
