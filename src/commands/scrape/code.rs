@@ -1235,8 +1235,8 @@ fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<usiz
         extract_pattern_references(db_path, work_dir)?;
     }
 
-    // Step 3: Semantic fingerprints with tree-sitter
-    let symbol_count = extract_fingerprints(db_path, work_dir, force)?;
+    // Step 3: Extract code metadata with tree-sitter
+    let symbol_count = extract_code_metadata(db_path, work_dir, force)?;
 
     // Step 4: Show summary
     show_summary(db_path)?;
@@ -1463,8 +1463,8 @@ fn extract_pattern_references(db_path: &str, work_dir: &Path) -> Result<()> {
 // CHAPTER 5: EXTRACTION - Semantic Data
 // ============================================================================
 
-fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<usize> {
-    println!("🧠 Generating semantic fingerprints and extracting truth data...");
+fn extract_code_metadata(db_path: &str, work_dir: &Path, force: bool) -> Result<usize> {
+    println!("🧠 Extracting code metadata and semantic information...");
 
     use ignore::WalkBuilder;
     use languages::{create_parser_for_path, Language};
@@ -1763,7 +1763,7 @@ fn extract_fingerprints(db_path: &str, work_dir: &Path, force: bool) -> Result<u
 
             // TODO: Check index_state to skip unchanged files
 
-            // Parse and fingerprint
+            // Parse and extract metadata
             let content = std::fs::read_to_string(&file_path)?;
             if let Some(ref mut p) = parser {
                 if let Some(tree) = p.parse(&content, None) {
@@ -2241,7 +2241,7 @@ fn process_c_cpp_iterative(
         // First, extract any call expressions from this node
         extract_call_expressions(node, source, language, context);
 
-        // Check if this is a symbol we want to fingerprint
+        // Check if this is a symbol we want to extract
         let kind = if let Some(spec) = get_language_spec(language) {
             // First try the simple mapping
             let basic_kind = (spec.get_symbol_kind)(node.kind());
@@ -2661,7 +2661,7 @@ fn process_ast_node(
     let node = cursor.node();
     let mut count = 0;
 
-    // Check if this is a symbol we want to fingerprint
+    // Check if this is a symbol we want to extract
     let kind = if let Some(spec) = get_language_spec(language) {
         // First try the simple mapping
         let basic_kind = (spec.get_symbol_kind)(node.kind());
