@@ -3,7 +3,7 @@ Start a new Patina development session with Git branch creation:
 1. Execute the session start script:
    `.claude/bin/session-start.sh $ARGUMENTS`
 
-2. Read `.claude/context/last-session.md` if it exists and use it to fill in the "Previous Session Context" section in the active session file. Provide a 2-3 sentence summary of what was accomplished and any open items.
+2. Read `.claude/context/last-session.md` if it exists. This file contains a reference to the full session file in `layer/sessions/`. You MUST read the full session file referenced there (e.g., if it says "See: layer/sessions/20250904-102821.md", read that file) to understand what actually happened. Then fill in the "Previous Session Context" section with a substantive 2-3 sentence summary of what was actually accomplished, key fixes/changes made, and any open items. Don't write generic fluff - include specific accomplishments.
 
 3. Read the newly created `.claude/context/active-session.md` file
 
