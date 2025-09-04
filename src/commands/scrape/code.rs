@@ -2386,32 +2386,42 @@ fn process_c_cpp_iterative(
 }
 
 /// Extract function name from C/C++ declarator (handles nested declarators)
+/// Uses iterative approach to avoid stack overflow with deeply nested declarators
 fn extract_c_function_name(declarator: tree_sitter::Node) -> Option<tree_sitter::Node> {
-    // C function declarators can be nested (function pointers, etc.)
-    // Look for the identifier
-    if declarator.kind() == "identifier" {
-        return Some(declarator);
-    }
-
-    // For function_declarator, check the declarator field
-    if declarator.kind() == "function_declarator" {
-        if let Some(inner) = declarator.child_by_field_name("declarator") {
-            return extract_c_function_name(inner);
+    let mut current = declarator;
+    
+    loop {
+        // C function declarators can be nested (function pointers, etc.)
+        // Look for the identifier
+        if current.kind() == "identifier" {
+            return Some(current);
         }
-    }
 
-    // For pointer_declarator, check the declarator field
-    if declarator.kind() == "pointer_declarator" {
-        if let Some(inner) = declarator.child_by_field_name("declarator") {
-            return extract_c_function_name(inner);
+        // For function_declarator, check the declarator field
+        if current.kind() == "function_declarator" {
+            if let Some(inner) = current.child_by_field_name("declarator") {
+                current = inner;
+                continue;
+            }
         }
-    }
 
-    // Try first child as fallback
-    if let Some(child) = declarator.child(0) {
-        if child.kind() == "identifier" {
-            return Some(child);
+        // For pointer_declarator, check the declarator field
+        if current.kind() == "pointer_declarator" {
+            if let Some(inner) = current.child_by_field_name("declarator") {
+                current = inner;
+                continue;
+            }
         }
+
+        // Try first child as fallback
+        if let Some(child) = current.child(0) {
+            if child.kind() == "identifier" {
+                return Some(child);
+            }
+        }
+
+        // No more nested declarators to check
+        break;
     }
 
     None
