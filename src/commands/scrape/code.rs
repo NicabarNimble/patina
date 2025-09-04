@@ -1126,6 +1126,7 @@ fn determine_work_directory(config: &ScrapeConfig) -> Result<PathBuf> {
             .and_then(|s| s.strip_suffix(".db"))
             .context("Invalid repo database path")?;
 
+        // The repo_name in db_path already has the correct case from for_repo()
         let repo_dir = PathBuf::from("layer/dust/repos").join(repo_name);
         if !repo_dir.exists() {
             anyhow::bail!(
