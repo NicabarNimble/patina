@@ -47,28 +47,14 @@ fn extract_c_function_name(declarator: tree_sitter::Node) -> Option<tree_sitter:
 ```
 
 ### Safety Measures
-1. Add maximum iteration limit (failsafe):
-   ```rust
-   const MAX_ITERATIONS: usize = 100;
-   let mut iterations = 0;
-   
-   loop {
-       if iterations >= MAX_ITERATIONS {
-           eprintln!("Warning: Max iterations reached for declarator in {:?}", file_path);
-           return None;
-       }
-       iterations += 1;
-       // ... rest of logic
-   }
-   ```
+1. **Include maximum iteration limit**: Set to 100 iterations as failsafe
+   - Prevents infinite loops on malformed AST nodes
+   - Returns None with warning if limit reached
+   - 100 is generous - real code rarely exceeds 10 levels
 
-2. Add debug logging (optional):
-   ```rust
-   #[cfg(debug_assertions)]
-   if iterations > 20 {
-       eprintln!("Deep nesting detected: {} levels", iterations);
-   }
-   ```
+2. **No debug logging**: Keep function pure and fast
+   - Stack overflow fix should be silent
+   - Performance matters when processing thousands of files
 
 ## Testing Plan
 
@@ -94,12 +80,12 @@ Run on other repositories to ensure no breakage:
 
 ## Implementation Steps
 
-1. **Create branch**: `fix-c-parser-recursion`
-2. **Implement iterative function** with safety limits
-3. **Add unit tests** for declarator patterns
-4. **Test on SDL** repository
-5. **Run full test suite** (`cargo test`)
-6. **Update documentation** if needed
+1. **Create branch**: `fix-c-parser-recursion` ✓ (done)
+2. **Implement iterative function** with 100 iteration limit
+3. **Test on SDL** repository first (prove the fix works)
+4. **Add unit tests** for edge cases discovered
+5. **Test on other repos** (dust, dagger) for regression
+6. **Run full test suite** (`cargo test`)
 7. **Merge to work branch** after validation
 
 ## Success Criteria
@@ -122,12 +108,19 @@ Run on other repositories to ensure no breakage:
 - Possible slight differences in name extraction
 - May need adjustment for C++ specific declarators
 
-## Alternative Approaches (Rejected)
+## Decision Rationale
 
-1. **Depth limit only**: Still recursive, arbitrary limit
-2. **Skip complex declarators**: Loses data
-3. **Tree-sitter cursor API**: More complex, less clear
-4. **Restore behavioral_hints**: Masks problem, not a fix
+**Why iterative over alternatives:**
+- Already proven pattern in `process_c_cpp_iterative()`  
+- Simpler than tree-sitter cursor API
+- Complete fix vs workarounds (depth limits/skipping)
+- Maintains all functionality while fixing root cause
+
+**Implementation choices:**
+- 100 iteration limit: Generous but prevents pathological cases
+- Test-after approach: Fix the burning issue (SDL) first, then strengthen
+- Silent operation: No logging in hot path for performance
+- Preserve exact same behavior: Only change is recursion → iteration
 
 ## References
 
@@ -135,11 +128,18 @@ Run on other repositories to ensure no breakage:
 - Session: layer/sessions/20250901-164140.md
 - Current recursive function: src/commands/scrape/code.rs:2229
 
-## Timeline
+## Execution Order
 
-Estimated: 1-2 hours for implementation and testing
+1. Implement iterative version with limit (15 minutes)
+2. Test on SDL to confirm fix (5 minutes)  
+3. Check symbol counts match (5 minutes)
+4. Test on other repos (10 minutes)
+5. Write unit tests for edge cases (30 minutes)
+6. Final validation and merge (15 minutes)
+
+**Total: ~1.5 hours**
 
 ---
 *Created: 2025-09-04*
-*Status: DRAFT*
-*Author: AI-assisted implementation plan*
+*Status: READY FOR IMPLEMENTATION*
+*Branch: fix-c-parser-recursion*
