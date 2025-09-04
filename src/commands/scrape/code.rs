@@ -13,7 +13,6 @@
 //!
 //! ## Database Tables
 //! - `function_facts`: Behavioral signals (async, unsafe, mutability)
-//! - `git_metrics`: Code survival and evolution tracking
 //! - `call_graph`: Function dependency relationships
 //! - `documentation`: Extracted doc comments with keywords
 //! - `style_patterns`: Naming conventions and code style patterns
@@ -1164,15 +1163,6 @@ USE knowledge;
 
 {}
 
--- Git survival metrics for quality assessment
-CREATE TABLE IF NOT EXISTS git_metrics (
-    file VARCHAR PRIMARY KEY,
-    first_commit VARCHAR,
-    last_commit VARCHAR,
-    commit_count INTEGER,
-    survival_days INTEGER
-);
-
 -- Pattern references extracted from documentation
 CREATE TABLE IF NOT EXISTS pattern_references (
     from_pattern VARCHAR NOT NULL,
@@ -1228,10 +1218,7 @@ fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<usiz
         initialize_database(db_path)?;
     }
 
-    // Step 1: Git metrics for quality signals
-    extract_git_metrics(db_path, work_dir)?;
-
-    // Step 2: Pattern references from docs (only for main repo)
+    // Step 1: Pattern references from docs (only for main repo)
     if db_path.contains(".patina/") {
         extract_pattern_references(db_path, work_dir)?;
     }
@@ -1249,149 +1236,6 @@ fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<usiz
 // CHAPTER 3: EXTRACTION - Git Metrics
 // ============================================================================
 
-/// Check if the git repository has been updated recently
-fn check_git_freshness(work_dir: &Path) -> Result<()> {
-    // Get the last commit date
-    let last_commit = Command::new("git")
-        .current_dir(work_dir)
-        .args(["log", "-1", "--format=%at"])
-        .output()
-        .context("Failed to get last commit date")?;
-
-    if !last_commit.status.success() {
-        // Not a git repo or no commits
-        return Ok(());
-    }
-
-    let timestamp_str = String::from_utf8_lossy(&last_commit.stdout)
-        .trim()
-        .to_string();
-    if let Ok(last_commit_timestamp) = timestamp_str.parse::<i64>() {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)?
-            .as_secs() as i64;
-
-        let days_old = (now - last_commit_timestamp) / 86400;
-
-        // Alert thresholds
-        if days_old > 30 {
-            println!(
-                "  ⚠️  WARNING: Repository hasn't been updated in {} days!",
-                days_old
-            );
-            println!("     Consider pulling latest changes before scraping.");
-        } else if days_old > 7 {
-            println!("  ℹ️  Note: Repository last updated {} days ago", days_old);
-        }
-
-        // Also show the last commit info
-        let last_commit_info = Command::new("git")
-            .current_dir(work_dir)
-            .args(["log", "-1", "--format=%h %s (%ar)"])
-            .output()?;
-
-        if last_commit_info.status.success() {
-            let info = String::from_utf8_lossy(&last_commit_info.stdout)
-                .trim()
-                .to_string();
-            println!("  📝 Last commit: {}", info);
-        }
-    }
-
-    Ok(())
-}
-
-fn extract_git_metrics(db_path: &str, work_dir: &Path) -> Result<()> {
-    println!("📊 Analyzing Git history...");
-
-    // Check repository freshness
-    check_git_freshness(work_dir)?;
-
-    let rust_files = Command::new("git")
-        .current_dir(work_dir)
-        .args(["ls-files", "*.rs", "src/**/*.rs"])
-        .output()
-        .context("Failed to list Git files")?;
-
-    if !rust_files.status.success() {
-        anyhow::bail!("Failed to get file list from Git");
-    }
-
-    let files = String::from_utf8_lossy(&rust_files.stdout);
-    let file_count = files.lines().count();
-
-    let mut metrics_sql = String::from("BEGIN TRANSACTION;\n");
-    metrics_sql.push_str("DELETE FROM git_metrics;\n");
-
-    for file in files.lines() {
-        if file.is_empty() {
-            continue;
-        }
-
-        // Get commit history for this file
-        let log_output = Command::new("git")
-            .current_dir(work_dir)
-            .args(["log", "--format=%H %ai", "--follow", "--", file])
-            .output()?;
-
-        if log_output.status.success() {
-            let log = String::from_utf8_lossy(&log_output.stdout);
-            let commits: Vec<&str> = log.lines().collect();
-
-            if !commits.is_empty() {
-                let first = commits
-                    .last()
-                    .unwrap_or(&"")
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("");
-                let last = commits
-                    .first()
-                    .unwrap_or(&"")
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or("");
-                let count = commits.len();
-
-                // Calculate survival days
-                let first_date = Command::new("git")
-                    .current_dir(work_dir)
-                    .args(["show", "-s", "--format=%at", first])
-                    .output()?;
-
-                if first_date.status.success() {
-                    let timestamp = String::from_utf8_lossy(&first_date.stdout)
-                        .trim()
-                        .parse::<i64>()
-                        .unwrap_or(0);
-
-                    let now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)?
-                        .as_secs() as i64;
-
-                    let survival_days = (now - timestamp) / 86400;
-
-                    metrics_sql.push_str(&format!(
-                        "INSERT INTO git_metrics (file, first_commit, last_commit, commit_count, survival_days) VALUES ('{}', '{}', '{}', {}, {});\n",
-                        file, first, last, count, survival_days
-                    ));
-                }
-            }
-        }
-    }
-
-    metrics_sql.push_str("COMMIT;\n");
-
-    Command::new("duckdb")
-        .arg(db_path)
-        .arg("-c")
-        .arg(&metrics_sql)
-        .output()
-        .context("Failed to insert Git metrics")?;
-
-    println!("  ✓ Analyzed {} files", file_count);
-    Ok(())
-}
 
 // ============================================================================
 // CHAPTER 4: EXTRACTION - Pattern References
@@ -2318,10 +2162,6 @@ fn process_c_cpp_iterative(
                     // Extract function facts for C/C++
                     extract_function_facts(node, source, file_path, &name, sql, language);
 
-                    // Extract behavioral hints for C/C++
-                    extract_behavioral_hints_for_language(
-                        node, source, file_path, &name, sql, language,
-                    );
 
                     // Add to code_search
                     let signature = node
@@ -2892,12 +2732,7 @@ SELECT
 FROM import_facts
 UNION ALL
 SELECT 
-    'Files with 10+ commits' as metric,
-    COUNT(*) as value
-FROM git_metrics
-WHERE commit_count >= 10
-UNION ALL
-SELECT
+    SELECT
     'Languages skipped' as metric,
     COUNT(*) as value
 FROM skipped_files
@@ -3095,8 +2930,6 @@ fn extract_function_facts(
         return_type      // Already escaped with '' replacement
     ));
 
-    // Extract behavioral hints for all supported languages
-    extract_behavioral_hints_for_language(node, source, file_path, name, sql, language);
 }
 
 /// Extract type definitions for vocabulary
@@ -3231,289 +3064,6 @@ fn extract_import_fact(
     }
 }
 
-/// Extract behavioral hints (code smells as facts)
-fn extract_behavioral_hints(
-    node: tree_sitter::Node,
-    source: &[u8],
-    file_path: &str,
-    function_name: &str,
-    sql: &mut String,
-) {
-    // Only extract for function bodies
-    if let Some(body) = node.child_by_field_name("body") {
-        let body_text = body.utf8_text(source).unwrap_or("");
-
-        // Count unwrap calls
-        let calls_unwrap = body_text.matches(".unwrap()").count();
-
-        // Count expect calls
-        let calls_expect = body_text.matches(".expect(").count();
-
-        // Check for panic! macro
-        let has_panic_macro = body_text.contains("panic!");
-
-        // Check for todo! macro
-        let has_todo_macro = body_text.contains("todo!");
-
-        // Check for unsafe blocks
-        let has_unsafe_block = body_text.contains("unsafe {");
-
-        // Check for Mutex usage
-        let has_mutex = body_text.contains("Mutex");
-
-        // Check for Arc usage
-        let has_arc = body_text.contains("Arc<") || body_text.contains("Arc::");
-
-        // Only insert if there are any behavioral hints
-        if calls_unwrap > 0
-            || calls_expect > 0
-            || has_panic_macro
-            || has_todo_macro
-            || has_unsafe_block
-            || has_mutex
-            || has_arc
-        {
-            sql.push_str(&format!(
-                "INSERT OR REPLACE INTO behavioral_hints (file, function, calls_unwrap, calls_expect, has_panic_macro, has_todo_macro, has_unsafe_block, has_mutex, has_arc) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
-                escape_sql(file_path),
-                escape_sql(function_name),
-                calls_unwrap,
-                calls_expect,
-                has_panic_macro,
-                has_todo_macro,
-                has_unsafe_block,
-                has_mutex,
-                has_arc
-            ));
-        }
-    }
-}
-
-/// Extract behavioral hints for C/C++
-fn extract_behavioral_hints_c_cpp(
-    node: tree_sitter::Node,
-    source: &[u8],
-    file_path: &str,
-    function_name: &str,
-    sql: &mut String,
-) {
-    if let Some(body) = node.child_by_field_name("body") {
-        let body_text = body.utf8_text(source).unwrap_or("");
-
-        // Reinterpret columns for C/C++
-        let malloc_count =
-            body_text.matches("malloc(").count() + body_text.matches("calloc(").count();
-        let free_count = body_text.matches("free(").count();
-        let calls_unwrap = malloc_count.saturating_sub(free_count);
-        let calls_expect = body_text.matches("assert(").count();
-        let has_panic_macro = body_text.contains("abort()") || body_text.contains("exit(");
-        let has_todo_macro = body_text.contains("TODO") || body_text.contains("FIXME");
-        let has_unsafe_block = body_text.contains("strcpy(")
-            || body_text.contains("gets(")
-            || body_text.contains("sprintf(");
-        let has_mutex = body_text.contains("pthread_mutex");
-        let has_arc = body_text.contains("shared_ptr");
-
-        // Only insert if patterns found
-        if calls_unwrap > 0
-            || calls_expect > 0
-            || has_panic_macro
-            || has_todo_macro
-            || has_unsafe_block
-            || has_mutex
-            || has_arc
-        {
-            sql.push_str(&format!(
-                "INSERT OR REPLACE INTO behavioral_hints (file, function, calls_unwrap, calls_expect, has_panic_macro, has_todo_macro, has_unsafe_block, has_mutex, has_arc) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
-                escape_sql(file_path),
-                escape_sql(function_name),
-                calls_unwrap,
-                calls_expect,
-                has_panic_macro,
-                has_todo_macro,
-                has_unsafe_block,
-                has_mutex,
-                has_arc
-            ));
-        }
-    }
-}
-
-/// Extract behavioral hints for Python
-fn extract_behavioral_hints_python(
-    node: tree_sitter::Node,
-    source: &[u8],
-    file_path: &str,
-    function_name: &str,
-    sql: &mut String,
-) {
-    if let Some(body) = node.child_by_field_name("body") {
-        let body_text = body.utf8_text(source).unwrap_or("");
-
-        // Reinterpret columns for Python
-        let calls_unwrap =
-            body_text.matches("except:").count() + body_text.matches("except Exception:").count();
-        let calls_expect = body_text
-            .matches("except")
-            .count()
-            .saturating_sub(calls_unwrap);
-        let has_panic_macro = body_text.contains("sys.exit(") || body_text.contains("os._exit(");
-        let has_todo_macro = body_text.contains("TODO") || body_text.contains("FIXME");
-        let has_unsafe_block = body_text.contains("eval(")
-            || body_text.contains("exec(")
-            || body_text.contains("__import__(");
-        let has_mutex =
-            body_text.contains("threading.Lock") || body_text.contains("threading.RLock");
-        let has_arc = false; // No direct equivalent
-
-        // Only insert if patterns found
-        if calls_unwrap > 0
-            || calls_expect > 0
-            || has_panic_macro
-            || has_todo_macro
-            || has_unsafe_block
-            || has_mutex
-            || has_arc
-        {
-            sql.push_str(&format!(
-                "INSERT OR REPLACE INTO behavioral_hints (file, function, calls_unwrap, calls_expect, has_panic_macro, has_todo_macro, has_unsafe_block, has_mutex, has_arc) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
-                escape_sql(file_path),
-                escape_sql(function_name),
-                calls_unwrap,
-                calls_expect,
-                has_panic_macro,
-                has_todo_macro,
-                has_unsafe_block,
-                has_mutex,
-                has_arc
-            ));
-        }
-    }
-}
-
-/// Extract behavioral hints for Go
-fn extract_behavioral_hints_go(
-    node: tree_sitter::Node,
-    source: &[u8],
-    file_path: &str,
-    function_name: &str,
-    sql: &mut String,
-) {
-    if let Some(body) = node.child_by_field_name("body") {
-        let body_text = body.utf8_text(source).unwrap_or("");
-
-        // Reinterpret columns for Go
-        let calls_unwrap = body_text.matches(", _").count()
-            + body_text.matches("_ =").count()
-            + body_text.matches("_ :=").count();
-        let calls_expect = body_text.matches("panic(").count();
-        let has_panic_macro = body_text.contains("panic(") || body_text.contains("os.Exit(");
-        let has_todo_macro = body_text.contains("TODO") || body_text.contains("FIXME");
-        let has_unsafe_block = body_text.contains("unsafe.");
-        let has_mutex = body_text.contains("sync.Mutex") || body_text.contains("sync.RWMutex");
-        let has_arc = false; // No direct equivalent
-
-        // Only insert if patterns found
-        if calls_unwrap > 0
-            || calls_expect > 0
-            || has_panic_macro
-            || has_todo_macro
-            || has_unsafe_block
-            || has_mutex
-            || has_arc
-        {
-            sql.push_str(&format!(
-                "INSERT OR REPLACE INTO behavioral_hints (file, function, calls_unwrap, calls_expect, has_panic_macro, has_todo_macro, has_unsafe_block, has_mutex, has_arc) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
-                escape_sql(file_path),
-                escape_sql(function_name),
-                calls_unwrap,
-                calls_expect,
-                has_panic_macro,
-                has_todo_macro,
-                has_unsafe_block,
-                has_mutex,
-                has_arc
-            ));
-        }
-    }
-}
-
-/// Extract behavioral hints for JavaScript/TypeScript
-fn extract_behavioral_hints_javascript(
-    node: tree_sitter::Node,
-    source: &[u8],
-    file_path: &str,
-    function_name: &str,
-    sql: &mut String,
-) {
-    if let Some(body) = node.child_by_field_name("body") {
-        let body_text = body.utf8_text(source).unwrap_or("");
-
-        // Reinterpret columns for JavaScript/TypeScript
-        let then_count = body_text.matches(".then(").count();
-        let catch_count = body_text.matches(".catch(").count();
-        let calls_unwrap = then_count.saturating_sub(catch_count);
-        let calls_expect = body_text.matches("console.error(").count();
-        let has_panic_macro = body_text.contains("throw ") || body_text.contains("process.exit(");
-        let has_todo_macro = body_text.contains("TODO") || body_text.contains("FIXME");
-        let has_unsafe_block = body_text.contains("eval(") || body_text.contains("new Function(");
-        let has_mutex = false; // No direct equivalent in JS
-        let has_arc = false; // No direct equivalent
-
-        // Only insert if patterns found
-        if calls_unwrap > 0
-            || calls_expect > 0
-            || has_panic_macro
-            || has_todo_macro
-            || has_unsafe_block
-            || has_mutex
-            || has_arc
-        {
-            sql.push_str(&format!(
-                "INSERT OR REPLACE INTO behavioral_hints (file, function, calls_unwrap, calls_expect, has_panic_macro, has_todo_macro, has_unsafe_block, has_mutex, has_arc) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {});\n",
-                escape_sql(file_path),
-                escape_sql(function_name),
-                calls_unwrap,
-                calls_expect,
-                has_panic_macro,
-                has_todo_macro,
-                has_unsafe_block,
-                has_mutex,
-                has_arc
-            ));
-        }
-    }
-}
-
-/// Dispatch to appropriate behavioral hint extractor based on language
-fn extract_behavioral_hints_for_language(
-    node: tree_sitter::Node,
-    source: &[u8],
-    file_path: &str,
-    function_name: &str,
-    sql: &mut String,
-    language: languages::Language,
-) {
-    use languages::Language;
-
-    match language {
-        Language::Rust => extract_behavioral_hints(node, source, file_path, function_name, sql),
-        Language::C | Language::Cpp => {
-            extract_behavioral_hints_c_cpp(node, source, file_path, function_name, sql)
-        }
-        Language::Python => {
-            extract_behavioral_hints_python(node, source, file_path, function_name, sql)
-        }
-        Language::Go => extract_behavioral_hints_go(node, source, file_path, function_name, sql),
-        Language::TypeScript
-        | Language::TypeScriptTSX
-        | Language::JavaScript
-        | Language::JavaScriptJSX => {
-            extract_behavioral_hints_javascript(node, source, file_path, function_name, sql)
-        }
-        _ => {} // No behavioral hints for other languages yet
-    }
-}
 
 // ============================================================================
 // CHAPTER 8: UTILITIES
@@ -3611,20 +3161,6 @@ CREATE TABLE IF NOT EXISTS call_graph (
 
 CREATE INDEX IF NOT EXISTS idx_caller ON call_graph(caller);
 CREATE INDEX IF NOT EXISTS idx_callee ON call_graph(callee);
-
--- Behavioral hints: Code smell detection (multi-language, column reinterpretation)
-CREATE TABLE IF NOT EXISTS behavioral_hints (
-    file VARCHAR NOT NULL,
-    function VARCHAR NOT NULL,
-    calls_unwrap INTEGER DEFAULT 0,     -- Error suppression: unwrap/unchecked malloc/bare except/ignored errors
-    calls_expect INTEGER DEFAULT 0,     -- Assertions: expect/assert/panic calls
-    has_panic_macro BOOLEAN,           -- Explicit exit: panic/abort/exit/sys.exit
-    has_todo_macro BOOLEAN,            -- TODO/FIXME markers (all languages)
-    has_unsafe_block BOOLEAN,          -- Dangerous ops: unsafe/strcpy/eval
-    has_mutex BOOLEAN,                 -- Concurrency: Mutex/pthread_mutex/threading.Lock
-    has_arc BOOLEAN,                   -- Shared ownership: Arc/shared_ptr (C++/Rust only)
-    PRIMARY KEY (file, function)
-);
 
 -- Index metadata for incremental updates
 CREATE TABLE IF NOT EXISTS index_state (
