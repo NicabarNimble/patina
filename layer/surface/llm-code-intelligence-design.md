@@ -2,8 +2,8 @@
 id: llm-code-intelligence-design
 status: active
 created: 2025-09-02
-updated: 2025-09-03
-tags: [architecture, llm, code-intelligence, scrape, ask, fact-collection]
+updated: 2025-09-05
+tags: [architecture, llm, code-intelligence, scrape, ask, fact-collection, pr-validation]
 ---
 
 # LLM Code Intelligence: Teaching LLMs Your Codebase's Personality
@@ -100,42 +100,100 @@ CREATE TABLE codebase_conventions (
 -- Examples: "Option-preferred", "Inline modules", "25% async functions"
 ```
 
-## How Pattern Detection Works
+## Current State: What's Broken
 
-### During Scrape (Real-time Pattern Detection)
-
+### Pattern Detection is Hardcoded (Major Problem)
 ```rust
-// As we traverse the AST, we accumulate patterns:
-for each file {
-    detect_naming_patterns()     // Tracks get_, set_, is_ prefixes
-    detect_architectural_layer() // Identifies handlers/, services/, etc.
-    track_function_stats()       // Counts for convention inference
-}
+// BROKEN: Looking for hardcoded prefixes
+let prefixes = ["get_", "set_", "create_", "is_"];  
 
-// After all files, infer conventions:
-infer_conventions() {
-    if get_* > fetch_* → "getter-style"
-    if tests in separate files → "separate test files"
-    if 25% async functions → "async-heavy codebase"
+// SDL example: SDL_CreateWindow
+// Looks for: get_? set_? create_? → NO MATCH ❌
+// Should find: SDL_Create → MISSED IT
+
+// Result: SDL has 11,421 functions, we find patterns in ~20
+```
+
+### Bad Inferences
+```sql
+-- Current output for C code:
+"Option-preferred" -- C doesn't have Option!
+"Inline modules"   -- Based on nothing
+```
+
+## How Pattern Detection SHOULD Work
+
+### Adaptive Pattern Discovery
+```rust
+// Instead of hardcoded prefixes, DISCOVER actual patterns:
+fn extract_pattern(name: &str) -> Option<String> {
+    // SDL_CreateWindow → "SDL_Create"
+    // gtk_widget_show → "gtk_widget_"
+    // get_user → "get_"
+    // Count what we SEE, not what we EXPECT
 }
 ```
 
-### What Gets Stored
+## Multiple Sources of Truth (Evidence-Based Patterns)
+
+### 1. Code Age & Stability
+```sql
+-- Stable patterns (unchanged for years)
+SDL_Init → SDL_CreateWindow → SDL_Quit  -- 10 years unchanged
+main() structure                         -- 15 years stable
+-- These are proven patterns that work
+```
+
+### 2. Usage Frequency  
+```sql
+-- Common patterns (used frequently)
+SDL_CreateWindow: called 47 times
+NULL check pattern: 312 instances
+SDL_GetError after NULL: 89% of error checks
+```
+
+### 3. PR Validation
+```sql
+-- Recent PRs show what currently works
+PR #9961: Fixed PSP renderer crash
+  - Shows current error handling style
+  - Validates SDL_Destroy patterns
+  - Confirms modern logging approach
+```
+
+### 4. Bug Fix Patterns
+```sql
+-- Learn from mistakes
+15 PRs fixed missing SDL_DestroyWindow
+8 PRs fixed unchecked NULL returns
+-- These teach us what NOT to do
+```
+
+## Unified Pattern Scoring
 
 ```sql
--- Direct Facts (function_facts table):
-getUser() returns Option<User>
-deleteEntity() takes (Vec3, uint128)
-StoreSwitch.sol is imported 74 times
+CREATE TABLE validated_patterns (
+    pattern VARCHAR,
+    
+    -- Multiple confidence signals
+    stability_score FLOAT,       -- Years unchanged (10yr = 1.0)
+    usage_count INT,             -- Times used in codebase
+    pr_validations INT,          -- Recent PRs following this
+    fix_count INT,              -- Times it needed fixing (bad!)
+    
+    -- Evidence & examples
+    example_code TEXT,          -- Actual working code
+    evidence TEXT,              -- "10yr stable, 47 uses, 3 recent PRs"
+    confidence FLOAT            -- Weighted score (0.0-1.0)
+);
+```
 
--- Statistical Facts (style_patterns table):
-'get' prefix used 334 times
-'set' prefix used 162 times
-'ctx' parameter name used 30 times
-
--- Inferred Conventions (codebase_conventions table):
-"Option-preferred" with 75% confidence
-"Inline modules" with 85% confidence
+### Scoring Formula
+```
+confidence = stability * 0.4    -- Old stable code is reliable
+           + usage * 0.3         -- Common patterns matter
+           + pr_validation * 0.2 -- Recent validation
+           + (1 - fix_rate) * 0.1 -- Avoid buggy patterns
 ```
 
 ## The Ask Command: Using Pattern Facts
@@ -215,32 +273,49 @@ No need to access source code - the facts are sufficient.
 - **For Modules**: New modules follow existing architectural patterns
 - **For LLMs**: Can answer "how do I write X?" with concrete examples and patterns
 
-## Limitations & Future Work
+## Current Reality vs Vision
 
-### Current Limitations
-1. **No function bodies** - We know signatures but not implementations
-2. **No error patterns** - Can't detect try/catch vs Result patterns in detail
-3. **Language-specific gaps** - Solidity modifiers, Python decorators not captured
+### What Works Now
+- ✅ Extracting function signatures, types, imports
+- ✅ Building call graphs
+- ✅ Detecting some patterns (though hardcoded)
 
-### Future Enhancements
-1. **Code snippets** - Store key implementation patterns
-2. **Common sequences** - Transform call_graph into pattern sequences
-3. **Cross-file patterns** - Which files typically change together
+### What's Broken
+- 🔴 Pattern detection uses hardcoded prefixes (misses SDL_*, gtk_*, etc.)
+- 🔴 Convention inference makes false claims (Option for C code)
+- 🔴 No PR validation implemented
+- 🔴 Ask command doesn't use pattern tables
+
+### What's Missing  
+- ❌ Usage examples (actual code snippets)
+- ❌ Error handling patterns
+- ❌ Lifecycle patterns (Create/Destroy pairs)
+- ❌ Evidence tracking for patterns
+
+### Next Critical Steps
+1. Fix adaptive pattern detection (stop hardcoding)
+2. Add PR pattern extraction for validation
+3. Connect ask command to pattern tables
+4. Add evidence requirements (no claims without proof)
 
 ## The Philosophy
 
-**Core Insight**: We're not building a code analyzer. We're building a codebase personality learner.
+**Core Insight**: We teach LLMs to write code that will pass PRs and CI by learning from what actually works.
+
+Three levels of knowledge:
+1. **Facts**: What exists (functions, types, signatures)
+2. **Patterns**: How it's organized (naming, structure, sequences)  
+3. **Intelligence**: What works (validated by age, usage, PRs)
 
 When an LLM asks "How do I write code for this repo?", we return:
-- Statistical facts about naming and structure
-- Direct facts about what exists
-- Inferred conventions with confidence scores
-
-The scrape command learns how this team writes code. The ask command teaches that to LLMs.
+- Proven patterns with evidence ("47 files do this")
+- Actual code examples from successful PRs
+- Confidence scores based on multiple signals
+- Never make claims we can't prove
 
 ---
 
-*"Patina isn't about what the code does. It's about how the code feels."*
+*"Don't tell LLMs how you think code should be written. Show them what actually gets merged."*
 
 ## Summary for LLMs
 
@@ -252,10 +327,54 @@ This document describes the LLM Code Intelligence system in Patina. The goal is 
 3. **New**: style_patterns, architectural_patterns, codebase_conventions (pattern detection)
 
 ### Implementation Status:
-- ✅ Pattern detection during AST traversal
-- ✅ Statistical fact accumulation
-- ✅ Convention inference
-- ❌ Ask command integration (future work)
+- ✅ AST extraction (functions, types, imports)
+- ✅ Call graph tracking  
+- 🔴 Pattern detection (hardcoded, not adaptive)
+- 🔴 Convention inference (makes bad guesses)
+- ❌ PR pattern validation (not implemented)
+- ❌ Ask command integration (not connected)
 
 ### Design Principle:
-Extract facts, not interpretations. Let the ask command interpret facts based on the question being asked.
+Only store facts you can prove. Validate patterns with evidence. Let patterns emerge from data, not assumptions.
+
+## Implementation Roadmap
+
+### Phase 1: Fix Pattern Detection (Critical)
+```rust
+// In code.rs, replace hardcoded prefix detection
+fn extract_pattern(name: &str, language: Language) -> Option<String> {
+    // Adaptive detection based on actual patterns
+    // Not looking for "get_" but finding "SDL_Get", "gtk_widget_", etc.
+}
+```
+
+### Phase 2: Add PR Validation (High Value)
+```rust
+fn validate_with_prs(repo: &Path) -> ValidationData {
+    // Extract patterns from merged PRs
+    // Learn from bug fixes
+    // Weight patterns by success
+}
+```
+
+### Phase 3: Connect Ask Command (User Value)
+```rust
+// Make patterns queryable
+fn handle_ask(query: &str) -> Response {
+    // Query validated_patterns table
+    // Return evidence-based examples
+    // Include confidence scores
+}
+```
+
+### Phase 4: Evidence-Based Scoring (Quality)
+- Combine AST frequency + Git stability + PR validation
+- Show evidence for each pattern claim
+- Never claim patterns without proof
+
+## Success Criteria
+
+1. **SDL Test**: Detect "SDL_Create" pattern (currently misses it)
+2. **No False Claims**: Stop claiming "Option-preferred" for C code  
+3. **PR Validation**: Recent PR patterns weighted higher than old code
+4. **Evidence Trail**: Every pattern has "based on X examples" proof
