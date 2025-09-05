@@ -1160,14 +1160,6 @@ USE knowledge;
 
 {}
 
--- Pattern references extracted from documentation
-CREATE TABLE IF NOT EXISTS pattern_references (
-    from_pattern VARCHAR NOT NULL,
-    to_pattern VARCHAR NOT NULL,
-    reference_type VARCHAR NOT NULL,
-    context VARCHAR,
-    PRIMARY KEY (from_pattern, to_pattern, reference_type)
-);
 
 "#,
         schema::generate_schema(),
@@ -1212,10 +1204,6 @@ fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<usiz
         initialize_database(db_path)?;
     }
 
-    // Step 1: Pattern references from docs (only for main repo)
-    if db_path.contains(".patina/") {
-        extract_pattern_references(db_path, work_dir)?;
-    }
 
     // Step 3: Extract code metadata with tree-sitter
     let symbol_count = extract_code_metadata(db_path, work_dir, force)?;
@@ -1235,68 +1223,6 @@ fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<usiz
 // CHAPTER 4: EXTRACTION - Pattern References
 // ============================================================================
 
-fn extract_pattern_references(db_path: &str, work_dir: &Path) -> Result<()> {
-    println!("🔗 Extracting pattern references...");
-
-    let pattern_files = Command::new("find")
-        .current_dir(work_dir)
-        .args(["layer", "-name", "*.md", "-type", "f"])
-        .output()
-        .context("Failed to find pattern files")?;
-
-    if !pattern_files.status.success() {
-        anyhow::bail!("Failed to list pattern files");
-    }
-
-    let files = String::from_utf8_lossy(&pattern_files.stdout);
-    let mut references_sql = String::from("BEGIN TRANSACTION;\n");
-    references_sql.push_str("DELETE FROM pattern_references;\n");
-
-    for file in files.lines() {
-        if file.is_empty() {
-            continue;
-        }
-
-        let pattern_id = Path::new(file)
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown");
-
-        let file_path = work_dir.join(file);
-        if let Ok(content) = std::fs::read_to_string(&file_path) {
-            // Look for references in YAML frontmatter
-            if let Some(refs_line) = content.lines().find(|l| l.starts_with("references:")) {
-                if let Some(refs) = refs_line.strip_prefix("references:") {
-                    let refs = refs.trim().trim_start_matches('[').trim_end_matches(']');
-                    for reference in refs.split(',') {
-                        let reference = reference.trim().trim_matches('"').trim_matches('\'');
-                        if !reference.is_empty() {
-                            references_sql.push_str(&format!(
-                                "INSERT INTO pattern_references (from_pattern, to_pattern, reference_type, context) VALUES ('{}', '{}', 'references', 'frontmatter');\n",
-                                pattern_id, reference
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    references_sql.push_str("COMMIT;\n");
-
-    Command::new("duckdb")
-        .arg(db_path)
-        .arg("-c")
-        .arg(&references_sql)
-        .output()
-        .context("Failed to insert pattern references")?;
-
-    println!(
-        "  ✓ Extracted references from {} patterns",
-        files.lines().count()
-    );
-    Ok(())
-}
 
 // ============================================================================
 // CHAPTER 5: EXTRACTION - Semantic Data
