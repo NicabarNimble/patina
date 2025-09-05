@@ -15,9 +15,6 @@
 //! - `function_facts`: Behavioral signals (async, unsafe, mutability)
 //! - `call_graph`: Function dependency relationships
 //! - `documentation`: Extracted doc comments with keywords
-//! - `style_patterns`: Naming conventions and code style patterns
-//! - `architectural_patterns`: Code organization and structure
-//! - `codebase_conventions`: Inferred team preferences
 //!
 //! ## Supported Languages
 //! Rust, Go, Python, JavaScript, TypeScript, Solidity
@@ -1498,12 +1495,6 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, force: bool) -> Result<
     let mut parser: Option<tree_sitter::Parser> = None;
     let mut batch_count = 0;
 
-    // Initialize pattern detection accumulators
-    let mut naming_patterns = patterns::NamingPatterns::default();
-    let mut architectural_patterns = patterns::ArchitecturalPatterns::default();
-    let total_functions = 0;
-    let async_count = 0;
-    let doc_count = 0;
 
     // Process only new and modified files
     for (file, language) in files_to_process {
@@ -1529,14 +1520,6 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, force: bool) -> Result<
 
             if let Some(ref mut p) = parser {
                 if let Some(tree) = p.parse(&content, None) {
-                    // Detect patterns for LLM code intelligence
-                    patterns::detect_naming_patterns(
-                        tree.root_node(),
-                        content.as_bytes(),
-                        &mut naming_patterns,
-                        language,
-                    );
-                    patterns::detect_architectural_patterns(&file, &mut architectural_patterns);
 
                     let mut context = ParseContext::new();
 
@@ -1612,14 +1595,6 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, force: bool) -> Result<
             let content = std::fs::read_to_string(&file_path)?;
             if let Some(ref mut p) = parser {
                 if let Some(tree) = p.parse(&content, None) {
-                    // Detect patterns for LLM code intelligence
-                    patterns::detect_naming_patterns(
-                        tree.root_node(),
-                        content.as_bytes(),
-                        &mut naming_patterns,
-                        language,
-                    );
-                    patterns::detect_architectural_patterns(&file, &mut architectural_patterns);
 
                     let mut cursor = tree.walk();
                     let mut context = ParseContext::new();
@@ -1708,67 +1683,6 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, force: bool) -> Result<
 
     println!("  ✓ Processed {} symbols", symbol_count);
 
-    // Generate and execute pattern SQL after all files are processed
-    if symbol_count > 0 {
-        // Infer conventions from collected patterns
-        let conventions = patterns::infer_conventions(
-            &naming_patterns,
-            &architectural_patterns,
-            total_functions,
-            async_count,
-            doc_count,
-        );
-
-        // Generate SQL for pattern tables
-        let pattern_sql =
-            patterns::generate_pattern_sql(&naming_patterns, &architectural_patterns, &conventions);
-
-        if !pattern_sql.is_empty() {
-            // Clear existing patterns and insert new ones
-            let mut pattern_batch = String::from("BEGIN TRANSACTION;\n");
-            pattern_batch.push_str("DELETE FROM style_patterns;\n");
-            pattern_batch.push_str("DELETE FROM architectural_patterns;\n");
-            pattern_batch.push_str("DELETE FROM codebase_conventions;\n");
-            pattern_batch.push_str(&pattern_sql);
-            pattern_batch.push_str("COMMIT;\n");
-
-            // Execute pattern SQL
-            let mut child = Command::new("duckdb")
-                .arg(db_path)
-                .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-                .context("Failed to start DuckDB for patterns")?;
-
-            if let Some(mut stdin) = child.stdin.take() {
-                use std::io::Write;
-                stdin
-                    .write_all(pattern_batch.as_bytes())
-                    .context("Failed to write pattern SQL")?;
-            }
-
-            let output = child
-                .wait_with_output()
-                .context("Failed to insert patterns")?;
-
-            if !output.status.success() {
-                eprintln!(
-                    "Pattern SQL error: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                );
-            } else {
-                println!(
-                    "  ✓ Detected {} naming patterns",
-                    naming_patterns.function_prefixes.len() + naming_patterns.type_suffixes.len()
-                );
-                println!(
-                    "  ✓ Identified {} architectural layers",
-                    architectural_patterns.layer_locations.len()
-                );
-            }
-        }
-    }
 
     // Save and report skipped files
     if !skipped_files.is_empty() {
@@ -3190,11 +3104,10 @@ CREATE INDEX IF NOT EXISTS idx_documentation_type ON documentation(symbol_type);
 }
 
 // ============================================================================
-// PATTERN DETECTION MODULE - LLM Code Intelligence
+// REMOVED: Pattern detection moved to ask command
 // ============================================================================
-pub(crate) mod patterns {
-    use std::collections::HashMap;
-    use tree_sitter::Node;
+// Pattern detection has been moved to src/commands/ask/patterns.rs
+// The ask command now discovers patterns from the extracted data
 
     /// Naming patterns found in the codebase
     #[derive(Debug, Default)]
@@ -3235,37 +3148,7 @@ pub(crate) mod patterns {
 
     /// Generate schema for pattern storage
     pub fn generate_schema() -> &'static str {
-        r#"
--- LLM Code Intelligence: Pattern Detection Tables
--- These tables capture the "personality" of a codebase, not just its syntax
-
--- Style patterns: How this codebase writes code
-CREATE TABLE IF NOT EXISTS style_patterns (
-    pattern_type VARCHAR NOT NULL,      -- 'function_prefix', 'type_suffix', 'parameter_name'
-    pattern VARCHAR NOT NULL,           -- 'is_', 'Error', 'ctx'
-    frequency INTEGER DEFAULT 0,        -- How often this pattern occurs
-    context VARCHAR,                    -- Additional context (e.g., 'functions', 'types')
-    PRIMARY KEY (pattern_type, pattern)
-);
-
--- Architectural patterns: How this codebase organizes code
-CREATE TABLE IF NOT EXISTS architectural_patterns (
-    layer VARCHAR NOT NULL,             -- 'handlers', 'services', 'models'
-    typical_location VARCHAR,           -- '**/handlers/*'
-    file_count INTEGER DEFAULT 0,       -- Number of files in this layer
-    example_files VARCHAR[],            -- Example files following this pattern
-    PRIMARY KEY (layer)
-);
-
--- Codebase conventions: Inferred rules about how code is written
-CREATE TABLE IF NOT EXISTS codebase_conventions (
-    convention_type VARCHAR NOT NULL,   -- 'error_handling', 'testing', 'async'
-    rule TEXT NOT NULL,                -- 'Functions returning Result use ? operator'
-    confidence FLOAT DEFAULT 0.0,       -- 0.0 to 1.0 confidence in this rule
-    context VARCHAR,                    -- Additional context or explanation
-    PRIMARY KEY (convention_type, rule)
-);
-"#
+        ""
     }
 
     /// Detect naming patterns in functions and types
@@ -3590,9 +3473,6 @@ CREATE TABLE IF NOT EXISTS codebase_conventions (
         }
 
         sql
-    }
-}
-
 // ============================================================================
 // LANGUAGES MODULE
 // ============================================================================
