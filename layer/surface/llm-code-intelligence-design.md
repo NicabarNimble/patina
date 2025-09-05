@@ -26,15 +26,16 @@ A fact extraction system that enables LLMs to write native-looking code for PRs 
 1. **Direct facts**: What exists (functions, types, imports, signatures)
 2. **Statistical facts**: What patterns exist (naming frequencies, common structures)
 
-## What We Keep vs What We Delete
+## Current Table Structure
 
-### Tables to DELETE (Not Useful for LLMs)
+### Tables REMOVED (Not Useful for LLMs) ✅
 
 ```sql
-code_fingerprints (0/10)     -- DELETE: Meaningless hashes (pattern: 3847293)
-git_metrics (0/10)           -- DELETE: Git already has this, redundant
-behavioral_hints (2/10)      -- DELETE: Crude string matching, not semantic
+code_fingerprints     -- REMOVED: Meaningless hashes
+git_metrics          -- REMOVED: Git already has this, redundant  
+behavioral_hints     -- REMOVED: Crude string matching, not semantic
 ```
+*These tables were removed in commit a8bf503 (466 lines deleted)*
 
 ### Tables to KEEP & ENHANCE (Foundation for Native Code)
 
@@ -45,12 +46,13 @@ import_facts (8/10)          -- KEEP: Shows what libraries/modules are used
 documentation (6/10)         -- KEEP: Provides context and examples
 ```
 
-### Tables to TRANSFORM (Good Idea, Wrong Implementation)
+### Tables to TRANSFORM (Not Yet Implemented)
 
 ```sql
-call_graph (4/10)           -- TRANSFORM: Into common_call_sequences
-                           -- Instead of: foo() calls bar()
-                           -- Better: validate→transform→save pattern
+call_graph (4/10)           -- EXISTS but needs transformation
+                           -- Currently stores: foo() calls bar() at line 42
+                           -- Should extract: validate→transform→save patterns
+                           -- TODO: Create common_call_sequences table
 ```
 
 ## NEW Pattern Detection Tables (Implemented & Working)
@@ -219,6 +221,8 @@ confidence = stability * 0.4    -- Old stable code is reliable
 
 ## The Ask Command: Using Pattern Facts
 
+**Note**: The `ask` command is a separate command outside of `code.rs` in the `scrape` module. It will query the DuckDB database created by `scrape` to provide evidence-based answers about codebase patterns.
+
 ### Example 1: Writing a New Function (dust repo)
 
 ```bash
@@ -305,7 +309,7 @@ No need to access source code - the facts are sufficient.
 - 🔴 Pattern detection uses hardcoded prefixes (misses SDL_*, gtk_*, etc.)
 - 🔴 Convention inference makes false claims (Option for C code)
 - 🔴 No PR validation implemented
-- 🔴 Ask command doesn't use pattern tables
+- 🔴 Ask command not yet implemented (planned as separate command)
 
 ### What's Missing  
 - ❌ Usage examples (actual code snippets)
@@ -316,7 +320,7 @@ No need to access source code - the facts are sufficient.
 ### Next Critical Steps
 1. Fix adaptive pattern detection (stop hardcoding)
 2. Add PR pattern extraction for validation
-3. Connect ask command to pattern tables
+3. Implement ask command as separate module (src/commands/ask.rs)
 4. Add evidence requirements (no claims without proof)
 
 ## The Philosophy
@@ -378,10 +382,11 @@ fn validate_with_prs(repo: &Path) -> ValidationData {
 }
 ```
 
-### Phase 3: Connect Ask Command (User Value)
+### Phase 3: Implement Ask Command (User Value)
 ```rust
-// Make patterns queryable
-fn handle_ask(query: &str) -> Response {
+// New separate command: src/commands/ask.rs
+// Queries the DuckDB database created by scrape command
+fn handle_ask(query: &str, db_path: &str) -> Response {
     // Query validated_patterns table
     // Return evidence-based examples
     // Include confidence scores
