@@ -1,7 +1,8 @@
 ---
 id: scrape-to-ask-refactor-status
-status: in-progress
+status: completed
 created: 2025-09-05
+completed: 2025-09-05
 tags: [refactoring, scrape, ask, pattern-detection]
 ---
 
@@ -9,6 +10,16 @@ tags: [refactoring, scrape, ask, pattern-detection]
 
 ## Summary
 Moving pattern detection from `scrape` command to `ask` command to separate data extraction from analysis.
+
+## ✅ REFACTORING COMPLETED
+
+### Summary of Changes
+- **Removed**: 322 lines of pattern detection code from `src/commands/scrape/code.rs`
+- **Pattern module deleted**: Lines 3116-3437 removed completely
+- **Fixed references**: Removed `patterns::generate_schema()` call
+- **Fixed warnings**: Cleaned up unused imports in ask command
+- **Tested both commands**: Scrape extracts data, ask discovers patterns
+- **Committed**: b9e257d - "refactor: complete separation of scrape and ask commands"
 
 ## What Was Completed
 
@@ -36,7 +47,7 @@ patina ask "conventions"
 
 ## What Still Needs Doing
 
-### 1. ❌ Remove Pattern Module (Lines 3109-3484)
+### 1. ✅ Remove Pattern Module (Lines 3109-3484)
 The entire `pub(crate) mod patterns` module needs to be deleted from code.rs:
 - Starts at line ~3109
 - Ends at line ~3484
@@ -51,8 +62,8 @@ pub(crate) mod patterns {
 }
 ```
 
-### 2. ❌ Remove Pattern Table Creation
-The SQL schema creation for pattern tables is already emptied but the function still exists at line ~3151.
+### 2. ✅ Remove Pattern Table Creation
+The SQL schema creation and references have been completely removed.
 
 ## How to Complete the Refactoring
 
