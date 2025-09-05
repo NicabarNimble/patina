@@ -100,6 +100,27 @@ CREATE TABLE codebase_conventions (
 -- Examples: "Option-preferred", "Inline modules", "25% async functions"
 ```
 
+## Technical Foundation
+
+### Parsing Infrastructure
+**Most languages use tree-sitter**:
+- Rust, Go, Python, JavaScript/TypeScript, C/C++, Solidity
+- Tree-sitter provides detailed syntax trees with all tokens
+- Syntactic analysis only - no type information or semantic understanding
+- Each language grammar varies in structure and completeness
+
+**Cairo uses native parser**:
+- Uses `patina_metal::cairo` module with cairo-lang-parser
+- Different extraction approach - may provide different insights
+- Not constrained by tree-sitter limitations
+
+### Parsing Limitations
+Since we rely on syntactic parsing:
+- Cannot determine if `Option` refers to `std::Option` or custom type
+- Cannot resolve imports or type aliases
+- Cannot understand semantic relationships
+- Must infer patterns from naming and structure alone
+
 ## Current State: What's Broken
 
 ### Pattern Detection is Hardcoded (Major Problem)
