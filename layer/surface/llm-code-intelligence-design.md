@@ -365,11 +365,19 @@ Only store facts you can prove. Validate patterns with evidence. Let patterns em
 ## Implementation Roadmap
 
 ### Phase 1: Fix Pattern Detection (Critical)
+
+**IMPORTANT LESSON (2024-09-05)**: Attempted two-pass architecture failed because:
+- code.rs has 3+ different systems for handling languages (LanguageSpec, special-case processing, generic AST patterns)
+- Each language has different AST structures (C functions are nested differently than Python)
+- Adding a separate first pass to collect function names missed most C functions due to AST differences
+- **Better approach**: Collect function names during the existing extraction, not in a separate pass
+
 ```rust
 // In code.rs, replace hardcoded prefix detection
-fn extract_pattern(name: &str, language: Language) -> Option<String> {
-    // Adaptive detection based on actual patterns
+fn extract_pattern(name: &str, all_functions_from_current_file: &[String]) -> Option<String> {
+    // Adaptive detection based on patterns IN THIS FILE
     // Not looking for "get_" but finding "SDL_Get", "gtk_widget_", etc.
+    // Key: Use existing extraction logic, don't duplicate it
 }
 ```
 
