@@ -22,9 +22,46 @@ A fact extraction system that enables LLMs to write native-looking code for PRs 
 - Unfamiliar code organization (where files go, how they're structured)
 - Missing team idioms (how they handle errors, validate input, structure tests)
 
-**The Solution**: Extract two types of facts during `scrape`:
-1. **Direct facts**: What exists (functions, types, imports, signatures)
-2. **Statistical facts**: What patterns exist (naming frequencies, common structures)
+**The Solution**: Two separate commands with clear responsibilities:
+1. **`scrape`**: Extract direct facts only (functions, types, imports, signatures)
+2. **`ask`**: Discover patterns and answer questions using the extracted facts
+
+## Command Separation: Scrape vs Ask
+
+### The `scrape` Command
+**Responsibility**: Extract facts without interpretation
+
+**What it SHOULD do**:
+- Extract function signatures, types, imports
+- Store documentation strings
+- Map call relationships
+- Record file locations
+
+**What it should NOT do**:
+- Detect patterns (no hardcoded "get_", "set_" lists)
+- Infer conventions (no "Option-preferred" guessing)
+- Make judgments about code style
+- Generate statistics or summaries
+
+### The `ask` Command  
+**Responsibility**: Analyze facts to answer questions
+
+**What it does**:
+- Queries the database created by `scrape`
+- Discovers patterns from actual data
+- Provides evidence-based answers
+- Adapts to each codebase
+
+**Examples**:
+```bash
+patina ask "what naming patterns exist?"
+# Queries: SELECT substr(name, 1, instr(name||'_', '_')) as prefix, COUNT(*) 
+#          FROM function_facts GROUP BY prefix HAVING COUNT(*) > 10
+
+patina ask "how do I write a getter function?"
+# Analyzes actual getters in the codebase
+# Returns: "Based on 334 functions, use 'get' prefix with camelCase"
+```
 
 ## Current Table Structure
 
@@ -55,7 +92,10 @@ call_graph (4/10)           -- EXISTS but needs transformation
                            -- TODO: Create common_call_sequences table
 ```
 
-## NEW Pattern Detection Tables (Implemented & Working)
+## Pattern Detection Tables (Should Move to `ask` Command)
+
+**CURRENT STATE**: These are populated by `scrape` (wrong!)
+**FUTURE STATE**: Should be populated by `ask` command
 
 ### 1. Style Patterns - How They Write Code ✅
 
@@ -123,9 +163,9 @@ Since we rely on syntactic parsing:
 - Cannot understand semantic relationships
 - Must infer patterns from naming and structure alone
 
-## Current State: What's Broken
+## Current State: What's Broken in `scrape`
 
-### Pattern Detection is Hardcoded (Major Problem)
+### 1. Pattern Detection is Hardcoded (Wrong Place, Wrong Approach)
 ```rust
 // BROKEN: Looking for hardcoded prefixes
 let prefixes = ["get_", "set_", "create_", "is_"];  
@@ -137,11 +177,14 @@ let prefixes = ["get_", "set_", "create_", "is_"];
 // Result: SDL has 11,421 functions, we find patterns in ~20
 ```
 
-### Bad Inferences
+### 2. Bad Convention Inferences (Should Not Exist in `scrape`)
 ```sql
 -- Current output for C code:
 "Option-preferred" -- C doesn't have Option!
 "Inline modules"   -- Based on nothing
+
+-- This entire inference system should be REMOVED from scrape
+-- Let `ask` discover conventions from actual data
 ```
 
 ## How Pattern Detection SHOULD Work
@@ -344,45 +387,74 @@ When an LLM asks "How do I write code for this repo?", we return:
 
 ## Summary for LLMs
 
-This document describes the LLM Code Intelligence system in Patina. The goal is to help LLMs write native-like code by extracting facts about how a codebase is written (not what it does).
+This document describes the LLM Code Intelligence system in Patina, split between two commands with distinct responsibilities.
+
+### Command Separation:
+1. **`scrape`**: Extracts facts only (functions, types, imports) - NO pattern detection
+2. **`ask`**: Discovers patterns from the extracted facts - ALL intelligence here
 
 ### Key Points:
-1. **Delete**: code_fingerprints, git_metrics, behavioral_hints (not useful)
-2. **Keep**: function_facts, type_vocabulary, import_facts (core facts)
-3. **New**: style_patterns, architectural_patterns, codebase_conventions (pattern detection)
+1. **Deleted**: code_fingerprints, git_metrics, behavioral_hints (removed in commit a8bf503)
+2. **Keep in `scrape`**: function_facts, type_vocabulary, import_facts, call_graph
+3. **Move to `ask`**: style_patterns, architectural_patterns, codebase_conventions
 
 ### Implementation Status:
-- ✅ AST extraction (functions, types, imports)
-- ✅ Call graph tracking  
-- 🔴 Pattern detection (hardcoded, not adaptive)
-- 🔴 Convention inference (makes bad guesses)
-- ❌ PR pattern validation (not implemented)
-- ❌ Ask command integration (not connected)
+- ✅ AST extraction in `scrape` (functions, types, imports)
+- ✅ Call graph tracking in `scrape`
+- 🔴 Pattern detection in wrong place (should move from `scrape` to `ask`)
+- 🔴 Convention inference broken (should be removed from `scrape`)
+- ❌ `ask` command not yet implemented
+- ❌ PR pattern validation not implemented
 
 ### Design Principle:
 Only store facts you can prove. Validate patterns with evidence. Let patterns emerge from data, not assumptions.
 
 ## Implementation Roadmap
 
-### Phase 1: Fix Pattern Detection (Critical)
+### Phase 1: Clean Up `scrape` Command (Remove Wrong Responsibilities)
 
-**IMPORTANT LESSON (2024-09-05)**: Attempted two-pass architecture failed because:
-- code.rs has 3+ different systems for handling languages (LanguageSpec, special-case processing, generic AST patterns)
-- Each language has different AST structures (C functions are nested differently than Python)
-- Adding a separate first pass to collect function names missed most C functions due to AST differences
-- **Better approach**: Collect function names during the existing extraction, not in a separate pass
+**Actions**:
+1. **REMOVE** hardcoded pattern detection (`extract_prefix` with its list)
+2. **REMOVE** convention inference ("Option-preferred", "Inline modules")
+3. **REMOVE** style_patterns table population
+4. **KEEP** function_facts, type_vocabulary, import_facts extraction
 
 ```rust
-// In code.rs, replace hardcoded prefix detection
-fn extract_pattern(name: &str, all_functions_from_current_file: &[String]) -> Option<String> {
-    // Adaptive detection based on patterns IN THIS FILE
-    // Not looking for "get_" but finding "SDL_Get", "gtk_widget_", etc.
-    // Key: Use existing extraction logic, don't duplicate it
+// DELETE this from code.rs:
+fn extract_prefix(name: &str) -> Option<String> {
+    let prefixes = ["get_", "set_", ...]; // DELETE
+}
+
+// DELETE convention inference:
+if return_types.get("Option") > 10 {
+    "Option-preferred" // DELETE - C doesn't have Option!
 }
 ```
 
-### Phase 2: Add PR Validation (High Value)
+### Phase 2: Implement `ask` Command (New File)
+
+**Location**: `src/commands/ask.rs`
+
 ```rust
+pub fn handle_ask(query: &str, db_path: &str) -> Result<Response> {
+    // Pattern discovery happens HERE, not in scrape
+    match query {
+        "naming patterns" => discover_prefixes_from_db(db_path),
+        "error handling" => analyze_error_patterns(db_path),
+        "initialization" => find_init_patterns(db_path),
+    }
+}
+
+fn discover_prefixes_from_db(db_path: &str) -> Result<Patterns> {
+    // Query the function_facts table
+    // Find actual patterns (SDL_, gtk_, etc.)
+    // Return with evidence count
+}
+```
+
+### Phase 3: Add PR Validation to `ask` (Not `scrape`)
+```rust
+// In ask.rs, not code.rs
 fn validate_with_prs(repo: &Path) -> ValidationData {
     // Extract patterns from merged PRs
     // Learn from bug fixes
@@ -390,18 +462,7 @@ fn validate_with_prs(repo: &Path) -> ValidationData {
 }
 ```
 
-### Phase 3: Implement Ask Command (User Value)
-```rust
-// New separate command: src/commands/ask.rs
-// Queries the DuckDB database created by scrape command
-fn handle_ask(query: &str, db_path: &str) -> Response {
-    // Query validated_patterns table
-    // Return evidence-based examples
-    // Include confidence scores
-}
-```
-
-### Phase 4: Evidence-Based Scoring (Quality)
+### Phase 4: Evidence-Based Scoring (In `ask` Command)
 - Combine AST frequency + Git stability + PR validation
 - Show evidence for each pattern claim
 - Never claim patterns without proof
