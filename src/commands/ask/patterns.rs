@@ -1,6 +1,5 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use duckdb::Connection;
-use std::collections::HashMap;
 use std::path::Path;
 
 /// Analyze naming patterns from the extracted data
