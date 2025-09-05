@@ -83,6 +83,12 @@ enum Commands {
         #[command(subcommand)]
         command: Option<ScrapeCommands>,
     },
+    
+    /// Ask questions about the codebase
+    Ask {
+        #[command(flatten)]
+        args: commands::ask::AskCommand,
+    },
 }
 
 /// Common arguments for all scrape subcommands
@@ -289,6 +295,9 @@ fn main() -> Result<()> {
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
+        }
+        Commands::Ask { args } => {
+            commands::ask::run(args)?;
         }
         Commands::Version { json, components } => {
             commands::version::execute(json, components)?;
