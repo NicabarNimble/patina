@@ -3235,3 +3235,662 @@ mod rust_lang {
         }
     }
 }
+
+// ============================================================================
+// GO LANGUAGE MODULE
+// ============================================================================
+mod go_lang {
+    use super::*;
+    use tree_sitter::Node;
+    
+    pub struct GoExtractor;
+    
+    impl GoExtractor {
+        pub fn is_doc_comment(text: &str) -> bool {
+            // Go uses // for doc comments (before declarations)
+            text.starts_with("//")
+        }
+        
+        pub fn parse_visibility(_node: &Node, name: &str, _source: &[u8]) -> bool {
+            // In Go, uppercase first letter = public
+            name.chars().next().is_some_and(|c| c.is_uppercase())
+        }
+        
+        pub fn has_async(_node: &Node, _source: &[u8]) -> bool {
+            // Go doesn't have async keyword, uses goroutines
+            false
+        }
+        
+        pub fn has_unsafe(_node: &Node, _source: &[u8]) -> bool {
+            // Go doesn't have unsafe keyword in function declarations
+            false
+        }
+        
+        pub fn extract_params(node: &Node, source: &[u8]) -> Vec<String> {
+            if let Some(params_node) = node.child_by_field_name("parameters") {
+                let mut params = Vec::new();
+                let mut cursor = params_node.walk();
+                for child in params_node.children(&mut cursor) {
+                    if child.kind() == "parameter_declaration" {
+                        if let Ok(param_text) = child.utf8_text(source) {
+                            params.push(param_text.to_string());
+                        }
+                    }
+                }
+                params
+            } else {
+                Vec::new()
+            }
+        }
+        
+        pub fn extract_return_type(node: &Node, source: &[u8]) -> Option<String> {
+            node.child_by_field_name("result")
+                .and_then(|r| r.utf8_text(source).ok())
+                .map(String::from)
+        }
+        
+        pub fn extract_generics(node: &Node, source: &[u8]) -> Option<String> {
+            // Go uses type parameters (generics added in Go 1.18)
+            node.child_by_field_name("type_parameters")
+                .and_then(|tp| tp.utf8_text(source).ok())
+                .map(String::from)
+        }
+        
+        pub fn get_symbol_kind(node_kind: &str) -> &'static str {
+            match node_kind {
+                "function_declaration" | "method_declaration" => "function",
+                "type_declaration" => "type_alias",
+                "type_spec" => "type_alias",
+                "struct_type" => "struct",
+                "interface_type" => "trait",
+                "const_declaration" | "const_spec" => "const",
+                "import_declaration" | "import_spec" => "import",
+                _ => "unknown",
+            }
+        }
+        
+        pub fn get_symbol_kind_complex(node: &Node, source: &[u8]) -> Option<&'static str> {
+            // For type declarations, check what's being declared
+            if node.kind() == "type_spec" {
+                if let Some(type_node) = node.child_by_field_name("type") {
+                    return Some(match type_node.kind() {
+                        "struct_type" => "struct",
+                        "interface_type" => "trait",
+                        _ => "type_alias",
+                    });
+                }
+            }
+            None
+        }
+        
+        pub fn clean_doc_comment(raw: &str) -> String {
+            raw.lines()
+                .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+        
+        pub fn extract_import_details(node: &Node, source: &[u8]) -> (String, String, bool) {
+            let import_text = node.utf8_text(source).unwrap_or("");
+            let import_clean = import_text.trim_start_matches("import ").trim();
+            
+            // Handle both single and grouped imports
+            let (imported_item, imported_from) = if import_clean.starts_with('"') {
+                // Single import: import "fmt"
+                let pkg = import_clean.trim_matches('"');
+                let item = pkg.split('/').last().unwrap_or(pkg);
+                (item.to_string(), pkg.to_string())
+            } else {
+                // Aliased import: import alias "package"
+                let parts: Vec<&str> = import_clean.split_whitespace().collect();
+                if parts.len() == 2 {
+                    (parts[0].to_string(), parts[1].trim_matches('"').to_string())
+                } else {
+                    ("".to_string(), import_clean.to_string())
+                }
+            };
+            
+            // Standard library packages don't have dots or slashes at the start
+            let is_external = imported_from.contains('.')
+                || imported_from.starts_with("github.com")
+                || imported_from.starts_with("golang.org");
+            
+            (imported_item, imported_from, is_external)
+        }
+    }
+}
+// This file contains all the language-specific modules that will be appended to refactor-code.rs
+
+// ============================================================================
+// PYTHON LANGUAGE MODULE
+// ============================================================================
+mod python_lang {
+    use super::*;
+    use tree_sitter::Node;
+    
+    pub struct PythonExtractor;
+    
+    impl PythonExtractor {
+        pub fn is_doc_comment(text: &str) -> bool {
+            // Python uses triple quotes for docstrings
+            text.starts_with("\"\"\"") || text.starts_with("'''")
+        }
+        
+        pub fn parse_visibility(_node: &Node, name: &str, _source: &[u8]) -> bool {
+            // Python convention: underscore prefix = private
+            !name.starts_with('_')
+        }
+        
+        pub fn has_async(node: &Node, source: &[u8]) -> bool {
+            // Check for async def
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "decorated_definition" {
+                    // Check decorators for async patterns
+                    return parent.utf8_text(source).unwrap_or("").contains("async def");
+                }
+            }
+            node.utf8_text(source).unwrap_or("").starts_with("async def")
+        }
+        
+        pub fn has_unsafe(_node: &Node, _source: &[u8]) -> bool {
+            // Python doesn't have unsafe
+            false
+        }
+        
+        pub fn extract_params(node: &Node, source: &[u8]) -> Vec<String> {
+            if let Some(params_node) = node.child_by_field_name("parameters") {
+                let mut params = Vec::new();
+                let mut cursor = params_node.walk();
+                for child in params_node.children(&mut cursor) {
+                    match child.kind() {
+                        "identifier" | "typed_parameter" | "default_parameter" | "list_splat_pattern" | "dictionary_splat_pattern" => {
+                            if let Ok(param_text) = child.utf8_text(source) {
+                                if param_text != "self" && param_text != "cls" {
+                                    params.push(param_text.to_string());
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                params
+            } else {
+                Vec::new()
+            }
+        }
+        
+        pub fn extract_return_type(node: &Node, source: &[u8]) -> Option<String> {
+            // Python 3 type hints: -> ReturnType
+            node.child_by_field_name("return_type")
+                .and_then(|rt| rt.utf8_text(source).ok())
+                .map(|s| s.trim_start_matches("->").trim().to_string())
+        }
+        
+        pub fn extract_generics(_node: &Node, _source: &[u8]) -> Option<String> {
+            // Python doesn't have generics in function declarations
+            // (though it has type parameters in type hints)
+            None
+        }
+        
+        pub fn get_symbol_kind(node_kind: &str) -> &'static str {
+            match node_kind {
+                "function_definition" => "function",
+                "class_definition" => "struct",
+                "decorated_definition" => "function", // Usually a function with decorators
+                "import_statement" | "import_from_statement" => "import",
+                _ => "unknown",
+            }
+        }
+        
+        pub fn get_symbol_kind_complex(node: &Node, _source: &[u8]) -> Option<&'static str> {
+            // Check if decorated_definition contains a function or class
+            if node.kind() == "decorated_definition" {
+                if let Some(def) = node.child_by_field_name("definition") {
+                    return Some(match def.kind() {
+                        "function_definition" => "function",
+                        "class_definition" => "struct",
+                        _ => "unknown",
+                    });
+                }
+            }
+            None
+        }
+        
+        pub fn clean_doc_comment(raw: &str) -> String {
+            raw.trim_matches('"')
+                .trim_matches('\'')
+                .lines()
+                .map(|l| l.trim())
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+        
+        pub fn extract_import_details(node: &Node, source: &[u8]) -> (String, String, bool) {
+            let import_text = node.utf8_text(source).unwrap_or("");
+            
+            let (imported_item, imported_from) = if import_text.starts_with("from ") {
+                // from module import item
+                let parts: Vec<&str> = import_text.split(" import ").collect();
+                if parts.len() == 2 {
+                    let module = parts[0].trim_start_matches("from ").trim();
+                    let items = parts[1].trim();
+                    (items.to_string(), module.to_string())
+                } else {
+                    ("".to_string(), import_text.to_string())
+                }
+            } else {
+                // import module
+                let module = import_text.trim_start_matches("import ").trim();
+                (module.to_string(), module.to_string())
+            };
+            
+            // Standard library vs external (heuristic)
+            let is_external = !imported_from.starts_with('.')
+                && !["sys", "os", "io", "re", "math", "json", "time", "datetime", "collections", "itertools"]
+                    .contains(&imported_from.split('.').next().unwrap_or(""));
+            
+            (imported_item, imported_from, is_external)
+        }
+    }
+}
+
+// ============================================================================
+// SOLIDITY LANGUAGE MODULE
+// ============================================================================
+mod solidity_lang {
+    use super::*;
+    use tree_sitter::Node;
+    
+    pub struct SolidityExtractor;
+    
+    impl SolidityExtractor {
+        pub fn is_doc_comment(text: &str) -> bool {
+            // Solidity uses /// for NatSpec comments
+            text.starts_with("///") || text.starts_with("/**")
+        }
+        
+        pub fn parse_visibility(node: &Node, _name: &str, source: &[u8]) -> bool {
+            // Check for visibility modifiers
+            let text = node.utf8_text(source).unwrap_or("");
+            text.contains("public") || text.contains("external")
+        }
+        
+        pub fn has_async(_node: &Node, _source: &[u8]) -> bool {
+            // Solidity doesn't have async
+            false
+        }
+        
+        pub fn has_unsafe(node: &Node, source: &[u8]) -> bool {
+            // Consider assembly blocks as unsafe
+            node.utf8_text(source).unwrap_or("").contains("assembly")
+        }
+        
+        pub fn extract_params(node: &Node, source: &[u8]) -> Vec<String> {
+            // Solidity parameters are direct children
+            let mut params = Vec::new();
+            for child in node.children(&mut node.walk()) {
+                if child.kind() == "parameter" {
+                    if let Ok(param_text) = child.utf8_text(source) {
+                        params.push(param_text.to_string());
+                    }
+                }
+            }
+            params
+        }
+        
+        pub fn extract_return_type(node: &Node, source: &[u8]) -> Option<String> {
+            // Look for returns clause
+            for child in node.children(&mut node.walk()) {
+                if child.kind() == "return_type_definition" {
+                    return child.utf8_text(source).ok().map(String::from);
+                }
+            }
+            None
+        }
+        
+        pub fn extract_generics(_node: &Node, _source: &[u8]) -> Option<String> {
+            // Solidity doesn't have generics
+            None
+        }
+        
+        pub fn get_symbol_kind(node_kind: &str) -> &'static str {
+            match node_kind {
+                "function_definition" => "function",
+                "modifier_definition" => "function",
+                "contract_declaration" => "struct",
+                "struct_declaration" => "struct",
+                "enum_declaration" => "struct",
+                "interface_declaration" => "trait",
+                "event_definition" => "function",
+                "import_directive" => "import",
+                _ => "unknown",
+            }
+        }
+        
+        pub fn get_symbol_kind_complex(_node: &Node, _source: &[u8]) -> Option<&'static str> {
+            None
+        }
+        
+        pub fn clean_doc_comment(raw: &str) -> String {
+            raw.lines()
+                .map(|line| {
+                    line.trim_start()
+                        .strip_prefix("///")
+                        .or_else(|| line.strip_prefix("/**"))
+                        .or_else(|| line.strip_prefix("*/"))
+                        .unwrap_or(line)
+                        .trim()
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+        
+        pub fn extract_import_details(node: &Node, source: &[u8]) -> (String, String, bool) {
+            let import_text = node.utf8_text(source).unwrap_or("");
+            let import_clean = import_text.trim_start_matches("import ").trim_end_matches(';');
+            
+            let (imported_item, imported_from) = if import_clean.contains(" as ") {
+                let parts: Vec<&str> = import_clean.split(" as ").collect();
+                (parts[1].trim_matches('"').to_string(), parts[0].trim_matches('"').to_string())
+            } else {
+                let path = import_clean.trim_matches('"');
+                let item = path.split('/').last().unwrap_or(path);
+                (item.to_string(), path.to_string())
+            };
+            
+            // Most Solidity imports are relative or from node_modules
+            let is_external = imported_from.starts_with('@') || !imported_from.starts_with('.');
+            
+            (imported_item, imported_from, is_external)
+        }
+    }
+}
+
+// ============================================================================
+// C/C++ LANGUAGE MODULE
+// ============================================================================
+mod c_cpp_lang {
+    use super::*;
+    use tree_sitter::Node;
+    
+    pub struct CCppExtractor;
+    
+    impl CCppExtractor {
+        pub fn is_doc_comment(text: &str) -> bool {
+            // C/C++ use /** */ or /// for doc comments
+            text.starts_with("/**") || text.starts_with("///") || text.starts_with("//!")
+        }
+        
+        pub fn parse_visibility(node: &Node, _name: &str, source: &[u8]) -> bool {
+            // Check if static (which means file-local, so private)
+            let text = node.utf8_text(source).unwrap_or("");
+            !text.contains("static")
+        }
+        
+        pub fn has_async(_node: &Node, _source: &[u8]) -> bool {
+            // C/C++ don't have async keyword
+            false
+        }
+        
+        pub fn has_unsafe(_node: &Node, _source: &[u8]) -> bool {
+            // All C/C++ could be considered unsafe from Rust perspective
+            false
+        }
+        
+        pub fn extract_params(node: &Node, source: &[u8]) -> Vec<String> {
+            if let Some(params_node) = node.child_by_field_name("declarator") {
+                if let Some(param_list) = params_node.child_by_field_name("parameters") {
+                    let mut params = Vec::new();
+                    for child in param_list.children(&mut param_list.walk()) {
+                        if child.kind() == "parameter_declaration" {
+                            if let Ok(param_text) = child.utf8_text(source) {
+                                params.push(param_text.to_string());
+                            }
+                        }
+                    }
+                    return params;
+                }
+            }
+            Vec::new()
+        }
+        
+        pub fn extract_return_type(node: &Node, source: &[u8]) -> Option<String> {
+            node.child_by_field_name("type")
+                .and_then(|t| t.utf8_text(source).ok())
+                .map(String::from)
+        }
+        
+        pub fn extract_generics(node: &Node, source: &[u8]) -> Option<String> {
+            // C++ templates
+            if let Some(template) = node.child_by_field_name("template_parameters") {
+                return template.utf8_text(source).ok().map(String::from);
+            }
+            None
+        }
+        
+        pub fn get_symbol_kind(node_kind: &str) -> &'static str {
+            match node_kind {
+                "function_definition" => "function",
+                "struct_specifier" => "struct",
+                "class_specifier" => "struct",
+                "enum_specifier" => "struct",
+                "type_definition" => "type_alias",
+                "preproc_include" => "import",
+                _ => "unknown",
+            }
+        }
+        
+        pub fn get_symbol_kind_complex(_node: &Node, _source: &[u8]) -> Option<&'static str> {
+            None
+        }
+        
+        pub fn clean_doc_comment(raw: &str) -> String {
+            raw.lines()
+                .map(|line| {
+                    line.trim_start()
+                        .strip_prefix("///")
+                        .or_else(|| line.strip_prefix("/**"))
+                        .or_else(|| line.strip_prefix("*/"))
+                        .or_else(|| line.strip_prefix("*"))
+                        .unwrap_or(line)
+                        .trim()
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+        
+        pub fn extract_import_details(node: &Node, source: &[u8]) -> (String, String, bool) {
+            let import_text = node.utf8_text(source).unwrap_or("");
+            let import_clean = import_text
+                .trim_start_matches("#include")
+                .trim()
+                .trim_matches('<')
+                .trim_matches('>') 
+                .trim_matches('"');
+            
+            let is_system = import_text.contains('<');
+            
+            (import_clean.to_string(), import_clean.to_string(), is_system)
+        }
+        
+        pub fn extract_c_function_name(node: Node, source: &[u8]) -> Option<Node> {
+            // Iteratively handle pointer declarators for C functions
+            let mut current = node;
+            let mut depth = 0;
+            const MAX_DEPTH: usize = 10;
+            
+            while depth < MAX_DEPTH {
+                match current.kind() {
+                    "pointer_declarator" => {
+                        if let Some(child) = current.child(1) {
+                            current = child;
+                            depth += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    "function_declarator" => {
+                        if let Some(declarator) = current.child_by_field_name("declarator") {
+                            current = declarator;
+                            depth += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    "identifier" => return Some(current),
+                    _ => break,
+                }
+            }
+            
+            if current.kind() == "identifier" {
+                Some(current)
+            } else {
+                None
+            }
+        }
+    }
+}
+
+// ============================================================================
+// TYPESCRIPT/JAVASCRIPT LANGUAGE MODULE
+// ============================================================================
+mod typescript_lang {
+    use super::*;
+    use tree_sitter::Node;
+    
+    pub struct TypeScriptExtractor;
+    
+    impl TypeScriptExtractor {
+        pub fn is_doc_comment(text: &str) -> bool {
+            // JS/TS use /** */ for JSDoc comments
+            text.starts_with("/**") || text.starts_with("//")
+        }
+        
+        pub fn parse_visibility(node: &Node, _name: &str, source: &[u8]) -> bool {
+            // Check for export keyword
+            let text = node.utf8_text(source).unwrap_or("");
+            text.contains("export")
+        }
+        
+        pub fn has_async(node: &Node, source: &[u8]) -> bool {
+            // Check for async keyword
+            node.utf8_text(source).unwrap_or("").contains("async")
+        }
+        
+        pub fn has_unsafe(_node: &Node, _source: &[u8]) -> bool {
+            // JS/TS don't have unsafe
+            false
+        }
+        
+        pub fn extract_params(node: &Node, source: &[u8]) -> Vec<String> {
+            if let Some(params_node) = node.child_by_field_name("parameters") {
+                let mut params = Vec::new();
+                for child in params_node.children(&mut params_node.walk()) {
+                    match child.kind() {
+                        "required_parameter" | "optional_parameter" | "rest_parameter" => {
+                            if let Ok(param_text) = child.utf8_text(source) {
+                                params.push(param_text.to_string());
+                            }
+                        }
+                        "identifier" => {
+                            if let Ok(param_text) = child.utf8_text(source) {
+                                params.push(param_text.to_string());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                params
+            } else {
+                Vec::new()
+            }
+        }
+        
+        pub fn extract_return_type(node: &Node, source: &[u8]) -> Option<String> {
+            // TypeScript return type annotation
+            node.child_by_field_name("return_type")
+                .and_then(|rt| rt.utf8_text(source).ok())
+                .map(|s| s.trim_start_matches(':').trim().to_string())
+        }
+        
+        pub fn extract_generics(node: &Node, source: &[u8]) -> Option<String> {
+            // TypeScript generics <T, U>
+            node.child_by_field_name("type_parameters")
+                .and_then(|tp| tp.utf8_text(source).ok())
+                .map(String::from)
+        }
+        
+        pub fn get_symbol_kind(node_kind: &str) -> &'static str {
+            match node_kind {
+                "function_declaration" | "function_expression" | "arrow_function" | "method_definition" => "function",
+                "class_declaration" => "struct",
+                "interface_declaration" => "trait",
+                "type_alias_declaration" => "type_alias",
+                "enum_declaration" => "struct",
+                "import_statement" => "import",
+                "variable_declarator" => "const",
+                _ => "unknown",
+            }
+        }
+        
+        pub fn get_symbol_kind_complex(node: &Node, source: &[u8]) -> Option<&'static str> {
+            // Check if variable contains a function
+            if node.kind() == "variable_declarator" {
+                if let Some(init) = node.child_by_field_name("value") {
+                    return Some(match init.kind() {
+                        "arrow_function" | "function_expression" => "function",
+                        _ => "const",
+                    });
+                }
+            }
+            None
+        }
+        
+        pub fn clean_doc_comment(raw: &str) -> String {
+            raw.lines()
+                .map(|line| {
+                    line.trim_start()
+                        .strip_prefix("/**")
+                        .or_else(|| line.strip_prefix("*/"))
+                        .or_else(|| line.strip_prefix("*"))
+                        .or_else(|| line.strip_prefix("//"))
+                        .unwrap_or(line)
+                        .trim()
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+        
+        pub fn extract_import_details(node: &Node, source: &[u8]) -> (String, String, bool) {
+            let import_text = node.utf8_text(source).unwrap_or("");
+            
+            let (imported_item, imported_from) = if import_text.contains(" from ") {
+                let parts: Vec<&str> = import_text.split(" from ").collect();
+                if parts.len() == 2 {
+                    let items = parts[0]
+                        .trim_start_matches("import ")
+                        .trim_matches('{')
+                        .trim_matches('}')
+                        .trim();
+                    let module = parts[1].trim_matches('\'').trim_matches('"').trim_end_matches(';');
+                    (items.to_string(), module.to_string())
+                } else {
+                    ("".to_string(), import_text.to_string())
+                }
+            } else {
+                // require() or import 'module'
+                let module = import_text
+                    .trim_start_matches("import ")
+                    .trim_matches('\'')
+                    .trim_matches('"')
+                    .trim_end_matches(';');
+                (module.to_string(), module.to_string())
+            };
+            
+            // Node modules vs relative imports
+            let is_external = !imported_from.starts_with('.') && !imported_from.starts_with('/');
+            
+            (imported_item, imported_from, is_external)
+        }
+    }
+}
