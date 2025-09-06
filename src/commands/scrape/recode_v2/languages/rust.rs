@@ -11,7 +11,6 @@
 //! - Macro usage
 
 use crate::commands::scrape::recode_v2::LanguageSpec;
-use tree_sitter::Node;
 
 /// Rust language specification
 pub static SPEC: LanguageSpec = LanguageSpec {

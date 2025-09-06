@@ -12,7 +12,6 @@
 //! - Flexible parameter patterns (destructuring, rest)
 
 use crate::commands::scrape::recode_v2::LanguageSpec;
-use tree_sitter::Node;
 
 /// JavaScript language specification
 pub static SPEC: LanguageSpec = LanguageSpec {

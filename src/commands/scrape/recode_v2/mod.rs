@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use tree_sitter::Node;
 
-use super::{ScrapeConfig, ScrapeStats};
+use super::ScrapeConfig;
 
 // ============================================================================
 // LANGUAGE MODULES
