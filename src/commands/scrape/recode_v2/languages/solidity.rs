@@ -13,7 +13,6 @@
 //! - Library and contract declarations
 
 use crate::commands::scrape::recode_v2::LanguageSpec;
-use tree_sitter::Node;
 
 /// Solidity language specification
 pub static SPEC: LanguageSpec = LanguageSpec {

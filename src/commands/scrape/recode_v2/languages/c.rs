@@ -11,7 +11,6 @@
 //! - No built-in visibility (header exposure = public)
 
 use crate::commands::scrape::recode_v2::LanguageSpec;
-use tree_sitter::Node;
 
 /// C language specification
 pub static SPEC: LanguageSpec = LanguageSpec {

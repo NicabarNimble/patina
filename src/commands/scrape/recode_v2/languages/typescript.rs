@@ -13,7 +13,6 @@
 //! - JSX support (.tsx files)
 
 use crate::commands::scrape::recode_v2::LanguageSpec;
-use tree_sitter::Node;
 
 /// TypeScript language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
