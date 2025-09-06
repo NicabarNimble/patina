@@ -119,6 +119,12 @@ enum ScrapeCommands {
         args: ScrapeArgs,
     },
 
+    /// Extract semantic information using modular architecture (v2)
+    Recode {
+        #[command(flatten)]
+        args: ScrapeArgs,
+    },
+
     /// Extract knowledge from markdown/text files (coming soon)
     Docs {
         #[command(flatten)]
@@ -281,6 +287,9 @@ fn main() -> Result<()> {
             match subcommand {
                 ScrapeCommands::Code { args } => {
                     commands::scrape::execute(args.init, args.query, args.repo, args.force)?;
+                }
+                ScrapeCommands::Recode { args } => {
+                    commands::scrape::execute_recode(args.init, args.query, args.repo, args.force)?;
                 }
                 ScrapeCommands::Docs { args } => {
                     commands::scrape::execute_docs(args.init, args.query, args.repo, args.force)?;

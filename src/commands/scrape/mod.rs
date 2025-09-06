@@ -3,6 +3,7 @@
 pub mod code;
 pub mod docs;
 pub mod pdf;
+pub mod recode_v2;
 
 use anyhow::{bail, Result};
 use std::path::Path;
@@ -148,6 +149,33 @@ pub fn execute_pdf(
         println!("  • PDFs found: {}", stats.items_processed);
         println!("  • Time elapsed: {:?}", stats.time_elapsed);
         println!("  • Total size: {} KB", stats.database_size_kb);
+    }
+    Ok(())
+}
+
+/// Execute recode scraper (modular v2 architecture)
+pub fn execute_recode(
+    init: bool,
+    query: Option<String>,
+    repo: Option<String>,
+    force: bool,
+) -> Result<()> {
+    let mut config = ScrapeConfig::new(force);
+    if let Some(r) = repo.as_ref() {
+        config.for_repo(r);
+    }
+
+    if init {
+        recode_v2::initialize(&config)?;
+    } else if let Some(_q) = query {
+        bail!("Query functionality has moved. Use 'patina ask' instead.");
+    } else {
+        let stats = recode_v2::run(config)?;
+
+        println!("\n📊 Recode Extraction Summary:");
+        println!("  • Items processed: {}", stats.items_processed);
+        println!("  • Time elapsed: {:?}", stats.time_elapsed);
+        println!("  • Database size: {} KB", stats.database_size_kb);
     }
     Ok(())
 }
