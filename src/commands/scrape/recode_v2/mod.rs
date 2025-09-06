@@ -92,6 +92,9 @@ static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> =
         registry.insert(Language::TypeScript, &languages::typescript::SPEC);
         registry.insert(Language::TypeScriptTSX, &languages::typescript::SPEC); // TSX uses TS spec
         registry.insert(Language::Solidity, &languages::solidity::SPEC);
+        registry.insert(Language::C, &languages::c::SPEC);
+        registry.insert(Language::Cpp, &languages::cpp::SPEC);
+        // Note: Cairo is not registered here as it uses cairo-lang-parser instead of tree-sitter
         
         registry
     });
