@@ -60,6 +60,25 @@ impl Language {
             _ => Language::Unknown,
         }
     }
+    
+    /// Detect language from file extension string
+    pub fn from_extension(ext: &str) -> Option<Self> {
+        let lang = match ext {
+            "rs" => Language::Rust,
+            "go" => Language::Go,
+            "py" => Language::Python,
+            "js" | "mjs" => Language::JavaScript,
+            "jsx" => Language::JavaScriptJSX,
+            "ts" => Language::TypeScript,
+            "tsx" => Language::TypeScriptTSX,
+            "sol" => Language::Solidity,
+            "cairo" => Language::Cairo,
+            "c" | "h" => Language::C,
+            "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Language::Cpp,
+            _ => return None,
+        };
+        Some(lang)
+    }
 
     /// Convert to patina_metal::Metal enum
     pub fn to_metal(self) -> Option<patina_metal::Metal> {
@@ -109,6 +128,40 @@ pub fn create_parser_for_path(path: &Path) -> Result<Parser> {
 
     // Use the extension-aware method for TypeScript to get the right parser
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let ts_lang = metal
+        .tree_sitter_language_for_ext(ext)
+        .ok_or_else(|| anyhow::anyhow!("No parser available for {:?}", language))?;
+
+    let mut parser = Parser::new();
+    parser
+        .set_language(&ts_lang)
+        .context("Failed to set language")?;
+
+    Ok(parser)
+}
+
+/// Create a parser for a specific language
+pub fn create_parser_for_language(language: Language) -> Result<Parser> {
+    let metal = language
+        .to_metal()
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {:?}", language))?;
+
+    // Default extension for language
+    let ext = match language {
+        Language::Rust => "rs",
+        Language::Go => "go",
+        Language::Python => "py",
+        Language::JavaScript => "js",
+        Language::JavaScriptJSX => "jsx",
+        Language::TypeScript => "ts",
+        Language::TypeScriptTSX => "tsx",
+        Language::Solidity => "sol",
+        Language::Cairo => "cairo",
+        Language::C => "c",
+        Language::Cpp => "cpp",
+        _ => return Err(anyhow::anyhow!("Unknown language: {:?}", language)),
+    };
+
     let ts_lang = metal
         .tree_sitter_language_for_ext(ext)
         .ok_or_else(|| anyhow::anyhow!("No parser available for {:?}", language))?;
