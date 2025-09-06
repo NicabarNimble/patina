@@ -17,11 +17,10 @@ pub mod python;
 pub mod javascript;
 pub mod typescript;
 pub mod solidity;
-
-// Future additions:
-// pub mod c;
-// pub mod cpp;
-// pub mod cairo;
+pub mod c;
+pub mod cpp;
+// Note: Cairo uses cairo-lang-parser instead of tree-sitter,
+// so it requires special handling in the extraction pipeline
 
 // ============================================================================
 // LANGUAGE ENUM
