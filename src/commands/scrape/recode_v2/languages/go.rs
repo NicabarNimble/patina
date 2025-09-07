@@ -67,7 +67,9 @@ pub static SPEC: LanguageSpec = LanguageSpec {
     get_symbol_kind: |node_kind| match node_kind {
         "function_declaration" => "function",
         "method_declaration" => "function",
+        "type_declaration" => "type_alias",
         "const_declaration" => "const",
+        "var_declaration" => "const",
         "import_declaration" => "import",
         _ => "unknown",
     },

@@ -66,11 +66,14 @@ pub static SPEC: LanguageSpec = LanguageSpec {
     get_symbol_kind: |node_kind| match node_kind {
         "function_item" => "function",
         "struct_item" => "struct",
+        "enum_item" => "enum",
         "trait_item" => "trait",
         "impl_item" => "impl",
         "type_alias" => "type_alias",
         "const_item" => "const",
+        "static_item" => "const",
         "use_declaration" => "import",
+        "mod_item" => "module",
         _ => "unknown",
     },
 
