@@ -378,6 +378,16 @@ pub struct ParseContext {
     pub call_graph_entries: Vec<(String, String, String, String, i32)>, // (caller, callee, file, call_type, line)
 }
 
+/// Groups parameters for symbol processing to avoid too many arguments
+struct SymbolInfo<'a> {
+    node: &'a Node<'a>,
+    name: &'a str,
+    kind: &'a str,
+    source: &'a [u8],
+    file_path: &'a str,
+    language: Language,
+}
+
 impl ParseContext {
     pub fn add_call(&mut self, callee: String, call_type: String, line_number: i32) {
         if let Some(ref caller) = self.current_function {
@@ -398,8 +408,8 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
     use ignore::WalkBuilder;
     use std::time::SystemTime;
 
-    // Find all supported language files
-    let mut all_files = Vec::new();
+    // Find all supported language files with their detected language
+    let mut all_files: Vec<(PathBuf, Language)> = Vec::new();
 
     for entry in WalkBuilder::new(work_dir)
         .hidden(false)
@@ -410,12 +420,9 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         let path = entry.path();
 
         if path.is_file() {
-            if let Some(ext) = path.extension() {
-                let ext_str = ext.to_string_lossy();
-                // Check if this is a supported language file
-                if Language::from_extension(&ext_str).is_some() {
-                    all_files.push(path.to_path_buf());
-                }
+            let language = Language::from_path(path);
+            if !matches!(language, Language::Unknown) {
+                all_files.push((path.to_path_buf(), language));
             }
         }
     }
@@ -434,19 +441,16 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
     let mut types_count = 0;
     let mut imports_count = 0;
     let mut files_with_errors = 0;
-    let mut files_processed = 0;
+    let mut _files_processed = 0;
 
     // Separate Cairo files from tree-sitter files for dual-track processing
     let (cairo_files, treesitter_files): (Vec<_>, Vec<_>) =
-        all_files.into_iter().partition(|path| {
-            path.extension()
-                .and_then(|e| e.to_str())
-                .map(|ext| ext == "cairo")
-                .unwrap_or(false)
+        all_files.into_iter().partition(|(_, lang)| {
+            matches!(lang, Language::Cairo)
         });
 
     // Process Cairo files with special parser
-    for file_path in cairo_files {
+    for (file_path, _language) in cairo_files {
         let relative_path = if let Ok(stripped) = file_path.strip_prefix(work_dir) {
             format!("./{}", stripped.to_string_lossy())
         } else {
@@ -487,7 +491,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
                 functions_count += funcs;
                 types_count += types;
                 imports_count += imps;
-                files_processed += 1;
+                _files_processed += 1;
             }
             Err(e) => {
                 eprintln!("  ⚠️  Cairo parsing error in {}: {}", relative_path, e);
@@ -497,7 +501,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
     }
 
     // Process tree-sitter files
-    for file_path in treesitter_files {
+    for (file_path, language) in treesitter_files {
         let relative_path = if let Ok(stripped) = file_path.strip_prefix(work_dir) {
             format!("./{}", stripped.to_string_lossy())
         } else {
@@ -514,14 +518,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
             }
         };
 
-        // Detect language
-        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        let language = match Language::from_extension(ext) {
-            Some(lang) => lang,
-            None => continue,
-        };
-
-        // Create parser for this language
+        // Create parser for this language (already detected)
         let mut parser = match languages::create_parser_for_language(language) {
             Ok(p) => p,
             Err(e) => {
@@ -649,9 +646,15 @@ fn extract_symbols_from_tree(
             });
 
             if let Some(name) = name {
-                let (is_func, is_type) = process_symbol(
-                    &node, &name, kind, source, file_path, language, sql, context,
-                );
+                let symbol_info = SymbolInfo {
+                    node: &node,
+                    name: &name,
+                    kind,
+                    source,
+                    file_path,
+                    language,
+                };
+                let (is_func, is_type) = process_symbol(symbol_info, sql, context);
                 if is_func {
                     function_count += 1;
                 }
@@ -663,16 +666,15 @@ fn extract_symbols_from_tree(
     } else if symbol_kind != "unknown" {
         // Process regular symbol
         if let Some(name) = extract_symbol_name(&node, source, language) {
-            let (is_func, is_type) = process_symbol(
-                &node,
-                &name,
-                symbol_kind,
+            let symbol_info = SymbolInfo {
+                node: &node,
+                name: &name,
+                kind: symbol_kind,
                 source,
                 file_path,
                 language,
-                sql,
-                context,
-            );
+            };
+            let (is_func, is_type) = process_symbol(symbol_info, sql, context);
             if is_func {
                 function_count += 1;
             }
@@ -753,27 +755,22 @@ fn extract_c_function_name(declarator: Node) -> Option<Node> {
 }
 
 fn process_symbol(
-    node: &Node,
-    name: &str,
-    kind: &str,
-    source: &[u8],
-    file_path: &str,
-    language: Language,
+    symbol: SymbolInfo,
     sql: &mut String,
     context: &mut ParseContext,
 ) -> (bool, bool) {
     // (is_function, is_type)
     // Extract documentation first (applies to all symbol types)
-    if let Some((doc_raw, doc_clean, keywords)) = extract_doc_comment(*node, source, language) {
+    if let Some((doc_raw, doc_clean, keywords)) = extract_doc_comment(*symbol.node, symbol.source, symbol.language) {
         let summary = extract_summary(&doc_clean);
         let has_examples = doc_raw.contains("```") || doc_raw.contains("Example:");
 
         sql.push_str(&format!(
             "INSERT OR REPLACE INTO documentation (file, symbol_name, symbol_type, line_number, doc_raw, doc_clean, doc_summary, keywords, doc_length, has_examples) VALUES ('{}', '{}', '{}', {}, '{}', '{}', '{}', {}, {}, {});\n",
-            escape_sql(file_path),
-            escape_sql(name),
-            kind,
-            node.start_position().row + 1,
+            escape_sql(symbol.file_path),
+            escape_sql(symbol.name),
+            symbol.kind,
+            symbol.node.start_position().row + 1,
             escape_sql(&doc_raw),
             escape_sql(&doc_clean),
             escape_sql(&summary),
@@ -783,16 +780,16 @@ fn process_symbol(
         ));
     }
 
-    match kind {
+    match symbol.kind {
         "function" => {
             // Update context with current function
-            context.current_function = Some(name.to_string());
+            context.current_function = Some(symbol.name.to_string());
 
-            extract_function_facts(node, source, file_path, name, sql, language);
+            extract_function_facts(symbol.node, symbol.source, symbol.file_path, symbol.name, sql, symbol.language);
 
             // Add to code_search table
-            let signature = node
-                .utf8_text(source)
+            let signature = symbol.node
+                .utf8_text(symbol.source)
                 .unwrap_or("")
                 .lines()
                 .next()
@@ -800,20 +797,20 @@ fn process_symbol(
 
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO code_search (path, name, signature) VALUES ('{}', '{}', '{}');\n",
-                escape_sql(file_path),
-                escape_sql(name),
+                escape_sql(symbol.file_path),
+                escape_sql(symbol.name),
                 escape_sql(signature)
             ));
             (true, false)
         }
         "struct" | "class" | "enum" | "interface" | "type_alias" | "const" => {
-            extract_type_definition(node, source, file_path, name, kind, sql, language);
+            extract_type_definition(symbol.node, symbol.source, symbol.file_path, symbol.name, symbol.kind, sql, symbol.language);
             (false, true)
         }
         "import" => {
             // This shouldn't be reached anymore as imports are handled specially
             // in extract_symbols_from_tree, but keep for safety
-            extract_import_fact(*node, source, file_path, sql, language);
+            extract_import_fact(*symbol.node, symbol.source, symbol.file_path, sql, symbol.language);
             (false, false)
         }
         "impl" | "module" => {
