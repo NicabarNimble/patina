@@ -19,8 +19,7 @@ pub mod typescript;
 pub mod solidity;
 pub mod c;
 pub mod cpp;
-// Note: Cairo uses cairo-lang-parser instead of tree-sitter,
-// so it requires special handling in the extraction pipeline
+pub mod cairo; // Special non-tree-sitter parser
 
 // ============================================================================
 // LANGUAGE ENUM

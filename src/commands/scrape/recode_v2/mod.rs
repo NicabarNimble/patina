@@ -434,8 +434,71 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
     let mut types_count = 0;
     let mut imports_count = 0;
     let mut files_with_errors = 0;
+    let mut files_processed = 0;
 
-    for file_path in &all_files {
+    // Separate Cairo files from tree-sitter files for dual-track processing
+    let (cairo_files, treesitter_files): (Vec<_>, Vec<_>) = all_files
+        .into_iter()
+        .partition(|path| {
+            path.extension()
+                .and_then(|e| e.to_str())
+                .map(|ext| ext == "cairo")
+                .unwrap_or(false)
+        });
+
+    // Process Cairo files with special parser
+    for file_path in cairo_files {
+        let relative_path = if let Ok(stripped) = file_path.strip_prefix(work_dir) {
+            format!("./{}", stripped.to_string_lossy())
+        } else {
+            file_path.to_string_lossy().to_string()
+        };
+
+        // Read file content as string (Cairo parser needs UTF-8 text)
+        let content = match std::fs::read_to_string(&file_path) {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("  ⚠️  Failed to read {}: {}", relative_path, e);
+                files_with_errors += 1;
+                continue;
+            }
+        };
+
+        // Track file in index_state
+        let mtime = std::fs::metadata(&file_path)
+            .and_then(|m| m.modified())
+            .unwrap_or(SystemTime::now())
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        sql_statements.push_str(&format!(
+            "INSERT OR REPLACE INTO index_state (path, mtime) VALUES ('{}', {});\n",
+            escape_sql(&relative_path),
+            mtime
+        ));
+
+        // Process Cairo file with special parser
+        match languages::cairo::CairoProcessor::process_file(&relative_path, &content) {
+            Ok((statements, funcs, types, imps)) => {
+                for stmt in statements {
+                    sql_statements.push_str(&stmt);
+                    sql_statements.push('\n');
+                }
+                functions_count += funcs;
+                types_count += types;
+                imports_count += imps;
+                files_processed += 1;
+            }
+            Err(e) => {
+                eprintln!("  ⚠️  Cairo parsing error in {}: {}", relative_path, e);
+                files_with_errors += 1;
+            }
+        }
+    }
+
+    // Process tree-sitter files
+    for file_path in treesitter_files {
         let relative_path = if let Ok(stripped) = file_path.strip_prefix(work_dir) {
             format!("./{}", stripped.to_string_lossy())
         } else {
@@ -443,7 +506,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         };
 
         // Read file content
-        let source = match std::fs::read(file_path) {
+        let source = match std::fs::read(&file_path) {
             Ok(content) => content,
             Err(e) => {
                 eprintln!("  ⚠️  Failed to read {}: {}", relative_path, e);
@@ -483,7 +546,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         };
 
         // Track file in index_state
-        let mtime = std::fs::metadata(file_path)
+        let mtime = std::fs::metadata(&file_path)
             .and_then(|m| m.modified())
             .unwrap_or(SystemTime::now())
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -509,6 +572,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         functions_count += funcs;
         types_count += types;
         imports_count += imps;
+        files_processed += 1;
 
         // Add call graph entries with proper file path
         for (caller, callee, _file, call_type, line) in &context.call_graph_entries {
