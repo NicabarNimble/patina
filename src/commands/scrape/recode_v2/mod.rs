@@ -284,9 +284,9 @@ CREATE TABLE IF NOT EXISTS function_facts (
     is_unsafe BOOLEAN,         -- Safety requirements
     is_public BOOLEAN,         -- API surface
     parameter_count INTEGER,
-    line_number INTEGER,
-    complexity_estimate INTEGER, -- Simple heuristic
-    has_tests BOOLEAN,
+    generic_count INTEGER,      -- Complexity indicator
+    parameters TEXT,            -- Parameter names and types
+    return_type TEXT,           -- Return type signature
     PRIMARY KEY (file, name)
 );
 
@@ -370,7 +370,22 @@ fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<usiz
 // ============================================================================
 #[derive(Default)]
 struct ParseContext {
+    current_function: Option<String>,
     call_graph_entries: Vec<(String, String, String, String, i32)>, // (caller, callee, file, call_type, line)
+}
+
+impl ParseContext {
+    fn add_call(&mut self, callee: String, call_type: String, line_number: i32) {
+        if let Some(ref caller) = self.current_function {
+            self.call_graph_entries.push((
+                caller.clone(),
+                callee,
+                String::new(), // file will be filled in later
+                call_type,
+                line_number,
+            ));
+        }
+    }
 }
 
 fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result<usize> {
@@ -486,13 +501,13 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         );
         total_symbols += symbols;
 
-        // Add call graph entries
-        for (caller, callee, file, call_type, line) in &context.call_graph_entries {
+        // Add call graph entries with proper file path
+        for (caller, callee, _file, call_type, line) in &context.call_graph_entries {
             sql_statements.push_str(&format!(
                 "INSERT INTO call_graph (caller, callee, file, call_type, line_number) VALUES ('{}', '{}', '{}', '{}', {});\n",
                 escape_sql(caller),
                 escape_sql(callee),
-                escape_sql(file),
+                escape_sql(&relative_path),
                 call_type,
                 line
             ));
@@ -533,26 +548,40 @@ fn extract_symbols_from_tree(
         None => return 0,
     };
 
+    // First, extract any call expressions from this node regardless of whether it's a symbol
+    extract_call_expressions(node, source, language, context);
+    
     // Determine symbol kind
     let symbol_kind = (spec.get_symbol_kind)(node.kind());
-    if symbol_kind == "unknown" {
+    
+    // Handle imports specially - they don't have a "name" field
+    if symbol_kind == "import" {
+        extract_import_fact(node, source, file_path, sql, language);
+        symbol_count += 1;
+        // Still need to recurse into children
+    } else if symbol_kind == "unknown" {
         // Try complex symbol detection
         if let Some(kind) = (spec.get_symbol_kind_complex)(&node, source) {
-            // Process this symbol
-            if let Some(name_node) = node.child_by_field_name("name") {
-                if let Ok(name) = name_node.utf8_text(source) {
-                    process_symbol(
-                        &node,
-                        name,
-                        kind,
-                        source,
-                        file_path,
-                        language,
-                        sql,
-                        context,
-                    );
-                    symbol_count += 1;
-                }
+            // Process this symbol - handle different name extraction strategies
+            let name = extract_symbol_name(&node, source, language)
+                .or_else(|| {
+                    node.child_by_field_name("name")
+                        .and_then(|n| n.utf8_text(source).ok())
+                        .map(|s| s.to_string())
+                });
+                
+            if let Some(name) = name {
+                process_symbol(
+                    &node,
+                    &name,
+                    kind,
+                    source,
+                    file_path,
+                    language,
+                    sql,
+                    context,
+                );
+                symbol_count += 1;
             }
         }
     } else if symbol_kind != "unknown" {
@@ -659,13 +688,31 @@ fn process_symbol(
 ) {
     match kind {
         "function" => {
+            // Update context with current function
+            context.current_function = Some(name.to_string());
+            
             extract_function_facts(node, source, file_path, name, sql, language);
-            extract_call_expressions(*node, source, language, context);
+            
+            // Add to code_search table
+            let signature = node.utf8_text(source)
+                .unwrap_or("")
+                .lines()
+                .next()
+                .unwrap_or("");
+            
+            sql.push_str(&format!(
+                "INSERT OR REPLACE INTO code_search (path, name, signature) VALUES ('{}', '{}', '{}');\n",
+                escape_sql(file_path),
+                escape_sql(name),
+                escape_sql(signature)
+            ));
         }
         "struct" | "class" | "enum" | "interface" | "type_alias" | "const" => {
             extract_type_definition(node, source, file_path, name, kind, sql, language);
         }
         "import" => {
+            // This shouldn't be reached anymore as imports are handled specially
+            // in extract_symbols_from_tree, but keep for safety
             extract_import_fact(*node, source, file_path, sql, language);
         }
         _ => {}
@@ -731,11 +778,20 @@ fn extract_function_facts(
         .map(|rt| rt.contains("Option"))
         .unwrap_or(false);
 
-    // Simple complexity estimate
-    let complexity = estimate_complexity(node);
+    // Extract generics and format parameters
+    let generics = if let Some(spec) = get_language_spec(language) {
+        (spec.extract_generics)(node, source)
+            .unwrap_or_else(|| String::new())
+    } else {
+        String::new()
+    };
+    
+    let params_str = params.join(", ");
+    let generic_count = if generics.is_empty() { 0 } else { generics.matches(',').count() + 1 };
+    let return_type_str = return_type.unwrap_or_else(|| String::new());
 
     sql.push_str(&format!(
-        "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, line_number, complexity_estimate, has_tests) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, {}, FALSE);\n",
+        "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, '{}', '{}');\n",
         escape_sql(file_path),
         escape_sql(name),
         takes_mut_self,
@@ -746,8 +802,9 @@ fn extract_function_facts(
         is_unsafe,
         is_public,
         param_count,
-        node.start_position().row + 1,
-        complexity
+        generic_count,
+        escape_sql(&params_str),
+        escape_sql(&return_type_str)
     ));
 }
 
@@ -818,31 +875,106 @@ fn extract_call_expressions(
     language: Language,
     context: &mut ParseContext,
 ) {
-    let mut cursor = node.walk();
+    let line_number = (node.start_position().row + 1) as i32;
     
-    // Walk through the function body looking for calls
-    for child in node.children(&mut cursor) {
-        match (language, child.kind()) {
-            (Language::Rust, "call_expression") => {
-                if let Some(function) = child.child_by_field_name("function") {
-                    if let Ok(_callee) = function.utf8_text(source) {
-                        // For now, we don't have the caller name in this context
-                        // This would need to be passed down from the parent
-                        // TODO: Add call graph entry when we have caller context
-                    }
+    match (language, node.kind()) {
+        // Rust call expressions
+        (Language::Rust, "call_expression") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                if let Ok(callee) = func_node.utf8_text(source) {
+                    context.add_call(callee.to_string(), "direct".to_string(), line_number);
                 }
             }
-            (Language::Go, "call_expression") => {
-                if let Some(function) = child.child_by_field_name("function") {
-                    if let Ok(_callee) = function.utf8_text(source) {
-                        // TODO: Add call graph entry when we have caller context
-                    }
+        }
+        (Language::Rust, "method_call_expression") => {
+            if let Some(method_node) = node.child_by_field_name("name") {
+                if let Ok(callee) = method_node.utf8_text(source) {
+                    context.add_call(callee.to_string(), "method".to_string(), line_number);
                 }
             }
-            _ => {}
         }
         
-        // Recurse
+        // Go call expressions
+        (Language::Go, "call_expression") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                if let Ok(callee) = func_node.utf8_text(source) {
+                    let call_type = if callee.contains("go ") {
+                        "async"
+                    } else {
+                        "direct"
+                    };
+                    context.add_call(
+                        callee.replace("go ", ""),
+                        call_type.to_string(),
+                        line_number,
+                    );
+                }
+            }
+        }
+        (Language::Go, "selector_expression") => {
+            // Go method calls are selector expressions followed by call_expression
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "call_expression" {
+                    if let Some(field_node) = node.child_by_field_name("field") {
+                        if let Ok(callee) = field_node.utf8_text(source) {
+                            context.add_call(callee.to_string(), "method".to_string(), line_number);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Python call expressions
+        (Language::Python, "call") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                if let Ok(callee) = func_node.utf8_text(source) {
+                    let call_type = if callee.starts_with("await ") {
+                        "async"
+                    } else {
+                        "direct"
+                    };
+                    context.add_call(
+                        callee.replace("await ", ""),
+                        call_type.to_string(),
+                        line_number,
+                    );
+                }
+            }
+        }
+        
+        // JavaScript/TypeScript call expressions
+        (Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX, "call_expression") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                if let Ok(callee) = func_node.utf8_text(source) {
+                    let call_type = if callee.starts_with("await ") {
+                        "async"
+                    } else {
+                        "direct"
+                    };
+                    context.add_call(
+                        callee.replace("await ", ""),
+                        call_type.to_string(),
+                        line_number,
+                    );
+                }
+            }
+        }
+        
+        // C/C++ call expressions
+        (Language::C | Language::Cpp, "call_expression") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                if let Ok(callee) = func_node.utf8_text(source) {
+                    context.add_call(callee.to_string(), "direct".to_string(), line_number);
+                }
+            }
+        }
+        
+        _ => {}
+    }
+    
+    // Recurse into children
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
         extract_call_expressions(child, source, language, context);
     }
 }
@@ -901,23 +1033,6 @@ fn extract_keywords(doc: &str) -> Vec<String> {
     words.into_iter().take(10).collect()
 }
 
-fn estimate_complexity(node: &Node) -> i32 {
-    let mut complexity = 1;
-    let mut cursor = node.walk();
-
-    for child in node.children(&mut cursor) {
-        match child.kind() {
-            "if_statement" | "if_expression" | "match_expression" | "while_statement"
-            | "for_statement" | "loop_expression" => {
-                complexity += 1;
-            }
-            _ => {}
-        }
-        complexity += estimate_complexity(&child);
-    }
-
-    complexity
-}
 
 fn execute_sql_batch(db_path: &str, sql: &str) -> Result<()> {
     use std::process::Command;
