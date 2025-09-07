@@ -521,7 +521,12 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         let mut parser = match languages::create_parser_for_path(&file_path) {
             Ok(p) => p,
             Err(e) => {
-                eprintln!("  ⚠️  Failed to create parser for {} ({}): {}", relative_path, language.name(), e);
+                eprintln!(
+                    "  ⚠️  Failed to create parser for {} ({}): {}",
+                    relative_path,
+                    language.name(),
+                    e
+                );
                 files_with_errors += 1;
                 continue;
             }

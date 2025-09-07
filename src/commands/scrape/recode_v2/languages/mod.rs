@@ -124,4 +124,3 @@ pub fn create_parser_for_path(path: &Path) -> Result<Parser> {
 
     Ok(parser)
 }
-
