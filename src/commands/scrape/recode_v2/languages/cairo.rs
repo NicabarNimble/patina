@@ -32,7 +32,7 @@ impl CairoProcessor {
             
             // Insert into function_facts - match the actual schema
             sql_statements.push(format!(
-                "INSERT INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES ('{}', '{}', 0, 0, {}, {}, 0, 0, {}, {}, 0, '{}', '{}');",
+                "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES ('{}', '{}', 0, 0, {}, {}, 0, 0, {}, {}, 0, '{}', '{}');",
                 escape_sql(file_path),
                 escape_sql(&func.name),
                 if func.return_type.as_deref().unwrap_or("").contains("Result") { 1 } else { 0 },
@@ -45,7 +45,7 @@ impl CairoProcessor {
             
             // Also insert into code_search for consistency - match the actual schema
             sql_statements.push(format!(
-                "INSERT INTO code_search (path, name, signature, context) VALUES ('{}', '{}', '{}', '{}');",
+                "INSERT OR REPLACE INTO code_search (path, name, signature, context) VALUES ('{}', '{}', '{}', '{}');",
                 escape_sql(file_path),
                 escape_sql(&func.name),
                 escape_sql(&signature),
@@ -64,7 +64,7 @@ impl CairoProcessor {
             };
             
             sql_statements.push(format!(
-                "INSERT INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', '{}', 'struct', '{}');",
+                "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', '{}', 'struct', '{}');",
                 escape_sql(file_path),
                 escape_sql(&s.name),
                 escape_sql(&definition),
@@ -76,7 +76,7 @@ impl CairoProcessor {
         // Extract traits as types
         for t in symbols.traits {
             sql_statements.push(format!(
-                "INSERT INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', 'trait {}', 'trait', '{}');",
+                "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', 'trait {}', 'trait', '{}');",
                 escape_sql(file_path),
                 escape_sql(&t.name),
                 escape_sql(&t.name),
@@ -92,7 +92,7 @@ impl CairoProcessor {
             let imported_item = imp.path.split("::").last().unwrap_or(&imp.path);
             
             sql_statements.push(format!(
-                "INSERT INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');",
+                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');",
                 escape_sql(file_path),
                 escape_sql(imported_item),
                 escape_sql(&imp.path),
@@ -104,7 +104,7 @@ impl CairoProcessor {
         // Extract modules as types (they define a namespace)
         for m in symbols.modules {
             sql_statements.push(format!(
-                "INSERT INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', 'mod {}', 'module', '{}');",
+                "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', 'mod {}', 'module', '{}');",
                 escape_sql(file_path),
                 escape_sql(&m.name),
                 escape_sql(&m.name),
