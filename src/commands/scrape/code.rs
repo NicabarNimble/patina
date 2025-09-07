@@ -1204,7 +1204,6 @@ fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<usiz
         initialize_database(db_path)?;
     }
 
-
     // Step 3: Extract code metadata with tree-sitter
     let symbol_count = extract_code_metadata(db_path, work_dir, force)?;
 
@@ -1218,11 +1217,9 @@ fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<usiz
 // CHAPTER 3: EXTRACTION - Git Metrics
 // ============================================================================
 
-
 // ============================================================================
 // CHAPTER 4: EXTRACTION - Pattern References
 // ============================================================================
-
 
 // ============================================================================
 // CHAPTER 5: EXTRACTION - Semantic Data
@@ -1418,7 +1415,6 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, force: bool) -> Result<
     let mut parser: Option<tree_sitter::Parser> = None;
     let mut batch_count = 0;
 
-
     // Process only new and modified files
     for (file, language) in files_to_process {
         // Check if file needs reindexing (mtime-based incremental)
@@ -1443,7 +1439,6 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, force: bool) -> Result<
 
             if let Some(ref mut p) = parser {
                 if let Some(tree) = p.parse(&content, None) {
-
                     let mut context = ParseContext::new();
 
                     // Use iterative processing for C/C++ to avoid stack overflow
@@ -1518,7 +1513,6 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, force: bool) -> Result<
             let content = std::fs::read_to_string(&file_path)?;
             if let Some(ref mut p) = parser {
                 if let Some(tree) = p.parse(&content, None) {
-
                     let mut cursor = tree.walk();
                     let mut context = ParseContext::new();
                     symbol_count += process_ast_node(
@@ -1605,7 +1599,6 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, force: bool) -> Result<
     }
 
     println!("  ✓ Processed {} symbols", symbol_count);
-
 
     // Save and report skipped files
     if !skipped_files.is_empty() {
@@ -1999,7 +1992,6 @@ fn process_c_cpp_iterative(
                     // Extract function facts for C/C++
                     extract_function_facts(node, source, file_path, &name, sql, language);
 
-
                     // Add to code_search
                     let signature = node
                         .utf8_text(source)
@@ -2066,7 +2058,7 @@ fn process_c_cpp_iterative(
 /// Uses iterative approach to avoid stack overflow with deeply nested declarators
 fn extract_c_function_name(declarator: tree_sitter::Node) -> Option<tree_sitter::Node> {
     let mut current = declarator;
-    
+
     loop {
         // C function declarators can be nested (function pointers, etc.)
         // Look for the identifier
@@ -2536,7 +2528,6 @@ fn process_ast_node(
             "type_alias" | "struct" | "trait" | "const" => {
                 // Extract type vocabulary
                 extract_type_definition(node, source, file_path, name, kind, sql, language);
-
             }
             "impl" => {}
             _ => {}
@@ -2766,7 +2757,6 @@ fn extract_function_facts(
         parameter_list,  // Already escaped with '' replacement
         return_type      // Already escaped with '' replacement
     ));
-
 }
 
 /// Extract type definitions for vocabulary
@@ -2901,7 +2891,6 @@ fn extract_import_fact(
     }
 }
 
-
 // ============================================================================
 // CHAPTER 8: UTILITIES
 // ============================================================================
@@ -3031,10 +3020,6 @@ CREATE INDEX IF NOT EXISTS idx_documentation_type ON documentation(symbol_type);
 // ============================================================================
 // Pattern detection has been moved to src/commands/ask/patterns.rs
 // The ask command now discovers patterns from the extracted data
-
-
-
-
 
 // ============================================================================
 // LANGUAGES MODULE

@@ -10,7 +10,7 @@
 //! - Structs, unions, and enums
 //! - No built-in visibility (header exposure = public)
 
-use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
+use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// C language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
@@ -18,22 +18,22 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         // C uses /** */ for doc comments
         text.starts_with("/**") || text.starts_with("/*!")
     },
-    
+
     parse_visibility: |_node, _name, _source| {
         // C doesn't have visibility modifiers, everything in headers is public
         true
     },
-    
+
     has_async: |_node, _source| {
         // C doesn't have async
         false
     },
-    
+
     has_unsafe: |_node, _source| {
         // All C is technically unsafe from Rust's perspective
         true
     },
-    
+
     extract_params: |node, source| {
         if let Some(params_node) = node
             .child_by_field_name("declarator")
@@ -53,18 +53,18 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             Vec::new()
         }
     },
-    
+
     extract_return_type: |node, source| {
         node.child_by_field_name("type")
             .and_then(|t| t.utf8_text(source).ok())
             .map(String::from)
     },
-    
+
     extract_generics: |_node, _source| {
         // C doesn't have generics
         None
     },
-    
+
     get_symbol_kind: |node_kind| match node_kind {
         "function_definition" => "function",
         "struct_specifier" => "struct",
@@ -75,9 +75,9 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         "preproc_include" => "import",
         _ => "unknown",
     },
-    
+
     get_symbol_kind_complex: |_node, _source| None,
-    
+
     clean_doc_comment: |raw| {
         raw.lines()
             .map(|line| {
@@ -90,17 +90,14 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                     .or_else(|| trimmed.strip_prefix("/*"))
                     .or_else(|| trimmed.strip_prefix("*"))
                     .unwrap_or(trimmed);
-                
-                cleaned
-                    .strip_suffix("*/")
-                    .unwrap_or(cleaned)
-                    .trim()
+
+                cleaned.strip_suffix("*/").unwrap_or(cleaned).trim()
             })
             .filter(|line| !line.is_empty())
             .collect::<Vec<_>>()
             .join(" ")
     },
-    
+
     extract_import_details: |node, source| {
         let import_text = node.utf8_text(source).unwrap_or("");
         let import_clean = import_text
@@ -118,10 +115,10 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             is_external,
         )
     },
-    
+
     extract_calls: Some(|node, source, context| {
         let line_number = (node.start_position().row + 1) as i32;
-        
+
         match node.kind() {
             "call_expression" => {
                 // C function calls
@@ -135,11 +132,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                 // C preprocessor macros
                 if let Some(macro_node) = node.child_by_field_name("macro") {
                     if let Ok(macro_name) = macro_node.utf8_text(source) {
-                        context.add_call(
-                            macro_name.to_string(),
-                            "macro".to_string(),
-                            line_number,
-                        );
+                        context.add_call(macro_name.to_string(), "macro".to_string(), line_number);
                     }
                 }
             }

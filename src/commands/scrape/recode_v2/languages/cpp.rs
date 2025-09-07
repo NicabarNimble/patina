@@ -11,7 +11,7 @@
 //! - RAII and constructors/destructors
 //! - Modern C++ features (auto, lambdas, etc.)
 
-use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
+use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// C++ language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
@@ -19,17 +19,17 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         // C++ uses /** */ or /// for doc comments
         text.starts_with("/**") || text.starts_with("///") || text.starts_with("//!")
     },
-    
+
     parse_visibility: |node, _name, source| {
         // Check for public/private/protected access specifiers
         // Default is private for class, public for struct
         let mut cursor = node.walk();
         let parent = node.parent();
-        
+
         // Check if we're in a class (default private) or struct (default public)
         let default_public = parent
             .is_none_or(|p| p.kind() == "struct_specifier" || p.kind() == "namespace_definition");
-        
+
         // Look for explicit access specifiers
         for child in node.children(&mut cursor) {
             if let Ok(text) = child.utf8_text(source) {
@@ -42,17 +42,17 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         }
         default_public
     },
-    
+
     has_async: |_node, _source| {
         // C++ doesn't have async keyword (uses std::async)
         false
     },
-    
+
     has_unsafe: |_node, _source| {
         // All C++ is technically unsafe from Rust's perspective
         true
     },
-    
+
     extract_params: |node, source| {
         if let Some(params_node) = node
             .child_by_field_name("declarator")
@@ -74,7 +74,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             Vec::new()
         }
     },
-    
+
     extract_return_type: |node, source| {
         // Look for trailing return type first (C++11 style)
         node.child_by_field_name("trailing_return_type")
@@ -82,7 +82,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             .and_then(|t| t.utf8_text(source).ok())
             .map(String::from)
     },
-    
+
     extract_generics: |node, source| {
         // Look for template parameters
         node.parent()
@@ -96,7 +96,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             .and_then(|tp| tp.utf8_text(source).ok())
             .map(String::from)
     },
-    
+
     get_symbol_kind: |node_kind| match node_kind {
         "function_definition" => "function",
         "class_specifier" => "class",
@@ -110,7 +110,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         "preproc_include" => "import",
         _ => "unknown",
     },
-    
+
     get_symbol_kind_complex: |node, _source| {
         // Check if template_declaration contains a class/struct/function
         if node.kind() == "template_declaration" {
@@ -125,7 +125,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         }
         None
     },
-    
+
     clean_doc_comment: |raw| {
         raw.lines()
             .map(|line| {
@@ -144,7 +144,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             .collect::<Vec<_>>()
             .join(" ")
     },
-    
+
     extract_import_details: |node, source| {
         let import_text = node.utf8_text(source).unwrap_or("");
         let import_clean = import_text
@@ -162,10 +162,10 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             is_external,
         )
     },
-    
+
     extract_calls: Some(|node, source, context| {
         let line_number = (node.start_position().row + 1) as i32;
-        
+
         match node.kind() {
             "call_expression" => {
                 // C++ function/method calls

@@ -11,15 +11,15 @@ use tree_sitter::Parser;
 // ============================================================================
 // LANGUAGE MODULES
 // ============================================================================
-pub mod rust;
-pub mod go;
-pub mod python;
-pub mod javascript;
-pub mod typescript;
-pub mod solidity;
 pub mod c;
+pub mod cairo;
 pub mod cpp;
-pub mod cairo; // Special non-tree-sitter parser
+pub mod go;
+pub mod javascript;
+pub mod python;
+pub mod rust;
+pub mod solidity;
+pub mod typescript; // Special non-tree-sitter parser
 
 // ============================================================================
 // LANGUAGE ENUM
@@ -31,13 +31,13 @@ pub enum Language {
     Go,
     Python,
     JavaScript,
-    JavaScriptJSX,  // .jsx files
+    JavaScriptJSX, // .jsx files
     TypeScript,
-    TypeScriptTSX,  // .tsx files
+    TypeScriptTSX, // .tsx files
     Solidity,
-    Cairo,          // Future
-    C,              // Future
-    Cpp,            // Future
+    Cairo, // Future
+    C,     // Future
+    Cpp,   // Future
     Unknown,
 }
 
@@ -59,7 +59,7 @@ impl Language {
             _ => Language::Unknown,
         }
     }
-    
+
     /// Detect language from file extension string
     pub fn from_extension(ext: &str) -> Option<Self> {
         let lang = match ext {
@@ -85,12 +85,8 @@ impl Language {
             Language::Rust => Some(patina_metal::Metal::Rust),
             Language::Go => Some(patina_metal::Metal::Go),
             Language::Python => Some(patina_metal::Metal::Python),
-            Language::JavaScript | Language::JavaScriptJSX => {
-                Some(patina_metal::Metal::JavaScript)
-            }
-            Language::TypeScript | Language::TypeScriptTSX => {
-                Some(patina_metal::Metal::TypeScript)
-            }
+            Language::JavaScript | Language::JavaScriptJSX => Some(patina_metal::Metal::JavaScript),
+            Language::TypeScript | Language::TypeScriptTSX => Some(patina_metal::Metal::TypeScript),
             Language::Solidity => Some(patina_metal::Metal::Solidity),
             Language::Cairo => Some(patina_metal::Metal::Cairo),
             Language::C => Some(patina_metal::Metal::C),

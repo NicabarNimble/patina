@@ -12,13 +12,11 @@
 //! - Decorators and metadata
 //! - JSX support (.tsx files)
 
-use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
+use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// TypeScript language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| {
-        text.starts_with("/**") || text.starts_with("///")
-    },
+    is_doc_comment: |text| text.starts_with("/**") || text.starts_with("///"),
 
     parse_visibility: |node, _name, source| {
         let text = node.utf8_text(source).unwrap_or("");
@@ -26,9 +24,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         !text.contains("private") && !text.contains("protected")
     },
 
-    has_async: |node, source| {
-        node.utf8_text(source).unwrap_or("").contains("async")
-    },
+    has_async: |node, source| node.utf8_text(source).unwrap_or("").contains("async"),
 
     has_unsafe: |_node, _source| {
         // TypeScript doesn't have unsafe keyword
@@ -137,10 +133,10 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             (String::new(), String::new(), false)
         }
     },
-    
+
     extract_calls: Some(|node, source, context| {
         let line_number = (node.start_position().row + 1) as i32;
-        
+
         match node.kind() {
             "call_expression" => {
                 // TypeScript function calls

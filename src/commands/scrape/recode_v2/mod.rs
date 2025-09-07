@@ -41,37 +41,37 @@ pub use languages::Language;
 pub struct LanguageSpec {
     /// Check if a comment is a documentation comment
     pub is_doc_comment: fn(&str) -> bool,
-    
+
     /// Parse visibility from node and name
     pub parse_visibility: fn(&Node, &str, &[u8]) -> bool,
-    
+
     /// Check if function is async
     pub has_async: fn(&Node, &[u8]) -> bool,
-    
+
     /// Check if function is unsafe
     pub has_unsafe: fn(&Node, &[u8]) -> bool,
-    
+
     /// Extract function parameters
     pub extract_params: fn(&Node, &[u8]) -> Vec<String>,
-    
+
     /// Extract return type
     pub extract_return_type: fn(&Node, &[u8]) -> Option<String>,
-    
+
     /// Extract generic parameters
     pub extract_generics: fn(&Node, &[u8]) -> Option<String>,
-    
+
     /// Map node kind to symbol kind (simple mapping)
     pub get_symbol_kind: fn(&str) -> &'static str,
-    
+
     /// Map node to symbol kind (complex cases that need node inspection)
     pub get_symbol_kind_complex: fn(&Node, &[u8]) -> Option<&'static str>,
-    
+
     /// Clean documentation text for a language
     pub clean_doc_comment: fn(&str) -> String,
-    
+
     /// Extract import details from an import node
     pub extract_import_details: fn(&Node, &[u8]) -> (String, String, bool),
-    
+
     /// Extract call expressions from a node (language-specific)
     /// This allows each language to handle its unique call patterns
     pub extract_calls: Option<fn(&Node, &[u8], &mut ParseContext)>,
@@ -84,7 +84,7 @@ pub struct LanguageSpec {
 static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> =
     LazyLock::new(|| {
         let mut registry = HashMap::new();
-        
+
         // Register each language from its module
         registry.insert(Language::Rust, &languages::rust::SPEC);
         registry.insert(Language::Go, &languages::go::SPEC);
@@ -97,7 +97,7 @@ static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> =
         registry.insert(Language::C, &languages::c::SPEC);
         registry.insert(Language::Cpp, &languages::cpp::SPEC);
         // Note: Cairo is not registered here as it uses cairo-lang-parser instead of tree-sitter
-        
+
         registry
     });
 
@@ -113,7 +113,7 @@ pub fn get_language_spec(language: Language) -> Option<&'static LanguageSpec> {
 /// Initialize a new knowledge database
 pub fn initialize(config: &ScrapeConfig) -> Result<()> {
     println!("🗄️  Initializing optimized knowledge database (recode v2)...");
-    
+
     // Create parent directory if needed
     if let Some(parent) = Path::new(&config.db_path).parent() {
         std::fs::create_dir_all(parent)?;
@@ -126,7 +126,7 @@ pub fn initialize(config: &ScrapeConfig) -> Result<()> {
 
     // Initialize with schema
     initialize_database(&config.db_path)?;
-    
+
     println!("✅ Database initialized at {}", config.db_path);
     Ok(())
 }
@@ -134,12 +134,12 @@ pub fn initialize(config: &ScrapeConfig) -> Result<()> {
 /// Main entry point for the recode command
 pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
     println!("🔄 Running recode v2 with modular language architecture...");
-    
+
     let start = std::time::Instant::now();
-    
+
     // Determine work directory
     let work_dir = determine_work_directory(&config)?;
-    
+
     // Print repo info if scraping a repository
     if config.db_path.contains("layer/dust/repos/") {
         if let Some(repo_name) = config
@@ -152,19 +152,19 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
         }
     }
     println!("📂 Working directory: {}", work_dir.display());
-    
+
     // Initialize database if needed
     if !Path::new(&config.db_path).exists() || config.force {
         initialize_database(&config.db_path)?;
     }
-    
+
     // Extract and index
     let items_processed = extract_and_index(&config.db_path, &work_dir, config.force)?;
-    
+
     // Get database size
     let metadata = std::fs::metadata(&config.db_path)?;
     let database_size_kb = metadata.len() / 1024;
-    
+
     Ok(super::ScrapeStats {
         items_processed,
         time_elapsed: start.elapsed(),
@@ -203,7 +203,7 @@ fn determine_work_directory(config: &ScrapeConfig) -> Result<PathBuf> {
 /// Initialize DuckDB database with lean schema and optimal settings for small size
 fn initialize_database(db_path: &str) -> Result<()> {
     use std::process::Command;
-    
+
     // Create parent directory if needed
     if let Some(parent) = Path::new(db_path).parent() {
         std::fs::create_dir_all(parent)?;
@@ -437,9 +437,8 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
     let mut files_processed = 0;
 
     // Separate Cairo files from tree-sitter files for dual-track processing
-    let (cairo_files, treesitter_files): (Vec<_>, Vec<_>) = all_files
-        .into_iter()
-        .partition(|path| {
+    let (cairo_files, treesitter_files): (Vec<_>, Vec<_>) =
+        all_files.into_iter().partition(|path| {
             path.extension()
                 .and_then(|e| e.to_str())
                 .map(|ext| ext == "cairo")
@@ -516,10 +515,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         };
 
         // Detect language
-        let ext = file_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
+        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
         let language = match Language::from_extension(ext) {
             Some(lang) => lang,
             None => continue,
@@ -592,8 +588,10 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
     // Execute all SQL in one batch
     let total_stored = functions_count + types_count + imports_count;
     if total_stored > 0 {
-        println!("  💾 Writing {} functions, {} types, {} imports to database...", 
-                 functions_count, types_count, imports_count);
+        println!(
+            "  💾 Writing {} functions, {} types, {} imports to database...",
+            functions_count, types_count, imports_count
+        );
         execute_sql_batch(db_path, &sql_statements)?;
     }
 
@@ -614,7 +612,8 @@ fn extract_symbols_from_tree(
     language: Language,
     sql: &mut String,
     context: &mut ParseContext,
-) -> (usize, usize, usize) { // (functions, types, imports)
+) -> (usize, usize, usize) {
+    // (functions, types, imports)
     let mut function_count = 0;
     let mut type_count = 0;
     let mut import_count = 0;
@@ -627,10 +626,10 @@ fn extract_symbols_from_tree(
 
     // First, extract any call expressions from this node regardless of whether it's a symbol
     extract_call_expressions(node, source, language, context);
-    
+
     // Determine symbol kind
     let symbol_kind = (spec.get_symbol_kind)(node.kind());
-    
+
     // Handle imports specially - they don't have a "name" field
     if symbol_kind == "import" {
         extract_import_fact(node, source, file_path, sql, language);
@@ -643,26 +642,22 @@ fn extract_symbols_from_tree(
         // Try complex symbol detection
         if let Some(kind) = (spec.get_symbol_kind_complex)(&node, source) {
             // Process this symbol - handle different name extraction strategies
-            let name = extract_symbol_name(&node, source, language)
-                .or_else(|| {
-                    node.child_by_field_name("name")
-                        .and_then(|n| n.utf8_text(source).ok())
-                        .map(|s| s.to_string())
-                });
-                
+            let name = extract_symbol_name(&node, source, language).or_else(|| {
+                node.child_by_field_name("name")
+                    .and_then(|n| n.utf8_text(source).ok())
+                    .map(|s| s.to_string())
+            });
+
             if let Some(name) = name {
                 let (is_func, is_type) = process_symbol(
-                    &node,
-                    &name,
-                    kind,
-                    source,
-                    file_path,
-                    language,
-                    sql,
-                    context,
+                    &node, &name, kind, source, file_path, language, sql, context,
                 );
-                if is_func { function_count += 1; }
-                if is_type { type_count += 1; }
+                if is_func {
+                    function_count += 1;
+                }
+                if is_type {
+                    type_count += 1;
+                }
             }
         }
     } else if symbol_kind != "unknown" {
@@ -678,22 +673,19 @@ fn extract_symbols_from_tree(
                 sql,
                 context,
             );
-            if is_func { function_count += 1; }
-            if is_type { type_count += 1; }
+            if is_func {
+                function_count += 1;
+            }
+            if is_type {
+                type_count += 1;
+            }
         }
     }
 
     // Recurse into children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        let (f, t, i) = extract_symbols_from_tree(
-            child,
-            source,
-            file_path,
-            language,
-            sql,
-            context,
-        );
+        let (f, t, i) = extract_symbols_from_tree(child, source, file_path, language, sql, context);
         function_count += f;
         type_count += t;
         import_count += i;
@@ -704,15 +696,14 @@ fn extract_symbols_from_tree(
 
 fn extract_symbol_name(node: &Node, source: &[u8], language: Language) -> Option<String> {
     // Special handling for C/C++ function declarators
-    if language == Language::C || language == Language::Cpp {
-        if node.kind() == "function_definition" {
+    if (language == Language::C || language == Language::Cpp)
+        && node.kind() == "function_definition" {
             if let Some(declarator) = node.child_by_field_name("declarator") {
                 if let Some(name_node) = extract_c_function_name(declarator) {
                     return name_node.utf8_text(source).ok().map(|s| s.to_string());
                 }
             }
         }
-    }
 
     // Standard name extraction
     node.child_by_field_name("name")
@@ -770,7 +761,8 @@ fn process_symbol(
     language: Language,
     sql: &mut String,
     context: &mut ParseContext,
-) -> (bool, bool) { // (is_function, is_type)
+) -> (bool, bool) {
+    // (is_function, is_type)
     // Extract documentation first (applies to all symbol types)
     if let Some((doc_raw, doc_clean, keywords)) = extract_doc_comment(*node, source, language) {
         let summary = extract_summary(&doc_clean);
@@ -790,21 +782,22 @@ fn process_symbol(
             has_examples
         ));
     }
-    
+
     match kind {
         "function" => {
             // Update context with current function
             context.current_function = Some(name.to_string());
-            
+
             extract_function_facts(node, source, file_path, name, sql, language);
-            
+
             // Add to code_search table
-            let signature = node.utf8_text(source)
+            let signature = node
+                .utf8_text(source)
                 .unwrap_or("")
                 .lines()
                 .next()
                 .unwrap_or("");
-            
+
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO code_search (path, name, signature) VALUES ('{}', '{}', '{}');\n",
                 escape_sql(file_path),
@@ -827,9 +820,7 @@ fn process_symbol(
             // These don't get stored, just used for context/recursion
             (false, false)
         }
-        _ => {
-            (false, false)
-        }
+        _ => (false, false),
     }
 }
 
@@ -859,7 +850,9 @@ fn extract_function_facts(
 
     // Analyze parameters for mutability
     let takes_mut_self = params.iter().any(|p| p.contains("&mut self"));
-    let takes_mut_params = params.iter().any(|p| p.contains("&mut ") && !p.contains("self"));
+    let takes_mut_params = params
+        .iter()
+        .any(|p| p.contains("&mut ") && !p.contains("self"));
 
     // Extract return type
     let return_type = (spec.extract_return_type)(node, source);
@@ -874,15 +867,18 @@ fn extract_function_facts(
 
     // Extract generics and format parameters
     let generics = if let Some(spec) = get_language_spec(language) {
-        (spec.extract_generics)(node, source)
-            .unwrap_or_else(|| String::new())
+        (spec.extract_generics)(node, source).unwrap_or_else(String::new)
     } else {
         String::new()
     };
-    
+
     let params_str = params.join(", ");
-    let generic_count = if generics.is_empty() { 0 } else { generics.matches(',').count() + 1 };
-    let return_type_str = return_type.unwrap_or_else(|| String::new());
+    let generic_count = if generics.is_empty() {
+        0
+    } else {
+        generics.matches(',').count() + 1
+    };
+    let return_type_str = return_type.unwrap_or_else(String::new);
 
     sql.push_str(&format!(
         "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, '{}', '{}');\n",
@@ -1032,7 +1028,6 @@ fn extract_keywords(doc: &str) -> Vec<String> {
 
     words.into_iter().take(10).collect()
 }
-
 
 fn execute_sql_batch(db_path: &str, sql: &str) -> Result<()> {
     use std::process::Command;
