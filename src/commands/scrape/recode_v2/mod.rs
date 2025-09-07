@@ -426,14 +426,17 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
     let mut sql_statements = String::with_capacity(1024 * 1024); // Pre-allocate 1MB
     sql_statements.push_str("BEGIN TRANSACTION;\n");
 
-    let mut total_symbols = 0;
+    let mut functions_count = 0;
+    let mut types_count = 0;
+    let mut imports_count = 0;
     let mut files_with_errors = 0;
 
     for file_path in &all_files {
-        let relative_path = file_path
-            .strip_prefix(work_dir)
-            .unwrap_or(file_path)
-            .to_string_lossy();
+        let relative_path = if let Ok(stripped) = file_path.strip_prefix(work_dir) {
+            format!("./{}", stripped.to_string_lossy())
+        } else {
+            file_path.to_string_lossy().to_string()
+        };
 
         // Read file content
         let source = match std::fs::read(file_path) {
@@ -491,7 +494,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
 
         // Extract symbols from AST
         let mut context = ParseContext::default();
-        let symbols = extract_symbols_from_tree(
+        let (funcs, types, imps) = extract_symbols_from_tree(
             tree.root_node(),
             &source,
             &relative_path,
@@ -499,7 +502,9 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
             &mut sql_statements,
             &mut context,
         );
-        total_symbols += symbols;
+        functions_count += funcs;
+        types_count += types;
+        imports_count += imps;
 
         // Add call graph entries with proper file path
         for (caller, callee, _file, call_type, line) in &context.call_graph_entries {
@@ -517,8 +522,10 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
     sql_statements.push_str("COMMIT;\n");
 
     // Execute all SQL in one batch
-    if total_symbols > 0 {
-        println!("  💾 Writing {} symbols to database...", total_symbols);
+    let total_stored = functions_count + types_count + imports_count;
+    if total_stored > 0 {
+        println!("  💾 Writing {} functions, {} types, {} imports to database...", 
+                 functions_count, types_count, imports_count);
         execute_sql_batch(db_path, &sql_statements)?;
     }
 
@@ -529,7 +536,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         );
     }
 
-    Ok(total_symbols)
+    Ok(total_stored)
 }
 
 fn extract_symbols_from_tree(
@@ -539,13 +546,15 @@ fn extract_symbols_from_tree(
     language: Language,
     sql: &mut String,
     context: &mut ParseContext,
-) -> usize {
-    let mut symbol_count = 0;
+) -> (usize, usize, usize) { // (functions, types, imports)
+    let mut function_count = 0;
+    let mut type_count = 0;
+    let mut import_count = 0;
 
     // Get language spec
     let spec = match get_language_spec(language) {
         Some(s) => s,
-        None => return 0,
+        None => return (0, 0, 0),
     };
 
     // First, extract any call expressions from this node regardless of whether it's a symbol
@@ -557,7 +566,7 @@ fn extract_symbols_from_tree(
     // Handle imports specially - they don't have a "name" field
     if symbol_kind == "import" {
         extract_import_fact(node, source, file_path, sql, language);
-        symbol_count += 1;
+        import_count += 1;
         // Still need to recurse into children
     } else if symbol_kind == "impl" || symbol_kind == "module" {
         // Skip impl blocks and modules - they don't get stored in tables
@@ -574,7 +583,7 @@ fn extract_symbols_from_tree(
                 });
                 
             if let Some(name) = name {
-                process_symbol(
+                let (is_func, is_type) = process_symbol(
                     &node,
                     &name,
                     kind,
@@ -584,13 +593,14 @@ fn extract_symbols_from_tree(
                     sql,
                     context,
                 );
-                symbol_count += 1;
+                if is_func { function_count += 1; }
+                if is_type { type_count += 1; }
             }
         }
     } else if symbol_kind != "unknown" {
         // Process regular symbol
         if let Some(name) = extract_symbol_name(&node, source, language) {
-            process_symbol(
+            let (is_func, is_type) = process_symbol(
                 &node,
                 &name,
                 symbol_kind,
@@ -600,14 +610,15 @@ fn extract_symbols_from_tree(
                 sql,
                 context,
             );
-            symbol_count += 1;
+            if is_func { function_count += 1; }
+            if is_type { type_count += 1; }
         }
     }
 
     // Recurse into children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        symbol_count += extract_symbols_from_tree(
+        let (f, t, i) = extract_symbols_from_tree(
             child,
             source,
             file_path,
@@ -615,9 +626,12 @@ fn extract_symbols_from_tree(
             sql,
             context,
         );
+        function_count += f;
+        type_count += t;
+        import_count += i;
     }
 
-    symbol_count
+    (function_count, type_count, import_count)
 }
 
 fn extract_symbol_name(node: &Node, source: &[u8], language: Language) -> Option<String> {
@@ -688,7 +702,27 @@ fn process_symbol(
     language: Language,
     sql: &mut String,
     context: &mut ParseContext,
-) {
+) -> (bool, bool) { // (is_function, is_type)
+    // Extract documentation first (applies to all symbol types)
+    if let Some((doc_raw, doc_clean, keywords)) = extract_doc_comment(*node, source, language) {
+        let summary = extract_summary(&doc_clean);
+        let has_examples = doc_raw.contains("```") || doc_raw.contains("Example:");
+
+        sql.push_str(&format!(
+            "INSERT OR REPLACE INTO documentation (file, symbol_name, symbol_type, line_number, doc_raw, doc_clean, doc_summary, keywords, doc_length, has_examples) VALUES ('{}', '{}', '{}', {}, '{}', '{}', '{}', {}, {}, {});\n",
+            escape_sql(file_path),
+            escape_sql(name),
+            kind,
+            node.start_position().row + 1,
+            escape_sql(&doc_raw),
+            escape_sql(&doc_clean),
+            escape_sql(&summary),
+            format_string_array(&keywords),
+            doc_clean.len(),
+            has_examples
+        ));
+    }
+    
     match kind {
         "function" => {
             // Update context with current function
@@ -709,39 +743,25 @@ fn process_symbol(
                 escape_sql(name),
                 escape_sql(signature)
             ));
+            (true, false)
         }
         "struct" | "class" | "enum" | "interface" | "type_alias" | "const" => {
             extract_type_definition(node, source, file_path, name, kind, sql, language);
+            (false, true)
         }
         "import" => {
             // This shouldn't be reached anymore as imports are handled specially
             // in extract_symbols_from_tree, but keep for safety
             extract_import_fact(*node, source, file_path, sql, language);
+            (false, false)
         }
         "impl" | "module" => {
             // These don't get stored, just used for context/recursion
+            (false, false)
         }
-        _ => {}
-    }
-
-    // Extract documentation if present
-    if let Some((doc_raw, doc_clean, keywords)) = extract_doc_comment(*node, source, language) {
-        let summary = extract_summary(&doc_clean);
-        let has_examples = doc_raw.contains("```") || doc_raw.contains("Example:");
-
-        sql.push_str(&format!(
-            "INSERT OR REPLACE INTO documentation (file, symbol_name, symbol_type, line_number, doc_raw, doc_clean, doc_summary, keywords, doc_length, has_examples) VALUES ('{}', '{}', '{}', {}, '{}', '{}', '{}', {}, {}, {});\n",
-            escape_sql(file_path),
-            escape_sql(name),
-            kind,
-            node.start_position().row + 1,
-            escape_sql(&doc_raw),
-            escape_sql(&doc_clean),
-            escape_sql(&summary),
-            format_string_array(&keywords),
-            doc_clean.len(),
-            has_examples
-        ));
+        _ => {
+            (false, false)
+        }
     }
 }
 
@@ -972,6 +992,33 @@ fn extract_call_expressions(
                 if let Ok(callee) = func_node.utf8_text(source) {
                     context.add_call(callee.to_string(), "direct".to_string(), line_number);
                 }
+            }
+        }
+        
+        // Solidity call expressions
+        (Language::Solidity, "call_expression") => {
+            if let Some(func_node) = node.child_by_field_name("function") {
+                if let Ok(callee) = func_node.utf8_text(source) {
+                    context.add_call(callee.to_string(), "direct".to_string(), line_number);
+                }
+            }
+        }
+        (Language::Solidity, "member_expression") => {
+            // Handle contract.method() calls
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "call_expression" {
+                    if let Some(property) = node.child_by_field_name("property") {
+                        if let Ok(callee) = property.utf8_text(source) {
+                            context.add_call(callee.to_string(), "method".to_string(), line_number);
+                        }
+                    }
+                }
+            }
+        }
+        (Language::Solidity, "new_expression") => {
+            // Handle "new Type[]" array constructors
+            if let Ok(text) = node.utf8_text(source) {
+                context.add_call(text.to_string(), "constructor".to_string(), line_number);
             }
         }
         
