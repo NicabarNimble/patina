@@ -444,10 +444,9 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
     let mut _files_processed = 0;
 
     // Separate Cairo files from tree-sitter files for dual-track processing
-    let (cairo_files, treesitter_files): (Vec<_>, Vec<_>) =
-        all_files.into_iter().partition(|(_, lang)| {
-            matches!(lang, Language::Cairo)
-        });
+    let (cairo_files, treesitter_files): (Vec<_>, Vec<_>) = all_files
+        .into_iter()
+        .partition(|(_, lang)| matches!(lang, Language::Cairo));
 
     // Process Cairo files with special parser
     for (file_path, _language) in cairo_files {
@@ -565,7 +564,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         functions_count += funcs;
         types_count += types;
         imports_count += imps;
-        files_processed += 1;
+        _files_processed += 1;
 
         // Add call graph entries with proper file path
         for (caller, callee, _file, call_type, line) in &context.call_graph_entries {
@@ -699,13 +698,14 @@ fn extract_symbols_from_tree(
 fn extract_symbol_name(node: &Node, source: &[u8], language: Language) -> Option<String> {
     // Special handling for C/C++ function declarators
     if (language == Language::C || language == Language::Cpp)
-        && node.kind() == "function_definition" {
-            if let Some(declarator) = node.child_by_field_name("declarator") {
-                if let Some(name_node) = extract_c_function_name(declarator) {
-                    return name_node.utf8_text(source).ok().map(|s| s.to_string());
-                }
+        && node.kind() == "function_definition"
+    {
+        if let Some(declarator) = node.child_by_field_name("declarator") {
+            if let Some(name_node) = extract_c_function_name(declarator) {
+                return name_node.utf8_text(source).ok().map(|s| s.to_string());
             }
         }
+    }
 
     // Standard name extraction
     node.child_by_field_name("name")
@@ -761,7 +761,9 @@ fn process_symbol(
 ) -> (bool, bool) {
     // (is_function, is_type)
     // Extract documentation first (applies to all symbol types)
-    if let Some((doc_raw, doc_clean, keywords)) = extract_doc_comment(*symbol.node, symbol.source, symbol.language) {
+    if let Some((doc_raw, doc_clean, keywords)) =
+        extract_doc_comment(*symbol.node, symbol.source, symbol.language)
+    {
         let summary = extract_summary(&doc_clean);
         let has_examples = doc_raw.contains("```") || doc_raw.contains("Example:");
 
@@ -785,10 +787,18 @@ fn process_symbol(
             // Update context with current function
             context.current_function = Some(symbol.name.to_string());
 
-            extract_function_facts(symbol.node, symbol.source, symbol.file_path, symbol.name, sql, symbol.language);
+            extract_function_facts(
+                symbol.node,
+                symbol.source,
+                symbol.file_path,
+                symbol.name,
+                sql,
+                symbol.language,
+            );
 
             // Add to code_search table
-            let signature = symbol.node
+            let signature = symbol
+                .node
                 .utf8_text(symbol.source)
                 .unwrap_or("")
                 .lines()
@@ -804,13 +814,27 @@ fn process_symbol(
             (true, false)
         }
         "struct" | "class" | "enum" | "interface" | "type_alias" | "const" => {
-            extract_type_definition(symbol.node, symbol.source, symbol.file_path, symbol.name, symbol.kind, sql, symbol.language);
+            extract_type_definition(
+                symbol.node,
+                symbol.source,
+                symbol.file_path,
+                symbol.name,
+                symbol.kind,
+                sql,
+                symbol.language,
+            );
             (false, true)
         }
         "import" => {
             // This shouldn't be reached anymore as imports are handled specially
             // in extract_symbols_from_tree, but keep for safety
-            extract_import_fact(*symbol.node, symbol.source, symbol.file_path, sql, symbol.language);
+            extract_import_fact(
+                *symbol.node,
+                symbol.source,
+                symbol.file_path,
+                sql,
+                symbol.language,
+            );
             (false, false)
         }
         "impl" | "module" => {
