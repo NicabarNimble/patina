@@ -10,7 +10,7 @@
 //! - Unsafe blocks
 //! - Macro usage
 
-use crate::commands::scrape::recode_v2::LanguageSpec;
+use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
 
 /// Rust language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
@@ -116,4 +116,36 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             is_external,
         )
     },
+    
+    extract_calls: Some(|node, source, context| {
+        let line_number = (node.start_position().row + 1) as i32;
+        
+        match node.kind() {
+            "call_expression" => {
+                // Regular function calls
+                if let Some(func_node) = node.child_by_field_name("function") {
+                    if let Ok(callee) = func_node.utf8_text(source) {
+                        context.add_call(callee.to_string(), "direct".to_string(), line_number);
+                    }
+                }
+            }
+            "method_call_expression" => {
+                // Method calls (e.g., object.method())
+                if let Some(method_node) = node.child_by_field_name("name") {
+                    if let Ok(callee) = method_node.utf8_text(source) {
+                        context.add_call(callee.to_string(), "method".to_string(), line_number);
+                    }
+                }
+            }
+            "macro_invocation" => {
+                // Rust macros (e.g., println!, vec!)
+                if let Some(macro_node) = node.child_by_field_name("macro") {
+                    if let Ok(callee) = macro_node.utf8_text(source) {
+                        context.add_call(callee.to_string(), "macro".to_string(), line_number);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }),
 };

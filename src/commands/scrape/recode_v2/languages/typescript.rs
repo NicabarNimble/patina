@@ -137,4 +137,6 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             (String::new(), String::new(), false)
         }
     },
+    
+    extract_calls: None,
 };
