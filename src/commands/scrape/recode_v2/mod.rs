@@ -559,6 +559,9 @@ fn extract_symbols_from_tree(
         extract_import_fact(node, source, file_path, sql, language);
         symbol_count += 1;
         // Still need to recurse into children
+    } else if symbol_kind == "impl" || symbol_kind == "module" {
+        // Skip impl blocks and modules - they don't get stored in tables
+        // but still recurse into their children
     } else if symbol_kind == "unknown" {
         // Try complex symbol detection
         if let Some(kind) = (spec.get_symbol_kind_complex)(&node, source) {
@@ -714,6 +717,9 @@ fn process_symbol(
             // This shouldn't be reached anymore as imports are handled specially
             // in extract_symbols_from_tree, but keep for safety
             extract_import_fact(*node, source, file_path, sql, language);
+        }
+        "impl" | "module" => {
+            // These don't get stored, just used for context/recursion
         }
         _ => {}
     }
