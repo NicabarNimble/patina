@@ -118,4 +118,6 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             is_external,
         )
     },
+    
+    extract_calls: None,
 };

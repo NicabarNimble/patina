@@ -71,6 +71,10 @@ pub struct LanguageSpec {
     
     /// Extract import details from an import node
     pub extract_import_details: fn(&Node, &[u8]) -> (String, String, bool),
+    
+    /// Extract call expressions from a node (language-specific)
+    /// This allows each language to handle its unique call patterns
+    pub extract_calls: Option<fn(&Node, &[u8], &mut ParseContext)>,
 }
 
 // ============================================================================
@@ -369,13 +373,13 @@ fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<usiz
 // PARSING CONTEXT
 // ============================================================================
 #[derive(Default)]
-struct ParseContext {
-    current_function: Option<String>,
-    call_graph_entries: Vec<(String, String, String, String, i32)>, // (caller, callee, file, call_type, line)
+pub struct ParseContext {
+    pub current_function: Option<String>,
+    pub call_graph_entries: Vec<(String, String, String, String, i32)>, // (caller, callee, file, call_type, line)
 }
 
 impl ParseContext {
-    fn add_call(&mut self, callee: String, call_type: String, line_number: i32) {
+    pub fn add_call(&mut self, callee: String, call_type: String, line_number: i32) {
         if let Some(ref caller) = self.current_function {
             self.call_graph_entries.push((
                 caller.clone(),
@@ -901,24 +905,20 @@ fn extract_call_expressions(
     language: Language,
     context: &mut ParseContext,
 ) {
+    // First check if the language has its own extract_calls implementation
+    if let Some(spec) = get_language_spec(language) {
+        if let Some(extract_fn) = spec.extract_calls {
+            // Use language-specific implementation
+            extract_fn(&node, source, context);
+            return;
+        }
+    }
+    
+    // Fall back to old implementation for languages not yet migrated
     let line_number = (node.start_position().row + 1) as i32;
     
     match (language, node.kind()) {
-        // Rust call expressions
-        (Language::Rust, "call_expression") => {
-            if let Some(func_node) = node.child_by_field_name("function") {
-                if let Ok(callee) = func_node.utf8_text(source) {
-                    context.add_call(callee.to_string(), "direct".to_string(), line_number);
-                }
-            }
-        }
-        (Language::Rust, "method_call_expression") => {
-            if let Some(method_node) = node.child_by_field_name("name") {
-                if let Ok(callee) = method_node.utf8_text(source) {
-                    context.add_call(callee.to_string(), "method".to_string(), line_number);
-                }
-            }
-        }
+        // Rust is now handled by its own module
         
         // Go call expressions
         (Language::Go, "call_expression") => {
@@ -995,32 +995,7 @@ fn extract_call_expressions(
             }
         }
         
-        // Solidity call expressions
-        (Language::Solidity, "call_expression") => {
-            if let Some(func_node) = node.child_by_field_name("function") {
-                if let Ok(callee) = func_node.utf8_text(source) {
-                    context.add_call(callee.to_string(), "direct".to_string(), line_number);
-                }
-            }
-        }
-        (Language::Solidity, "member_expression") => {
-            // Handle contract.method() calls
-            if let Some(parent) = node.parent() {
-                if parent.kind() == "call_expression" {
-                    if let Some(property) = node.child_by_field_name("property") {
-                        if let Ok(callee) = property.utf8_text(source) {
-                            context.add_call(callee.to_string(), "method".to_string(), line_number);
-                        }
-                    }
-                }
-            }
-        }
-        (Language::Solidity, "new_expression") => {
-            // Handle "new Type[]" array constructors
-            if let Ok(text) = node.utf8_text(source) {
-                context.add_call(text.to_string(), "constructor".to_string(), line_number);
-            }
-        }
+        // Solidity is now handled by its own module
         
         _ => {}
     }
