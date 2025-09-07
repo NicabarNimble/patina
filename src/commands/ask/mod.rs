@@ -9,11 +9,11 @@ pub struct AskCommand {
     /// Query to ask about the codebase
     #[arg(help = "What to ask (e.g., 'naming patterns', 'error handling', 'architecture')")]
     query: String,
-    
+
     /// Path to the database (defaults to .patina/knowledge.db)
     #[arg(short, long)]
     db: Option<PathBuf>,
-    
+
     /// Repository to query (if using repo-specific database)
     #[arg(short, long)]
     repo: Option<String>,
@@ -28,13 +28,16 @@ pub fn run(cmd: AskCommand) -> Result<()> {
     } else {
         PathBuf::from(".patina/knowledge.db")
     };
-    
+
     if !db_path.exists() {
-        anyhow::bail!("Database not found at {:?}. Run 'patina scrape code' first.", db_path);
+        anyhow::bail!(
+            "Database not found at {:?}. Run 'patina scrape code' first.",
+            db_path
+        );
     }
-    
+
     println!("📊 Analyzing codebase from {:?}...\n", db_path);
-    
+
     // Route queries to appropriate handlers
     match cmd.query.to_lowercase().as_str() {
         q if q.contains("pattern") || q.contains("naming") => {
@@ -58,6 +61,6 @@ pub fn run(cmd: AskCommand) -> Result<()> {
             println!("\nTry: patina ask 'naming patterns'");
         }
     }
-    
+
     Ok(())
 }

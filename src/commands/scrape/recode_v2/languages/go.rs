@@ -10,7 +10,7 @@
 //! - Multiple return values
 //! - Package-level declarations
 
-use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
+use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Go language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
@@ -18,22 +18,22 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         // Go uses // for doc comments
         text.starts_with("//")
     },
-    
+
     parse_visibility: |_node, name, _source| {
         // Go uses capitalization for visibility
         name.chars().next().is_some_and(|c| c.is_uppercase())
     },
-    
+
     has_async: |_node, _source| {
         // Go doesn't have async/await, it uses goroutines
         false
     },
-    
+
     has_unsafe: |_node, _source| {
         // Go doesn't have an unsafe keyword
         false
     },
-    
+
     extract_params: |node, source| {
         if let Some(params_node) = node.child_by_field_name("parameters") {
             let mut params = Vec::new();
@@ -50,20 +50,20 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             Vec::new()
         }
     },
-    
+
     extract_return_type: |node, source| {
         node.child_by_field_name("result")
             .and_then(|r| r.utf8_text(source).ok())
             .map(String::from)
     },
-    
+
     extract_generics: |node, source| {
         // Go 1.18+ has generics via type parameters
         node.child_by_field_name("type_parameters")
             .and_then(|tp| tp.utf8_text(source).ok())
             .map(String::from)
     },
-    
+
     get_symbol_kind: |node_kind| match node_kind {
         "function_declaration" => "function",
         "method_declaration" => "function",
@@ -73,7 +73,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         "import_declaration" => "import",
         _ => "unknown",
     },
-    
+
     get_symbol_kind_complex: |node, _source| {
         if node.kind() == "type_spec" {
             if node
@@ -93,7 +93,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             None
         }
     },
-    
+
     clean_doc_comment: |raw| {
         raw.lines()
             .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
@@ -101,7 +101,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             .collect::<Vec<_>>()
             .join(" ")
     },
-    
+
     extract_import_details: |node, source| {
         let import_text = node.utf8_text(source).unwrap_or("");
         let import_clean = import_text
@@ -118,17 +118,17 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             is_external,
         )
     },
-    
+
     extract_calls: Some(|node, source, context| {
         let line_number = (node.start_position().row + 1) as i32;
-        
+
         match node.kind() {
             "call_expression" => {
                 // Regular function calls and goroutines
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
                         let call_type = if callee.contains("go ") {
-                            "async"  // Goroutines are Go's async
+                            "async" // Goroutines are Go's async
                         } else {
                             "direct"
                         };
@@ -146,7 +146,11 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                     if parent.kind() == "call_expression" {
                         if let Some(field_node) = node.child_by_field_name("field") {
                             if let Ok(callee) = field_node.utf8_text(source) {
-                                context.add_call(callee.to_string(), "method".to_string(), line_number);
+                                context.add_call(
+                                    callee.to_string(),
+                                    "method".to_string(),
+                                    line_number,
+                                );
                             }
                         }
                     }

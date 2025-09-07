@@ -36,7 +36,7 @@ fn find_repo_actual_name(repo_name: &str) -> Option<String> {
     if !repos_dir.exists() {
         return None;
     }
-    
+
     std::fs::read_dir(repos_dir)
         .ok()?
         .filter_map(|entry| entry.ok())

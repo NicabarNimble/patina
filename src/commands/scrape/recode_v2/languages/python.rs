@@ -11,13 +11,11 @@
 //! - Decorators and class definitions
 //! - Import system (from/import statements)
 
-use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
+use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Python language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| {
-        text.starts_with("\"\"\"") || text.starts_with("'''")
-    },
+    is_doc_comment: |text| text.starts_with("\"\"\"") || text.starts_with("'''"),
 
     parse_visibility: |_node, name, _source| {
         // Python uses underscore convention for visibility
@@ -116,10 +114,10 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             is_external,
         )
     },
-    
+
     extract_calls: Some(|node, source, context| {
         let line_number = (node.start_position().row + 1) as i32;
-        
+
         match node.kind() {
             "call" => {
                 // Python function/method calls

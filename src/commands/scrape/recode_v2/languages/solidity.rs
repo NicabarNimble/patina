@@ -12,13 +12,11 @@
 //! - Unchecked blocks (similar to unsafe)
 //! - Library and contract declarations
 
-use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
+use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Solidity language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| {
-        text.starts_with("///") || text.starts_with("/**")
-    },
+    is_doc_comment: |text| text.starts_with("///") || text.starts_with("/**"),
 
     parse_visibility: |node, _name, source| {
         let text = node.utf8_text(source).unwrap_or("");
@@ -114,10 +112,10 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             (String::new(), String::new(), false)
         }
     },
-    
+
     extract_calls: Some(|node, source, context| {
         let line_number = (node.start_position().row + 1) as i32;
-        
+
         match node.kind() {
             "call_expression" => {
                 // Regular function calls
@@ -133,7 +131,11 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                     if parent.kind() == "call_expression" {
                         if let Some(property) = node.child_by_field_name("property") {
                             if let Ok(callee) = property.utf8_text(source) {
-                                context.add_call(callee.to_string(), "method".to_string(), line_number);
+                                context.add_call(
+                                    callee.to_string(),
+                                    "method".to_string(),
+                                    line_number,
+                                );
                             }
                         }
                     }
@@ -149,7 +151,11 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                 // Solidity events - other languages don't have this!
                 if let Some(event_node) = node.child_by_field_name("name") {
                     if let Ok(event_name) = event_node.utf8_text(source) {
-                        context.add_call(format!("emit {}", event_name), "event".to_string(), line_number);
+                        context.add_call(
+                            format!("emit {}", event_name),
+                            "event".to_string(),
+                            line_number,
+                        );
                     }
                 }
             }

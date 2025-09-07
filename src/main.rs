@@ -83,7 +83,7 @@ enum Commands {
         #[command(subcommand)]
         command: Option<ScrapeCommands>,
     },
-    
+
     /// Ask questions about the codebase
     Ask {
         #[command(flatten)]

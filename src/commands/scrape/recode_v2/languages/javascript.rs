@@ -11,13 +11,11 @@
 //! - Async/await and promises
 //! - Flexible parameter patterns (destructuring, rest)
 
-use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
+use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// JavaScript language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| {
-        text.starts_with("/**") || text.starts_with("///")
-    },
+    is_doc_comment: |text| text.starts_with("/**") || text.starts_with("///"),
 
     parse_visibility: |_node, _name, _source| {
         // JavaScript doesn't have built-in visibility modifiers
@@ -25,9 +23,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         true
     },
 
-    has_async: |node, source| {
-        node.utf8_text(source).unwrap_or("").contains("async")
-    },
+    has_async: |node, source| node.utf8_text(source).unwrap_or("").contains("async"),
 
     has_unsafe: |_node, _source| {
         // JavaScript doesn't have unsafe keyword
@@ -129,10 +125,10 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             (String::new(), String::new(), false)
         }
     },
-    
+
     extract_calls: Some(|node, source, context| {
         let line_number = (node.start_position().row + 1) as i32;
-        
+
         match node.kind() {
             "call_expression" => {
                 // JavaScript function calls

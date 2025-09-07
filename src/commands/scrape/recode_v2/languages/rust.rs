@@ -10,13 +10,11 @@
 //! - Unsafe blocks
 //! - Macro usage
 
-use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
+use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Rust language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| {
-        text.starts_with("///") || text.starts_with("//!")
-    },
+    is_doc_comment: |text| text.starts_with("///") || text.starts_with("//!"),
 
     parse_visibility: |node, _name, _source| {
         // Check for pub keyword via visibility_modifier node
@@ -116,10 +114,10 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             is_external,
         )
     },
-    
+
     extract_calls: Some(|node, source, context| {
         let line_number = (node.start_position().row + 1) as i32;
-        
+
         match node.kind() {
             "call_expression" => {
                 // Regular function calls
