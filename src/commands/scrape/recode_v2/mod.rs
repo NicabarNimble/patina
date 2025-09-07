@@ -977,12 +977,6 @@ fn extract_call_expressions(
         
         _ => {}
     }
-    
-    // Recurse into children
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        extract_call_expressions(child, source, language, context);
-    }
 }
 
 fn extract_doc_comment(
