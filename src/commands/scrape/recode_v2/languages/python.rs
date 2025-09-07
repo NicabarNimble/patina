@@ -11,7 +11,7 @@
 //! - Decorators and class definitions
 //! - Import system (from/import statements)
 
-use crate::commands::scrape::recode_v2::LanguageSpec;
+use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
 
 /// Python language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
@@ -117,5 +117,44 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         )
     },
     
-    extract_calls: None,
+    extract_calls: Some(|node, source, context| {
+        let line_number = (node.start_position().row + 1) as i32;
+        
+        match node.kind() {
+            "call" => {
+                // Python function/method calls
+                if let Some(func_node) = node.child_by_field_name("function") {
+                    if let Ok(callee) = func_node.utf8_text(source) {
+                        let call_type = if callee.starts_with("await ") {
+                            "async"
+                        } else {
+                            "direct"
+                        };
+                        context.add_call(
+                            callee.replace("await ", ""),
+                            call_type.to_string(),
+                            line_number,
+                        );
+                    }
+                }
+            }
+            "decorator" => {
+                // Python decorators are a special kind of call
+                if let Some(decorator_node) = node.child(0) {
+                    if decorator_node.kind() == "@" {
+                        if let Some(name_node) = node.child(1) {
+                            if let Ok(decorator_name) = name_node.utf8_text(source) {
+                                context.add_call(
+                                    format!("@{}", decorator_name),
+                                    "decorator".to_string(),
+                                    line_number,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }),
 };

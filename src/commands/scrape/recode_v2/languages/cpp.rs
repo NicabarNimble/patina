@@ -11,7 +11,7 @@
 //! - RAII and constructors/destructors
 //! - Modern C++ features (auto, lambdas, etc.)
 
-use crate::commands::scrape::recode_v2::LanguageSpec;
+use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
 
 /// C++ language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
@@ -163,5 +163,43 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         )
     },
     
-    extract_calls: None,
+    extract_calls: Some(|node, source, context| {
+        let line_number = (node.start_position().row + 1) as i32;
+        
+        match node.kind() {
+            "call_expression" => {
+                // C++ function/method calls
+                if let Some(func_node) = node.child_by_field_name("function") {
+                    if let Ok(callee) = func_node.utf8_text(source) {
+                        context.add_call(callee.to_string(), "direct".to_string(), line_number);
+                    }
+                }
+            }
+            "template_function" => {
+                // C++ template instantiations
+                if let Some(name_node) = node.child_by_field_name("name") {
+                    if let Ok(template_name) = name_node.utf8_text(source) {
+                        context.add_call(
+                            template_name.to_string(),
+                            "template".to_string(),
+                            line_number,
+                        );
+                    }
+                }
+            }
+            "new_expression" => {
+                // C++ new operator
+                if let Some(type_node) = node.child_by_field_name("type") {
+                    if let Ok(type_name) = type_node.utf8_text(source) {
+                        context.add_call(
+                            format!("new {}", type_name),
+                            "constructor".to_string(),
+                            line_number,
+                        );
+                    }
+                }
+            }
+            _ => {}
+        }
+    }),
 };

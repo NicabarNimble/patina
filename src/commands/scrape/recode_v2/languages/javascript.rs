@@ -11,7 +11,7 @@
 //! - Async/await and promises
 //! - Flexible parameter patterns (destructuring, rest)
 
-use crate::commands::scrape::recode_v2::LanguageSpec;
+use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
 
 /// JavaScript language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
@@ -130,5 +130,40 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         }
     },
     
-    extract_calls: None,
+    extract_calls: Some(|node, source, context| {
+        let line_number = (node.start_position().row + 1) as i32;
+        
+        match node.kind() {
+            "call_expression" => {
+                // JavaScript function calls
+                if let Some(func_node) = node.child_by_field_name("function") {
+                    if let Ok(callee) = func_node.utf8_text(source) {
+                        let call_type = if callee.starts_with("await ") {
+                            "async"
+                        } else {
+                            "direct"
+                        };
+                        context.add_call(
+                            callee.replace("await ", ""),
+                            call_type.to_string(),
+                            line_number,
+                        );
+                    }
+                }
+            }
+            "new_expression" => {
+                // JavaScript constructor calls (new Object())
+                if let Some(constructor_node) = node.child_by_field_name("constructor") {
+                    if let Ok(constructor) = constructor_node.utf8_text(source) {
+                        context.add_call(
+                            format!("new {}", constructor),
+                            "constructor".to_string(),
+                            line_number,
+                        );
+                    }
+                }
+            }
+            _ => {}
+        }
+    }),
 };

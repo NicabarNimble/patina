@@ -10,7 +10,7 @@
 //! - Multiple return values
 //! - Package-level declarations
 
-use crate::commands::scrape::recode_v2::LanguageSpec;
+use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
 
 /// Go language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
@@ -119,5 +119,40 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         )
     },
     
-    extract_calls: None,
+    extract_calls: Some(|node, source, context| {
+        let line_number = (node.start_position().row + 1) as i32;
+        
+        match node.kind() {
+            "call_expression" => {
+                // Regular function calls and goroutines
+                if let Some(func_node) = node.child_by_field_name("function") {
+                    if let Ok(callee) = func_node.utf8_text(source) {
+                        let call_type = if callee.contains("go ") {
+                            "async"  // Goroutines are Go's async
+                        } else {
+                            "direct"
+                        };
+                        context.add_call(
+                            callee.replace("go ", ""),
+                            call_type.to_string(),
+                            line_number,
+                        );
+                    }
+                }
+            }
+            "selector_expression" => {
+                // Go method calls are selector expressions followed by call_expression
+                if let Some(parent) = node.parent() {
+                    if parent.kind() == "call_expression" {
+                        if let Some(field_node) = node.child_by_field_name("field") {
+                            if let Ok(callee) = field_node.utf8_text(source) {
+                                context.add_call(callee.to_string(), "method".to_string(), line_number);
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }),
 };
