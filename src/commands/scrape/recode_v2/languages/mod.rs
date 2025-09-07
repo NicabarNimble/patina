@@ -44,20 +44,10 @@ pub enum Language {
 impl Language {
     /// Detect language from file extension
     pub fn from_path(path: &Path) -> Self {
-        match path.extension().and_then(|ext| ext.to_str()) {
-            Some("rs") => Language::Rust,
-            Some("go") => Language::Go,
-            Some("py") => Language::Python,
-            Some("js") | Some("mjs") => Language::JavaScript,
-            Some("jsx") => Language::JavaScriptJSX,
-            Some("ts") => Language::TypeScript,
-            Some("tsx") => Language::TypeScriptTSX,
-            Some("sol") => Language::Solidity,
-            Some("cairo") => Language::Cairo,
-            Some("c") | Some("h") => Language::C,
-            Some("cpp") | Some("cc") | Some("cxx") | Some("hpp") | Some("hxx") => Language::Cpp,
-            _ => Language::Unknown,
-        }
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .and_then(Self::from_extension)
+            .unwrap_or(Language::Unknown)
     }
 
     /// Detect language from file extension string
@@ -119,13 +109,13 @@ pub fn create_parser_for_path(path: &Path) -> Result<Parser> {
     let language = Language::from_path(path);
     let metal = language
         .to_metal()
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {:?}", language))?;
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language.name()))?;
 
     // Use the extension-aware method for TypeScript to get the right parser
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let ts_lang = metal
         .tree_sitter_language_for_ext(ext)
-        .ok_or_else(|| anyhow::anyhow!("No parser available for {:?}", language))?;
+        .ok_or_else(|| anyhow::anyhow!("No parser available for {}", language.name()))?;
 
     let mut parser = Parser::new();
     parser
@@ -135,36 +125,3 @@ pub fn create_parser_for_path(path: &Path) -> Result<Parser> {
     Ok(parser)
 }
 
-/// Create a parser for a specific language
-pub fn create_parser_for_language(language: Language) -> Result<Parser> {
-    let metal = language
-        .to_metal()
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {:?}", language))?;
-
-    // Default extension for language
-    let ext = match language {
-        Language::Rust => "rs",
-        Language::Go => "go",
-        Language::Python => "py",
-        Language::JavaScript => "js",
-        Language::JavaScriptJSX => "jsx",
-        Language::TypeScript => "ts",
-        Language::TypeScriptTSX => "tsx",
-        Language::Solidity => "sol",
-        Language::Cairo => "cairo",
-        Language::C => "c",
-        Language::Cpp => "cpp",
-        _ => return Err(anyhow::anyhow!("Unknown language: {:?}", language)),
-    };
-
-    let ts_lang = metal
-        .tree_sitter_language_for_ext(ext)
-        .ok_or_else(|| anyhow::anyhow!("No parser available for {:?}", language))?;
-
-    let mut parser = Parser::new();
-    parser
-        .set_language(&ts_lang)
-        .context("Failed to set language")?;
-
-    Ok(parser)
-}
