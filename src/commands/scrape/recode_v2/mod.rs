@@ -905,100 +905,14 @@ fn extract_call_expressions(
     language: Language,
     context: &mut ParseContext,
 ) {
-    // First check if the language has its own extract_calls implementation
+    // All languages now have their own extract_calls implementation
     if let Some(spec) = get_language_spec(language) {
         if let Some(extract_fn) = spec.extract_calls {
             // Use language-specific implementation
             extract_fn(&node, source, context);
-            return;
         }
     }
-    
-    // Fall back to old implementation for languages not yet migrated
-    let line_number = (node.start_position().row + 1) as i32;
-    
-    match (language, node.kind()) {
-        // Rust is now handled by its own module
-        
-        // Go call expressions
-        (Language::Go, "call_expression") => {
-            if let Some(func_node) = node.child_by_field_name("function") {
-                if let Ok(callee) = func_node.utf8_text(source) {
-                    let call_type = if callee.contains("go ") {
-                        "async"
-                    } else {
-                        "direct"
-                    };
-                    context.add_call(
-                        callee.replace("go ", ""),
-                        call_type.to_string(),
-                        line_number,
-                    );
-                }
-            }
-        }
-        (Language::Go, "selector_expression") => {
-            // Go method calls are selector expressions followed by call_expression
-            if let Some(parent) = node.parent() {
-                if parent.kind() == "call_expression" {
-                    if let Some(field_node) = node.child_by_field_name("field") {
-                        if let Ok(callee) = field_node.utf8_text(source) {
-                            context.add_call(callee.to_string(), "method".to_string(), line_number);
-                        }
-                    }
-                }
-            }
-        }
-        
-        // Python call expressions
-        (Language::Python, "call") => {
-            if let Some(func_node) = node.child_by_field_name("function") {
-                if let Ok(callee) = func_node.utf8_text(source) {
-                    let call_type = if callee.starts_with("await ") {
-                        "async"
-                    } else {
-                        "direct"
-                    };
-                    context.add_call(
-                        callee.replace("await ", ""),
-                        call_type.to_string(),
-                        line_number,
-                    );
-                }
-            }
-        }
-        
-        // JavaScript/TypeScript call expressions
-        (Language::JavaScript | Language::JavaScriptJSX | Language::TypeScript | Language::TypeScriptTSX, "call_expression") => {
-            if let Some(func_node) = node.child_by_field_name("function") {
-                if let Ok(callee) = func_node.utf8_text(source) {
-                    let call_type = if callee.starts_with("await ") {
-                        "async"
-                    } else {
-                        "direct"
-                    };
-                    context.add_call(
-                        callee.replace("await ", ""),
-                        call_type.to_string(),
-                        line_number,
-                    );
-                }
-            }
-        }
-        
-        // C/C++ call expressions
-        (Language::C | Language::Cpp, "call_expression") => {
-            if let Some(func_node) = node.child_by_field_name("function") {
-                if let Ok(callee) = func_node.utf8_text(source) {
-                    context.add_call(callee.to_string(), "direct".to_string(), line_number);
-                }
-            }
-        }
-        
-        // Solidity is now handled by its own module
-        
-        _ => {}
-    }
+    // No fallback needed - all languages are migrated!
 }
 
 fn extract_doc_comment(

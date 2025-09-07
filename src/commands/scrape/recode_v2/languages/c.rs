@@ -10,7 +10,7 @@
 //! - Structs, unions, and enums
 //! - No built-in visibility (header exposure = public)
 
-use crate::commands::scrape::recode_v2::LanguageSpec;
+use crate::commands::scrape::recode_v2::{LanguageSpec, ParseContext};
 
 /// C language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
@@ -119,5 +119,31 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         )
     },
     
-    extract_calls: None,
+    extract_calls: Some(|node, source, context| {
+        let line_number = (node.start_position().row + 1) as i32;
+        
+        match node.kind() {
+            "call_expression" => {
+                // C function calls
+                if let Some(func_node) = node.child_by_field_name("function") {
+                    if let Ok(callee) = func_node.utf8_text(source) {
+                        context.add_call(callee.to_string(), "direct".to_string(), line_number);
+                    }
+                }
+            }
+            "macro_invocation" => {
+                // C preprocessor macros
+                if let Some(macro_node) = node.child_by_field_name("macro") {
+                    if let Ok(macro_name) = macro_node.utf8_text(source) {
+                        context.add_call(
+                            macro_name.to_string(),
+                            "macro".to_string(),
+                            line_number,
+                        );
+                    }
+                }
+            }
+            _ => {}
+        }
+    }),
 };
