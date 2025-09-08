@@ -1,7 +1,12 @@
 // ============================================================================
-// GO LANGUAGE MODULE - Self-Contained Processor
+// GO LANGUAGE PROCESSOR V2 - STRUCT-BASED
 // ============================================================================
-//! Go language processor with complete isolation.
+//! Go language processor that returns typed structs instead of SQL strings.
+//!
+//! This is the refactored version that:
+//! - Returns ExtractedData with typed structs
+//! - No SQL string generation
+//! - Direct data extraction to domain types
 //!
 //! Handles Go's unique features:
 //! - Exported vs unexported (capitalization-based visibility)
@@ -10,20 +15,22 @@
 //! - Multiple return values
 //! - Package-level declarations
 
-use crate::commands::scrape::recode_v2::sql_builder::{InsertBuilder, TableName};
+use crate::commands::scrape::recode_v2::database::{
+    CallEdge, CodeSymbol, FunctionFact, ImportFact, TypeFact,
+};
+use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
 use crate::commands::scrape::recode_v2::types::{CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
-/// Go language processor - completely self-contained
+/// Go language processor - returns typed structs
 pub struct GoProcessor;
 
 impl GoProcessor {
-    /// Process a Go file and extract all symbols to SQL statements
-    pub fn process_file(
-        file_path: FilePath,
-        content: &[u8],
-    ) -> Result<(Vec<String>, usize, usize, usize)> {
+    /// Process a Go file and extract all symbols to typed structs
+    pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
+        let mut data = ExtractedData::new();
+        
         // Set up tree-sitter parser for Go
         let mut parser = Parser::new();
         let metal = patina_metal::Metal::Go;
@@ -39,60 +46,29 @@ impl GoProcessor {
             .parse(content, None)
             .context("Failed to parse Go file")?;
 
-        let root = tree.root_node();
-        let mut sql_statements = Vec::new();
-        let mut functions = 0;
-        let mut types = 0;
-        let mut imports = 0;
-
-        // Track current function for call graph
-        let mut current_function: Option<String> = None;
-        let mut call_graph_entries = Vec::new();
-
-        // Walk the tree and extract symbols
-        extract_symbols(
-            root,
+        // Walk the AST and extract symbols
+        extract_go_symbols(
+            &tree.root_node(),
             content,
-            &file_path,
-            &mut sql_statements,
-            &mut functions,
-            &mut types,
-            &mut imports,
-            &mut current_function,
-            &mut call_graph_entries,
+            &file_path.to_string(),
+            &mut data,
+            None,
         );
 
-        // Add call graph entries
-        for (caller, callee, call_type, line) in call_graph_entries {
-            let call_sql = InsertBuilder::new(TableName::CALL_GRAPH)
-                .or_replace()
-                .value("caller", caller.as_str())
-                .value("callee", callee.as_str())
-                .value("call_type", call_type.as_str())
-                .value("file", file_path.as_str())
-                .value("line_number", line as i64)
-                .build();
-            sql_statements.push(format!("{};\n", call_sql));
-        }
-
-        Ok((sql_statements, functions, types, imports))
+        Ok(data)
     }
 }
 
-/// Recursively extract symbols from the syntax tree
-fn extract_symbols(
-    node: Node,
+/// Recursively extract symbols from the Go AST
+fn extract_go_symbols(
+    node: &Node,
     source: &[u8],
-    file_path: &FilePath,
-    sql: &mut Vec<String>,
-    functions: &mut usize,
-    types: &mut usize,
-    imports: &mut usize,
-    current_function: &mut Option<String>,
-    call_graph: &mut Vec<(String, String, CallType, i32)>,
+    file_path: &str,
+    data: &mut ExtractedData,
+    current_function: Option<String>,
 ) {
     // First extract any calls
-    extract_calls(&node, source, current_function, call_graph);
+    extract_go_calls(node, source, file_path, &current_function, data);
 
     // Determine symbol kind
     let symbol_kind = match node.kind() {
@@ -119,103 +95,285 @@ fn extract_symbols(
     };
 
     // Process based on symbol kind
-    match symbol_kind {
-        SymbolKind::Function => {
-            if let Some(name) = extract_function_name(&node, source) {
-                let old_function = current_function.clone();
-                *current_function = Some(name.clone());
-
-                let is_public = is_exported(&name);
-                let params = extract_params(&node, source);
-                let return_type = extract_return_type(&node, source);
-                let generics = extract_generics(&node, source);
-                let docs = extract_doc_comment(&node, source);
-
-                let insert_sql = InsertBuilder::new(TableName::FUNCTION_FACTS)
-                    .or_replace()
-                    .value("name", name.as_str())
-                    .value("file", file_path.as_str())
-                    .value("is_public", is_public)
-                    .value("is_async", false) // Go uses goroutines instead
-                    .value("is_unsafe", false) // Go doesn't have unsafe
-                    .value("parameters", params.join(", ").as_str())
-                    .value("return_type", return_type.as_deref().unwrap_or(""))
-                    .value("generics", generics.as_deref().unwrap_or(""))
-                    .value("doc_comment", docs.as_str())
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *functions += 1;
-
-                // Recursively process function body
-                let mut cursor = node.walk();
-                for child in node.children(&mut cursor) {
-                    extract_symbols(
-                        child,
-                        source,
-                        file_path,
-                        sql,
-                        functions,
-                        types,
-                        imports,
-                        current_function,
-                        call_graph,
-                    );
-                }
-
-                *current_function = old_function;
-                return; // Don't recurse again
+    if symbol_kind == SymbolKind::Function {
+        if let Some(name) = extract_function_name(node, source) {
+            process_go_function(node, source, file_path, &name, data);
+            
+            // Extract calls within this function
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                extract_go_symbols(
+                    &child,
+                    source,
+                    file_path,
+                    data,
+                    Some(name.clone()),
+                );
             }
+            return; // Don't recurse again
         }
-        SymbolKind::Struct | SymbolKind::Trait | SymbolKind::TypeAlias | SymbolKind::Enum => {
-            if let Some((name, kind)) = extract_type_info(&node, source) {
-                let is_public = is_exported(&name);
-                let docs = extract_doc_comment(&node, source);
-
-                let insert_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                    .or_replace()
-                    .value("symbol", name.as_str())
-                    .value("symbol_type", kind.as_str())
-                    .value("file", file_path.as_str())
-                    .value("is_public", is_public)
-                    .value("doc_comment", docs.as_str())
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *types += 1;
-            }
+    } else if matches!(
+        symbol_kind,
+        SymbolKind::Struct | SymbolKind::Trait | SymbolKind::TypeAlias | SymbolKind::Enum
+    ) {
+        if let Some((name, kind)) = extract_type_info(node, source) {
+            process_go_type(node, source, file_path, &name, kind, data);
         }
-        SymbolKind::Import => {
-            if let Some((imported_item, import_path, is_external)) = extract_import_details(&node, source) {
-                let insert_sql = InsertBuilder::new(TableName::IMPORT_FACTS)
-                    .or_replace()
-                    .value("imported_item", imported_item.as_str())
-                    .value("import_path", import_path.as_str())
-                    .value("file", file_path.as_str())
-                    .value("is_external", is_external)
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *imports += 1;
-            }
-        }
-        _ => {}
+    } else if symbol_kind == SymbolKind::Import {
+        process_go_import(node, source, file_path, data);
     }
 
     // Recurse to children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_symbols(
-            child,
+        extract_go_symbols(
+            &child,
             source,
             file_path,
-            sql,
-            functions,
-            types,
-            imports,
-            current_function,
-            call_graph,
+            data,
+            current_function.clone(),
         );
+    }
+}
+
+/// Process a Go function and add to ExtractedData
+fn process_go_function(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let is_public = is_exported(name);
+    let params = extract_params(node, source);
+    let return_type = extract_return_type(node, source);
+    let _generics = extract_generics(node, source);
+    
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: "function".to_string(),
+        line: node.start_position().row + 1,
+        context: get_node_context(node, source),
+    });
+    
+    // Add function fact
+    data.add_function(FunctionFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        takes_mut_self: false, // Go doesn't have self
+        takes_mut_params: false, // Go passes by value by default
+        returns_result: false, // Go uses multiple returns for errors
+        returns_option: false, // Go uses nil
+        is_async: false, // Go uses goroutines
+        is_unsafe: false, // Go doesn't have unsafe keyword
+        is_public,
+        parameter_count: params.len() as i32,
+        generic_count: if _generics.is_some() { 1 } else { 0 },
+        parameters: params,
+        return_type,
+    });
+}
+
+/// Process a Go type and add to ExtractedData
+fn process_go_type(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    kind: SymbolKind,
+    data: &mut ExtractedData,
+) {
+    let is_public = is_exported(name);
+    
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: kind.to_string(),
+        line: node.start_position().row + 1,
+        context: get_node_context(node, source),
+    });
+    
+    // Add type fact
+    data.add_type(TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: get_type_definition(node, source),
+        kind: kind.to_string(),
+        visibility: if is_public { "public" } else { "private" }.to_string(),
+        usage_count: 0, // Will be populated later
+    });
+}
+
+/// Process a Go import and add to ExtractedData
+fn process_go_import(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    data: &mut ExtractedData,
+) {
+    // Handle both single imports and import blocks
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "import_spec" {
+            if let Some((import_path, alias)) = extract_import_spec(&child, source) {
+                let imported_names = if let Some(alias) = alias {
+                    vec![alias]
+                } else {
+                    // Extract package name from path
+                    vec![import_path.split('/').last().unwrap_or(&import_path).to_string()]
+                };
+                
+                data.add_import(ImportFact {
+                    file: file_path.to_string(),
+                    import_path: import_path.clone(),
+                    imported_names,
+                    import_kind: if import_path.starts_with('.') { "relative" } else { "external" }.to_string(),
+                    line_number: (node.start_position().row + 1) as i32,
+                });
+            }
+        } else if child.kind() == "import_spec_list" {
+            // Handle import blocks
+            let mut list_cursor = child.walk();
+            for spec in child.children(&mut list_cursor) {
+                if spec.kind() == "import_spec" {
+                    if let Some((import_path, alias)) = extract_import_spec(&spec, source) {
+                        let imported_names = if let Some(alias) = alias {
+                            vec![alias]
+                        } else {
+                            vec![import_path.split('/').last().unwrap_or(&import_path).to_string()]
+                        };
+                        
+                        data.add_import(ImportFact {
+                            file: file_path.to_string(),
+                            import_path: import_path.clone(),
+                            imported_names,
+                            import_kind: if import_path.starts_with('.') { "relative" } else { "external" }.to_string(),
+                            line_number: (spec.start_position().row + 1) as i32,
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Extract import spec details
+fn extract_import_spec(node: &Node, source: &[u8]) -> Option<(String, Option<String>)> {
+    let mut alias = None;
+    let mut path = None;
+    
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "package_identifier" | "dot" | "blank_identifier" => {
+                if let Ok(text) = child.utf8_text(source) {
+                    alias = Some(text.to_string());
+                }
+            }
+            "interpreted_string_literal" => {
+                if let Ok(text) = child.utf8_text(source) {
+                    path = Some(text.trim_matches('"').to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    
+    path.map(|p| (p, alias))
+}
+
+/// Extract call expressions and add to ExtractedData
+fn extract_go_calls(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    current_function: &Option<String>,
+    data: &mut ExtractedData,
+) {
+    let line_number = (node.start_position().row + 1) as i32;
+
+    match node.kind() {
+        "call_expression" => {
+            if let Some(caller) = current_function {
+                if let Some(func_node) = node.child_by_field_name("function") {
+                    if let Ok(callee) = func_node.utf8_text(source) {
+                        data.add_call_edge(CallEdge {
+                            caller: caller.clone(),
+                            callee: callee.to_string(),
+                            file: file_path.to_string(),
+                            call_type: CallType::Direct.to_string(),
+                            line_number,
+                        });
+                    }
+                }
+            }
+        }
+        "go_statement" => {
+            // Handle goroutines
+            if let Some(caller) = current_function {
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if child.kind() == "call_expression" {
+                        if let Some(func_node) = child.child_by_field_name("function") {
+                            if let Ok(callee) = func_node.utf8_text(source) {
+                                data.add_call_edge(CallEdge {
+                                    caller: caller.clone(),
+                                    callee: callee.to_string(),
+                                    file: file_path.to_string(),
+                                    call_type: CallType::Goroutine.to_string(),
+                                    line_number,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "defer_statement" => {
+            // Handle defer statements
+            if let Some(caller) = current_function {
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if child.kind() == "call_expression" {
+                        if let Some(func_node) = child.child_by_field_name("function") {
+                            if let Ok(callee) = func_node.utf8_text(source) {
+                                data.add_call_edge(CallEdge {
+                                    caller: caller.clone(),
+                                    callee: callee.to_string(),
+                                    file: file_path.to_string(),
+                                    call_type: CallType::Defer.to_string(),
+                                    line_number,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "selector_expression" => {
+            // Handle method calls
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "call_expression" {
+                    if let Some(caller) = current_function {
+                        if let Some(field_node) = node.child_by_field_name("field") {
+                            if let Ok(callee) = field_node.utf8_text(source) {
+                                data.add_call_edge(CallEdge {
+                                    caller: caller.clone(),
+                                    callee: callee.to_string(),
+                                    file: file_path.to_string(),
+                                    call_type: CallType::Method.to_string(),
+                                    line_number,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -305,157 +463,27 @@ fn extract_type_info(node: &Node, source: &[u8]) -> Option<(String, SymbolKind)>
     None
 }
 
-/// Extract import details from an import declaration
-fn extract_import_details(node: &Node, source: &[u8]) -> Option<(String, String, bool)> {
-    if node.kind() != "import_declaration" {
-        return None;
+/// Get the context around a node (first line of the node)
+fn get_node_context(node: &Node, source: &[u8]) -> String {
+    if let Ok(text) = node.utf8_text(source) {
+        text.lines().next().unwrap_or("").to_string()
+    } else {
+        String::new()
     }
-
-    // Handle both single imports and import blocks
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == "import_spec" {
-            if let Ok(import_text) = child.utf8_text(source) {
-                let import_clean = import_text.trim().trim_matches('"');
-                let is_external = !import_clean.starts_with(".");
-                let imported_item = import_clean.split('/').last().unwrap_or(import_clean);
-                return Some((imported_item.to_string(), import_clean.to_string(), is_external));
-            }
-        } else if child.kind() == "import_spec_list" {
-            // Handle import blocks - process first spec for now
-            let mut list_cursor = child.walk();
-            for spec in child.children(&mut list_cursor) {
-                if spec.kind() == "import_spec" {
-                    if let Ok(import_text) = spec.utf8_text(source) {
-                        let import_clean = import_text.trim().trim_matches('"');
-                        let is_external = !import_clean.starts_with(".");
-                        let imported_item = import_clean.split('/').last().unwrap_or(import_clean);
-                        return Some((imported_item.to_string(), import_clean.to_string(), is_external));
-                    }
-                }
-            }
-        }
-    }
-
-    // Fallback to simple parsing
-    if let Ok(import_text) = node.utf8_text(source) {
-        let import_clean = import_text
-            .trim_start_matches("import ")
-            .trim()
-            .trim_matches('"');
-        let is_external = !import_clean.starts_with(".");
-        let imported_item = import_clean.split('/').last().unwrap_or(import_clean);
-        return Some((imported_item.to_string(), import_clean.to_string(), is_external));
-    }
-
-    None
 }
 
-/// Extract documentation comment
-fn extract_doc_comment(node: &Node, source: &[u8]) -> String {
-    // Look for comment nodes immediately before this node
-    if let Some(prev) = node.prev_sibling() {
-        if prev.kind() == "comment" {
-            if let Ok(text) = prev.utf8_text(source) {
-                return clean_doc_comment(text);
-            }
+/// Get the type definition text
+fn get_type_definition(node: &Node, source: &[u8]) -> String {
+    if let Ok(text) = node.utf8_text(source) {
+        // Take first 200 chars or first 3 lines, whichever is shorter
+        let lines: Vec<&str> = text.lines().take(3).collect();
+        let preview = lines.join("\n");
+        if preview.len() > 200 {
+            format!("{}...", &preview[..200])
+        } else {
+            preview
         }
-    }
-    String::new()
-}
-
-/// Clean Go documentation comment
-fn clean_doc_comment(raw: &str) -> String {
-    raw.lines()
-        .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-/// Extract call expressions from a node
-fn extract_calls(
-    node: &Node,
-    source: &[u8],
-    current_function: &Option<String>,
-    call_graph: &mut Vec<(String, String, CallType, i32)>,
-) {
-    let line_number = (node.start_position().row + 1) as i32;
-
-    match node.kind() {
-        "call_expression" => {
-            if let Some(caller) = current_function {
-                if let Some(func_node) = node.child_by_field_name("function") {
-                    if let Ok(callee) = func_node.utf8_text(source) {
-                        call_graph.push((
-                            caller.clone(),
-                            callee.to_string(),
-                            CallType::Direct,
-                            line_number,
-                        ));
-                    }
-                }
-            }
-        }
-        "go_statement" => {
-            // Handle goroutines
-            if let Some(caller) = current_function {
-                let mut cursor = node.walk();
-                for child in node.children(&mut cursor) {
-                    if child.kind() == "call_expression" {
-                        if let Some(func_node) = child.child_by_field_name("function") {
-                            if let Ok(callee) = func_node.utf8_text(source) {
-                                call_graph.push((
-                                    caller.clone(),
-                                    callee.to_string(),
-                                    CallType::Goroutine,
-                                    line_number,
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        "defer_statement" => {
-            // Handle defer statements
-            if let Some(caller) = current_function {
-                let mut cursor = node.walk();
-                for child in node.children(&mut cursor) {
-                    if child.kind() == "call_expression" {
-                        if let Some(func_node) = child.child_by_field_name("function") {
-                            if let Ok(callee) = func_node.utf8_text(source) {
-                                call_graph.push((
-                                    caller.clone(),
-                                    callee.to_string(),
-                                    CallType::Defer,
-                                    line_number,
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        "selector_expression" => {
-            // Handle method calls
-            if let Some(parent) = node.parent() {
-                if parent.kind() == "call_expression" {
-                    if let Some(caller) = current_function {
-                        if let Some(field_node) = node.child_by_field_name("field") {
-                            if let Ok(callee) = field_node.utf8_text(source) {
-                                call_graph.push((
-                                    caller.clone(),
-                                    callee.to_string(),
-                                    CallType::Method,
-                                    line_number,
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        _ => {}
+    } else {
+        String::new()
     }
 }
