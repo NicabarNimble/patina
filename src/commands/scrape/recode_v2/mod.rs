@@ -32,6 +32,7 @@ use self::types::{FilePath, SymbolName, SymbolKind, CallType, CallGraphEntry};
 // ============================================================================
 pub mod languages;
 pub mod types;
+pub mod sql_builder;
 
 // Re-export the Language enum for convenience
 pub use languages::Language;
