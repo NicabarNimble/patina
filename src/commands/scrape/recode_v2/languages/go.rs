@@ -65,17 +65,14 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             .map(String::from)
     },
 
-    get_symbol_kind: |node_kind| {
-        let kind = match node_kind {
-            FUNCTION_DECLARATION => SymbolKind::Function,
-            METHOD_DECLARATION => SymbolKind::Function,
-            TYPE_DECLARATION => SymbolKind::TypeAlias,
-            CONST_DECLARATION => SymbolKind::Const,
-            VAR_DECLARATION => SymbolKind::Const,
-            IMPORT_DECLARATION => SymbolKind::Import,
-            _ => SymbolKind::Unknown,
-        };
-        kind.as_str()
+    get_symbol_kind: |node_kind| match node_kind {
+        FUNCTION_DECLARATION => SymbolKind::Function,
+        METHOD_DECLARATION => SymbolKind::Function,
+        TYPE_DECLARATION => SymbolKind::TypeAlias,
+        CONST_DECLARATION => SymbolKind::Const,
+        VAR_DECLARATION => SymbolKind::Const,
+        IMPORT_DECLARATION => SymbolKind::Import,
+        _ => SymbolKind::Unknown,
     },
 
     get_symbol_kind_complex: |node, _source| {
@@ -84,14 +81,14 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                 .child_by_field_name("type")
                 .is_some_and(|n| n.kind() == STRUCT_TYPE)
             {
-                Some(SymbolKind::Struct.as_str())
+                Some(SymbolKind::Struct)
             } else if node
                 .child_by_field_name("type")
                 .is_some_and(|n| n.kind() == INTERFACE_TYPE)
             {
-                Some(SymbolKind::Trait.as_str())
+                Some(SymbolKind::Trait)
             } else {
-                Some(SymbolKind::TypeAlias.as_str())
+                Some(SymbolKind::TypeAlias)
             }
         } else {
             None

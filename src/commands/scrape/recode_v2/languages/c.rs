@@ -66,18 +66,15 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         None
     },
 
-    get_symbol_kind: |node_kind| {
-        let kind = match node_kind {
-            FUNCTION_DEFINITION => SymbolKind::Function,
-            STRUCT_SPECIFIER => SymbolKind::Struct,
-            UNION_SPECIFIER => SymbolKind::Struct,
-            ENUM_SPECIFIER => SymbolKind::Enum,
-            TYPE_DEFINITION => SymbolKind::TypeAlias,
-            DECLARATION => SymbolKind::Const,
-            PREPROC_INCLUDE => SymbolKind::Import,
-            _ => SymbolKind::Unknown,
-        };
-        kind.as_str()
+    get_symbol_kind: |node_kind| match node_kind {
+        FUNCTION_DEFINITION => SymbolKind::Function,
+        STRUCT_SPECIFIER => SymbolKind::Struct,
+        UNION_SPECIFIER => SymbolKind::Struct,
+        ENUM_SPECIFIER => SymbolKind::Enum,
+        TYPE_DEFINITION => SymbolKind::TypeAlias,
+        DECLARATION => SymbolKind::Const,
+        PREPROC_INCLUDE => SymbolKind::Import,
+        _ => SymbolKind::Unknown,
     },
 
     get_symbol_kind_complex: |_node, _source| None,

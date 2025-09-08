@@ -64,20 +64,17 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         None
     },
 
-    get_symbol_kind: |node_kind| {
-        let kind = match node_kind {
-            FUNCTION_DEFINITION => SymbolKind::Function,
-            MODIFIER_DEFINITION => SymbolKind::Function,
-            EVENT_DEFINITION => SymbolKind::Function,
-            CONTRACT_DECLARATION => SymbolKind::Struct,
-            STRUCT_DECLARATION => SymbolKind::Struct,
-            INTERFACE_DECLARATION => SymbolKind::Trait,
-            LIBRARY_DECLARATION => SymbolKind::Impl,
-            IMPORT_DIRECTIVE => SymbolKind::Import,
-            STATE_VARIABLE_DECLARATION => SymbolKind::Const,
-            _ => SymbolKind::Unknown,
-        };
-        kind.as_str()
+    get_symbol_kind: |node_kind| match node_kind {
+        FUNCTION_DEFINITION => SymbolKind::Function,
+        MODIFIER_DEFINITION => SymbolKind::Function,
+        EVENT_DEFINITION => SymbolKind::Function,
+        CONTRACT_DECLARATION => SymbolKind::Struct,
+        STRUCT_DECLARATION => SymbolKind::Struct,
+        INTERFACE_DECLARATION => SymbolKind::Trait,
+        LIBRARY_DECLARATION => SymbolKind::Impl,
+        IMPORT_DIRECTIVE => SymbolKind::Import,
+        STATE_VARIABLE_DECLARATION => SymbolKind::Const,
+        _ => SymbolKind::Unknown,
     },
 
     get_symbol_kind_complex: |_node, _source| {

@@ -64,14 +64,11 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         None
     },
 
-    get_symbol_kind: |node_kind| {
-        let kind = match node_kind {
-            FUNCTION_DEFINITION | "async_function_definition" => SymbolKind::Function,
-            CLASS_DEFINITION => SymbolKind::Struct,
-            IMPORT_STATEMENT | IMPORT_FROM_STATEMENT => SymbolKind::Import,
-            _ => SymbolKind::Unknown,
-        };
-        kind.as_str()
+    get_symbol_kind: |node_kind| match node_kind {
+        FUNCTION_DEFINITION | "async_function_definition" => SymbolKind::Function,
+        CLASS_DEFINITION => SymbolKind::Struct,
+        IMPORT_STATEMENT | IMPORT_FROM_STATEMENT => SymbolKind::Import,
+        _ => SymbolKind::Unknown,
     },
 
     get_symbol_kind_complex: |node, _source| {
@@ -79,12 +76,12 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             if node.child_by_field_name("definition").is_some_and(|n| {
                 n.kind() == FUNCTION_DEFINITION || n.kind() == "async_function_definition"
             }) {
-                Some(SymbolKind::Function.as_str())
+                Some(SymbolKind::Function)
             } else if node
                 .child_by_field_name("definition")
                 .is_some_and(|n| n.kind() == CLASS_DEFINITION)
             {
-                Some(SymbolKind::Struct.as_str())
+                Some(SymbolKind::Struct)
             } else {
                 None
             }
