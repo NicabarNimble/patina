@@ -1,7 +1,13 @@
 // ============================================================================
-// C LANGUAGE MODULE - Self-Contained Processor
+// C LANGUAGE PROCESSOR V2 - STRUCT-BASED
 // ============================================================================
-//! C language processor with complete isolation.
+//! C language processor that returns typed structs instead of SQL strings.
+//!
+//! This is the refactored version that:
+//! - Returns ExtractedData with typed structs
+//! - No SQL string generation
+//! - Direct data extraction to domain types
+//! - Uses iterative approach for nested declarators to avoid stack overflow
 //!
 //! Handles C's features:
 //! - Header files vs implementation files
@@ -10,20 +16,22 @@
 //! - Structs, unions, and enums
 //! - No built-in visibility (header exposure = public)
 
-use crate::commands::scrape::recode_v2::sql_builder::{InsertBuilder, TableName};
-use crate::commands::scrape::recode_v2::types::{CallType, FilePath};
+use crate::commands::scrape::recode_v2::database::{
+    CallEdge, CodeSymbol, FunctionFact, ImportFact, TypeFact,
+};
+use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
+use crate::commands::scrape::recode_v2::types::{CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
-/// C language processor - completely self-contained
+/// C language processor - returns typed structs
 pub struct CProcessor;
 
 impl CProcessor {
-    /// Process a C file and extract all symbols to SQL statements
-    pub fn process_file(
-        file_path: FilePath,
-        content: &[u8],
-    ) -> Result<(Vec<String>, usize, usize, usize)> {
+    /// Process a C file and extract all symbols to typed structs
+    pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
+        let mut data = ExtractedData::new();
+        
         // Set up tree-sitter parser for C
         let mut parser = Parser::new();
         let metal = patina_metal::Metal::C;
@@ -39,131 +47,43 @@ impl CProcessor {
             .parse(content, None)
             .context("Failed to parse C file")?;
 
-        let root = tree.root_node();
-        let mut sql_statements = Vec::new();
-        let mut functions = 0;
-        let mut types = 0;
-        let mut imports = 0;
-
-        // Track current function for call graph
-        let mut current_function: Option<String> = None;
-        let mut call_graph_entries = Vec::new();
-
-        // Walk the tree and extract symbols
-        extract_symbols(
-            root,
+        // Walk the AST and extract symbols
+        extract_c_symbols(
+            &tree.root_node(),
             content,
-            &file_path,
-            &mut sql_statements,
-            &mut functions,
-            &mut types,
-            &mut imports,
-            &mut current_function,
-            &mut call_graph_entries,
+            &file_path.to_string(),
+            &mut data,
+            None,
         );
 
-        // Add call graph entries
-        for (caller, callee, call_type, line) in call_graph_entries {
-            let call_sql = InsertBuilder::new(TableName::CALL_GRAPH)
-                .or_replace()
-                .value("caller", caller.as_str())
-                .value("callee", callee.as_str())
-                .value("call_type", call_type.as_str())
-                .value("file", file_path.as_str())
-                .value("line_number", line as i64)
-                .build();
-            sql_statements.push(format!("{};\n", call_sql));
-        }
-
-        Ok((sql_statements, functions, types, imports))
+        Ok(data)
     }
 }
 
-/// Recursively extract symbols from the syntax tree
-fn extract_symbols(
-    node: Node,
+/// Recursively extract symbols from the C AST
+fn extract_c_symbols(
+    node: &Node,
     source: &[u8],
-    file_path: &FilePath,
-    sql: &mut Vec<String>,
-    functions: &mut usize,
-    types: &mut usize,
-    imports: &mut usize,
-    current_function: &mut Option<String>,
-    call_graph: &mut Vec<(String, String, CallType, i32)>,
+    file_path: &str,
+    data: &mut ExtractedData,
+    current_function: Option<String>,
 ) {
     match node.kind() {
         "function_definition" => {
-            if let Some(name) = extract_function_name(&node, source) {
-                // Track for call graph
-                let old_func = current_function.clone();
-                *current_function = Some(name.clone());
-
-                // Extract function details
-                let params = extract_parameters(&node, source);
-                let return_type = extract_return_type(&node, source);
-                let is_public = file_path.as_str().ends_with(".h"); // Headers are public
-
-                // Build signature
-                let signature = if params.is_empty() {
-                    format!("{} {}()", return_type.as_deref().unwrap_or("void"), name)
-                } else {
-                    format!(
-                        "{} {}({})",
-                        return_type.as_deref().unwrap_or("void"),
-                        name,
-                        params.join(", ")
-                    )
-                };
-
-                // Insert into function_facts
-                let func_sql = InsertBuilder::new(TableName::FUNCTION_FACTS)
-                    .or_replace()
-                    .value("file", file_path.as_str())
-                    .value("name", name.as_str())
-                    .value("takes_mut_self", false)
-                    .value("takes_mut_params", params.iter().any(|p| p.contains("*")))
-                    .value("returns_result", false)
-                    .value("returns_option", false)
-                    .value("is_async", false)
-                    .value("is_unsafe", true) // All C is unsafe
-                    .value("is_public", is_public)
-                    .value("parameter_count", params.len() as i64)
-                    .value("generic_count", 0i64)
-                    .value("parameters", params.join(", "))
-                    .value("return_type", return_type.as_deref().unwrap_or("void"))
-                    .build();
-                sql.push(format!("{};\n", func_sql));
-
-                // Also insert into code_search
-                let search_sql = InsertBuilder::new(TableName::CODE_SEARCH)
-                    .or_replace()
-                    .value("path", file_path.as_str())
-                    .value("name", name.as_str())
-                    .value("signature", signature)
-                    .value("context", extract_context(&node, source))
-                    .build();
-                sql.push(format!("{};\n", search_sql));
-
-                *functions += 1;
-
-                // Process function body for calls
+            if let Some(name) = extract_function_name(node, source) {
+                process_c_function(node, source, file_path, &name, data);
+                
+                // Process function body with updated context
                 let mut cursor = node.walk();
                 for child in node.children(&mut cursor) {
-                    extract_symbols(
-                        child,
+                    extract_c_symbols(
+                        &child,
                         source,
                         file_path,
-                        sql,
-                        functions,
-                        types,
-                        imports,
-                        current_function,
-                        call_graph,
+                        data,
+                        Some(name.clone()),
                     );
                 }
-
-                // Restore previous function context
-                *current_function = old_func;
                 return; // Don't recurse again
             }
         }
@@ -171,40 +91,18 @@ fn extract_symbols(
             if let Some(name_node) = node.child_by_field_name("name") {
                 if let Ok(name) = name_node.utf8_text(source) {
                     let kind = if node.kind() == "struct_specifier" {
-                        "struct"
+                        SymbolKind::Struct
                     } else {
-                        "union"
+                        SymbolKind::Union
                     };
-                    let is_public = file_path.as_str().ends_with(".h");
-
-                    let type_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                        .or_replace()
-                        .value("file", file_path.as_str())
-                        .value("name", name)
-                        .value("definition", format!("{} {}", kind, name))
-                        .value("kind", kind)
-                        .value("visibility", if is_public { "public" } else { "private" })
-                        .build();
-                    sql.push(format!("{};\n", type_sql));
-                    *types += 1;
+                    process_c_type(node, source, file_path, name, kind, data);
                 }
             }
         }
         "enum_specifier" => {
             if let Some(name_node) = node.child_by_field_name("name") {
                 if let Ok(name) = name_node.utf8_text(source) {
-                    let is_public = file_path.as_str().ends_with(".h");
-
-                    let type_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                        .or_replace()
-                        .value("file", file_path.as_str())
-                        .value("name", name)
-                        .value("definition", format!("enum {}", name))
-                        .value("kind", "enum")
-                        .value("visibility", if is_public { "public" } else { "private" })
-                        .build();
-                    sql.push(format!("{};\n", type_sql));
-                    *types += 1;
+                    process_c_type(node, source, file_path, name, SymbolKind::Enum, data);
                 }
             }
         }
@@ -212,56 +110,25 @@ fn extract_symbols(
             // typedef handling
             if let Some(declarator) = node.child_by_field_name("declarator") {
                 if let Some(name) = extract_typedef_name(&declarator, source) {
-                    let is_public = file_path.as_str().ends_with(".h");
-
-                    let type_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                        .or_replace()
-                        .value("file", file_path.as_str())
-                        .value("name", name.as_str())
-                        .value("definition", format!("typedef {}", name))
-                        .value("kind", "typedef")
-                        .value("visibility", if is_public { "public" } else { "private" })
-                        .build();
-                    sql.push(format!("{};\n", type_sql));
-                    *types += 1;
+                    process_c_typedef(node, source, file_path, &name, data);
                 }
             }
         }
         "preproc_include" => {
-            if let Ok(include_text) = node.utf8_text(source) {
-                let header = include_text
-                    .trim_start_matches("#include")
-                    .trim()
-                    .trim_start_matches('<')
-                    .trim_start_matches('"')
-                    .trim_end_matches('>')
-                    .trim_end_matches('"');
-                let is_external = include_text.contains('<');
-
-                let import_sql = InsertBuilder::new(TableName::IMPORT_FACTS)
-                    .or_replace()
-                    .value("importer_file", file_path.as_str())
-                    .value("imported_item", header)
-                    .value("imported_from", header)
-                    .value("is_external", is_external)
-                    .value("import_kind", "include")
-                    .build();
-                sql.push(format!("{};\n", import_sql));
-                *imports += 1;
-            }
+            process_c_include(node, source, file_path, data);
         }
         "call_expression" => {
             // Track function calls for call graph
             if let Some(ref caller) = current_function {
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
-                        let line = (node.start_position().row + 1) as i32;
-                        call_graph.push((
-                            caller.clone(),
-                            callee.to_string(),
-                            CallType::Direct,
-                            line,
-                        ));
+                        data.add_call_edge(CallEdge {
+                            caller: caller.clone(),
+                            callee: callee.to_string(),
+                            file: file_path.to_string(),
+                            call_type: CallType::Direct.to_string(),
+                            line_number: (node.start_position().row + 1) as i32,
+                        });
                     }
                 }
             }
@@ -272,17 +139,140 @@ fn extract_symbols(
     // Recurse into children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_symbols(
-            child,
+        extract_c_symbols(
+            &child,
             source,
             file_path,
-            sql,
-            functions,
-            types,
-            imports,
-            current_function,
-            call_graph,
+            data,
+            current_function.clone(),
         );
+    }
+}
+
+/// Process a C function and add to ExtractedData
+fn process_c_function(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let params = extract_parameters(node, source);
+    let return_type = extract_return_type(node, source);
+    let is_public = file_path.ends_with(".h"); // Headers are public
+    
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: "function".to_string(),
+        line: node.start_position().row + 1,
+        context: extract_context(node, source),
+    });
+    
+    // Add function fact
+    data.add_function(FunctionFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        takes_mut_self: false, // C doesn't have self
+        takes_mut_params: params.iter().any(|p| p.contains('*')),
+        returns_result: false, // C uses error codes
+        returns_option: false, // C uses NULL
+        is_async: false, // C doesn't have async
+        is_unsafe: true, // All C is unsafe
+        is_public,
+        parameter_count: params.len() as i32,
+        generic_count: 0, // C doesn't have generics
+        parameters: params,
+        return_type,
+    });
+}
+
+/// Process a C type (struct/union/enum) and add to ExtractedData
+fn process_c_type(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    kind: SymbolKind,
+    data: &mut ExtractedData,
+) {
+    let is_public = file_path.ends_with(".h");
+    
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: kind.to_string(),
+        line: node.start_position().row + 1,
+        context: extract_context(node, source),
+    });
+    
+    // Add type fact
+    data.add_type(TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: format!("{} {}", kind.to_string(), name),
+        kind: kind.to_string(),
+        visibility: if is_public { "public" } else { "private" }.to_string(),
+        usage_count: 0,
+    });
+}
+
+/// Process a C typedef and add to ExtractedData
+fn process_c_typedef(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let is_public = file_path.ends_with(".h");
+    
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: "typedef".to_string(),
+        line: node.start_position().row + 1,
+        context: extract_context(node, source),
+    });
+    
+    // Add type fact
+    data.add_type(TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: format!("typedef {}", name),
+        kind: "typedef".to_string(),
+        visibility: if is_public { "public" } else { "private" }.to_string(),
+        usage_count: 0,
+    });
+}
+
+/// Process a C include directive and add to ExtractedData
+fn process_c_include(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    data: &mut ExtractedData,
+) {
+    if let Ok(include_text) = node.utf8_text(source) {
+        let header = include_text
+            .trim_start_matches("#include")
+            .trim()
+            .trim_start_matches('<')
+            .trim_start_matches('"')
+            .trim_end_matches('>')
+            .trim_end_matches('"');
+        let is_external = include_text.contains('<');
+        
+        data.add_import(ImportFact {
+            file: file_path.to_string(),
+            import_path: header.to_string(),
+            imported_names: vec![header.to_string()],
+            import_kind: if is_external { "system" } else { "local" }.to_string(),
+            line_number: (node.start_position().row + 1) as i32,
+        });
     }
 }
 

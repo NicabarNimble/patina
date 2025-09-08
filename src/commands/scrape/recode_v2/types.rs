@@ -10,6 +10,7 @@ use std::fmt;
 pub enum SymbolKind {
     Function,
     Struct,
+    Union,     // C/C++ union
     Class,
     Trait,
     Interface,
@@ -29,6 +30,7 @@ impl SymbolKind {
         match s {
             "function" => Self::Function,
             "struct" => Self::Struct,
+            "union" => Self::Union,
             "class" => Self::Class,
             "trait" => Self::Trait,
             "interface" => Self::Interface,
@@ -48,6 +50,7 @@ impl SymbolKind {
         match self {
             Self::Function => "function",
             Self::Struct => "struct",
+            Self::Union => "union",
             Self::Class => "class",
             Self::Trait => "trait",
             Self::Interface => "interface",
@@ -82,6 +85,7 @@ pub enum CallType {
     Defer,       // Deferred call (Go defer, Swift defer)
     Macro,       // Macro invocation
     Constructor, // Constructor call (new Class())
+    Destructor,  // Destructor call (~Class())
     Decorator,   // Python decorator (@decorator)
     Template,    // C++ template instantiation
     Event,       // Solidity event emission
@@ -98,6 +102,7 @@ impl CallType {
             "defer" => Self::Defer,
             "macro" => Self::Macro,
             "constructor" => Self::Constructor,
+            "destructor" => Self::Destructor,
             "decorator" => Self::Decorator,
             "template" => Self::Template,
             "event" => Self::Event,
@@ -115,6 +120,7 @@ impl CallType {
             Self::Defer => "defer",
             Self::Macro => "macro",
             Self::Constructor => "constructor",
+            Self::Destructor => "destructor",
             Self::Decorator => "decorator",
             Self::Template => "template",
             Self::Event => "event",
