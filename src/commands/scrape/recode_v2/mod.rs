@@ -90,8 +90,7 @@ static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> =
         let mut registry = HashMap::new();
 
         // Register each language from its module
-        // Note: Rust, Go, C, C++, Cairo now use isolated processors instead of LanguageSpec
-        registry.insert(Language::Python, &languages::python::SPEC);
+        // Note: Rust, Go, Python, C, C++, Cairo now use isolated processors instead of LanguageSpec
         registry.insert(Language::JavaScript, &languages::javascript::SPEC);
         registry.insert(Language::JavaScriptJSX, &languages::javascript::SPEC); // JSX uses JS spec
         registry.insert(Language::TypeScript, &languages::typescript::SPEC);
@@ -449,6 +448,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
     let mut cpp_files = Vec::new();
     let mut rust_files = Vec::new();
     let mut go_files = Vec::new();
+    let mut python_files = Vec::new();
     let mut treesitter_files = Vec::new();
     
     for (path, lang) in all_files {
@@ -458,6 +458,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
             Language::Cpp => cpp_files.push((path, lang)),
             Language::Rust => rust_files.push((path, lang)),
             Language::Go => go_files.push((path, lang)),
+            Language::Python => python_files.push((path, lang)),
             _ => treesitter_files.push((path, lang)),
         }
     }
@@ -737,6 +738,62 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
             }
             Err(e) => {
                 eprintln!("  ⚠️  Go parsing error in {}: {}", relative_path, e);
+                files_with_errors += 1;
+            }
+        }
+    }
+
+    // Process Python files with isolated processor
+    for (file_path, _language) in python_files {
+        let relative_path = if let Ok(stripped) = file_path.strip_prefix(work_dir) {
+            format!("./{}", stripped.to_string_lossy())
+        } else {
+            file_path.to_string_lossy().to_string()
+        };
+
+        // Read file content
+        let content = match std::fs::read(&file_path) {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("  ⚠️  Failed to read {}: {}", relative_path, e);
+                files_with_errors += 1;
+                continue;
+            }
+        };
+
+        // Track file in index_state
+        let mtime = std::fs::metadata(&file_path)
+            .and_then(|m| m.modified())
+            .unwrap_or(SystemTime::now())
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let insert_sql = InsertBuilder::new(TableName::INDEX_STATE)
+            .or_replace()
+            .value("path", relative_path.as_str())
+            .value("mtime", mtime)
+            .build();
+        sql_statements.push_str(&insert_sql);
+        sql_statements.push_str(";\n");
+
+        // Process Python file with isolated processor
+        match languages::python::PythonProcessor::process_file(
+            FilePath::from(relative_path.as_str()),
+            &content,
+        ) {
+            Ok((statements, funcs, types, imps)) => {
+                for stmt in statements {
+                    sql_statements.push_str(&stmt);
+                    sql_statements.push('\n');
+                }
+                functions_count += funcs;
+                types_count += types;
+                imports_count += imps;
+                _files_processed += 1;
+            }
+            Err(e) => {
+                eprintln!("  ⚠️  Python parsing error in {}: {}", relative_path, e);
                 files_with_errors += 1;
             }
         }
