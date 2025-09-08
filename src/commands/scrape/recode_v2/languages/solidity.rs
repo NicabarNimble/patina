@@ -1,7 +1,12 @@
 // ============================================================================
-// SOLIDITY LANGUAGE MODULE - Self-Contained Processor
+// SOLIDITY LANGUAGE PROCESSOR V2 - STRUCT-BASED
 // ============================================================================
-//! Solidity language processor with complete isolation.
+//! Solidity language processor that returns typed structs instead of SQL strings.
+//!
+//! This is the refactored version that:
+//! - Returns ExtractedData with typed structs
+//! - No SQL string generation
+//! - Direct data extraction to domain types
 //!
 //! Handles Solidity's unique features:
 //! - Smart contract structure
@@ -12,20 +17,22 @@
 //! - Unchecked blocks (similar to unsafe)
 //! - Library and contract declarations
 
-use crate::commands::scrape::recode_v2::sql_builder::{InsertBuilder, TableName};
+use crate::commands::scrape::recode_v2::database::{
+    CallEdge, CodeSymbol, FunctionFact, ImportFact, TypeFact,
+};
+use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
 use crate::commands::scrape::recode_v2::types::{CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
-/// Solidity language processor - completely self-contained
+/// Solidity language processor - returns typed structs
 pub struct SolidityProcessor;
 
 impl SolidityProcessor {
-    /// Process a Solidity file and extract all symbols to SQL statements
-    pub fn process_file(
-        file_path: FilePath,
-        content: &[u8],
-    ) -> Result<(Vec<String>, usize, usize, usize)> {
+    /// Process a Solidity file and extract all symbols to typed structs
+    pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
+        let mut data = ExtractedData::new();
+        
         // Set up tree-sitter parser for Solidity
         let mut parser = Parser::new();
         let metal = patina_metal::Metal::Solidity;
@@ -41,63 +48,31 @@ impl SolidityProcessor {
             .parse(content, None)
             .context("Failed to parse Solidity file")?;
 
-        let root = tree.root_node();
-        let mut sql_statements = Vec::new();
-        let mut functions = 0;
-        let mut types = 0;
-        let mut imports = 0;
-
-        // Track current function/contract for call graph
-        let mut current_function: Option<String> = None;
-        let mut current_contract: Option<String> = None;
-        let mut call_graph_entries = Vec::new();
-
-        // Walk the tree and extract symbols
-        extract_symbols(
-            root,
+        // Walk the AST and extract symbols
+        extract_solidity_symbols(
+            &tree.root_node(),
             content,
-            &file_path,
-            &mut sql_statements,
-            &mut functions,
-            &mut types,
-            &mut imports,
-            &mut current_function,
-            &mut current_contract,
-            &mut call_graph_entries,
+            &file_path.to_string(),
+            &mut data,
+            None,
+            None,
         );
 
-        // Add call graph entries
-        for (caller, callee, call_type, line) in call_graph_entries {
-            let call_sql = InsertBuilder::new(TableName::CALL_GRAPH)
-                .or_replace()
-                .value("caller", caller.as_str())
-                .value("callee", callee.as_str())
-                .value("call_type", call_type.as_str())
-                .value("file", file_path.as_str())
-                .value("line_number", line as i64)
-                .build();
-            sql_statements.push(format!("{};\n", call_sql));
-        }
-
-        Ok((sql_statements, functions, types, imports))
+        Ok(data)
     }
 }
 
-/// Recursively extract symbols from the syntax tree
-fn extract_symbols(
-    node: Node,
+/// Recursively extract symbols from the Solidity AST
+fn extract_solidity_symbols(
+    node: &Node,
     source: &[u8],
-    file_path: &FilePath,
-    sql: &mut Vec<String>,
-    functions: &mut usize,
-    types: &mut usize,
-    imports: &mut usize,
-    current_function: &mut Option<String>,
-    current_contract: &mut Option<String>,
-    call_graph: &mut Vec<(String, String, CallType, i32)>,
+    file_path: &str,
+    data: &mut ExtractedData,
+    current_function: Option<String>,
+    current_contract: Option<String>,
 ) {
     // First extract any calls
-    extract_calls(&node, source, current_function, call_graph);
+    extract_solidity_calls(node, source, file_path, &current_function, data);
 
     // Determine symbol kind
     let symbol_kind = match node.kind() {
@@ -115,223 +90,92 @@ fn extract_symbols(
     };
 
     // Process based on symbol kind
-    match symbol_kind {
-        SymbolKind::Function => {
-            if let Some(name) = extract_function_name(&node, source) {
-                let old_function = current_function.clone();
-                let full_name = if let Some(contract) = current_contract {
+    match node.kind() {
+        "function_definition" | "modifier_definition" => {
+            if let Some(name) = extract_function_name(node, source) {
+                let full_name = if let Some(ref contract) = current_contract {
                     format!("{}.{}", contract, name)
                 } else {
                     name.clone()
                 };
-                *current_function = Some(full_name.clone());
-
-                let visibility = extract_visibility(&node, source);
-                let is_public = visibility != "private" && visibility != "internal";
-                let _mutability = extract_mutability(&node, source);
-                let params = extract_params(&node, source);
-                let return_type = extract_return_type(&node, source);
-                let docs = extract_natspec(&node, source);
-                let is_unsafe = has_unchecked_block(&node, source);
-
-                let insert_sql = InsertBuilder::new(TableName::FUNCTION_FACTS)
-                    .or_replace()
-                    .value("name", full_name.as_str())
-                    .value("file", file_path.as_str())
-                    .value("is_public", is_public)
-                    .value("is_async", false) // Solidity doesn't have async
-                    .value("is_unsafe", is_unsafe) // unchecked blocks
-                    .value("parameters", params.join(", ").as_str())
-                    .value("return_type", return_type.as_deref().unwrap_or(""))
-                    .value("generics", "") // Solidity doesn't have generics
-                    .value("doc_comment", docs.as_str())
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *functions += 1;
-
+                process_solidity_function(node, source, file_path, &full_name, data);
+                
                 // Recursively process function body
                 let mut cursor = node.walk();
                 for child in node.children(&mut cursor) {
-                    extract_symbols(
-                        child,
+                    extract_solidity_symbols(
+                        &child,
                         source,
                         file_path,
-                        sql,
-                        functions,
-                        types,
-                        imports,
-                        current_function,
-                        current_contract,
-                        call_graph,
+                        data,
+                        Some(full_name.clone()),
+                        current_contract.clone(),
                     );
                 }
-
-                *current_function = old_function;
                 return; // Don't recurse again
             }
         }
-        SymbolKind::Function if node.kind() == "event_definition" => {
-            if let Some(name) = extract_event_name(&node, source) {
-                let full_name = if let Some(contract) = current_contract {
+        "event_definition" => {
+            if let Some(name) = extract_event_name(node, source) {
+                let full_name = if let Some(ref contract) = current_contract {
                     format!("{}.{}", contract, name)
                 } else {
                     name.clone()
                 };
-                
-                let params = extract_event_params(&node, source);
-                let docs = extract_natspec(&node, source);
-
-                // Store events as functions with special marker
-                let insert_sql = InsertBuilder::new(TableName::FUNCTION_FACTS)
-                    .or_replace()
-                    .value("name", format!("event {}", full_name).as_str())
-                    .value("file", file_path.as_str())
-                    .value("is_public", true) // Events are always public
-                    .value("is_async", false)
-                    .value("is_unsafe", false)
-                    .value("parameters", params.join(", ").as_str())
-                    .value("return_type", "")
-                    .value("generics", "")
-                    .value("doc_comment", docs.as_str())
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *functions += 1;
+                process_solidity_event(node, source, file_path, &full_name, data);
             }
         }
-        SymbolKind::Struct | SymbolKind::Module | SymbolKind::Interface if matches!(node.kind(), "contract_declaration" | "library_declaration" | "interface_declaration") => {
-            if let Some(name) = extract_contract_name(&node, source) {
-                let old_contract = current_contract.clone();
-                *current_contract = Some(name.clone());
+        "contract_declaration" | "library_declaration" | "interface_declaration" => {
+            if let Some(name) = extract_contract_name(node, source) {
+                process_solidity_contract(node, source, file_path, &name, data);
                 
-                let docs = extract_natspec(&node, source);
-                let type_kind = match node.kind() {
-                    "contract_declaration" => "contract",
-                    "library_declaration" => "library",
-                    "interface_declaration" => "interface",
-                    _ => "unknown",
-                };
-
-                let insert_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                    .or_replace()
-                    .value("symbol", name.as_str())
-                    .value("symbol_type", type_kind)
-                    .value("file", file_path.as_str())
-                    .value("is_public", true) // Contracts are public by nature
-                    .value("doc_comment", docs.as_str())
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *types += 1;
-
-                // Process contract body
+                // Process contract body with updated context
                 let mut cursor = node.walk();
                 for child in node.children(&mut cursor) {
-                    extract_symbols(
-                        child,
+                    extract_solidity_symbols(
+                        &child,
                         source,
                         file_path,
-                        sql,
-                        functions,
-                        types,
-                        imports,
-                        current_function,
-                        current_contract,
-                        call_graph,
+                        data,
+                        current_function.clone(),
+                        Some(name.clone()),
                     );
                 }
-
-                *current_contract = old_contract;
                 return; // Don't recurse again
             }
         }
-        SymbolKind::Struct => {
-            if let Some(name) = extract_struct_name(&node, source) {
-                let full_name = if let Some(contract) = current_contract {
+        "struct_declaration" => {
+            if let Some(name) = extract_struct_name(node, source) {
+                let full_name = if let Some(ref contract) = current_contract {
                     format!("{}.{}", contract, name)
                 } else {
                     name.clone()
                 };
-                
-                let docs = extract_natspec(&node, source);
-
-                let insert_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                    .or_replace()
-                    .value("symbol", full_name.as_str())
-                    .value("symbol_type", "struct")
-                    .value("file", file_path.as_str())
-                    .value("is_public", true) // Structs visibility is contextual
-                    .value("doc_comment", docs.as_str())
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *types += 1;
+                process_solidity_struct(node, source, file_path, &full_name, data);
             }
         }
-        SymbolKind::Enum => {
-            if let Some(name) = extract_enum_name(&node, source) {
-                let full_name = if let Some(contract) = current_contract {
+        "enum_declaration" => {
+            if let Some(name) = extract_enum_name(node, source) {
+                let full_name = if let Some(ref contract) = current_contract {
                     format!("{}.{}", contract, name)
                 } else {
                     name.clone()
                 };
-                
-                let docs = extract_natspec(&node, source);
-
-                let insert_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                    .or_replace()
-                    .value("symbol", full_name.as_str())
-                    .value("symbol_type", "enum")
-                    .value("file", file_path.as_str())
-                    .value("is_public", true) // Enums visibility is contextual
-                    .value("doc_comment", docs.as_str())
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *types += 1;
+                process_solidity_enum(node, source, file_path, &full_name, data);
             }
         }
-        SymbolKind::Const if node.kind() == "state_variable_declaration" => {
-            if let Some(name) = extract_state_variable_name(&node, source) {
-                let full_name = if let Some(contract) = current_contract {
+        "state_variable_declaration" => {
+            if let Some(name) = extract_state_variable_name(node, source) {
+                let full_name = if let Some(ref contract) = current_contract {
                     format!("{}.{}", contract, name)
                 } else {
                     name.clone()
                 };
-                
-                let visibility = extract_visibility(&node, source);
-                let is_public = visibility == "public" || visibility == "external";
-                let var_type = extract_variable_type(&node, source);
-                let docs = extract_natspec(&node, source);
-
-                // Store state variables as a special type
-                let insert_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                    .or_replace()
-                    .value("symbol", full_name.as_str())
-                    .value("symbol_type", format!("state_var:{}", var_type.as_deref().unwrap_or("unknown")).as_str())
-                    .value("file", file_path.as_str())
-                    .value("is_public", is_public)
-                    .value("doc_comment", docs.as_str())
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *types += 1;
+                process_solidity_state_variable(node, source, file_path, &full_name, data);
             }
         }
-        SymbolKind::Import => {
-            if let Some((imported_item, import_path, is_external)) = extract_import_details(&node, source) {
-                let insert_sql = InsertBuilder::new(TableName::IMPORT_FACTS)
-                    .or_replace()
-                    .value("imported_item", imported_item.as_str())
-                    .value("import_path", import_path.as_str())
-                    .value("file", file_path.as_str())
-                    .value("is_external", is_external)
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *imports += 1;
-            }
+        "import_directive" => {
+            process_solidity_import(node, source, file_path, data);
         }
         _ => {}
     }
@@ -339,20 +183,306 @@ fn extract_symbols(
     // Recurse to children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_symbols(
-            child,
+        extract_solidity_symbols(
+            &child,
             source,
             file_path,
-            sql,
-            functions,
-            types,
-            imports,
-            current_function,
-            current_contract,
-            call_graph,
+            data,
+            current_function.clone(),
+            current_contract.clone(),
         );
     }
 }
+
+/// Process a Solidity function and add to ExtractedData
+fn process_solidity_function(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let visibility = extract_visibility(node, source);
+    let is_public = visibility != "private" && visibility != "internal";
+    let mutability = extract_mutability(node, source);
+    let params = extract_params(node, source);
+    let return_type = extract_return_type(node, source);
+    let is_unsafe = has_unchecked_block(node, source);
+    
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: if node.kind() == "modifier_definition" { "modifier" } else { "function" }.to_string(),
+        line: node.start_position().row + 1,
+        context: get_node_context(node, source),
+    });
+    
+    // Add function fact
+    data.add_function(FunctionFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        takes_mut_self: false, // Solidity doesn't have self
+        takes_mut_params: mutability == "payable", // payable functions modify state
+        returns_result: false, // Solidity uses revert for errors
+        returns_option: false, // Solidity doesn't have Option
+        is_async: false, // Solidity doesn't have async
+        is_unsafe, // unchecked blocks
+        is_public,
+        parameter_count: params.len() as i32,
+        generic_count: 0, // Solidity doesn't have generics
+        parameters: params,
+        return_type,
+    });
+}
+
+/// Process a Solidity event and add to ExtractedData
+fn process_solidity_event(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let params = extract_event_params(node, source);
+    
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: format!("event {}", name),
+        kind: "event".to_string(),
+        line: node.start_position().row + 1,
+        context: get_node_context(node, source),
+    });
+    
+    // Add as function fact with special marker
+    data.add_function(FunctionFact {
+        file: file_path.to_string(),
+        name: format!("event {}", name),
+        takes_mut_self: false,
+        takes_mut_params: false,
+        returns_result: false,
+        returns_option: false,
+        is_async: false,
+        is_unsafe: false,
+        is_public: true, // Events are always public
+        parameter_count: params.len() as i32,
+        generic_count: 0,
+        parameters: params,
+        return_type: None,
+    });
+}
+
+/// Process a Solidity contract/library/interface and add to ExtractedData
+fn process_solidity_contract(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let type_kind = match node.kind() {
+        "contract_declaration" => "contract",
+        "library_declaration" => "library",
+        "interface_declaration" => "interface",
+        _ => "unknown",
+    };
+    
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: type_kind.to_string(),
+        line: node.start_position().row + 1,
+        context: get_node_context(node, source),
+    });
+    
+    // Add type fact
+    data.add_type(TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: get_type_definition(node, source),
+        kind: type_kind.to_string(),
+        visibility: "public".to_string(), // Contracts are public by nature
+        usage_count: 0,
+    });
+}
+
+/// Process a Solidity struct and add to ExtractedData
+fn process_solidity_struct(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: "struct".to_string(),
+        line: node.start_position().row + 1,
+        context: get_node_context(node, source),
+    });
+    
+    // Add type fact
+    data.add_type(TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: get_type_definition(node, source),
+        kind: "struct".to_string(),
+        visibility: "public".to_string(), // Structs visibility is contextual
+        usage_count: 0,
+    });
+}
+
+/// Process a Solidity enum and add to ExtractedData
+fn process_solidity_enum(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: "enum".to_string(),
+        line: node.start_position().row + 1,
+        context: get_node_context(node, source),
+    });
+    
+    // Add type fact
+    data.add_type(TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: get_type_definition(node, source),
+        kind: "enum".to_string(),
+        visibility: "public".to_string(), // Enums visibility is contextual
+        usage_count: 0,
+    });
+}
+
+/// Process a Solidity state variable and add to ExtractedData
+fn process_solidity_state_variable(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let visibility = extract_visibility(node, source);
+    let is_public = visibility == "public" || visibility == "external";
+    let var_type = extract_variable_type(node, source);
+    
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: "state_variable".to_string(),
+        line: node.start_position().row + 1,
+        context: get_node_context(node, source),
+    });
+    
+    // Add type fact for state variable
+    data.add_type(TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: var_type.unwrap_or_else(|| "unknown".to_string()),
+        kind: "state_variable".to_string(),
+        visibility: if is_public { "public" } else { "private" }.to_string(),
+        usage_count: 0,
+    });
+}
+
+/// Process a Solidity import and add to ExtractedData
+fn process_solidity_import(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    data: &mut ExtractedData,
+) {
+    if let Some((imported_item, import_path, is_external)) = extract_import_details(node, source) {
+        data.add_import(ImportFact {
+            file: file_path.to_string(),
+            import_path: import_path.clone(),
+            imported_names: vec![imported_item],
+            import_kind: if is_external { "external" } else { "relative" }.to_string(),
+            line_number: (node.start_position().row + 1) as i32,
+        });
+    }
+}
+
+/// Extract call expressions and add to ExtractedData
+fn extract_solidity_calls(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    current_function: &Option<String>,
+    data: &mut ExtractedData,
+) {
+    let line_number = (node.start_position().row + 1) as i32;
+
+    match node.kind() {
+        "call_expression" | "function_call" => {
+            if let Some(caller) = current_function {
+                if let Some(func_node) = node.child_by_field_name("function") {
+                    if let Ok(callee) = func_node.utf8_text(source) {
+                        data.add_call_edge(CallEdge {
+                            caller: caller.clone(),
+                            callee: callee.to_string(),
+                            file: file_path.to_string(),
+                            call_type: CallType::Direct.to_string(),
+                            line_number,
+                        });
+                    }
+                }
+            }
+        }
+        "member_expression" => {
+            // Handle method calls like contract.method()
+            if let Some(parent) = node.parent() {
+                if parent.kind() == "call_expression" || parent.kind() == "function_call" {
+                    if let Some(caller) = current_function {
+                        if let Some(property) = node.child_by_field_name("property") {
+                            if let Ok(callee) = property.utf8_text(source) {
+                                data.add_call_edge(CallEdge {
+                                    caller: caller.clone(),
+                                    callee: callee.to_string(),
+                                    file: file_path.to_string(),
+                                    call_type: CallType::Method.to_string(),
+                                    line_number,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "new_expression" => {
+            // Handle contract creation
+            if let Some(caller) = current_function {
+                if let Ok(text) = node.utf8_text(source) {
+                    if let Some(contract_name) = text.strip_prefix("new ").and_then(|s| s.split('(').next()) {
+                        data.add_call_edge(CallEdge {
+                            caller: caller.clone(),
+                            callee: format!("new {}", contract_name.trim()),
+                            file: file_path.to_string(),
+                            call_type: CallType::Constructor.to_string(),
+                            line_number,
+                        });
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
 
 /// Extract function name
 fn extract_function_name(node: &Node, source: &[u8]) -> Option<String> {
@@ -398,41 +528,28 @@ fn extract_state_variable_name(node: &Node, source: &[u8]) -> Option<String> {
 
 /// Extract visibility modifier (public, private, internal, external)
 fn extract_visibility(node: &Node, source: &[u8]) -> String {
-    let text = node.utf8_text(source).unwrap_or("");
-    
-    if text.contains("public") {
-        "public".to_string()
-    } else if text.contains("external") {
-        "external".to_string()
-    } else if text.contains("internal") {
-        "internal".to_string()
-    } else if text.contains("private") {
-        "private".to_string()
-    } else {
-        "internal".to_string() // Default in Solidity
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "visibility" {
+            if let Ok(vis) = child.utf8_text(source) {
+                return vis.to_string();
+            }
+        }
     }
+    "internal".to_string() // Default visibility in Solidity
 }
 
 /// Extract state mutability (pure, view, payable)
-fn extract_mutability(node: &Node, source: &[u8]) -> Option<String> {
-    let text = node.utf8_text(source).unwrap_or("");
-    
-    if text.contains("pure") {
-        Some("pure".to_string())
-    } else if text.contains("view") {
-        Some("view".to_string())
-    } else if text.contains("payable") {
-        Some("payable".to_string())
-    } else {
-        None
+fn extract_mutability(node: &Node, source: &[u8]) -> String {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "state_mutability" {
+            if let Ok(mut_text) = child.utf8_text(source) {
+                return mut_text.to_string();
+            }
+        }
     }
-}
-
-/// Check if function contains unchecked blocks (similar to unsafe)
-fn has_unchecked_block(node: &Node, source: &[u8]) -> bool {
-    node.utf8_text(source)
-        .unwrap_or("")
-        .contains("unchecked")
+    "nonpayable".to_string() // Default mutability
 }
 
 /// Extract function parameters
@@ -473,16 +590,88 @@ fn extract_event_params(node: &Node, source: &[u8]) -> Vec<String> {
 
 /// Extract return type
 fn extract_return_type(node: &Node, source: &[u8]) -> Option<String> {
-    node.child_by_field_name("return_parameters")
-        .and_then(|rp| rp.utf8_text(source).ok())
-        .map(|s| s.trim_start_matches("returns").trim().to_string())
+    node.child_by_field_name("return_type")
+        .and_then(|r| r.utf8_text(source).ok())
+        .map(String::from)
+        .or_else(|| {
+            // Look for returns keyword
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() == "return_parameters" {
+                    if let Ok(ret_text) = child.utf8_text(source) {
+                        return Some(ret_text.to_string());
+                    }
+                }
+            }
+            None
+        })
 }
 
-/// Extract variable type
+/// Extract variable type from state variable declaration
 fn extract_variable_type(node: &Node, source: &[u8]) -> Option<String> {
     node.child_by_field_name("type")
         .and_then(|t| t.utf8_text(source).ok())
         .map(String::from)
+}
+
+/// Check if function has unchecked blocks (Solidity's unsafe)
+fn has_unchecked_block(node: &Node, source: &[u8]) -> bool {
+    let mut has_unchecked = false;
+    let mut cursor = node.walk();
+    
+    fn check_unchecked(node: &Node, source: &[u8], has_unchecked: &mut bool) {
+        if node.kind() == "unchecked_block" {
+            *has_unchecked = true;
+            return;
+        }
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            check_unchecked(&child, source, has_unchecked);
+        }
+    }
+    
+    for child in node.children(&mut cursor) {
+        check_unchecked(&child, source, &mut has_unchecked);
+    }
+    
+    has_unchecked
+}
+
+/// Extract import details
+fn extract_import_details(node: &Node, source: &[u8]) -> Option<(String, String, bool)> {
+    if let Ok(import_text) = node.utf8_text(source) {
+        // Simple import parsing - can be improved with proper AST traversal
+        let import_clean = import_text
+            .trim_start_matches("import ")
+            .trim_end_matches(';')
+            .trim();
+        
+        // Check for various import styles
+        if import_clean.contains(" from ") {
+            let parts: Vec<&str> = import_clean.split(" from ").collect();
+            if parts.len() == 2 {
+                let imported = parts[0].trim().trim_matches('{').trim_matches('}');
+                let path = parts[1].trim().trim_matches('"').trim_matches('\'');
+                let is_external = !path.starts_with('.');
+                return Some((imported.to_string(), path.to_string(), is_external));
+            }
+        } else if import_clean.contains(" as ") {
+            let parts: Vec<&str> = import_clean.split(" as ").collect();
+            if parts.len() == 2 {
+                let path = parts[0].trim().trim_matches('"').trim_matches('\'');
+                let alias = parts[1].trim();
+                let is_external = !path.starts_with('.');
+                return Some((alias.to_string(), path.to_string(), is_external));
+            }
+        } else {
+            // Simple import
+            let path = import_clean.trim_matches('"').trim_matches('\'');
+            let is_external = !path.starts_with('.');
+            let imported = path.split('/').last().unwrap_or(path);
+            return Some((imported.to_string(), path.to_string(), is_external));
+        }
+    }
+    None
 }
 
 /// Extract NatSpec documentation
@@ -491,152 +680,51 @@ fn extract_natspec(node: &Node, source: &[u8]) -> String {
     if let Some(prev) = node.prev_sibling() {
         if prev.kind() == "comment" {
             if let Ok(text) = prev.utf8_text(source) {
-                return clean_natspec(text);
+                return clean_natspec_comment(text);
             }
         }
     }
     String::new()
 }
 
-/// Clean NatSpec comment
-fn clean_natspec(raw: &str) -> String {
-    if raw.starts_with("/**") {
-        raw.trim()
-            .strip_prefix("/**")
-            .and_then(|s| s.strip_suffix("*/"))
-            .unwrap_or(raw)
-            .lines()
-            .map(|line| line.trim_start().strip_prefix("* ").unwrap_or(line.trim()))
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ")
-    } else if raw.starts_with("///") {
-        raw.lines()
-            .map(|line| line.trim_start().strip_prefix("/// ").unwrap_or(line.trim()))
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ")
+/// Clean NatSpec documentation comment
+fn clean_natspec_comment(raw: &str) -> String {
+    raw.lines()
+        .map(|line| {
+            line.trim_start()
+                .strip_prefix("///")
+                .or_else(|| line.strip_prefix("/**"))
+                .or_else(|| line.strip_prefix("*/"))
+                .or_else(|| line.strip_prefix("*"))
+                .unwrap_or(line)
+                .trim()
+        })
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Get the context around a node (first line of the node)
+fn get_node_context(node: &Node, source: &[u8]) -> String {
+    if let Ok(text) = node.utf8_text(source) {
+        text.lines().next().unwrap_or("").to_string()
     } else {
-        raw.to_string()
+        String::new()
     }
 }
 
-/// Extract import details
-fn extract_import_details(node: &Node, source: &[u8]) -> Option<(String, String, bool)> {
-    let import_text = node.utf8_text(source).ok()?;
-    
-    // Extract path from quotes
-    if let Some(start) = import_text.find('"') {
-        if let Some(end) = import_text[start + 1..].find('"') {
-            let path = &import_text[start + 1..start + 1 + end];
-            
-            // Check if it's an external import
-            // External imports often start with '@' (npm packages) or 'http' (URLs)
-            let is_external = path.starts_with('@') || 
-                              path.starts_with("http") ||
-                              !path.starts_with('.');
-            
-            // Extract imported items if specified
-            let imported_item = if import_text.contains(" as ") {
-                // Handle aliased imports
-                import_text.split(" as ")
-                    .nth(1)
-                    .and_then(|s| s.split_whitespace().next())
-                    .unwrap_or(path)
-                    .to_string()
-            } else if import_text.contains("{") && import_text.contains("}") {
-                // Handle selective imports
-                if let Some(start) = import_text.find('{') {
-                    if let Some(end) = import_text.find('}') {
-                        import_text[start + 1..end].trim().to_string()
-                    } else {
-                        path.to_string()
-                    }
-                } else {
-                    path.to_string()
-                }
-            } else {
-                path.to_string()
-            };
-            
-            return Some((imported_item, path.to_string(), is_external));
+/// Get the type definition text
+fn get_type_definition(node: &Node, source: &[u8]) -> String {
+    if let Ok(text) = node.utf8_text(source) {
+        // Take first 200 chars or first 3 lines, whichever is shorter
+        let lines: Vec<&str> = text.lines().take(3).collect();
+        let preview = lines.join("\n");
+        if preview.len() > 200 {
+            format!("{}...", &preview[..200])
+        } else {
+            preview
         }
-    }
-    
-    None
-}
-
-/// Extract call expressions
-fn extract_calls(
-    node: &Node,
-    source: &[u8],
-    current_function: &Option<String>,
-    call_graph: &mut Vec<(String, String, CallType, i32)>,
-) {
-    let line_number = (node.start_position().row + 1) as i32;
-
-    match node.kind() {
-        "call_expression" => {
-            if let Some(caller) = current_function {
-                if let Some(func_node) = node.child_by_field_name("function") {
-                    if let Ok(callee) = func_node.utf8_text(source) {
-                        call_graph.push((
-                            caller.clone(),
-                            callee.to_string(),
-                            CallType::Direct,
-                            line_number,
-                        ));
-                    }
-                }
-            }
-        }
-        "member_expression" => {
-            // Handle contract.method() calls
-            if let Some(parent) = node.parent() {
-                if parent.kind() == "call_expression" {
-                    if let Some(caller) = current_function {
-                        if let Some(property) = node.child_by_field_name("property") {
-                            if let Ok(callee) = property.utf8_text(source) {
-                                call_graph.push((
-                                    caller.clone(),
-                                    callee.to_string(),
-                                    CallType::Method,
-                                    line_number,
-                                ));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        "new_expression" => {
-            // Handle contract creation
-            if let Some(caller) = current_function {
-                if let Ok(text) = node.utf8_text(source) {
-                    call_graph.push((
-                        caller.clone(),
-                        text.to_string(),
-                        CallType::Constructor,
-                        line_number,
-                    ));
-                }
-            }
-        }
-        "emit_statement" => {
-            // Solidity events
-            if let Some(caller) = current_function {
-                if let Some(event_node) = node.child_by_field_name("name") {
-                    if let Ok(event_name) = event_node.utf8_text(source) {
-                        call_graph.push((
-                            caller.clone(),
-                            format!("emit {}", event_name),
-                            CallType::Event,
-                            line_number,
-                        ));
-                    }
-                }
-            }
-        }
-        _ => {}
+    } else {
+        String::new()
     }
 }

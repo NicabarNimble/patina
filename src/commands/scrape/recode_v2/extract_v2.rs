@@ -313,8 +313,13 @@ fn process_solidity_file(file_path: &str, content: &[u8], data: &mut ExtractedDa
     use super::languages::solidity::SolidityProcessor;
     
     match SolidityProcessor::process_file(FilePath::from(file_path), content) {
-        Ok((sql_statements, _, _, _)) => {
-            parse_sql_into_structs(file_path, &sql_statements, data);
+        Ok(extracted) => {
+            // Merge the extracted data
+            data.symbols.extend(extracted.symbols);
+            data.functions.extend(extracted.functions);
+            data.types.extend(extracted.types);
+            data.imports.extend(extracted.imports);
+            data.call_edges.extend(extracted.call_edges);
             Ok(())
         }
         Err(e) => Err(e),
