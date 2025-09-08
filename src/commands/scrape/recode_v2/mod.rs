@@ -31,6 +31,9 @@ use super::ScrapeConfig;
 // ============================================================================
 // LANGUAGE MODULES
 // ============================================================================
+pub mod database;
+pub mod extract_v2;
+pub mod extracted_data;
 pub mod languages;
 pub mod sql_builder;
 pub mod types;
@@ -152,8 +155,14 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
         initialize_database(&config.db_path)?;
     }
 
-    // Extract and index
-    let items_processed = extract_and_index(&config.db_path, &work_dir, config.force)?;
+    // Extract and index - use new v2 implementation with embedded DuckDB
+    let items_processed = if std::env::var("USE_EMBEDDED_DB").is_ok() {
+        // New implementation with embedded DuckDB library
+        extract_v2::extract_code_metadata_v2(&config.db_path, &work_dir, config.force)?
+    } else {
+        // Original implementation with SQL string concatenation
+        extract_and_index(&config.db_path, &work_dir, config.force)?
+    };
 
     // Get database size
     let metadata = std::fs::metadata(&config.db_path)?;
@@ -196,6 +205,14 @@ fn determine_work_directory(config: &ScrapeConfig) -> Result<PathBuf> {
 
 /// Initialize DuckDB database with lean schema and optimal settings for small size
 fn initialize_database(db_path: &str) -> Result<()> {
+    // Use embedded library if flag is set
+    if std::env::var("USE_EMBEDDED_DB").is_ok() {
+        let mut db = database::Database::open(db_path)?;
+        db.init_schema()?;
+        return Ok(());
+    }
+    
+    // Original implementation with CLI
     use std::process::Command;
 
     // Create parent directory if needed
