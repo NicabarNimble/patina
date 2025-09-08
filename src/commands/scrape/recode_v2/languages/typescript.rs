@@ -147,7 +147,7 @@ fn extract_symbols(
                 let is_async = is_async_function(&node, source);
                 let params = extract_params(&node, source);
                 let return_type = extract_return_type(&node, source);
-                let _generics = extract_generics(&node, source);
+                let generics = extract_generics(&node, source);
                 let docs = extract_tsdoc(&node, source);
 
                 let insert_sql = InsertBuilder::new(TableName::FUNCTION_FACTS)
