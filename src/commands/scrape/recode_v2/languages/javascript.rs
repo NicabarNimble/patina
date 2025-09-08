@@ -11,6 +11,7 @@
 //! - Async/await and promises
 //! - Flexible parameter patterns (destructuring, rest)
 
+use crate::commands::scrape::recode_v2::types::{js_nodes::*, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// JavaScript language specification
@@ -60,12 +61,15 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         None
     },
 
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_declaration" | "arrow_function" | "function_expression" => "function",
-        "class_declaration" => "struct",
-        "import_statement" => "import",
-        "const_declaration" | "let_declaration" => "const",
-        _ => "unknown",
+    get_symbol_kind: |node_kind| {
+        let kind = match node_kind {
+            FUNCTION_DECLARATION | ARROW_FUNCTION | FUNCTION_EXPRESSION => SymbolKind::Function,
+            CLASS_DECLARATION => SymbolKind::Struct,
+            IMPORT_STATEMENT => SymbolKind::Import,
+            "const_declaration" | "let_declaration" => SymbolKind::Const,
+            _ => SymbolKind::Unknown,
+        };
+        kind.as_str()
     },
 
     get_symbol_kind_complex: |node, _source| {
@@ -130,7 +134,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         let line_number = (node.start_position().row + 1) as i32;
 
         match node.kind() {
-            "call_expression" => {
+            CALL_EXPRESSION => {
                 // JavaScript function calls
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {

@@ -40,7 +40,7 @@ impl SymbolKind {
             _ => Self::Unknown,
         }
     }
-    
+
     /// Convert to string (for backward compatibility)
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -96,6 +96,94 @@ pub mod rust_nodes {
     pub const MACRO_INVOCATION: &str = "macro_invocation";
 }
 
+/// Common tree-sitter node types for Go
+pub mod go_nodes {
+    pub const FUNCTION_DECLARATION: &str = "function_declaration";
+    pub const METHOD_DECLARATION: &str = "method_declaration";
+    pub const TYPE_DECLARATION: &str = "type_declaration";
+    pub const TYPE_SPEC: &str = "type_spec";
+    pub const STRUCT_TYPE: &str = "struct_type";
+    pub const INTERFACE_TYPE: &str = "interface_type";
+    pub const CONST_DECLARATION: &str = "const_declaration";
+    pub const VAR_DECLARATION: &str = "var_declaration";
+    pub const IMPORT_DECLARATION: &str = "import_declaration";
+    pub const PACKAGE_CLAUSE: &str = "package_clause";
+    pub const CALL_EXPRESSION: &str = "call_expression";
+    pub const GO_STATEMENT: &str = "go_statement";
+    pub const DEFER_STATEMENT: &str = "defer_statement";
+}
+
+/// Common tree-sitter node types for Python
+pub mod python_nodes {
+    pub const FUNCTION_DEFINITION: &str = "function_definition";
+    pub const CLASS_DEFINITION: &str = "class_definition";
+    pub const DECORATED_DEFINITION: &str = "decorated_definition";
+    pub const IMPORT_STATEMENT: &str = "import_statement";
+    pub const IMPORT_FROM_STATEMENT: &str = "import_from_statement";
+    pub const ASSIGNMENT: &str = "assignment";
+    pub const CALL: &str = "call";
+    pub const IDENTIFIER: &str = "identifier";
+    pub const MODULE: &str = "module";
+}
+
+/// Common tree-sitter node types for JavaScript/TypeScript
+pub mod js_nodes {
+    pub const FUNCTION_DECLARATION: &str = "function_declaration";
+    pub const FUNCTION_EXPRESSION: &str = "function_expression";
+    pub const ARROW_FUNCTION: &str = "arrow_function";
+    pub const CLASS_DECLARATION: &str = "class_declaration";
+    pub const METHOD_DEFINITION: &str = "method_definition";
+    pub const VARIABLE_DECLARATION: &str = "variable_declaration";
+    pub const LEXICAL_DECLARATION: &str = "lexical_declaration";
+    pub const IMPORT_STATEMENT: &str = "import_statement";
+    pub const EXPORT_STATEMENT: &str = "export_statement";
+    pub const CALL_EXPRESSION: &str = "call_expression";
+    pub const INTERFACE_DECLARATION: &str = "interface_declaration";
+    pub const TYPE_ALIAS_DECLARATION: &str = "type_alias_declaration";
+    pub const ENUM_DECLARATION: &str = "enum_declaration";
+}
+
+/// Common tree-sitter node types for C
+pub mod c_nodes {
+    pub const FUNCTION_DEFINITION: &str = "function_definition";
+    pub const DECLARATION: &str = "declaration";
+    pub const STRUCT_SPECIFIER: &str = "struct_specifier";
+    pub const UNION_SPECIFIER: &str = "union_specifier";
+    pub const ENUM_SPECIFIER: &str = "enum_specifier";
+    pub const TYPE_DEFINITION: &str = "type_definition";
+    pub const PREPROC_INCLUDE: &str = "preproc_include";
+    pub const PREPROC_DEF: &str = "preproc_def";
+    pub const CALL_EXPRESSION: &str = "call_expression";
+}
+
+/// Common tree-sitter node types for C++
+pub mod cpp_nodes {
+    pub const FUNCTION_DEFINITION: &str = "function_definition";
+    pub const CLASS_SPECIFIER: &str = "class_specifier";
+    pub const STRUCT_SPECIFIER: &str = "struct_specifier";
+    pub const NAMESPACE_DEFINITION: &str = "namespace_definition";
+    pub const TEMPLATE_DECLARATION: &str = "template_declaration";
+    pub const DECLARATION: &str = "declaration";
+    pub const USING_DECLARATION: &str = "using_declaration";
+    pub const PREPROC_INCLUDE: &str = "preproc_include";
+    pub const CALL_EXPRESSION: &str = "call_expression";
+}
+
+/// Common tree-sitter node types for Solidity
+pub mod solidity_nodes {
+    pub const FUNCTION_DEFINITION: &str = "function_definition";
+    pub const CONTRACT_DECLARATION: &str = "contract_declaration";
+    pub const INTERFACE_DECLARATION: &str = "interface_declaration";
+    pub const LIBRARY_DECLARATION: &str = "library_declaration";
+    pub const STRUCT_DECLARATION: &str = "struct_declaration";
+    pub const ENUM_DECLARATION: &str = "enum_declaration";
+    pub const EVENT_DEFINITION: &str = "event_definition";
+    pub const MODIFIER_DEFINITION: &str = "modifier_definition";
+    pub const STATE_VARIABLE_DECLARATION: &str = "state_variable_declaration";
+    pub const IMPORT_DIRECTIVE: &str = "import_directive";
+    pub const CALL_EXPRESSION: &str = "call_expression";
+}
+
 // ============================================================================
 // SQL CONSTANTS (Type-safe SQL)
 // ============================================================================
@@ -103,11 +191,11 @@ pub mod sql {
     /// Prepared statement for function facts
     pub const INSERT_FUNCTION_FACT: &str = 
         "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    
+
     /// Prepared statement for type vocabulary
     pub const INSERT_TYPE_VOCAB: &str = 
         "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility, usage_count) VALUES (?, ?, ?, ?, ?, ?)";
-    
+
     /// Prepared statement for imports
     pub const INSERT_IMPORT: &str = 
         "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES (?, ?, ?, ?, ?)";

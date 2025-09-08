@@ -12,6 +12,7 @@
 //! - Unchecked blocks (similar to unsafe)
 //! - Library and contract declarations
 
+use crate::commands::scrape::recode_v2::types::{solidity_nodes::*, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Solidity language specification
@@ -63,17 +64,20 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         None
     },
 
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_definition" => "function",
-        "modifier_definition" => "function",
-        "event_definition" => "function",
-        "contract_declaration" => "struct",
-        "struct_declaration" => "struct",
-        "interface_declaration" => "trait",
-        "library_declaration" => "impl",
-        "import_directive" => "import",
-        "state_variable_declaration" => "const",
-        _ => "unknown",
+    get_symbol_kind: |node_kind| {
+        let kind = match node_kind {
+            FUNCTION_DEFINITION => SymbolKind::Function,
+            MODIFIER_DEFINITION => SymbolKind::Function,
+            EVENT_DEFINITION => SymbolKind::Function,
+            CONTRACT_DECLARATION => SymbolKind::Struct,
+            STRUCT_DECLARATION => SymbolKind::Struct,
+            INTERFACE_DECLARATION => SymbolKind::Trait,
+            LIBRARY_DECLARATION => SymbolKind::Impl,
+            IMPORT_DIRECTIVE => SymbolKind::Import,
+            STATE_VARIABLE_DECLARATION => SymbolKind::Const,
+            _ => SymbolKind::Unknown,
+        };
+        kind.as_str()
     },
 
     get_symbol_kind_complex: |_node, _source| {
@@ -117,7 +121,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         let line_number = (node.start_position().row + 1) as i32;
 
         match node.kind() {
-            "call_expression" => {
+            CALL_EXPRESSION => {
                 // Regular function calls
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
