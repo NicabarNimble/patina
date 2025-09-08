@@ -464,20 +464,20 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         sql_statements.push_str(&insert_sql);
         sql_statements.push_str(";\n");
 
-        // Process Cairo file with special parser
+        // Process Cairo file with special parser (now returns ExtractedData)
         match languages::cairo::CairoProcessor::process_file(
             FilePath::from(relative_path.as_str()),
             &content,
         ) {
-            Ok((statements, funcs, types, imps)) => {
-                for stmt in statements {
-                    sql_statements.push_str(&stmt);
-                    sql_statements.push('\n');
-                }
-                functions_count += funcs;
-                types_count += types;
-                imports_count += imps;
+            Ok(extracted_data) => {
+                // For now, just count the items (old SQL path is deprecated)
+                functions_count += extracted_data.functions.len();
+                types_count += extracted_data.types.len();
+                imports_count += extracted_data.imports.len();
                 _files_processed += 1;
+                
+                // TODO: This entire old SQL path should be removed
+                // For now, we skip SQL generation for Cairo files
             }
             Err(e) => {
                 eprintln!("  ⚠️  Cairo parsing error in {}: {}", relative_path, e);
@@ -1209,6 +1209,7 @@ fn process_symbol(
             (true, false)
         }
         SymbolKind::Struct
+        | SymbolKind::Union
         | SymbolKind::Class
         | SymbolKind::Enum
         | SymbolKind::Interface
