@@ -11,6 +11,7 @@
 //! - Macro usage
 
 use crate::commands::scrape::recode_v2::LanguageSpec;
+use crate::commands::scrape::recode_v2::types::{SymbolKind, rust_nodes::*};
 
 /// Rust language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
@@ -61,18 +62,22 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             .map(String::from)
     },
 
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_item" => "function",
-        "struct_item" => "struct",
-        "enum_item" => "enum",
-        "trait_item" => "trait",
-        "impl_item" => "impl",
-        "type_alias" => "type_alias",
-        "const_item" => "const",
-        "static_item" => "const",
-        "use_declaration" => "import",
-        "mod_item" => "module",
-        _ => "unknown",
+    get_symbol_kind: |node_kind| {
+        // Use constants and types internally, but still return strings for compatibility
+        let kind = match node_kind {
+            FUNCTION_ITEM => SymbolKind::Function,
+            STRUCT_ITEM => SymbolKind::Struct,
+            ENUM_ITEM => SymbolKind::Enum,
+            TRAIT_ITEM => SymbolKind::Trait,
+            IMPL_ITEM => SymbolKind::Impl,
+            TYPE_ALIAS => SymbolKind::TypeAlias,
+            CONST_ITEM => SymbolKind::Const,
+            STATIC_ITEM => SymbolKind::Const,
+            USE_DECLARATION => SymbolKind::Import,
+            MODULE => SymbolKind::Module,
+            _ => SymbolKind::Unknown,
+        };
+        kind.as_str()  // Convert back to string for backward compatibility
     },
 
     get_symbol_kind_complex: |_node, _source| None,
@@ -135,7 +140,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                     }
                 }
             }
-            "macro_invocation" => {
+            MACRO_INVOCATION => {
                 // Rust macros (e.g., println!, vec!)
                 if let Some(macro_node) = node.child_by_field_name("macro") {
                     if let Ok(callee) = macro_node.utf8_text(source) {
