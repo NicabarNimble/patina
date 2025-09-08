@@ -6,6 +6,7 @@
 
 use anyhow::Result;
 use crate::commands::scrape::recode_v2::types::FilePath;
+use crate::commands::scrape::recode_v2::sql_builder::{InsertBuilder, TableName};
 
 /// Cairo processor for extracting symbols without tree-sitter
 pub struct CairoProcessor;
@@ -32,26 +33,33 @@ impl CairoProcessor {
             };
 
             // Insert into function_facts - match the actual schema
-            sql_statements.push(format!(
-                "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES ('{}', '{}', 0, 0, {}, {}, 0, 0, {}, {}, 0, '{}', '{}');",
-                escape_sql(file_path.as_str()),
-                escape_sql(&func.name),
-                if func.return_type.as_deref().unwrap_or("").contains("Result") { 1 } else { 0 },
-                if func.return_type.as_deref().unwrap_or("").contains("Option") { 1 } else { 0 },
-                if func.is_public { 1 } else { 0 },
-                func.parameters.len(),
-                escape_sql(&func.parameters.join(", ")),
-                escape_sql(func.return_type.as_deref().unwrap_or(""))
-            ));
+            let insert_sql = InsertBuilder::new(TableName::FUNCTION_FACTS)
+                .or_replace()
+                .value("file", file_path.as_str())
+                .value("name", func.name.as_str())
+                .value("takes_mut_self", false)
+                .value("takes_mut_params", false)
+                .value("returns_result", func.return_type.as_deref().unwrap_or("").contains("Result"))
+                .value("returns_option", func.return_type.as_deref().unwrap_or("").contains("Option"))
+                .value("is_async", false)
+                .value("is_unsafe", false)
+                .value("is_public", func.is_public)
+                .value("parameter_count", func.parameters.len() as i64)
+                .value("generic_count", 0i64)
+                .value("parameters", func.parameters.join(", "))
+                .value("return_type", func.return_type.as_deref().unwrap_or(""))
+                .build();
+            sql_statements.push(format!("{};\n", insert_sql));
 
             // Also insert into code_search for consistency - match the actual schema
-            sql_statements.push(format!(
-                "INSERT OR REPLACE INTO code_search (path, name, signature, context) VALUES ('{}', '{}', '{}', '{}');",
-                escape_sql(file_path.as_str()),
-                escape_sql(&func.name),
-                escape_sql(&signature),
-                escape_sql("") // Context not available from cairo parser
-            ));
+            let search_sql = InsertBuilder::new(TableName::CODE_SEARCH)
+                .or_replace()
+                .value("path", file_path.as_str())
+                .value("name", func.name.as_str())
+                .value("signature", signature)
+                .value("context", "") // Context not available from cairo parser
+                .build();
+            sql_statements.push(format!("{};\n", search_sql));
 
             functions += 1;
         }
@@ -64,25 +72,29 @@ impl CairoProcessor {
                 format!("struct {} {{ {} }}", s.name, s.fields.join(", "))
             };
 
-            sql_statements.push(format!(
-                "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', '{}', 'struct', '{}');",
-                escape_sql(file_path.as_str()),
-                escape_sql(&s.name),
-                escape_sql(&definition),
-                if s.is_public { "pub" } else { "private" }
-            ));
+            let type_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
+                .or_replace()
+                .value("file", file_path.as_str())
+                .value("name", s.name.as_str())
+                .value("definition", definition)
+                .value("kind", "struct")
+                .value("visibility", if s.is_public { "pub" } else { "private" })
+                .build();
+            sql_statements.push(format!("{};\n", type_sql));
             types += 1;
         }
 
         // Extract traits as types
         for t in symbols.traits {
-            sql_statements.push(format!(
-                "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', 'trait {}', 'trait', '{}');",
-                escape_sql(file_path.as_str()),
-                escape_sql(&t.name),
-                escape_sql(&t.name),
-                if t.is_public { "pub" } else { "private" }
-            ));
+            let type_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
+                .or_replace()
+                .value("file", file_path.as_str())
+                .value("name", t.name.as_str())
+                .value("definition", format!("trait {}", t.name))
+                .value("kind", "trait")
+                .value("visibility", if t.is_public { "pub" } else { "private" })
+                .build();
+            sql_statements.push(format!("{};\n", type_sql));
             types += 1;
         }
 
@@ -92,25 +104,29 @@ impl CairoProcessor {
             let is_external = !imp.path.starts_with("super::") && !imp.path.starts_with("self::");
             let imported_item = imp.path.split("::").last().unwrap_or(&imp.path);
 
-            sql_statements.push(format!(
-                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');",
-                escape_sql(file_path.as_str()),
-                escape_sql(imported_item),
-                escape_sql(&imp.path),
-                if is_external { 1 } else { 0 }
-            ));
+            let import_sql = InsertBuilder::new(TableName::IMPORT_FACTS)
+                .or_replace()
+                .value("importer_file", file_path.as_str())
+                .value("imported_item", imported_item)
+                .value("imported_from", imp.path.as_str())
+                .value("is_external", is_external)
+                .value("import_kind", "use")
+                .build();
+            sql_statements.push(format!("{};\n", import_sql));
             imports += 1;
         }
 
         // Extract modules as types (they define a namespace)
         for m in symbols.modules {
-            sql_statements.push(format!(
-                "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', 'mod {}', 'module', '{}');",
-                escape_sql(file_path.as_str()),
-                escape_sql(&m.name),
-                escape_sql(&m.name),
-                if m.is_public { "pub" } else { "private" }
-            ));
+            let type_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
+                .or_replace()
+                .value("file", file_path.as_str())
+                .value("name", m.name.as_str())
+                .value("definition", format!("mod {}", m.name))
+                .value("kind", "module")
+                .value("visibility", if m.is_public { "pub" } else { "private" })
+                .build();
+            sql_statements.push(format!("{};\n", type_sql));
             types += 1;
         }
 
@@ -121,9 +137,3 @@ impl CairoProcessor {
     }
 }
 
-/// Escape SQL special characters
-fn escape_sql(s: &str) -> String {
-    s.replace('\'', "''")
-        .replace('\\', "\\\\")
-        .replace(['\n', '\r', '\t'], " ")
-}
