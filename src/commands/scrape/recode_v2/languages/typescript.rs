@@ -1,7 +1,12 @@
 // ============================================================================
-// TYPESCRIPT LANGUAGE MODULE - Self-Contained Processor
+// TYPESCRIPT LANGUAGE PROCESSOR V2 - STRUCT-BASED
 // ============================================================================
-//! TypeScript language processor with complete isolation.
+//! TypeScript language processor that returns typed structs instead of SQL strings.
+//!
+//! This is the refactored version that:
+//! - Returns ExtractedData with typed structs
+//! - No SQL string generation
+//! - Direct data extraction to domain types
 //!
 //! Handles TypeScript's unique features:
 //! - Static typing with type annotations
@@ -12,20 +17,22 @@
 //! - Decorators and metadata
 //! - JSX support (.tsx files with different parser)
 
-use crate::commands::scrape::recode_v2::sql_builder::{InsertBuilder, TableName};
-use crate::commands::scrape::recode_v2::types::{CallType, FilePath, SymbolKind};
+use crate::commands::scrape::recode_v2::database::{
+    CallEdge, CodeSymbol, FunctionFact, ImportFact, TypeFact,
+};
+use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
+use crate::commands::scrape::recode_v2::types::{CallType, FilePath};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
-/// TypeScript language processor - completely self-contained
+/// TypeScript language processor - returns typed structs
 pub struct TypeScriptProcessor;
 
 impl TypeScriptProcessor {
-    /// Process a TypeScript file and extract all symbols to SQL statements
-    pub fn process_file(
-        file_path: FilePath,
-        content: &[u8],
-    ) -> Result<(Vec<String>, usize, usize, usize)> {
+    /// Process a TypeScript file and extract all symbols to typed structs
+    pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
+        let mut data = ExtractedData::new();
+        
         // Set up tree-sitter parser for TypeScript
         // IMPORTANT: TypeScript uses different parsers for .ts and .tsx files
         let mut parser = Parser::new();
@@ -50,43 +57,19 @@ impl TypeScriptProcessor {
             .parse(content, None)
             .context("Failed to parse TypeScript file")?;
 
-        let root = tree.root_node();
-        let mut sql_statements = Vec::new();
-        let mut functions = 0;
-        let mut types = 0;
-        let mut imports = 0;
-
         // Track current function/class for call graph
         let mut current_function: Option<String> = None;
-        let mut call_graph_entries = Vec::new();
 
         // Walk the tree and extract symbols
         extract_symbols(
-            root,
+            tree.root_node(),
             content,
             &file_path,
-            &mut sql_statements,
-            &mut functions,
-            &mut types,
-            &mut imports,
+            &mut data,
             &mut current_function,
-            &mut call_graph_entries,
         );
 
-        // Add call graph entries
-        for (caller, callee, call_type, line) in call_graph_entries {
-            let call_sql = InsertBuilder::new(TableName::CALL_GRAPH)
-                .or_replace()
-                .value("caller", caller.as_str())
-                .value("callee", callee.as_str())
-                .value("call_type", call_type.as_str())
-                .value("file", file_path.as_str())
-                .value("line_number", line as i64)
-                .build();
-            sql_statements.push(format!("{};\n", call_sql));
-        }
-
-        Ok((sql_statements, functions, types, imports))
+        Ok(data)
     }
 }
 
@@ -95,330 +78,566 @@ fn extract_symbols(
     node: Node,
     source: &[u8],
     file_path: &FilePath,
-    sql: &mut Vec<String>,
-    functions: &mut usize,
-    types: &mut usize,
-    imports: &mut usize,
+    data: &mut ExtractedData,
     current_function: &mut Option<String>,
-    call_graph: &mut Vec<(String, String, CallType, i32)>,
 ) {
     // First extract any calls
-    extract_calls(&node, source, current_function, call_graph);
+    extract_calls(&node, source, file_path, current_function, data);
 
-    // Determine symbol kind
-    let symbol_kind = match node.kind() {
-        "function_declaration" | "function_expression" | "arrow_function" 
-        | "generator_function_declaration" | "method_definition" | "method_signature" => SymbolKind::Function,
-        "class_declaration" | "class_expression" => SymbolKind::Class,
-        "interface_declaration" => SymbolKind::Interface,
-        "type_alias_declaration" => SymbolKind::TypeAlias,
-        "enum_declaration" => SymbolKind::Enum,
-        "import_statement" => SymbolKind::Import,
-        "export_statement" => {
-            // Check if it's exporting a function, class, interface, etc.
-            if has_child_of_kind(&node, "function_declaration") || 
-               has_child_of_kind(&node, "class_declaration") ||
-               has_child_of_kind(&node, "interface_declaration") ||
-               has_child_of_kind(&node, "type_alias_declaration") {
-                SymbolKind::Unknown // Will be handled by the child
-            } else {
-                SymbolKind::Unknown
-            }
-        }
-        "lexical_declaration" | "variable_declaration" => {
-            // Check if it's a function assigned to a variable
-            if is_function_assignment(&node) {
-                SymbolKind::Function
-            } else {
-                SymbolKind::Unknown
-            }
-        }
-        _ => SymbolKind::Unknown,
-    };
-
-    // Process based on symbol kind
-    match symbol_kind {
-        SymbolKind::Function => {
+    // Process based on node kind
+    match node.kind() {
+        // Function declarations and expressions
+        "function_declaration" | "function_expression" | "arrow_function" | 
+        "generator_function_declaration" => {
             if let Some(name) = extract_function_name(&node, source) {
                 let old_function = current_function.clone();
                 *current_function = Some(name.clone());
 
-                let is_public = extract_visibility(&node, source);
-                let is_async = is_async_function(&node, source);
-                let params = extract_params(&node, source);
-                let return_type = extract_return_type(&node, source);
-                let generics = extract_generics(&node, source);
-                let docs = extract_tsdoc(&node, source);
-
-                let insert_sql = InsertBuilder::new(TableName::FUNCTION_FACTS)
-                    .or_replace()
-                    .value("name", name.as_str())
-                    .value("file", file_path.as_str())
-                    .value("is_public", is_public)
-                    .value("is_async", is_async)
-                    .value("is_unsafe", false) // TypeScript doesn't have unsafe
-                    .value("parameters", params.join(", ").as_str())
-                    .value("return_type", return_type.as_deref().unwrap_or(""))
-                    .value("generics", generics.as_deref().unwrap_or(""))
-                    .value("doc_comment", docs.as_str())
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *functions += 1;
+                process_function(&node, source, file_path, &name, data);
 
                 // Recursively process function body
                 let mut cursor = node.walk();
                 for child in node.children(&mut cursor) {
-                    extract_symbols(
-                        child,
-                        source,
-                        file_path,
-                        sql,
-                        functions,
-                        types,
-                        imports,
-                        current_function,
-                        call_graph,
-                    );
+                    extract_symbols(child, source, file_path, data, current_function);
                 }
 
                 *current_function = old_function;
                 return; // Don't recurse again
             }
         }
-        SymbolKind::Class => {
-            if let Some(name) = extract_class_name(&node, source) {
-                let old_function = current_function.clone();
+
+        // Method definitions and signatures
+        "method_definition" | "method_signature" => {
+            if let Some(name) = extract_method_name(&node, source) {
+                process_method(&node, source, file_path, &name, data);
                 
-                let is_public = extract_visibility(&node, source);
-                let _generics = extract_generics(&node, source);
-                let docs = extract_tsdoc(&node, source);
+                let old_function = current_function.clone();
+                *current_function = Some(name);
 
-                let insert_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                    .or_replace()
-                    .value("symbol", name.as_str())
-                    .value("symbol_type", "class")
-                    .value("file", file_path.as_str())
-                    .value("is_public", is_public)
-                    .value("doc_comment", docs.as_str())
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *types += 1;
-
-                // Process class methods
-                if let Some(body_node) = node.child_by_field_name("body") {
-                    let mut cursor = body_node.walk();
-                    for child in body_node.children(&mut cursor) {
-                        // For methods, include class name in context
-                        if matches!(child.kind(), "method_definition" | "method_signature") {
-                            if let Some(method_name) = extract_method_name(&child, source) {
-                                *current_function = Some(format!("{}.{}", name, method_name));
-                                
-                                // Process method as a function
-                                let method_visibility = extract_visibility(&child, source);
-                                let is_async = is_async_function(&child, source);
-                                let params = extract_params(&child, source);
-                                let return_type = extract_return_type(&child, source);
-                                let method_generics = extract_generics(&child, source);
-                                let method_docs = extract_tsdoc(&child, source);
-                                
-                                let method_sql = InsertBuilder::new(TableName::FUNCTION_FACTS)
-                                    .or_replace()
-                                    .value("name", format!("{}.{}", name, method_name).as_str())
-                                    .value("file", file_path.as_str())
-                                    .value("is_public", method_visibility)
-                                    .value("is_async", is_async)
-                                    .value("is_unsafe", false)
-                                    .value("parameters", params.join(", ").as_str())
-                                    .value("return_type", return_type.as_deref().unwrap_or(""))
-                                    .value("generics", method_generics.as_deref().unwrap_or(""))
-                                    .value("doc_comment", method_docs.as_str())
-                                    .value("line_number", (child.start_position().row + 1) as i64)
-                                    .build();
-                                sql.push(format!("{};\n", method_sql));
-                                *functions += 1;
-                            }
-                        }
-                        
-                        extract_symbols(
-                            child,
-                            source,
-                            file_path,
-                            sql,
-                            functions,
-                            types,
-                            imports,
-                            current_function,
-                            call_graph,
-                        );
+                // Process method body if it exists (method_signature has no body)
+                if let Some(body) = node.child_by_field_name("body") {
+                    let mut cursor = body.walk();
+                    for child in body.children(&mut cursor) {
+                        extract_symbols(child, source, file_path, data, current_function);
                     }
                 }
 
                 *current_function = old_function;
-                return; // Don't recurse again
+                return;
             }
         }
-        SymbolKind::Interface => {
+
+        // Class declarations
+        "class_declaration" | "class_expression" => {
+            if let Some(name) = extract_class_name(&node, source) {
+                process_class(&node, source, file_path, &name, data);
+
+                // Process class body
+                if let Some(body) = node.child_by_field_name("body") {
+                    let mut cursor = body.walk();
+                    for child in body.children(&mut cursor) {
+                        // For methods, include class name in context
+                        if matches!(child.kind(), "method_definition" | "method_signature") {
+                            if let Some(method_name) = extract_method_name(&child, source) {
+                                let full_name = format!("{}.{}", name, method_name);
+                                let old_function = current_function.clone();
+                                *current_function = Some(full_name.clone());
+                                
+                                process_method(&child, source, file_path, &full_name, data);
+                                
+                                // Process method body if it exists
+                                if let Some(method_body) = child.child_by_field_name("body") {
+                                    let mut method_cursor = method_body.walk();
+                                    for method_child in method_body.children(&mut method_cursor) {
+                                        extract_symbols(method_child, source, file_path, data, current_function);
+                                    }
+                                }
+                                
+                                *current_function = old_function;
+                            }
+                        } else {
+                            extract_symbols(child, source, file_path, data, current_function);
+                        }
+                    }
+                }
+                return; // Don't recurse again into class
+            }
+        }
+
+        // Interface declarations
+        "interface_declaration" => {
             if let Some(name) = extract_interface_name(&node, source) {
-                let is_public = extract_visibility(&node, source);
-                let _generics = extract_generics(&node, source);
-                let docs = extract_tsdoc(&node, source);
-
-                let insert_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                    .or_replace()
-                    .value("symbol", name.as_str())
-                    .value("symbol_type", "interface")
-                    .value("file", file_path.as_str())
-                    .value("is_public", is_public)
-                    .value("doc_comment", docs.as_str())
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *types += 1;
+                process_interface(&node, source, file_path, &name, data);
             }
         }
-        SymbolKind::TypeAlias => {
+
+        // Type alias declarations
+        "type_alias_declaration" => {
             if let Some(name) = extract_type_alias_name(&node, source) {
-                let is_public = extract_visibility(&node, source);
-                let _generics = extract_generics(&node, source);
-                let docs = extract_tsdoc(&node, source);
-
-                let insert_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                    .or_replace()
-                    .value("symbol", name.as_str())
-                    .value("symbol_type", "type_alias")
-                    .value("file", file_path.as_str())
-                    .value("is_public", is_public)
-                    .value("doc_comment", docs.as_str())
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *types += 1;
+                process_type_alias(&node, source, file_path, &name, data);
             }
         }
-        SymbolKind::Enum => {
+
+        // Enum declarations
+        "enum_declaration" => {
             if let Some(name) = extract_enum_name(&node, source) {
-                let is_public = extract_visibility(&node, source);
-                let docs = extract_tsdoc(&node, source);
+                process_enum(&node, source, file_path, &name, data);
+            }
+        }
 
-                let insert_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                    .or_replace()
-                    .value("symbol", name.as_str())
-                    .value("symbol_type", "enum")
-                    .value("file", file_path.as_str())
-                    .value("is_public", is_public)
-                    .value("doc_comment", docs.as_str())
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *types += 1;
+        // Variable declarations that might be functions
+        "lexical_declaration" | "variable_declaration" => {
+            process_variable_declaration(&node, source, file_path, data, current_function);
+        }
+
+        // Import statements
+        "import_statement" => {
+            process_import(&node, source, file_path, data);
+        }
+
+        // Export statements
+        "export_statement" => {
+            // Process the declaration inside the export
+            if let Some(decl) = node.child_by_field_name("declaration") {
+                extract_symbols(decl, source, file_path, data, current_function);
+            } else if let Some(decl) = node.child_by_field_name("value") {
+                extract_symbols(decl, source, file_path, data, current_function);
             }
         }
-        SymbolKind::Import => {
-            if let Some((imported_item, import_path, is_external)) = extract_import_details(&node, source) {
-                let insert_sql = InsertBuilder::new(TableName::IMPORT_FACTS)
-                    .or_replace()
-                    .value("imported_item", imported_item.as_str())
-                    .value("import_path", import_path.as_str())
-                    .value("file", file_path.as_str())
-                    .value("is_external", is_external)
-                    .value("line_number", (node.start_position().row + 1) as i64)
-                    .build();
-                sql.push(format!("{};\n", insert_sql));
-                *imports += 1;
-            }
-        }
+
         _ => {}
     }
 
     // Recurse to children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_symbols(
-            child,
-            source,
-            file_path,
-            sql,
-            functions,
-            types,
-            imports,
-            current_function,
-            call_graph,
-        );
+        extract_symbols(child, source, file_path, data, current_function);
     }
 }
 
-/// Check if node has a child of specific kind
-fn has_child_of_kind(node: &Node, kind: &str) -> bool {
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if child.kind() == kind {
-            return true;
-        }
-    }
-    false
+/// Process a TypeScript function and add to data
+fn process_function(
+    node: &Node,
+    source: &[u8],
+    file_path: &FilePath,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let is_public = extract_visibility(node, source);
+    let is_async = is_async_function(node, source);
+    let is_generator = node.kind() == "generator_function_declaration";
+    let params = extract_params(node, source);
+    let return_type = extract_return_type(node, source);
+    let generics = extract_generics(node, source);
+    
+    // Create function fact
+    let function = FunctionFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        takes_mut_self: false, // Not applicable in TS
+        takes_mut_params: false, // TS doesn't have explicit mutability
+        returns_result: return_type.as_ref().map_or(false, |rt| rt.contains("Promise")),
+        returns_option: return_type.as_ref().map_or(false, |rt| 
+            rt.contains("undefined") || rt.contains("null") || rt.contains("?")),
+        is_async,
+        is_unsafe: false, // No unsafe in TS
+        is_public,
+        parameter_count: params.len() as i32,
+        generic_count: count_generics(&generics),
+        parameters: params,
+        return_type,
+    };
+    data.add_function(function);
+
+    // Add to code search
+    let context = node.utf8_text(source)
+        .ok()
+        .and_then(|s| s.lines().next())
+        .unwrap_or("")
+        .to_string();
+    
+    let symbol = CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: if is_generator { "generator" } else { "function" }.to_string(),
+        line: node.start_position().row + 1,
+        context,
+    };
+    data.add_symbol(symbol);
 }
 
-/// Check if a variable declaration is a function assignment
-fn is_function_assignment(node: &Node) -> bool {
+/// Process a method definition or signature
+fn process_method(
+    node: &Node,
+    source: &[u8],
+    file_path: &FilePath,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let visibility = extract_visibility(node, source);
+    let is_async = is_async_function(node, source);
+    let is_static = has_static_keyword(node, source);
+    let is_abstract = has_abstract_keyword(node, source);
+    let is_getter = is_getter_method(node, source);
+    let is_setter = is_setter_method(node, source);
+    
+    let params = extract_params(node, source);
+    let return_type = extract_return_type(node, source);
+    let generics = extract_generics(node, source);
+    
+    // Create function fact for method
+    let function = FunctionFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        takes_mut_self: !is_static,
+        takes_mut_params: false,
+        returns_result: return_type.as_ref().map_or(false, |rt| rt.contains("Promise")),
+        returns_option: return_type.as_ref().map_or(false, |rt| 
+            rt.contains("undefined") || rt.contains("null") || rt.contains("?")),
+        is_async,
+        is_unsafe: false,
+        is_public: visibility,
+        parameter_count: params.len() as i32,
+        generic_count: count_generics(&generics),
+        parameters: params,
+        return_type,
+    };
+    data.add_function(function);
+
+    // Add to code search
+    let kind = if is_getter { 
+        "getter" 
+    } else if is_setter { 
+        "setter" 
+    } else if is_abstract {
+        "abstract_method"
+    } else if is_static { 
+        "static_method" 
+    } else { 
+        "method" 
+    };
+    
+    let context = node.utf8_text(source)
+        .ok()
+        .and_then(|s| s.lines().next())
+        .unwrap_or("")
+        .to_string();
+    
+    let symbol = CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: kind.to_string(),
+        line: node.start_position().row + 1,
+        context,
+    };
+    data.add_symbol(symbol);
+}
+
+/// Process a class declaration
+fn process_class(
+    node: &Node,
+    source: &[u8],
+    file_path: &FilePath,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let is_public = extract_visibility(node, source);
+    let is_abstract = has_abstract_keyword(node, source);
+    
+    // Get the class definition line
+    let definition = node.utf8_text(source)
+        .ok()
+        .and_then(|s| s.lines().next())
+        .unwrap_or("")
+        .to_string();
+
+    // Create type fact
+    let type_fact = TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: definition.clone(),
+        kind: if is_abstract { "abstract_class" } else { "class" }.to_string(),
+        visibility: if is_public { "public" } else { "private" }.to_string(),
+        usage_count: 0,
+    };
+    data.add_type(type_fact);
+
+    // Add to code search
+    let symbol = CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: if is_abstract { "abstract_class" } else { "class" }.to_string(),
+        line: node.start_position().row + 1,
+        context: definition,
+    };
+    data.add_symbol(symbol);
+}
+
+/// Process an interface declaration
+fn process_interface(
+    node: &Node,
+    source: &[u8],
+    file_path: &FilePath,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let is_public = extract_visibility(node, source);
+    
+    // Get the interface definition line
+    let definition = node.utf8_text(source)
+        .ok()
+        .and_then(|s| s.lines().next())
+        .unwrap_or("")
+        .to_string();
+
+    // Create type fact
+    let type_fact = TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: definition.clone(),
+        kind: "interface".to_string(),
+        visibility: if is_public { "public" } else { "private" }.to_string(),
+        usage_count: 0,
+    };
+    data.add_type(type_fact);
+
+    // Add to code search
+    let symbol = CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: "interface".to_string(),
+        line: node.start_position().row + 1,
+        context: definition,
+    };
+    data.add_symbol(symbol);
+}
+
+/// Process a type alias declaration
+fn process_type_alias(
+    node: &Node,
+    source: &[u8],
+    file_path: &FilePath,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let is_public = extract_visibility(node, source);
+    
+    // Get the type alias definition
+    let definition = node.utf8_text(source)
+        .ok()
+        .and_then(|s| s.lines().next())
+        .unwrap_or("")
+        .to_string();
+
+    // Create type fact
+    let type_fact = TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: definition.clone(),
+        kind: "type_alias".to_string(),
+        visibility: if is_public { "public" } else { "private" }.to_string(),
+        usage_count: 0,
+    };
+    data.add_type(type_fact);
+
+    // Add to code search
+    let symbol = CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: "type_alias".to_string(),
+        line: node.start_position().row + 1,
+        context: definition,
+    };
+    data.add_symbol(symbol);
+}
+
+/// Process an enum declaration
+fn process_enum(
+    node: &Node,
+    source: &[u8],
+    file_path: &FilePath,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let is_public = extract_visibility(node, source);
+    let is_const = has_const_keyword(node, source);
+    
+    // Get the enum definition line
+    let definition = node.utf8_text(source)
+        .ok()
+        .and_then(|s| s.lines().next())
+        .unwrap_or("")
+        .to_string();
+
+    // Create type fact
+    let type_fact = TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: definition.clone(),
+        kind: if is_const { "const_enum" } else { "enum" }.to_string(),
+        visibility: if is_public { "public" } else { "private" }.to_string(),
+        usage_count: 0,
+    };
+    data.add_type(type_fact);
+
+    // Add to code search
+    let symbol = CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: if is_const { "const_enum" } else { "enum" }.to_string(),
+        line: node.start_position().row + 1,
+        context: definition,
+    };
+    data.add_symbol(symbol);
+}
+
+/// Process variable declarations (const/let/var)
+fn process_variable_declaration(
+    node: &Node,
+    source: &[u8],
+    file_path: &FilePath,
+    data: &mut ExtractedData,
+    current_function: &mut Option<String>,
+) {
+    // Check each declarator in the declaration
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "variable_declarator" {
-            if let Some(init) = child.child_by_field_name("value") {
-                if matches!(init.kind(), "arrow_function" | "function_expression") {
-                    return true;
-                }
-            }
-        }
-    }
-    false
-}
-
-/// Extract visibility modifiers (public, private, protected)
-fn extract_visibility(node: &Node, source: &[u8]) -> bool {
-    let text = node.utf8_text(source).unwrap_or("");
-    !text.contains("private") && !text.contains("protected")
-}
-
-/// Extract function name
-fn extract_function_name(node: &Node, source: &[u8]) -> Option<String> {
-    match node.kind() {
-        "function_declaration" | "generator_function_declaration" | "method_signature" => {
-            node.child_by_field_name("name")
-                .and_then(|n| n.utf8_text(source).ok())
-                .map(String::from)
-        }
-        "method_definition" => extract_method_name(node, source),
-        "arrow_function" | "function_expression" => {
-            // Look for parent variable declarator
-            if let Some(parent) = node.parent() {
-                if parent.kind() == "variable_declarator" {
-                    return parent.child_by_field_name("name")
-                        .and_then(|n| n.utf8_text(source).ok())
-                        .map(String::from);
-                }
-            }
-            None
-        }
-        "lexical_declaration" | "variable_declaration" => {
-            // Find the variable declarator with a function
-            let mut cursor = node.walk();
-            for child in node.children(&mut cursor) {
-                if child.kind() == "variable_declarator" {
-                    if let Some(init) = child.child_by_field_name("value") {
-                        if matches!(init.kind(), "arrow_function" | "function_expression") {
-                            return child.child_by_field_name("name")
-                                .and_then(|n| n.utf8_text(source).ok())
-                                .map(String::from);
+            if let Some(name_node) = child.child_by_field_name("name") {
+                if let Ok(name) = name_node.utf8_text(source) {
+                    // Check if it's a function assignment
+                    if let Some(value_node) = child.child_by_field_name("value") {
+                        match value_node.kind() {
+                            "arrow_function" | "function_expression" => {
+                                let old_function = current_function.clone();
+                                *current_function = Some(name.to_string());
+                                
+                                process_function(&value_node, source, file_path, name, data);
+                                
+                                // Process function body
+                                if let Some(body) = value_node.child_by_field_name("body") {
+                                    let mut body_cursor = body.walk();
+                                    for body_child in body.children(&mut body_cursor) {
+                                        extract_symbols(body_child, source, file_path, data, current_function);
+                                    }
+                                }
+                                
+                                *current_function = old_function;
+                            }
+                            "class_expression" => {
+                                process_class(&value_node, source, file_path, name, data);
+                            }
+                            _ => {}
                         }
                     }
                 }
             }
-            None
         }
-        _ => None,
     }
+}
+
+/// Process TypeScript import statements
+fn process_import(
+    node: &Node,
+    source: &[u8],
+    file_path: &FilePath,
+    data: &mut ExtractedData,
+) {
+    let import_text = node.utf8_text(source).unwrap_or("");
+    
+    // Extract module path
+    let module_path = extract_import_path(node, source).unwrap_or_default();
+    
+    // Extract imported items
+    let mut imported_names = Vec::new();
+    
+    // Named imports: import { a, b } from 'module'
+    if let Some(import_clause) = node.child_by_field_name("import") {
+        let mut cursor = import_clause.walk();
+        for child in import_clause.children(&mut cursor) {
+            match child.kind() {
+                "named_imports" => {
+                    let mut import_cursor = child.walk();
+                    for import_child in child.children(&mut import_cursor) {
+                        if import_child.kind() == "import_specifier" {
+                            // Handle both name and alias
+                            if let Some(name_node) = import_child.child_by_field_name("name") {
+                                if let Ok(name) = name_node.utf8_text(source) {
+                                    // Check for alias
+                                    if let Some(alias_node) = import_child.child_by_field_name("alias") {
+                                        if let Ok(alias) = alias_node.utf8_text(source) {
+                                            imported_names.push(format!("{} as {}", name, alias));
+                                        } else {
+                                            imported_names.push(name.to_string());
+                                        }
+                                    } else {
+                                        imported_names.push(name.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                "identifier" => {
+                    // Default import
+                    if let Ok(name) = child.utf8_text(source) {
+                        imported_names.push(name.to_string());
+                    }
+                }
+                "namespace_import" => {
+                    // import * as name from 'module'
+                    if let Some(name_node) = child.child_by_field_name("name") {
+                        if let Ok(name) = name_node.utf8_text(source) {
+                            imported_names.push(format!("* as {}", name));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    
+    // Type-only imports: import type { ... } from 'module'
+    let is_type_import = import_text.starts_with("import type");
+    
+    if imported_names.is_empty() && !module_path.is_empty() {
+        // Side-effect import: import 'module'
+        imported_names.push("*".to_string());
+    }
+    
+    let is_external = !module_path.starts_with('.') && !module_path.starts_with('/');
+    
+    let import = ImportFact {
+        file: file_path.to_string(),
+        import_path: module_path,
+        imported_names,
+        import_kind: if is_type_import { 
+            "type_import" 
+        } else if is_external { 
+            "external" 
+        } else { 
+            "internal" 
+        }.to_string(),
+        line_number: (node.start_position().row + 1) as i32,
+    };
+    data.add_import(import);
+
+    // Add to code search
+    let symbol = CodeSymbol {
+        path: file_path.to_string(),
+        name: import_text.to_string(),
+        kind: if is_type_import { "type_import" } else { "import" }.to_string(),
+        line: node.start_position().row + 1,
+        context: import_text.to_string(),
+    };
+    data.add_symbol(symbol);
+}
+
+/// Extract function name
+fn extract_function_name(node: &Node, source: &[u8]) -> Option<String> {
+    node.child_by_field_name("name")
+        .and_then(|n| n.utf8_text(source).ok())
+        .map(String::from)
 }
 
 /// Extract method name
@@ -456,29 +675,30 @@ fn extract_enum_name(node: &Node, source: &[u8]) -> Option<String> {
         .map(String::from)
 }
 
-/// Check if function is async
-fn is_async_function(node: &Node, source: &[u8]) -> bool {
-    node.utf8_text(source)
-        .unwrap_or("")
-        .contains("async")
-}
-
-/// Extract function parameters
+/// Extract function parameters with types
 fn extract_params(node: &Node, source: &[u8]) -> Vec<String> {
-    if let Some(params_node) = node.child_by_field_name("parameters") {
-        let mut params = Vec::new();
-        let mut cursor = params_node.walk();
-        for child in params_node.children(&mut cursor) {
+    let params_node = node.child_by_field_name("parameters")
+        .or_else(|| node.child_by_field_name("parameter"));
+    
+    if let Some(params) = params_node {
+        let mut result = Vec::new();
+        let mut cursor = params.walk();
+        for child in params.children(&mut cursor) {
             match child.kind() {
-                "required_parameter" | "optional_parameter" | "rest_parameter" => {
+                "required_parameter" | "optional_parameter" => {
                     if let Ok(param_text) = child.utf8_text(source) {
-                        params.push(param_text.to_string());
+                        result.push(param_text.to_string());
+                    }
+                }
+                "identifier" | "rest_pattern" | "object_pattern" | "array_pattern" => {
+                    if let Ok(param_text) = child.utf8_text(source) {
+                        result.push(param_text.to_string());
                     }
                 }
                 _ => {}
             }
         }
-        params
+        result
     } else {
         Vec::new()
     }
@@ -487,129 +707,145 @@ fn extract_params(node: &Node, source: &[u8]) -> Vec<String> {
 /// Extract return type annotation
 fn extract_return_type(node: &Node, source: &[u8]) -> Option<String> {
     node.child_by_field_name("return_type")
-        .and_then(|rt| rt.utf8_text(source).ok())
-        .map(|s| s.trim_start_matches(':').trim().to_string())
+        .and_then(|rt| rt.child_by_field_name("type"))
+        .and_then(|t| t.utf8_text(source).ok())
+        .map(String::from)
 }
 
-/// Extract generic parameters
+/// Extract generic type parameters
 fn extract_generics(node: &Node, source: &[u8]) -> Option<String> {
     node.child_by_field_name("type_parameters")
         .and_then(|tp| tp.utf8_text(source).ok())
         .map(String::from)
 }
 
-/// Extract TSDoc comment
-fn extract_tsdoc(node: &Node, source: &[u8]) -> String {
-    // Look for comment nodes immediately before this node
-    if let Some(prev) = node.prev_sibling() {
-        if prev.kind() == "comment" {
-            if let Ok(text) = prev.utf8_text(source) {
-                if text.starts_with("/**") || text.starts_with("///") {
-                    return clean_tsdoc(text);
-                }
-            }
+/// Count generic parameters
+fn count_generics(generics: &Option<String>) -> i32 {
+    generics.as_ref().map_or(0, |g| {
+        // Simple count of commas + 1, accounting for <T> vs <T, U>
+        if g.contains('<') && g.contains('>') {
+            g.matches(',').count() as i32 + 1
+        } else {
+            0
         }
-    }
-    String::new()
+    })
 }
 
-/// Clean TSDoc comment
-fn clean_tsdoc(raw: &str) -> String {
-    if raw.starts_with("/**") {
-        raw.trim()
-            .strip_prefix("/**")
-            .and_then(|s| s.strip_suffix("*/"))
-            .unwrap_or(raw)
-            .lines()
-            .map(|line| line.trim_start().strip_prefix("* ").unwrap_or(line.trim()))
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ")
-    } else if raw.starts_with("///") {
-        raw.lines()
-            .map(|line| line.trim_start().strip_prefix("/// ").unwrap_or(line.trim()))
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ")
-    } else {
-        raw.to_string()
-    }
-}
-
-/// Extract import details
-fn extract_import_details(node: &Node, source: &[u8]) -> Option<(String, String, bool)> {
-    if node.kind() != "import_statement" {
-        return None;
-    }
-
-    let _import_text = node.utf8_text(source).ok()?;
-    
-    // Extract the module path
-    let mut module_path = String::new();
-    let mut imported_items = Vec::new();
-    
+/// Extract visibility modifier (public/private/protected)
+fn extract_visibility(node: &Node, source: &[u8]) -> bool {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        match child.kind() {
-            "string" => {
-                if let Ok(path) = child.utf8_text(source) {
-                    module_path = path.trim_matches(|c| c == '"' || c == '\'' || c == '`').to_string();
-                }
+        if let Ok(text) = child.utf8_text(source) {
+            match text {
+                "public" | "export" => return true,
+                "private" | "protected" => return false,
+                _ => {}
             }
-            "import_clause" => {
-                // Handle various import patterns
-                let mut clause_cursor = child.walk();
-                for clause_child in child.children(&mut clause_cursor) {
-                    match clause_child.kind() {
-                        "identifier" => {
-                            // Default import: import foo from 'module'
-                            if let Ok(name) = clause_child.utf8_text(source) {
-                                imported_items.push(name.to_string());
-                            }
-                        }
-                        "named_imports" => {
-                            // Named imports: import { foo, bar } from 'module'
-                            let mut named_cursor = clause_child.walk();
-                            for named_child in clause_child.children(&mut named_cursor) {
-                                if named_child.kind() == "import_specifier" {
-                                    if let Some(name_node) = named_child.child_by_field_name("name") {
-                                        if let Ok(name) = name_node.utf8_text(source) {
-                                            imported_items.push(name.to_string());
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        "namespace_import" => {
-                            // Namespace import: import * as foo from 'module'
-                            if let Ok(ns_text) = clause_child.utf8_text(source) {
-                                imported_items.push(ns_text.to_string());
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            _ => {}
         }
     }
-    
-    let is_external = !module_path.starts_with('.') && !module_path.starts_with('/');
-    let imported_item = if imported_items.is_empty() {
-        module_path.clone()
-    } else {
-        imported_items.join(", ")
-    };
-    
-    Some((imported_item, module_path, is_external))
+    // Default to public for top-level declarations without explicit modifier
+    true
 }
 
-/// Extract call expressions
+/// Extract import path from import statement
+fn extract_import_path(node: &Node, source: &[u8]) -> Option<String> {
+    // Look for string node containing the path
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "string" {
+            if let Ok(path_text) = child.utf8_text(source) {
+                return Some(path_text.trim_matches(|c| c == '"' || c == '\'' || c == '`').to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Check if node has async keyword
+fn is_async_function(node: &Node, source: &[u8]) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "async" {
+            return true;
+        }
+    }
+    // Also check in the node's text for arrow functions
+    node.utf8_text(source)
+        .map_or(false, |text| text.starts_with("async "))
+}
+
+/// Check if method has static keyword
+fn has_static_keyword(node: &Node, source: &[u8]) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Ok(text) = child.utf8_text(source) {
+            if text == "static" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check if has abstract keyword
+fn has_abstract_keyword(node: &Node, source: &[u8]) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Ok(text) = child.utf8_text(source) {
+            if text == "abstract" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check if has const keyword (for enums)
+fn has_const_keyword(node: &Node, source: &[u8]) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Ok(text) = child.utf8_text(source) {
+            if text == "const" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check if method is a getter
+fn is_getter_method(node: &Node, source: &[u8]) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Ok(text) = child.utf8_text(source) {
+            if text == "get" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Check if method is a setter
+fn is_setter_method(node: &Node, source: &[u8]) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Ok(text) = child.utf8_text(source) {
+            if text == "set" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Extract call expressions and add to data
 fn extract_calls(
     node: &Node,
     source: &[u8],
+    file_path: &FilePath,
     current_function: &Option<String>,
-    call_graph: &mut Vec<(String, String, CallType, i32)>,
+    data: &mut ExtractedData,
 ) {
     let line_number = (node.start_position().row + 1) as i32;
 
@@ -618,38 +854,58 @@ fn extract_calls(
             if let Some(caller) = current_function {
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
-                        // Check if it's an async call (preceded by await)
-                        let call_type = if let Some(parent) = node.parent() {
-                            if parent.kind() == "await_expression" {
-                                CallType::Async
-                            } else {
-                                CallType::Direct
-                            }
+                        // Check for await
+                        let call_type = if node.parent()
+                            .map_or(false, |p| p.kind() == "await_expression") {
+                            CallType::Async
                         } else {
                             CallType::Direct
                         };
                         
-                        call_graph.push((
-                            caller.clone(),
-                            callee.to_string(),
-                            call_type,
+                        data.add_call_edge(CallEdge {
+                            file: file_path.to_string(),
+                            caller: caller.clone(),
+                            callee: callee.to_string(),
+                            call_type: call_type.as_str().to_string(),
                             line_number,
-                        ));
+                        });
+                    }
+                }
+            }
+        }
+        "await_expression" => {
+            // Handle await expressions
+            if let Some(caller) = current_function {
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if child.kind() == "call_expression" {
+                        if let Some(func_node) = child.child_by_field_name("function") {
+                            if let Ok(callee) = func_node.utf8_text(source) {
+                                data.add_call_edge(CallEdge {
+                                    file: file_path.to_string(),
+                                    caller: caller.clone(),
+                                    callee: callee.to_string(),
+                                    call_type: CallType::Async.as_str().to_string(),
+                                    line_number,
+                                });
+                            }
+                        }
                     }
                 }
             }
         }
         "new_expression" => {
-            // Constructor calls
+            // Handle constructor calls
             if let Some(caller) = current_function {
                 if let Some(constructor_node) = node.child_by_field_name("constructor") {
-                    if let Ok(constructor) = constructor_node.utf8_text(source) {
-                        call_graph.push((
-                            caller.clone(),
-                            format!("new {}", constructor),
-                            CallType::Constructor,
+                    if let Ok(callee) = constructor_node.utf8_text(source) {
+                        data.add_call_edge(CallEdge {
+                            file: file_path.to_string(),
+                            caller: caller.clone(),
+                            callee: format!("new {}", callee),
+                            call_type: CallType::Constructor.as_str().to_string(),
                             line_number,
-                        ));
+                        });
                     }
                 }
             }
@@ -658,12 +914,13 @@ fn extract_calls(
             // TypeScript decorators
             if let Some(caller) = current_function {
                 if let Ok(decorator_text) = node.utf8_text(source) {
-                    call_graph.push((
-                        caller.clone(),
-                        decorator_text.to_string(),
-                        CallType::Decorator,
+                    data.add_call_edge(CallEdge {
+                        file: file_path.to_string(),
+                        caller: caller.clone(),
+                        callee: decorator_text.to_string(),
+                        call_type: CallType::Decorator.as_str().to_string(),
                         line_number,
-                    ));
+                    });
                 }
             }
         }
