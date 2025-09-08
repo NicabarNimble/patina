@@ -311,8 +311,13 @@ fn process_cairo_file(file_path: &str, content: &[u8], data: &mut ExtractedData)
     // Cairo needs string content
     let content_str = std::str::from_utf8(content)?;
     match CairoProcessor::process_file(FilePath::from(file_path), content_str) {
-        Ok((sql_statements, _, _, _)) => {
-            parse_sql_into_structs(file_path, &sql_statements, data);
+        Ok(extracted) => {
+            // Merge the extracted data
+            data.symbols.extend(extracted.symbols);
+            data.functions.extend(extracted.functions);
+            data.types.extend(extracted.types);
+            data.imports.extend(extracted.imports);
+            data.call_edges.extend(extracted.call_edges);
             Ok(())
         }
         Err(e) => Err(e),
