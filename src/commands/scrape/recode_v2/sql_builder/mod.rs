@@ -19,10 +19,8 @@ pub mod insert;
 pub mod schema;
 pub mod query;
 
-pub use value::{SqlValue, escape_string};
+pub use value::SqlValue;
 pub use insert::InsertBuilder;
-pub use schema::{CreateTableBuilder, ColumnType};
-pub use query::{DeleteBuilder, SelectBuilder};
 
 // ============================================================================
 // CORE TYPES

@@ -217,8 +217,8 @@ mod tests {
     
     #[test]
     fn test_batch_insert() {
-        let mut builder = BatchInsertBuilder::new(TableName::CALL_GRAPH);
-        builder.columns(vec!["caller", "callee", "file"])
+        let builder = BatchInsertBuilder::new(TableName::CALL_GRAPH)
+            .columns(vec!["caller", "callee", "file"])
             .add_row(vec!["main", "init", "src/main.rs"])
             .add_row(vec!["init", "setup", "src/init.rs"]);
         
