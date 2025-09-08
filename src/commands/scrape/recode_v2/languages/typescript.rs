@@ -12,7 +12,7 @@
 //! - Decorators and metadata
 //! - JSX support (.tsx files)
 
-use crate::commands::scrape::recode_v2::types::{js_nodes::*, SymbolKind};
+use crate::commands::scrape::recode_v2::types::{js_nodes::*, SymbolKind, CallType};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// TypeScript language specification
@@ -144,13 +144,13 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
                         let call_type = if callee.starts_with("await ") {
-                            "async"
+                            CallType::Async
                         } else {
-                            "direct"
+                            CallType::Direct
                         };
                         context.add_call(
                             callee.replace("await ", ""),
-                            call_type.to_string(),
+                            call_type,
                             line_number,
                         );
                     }
@@ -162,7 +162,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                     if let Ok(constructor) = constructor_node.utf8_text(source) {
                         context.add_call(
                             format!("new {}", constructor),
-                            "constructor".to_string(),
+                            CallType::Constructor,
                             line_number,
                         );
                     }

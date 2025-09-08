@@ -11,7 +11,7 @@
 //! - RAII and constructors/destructors
 //! - Modern C++ features (auto, lambdas, etc.)
 
-use crate::commands::scrape::recode_v2::types::{cpp_nodes::*, SymbolKind};
+use crate::commands::scrape::recode_v2::types::{cpp_nodes::*, SymbolKind, CallType};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// C++ language specification
@@ -172,7 +172,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                 // C++ function/method calls
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
-                        context.add_call(callee.to_string(), "direct".to_string(), line_number);
+                        context.add_call(callee.to_string(), CallType::Direct, line_number);
                     }
                 }
             }
@@ -182,7 +182,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                     if let Ok(template_name) = name_node.utf8_text(source) {
                         context.add_call(
                             template_name.to_string(),
-                            "template".to_string(),
+                            CallType::Template,
                             line_number,
                         );
                     }
@@ -194,7 +194,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                     if let Ok(type_name) = type_node.utf8_text(source) {
                         context.add_call(
                             format!("new {}", type_name),
-                            "constructor".to_string(),
+                            CallType::Constructor,
                             line_number,
                         );
                     }

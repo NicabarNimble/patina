@@ -12,7 +12,7 @@
 //! - Unchecked blocks (similar to unsafe)
 //! - Library and contract declarations
 
-use crate::commands::scrape::recode_v2::types::{solidity_nodes::*, SymbolKind};
+use crate::commands::scrape::recode_v2::types::{solidity_nodes::*, SymbolKind, CallType};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Solidity language specification
@@ -122,7 +122,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                 // Regular function calls
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
-                        context.add_call(callee.to_string(), "direct".to_string(), line_number);
+                        context.add_call(callee.to_string(), CallType::Direct, line_number);
                     }
                 }
             }
@@ -134,7 +134,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                             if let Ok(callee) = property.utf8_text(source) {
                                 context.add_call(
                                     callee.to_string(),
-                                    "method".to_string(),
+                                    CallType::Method,
                                     line_number,
                                 );
                             }
@@ -145,7 +145,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             "new_expression" => {
                 // Handle "new Type[]" array constructors - unique to Solidity!
                 if let Ok(text) = node.utf8_text(source) {
-                    context.add_call(text.to_string(), "constructor".to_string(), line_number);
+                    context.add_call(text.to_string(), CallType::Constructor, line_number);
                 }
             }
             "emit_statement" => {
@@ -154,7 +154,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                     if let Ok(event_name) = event_node.utf8_text(source) {
                         context.add_call(
                             format!("emit {}", event_name),
-                            "event".to_string(),
+                            CallType::Event,
                             line_number,
                         );
                     }

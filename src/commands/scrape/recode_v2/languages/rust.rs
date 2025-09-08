@@ -10,7 +10,7 @@
 //! - Unsafe blocks
 //! - Macro usage
 
-use crate::commands::scrape::recode_v2::types::{rust_nodes::*, SymbolKind};
+use crate::commands::scrape::recode_v2::types::{rust_nodes::*, SymbolKind, CallType};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Rust language specification
@@ -124,7 +124,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                 // Regular function calls
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
-                        context.add_call(callee.to_string(), "direct".to_string(), line_number);
+                        context.add_call(callee.to_string(), CallType::Direct, line_number);
                     }
                 }
             }
@@ -132,7 +132,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                 // Method calls (e.g., object.method())
                 if let Some(method_node) = node.child_by_field_name("name") {
                     if let Ok(callee) = method_node.utf8_text(source) {
-                        context.add_call(callee.to_string(), "method".to_string(), line_number);
+                        context.add_call(callee.to_string(), CallType::Method, line_number);
                     }
                 }
             }
@@ -140,7 +140,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                 // Rust macros (e.g., println!, vec!)
                 if let Some(macro_node) = node.child_by_field_name("macro") {
                     if let Ok(callee) = macro_node.utf8_text(source) {
-                        context.add_call(callee.to_string(), "macro".to_string(), line_number);
+                        context.add_call(callee.to_string(), CallType::Macro, line_number);
                     }
                 }
             }

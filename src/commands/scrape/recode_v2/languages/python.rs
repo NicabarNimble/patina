@@ -11,7 +11,7 @@
 //! - Decorators and class definitions
 //! - Import system (from/import statements)
 
-use crate::commands::scrape::recode_v2::types::{python_nodes::*, SymbolKind};
+use crate::commands::scrape::recode_v2::types::{python_nodes::*, SymbolKind, CallType};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Python language specification
@@ -125,13 +125,13 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
                         let call_type = if callee.starts_with("await ") {
-                            "async"
+                            CallType::Async
                         } else {
-                            "direct"
+                            CallType::Direct
                         };
                         context.add_call(
                             callee.replace("await ", ""),
-                            call_type.to_string(),
+                            call_type,
                             line_number,
                         );
                     }
@@ -145,7 +145,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                             if let Ok(decorator_name) = name_node.utf8_text(source) {
                                 context.add_call(
                                     format!("@{}", decorator_name),
-                                    "decorator".to_string(),
+                                    CallType::Decorator,
                                     line_number,
                                 );
                             }
