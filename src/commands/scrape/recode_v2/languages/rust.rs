@@ -1,29 +1,29 @@
 // ============================================================================
-// RUST LANGUAGE MODULE - Self-Contained Processor
+// RUST LANGUAGE PROCESSOR V2 - STRUCT-BASED
 // ============================================================================
-//! Rust language processor with complete isolation.
+//! Rust language processor that returns typed structs instead of SQL strings.
 //!
-//! Handles Rust's unique features:
-//! - Ownership and borrowing patterns
-//! - Trait implementations
-//! - Async/await support
-//! - Unsafe blocks
-//! - Macro usage
+//! This is the refactored version that:
+//! - Returns ExtractedData with typed structs
+//! - No SQL string generation
+//! - Direct data extraction to domain types
 
-use crate::commands::scrape::recode_v2::sql_builder::{InsertBuilder, TableName};
+use crate::commands::scrape::recode_v2::database::{
+    CallEdge, CodeSymbol, FunctionFact, ImportFact, TypeFact,
+};
+use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
 use crate::commands::scrape::recode_v2::types::{CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
-/// Rust language processor - completely self-contained
+/// Rust language processor - returns typed structs
 pub struct RustProcessor;
 
 impl RustProcessor {
-    /// Process a Rust file and extract all symbols to SQL statements
-    pub fn process_file(
-        file_path: FilePath,
-        content: &[u8],
-    ) -> Result<(Vec<String>, usize, usize, usize)> {
+    /// Process a Rust file and extract all symbols to typed structs
+    pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
+        let mut data = ExtractedData::new();
+        
         // Set up tree-sitter parser for Rust
         let mut parser = Parser::new();
         let metal = patina_metal::Metal::Rust;
@@ -39,237 +39,153 @@ impl RustProcessor {
             .parse(content, None)
             .context("Failed to parse Rust file")?;
 
-        let root = tree.root_node();
-        let mut sql_statements = Vec::new();
-        let mut functions = 0;
-        let mut types = 0;
-        let mut imports = 0;
-
-        // Track current function for call graph
-        let mut current_function: Option<String> = None;
-        let mut call_graph_entries = Vec::new();
-
-        // Walk the tree and extract symbols (mimicking extract_symbols_from_tree)
-        extract_symbols(
-            root,
+        // Walk the AST and extract symbols
+        let mut cursor = tree.walk();
+        extract_rust_symbols(
+            &tree.root_node(),
             content,
-            &file_path,
-            &mut sql_statements,
-            &mut functions,
-            &mut types,
-            &mut imports,
-            &mut current_function,
-            &mut call_graph_entries,
+            &file_path.to_string(),
+            &mut data,
+            &mut cursor,
+            None,
         );
 
-        // Add call graph entries
-        for (caller, callee, call_type, line) in call_graph_entries {
-            let call_sql = InsertBuilder::new(TableName::CALL_GRAPH)
-                .or_replace()
-                .value("caller", caller.as_str())
-                .value("callee", callee.as_str())
-                .value("call_type", call_type.as_str())
-                .value("file", file_path.as_str())
-                .value("line_number", line as i64)
-                .build();
-            sql_statements.push(format!("{};\n", call_sql));
-        }
-
-        Ok((sql_statements, functions, types, imports))
+        Ok(data)
     }
 }
 
-/// Recursively extract symbols from the syntax tree
-fn extract_symbols(
-    node: Node,
+/// Recursively extract symbols from the Rust AST
+fn extract_rust_symbols(
+    node: &Node,
     source: &[u8],
-    file_path: &FilePath,
-    sql: &mut Vec<String>,
-    functions: &mut usize,
-    types: &mut usize,
-    imports: &mut usize,
-    current_function: &mut Option<String>,
-    call_graph: &mut Vec<(String, String, CallType, i32)>,
+    file_path: &str,
+    data: &mut ExtractedData,
+    cursor: &mut tree_sitter::TreeCursor,
+    current_function: Option<String>,
 ) {
-    // First extract any calls
-    extract_calls(&node, source, current_function, call_graph);
-
-    // Determine symbol kind using the same logic as the SPEC
+    // Determine symbol type
     let symbol_kind = match node.kind() {
         "function_item" => SymbolKind::Function,
         "struct_item" => SymbolKind::Struct,
         "enum_item" => SymbolKind::Enum,
         "trait_item" => SymbolKind::Trait,
-        "impl_item" => SymbolKind::Impl,
         "type_alias" => SymbolKind::TypeAlias,
-        "const_item" | "static_item" => SymbolKind::Const,
-        "use_declaration" => SymbolKind::Import,
+        "const_item" => SymbolKind::Const,
+        "static_item" => SymbolKind::Static,
+        "impl_item" => SymbolKind::Impl,
         "mod_item" => SymbolKind::Module,
+        "use_declaration" => SymbolKind::Import,
         _ => SymbolKind::Unknown,
     };
 
-    // Handle imports specially
-    if symbol_kind == SymbolKind::Import {
-        if let Ok(import_text) = node.utf8_text(source) {
-            let import_clean = import_text.trim_start_matches("use ").trim_end_matches(';');
-            
-            let is_external = !import_clean.starts_with("crate::")
-                && !import_clean.starts_with("super::")
-                && !import_clean.starts_with("self::");
-            
-            let imported_item = import_clean.split("::").last().unwrap_or(import_clean);
-            let imported_from = if import_clean.contains("::") {
-                import_clean
-                    .rsplit_once("::")
-                    .map(|(from, _)| from)
-                    .unwrap_or(import_clean)
-            } else {
-                import_clean
-            };
-
-            let import_sql = InsertBuilder::new(TableName::IMPORT_FACTS)
-                .or_replace()
-                .value("importer_file", file_path.as_str())
-                .value("imported_item", imported_item)
-                .value("imported_from", imported_from)
-                .value("is_external", is_external)
-                .value("import_kind", "use")
-                .build();
-            sql.push(format!("{};\n", import_sql));
-            *imports += 1;
-        }
-    } else if symbol_kind == SymbolKind::Impl || symbol_kind == SymbolKind::Module {
-        // Skip impl blocks and modules - they don't get stored
-        // but still recurse into their children
-    } else if symbol_kind != SymbolKind::Unknown {
-        // Process regular symbol
-        if let Some(name) = node.child_by_field_name("name")
-            .and_then(|n| n.utf8_text(source).ok())
-            .map(|s| s.to_string())
-        {
-            // Track function context for call graph
-            let old_func = if symbol_kind == SymbolKind::Function {
-                let old = current_function.clone();
-                *current_function = Some(name.clone());
-                old
-            } else {
-                None
-            };
-
-            // Process the symbol based on its kind
-            match symbol_kind {
-                SymbolKind::Function => {
-                    process_function(&node, source, file_path, &name, sql);
-                    *functions += 1;
-                }
-                SymbolKind::Struct | SymbolKind::Enum | SymbolKind::Trait | 
-                SymbolKind::TypeAlias | SymbolKind::Const => {
-                    process_type(&node, source, file_path, &name, symbol_kind, sql);
-                    *types += 1;
-                }
-                _ => {}
-            }
-
-            // Restore function context
-            if symbol_kind == SymbolKind::Function {
-                *current_function = old_func;
+    // Process based on symbol type
+    if symbol_kind == SymbolKind::Function {
+        if let Some(name_node) = node.child_by_field_name("name") {
+            if let Ok(name) = name_node.utf8_text(source) {
+                process_rust_function(node, source, file_path, name, data);
+                
+                // Extract calls within this function
+                extract_rust_calls(node, source, file_path, &Some(name.to_string()), data);
             }
         }
+    } else if matches!(
+        symbol_kind,
+        SymbolKind::Struct | SymbolKind::Enum | SymbolKind::Trait | 
+        SymbolKind::TypeAlias | SymbolKind::Const | SymbolKind::Static
+    ) {
+        if let Some(name_node) = node.child_by_field_name("name") {
+            if let Ok(name) = name_node.utf8_text(source) {
+                process_rust_type(node, source, file_path, name, symbol_kind, data);
+            }
+        }
+    } else if symbol_kind == SymbolKind::Import {
+        process_rust_import(node, source, file_path, data);
     }
 
-    // Recurse into children
-    let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        extract_symbols(
-            child,
+    // Recursively process children
+    cursor.reset(*node);
+    for child in node.children(cursor) {
+        extract_rust_symbols(
+            &child,
             source,
             file_path,
-            sql,
-            functions,
-            types,
-            imports,
-            current_function,
-            call_graph,
+            data,
+            cursor,
+            current_function.clone(),
         );
     }
 }
 
-/// Process a function symbol
-fn process_function(node: &Node, source: &[u8], file_path: &FilePath, name: &str, sql: &mut Vec<String>) {
-    // Extract function details using the SPEC logic
+/// Process a Rust function and add to data
+fn process_rust_function(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    // Extract function details
     let params = extract_params(node, source);
     let return_type = extract_return_type(node, source);
     let is_public = has_visibility_modifier(node);
     let is_async = has_async(node);
     let is_unsafe = has_unsafe(node);
     
-    // Check for specific patterns in params and return type
+    // Check for specific patterns
     let takes_mut_self = params.iter().any(|p| p.contains("&mut self"));
     let takes_mut_params = params.iter().any(|p| p.contains("&mut ") && !p.contains("self"));
     let returns_result = return_type.as_deref().unwrap_or("").contains("Result");
     let returns_option = return_type.as_deref().unwrap_or("").contains("Option");
     
     // Count generics
-    let generics = node.child_by_field_name("type_parameters")
-        .and_then(|tp| tp.utf8_text(source).ok())
-        .map(String::from);
-    let generic_count = generics.as_ref().map(|g| g.matches(',').count() + 1).unwrap_or(0);
-    
-    // Build signature
-    let mut signature = String::new();
-    if is_async { signature.push_str("async "); }
-    if is_unsafe { signature.push_str("unsafe "); }
-    signature.push_str("fn ");
-    signature.push_str(name);
-    if let Some(g) = &generics {
-        signature.push_str(g);
-    }
-    signature.push('(');
-    signature.push_str(&params.join(", "));
-    signature.push(')');
-    if let Some(ret) = &return_type {
-        signature.push_str(" -> ");
-        signature.push_str(ret);
-    }
+    let generic_count = node.child_by_field_name("type_parameters")
+        .map(|n| n.named_child_count() as i32)
+        .unwrap_or(0);
 
-    // Insert into function_facts
-    let func_sql = InsertBuilder::new(TableName::FUNCTION_FACTS)
-        .or_replace()
-        .value("file", file_path.as_str())
-        .value("name", name)
-        .value("takes_mut_self", takes_mut_self)
-        .value("takes_mut_params", takes_mut_params)
-        .value("returns_result", returns_result)
-        .value("returns_option", returns_option)
-        .value("is_async", is_async)
-        .value("is_unsafe", is_unsafe)
-        .value("is_public", is_public)
-        .value("parameter_count", params.len() as i64)
-        .value("generic_count", generic_count as i64)
-        .value("parameters", params.join(", "))
-        .value("return_type", return_type.as_deref().unwrap_or(""))
-        .build();
-    sql.push(format!("{};\n", func_sql));
+    // Create function fact
+    let function = FunctionFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        takes_mut_self,
+        takes_mut_params,
+        returns_result,
+        returns_option,
+        is_async,
+        is_unsafe,
+        is_public,
+        parameter_count: params.len() as i32,
+        generic_count,
+        parameters: params,
+        return_type,
+    };
+    data.add_function(function);
 
-    // Also insert into code_search
+    // Add to code search
     let context = node.utf8_text(source)
         .ok()
         .and_then(|s| s.lines().next())
         .unwrap_or("")
         .to_string();
     
-    let search_sql = InsertBuilder::new(TableName::CODE_SEARCH)
-        .or_replace()
-        .value("path", file_path.as_str())
-        .value("name", name)
-        .value("signature", signature)
-        .value("context", context)
-        .build();
-    sql.push(format!("{};\n", search_sql));
+    let symbol = CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: "function".to_string(),
+        line: node.start_position().row + 1,
+        context,
+    };
+    data.add_symbol(symbol);
 }
 
-/// Process a type symbol (struct, enum, trait, etc.)
-fn process_type(node: &Node, source: &[u8], file_path: &FilePath, name: &str, kind: SymbolKind, sql: &mut Vec<String>) {
+/// Process a Rust type and add to data
+fn process_rust_type(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    kind: SymbolKind,
+    data: &mut ExtractedData,
+) {
     let is_public = has_visibility_modifier(node);
     
     // Get the node text for definition
@@ -287,71 +203,138 @@ fn process_type(node: &Node, source: &[u8], file_path: &FilePath, name: &str, ki
         SymbolKind::Const => if node.kind() == "static_item" { "static" } else { "const" },
         _ => "unknown",
     };
-    
-    let type_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-        .or_replace()
-        .value("file", file_path.as_str())
-        .value("name", name)
-        .value("definition", definition)
-        .value("kind", kind_str)
-        .value("visibility", if is_public { "pub" } else { "private" })
-        .build();
-    sql.push(format!("{};\n", type_sql));
+
+    // Create type fact
+    let type_fact = TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: definition.clone(),
+        kind: kind_str.to_string(),
+        visibility: if is_public { "pub" } else { "private" }.to_string(),
+        usage_count: 0,
+    };
+    data.add_type(type_fact);
+
+    // Add to code search
+    let symbol = CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: kind_str.to_string(),
+        line: node.start_position().row + 1,
+        context: definition,
+    };
+    data.add_symbol(symbol);
+}
+
+/// Process Rust imports and add to data
+fn process_rust_import(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    data: &mut ExtractedData,
+) {
+    // Find the use_tree to extract the import path
+    if let Some(use_tree) = node.child_by_field_name("argument") {
+        if let Ok(import_text) = use_tree.utf8_text(source) {
+            // Clean up the import path
+            let import_path = import_text.trim();
+            
+            // Extract imported names
+            let imported_names = if import_path.contains('{') {
+                // Multiple imports: use foo::{Bar, Baz}
+                if let Some(start) = import_path.find('{') {
+                    if let Some(end) = import_path.find('}') {
+                        import_path[start + 1..end]
+                            .split(',')
+                            .map(|s| s.trim().to_string())
+                            .collect()
+                    } else {
+                        vec![import_path.to_string()]
+                    }
+                } else {
+                    vec![import_path.to_string()]
+                }
+            } else if let Some(last_part) = import_path.split("::").last() {
+                // Single import: use foo::Bar
+                vec![last_part.to_string()]
+            } else {
+                vec![import_path.to_string()]
+            };
+
+            // Create import fact
+            let import = ImportFact {
+                file: file_path.to_string(),
+                import_path: import_path.to_string(),
+                imported_names,
+                import_kind: "use".to_string(),
+                line_number: (node.start_position().row + 1) as i32,
+            };
+            data.add_import(import);
+
+            // Add to code search
+            let symbol = CodeSymbol {
+                path: file_path.to_string(),
+                name: import_path.to_string(),
+                kind: "import".to_string(),
+                line: node.start_position().row + 1,
+                context: format!("use {};", import_path),
+            };
+            data.add_symbol(symbol);
+        }
+    }
 }
 
 /// Extract function calls for call graph
-fn extract_calls(
-    node: &Node, 
-    source: &[u8], 
+fn extract_rust_calls(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
     current_function: &Option<String>,
-    call_graph: &mut Vec<(String, String, CallType, i32)>
+    data: &mut ExtractedData,
 ) {
     if let Some(ref caller) = current_function {
-        let line_number = (node.start_position().row + 1) as i32;
-        
+        // Look for different types of calls
         match node.kind() {
             "call_expression" => {
-                if let Some(func_node) = node.child_by_field_name("function") {
-                    if let Ok(callee) = func_node.utf8_text(source) {
-                        call_graph.push((
-                            caller.clone(),
-                            callee.to_string(),
-                            CallType::Direct,
-                            line_number,
-                        ));
-                    }
-                }
-            }
-            "method_call_expression" => {
-                if let Some(method_node) = node.child_by_field_name("name") {
-                    if let Ok(callee) = method_node.utf8_text(source) {
-                        call_graph.push((
-                            caller.clone(),
-                            callee.to_string(),
-                            CallType::Method,
-                            line_number,
-                        ));
+                if let Some(function_node) = node.child_by_field_name("function") {
+                    if let Ok(callee) = function_node.utf8_text(source) {
+                        let call_edge = CallEdge {
+                            caller: caller.clone(),
+                            callee: callee.to_string(),
+                            file: file_path.to_string(),
+                            call_type: "direct".to_string(),
+                            line_number: (node.start_position().row + 1) as i32,
+                        };
+                        data.add_call_edge(call_edge);
                     }
                 }
             }
             "macro_invocation" => {
                 if let Some(macro_node) = node.child_by_field_name("macro") {
-                    if let Ok(callee) = macro_node.utf8_text(source) {
-                        call_graph.push((
-                            caller.clone(),
-                            callee.to_string(),
-                            CallType::Macro,
-                            line_number,
-                        ));
+                    if let Ok(macro_name) = macro_node.utf8_text(source) {
+                        let call_edge = CallEdge {
+                            caller: caller.clone(),
+                            callee: format!("{}!", macro_name),
+                            file: file_path.to_string(),
+                            call_type: "macro".to_string(),
+                            line_number: (node.start_position().row + 1) as i32,
+                        };
+                        data.add_call_edge(call_edge);
                     }
                 }
             }
             _ => {}
         }
     }
+
+    // Recursively look for calls in children
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        extract_rust_calls(&child, source, file_path, current_function, data);
+    }
 }
 
-/// Helper functions from the original SPEC
+// Helper functions (same as original but simplified)
 
 fn has_visibility_modifier(node: &Node) -> bool {
     let mut cursor = node.walk();
@@ -402,6 +385,6 @@ fn extract_params(node: &Node, source: &[u8]) -> Vec<String> {
 
 fn extract_return_type(node: &Node, source: &[u8]) -> Option<String> {
     node.child_by_field_name("return_type")
-        .and_then(|rt| rt.utf8_text(source).ok())
+        .and_then(|n| n.utf8_text(source).ok())
         .map(|s| s.trim_start_matches("->").trim().to_string())
 }
