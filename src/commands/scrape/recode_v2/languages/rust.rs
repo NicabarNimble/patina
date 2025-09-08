@@ -40,13 +40,11 @@ impl RustProcessor {
             .context("Failed to parse Rust file")?;
 
         // Walk the AST and extract symbols
-        let mut cursor = tree.walk();
         extract_rust_symbols(
             &tree.root_node(),
             content,
             &file_path.to_string(),
             &mut data,
-            &mut cursor,
             None,
         );
 
@@ -60,7 +58,6 @@ fn extract_rust_symbols(
     source: &[u8],
     file_path: &str,
     data: &mut ExtractedData,
-    cursor: &mut tree_sitter::TreeCursor,
     current_function: Option<String>,
 ) {
     // Determine symbol type
@@ -103,14 +100,13 @@ fn extract_rust_symbols(
     }
 
     // Recursively process children
-    cursor.reset(*node);
-    for child in node.children(cursor) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
         extract_rust_symbols(
             &child,
             source,
             file_path,
             data,
-            cursor,
             current_function.clone(),
         );
     }
