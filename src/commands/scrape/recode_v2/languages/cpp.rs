@@ -1,7 +1,13 @@
 // ============================================================================
-// C++ LANGUAGE MODULE - Self-Contained Processor
+// C++ LANGUAGE PROCESSOR V2 - STRUCT-BASED
 // ============================================================================
-//! C++ language processor with complete isolation.
+//! C++ language processor that returns typed structs instead of SQL strings.
+//!
+//! This is the refactored version that:
+//! - Returns ExtractedData with typed structs
+//! - No SQL string generation
+//! - Direct data extraction to domain types
+//! - Uses iterative approach for nested declarators to avoid stack overflow
 //!
 //! Handles C++'s features:
 //! - Classes with access modifiers (public/private/protected)
@@ -11,20 +17,22 @@
 //! - RAII and constructors/destructors
 //! - Modern C++ features (auto, lambdas, etc.)
 
-use crate::commands::scrape::recode_v2::sql_builder::{InsertBuilder, TableName};
-use crate::commands::scrape::recode_v2::types::{CallType, FilePath};
+use crate::commands::scrape::recode_v2::database::{
+    CallEdge, CodeSymbol, FunctionFact, ImportFact, TypeFact,
+};
+use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
+use crate::commands::scrape::recode_v2::types::{CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
-/// C++ language processor - completely self-contained
+/// C++ language processor - returns typed structs
 pub struct CppProcessor;
 
 impl CppProcessor {
-    /// Process a C++ file and extract all symbols to SQL statements
-    pub fn process_file(
-        file_path: FilePath,
-        content: &[u8],
-    ) -> Result<(Vec<String>, usize, usize, usize)> {
+    /// Process a C++ file and extract all symbols to typed structs
+    pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
+        let mut data = ExtractedData::new();
+        
         // Set up tree-sitter parser for C++
         let mut parser = Parser::new();
         let metal = patina_metal::Metal::Cpp;
@@ -40,67 +48,36 @@ impl CppProcessor {
             .parse(content, None)
             .context("Failed to parse C++ file")?;
 
-        let root = tree.root_node();
-        let mut sql_statements = Vec::new();
-        let mut functions = 0;
-        let mut types = 0;
-        let mut imports = 0;
-
-        // Track current function and namespace for call graph
-        let mut current_function: Option<String> = None;
-        let mut current_namespace: Vec<String> = Vec::new();
-        let mut call_graph_entries = Vec::new();
-
-        // Walk the tree and extract symbols
-        extract_symbols(
-            root,
+        // Walk the AST and extract symbols
+        let mut namespace_stack = Vec::new();
+        extract_cpp_symbols(
+            &tree.root_node(),
             content,
-            &file_path,
-            &mut sql_statements,
-            &mut functions,
-            &mut types,
-            &mut imports,
-            &mut current_function,
-            &mut current_namespace,
-            &mut call_graph_entries,
+            &file_path.to_string(),
+            &mut data,
+            None,
+            &mut namespace_stack,
         );
 
-        // Add call graph entries
-        for (caller, callee, call_type, line) in call_graph_entries {
-            let call_sql = InsertBuilder::new(TableName::CALL_GRAPH)
-                .or_replace()
-                .value("caller", caller.as_str())
-                .value("callee", callee.as_str())
-                .value("call_type", call_type.as_str())
-                .value("file", file_path.as_str())
-                .value("line_number", line as i64)
-                .build();
-            sql_statements.push(format!("{};\n", call_sql));
-        }
-
-        Ok((sql_statements, functions, types, imports))
+        Ok(data)
     }
 }
 
-/// Recursively extract symbols from the syntax tree
-fn extract_symbols(
-    node: Node,
+/// Recursively extract symbols from the C++ AST
+fn extract_cpp_symbols(
+    node: &Node,
     source: &[u8],
-    file_path: &FilePath,
-    sql: &mut Vec<String>,
-    functions: &mut usize,
-    types: &mut usize,
-    imports: &mut usize,
-    current_function: &mut Option<String>,
-    current_namespace: &mut Vec<String>,
-    call_graph: &mut Vec<(String, String, CallType, i32)>,
+    file_path: &str,
+    data: &mut ExtractedData,
+    current_function: Option<String>,
+    namespace_stack: &mut Vec<String>,
 ) {
     match node.kind() {
         "namespace_definition" => {
             // Enter namespace
             if let Some(name_node) = node.child_by_field_name("name") {
                 if let Ok(name) = name_node.utf8_text(source) {
-                    current_namespace.push(name.to_string());
+                    namespace_stack.push(name.to_string());
                 }
             }
 
@@ -108,270 +85,154 @@ fn extract_symbols(
             if let Some(body) = node.child_by_field_name("body") {
                 let mut cursor = body.walk();
                 for child in body.children(&mut cursor) {
-                    extract_symbols(
-                        child,
+                    extract_cpp_symbols(
+                        &child,
                         source,
                         file_path,
-                        sql,
-                        functions,
-                        types,
-                        imports,
-                        current_function,
-                        current_namespace,
-                        call_graph,
+                        data,
+                        current_function.clone(),
+                        namespace_stack,
                     );
                 }
             }
 
             // Exit namespace
-            current_namespace.pop();
+            namespace_stack.pop();
             return; // Don't recurse again
         }
         "function_definition" => {
-            if let Some(name) = extract_function_name(&node, source) {
+            if let Some(name) = extract_function_name(node, source) {
                 // Include namespace in function name
-                let full_name = if current_namespace.is_empty() {
+                let full_name = if namespace_stack.is_empty() {
                     name.clone()
                 } else {
-                    format!("{}::{}", current_namespace.join("::"), name)
+                    format!("{}::{}", namespace_stack.join("::"), name)
                 };
-
-                // Track for call graph
-                let old_func = current_function.clone();
-                *current_function = Some(full_name.clone());
-
-                // Extract function details
-                let params = extract_parameters(&node, source);
-                let return_type = extract_return_type(&node, source);
-                let is_template = has_template_parent(&node);
-                let is_public = is_public_member(&node, source);
-
-                // Build signature
-                let signature = if params.is_empty() {
-                    format!("{} {}()", return_type.as_deref().unwrap_or("auto"), full_name)
-                } else {
-                    format!(
-                        "{} {}({})",
-                        return_type.as_deref().unwrap_or("auto"),
-                        full_name,
-                        params.join(", ")
-                    )
-                };
-
-                // Insert into function_facts
-                let func_sql = InsertBuilder::new(TableName::FUNCTION_FACTS)
-                    .or_replace()
-                    .value("file", file_path.as_str())
-                    .value("name", full_name.as_str())
-                    .value("takes_mut_self", false)
-                    .value("takes_mut_params", params.iter().any(|p| !p.contains("const")))
-                    .value("returns_result", false)
-                    .value("returns_option", false)
-                    .value("is_async", false)
-                    .value("is_unsafe", true) // All C++ is unsafe
-                    .value("is_public", is_public)
-                    .value("parameter_count", params.len() as i64)
-                    .value("generic_count", if is_template { 1i64 } else { 0i64 })
-                    .value("parameters", params.join(", "))
-                    .value("return_type", return_type.as_deref().unwrap_or("void"))
-                    .build();
-                sql.push(format!("{};\n", func_sql));
-
-                // Also insert into code_search
-                let search_sql = InsertBuilder::new(TableName::CODE_SEARCH)
-                    .or_replace()
-                    .value("path", file_path.as_str())
-                    .value("name", full_name.as_str())
-                    .value("signature", signature)
-                    .value("context", extract_context(&node, source))
-                    .build();
-                sql.push(format!("{};\n", search_sql));
-
-                *functions += 1;
-
-                // Process function body for calls
+                
+                process_cpp_function(node, source, file_path, &full_name, data);
+                
+                // Process function body with updated context
                 let mut cursor = node.walk();
                 for child in node.children(&mut cursor) {
-                    extract_symbols(
-                        child,
+                    extract_cpp_symbols(
+                        &child,
                         source,
                         file_path,
-                        sql,
-                        functions,
-                        types,
-                        imports,
-                        current_function,
-                        current_namespace,
-                        call_graph,
+                        data,
+                        Some(full_name.clone()),
+                        namespace_stack,
                     );
                 }
-
-                // Restore previous function context
-                *current_function = old_func;
                 return; // Don't recurse again
             }
         }
         "class_specifier" | "struct_specifier" => {
             if let Some(name_node) = node.child_by_field_name("name") {
                 if let Ok(name) = name_node.utf8_text(source) {
-                    let full_name = if current_namespace.is_empty() {
+                    let kind = if node.kind() == "class_specifier" {
+                        SymbolKind::Class
+                    } else {
+                        SymbolKind::Struct
+                    };
+                    
+                    // Include namespace in type name
+                    let full_name = if namespace_stack.is_empty() {
                         name.to_string()
                     } else {
-                        format!("{}::{}", current_namespace.join("::"), name)
+                        format!("{}::{}", namespace_stack.join("::"), name)
                     };
-
-                    let kind = if node.kind() == "class_specifier" {
-                        "class"
-                    } else {
-                        "struct"
-                    };
-                    let is_template = has_template_parent(&node);
-
-                    let type_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                        .or_replace()
-                        .value("file", file_path.as_str())
-                        .value("name", full_name.as_str())
-                        .value("definition", format!("{} {}", kind, full_name))
-                        .value("kind", kind)
-                        .value("visibility", "public") // Top-level classes are public
-                        .build();
-                    sql.push(format!("{};\n", type_sql));
-                    *types += 1;
-
-                    // Process class body
+                    
+                    process_cpp_class(node, source, file_path, &full_name, kind, data);
+                    
+                    // Process class body with updated namespace
+                    namespace_stack.push(name.to_string());
                     if let Some(body) = node.child_by_field_name("body") {
                         let mut cursor = body.walk();
                         for child in body.children(&mut cursor) {
-                            extract_symbols(
-                                child,
+                            extract_cpp_symbols(
+                                &child,
                                 source,
                                 file_path,
-                                sql,
-                                functions,
-                                types,
-                                imports,
-                                current_function,
-                                current_namespace,
-                                call_graph,
+                                data,
+                                current_function.clone(),
+                                namespace_stack,
                             );
                         }
                     }
+                    namespace_stack.pop();
+                    return; // Don't recurse again
                 }
             }
         }
-        "enum_specifier" => {
+        "enum_specifier" | "enum_class_specifier" => {
             if let Some(name_node) = node.child_by_field_name("name") {
                 if let Ok(name) = name_node.utf8_text(source) {
-                    let full_name = if current_namespace.is_empty() {
+                    let full_name = if namespace_stack.is_empty() {
                         name.to_string()
                     } else {
-                        format!("{}::{}", current_namespace.join("::"), name)
+                        format!("{}::{}", namespace_stack.join("::"), name)
                     };
-
-                    let is_enum_class = node
-                        .utf8_text(source)
-                        .map(|t| t.contains("enum class"))
-                        .unwrap_or(false);
-
-                    let type_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                        .or_replace()
-                        .value("file", file_path.as_str())
-                        .value("name", full_name.as_str())
-                        .value(
-                            "definition",
-                            format!(
-                                "{} {}",
-                                if is_enum_class { "enum class" } else { "enum" },
-                                full_name
-                            ),
-                        )
-                        .value("kind", "enum")
-                        .value("visibility", "public")
-                        .build();
-                    sql.push(format!("{};\n", type_sql));
-                    *types += 1;
+                    process_cpp_enum(node, source, file_path, &full_name, data);
                 }
             }
         }
         "type_definition" | "alias_declaration" => {
-            // typedef and using declarations
-            if let Some(name) = extract_typedef_name(&node, source) {
-                let full_name = if current_namespace.is_empty() {
+            if let Some(name) = extract_typedef_name(node, source) {
+                let full_name = if namespace_stack.is_empty() {
                     name.clone()
                 } else {
-                    format!("{}::{}", current_namespace.join("::"), name)
+                    format!("{}::{}", namespace_stack.join("::"), name)
                 };
-
-                let kind = if node.kind() == "alias_declaration" {
-                    "using"
-                } else {
-                    "typedef"
-                };
-
-                let type_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
-                    .or_replace()
-                    .value("file", file_path.as_str())
-                    .value("name", full_name.as_str())
-                    .value("definition", format!("{} {}", kind, full_name))
-                    .value("kind", kind)
-                    .value("visibility", "public")
-                    .build();
-                sql.push(format!("{};\n", type_sql));
-                *types += 1;
+                process_cpp_typedef(node, source, file_path, &full_name, data);
             }
         }
-        "preproc_include" | "using_directive" | "using_declaration" => {
-            if let Ok(import_text) = node.utf8_text(source) {
-                let (item, from, is_external) = if node.kind() == "preproc_include" {
-                    let header = import_text
-                        .trim_start_matches("#include")
-                        .trim()
-                        .trim_start_matches('<')
-                        .trim_start_matches('"')
-                        .trim_end_matches('>')
-                        .trim_end_matches('"');
-                    (header, header, import_text.contains('<'))
-                } else {
-                    // using namespace or using declaration
-                    let using_part = import_text
-                        .trim_start_matches("using")
-                        .trim_start_matches("namespace")
-                        .trim()
-                        .trim_end_matches(';');
-                    (using_part, using_part, true)
-                };
-
-                let import_sql = InsertBuilder::new(TableName::IMPORT_FACTS)
-                    .or_replace()
-                    .value("importer_file", file_path.as_str())
-                    .value("imported_item", item)
-                    .value("imported_from", from)
-                    .value("is_external", is_external)
-                    .value(
-                        "import_kind",
-                        if node.kind() == "preproc_include" {
-                            "include"
-                        } else {
-                            "using"
-                        },
-                    )
-                    .build();
-                sql.push(format!("{};\n", import_sql));
-                *imports += 1;
-            }
+        "preproc_include" | "preproc_import" => {
+            process_cpp_include(node, source, file_path, data);
         }
         "call_expression" => {
             // Track function calls for call graph
             if let Some(ref caller) = current_function {
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
-                        let line = (node.start_position().row + 1) as i32;
-                        call_graph.push((
-                            caller.clone(),
-                            callee.to_string(),
-                            CallType::Direct,
-                            line,
-                        ));
+                        data.add_call_edge(CallEdge {
+                            caller: caller.clone(),
+                            callee: callee.to_string(),
+                            file: file_path.to_string(),
+                            call_type: CallType::Direct.to_string(),
+                            line_number: (node.start_position().row + 1) as i32,
+                        });
+                    }
+                }
+            }
+        }
+        "new_expression" => {
+            // Constructor calls
+            if let Some(ref caller) = current_function {
+                if let Some(type_node) = node.child_by_field_name("type") {
+                    if let Ok(class_name) = type_node.utf8_text(source) {
+                        data.add_call_edge(CallEdge {
+                            caller: caller.clone(),
+                            callee: format!("{}::constructor", class_name),
+                            file: file_path.to_string(),
+                            call_type: CallType::Constructor.to_string(),
+                            line_number: (node.start_position().row + 1) as i32,
+                        });
+                    }
+                }
+            }
+        }
+        "delete_expression" => {
+            // Destructor calls
+            if let Some(ref caller) = current_function {
+                if let Some(arg_node) = node.child_by_field_name("argument") {
+                    if let Ok(var_name) = arg_node.utf8_text(source) {
+                        data.add_call_edge(CallEdge {
+                            caller: caller.clone(),
+                            callee: format!("~{}", var_name),
+                            file: file_path.to_string(),
+                            call_type: CallType::Destructor.to_string(),
+                            line_number: (node.start_position().row + 1) as i32,
+                        });
                     }
                 }
             }
@@ -379,30 +240,180 @@ fn extract_symbols(
         _ => {}
     }
 
-    // Recurse into children (unless we already handled them)
-    if !matches!(
-        node.kind(),
-        "namespace_definition" | "function_definition" | "class_specifier" | "struct_specifier"
-    ) {
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            extract_symbols(
-                child,
-                source,
-                file_path,
-                sql,
-                functions,
-                types,
-                imports,
-                current_function,
-                current_namespace,
-                call_graph,
-            );
-        }
+    // Recurse into children
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        extract_cpp_symbols(
+            &child,
+            source,
+            file_path,
+            data,
+            current_function.clone(),
+            namespace_stack,
+        );
     }
 }
 
-/// Extract function name from C++ function_definition node, handling nested declarators
+/// Process a C++ function and add to ExtractedData
+fn process_cpp_function(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let params = extract_parameters(node, source);
+    let return_type = extract_return_type(node, source);
+    let is_template = has_template_parent(node);
+    let is_public = is_public_member(node, source);
+    
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: "function".to_string(),
+        line: node.start_position().row + 1,
+        context: extract_context(node, source),
+    });
+    
+    // Add function fact
+    data.add_function(FunctionFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        takes_mut_self: false, // Would need more analysis
+        takes_mut_params: params.iter().any(|p| !p.contains("const")),
+        returns_result: false, // C++ uses exceptions
+        returns_option: return_type.as_ref().map_or(false, |r| r.contains("optional")),
+        is_async: false, // C++ doesn't have built-in async
+        is_unsafe: true, // All C++ is unsafe
+        is_public,
+        parameter_count: params.len() as i32,
+        generic_count: if is_template { 1 } else { 0 },
+        parameters: params,
+        return_type,
+    });
+}
+
+/// Process a C++ class/struct and add to ExtractedData
+fn process_cpp_class(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    kind: SymbolKind,
+    data: &mut ExtractedData,
+) {
+    let is_template = has_template_parent(node);
+    
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: kind.to_string(),
+        line: node.start_position().row + 1,
+        context: extract_context(node, source),
+    });
+    
+    // Add type fact
+    data.add_type(TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: get_type_definition(node, source),
+        kind: kind.to_string(),
+        visibility: "public".to_string(), // Top-level types are public
+        usage_count: 0,
+    });
+}
+
+/// Process a C++ enum and add to ExtractedData
+fn process_cpp_enum(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let is_enum_class = node.kind() == "enum_class_specifier";
+    
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: if is_enum_class { "enum_class" } else { "enum" }.to_string(),
+        line: node.start_position().row + 1,
+        context: extract_context(node, source),
+    });
+    
+    // Add type fact
+    data.add_type(TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: get_type_definition(node, source),
+        kind: if is_enum_class { "enum_class" } else { "enum" }.to_string(),
+        visibility: "public".to_string(),
+        usage_count: 0,
+    });
+}
+
+/// Process a C++ typedef/using and add to ExtractedData
+fn process_cpp_typedef(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let is_using = node.kind() == "alias_declaration";
+    
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: if is_using { "using" } else { "typedef" }.to_string(),
+        line: node.start_position().row + 1,
+        context: extract_context(node, source),
+    });
+    
+    // Add type fact
+    data.add_type(TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: get_type_definition(node, source),
+        kind: if is_using { "using" } else { "typedef" }.to_string(),
+        visibility: "public".to_string(),
+        usage_count: 0,
+    });
+}
+
+/// Process a C++ include directive and add to ExtractedData
+fn process_cpp_include(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    data: &mut ExtractedData,
+) {
+    if let Ok(include_text) = node.utf8_text(source) {
+        let header = include_text
+            .trim_start_matches("#include")
+            .trim_start_matches("#import")
+            .trim()
+            .trim_start_matches('<')
+            .trim_start_matches('"')
+            .trim_end_matches('>')
+            .trim_end_matches('"');
+        let is_external = include_text.contains('<');
+        
+        data.add_import(ImportFact {
+            file: file_path.to_string(),
+            import_path: header.to_string(),
+            imported_names: vec![header.to_string()],
+            import_kind: if is_external { "system" } else { "local" }.to_string(),
+            line_number: (node.start_position().row + 1) as i32,
+        });
+    }
+}
+
+/// Extract function name from C++ function_definition node
 fn extract_function_name(node: &Node, source: &[u8]) -> Option<String> {
     // First check for simple declarator with name
     if let Some(declarator) = node.child_by_field_name("declarator") {
@@ -417,7 +428,7 @@ fn extract_function_name(node: &Node, source: &[u8]) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-/// Extract C++ function name from declarator (handles complex declarators)
+/// Extract C++ function name from declarator (iterative to avoid stack overflow)
 fn extract_cpp_function_name(declarator: Node) -> Option<Node> {
     let mut current = declarator;
 
@@ -569,18 +580,17 @@ fn is_public_member(node: &Node, source: &[u8]) -> bool {
                             is_public = text.contains("public");
                         }
                     }
-                    if sibling.id() == node.id() {
+                    if sibling.start_byte() >= node.start_byte() {
                         return is_public;
                     }
                 }
                 return false;
             }
-            _ => {}
+            _ => current = parent.parent(),
         }
-        current = parent.parent();
     }
-
-    // Not in a class/struct, assume public
+    
+    // Not in a class/struct, so it's public
     true
 }
 
@@ -588,9 +598,24 @@ fn is_public_member(node: &Node, source: &[u8]) -> bool {
 fn extract_context(node: &Node, source: &[u8]) -> String {
     let start_byte = node.start_byte();
     let end_byte = node.end_byte().min(start_byte + 200);
-
+    
     if let Ok(context) = std::str::from_utf8(&source[start_byte..end_byte]) {
         context.lines().take(3).collect::<Vec<_>>().join(" ")
+    } else {
+        String::new()
+    }
+}
+
+/// Get type definition text
+fn get_type_definition(node: &Node, source: &[u8]) -> String {
+    if let Ok(text) = node.utf8_text(source) {
+        let lines: Vec<&str> = text.lines().take(3).collect();
+        let preview = lines.join("\n");
+        if preview.len() > 200 {
+            format!("{}...", &preview[..200])
+        } else {
+            preview
+        }
     } else {
         String::new()
     }
