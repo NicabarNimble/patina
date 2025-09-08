@@ -10,7 +10,7 @@
 //! - Unsafe blocks
 //! - Macro usage
 
-use crate::commands::scrape::recode_v2::sql_builder::{InsertBuilder, SqlValue, TableName};
+use crate::commands::scrape::recode_v2::sql_builder::{InsertBuilder, TableName};
 use crate::commands::scrape::recode_v2::types::{CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
