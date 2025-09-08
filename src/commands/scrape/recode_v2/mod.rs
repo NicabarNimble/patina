@@ -30,6 +30,7 @@ use super::ScrapeConfig;
 // LANGUAGE MODULES
 // ============================================================================
 pub mod languages;
+pub mod types;
 
 // Re-export the Language enum for convenience
 pub use languages::Language;

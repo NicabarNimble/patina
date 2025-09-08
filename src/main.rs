@@ -113,13 +113,7 @@ struct ScrapeArgs {
 
 #[derive(Subcommand)]
 enum ScrapeCommands {
-    /// Extract semantic information from source code
-    Code {
-        #[command(flatten)]
-        args: ScrapeArgs,
-    },
-
-    /// Extract semantic information using modular architecture (v2)
+    /// Extract semantic information using modular architecture
     Recode {
         #[command(flatten)]
         args: ScrapeArgs,
@@ -276,7 +270,7 @@ fn main() -> Result<()> {
         },
         Commands::Scrape { command } => {
             // Default to Code subcommand with default args for backward compatibility
-            let subcommand = command.unwrap_or(ScrapeCommands::Code {
+            let subcommand = command.unwrap_or(ScrapeCommands::Recode {
                 args: ScrapeArgs {
                     init: false,
                     query: None,
@@ -285,9 +279,6 @@ fn main() -> Result<()> {
                 },
             });
             match subcommand {
-                ScrapeCommands::Code { args } => {
-                    commands::scrape::execute(args.init, args.query, args.repo, args.force)?;
-                }
                 ScrapeCommands::Recode { args } => {
                     commands::scrape::execute_recode(args.init, args.query, args.repo, args.force)?;
                 }

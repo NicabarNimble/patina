@@ -1,0 +1,114 @@
+// Type-safe wrappers for recode_v2
+// Gradual migration from strings to types
+
+use std::fmt;
+
+// ============================================================================
+// SYMBOL KINDS
+// ============================================================================
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SymbolKind {
+    Function,
+    Struct,
+    Class,
+    Trait,
+    Interface,
+    Module,
+    Import,
+    Const,
+    TypeAlias,
+    Enum,
+    Impl,
+    Unknown,
+}
+
+impl SymbolKind {
+    /// Convert from string (for gradual migration)
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "function" => Self::Function,
+            "struct" => Self::Struct,
+            "class" => Self::Class,
+            "trait" => Self::Trait,
+            "interface" => Self::Interface,
+            "module" => Self::Module,
+            "import" => Self::Import,
+            "const" => Self::Const,
+            "type_alias" => Self::TypeAlias,
+            "enum" => Self::Enum,
+            "impl" => Self::Impl,
+            _ => Self::Unknown,
+        }
+    }
+    
+    /// Convert to string (for backward compatibility)
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Function => "function",
+            Self::Struct => "struct",
+            Self::Class => "class",
+            Self::Trait => "trait",
+            Self::Interface => "interface",
+            Self::Module => "module",
+            Self::Import => "import",
+            Self::Const => "const",
+            Self::TypeAlias => "type_alias",
+            Self::Enum => "enum",
+            Self::Impl => "impl",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+impl fmt::Display for SymbolKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+// ============================================================================
+// NEWTYPES FOR SAFETY
+// ============================================================================
+#[derive(Debug, Clone)]
+pub struct FilePath<'a>(pub &'a str);
+
+#[derive(Debug, Clone)]
+pub struct SymbolName<'a>(pub &'a str);
+
+#[derive(Debug, Clone)]
+pub struct DocString<'a>(pub &'a str);
+
+// ============================================================================
+// NODE KINDS (Tree-sitter specific)
+// ============================================================================
+/// Common tree-sitter node types for Rust
+pub mod rust_nodes {
+    pub const FUNCTION_ITEM: &str = "function_item";
+    pub const STRUCT_ITEM: &str = "struct_item";
+    pub const TRAIT_ITEM: &str = "trait_item";
+    pub const IMPL_ITEM: &str = "impl_item";
+    pub const TYPE_ALIAS: &str = "type_alias";
+    pub const CONST_ITEM: &str = "const_item";
+    pub const STATIC_ITEM: &str = "static_item";
+    pub const ENUM_ITEM: &str = "enum_item";
+    pub const MODULE: &str = "mod_item";
+    pub const USE_DECLARATION: &str = "use_declaration";
+    pub const MACRO_INVOCATION: &str = "macro_invocation";
+}
+
+// ============================================================================
+// SQL CONSTANTS (Type-safe SQL)
+// ============================================================================
+pub mod sql {
+    /// Prepared statement for function facts
+    pub const INSERT_FUNCTION_FACT: &str = 
+        "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    
+    /// Prepared statement for type vocabulary
+    pub const INSERT_TYPE_VOCAB: &str = 
+        "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility, usage_count) VALUES (?, ?, ?, ?, ?, ?)";
+    
+    /// Prepared statement for imports
+    pub const INSERT_IMPORT: &str = 
+        "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES (?, ?, ?, ?, ?)";
+}
