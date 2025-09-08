@@ -26,6 +26,7 @@ use tree_sitter::Node;
 
 use super::ScrapeConfig;
 use self::types::{FilePath, SymbolName, SymbolKind, CallType, CallGraphEntry};
+use self::sql_builder::{InsertBuilder, TableName, SqlValue};
 
 // ============================================================================
 // LANGUAGE MODULES
@@ -476,11 +477,13 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
             .unwrap_or_default()
             .as_secs() as i64;
 
-        sql_statements.push_str(&format!(
-            "INSERT OR REPLACE INTO index_state (path, mtime) VALUES ('{}', {});\n",
-            escape_sql(&relative_path),
-            mtime
-        ));
+        let insert_sql = InsertBuilder::new(TableName::INDEX_STATE)
+            .or_replace()
+            .value("path", relative_path.as_str())
+            .value("mtime", mtime)
+            .build();
+        sql_statements.push_str(&insert_sql);
+        sql_statements.push_str(";\n");
 
         // Process Cairo file with special parser
         match languages::cairo::CairoProcessor::process_file(FilePath::from(relative_path.as_str()), &content) {
@@ -552,11 +555,13 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
             .unwrap_or_default()
             .as_secs() as i64;
 
-        sql_statements.push_str(&format!(
-            "INSERT OR REPLACE INTO index_state (path, mtime) VALUES ('{}', {});\n",
-            escape_sql(&relative_path),
-            mtime
-        ));
+        let insert_sql = InsertBuilder::new(TableName::INDEX_STATE)
+            .or_replace()
+            .value("path", relative_path.as_str())
+            .value("mtime", mtime)
+            .build();
+        sql_statements.push_str(&insert_sql);
+        sql_statements.push_str(";\n");
 
         // Extract symbols from AST
         let mut context = ParseContext::default();
@@ -575,14 +580,15 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
 
         // Add call graph entries with proper file path
         for entry in &context.call_graph_entries {
-            sql_statements.push_str(&format!(
-                "INSERT INTO call_graph (caller, callee, file, call_type, line_number) VALUES ('{}', '{}', '{}', '{}', {});\n",
-                escape_sql(&entry.caller),
-                escape_sql(&entry.callee),
-                escape_sql(&relative_path),
-                entry.call_type.as_str(),
-                entry.line_number
-            ));
+            let insert_sql = InsertBuilder::new(TableName::CALL_GRAPH)
+                .value("caller", entry.caller.as_str())
+                .value("callee", entry.callee.as_str())
+                .value("file", relative_path.as_str())
+                .value("call_type", entry.call_type.as_str())
+                .value("line_number", entry.line_number as i64)
+                .build();
+            sql_statements.push_str(&insert_sql);
+            sql_statements.push_str(";\n");
         }
     }
 
@@ -774,19 +780,21 @@ fn process_symbol(
         let summary = extract_summary(&doc_clean);
         let has_examples = doc_raw.contains("```") || doc_raw.contains("Example:");
 
-        sql.push_str(&format!(
-            "INSERT OR REPLACE INTO documentation (file, symbol_name, symbol_type, line_number, doc_raw, doc_clean, doc_summary, keywords, doc_length, has_examples) VALUES ('{}', '{}', '{}', {}, '{}', '{}', '{}', {}, {}, {});\n",
-            escape_sql(symbol.file_path.as_str()),
-            escape_sql(symbol.name.as_str()),
-            symbol.kind.as_str(),
-            symbol.node.start_position().row + 1,
-            escape_sql(&doc_raw),
-            escape_sql(&doc_clean),
-            escape_sql(&summary),
-            format_string_array(&keywords),
-            doc_clean.len(),
-            has_examples
-        ));
+        let insert_sql = InsertBuilder::new(TableName::DOCUMENTATION)
+            .or_replace()
+            .value("file", symbol.file_path.as_str())
+            .value("symbol_name", symbol.name.as_str())
+            .value("symbol_type", symbol.kind.as_str())
+            .value("line_number", (symbol.node.start_position().row + 1) as i64)
+            .value("doc_raw", doc_raw)
+            .value("doc_clean", doc_clean.clone())
+            .value("doc_summary", summary)
+            .value("keywords", SqlValue::Array(keywords))
+            .value("doc_length", doc_clean.len() as i64)
+            .value("has_examples", has_examples)
+            .build();
+        sql.push_str(&insert_sql);
+        sql.push_str(";\n");
     }
 
     match symbol.kind {
@@ -812,12 +820,14 @@ fn process_symbol(
                 .next()
                 .unwrap_or("");
 
-            sql.push_str(&format!(
-                "INSERT OR REPLACE INTO code_search (path, name, signature) VALUES ('{}', '{}', '{}');\n",
-                escape_sql(symbol.file_path.as_str()),
-                escape_sql(symbol.name.as_str()),
-                escape_sql(signature)
-            ));
+            let insert_sql = InsertBuilder::new(TableName::CODE_SEARCH)
+                .or_replace()
+                .value("path", symbol.file_path.as_str())
+                .value("name", symbol.name.as_str())
+                .value("signature", signature)
+                .build();
+            sql.push_str(&insert_sql);
+            sql.push_str(";\n");
             (true, false)
         }
         SymbolKind::Struct | SymbolKind::Class | SymbolKind::Enum | 
@@ -909,22 +919,24 @@ fn extract_function_facts(
     };
     let return_type_str = return_type.unwrap_or_else(String::new);
 
-    sql.push_str(&format!(
-        "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES ('{}', '{}', {}, {}, {}, {}, {}, {}, {}, {}, {}, '{}', '{}');\n",
-        escape_sql(file_path),
-        escape_sql(name),
-        takes_mut_self,
-        takes_mut_params,
-        returns_result,
-        returns_option,
-        is_async,
-        is_unsafe,
-        is_public,
-        param_count,
-        generic_count,
-        escape_sql(&params_str),
-        escape_sql(&return_type_str)
-    ));
+    let insert_sql = InsertBuilder::new(TableName::FUNCTION_FACTS)
+        .or_replace()
+        .value("file", file_path)
+        .value("name", name)
+        .value("takes_mut_self", takes_mut_self)
+        .value("takes_mut_params", takes_mut_params)
+        .value("returns_result", returns_result)
+        .value("returns_option", returns_option)
+        .value("is_async", is_async)
+        .value("is_unsafe", is_unsafe)
+        .value("is_public", is_public)
+        .value("parameter_count", param_count as i64)
+        .value("generic_count", generic_count as i64)
+        .value("parameters", params_str)
+        .value("return_type", return_type_str)
+        .build();
+    sql.push_str(&insert_sql);
+    sql.push_str(";\n");
 }
 
 fn extract_type_definition(
@@ -957,14 +969,16 @@ fn extract_type_definition(
         .collect::<Vec<_>>()
         .join("\n");
 
-    sql.push_str(&format!(
-        "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', '{}', '{}', '{}');\n",
-        escape_sql(file_path),
-        escape_sql(name),
-        escape_sql(&definition),
-        kind.as_str(),
-        visibility
-    ));
+    let insert_sql = InsertBuilder::new(TableName::TYPE_VOCABULARY)
+        .or_replace()
+        .value("file", file_path)
+        .value("name", name)
+        .value("definition", definition)
+        .value("kind", kind.as_str())
+        .value("visibility", visibility)
+        .build();
+    sql.push_str(&insert_sql);
+    sql.push_str(";\n");
 }
 
 fn extract_import_fact(
@@ -978,13 +992,16 @@ fn extract_import_fact(
         let (imported_item, imported_from, is_external) =
             (spec.extract_import_details)(&node, source);
 
-        sql.push_str(&format!(
-            "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');\n",
-            escape_sql(file_path.as_str()),
-            escape_sql(&imported_item),
-            escape_sql(&imported_from),
-            is_external
-        ));
+        let insert_sql = InsertBuilder::new(TableName::IMPORT_FACTS)
+            .or_replace()
+            .value("importer_file", file_path.as_str())
+            .value("imported_item", imported_item)
+            .value("imported_from", imported_from)
+            .value("is_external", is_external)
+            .value("import_kind", "use")
+            .build();
+        sql.push_str(&insert_sql);
+        sql.push_str(";\n");
     }
 }
 
@@ -1086,21 +1103,3 @@ fn execute_sql_batch(db_path: &str, sql: &str) -> Result<()> {
     Ok(())
 }
 
-fn escape_sql(s: &str) -> String {
-    s.replace('\'', "''")
-}
-
-fn format_string_array(items: &[String]) -> String {
-    if items.is_empty() {
-        "ARRAY[]::VARCHAR[]".to_string()
-    } else {
-        format!(
-            "ARRAY[{}]",
-            items
-                .iter()
-                .map(|s| format!("'{}'", escape_sql(s)))
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    }
-}
