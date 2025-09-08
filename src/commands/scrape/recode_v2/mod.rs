@@ -24,16 +24,16 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use tree_sitter::Node;
 
+use self::sql_builder::{InsertBuilder, SqlValue, TableName};
+use self::types::{CallGraphEntry, CallType, FilePath, SymbolKind, SymbolName};
 use super::ScrapeConfig;
-use self::types::{FilePath, SymbolName, SymbolKind, CallType, CallGraphEntry};
-use self::sql_builder::{InsertBuilder, TableName, SqlValue};
 
 // ============================================================================
 // LANGUAGE MODULES
 // ============================================================================
 pub mod languages;
-pub mod types;
 pub mod sql_builder;
+pub mod types;
 
 // Re-export the Language enum for convenience
 pub use languages::Language;
@@ -486,7 +486,10 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         sql_statements.push_str(";\n");
 
         // Process Cairo file with special parser
-        match languages::cairo::CairoProcessor::process_file(FilePath::from(relative_path.as_str()), &content) {
+        match languages::cairo::CairoProcessor::process_file(
+            FilePath::from(relative_path.as_str()),
+            &content,
+        ) {
             Ok((statements, funcs, types, imps)) => {
                 for stmt in statements {
                     sql_statements.push_str(&stmt);
@@ -830,8 +833,12 @@ fn process_symbol(
             sql.push_str(";\n");
             (true, false)
         }
-        SymbolKind::Struct | SymbolKind::Class | SymbolKind::Enum | 
-        SymbolKind::Interface | SymbolKind::TypeAlias | SymbolKind::Const => {
+        SymbolKind::Struct
+        | SymbolKind::Class
+        | SymbolKind::Enum
+        | SymbolKind::Interface
+        | SymbolKind::TypeAlias
+        | SymbolKind::Const => {
             extract_type_definition(
                 symbol.node,
                 symbol.source,
@@ -1102,4 +1109,3 @@ fn execute_sql_batch(db_path: &str, sql: &str) -> Result<()> {
 
     Ok(())
 }
-

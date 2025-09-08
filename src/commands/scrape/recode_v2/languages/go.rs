@@ -10,7 +10,7 @@
 //! - Multiple return values
 //! - Package-level declarations
 
-use crate::commands::scrape::recode_v2::types::{go_nodes::*, SymbolKind, CallType};
+use crate::commands::scrape::recode_v2::types::{go_nodes::*, CallType, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Go language specification
@@ -133,11 +133,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                         } else {
                             CallType::Direct
                         };
-                        context.add_call(
-                            callee.replace("go ", ""),
-                            call_type,
-                            line_number,
-                        );
+                        context.add_call(callee.replace("go ", ""), call_type, line_number);
                     }
                 }
             }
@@ -147,11 +143,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                     if parent.kind() == CALL_EXPRESSION {
                         if let Some(field_node) = node.child_by_field_name("field") {
                             if let Ok(callee) = field_node.utf8_text(source) {
-                                context.add_call(
-                                    callee.to_string(),
-                                    CallType::Method,
-                                    line_number,
-                                );
+                                context.add_call(callee.to_string(), CallType::Method, line_number);
                             }
                         }
                     }

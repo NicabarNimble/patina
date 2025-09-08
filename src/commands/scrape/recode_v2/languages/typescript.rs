@@ -12,7 +12,7 @@
 //! - Decorators and metadata
 //! - JSX support (.tsx files)
 
-use crate::commands::scrape::recode_v2::types::{js_nodes::*, SymbolKind, CallType};
+use crate::commands::scrape::recode_v2::types::{js_nodes::*, CallType, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// TypeScript language specification
@@ -148,11 +148,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                         } else {
                             CallType::Direct
                         };
-                        context.add_call(
-                            callee.replace("await ", ""),
-                            call_type,
-                            line_number,
-                        );
+                        context.add_call(callee.replace("await ", ""), call_type, line_number);
                     }
                 }
             }

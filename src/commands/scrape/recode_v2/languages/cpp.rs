@@ -11,7 +11,7 @@
 //! - RAII and constructors/destructors
 //! - Modern C++ features (auto, lambdas, etc.)
 
-use crate::commands::scrape::recode_v2::types::{cpp_nodes::*, SymbolKind, CallType};
+use crate::commands::scrape::recode_v2::types::{cpp_nodes::*, CallType, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// C++ language specification

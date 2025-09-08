@@ -12,7 +12,7 @@
 //! - Unchecked blocks (similar to unsafe)
 //! - Library and contract declarations
 
-use crate::commands::scrape::recode_v2::types::{solidity_nodes::*, SymbolKind, CallType};
+use crate::commands::scrape::recode_v2::types::{solidity_nodes::*, CallType, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Solidity language specification
@@ -132,11 +132,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                     if parent.kind() == "call_expression" {
                         if let Some(property) = node.child_by_field_name("property") {
                             if let Ok(callee) = property.utf8_text(source) {
-                                context.add_call(
-                                    callee.to_string(),
-                                    CallType::Method,
-                                    line_number,
-                                );
+                                context.add_call(callee.to_string(), CallType::Method, line_number);
                             }
                         }
                     }
