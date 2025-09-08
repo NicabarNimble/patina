@@ -98,9 +98,7 @@ static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> =
         registry.insert(Language::TypeScript, &languages::typescript::SPEC);
         registry.insert(Language::TypeScriptTSX, &languages::typescript::SPEC); // TSX uses TS spec
         registry.insert(Language::Solidity, &languages::solidity::SPEC);
-        registry.insert(Language::C, &languages::c::SPEC);
-        registry.insert(Language::Cpp, &languages::cpp::SPEC);
-        // Note: Cairo is not registered here as it uses cairo-lang-parser instead of tree-sitter
+        // Note: Cairo, C, and C++ use isolated processors instead of LanguageSpec
 
         registry
     });
@@ -446,10 +444,20 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
     let mut files_with_errors = 0;
     let mut _files_processed = 0;
 
-    // Separate Cairo files from tree-sitter files for dual-track processing
-    let (cairo_files, treesitter_files): (Vec<_>, Vec<_>) = all_files
-        .into_iter()
-        .partition(|(_, lang)| matches!(lang, Language::Cairo));
+    // Separate files by processing type: Cairo, C/C++, and other tree-sitter files
+    let mut cairo_files = Vec::new();
+    let mut c_files = Vec::new();
+    let mut cpp_files = Vec::new();
+    let mut treesitter_files = Vec::new();
+    
+    for (path, lang) in all_files {
+        match lang {
+            Language::Cairo => cairo_files.push((path, lang)),
+            Language::C => c_files.push((path, lang)),
+            Language::Cpp => cpp_files.push((path, lang)),
+            _ => treesitter_files.push((path, lang)),
+        }
+    }
 
     // Process Cairo files with special parser
     for (file_path, _language) in cairo_files {
@@ -502,6 +510,118 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
             }
             Err(e) => {
                 eprintln!("  ⚠️  Cairo parsing error in {}: {}", relative_path, e);
+                files_with_errors += 1;
+            }
+        }
+    }
+
+    // Process C files with isolated processor
+    for (file_path, _language) in c_files {
+        let relative_path = if let Ok(stripped) = file_path.strip_prefix(work_dir) {
+            format!("./{}", stripped.to_string_lossy())
+        } else {
+            file_path.to_string_lossy().to_string()
+        };
+
+        // Read file content
+        let content = match std::fs::read(&file_path) {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("  ⚠️  Failed to read {}: {}", relative_path, e);
+                files_with_errors += 1;
+                continue;
+            }
+        };
+
+        // Track file in index_state
+        let mtime = std::fs::metadata(&file_path)
+            .and_then(|m| m.modified())
+            .unwrap_or(SystemTime::now())
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let insert_sql = InsertBuilder::new(TableName::INDEX_STATE)
+            .or_replace()
+            .value("path", relative_path.as_str())
+            .value("mtime", mtime)
+            .build();
+        sql_statements.push_str(&insert_sql);
+        sql_statements.push_str(";\n");
+
+        // Process C file with isolated processor
+        match languages::c::CProcessor::process_file(
+            FilePath::from(relative_path.as_str()),
+            &content,
+        ) {
+            Ok((statements, funcs, types, imps)) => {
+                for stmt in statements {
+                    sql_statements.push_str(&stmt);
+                    sql_statements.push('\n');
+                }
+                functions_count += funcs;
+                types_count += types;
+                imports_count += imps;
+                _files_processed += 1;
+            }
+            Err(e) => {
+                eprintln!("  ⚠️  C parsing error in {}: {}", relative_path, e);
+                files_with_errors += 1;
+            }
+        }
+    }
+
+    // Process C++ files with isolated processor
+    for (file_path, _language) in cpp_files {
+        let relative_path = if let Ok(stripped) = file_path.strip_prefix(work_dir) {
+            format!("./{}", stripped.to_string_lossy())
+        } else {
+            file_path.to_string_lossy().to_string()
+        };
+
+        // Read file content
+        let content = match std::fs::read(&file_path) {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("  ⚠️  Failed to read {}: {}", relative_path, e);
+                files_with_errors += 1;
+                continue;
+            }
+        };
+
+        // Track file in index_state
+        let mtime = std::fs::metadata(&file_path)
+            .and_then(|m| m.modified())
+            .unwrap_or(SystemTime::now())
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let insert_sql = InsertBuilder::new(TableName::INDEX_STATE)
+            .or_replace()
+            .value("path", relative_path.as_str())
+            .value("mtime", mtime)
+            .build();
+        sql_statements.push_str(&insert_sql);
+        sql_statements.push_str(";\n");
+
+        // Process C++ file with isolated processor
+        match languages::cpp::CppProcessor::process_file(
+            FilePath::from(relative_path.as_str()),
+            &content,
+        ) {
+            Ok((statements, funcs, types, imps)) => {
+                for stmt in statements {
+                    sql_statements.push_str(&stmt);
+                    sql_statements.push('\n');
+                }
+                functions_count += funcs;
+                types_count += types;
+                imports_count += imps;
+                _files_processed += 1;
+            }
+            Err(e) => {
+                eprintln!("  ⚠️  C++ parsing error in {}: {}", relative_path, e);
                 files_with_errors += 1;
             }
         }
@@ -711,63 +831,11 @@ fn extract_symbols_from_tree(
     (function_count, type_count, import_count)
 }
 
-fn extract_symbol_name(node: &Node, source: &[u8], language: Language) -> Option<String> {
-    // Special handling for C/C++ function declarators
-    if (language == Language::C || language == Language::Cpp)
-        && node.kind() == "function_definition"
-    {
-        if let Some(declarator) = node.child_by_field_name("declarator") {
-            if let Some(name_node) = extract_c_function_name(declarator) {
-                return name_node.utf8_text(source).ok().map(|s| s.to_string());
-            }
-        }
-    }
-
-    // Standard name extraction
+fn extract_symbol_name(node: &Node, source: &[u8], _language: Language) -> Option<String> {
+    // Standard name extraction - C/C++ now handled by their isolated processors
     node.child_by_field_name("name")
         .and_then(|n| n.utf8_text(source).ok())
         .map(|s| s.to_string())
-}
-
-/// Extract C function name from declarator (iterative to avoid stack overflow)
-fn extract_c_function_name(declarator: Node) -> Option<Node> {
-    let mut current = declarator;
-
-    loop {
-        // C function declarators can be nested (function pointers, etc.)
-        // Look for the identifier
-        if current.kind() == "identifier" {
-            return Some(current);
-        }
-
-        // For function_declarator, check the declarator field
-        if current.kind() == "function_declarator" {
-            if let Some(inner) = current.child_by_field_name("declarator") {
-                current = inner;
-                continue;
-            }
-        }
-
-        // For pointer_declarator, check the declarator field
-        if current.kind() == "pointer_declarator" {
-            if let Some(inner) = current.child_by_field_name("declarator") {
-                current = inner;
-                continue;
-            }
-        }
-
-        // Check children
-        let mut found = None;
-        let mut cursor = current.walk();
-        for child in current.children(&mut cursor) {
-            if child.kind() == "identifier" {
-                found = Some(child);
-                break;
-            }
-        }
-
-        return found;
-    }
 }
 
 fn process_symbol(
