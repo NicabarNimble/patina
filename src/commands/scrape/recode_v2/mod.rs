@@ -90,9 +90,7 @@ static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> =
         let mut registry = HashMap::new();
 
         // Register each language from its module
-        // Note: Rust, Go, Python, JavaScript, C, C++, Cairo now use isolated processors instead of LanguageSpec
-        registry.insert(Language::TypeScript, &languages::typescript::SPEC);
-        registry.insert(Language::TypeScriptTSX, &languages::typescript::SPEC); // TSX uses TS spec
+        // Note: Rust, Go, Python, JavaScript, TypeScript, C, C++, Cairo now use isolated processors instead of LanguageSpec
         registry.insert(Language::Solidity, &languages::solidity::SPEC);
         // Note: Cairo, C, and C++ use isolated processors instead of LanguageSpec
 
@@ -448,6 +446,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
     let mut go_files = Vec::new();
     let mut python_files = Vec::new();
     let mut javascript_files = Vec::new();
+    let mut typescript_files = Vec::new();
     let mut treesitter_files = Vec::new();
     
     for (path, lang) in all_files {
@@ -459,6 +458,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
             Language::Go => go_files.push((path, lang)),
             Language::Python => python_files.push((path, lang)),
             Language::JavaScript | Language::JavaScriptJSX => javascript_files.push((path, lang)),
+            Language::TypeScript | Language::TypeScriptTSX => typescript_files.push((path, lang)),
             _ => treesitter_files.push((path, lang)),
         }
     }
@@ -850,6 +850,62 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
             }
             Err(e) => {
                 eprintln!("  ⚠️  JavaScript parsing error in {}: {}", relative_path, e);
+                files_with_errors += 1;
+            }
+        }
+    }
+
+    // Process TypeScript files with isolated processor (handles both .ts and .tsx)
+    for (file_path, _language) in typescript_files {
+        let relative_path = if let Ok(stripped) = file_path.strip_prefix(work_dir) {
+            format!("./{}", stripped.to_string_lossy())
+        } else {
+            file_path.to_string_lossy().to_string()
+        };
+
+        // Read file content
+        let content = match std::fs::read(&file_path) {
+            Ok(content) => content,
+            Err(e) => {
+                eprintln!("  ⚠️  Failed to read {}: {}", relative_path, e);
+                files_with_errors += 1;
+                continue;
+            }
+        };
+
+        // Track file in index_state
+        let mtime = std::fs::metadata(&file_path)
+            .and_then(|m| m.modified())
+            .unwrap_or(SystemTime::now())
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let insert_sql = InsertBuilder::new(TableName::INDEX_STATE)
+            .or_replace()
+            .value("path", relative_path.as_str())
+            .value("mtime", mtime)
+            .build();
+        sql_statements.push_str(&insert_sql);
+        sql_statements.push_str(";\n");
+
+        // Process TypeScript file with isolated processor
+        match languages::typescript::TypeScriptProcessor::process_file(
+            FilePath::from(relative_path.as_str()),
+            &content,
+        ) {
+            Ok((statements, funcs, types, imps)) => {
+                for stmt in statements {
+                    sql_statements.push_str(&stmt);
+                    sql_statements.push('\n');
+                }
+                functions_count += funcs;
+                types_count += types;
+                imports_count += imps;
+                _files_processed += 1;
+            }
+            Err(e) => {
+                eprintln!("  ⚠️  TypeScript parsing error in {}: {}", relative_path, e);
                 files_with_errors += 1;
             }
         }
