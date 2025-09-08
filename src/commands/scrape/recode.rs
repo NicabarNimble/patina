@@ -31,1007 +31,852 @@ use anyhow::{Context, Result};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-
-use super::{ScrapeConfig, ScrapeStats};
-
-// ============================================================================
-// LANGUAGE REGISTRY - Centralized language configuration
-// ============================================================================
-// All language-specific logic consolidated in ONE place.
-// To add a new language:
-// 1. Create a LanguageSpec constant
-// 2. Add it to LANGUAGE_REGISTRY
-// That's it! No scattered match statements to update.
-
 use std::sync::LazyLock;
 use tree_sitter::Node;
 
+use super::{ScrapeConfig, ScrapeStats};
 // Import Language enum from the languages module at the end of this file
-use self::languages::Language;
+use self::language_support::Language;
+
+// ============================================================================
+// LANGUAGE SPECIFICATION INTERFACE
+// ============================================================================
+// Defines the common interface for extracting information from any language.
+// Each supported language provides an implementation of this spec.
 
 /// Specification for how to parse and extract information from a language
 struct LanguageSpec {
     /// Check if a comment is a documentation comment
     is_doc_comment: fn(&str) -> bool,
-
     /// Parse visibility from node and name
     parse_visibility: fn(&Node, &str, &[u8]) -> bool,
-
     /// Check if function is async
     has_async: fn(&Node, &[u8]) -> bool,
-
     /// Check if function is unsafe
     has_unsafe: fn(&Node, &[u8]) -> bool,
-
     /// Extract function parameters
     extract_params: fn(&Node, &[u8]) -> Vec<String>,
-
     /// Extract return type
     extract_return_type: fn(&Node, &[u8]) -> Option<String>,
-
     /// Extract generic parameters
     extract_generics: fn(&Node, &[u8]) -> Option<String>,
-
     /// Map node kind to symbol kind (simple mapping)
     get_symbol_kind: fn(&str) -> &'static str,
-
     /// Map node to symbol kind (complex cases that need node inspection)
     get_symbol_kind_complex: fn(&Node, &[u8]) -> Option<&'static str>,
-
     /// Clean documentation text for a language
     clean_doc_comment: fn(&str) -> String,
-
     /// Extract import details from an import node
     extract_import_details: fn(&Node, &[u8]) -> (String, String, bool),
 }
 
 // ============================================================================
-// LANGUAGE SPECIFICATIONS
+// LANGUAGE IMPLEMENTATIONS
 // ============================================================================
+// All language-specific logic is now encapsulated in its own module.
+// To add a new language:
+// 1. Create a new module (e.g., `pub mod new_lang { ... }`)
+// 2. Implement the `LanguageSpec` in a `pub static SPEC` variable.
+// 3. Add it to the LANGUAGE_REGISTRY below.
 
-/// Rust language specification
-static RUST_SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| text.starts_with("///") || text.starts_with("//!"),
+mod languages {
+    use super::LanguageSpec;
+    use tree_sitter::Node;
 
-    parse_visibility: |node, _name, _source| {
-        // Check for pub keyword via visibility_modifier node
-        node.children(&mut node.walk())
-            .any(|child| child.kind() == "visibility_modifier")
-    },
+    // ------------------------------------------------------------------------
+    // RUST IMPLEMENTATION
+    // ------------------------------------------------------------------------
+    pub mod rust {
+        use super::*;
+        pub static SPEC: LanguageSpec = LanguageSpec {
+            is_doc_comment: |text| text.starts_with("///") || text.starts_with("//!"),
 
-    has_async: |node, _source| {
-        node.children(&mut node.walk())
-            .any(|child| child.kind() == "async")
-    },
+            parse_visibility: |node, _name, _source| {
+                // Check for pub keyword via visibility_modifier node
+                node.children(&mut node.walk())
+                    .any(|child| child.kind() == "visibility_modifier")
+            },
 
-    has_unsafe: |node, _source| {
-        node.children(&mut node.walk())
-            .any(|child| child.kind() == "unsafe")
-    },
+            has_async: |node, _source| {
+                node.children(&mut node.walk())
+                    .any(|child| child.kind() == "async")
+            },
 
-    extract_params: |node, source| {
-        if let Some(params_node) = node.child_by_field_name("parameters") {
-            let mut params = Vec::new();
-            let mut cursor = params_node.walk();
-            for child in params_node.children(&mut cursor) {
-                if child.kind() == "parameter" || child.kind() == "self_parameter" {
-                    if let Ok(param_text) = child.utf8_text(source) {
-                        params.push(param_text.to_string());
+            has_unsafe: |node, _source| {
+                node.children(&mut node.walk())
+                    .any(|child| child.kind() == "unsafe")
+            },
+
+            extract_params: |node, source| {
+                if let Some(params_node) = node.child_by_field_name("parameters") {
+                    let mut params = Vec::new();
+                    let mut cursor = params_node.walk();
+                    for child in params_node.children(&mut cursor) {
+                        if child.kind() == "parameter" || child.kind() == "self_parameter" {
+                            if let Ok(param_text) = child.utf8_text(source) {
+                                params.push(param_text.to_string());
+                            }
+                        }
                     }
+                    params
+                } else {
+                    Vec::new()
                 }
-            }
-            params
-        } else {
-            Vec::new()
-        }
-    },
+            },
 
-    extract_return_type: |node, source| {
-        node.child_by_field_name("return_type")
-            .and_then(|rt| rt.utf8_text(source).ok())
-            .map(|s| s.trim_start_matches("->").trim().to_string())
-    },
+            extract_return_type: |node, source| {
+                node.child_by_field_name("return_type")
+                    .and_then(|rt| rt.utf8_text(source).ok())
+                    .map(|s| s.trim_start_matches("->").trim().to_string())
+            },
 
-    extract_generics: |node, source| {
-        node.child_by_field_name("type_parameters")
-            .and_then(|tp| tp.utf8_text(source).ok())
-            .map(String::from)
-    },
+            extract_generics: |node, source| {
+                node.child_by_field_name("type_parameters")
+                    .and_then(|tp| tp.utf8_text(source).ok())
+                    .map(String::from)
+            },
 
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_item" => "function",
-        "struct_item" => "struct",
-        "trait_item" => "trait",
-        "impl_item" => "impl",
-        "type_alias" => "type_alias",
-        "const_item" => "const",
-        "use_declaration" => "import",
-        _ => "unknown",
-    },
+            get_symbol_kind: |node_kind| match node_kind {
+                "function_item" => "function",
+                "struct_item" => "struct",
+                "trait_item" => "trait",
+                "impl_item" => "impl",
+                "type_alias" => "type_alias",
+                "const_item" => "const",
+                "use_declaration" => "import",
+                _ => "unknown",
+            },
 
-    get_symbol_kind_complex: |_node, _source| {
-        // Rust doesn't need complex symbol kind detection
-        None
-    },
+            get_symbol_kind_complex: |_node, _source| None,
 
-    clean_doc_comment: |raw| {
-        raw.lines()
-            .map(|line| {
-                line.trim_start()
-                    .strip_prefix("///")
-                    .or_else(|| line.strip_prefix("//!"))
-                    .unwrap_or(line)
-                    .trim()
-            })
-            .collect::<Vec<_>>()
-            .join(" ")
-    },
+            clean_doc_comment: |raw| {
+                raw.lines()
+                    .map(|line| {
+                        line.trim_start()
+                            .strip_prefix("///")
+                            .or_else(|| line.strip_prefix("//!"))
+                            .unwrap_or(line)
+                            .trim()
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            },
 
-    extract_import_details: |node, source| {
-        let import_text = node.utf8_text(source).unwrap_or("");
-        let import_clean = import_text.trim_start_matches("use ").trim_end_matches(';');
+            extract_import_details: |node, source| {
+                let import_text = node.utf8_text(source).unwrap_or("");
+                let import_clean = import_text.trim_start_matches("use ").trim_end_matches(';');
 
-        // Determine if external
-        let is_external = !import_clean.starts_with("crate::")
-            && !import_clean.starts_with("super::")
-            && !import_clean.starts_with("self::");
+                let is_external = !import_clean.starts_with("crate::")
+                    && !import_clean.starts_with("super::")
+                    && !import_clean.starts_with("self::");
 
-        // Extract the imported item (last part after ::)
-        let imported_item = import_clean.split("::").last().unwrap_or(import_clean);
+                let imported_item = import_clean.split("::").last().unwrap_or(import_clean);
+                let imported_from = if import_clean.contains("::") {
+                    import_clean
+                        .rsplit_once("::")
+                        .map(|(from, _)| from)
+                        .unwrap_or(import_clean)
+                } else {
+                    import_clean
+                };
 
-        // Extract the source module
-        let imported_from = if import_clean.contains("::") {
-            import_clean
-                .rsplit_once("::")
-                .map(|(from, _)| from)
-                .unwrap_or(import_clean)
-        } else {
-            import_clean
+                (
+                    imported_item.to_string(),
+                    imported_from.to_string(),
+                    is_external,
+                )
+            },
         };
+    }
 
-        (
-            imported_item.to_string(),
-            imported_from.to_string(),
-            is_external,
-        )
-    },
-};
-
-/// Go language specification
-static GO_SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| {
-        // Go uses // for doc comments (before declarations)
-        text.starts_with("//")
-    },
-
-    parse_visibility: |_node, name, _source| {
-        // In Go, uppercase first letter = public
-        name.chars().next().is_some_and(|c| c.is_uppercase())
-    },
-
-    has_async: |_node, _source| {
-        // Go doesn't have async keyword, uses goroutines
-        false
-    },
-
-    has_unsafe: |_node, _source| {
-        // Go doesn't have unsafe keyword in function declarations
-        false
-    },
-
-    extract_params: |node, source| {
-        if let Some(params_node) = node.child_by_field_name("parameters") {
-            let mut params = Vec::new();
-            let mut cursor = params_node.walk();
-            for child in params_node.children(&mut cursor) {
-                if child.kind() == "parameter_declaration" {
-                    if let Ok(param_text) = child.utf8_text(source) {
-                        params.push(param_text.to_string());
+    // ------------------------------------------------------------------------
+    // GO IMPLEMENTATION
+    // ------------------------------------------------------------------------
+    pub mod go {
+        use super::*;
+        pub static SPEC: LanguageSpec = LanguageSpec {
+            is_doc_comment: |text| text.starts_with("//"),
+            parse_visibility: |_node, name, _source| {
+                name.chars().next().is_some_and(|c| c.is_uppercase())
+            },
+            has_async: |_node, _source| false,
+            has_unsafe: |_node, _source| false,
+            extract_params: |node, source| {
+                if let Some(params_node) = node.child_by_field_name("parameters") {
+                    let mut params = Vec::new();
+                    let mut cursor = params_node.walk();
+                    for child in params_node.children(&mut cursor) {
+                        if child.kind() == "parameter_declaration" {
+                            if let Ok(param_text) = child.utf8_text(source) {
+                                params.push(param_text.to_string());
+                            }
+                        }
                     }
+                    params
+                } else {
+                    Vec::new()
                 }
-            }
-            params
-        } else {
-            Vec::new()
-        }
-    },
-
-    extract_return_type: |node, source| {
-        node.child_by_field_name("result")
-            .and_then(|r| r.utf8_text(source).ok())
-            .map(String::from)
-    },
-
-    extract_generics: |node, source| {
-        // Go uses type parameters (generics added in Go 1.18)
-        node.child_by_field_name("type_parameters")
-            .and_then(|tp| tp.utf8_text(source).ok())
-            .map(String::from)
-    },
-
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_declaration" => "function",
-        "method_declaration" => "function",
-        "const_declaration" => "const",
-        "import_declaration" => "import",
-        _ => "unknown",
-    },
-
-    get_symbol_kind_complex: |node, _source| {
-        // Special handling for type_spec
-        if node.kind() == "type_spec" {
-            if node
-                .child_by_field_name("type")
-                .is_some_and(|n| n.kind() == "struct_type")
-            {
-                Some("struct")
-            } else if node
-                .child_by_field_name("type")
-                .is_some_and(|n| n.kind() == "interface_type")
-            {
-                Some("trait")
-            } else {
-                Some("type_alias")
-            }
-        } else {
-            None
-        }
-    },
-
-    clean_doc_comment: |raw| {
-        raw.lines()
-            .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ")
-    },
-
-    extract_import_details: |node, source| {
-        let import_text = node.utf8_text(source).unwrap_or("");
-        let import_clean = import_text
-            .trim_start_matches("import ")
-            .trim()
-            .trim_matches('"');
-
-        let is_external = !import_clean.starts_with(".");
-        let imported_item = import_clean.split('/').next_back().unwrap_or(import_clean);
-
-        (
-            imported_item.to_string(),
-            import_clean.to_string(),
-            is_external,
-        )
-    },
-};
-
-/// Python language specification
-static PYTHON_SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| {
-        // Python uses docstrings (triple quotes)
-        text.starts_with("\"\"\"") || text.starts_with("'''")
-    },
-
-    parse_visibility: |_node, name, _source| {
-        // Python convention: _ prefix = private
-        !name.starts_with('_')
-    },
-
-    has_async: |node, source| {
-        // Python uses async def
-        node.kind() == "async_function_definition"
-            || node.utf8_text(source).unwrap_or("").starts_with("async ")
-    },
-
-    has_unsafe: |_node, _source| {
-        // Python doesn't have unsafe
-        false
-    },
-
-    extract_params: |node, source| {
-        if let Some(params_node) = node.child_by_field_name("parameters") {
-            let mut params = Vec::new();
-            let mut cursor = params_node.walk();
-            for child in params_node.children(&mut cursor) {
-                // Skip punctuation
-                if matches!(child.kind(), "," | "(" | ")") {
-                    continue;
-                }
-                if let Ok(param_text) = child.utf8_text(source) {
-                    if !param_text.trim().is_empty() {
-                        params.push(param_text.to_string());
+            },
+            extract_return_type: |node, source| {
+                node.child_by_field_name("result")
+                    .and_then(|r| r.utf8_text(source).ok())
+                    .map(String::from)
+            },
+            extract_generics: |node, source| {
+                node.child_by_field_name("type_parameters")
+                    .and_then(|tp| tp.utf8_text(source).ok())
+                    .map(String::from)
+            },
+            get_symbol_kind: |node_kind| match node_kind {
+                "function_declaration" => "function",
+                "method_declaration" => "function",
+                "const_declaration" => "const",
+                "import_declaration" => "import",
+                _ => "unknown",
+            },
+            get_symbol_kind_complex: |node, _source| {
+                if node.kind() == "type_spec" {
+                    if node
+                        .child_by_field_name("type")
+                        .is_some_and(|n| n.kind() == "struct_type")
+                    {
+                        Some("struct")
+                    } else if node
+                        .child_by_field_name("type")
+                        .is_some_and(|n| n.kind() == "interface_type")
+                    {
+                        Some("trait")
+                    } else {
+                        Some("type_alias")
                     }
-                }
-            }
-            params
-        } else {
-            Vec::new()
-        }
-    },
-
-    extract_return_type: |node, source| {
-        // Python has optional type hints -> ReturnType
-        node.child_by_field_name("return_type")
-            .and_then(|rt| rt.utf8_text(source).ok())
-            .map(|s| s.trim_start_matches("->").trim().to_string())
-    },
-
-    extract_generics: |_node, _source| {
-        // Python doesn't have explicit generics in function definitions
-        None
-    },
-
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_definition" | "async_function_definition" => "function",
-        "class_definition" => "struct",
-        "import_statement" | "import_from_statement" => "import",
-        _ => "unknown",
-    },
-
-    get_symbol_kind_complex: |node, _source| {
-        // Special handling for decorated_definition
-        if node.kind() == "decorated_definition" {
-            if node.child_by_field_name("definition").is_some_and(|n| {
-                n.kind() == "function_definition" || n.kind() == "async_function_definition"
-            }) {
-                Some("function")
-            } else if node
-                .child_by_field_name("definition")
-                .is_some_and(|n| n.kind() == "class_definition")
-            {
-                Some("struct")
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    },
-
-    clean_doc_comment: |raw| {
-        // Remove triple quotes
-        raw.trim()
-            .strip_prefix("\"\"\"")
-            .and_then(|s| s.strip_suffix("\"\"\""))
-            .or_else(|| {
-                raw.trim()
-                    .strip_prefix("'''")
-                    .and_then(|s| s.strip_suffix("'''"))
-            })
-            .unwrap_or(raw)
-            .trim()
-            .to_string()
-    },
-
-    extract_import_details: |node, source| {
-        let import_text = node.utf8_text(source).unwrap_or("");
-        let import_clean = import_text.trim();
-        let is_external = !import_clean.contains("from .");
-
-        // For now, just use the whole import text as both item and from
-        (
-            import_clean.to_string(),
-            import_clean.to_string(),
-            is_external,
-        )
-    },
-};
-
-/// JavaScript language specification (shared base for JS/JSX)
-static JS_SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| {
-        // JSDoc comments
-        text.starts_with("/**") || text.starts_with("///")
-    },
-
-    parse_visibility: |_node, _name, _source| {
-        // JavaScript doesn't have explicit visibility modifiers
-        // Everything is public unless using closures/modules
-        true
-    },
-
-    has_async: |node, source| {
-        // Check for async keyword
-        node.utf8_text(source).unwrap_or("").contains("async")
-    },
-
-    has_unsafe: |_node, _source| {
-        // JavaScript doesn't have unsafe
-        false
-    },
-
-    extract_params: |node, source| {
-        if let Some(params_node) = node.child_by_field_name("parameters") {
-            let mut params = Vec::new();
-            let mut cursor = params_node.walk();
-            for child in params_node.children(&mut cursor) {
-                if matches!(
-                    child.kind(),
-                    "identifier" | "rest_pattern" | "object_pattern" | "array_pattern"
-                ) {
-                    if let Ok(param_text) = child.utf8_text(source) {
-                        params.push(param_text.to_string());
-                    }
-                }
-            }
-            params
-        } else {
-            Vec::new()
-        }
-    },
-
-    extract_return_type: |_node, _source| {
-        // JavaScript doesn't have return type annotations
-        None
-    },
-
-    extract_generics: |_node, _source| {
-        // JavaScript doesn't have generics
-        None
-    },
-
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_declaration" | "arrow_function" | "function_expression" => "function",
-        "class_declaration" => "struct",
-        "import_statement" => "import",
-        "const_declaration" | "let_declaration" => "const",
-        _ => "unknown",
-    },
-
-    get_symbol_kind_complex: |node, _source| {
-        // Special handling for variable_declarator
-        if node.kind() == "variable_declarator" {
-            if node
-                .child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression")
-            {
-                Some("function")
-            } else if node
-                .child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "class_expression")
-            {
-                Some("struct")
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    },
-
-    clean_doc_comment: |raw| {
-        if raw.starts_with("/**") {
-            raw.strip_prefix("/**")
-                .and_then(|s| s.strip_suffix("*/"))
-                .map(|s| {
-                    s.lines()
-                        .map(|line| line.trim().strip_prefix("*").unwrap_or(line).trim())
-                        .filter(|line| !line.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                })
-                .unwrap_or_else(|| raw.to_string())
-        } else {
-            raw.lines()
-                .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
-                .collect::<Vec<_>>()
-                .join(" ")
-        }
-    },
-
-    extract_import_details: |node, source| {
-        let import_text = node.utf8_text(source).unwrap_or("");
-        if let Some(module_match) = import_text
-            .split('\'')
-            .nth(1)
-            .or_else(|| import_text.split('"').nth(1))
-        {
-            let is_external = !module_match.starts_with('.');
-            (
-                module_match.to_string(),
-                module_match.to_string(),
-                is_external,
-            )
-        } else {
-            (String::new(), String::new(), false)
-        }
-    },
-};
-
-/// TypeScript language specification
-static TS_SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| {
-        // TSDoc/JSDoc comments
-        text.starts_with("/**") || text.starts_with("///")
-    },
-
-    parse_visibility: |node, _name, source| {
-        // TypeScript has explicit visibility modifiers
-        let text = node.utf8_text(source).unwrap_or("");
-        !text.contains("private") && !text.contains("protected")
-    },
-
-    has_async: |node, source| {
-        // Check for async keyword
-        node.utf8_text(source).unwrap_or("").contains("async")
-    },
-
-    has_unsafe: |_node, _source| {
-        // TypeScript doesn't have unsafe
-        false
-    },
-
-    extract_params: |node, source| {
-        if let Some(params_node) = node.child_by_field_name("parameters") {
-            let mut params = Vec::new();
-            let mut cursor = params_node.walk();
-            for child in params_node.children(&mut cursor) {
-                if matches!(
-                    child.kind(),
-                    "required_parameter" | "optional_parameter" | "rest_parameter"
-                ) {
-                    if let Ok(param_text) = child.utf8_text(source) {
-                        params.push(param_text.to_string());
-                    }
-                }
-            }
-            params
-        } else {
-            Vec::new()
-        }
-    },
-
-    extract_return_type: |node, source| {
-        // TypeScript has return type annotations
-        node.child_by_field_name("return_type")
-            .and_then(|rt| rt.utf8_text(source).ok())
-            .map(|s| s.trim_start_matches(":").trim().to_string())
-    },
-
-    extract_generics: |node, source| {
-        // TypeScript has generics
-        node.child_by_field_name("type_parameters")
-            .and_then(|tp| tp.utf8_text(source).ok())
-            .map(String::from)
-    },
-
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_declaration" | "arrow_function" | "function_expression" | "method_definition" => {
-            "function"
-        }
-        "class_declaration" => "struct",
-        "interface_declaration" => "trait",
-        "type_alias_declaration" => "type_alias",
-        "import_statement" => "import",
-        "const_statement" | "let_statement" => "const",
-        "enum_declaration" => "struct",
-        _ => "unknown",
-    },
-
-    get_symbol_kind_complex: |node, _source| {
-        // Special handling for variable_declarator (same as JS)
-        if node.kind() == "variable_declarator" {
-            if node
-                .child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression")
-            {
-                Some("function")
-            } else if node
-                .child_by_field_name("value")
-                .is_some_and(|n| n.kind() == "class_expression")
-            {
-                Some("struct")
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    },
-
-    clean_doc_comment: |raw| {
-        if raw.starts_with("/**") {
-            raw.strip_prefix("/**")
-                .and_then(|s| s.strip_suffix("*/"))
-                .map(|s| {
-                    s.lines()
-                        .map(|line| line.trim().strip_prefix("*").unwrap_or(line).trim())
-                        .filter(|line| !line.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" ")
-                })
-                .unwrap_or_else(|| raw.to_string())
-        } else {
-            raw.lines()
-                .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
-                .collect::<Vec<_>>()
-                .join(" ")
-        }
-    },
-
-    extract_import_details: |node, source| {
-        let import_text = node.utf8_text(source).unwrap_or("");
-        if let Some(module_match) = import_text
-            .split('\'')
-            .nth(1)
-            .or_else(|| import_text.split('"').nth(1))
-        {
-            let is_external = !module_match.starts_with('.');
-            (
-                module_match.to_string(),
-                module_match.to_string(),
-                is_external,
-            )
-        } else {
-            (String::new(), String::new(), false)
-        }
-    },
-};
-
-/// Solidity language specification
-static SOLIDITY_SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| {
-        // Solidity uses NatSpec comments
-        text.starts_with("///") || text.starts_with("/**")
-    },
-
-    parse_visibility: |node, _name, source| {
-        // Solidity defaults to public, check for private/internal
-        let text = node.utf8_text(source).unwrap_or("");
-        !text.contains("private") && !text.contains("internal")
-    },
-
-    has_async: |_node, _source| {
-        // Solidity doesn't have async
-        false
-    },
-
-    has_unsafe: |node, source| {
-        // In Solidity, unchecked blocks are similar to unsafe
-        node.utf8_text(source).unwrap_or("").contains("unchecked")
-    },
-
-    extract_params: |node, source| {
-        if let Some(params_node) = node.child_by_field_name("parameters") {
-            let mut params = Vec::new();
-            let mut cursor = params_node.walk();
-            for child in params_node.children(&mut cursor) {
-                if child.kind() == "parameter" {
-                    if let Ok(param_text) = child.utf8_text(source) {
-                        params.push(param_text.to_string());
-                    }
-                }
-            }
-            params
-        } else {
-            Vec::new()
-        }
-    },
-
-    extract_return_type: |node, source| {
-        // Solidity has return parameters
-        node.child_by_field_name("return_parameters")
-            .and_then(|rp| rp.utf8_text(source).ok())
-            .map(String::from)
-    },
-
-    extract_generics: |_node, _source| {
-        // Solidity doesn't have generics
-        None
-    },
-
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_definition" => "function",
-        "modifier_definition" => "function",
-        "event_definition" => "function",
-        "contract_declaration" => "struct",
-        "struct_declaration" => "struct",
-        "interface_declaration" => "trait",
-        "library_declaration" => "impl",
-        "import_directive" => "import",
-        "state_variable_declaration" => "const",
-        _ => "unknown",
-    },
-
-    get_symbol_kind_complex: |_node, _source| {
-        // Solidity doesn't need complex symbol kind detection
-        None
-    },
-
-    clean_doc_comment: |raw| {
-        raw.lines()
-            .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ")
-    },
-
-    extract_import_details: |node, source| {
-        let import_text = node.utf8_text(source).unwrap_or("");
-        if let Some(path_match) = import_text.split('"').nth(1) {
-            let is_external = path_match.starts_with('@') || path_match.starts_with("http");
-            (path_match.to_string(), path_match.to_string(), is_external)
-        } else {
-            (String::new(), String::new(), false)
-        }
-    },
-};
-
-/// C language specification
-static C_SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| {
-        // C uses /** */ for doc comments
-        text.starts_with("/**") || text.starts_with("/*!")
-    },
-
-    parse_visibility: |_node, _name, _source| {
-        // C doesn't have visibility modifiers, everything in headers is public
-        true
-    },
-
-    has_async: |_node, _source| {
-        // C doesn't have async
-        false
-    },
-
-    has_unsafe: |_node, _source| {
-        // All C is technically unsafe from Rust's perspective
-        true
-    },
-
-    extract_params: |node, source| {
-        if let Some(params_node) = node
-            .child_by_field_name("declarator")
-            .and_then(|d| d.child_by_field_name("parameters"))
-        {
-            let mut params = Vec::new();
-            let mut cursor = params_node.walk();
-            for child in params_node.children(&mut cursor) {
-                if child.kind() == "parameter_declaration" {
-                    if let Ok(param_text) = child.utf8_text(source) {
-                        params.push(param_text.to_string());
-                    }
-                }
-            }
-            params
-        } else {
-            Vec::new()
-        }
-    },
-
-    extract_return_type: |node, source| {
-        node.child_by_field_name("type")
-            .and_then(|t| t.utf8_text(source).ok())
-            .map(String::from)
-    },
-
-    extract_generics: |_node, _source| {
-        // C doesn't have generics
-        None
-    },
-
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_definition" => "function",
-        "struct_specifier" => "struct",
-        "union_specifier" => "union",
-        "enum_specifier" => "enum",
-        "type_definition" => "type_alias",
-        "declaration" => "variable",
-        "preproc_include" => "import",
-        _ => "unknown",
-    },
-
-    get_symbol_kind_complex: |_node, _source| None,
-
-    clean_doc_comment: |raw| {
-        raw.lines()
-            .map(|line| {
-                line.trim()
-                    .strip_prefix("///")
-                    .or_else(|| line.strip_prefix("//!"))
-                    .or_else(|| line.strip_prefix("//"))
-                    .or_else(|| line.strip_prefix("/**"))
-                    .or_else(|| line.strip_prefix("/*"))
-                    .or_else(|| line.strip_prefix("*"))
-                    .or_else(|| line.strip_suffix("*/"))
-                    .unwrap_or(line)
-                    .trim()
-            })
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ")
-    },
-
-    extract_import_details: |node, source| {
-        let import_text = node.utf8_text(source).unwrap_or("");
-        let import_clean = import_text
-            .trim_start_matches("#include")
-            .trim()
-            .trim_start_matches('<')
-            .trim_start_matches('"')
-            .trim_end_matches('>')
-            .trim_end_matches('"');
-
-        // System headers use <>, local headers use ""
-        let is_external = import_text.contains('<');
-
-        (
-            import_clean.to_string(),
-            import_clean.to_string(),
-            is_external,
-        )
-    },
-};
-
-/// C++ language specification
-static CPP_SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| {
-        // C++ uses /** */ or /// for doc comments
-        text.starts_with("/**") || text.starts_with("///") || text.starts_with("//!")
-    },
-
-    parse_visibility: |node, _name, source| {
-        // Check for public/private/protected access specifiers
-        // Default is private for class, public for struct
-        let mut cursor = node.walk();
-        let parent = node.parent();
-
-        // Check if we're in a class (default private) or struct (default public)
-        let default_public = parent
-            .is_none_or(|p| p.kind() == "struct_specifier" || p.kind() == "namespace_definition");
-
-        // Look for explicit access specifiers
-        for child in node.children(&mut cursor) {
-            if let Ok(text) = child.utf8_text(source) {
-                if text.contains("private") {
-                    return false;
-                } else if text.contains("public") {
-                    return true;
-                }
-            }
-        }
-
-        default_public
-    },
-
-    has_async: |_node, _source| {
-        // C++ doesn't have async keyword (uses std::async)
-        false
-    },
-
-    has_unsafe: |_node, _source| {
-        // All C++ is technically unsafe from Rust's perspective
-        true
-    },
-
-    extract_params: |node, source| {
-        if let Some(params_node) = node
-            .child_by_field_name("declarator")
-            .and_then(|d| d.child_by_field_name("parameters"))
-        {
-            let mut params = Vec::new();
-            let mut cursor = params_node.walk();
-            for child in params_node.children(&mut cursor) {
-                if child.kind() == "parameter_declaration"
-                    || child.kind() == "optional_parameter_declaration"
-                {
-                    if let Ok(param_text) = child.utf8_text(source) {
-                        params.push(param_text.to_string());
-                    }
-                }
-            }
-            params
-        } else {
-            Vec::new()
-        }
-    },
-
-    extract_return_type: |node, source| {
-        // Look for trailing return type first (C++11 style)
-        node.child_by_field_name("trailing_return_type")
-            .or_else(|| node.child_by_field_name("type"))
-            .and_then(|t| t.utf8_text(source).ok())
-            .map(String::from)
-    },
-
-    extract_generics: |node, source| {
-        // Look for template parameters
-        node.parent()
-            .and_then(|p| {
-                if p.kind() == "template_declaration" {
-                    p.child_by_field_name("parameters")
                 } else {
                     None
                 }
-            })
-            .and_then(|tp| tp.utf8_text(source).ok())
-            .map(String::from)
-    },
-
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_definition" => "function",
-        "class_specifier" => "class",
-        "struct_specifier" => "struct",
-        "union_specifier" => "union",
-        "enum_specifier" => "enum",
-        "namespace_definition" => "namespace",
-        "template_declaration" => "template",
-        "type_alias_declaration" | "using_declaration" => "type_alias",
-        "declaration" => "variable",
-        "preproc_include" => "import",
-        _ => "unknown",
-    },
-
-    get_symbol_kind_complex: |node, _source| {
-        // Check if template_declaration contains a class/struct/function
-        if node.kind() == "template_declaration" {
-            if let Some(child) = node.named_child(1) {
-                return match child.kind() {
-                    "class_specifier" => Some("template_class"),
-                    "struct_specifier" => Some("template_struct"),
-                    "function_definition" => Some("template_function"),
-                    _ => Some("template"),
-                };
-            }
-        }
-        None
-    },
-
-    clean_doc_comment: |raw| {
-        raw.lines()
-            .map(|line| {
-                line.trim()
-                    .strip_prefix("///")
-                    .or_else(|| line.strip_prefix("//!"))
-                    .or_else(|| line.strip_prefix("//"))
-                    .or_else(|| line.strip_prefix("/**"))
-                    .or_else(|| line.strip_prefix("/*"))
-                    .or_else(|| line.strip_prefix("*"))
-                    .or_else(|| line.strip_suffix("*/"))
-                    .unwrap_or(line)
+            },
+            clean_doc_comment: |raw| {
+                raw.lines()
+                    .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
+                    .filter(|line| !line.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            },
+            extract_import_details: |node, source| {
+                let import_text = node.utf8_text(source).unwrap_or("");
+                let import_clean = import_text
+                    .trim_start_matches("import ")
                     .trim()
-            })
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ")
-    },
+                    .trim_matches('"');
 
-    extract_import_details: |node, source| {
-        let import_text = node.utf8_text(source).unwrap_or("");
-        let import_clean = import_text
-            .trim_start_matches("#include")
-            .trim()
-            .trim_start_matches('<')
-            .trim_start_matches('"')
-            .trim_end_matches('>')
-            .trim_end_matches('"');
+                let is_external = !import_clean.starts_with(".");
+                let imported_item = import_clean.split('/').next_back().unwrap_or(import_clean);
 
-        // System headers use <>, local headers use ""
-        let is_external = import_text.contains('<');
+                (
+                    imported_item.to_string(),
+                    import_clean.to_string(),
+                    is_external,
+                )
+            },
+        };
+    }
 
-        (
-            import_clean.to_string(),
-            import_clean.to_string(),
-            is_external,
-        )
-    },
-};
+    // ------------------------------------------------------------------------
+    // PYTHON IMPLEMENTATION
+    // ------------------------------------------------------------------------
+    pub mod python {
+        use super::*;
+        pub static SPEC: LanguageSpec = LanguageSpec {
+            is_doc_comment: |text| text.starts_with("\"\"\"") || text.starts_with("'''"),
+            parse_visibility: |_node, name, _source| !name.starts_with('_'),
+            has_async: |node, source| {
+                node.kind() == "async_function_definition"
+                    || node.utf8_text(source).unwrap_or("").starts_with("async ")
+            },
+            has_unsafe: |_node, _source| false,
+            extract_params: |node, source| {
+                if let Some(params_node) = node.child_by_field_name("parameters") {
+                    let mut params = Vec::new();
+                    let mut cursor = params_node.walk();
+                    for child in params_node.children(&mut cursor) {
+                        if matches!(child.kind(), "," | "(" | ")") {
+                            continue;
+                        }
+                        if let Ok(param_text) = child.utf8_text(source) {
+                            if !param_text.trim().is_empty() {
+                                params.push(param_text.to_string());
+                            }
+                        }
+                    }
+                    params
+                } else {
+                    Vec::new()
+                }
+            },
+            extract_return_type: |node, source| {
+                node.child_by_field_name("return_type")
+                    .and_then(|rt| rt.utf8_text(source).ok())
+                    .map(|s| s.trim_start_matches("->").trim().to_string())
+            },
+            extract_generics: |_node, _source| None,
+            get_symbol_kind: |node_kind| match node_kind {
+                "function_definition" | "async_function_definition" => "function",
+                "class_definition" => "struct",
+                "import_statement" | "import_from_statement" => "import",
+                _ => "unknown",
+            },
+            get_symbol_kind_complex: |node, _source| {
+                if node.kind() == "decorated_definition" {
+                    if node.child_by_field_name("definition").is_some_and(|n| {
+                        n.kind() == "function_definition" || n.kind() == "async_function_definition"
+                    }) {
+                        Some("function")
+                    } else if node
+                        .child_by_field_name("definition")
+                        .is_some_and(|n| n.kind() == "class_definition")
+                    {
+                        Some("struct")
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            },
+            clean_doc_comment: |raw| {
+                raw.trim()
+                    .strip_prefix("\"\"\"")
+                    .and_then(|s| s.strip_suffix("\"\"\""))
+                    .or_else(|| {
+                        raw.trim()
+                            .strip_prefix("'''")
+                            .and_then(|s| s.strip_suffix("'''"))
+                    })
+                    .unwrap_or(raw)
+                    .trim()
+                    .to_string()
+            },
+            extract_import_details: |node, source| {
+                let import_text = node.utf8_text(source).unwrap_or("");
+                let import_clean = import_text.trim();
+                let is_external = !import_clean.contains("from .");
 
-/// Central registry of all language specifications
+                (
+                    import_clean.to_string(),
+                    import_clean.to_string(),
+                    is_external,
+                )
+            },
+        };
+    }
+
+    // ------------------------------------------------------------------------
+    // JAVASCRIPT IMPLEMENTATION
+    // ------------------------------------------------------------------------
+    pub mod javascript {
+        use super::*;
+        pub static SPEC: LanguageSpec = LanguageSpec {
+            is_doc_comment: |text| text.starts_with("/**") || text.starts_with("///"),
+            parse_visibility: |_node, _name, _source| true,
+            has_async: |node, source| node.utf8_text(source).unwrap_or("").contains("async"),
+            has_unsafe: |_node, _source| false,
+            extract_params: |node, source| {
+                if let Some(params_node) = node.child_by_field_name("parameters") {
+                    let mut params = Vec::new();
+                    let mut cursor = params_node.walk();
+                    for child in params_node.children(&mut cursor) {
+                        if matches!(
+                            child.kind(),
+                            "identifier" | "rest_pattern" | "object_pattern" | "array_pattern"
+                        ) {
+                            if let Ok(param_text) = child.utf8_text(source) {
+                                params.push(param_text.to_string());
+                            }
+                        }
+                    }
+                    params
+                } else {
+                    Vec::new()
+                }
+            },
+            extract_return_type: |_node, _source| None,
+            extract_generics: |_node, _source| None,
+            get_symbol_kind: |node_kind| match node_kind {
+                "function_declaration" | "arrow_function" | "function_expression" => "function",
+                "class_declaration" => "struct",
+                "import_statement" => "import",
+                "const_declaration" | "let_declaration" => "const",
+                _ => "unknown",
+            },
+            get_symbol_kind_complex: |node, _source| {
+                if node.kind() == "variable_declarator" {
+                    if node
+                        .child_by_field_name("value")
+                        .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression")
+                    {
+                        Some("function")
+                    } else if node
+                        .child_by_field_name("value")
+                        .is_some_and(|n| n.kind() == "class_expression")
+                    {
+                        Some("struct")
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            },
+            clean_doc_comment: |raw| {
+                if raw.starts_with("/**") {
+                    raw.strip_prefix("/**")
+                        .and_then(|s| s.strip_suffix("*/"))
+                        .map(|s| {
+                            s.lines()
+                                .map(|line| line.trim().strip_prefix('*').unwrap_or(line).trim())
+                                .filter(|line| !line.is_empty())
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        })
+                        .unwrap_or_else(|| raw.to_string())
+                } else {
+                    raw.lines()
+                        .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                }
+            },
+            extract_import_details: |node, source| {
+                let import_text = node.utf8_text(source).unwrap_or("");
+                if let Some(module_match) = import_text
+                    .split('\'')
+                    .nth(1)
+                    .or_else(|| import_text.split('"').nth(1))
+                {
+                    let is_external = !module_match.starts_with('.');
+                    (
+                        module_match.to_string(),
+                        module_match.to_string(),
+                        is_external,
+                    )
+                } else {
+                    (String::new(), String::new(), false)
+                }
+            },
+        };
+    }
+
+    // ------------------------------------------------------------------------
+    // TYPESCRIPT IMPLEMENTATION
+    // ------------------------------------------------------------------------
+    pub mod typescript {
+        use super::*;
+        pub static SPEC: LanguageSpec = LanguageSpec {
+            is_doc_comment: |text| text.starts_with("/**") || text.starts_with("///"),
+            parse_visibility: |node, _name, source| {
+                let text = node.utf8_text(source).unwrap_or("");
+                !text.contains("private") && !text.contains("protected")
+            },
+            has_async: |node, source| node.utf8_text(source).unwrap_or("").contains("async"),
+            has_unsafe: |_node, _source| false,
+            extract_params: |node, source| {
+                if let Some(params_node) = node.child_by_field_name("parameters") {
+                    let mut params = Vec::new();
+                    let mut cursor = params_node.walk();
+                    for child in params_node.children(&mut cursor) {
+                        if matches!(
+                            child.kind(),
+                            "required_parameter" | "optional_parameter" | "rest_parameter"
+                        ) {
+                            if let Ok(param_text) = child.utf8_text(source) {
+                                params.push(param_text.to_string());
+                            }
+                        }
+                    }
+                    params
+                } else {
+                    Vec::new()
+                }
+            },
+            extract_return_type: |node, source| {
+                node.child_by_field_name("return_type")
+                    .and_then(|rt| rt.utf8_text(source).ok())
+                    .map(|s| s.trim_start_matches(':').trim().to_string())
+            },
+            extract_generics: |node, source| {
+                node.child_by_field_name("type_parameters")
+                    .and_then(|tp| tp.utf8_text(source).ok())
+                    .map(String::from)
+            },
+            get_symbol_kind: |node_kind| match node_kind {
+                "function_declaration" | "arrow_function" | "function_expression" | "method_definition" => {
+                    "function"
+                }
+                "class_declaration" => "struct",
+                "interface_declaration" => "trait",
+                "type_alias_declaration" => "type_alias",
+                "import_statement" => "import",
+                "const_statement" | "let_statement" => "const",
+                "enum_declaration" => "struct",
+                _ => "unknown",
+            },
+            get_symbol_kind_complex: |node, _source| {
+                if node.kind() == "variable_declarator" {
+                    if node
+                        .child_by_field_name("value")
+                        .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression")
+                    {
+                        Some("function")
+                    } else if node
+                        .child_by_field_name("value")
+                        .is_some_and(|n| n.kind() == "class_expression")
+                    {
+                        Some("struct")
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            },
+            clean_doc_comment: |raw| {
+                if raw.starts_with("/**") {
+                    raw.strip_prefix("/**")
+                        .and_then(|s| s.strip_suffix("*/"))
+                        .map(|s| {
+                            s.lines()
+                                .map(|line| line.trim().strip_prefix('*').unwrap_or(line).trim())
+                                .filter(|line| !line.is_empty())
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        })
+                        .unwrap_or_else(|| raw.to_string())
+                } else {
+                    raw.lines()
+                        .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                }
+            },
+            extract_import_details: |node, source| {
+                let import_text = node.utf8_text(source).unwrap_or("");
+                if let Some(module_match) = import_text
+                    .split('\'')
+                    .nth(1)
+                    .or_else(|| import_text.split('"').nth(1))
+                {
+                    let is_external = !module_match.starts_with('.');
+                    (
+                        module_match.to_string(),
+                        module_match.to_string(),
+                        is_external,
+                    )
+                } else {
+                    (String::new(), String::new(), false)
+                }
+            },
+        };
+    }
+
+    // ------------------------------------------------------------------------
+    // SOLIDITY IMPLEMENTATION
+    // ------------------------------------------------------------------------
+    pub mod solidity {
+        use super::*;
+        pub static SPEC: LanguageSpec = LanguageSpec {
+            is_doc_comment: |text| text.starts_with("///") || text.starts_with("/**"),
+            parse_visibility: |node, _name, source| {
+                let text = node.utf8_text(source).unwrap_or("");
+                !text.contains("private") && !text.contains("internal")
+            },
+            has_async: |_node, _source| false,
+            has_unsafe: |node, source| node.utf8_text(source).unwrap_or("").contains("unchecked"),
+            extract_params: |node, source| {
+                if let Some(params_node) = node.child_by_field_name("parameters") {
+                    let mut params = Vec::new();
+                    let mut cursor = params_node.walk();
+                    for child in params_node.children(&mut cursor) {
+                        if child.kind() == "parameter" {
+                            if let Ok(param_text) = child.utf8_text(source) {
+                                params.push(param_text.to_string());
+                            }
+                        }
+                    }
+                    params
+                } else {
+                    Vec::new()
+                }
+            },
+            extract_return_type: |node, source| {
+                node.child_by_field_name("return_parameters")
+                    .and_then(|rp| rp.utf8_text(source).ok())
+                    .map(String::from)
+            },
+            extract_generics: |_node, _source| None,
+            get_symbol_kind: |node_kind| match node_kind {
+                "function_definition" => "function",
+                "modifier_definition" => "function",
+                "event_definition" => "function",
+                "contract_declaration" => "struct",
+                "struct_declaration" => "struct",
+                "interface_declaration" => "trait",
+                "library_declaration" => "impl",
+                "import_directive" => "import",
+                "state_variable_declaration" => "const",
+                _ => "unknown",
+            },
+            get_symbol_kind_complex: |_node, _source| None,
+            clean_doc_comment: |raw| {
+                raw.lines()
+                    .map(|line| line.trim_start().strip_prefix("//").unwrap_or(line).trim())
+                    .filter(|line| !line.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            },
+            extract_import_details: |node, source| {
+                let import_text = node.utf8_text(source).unwrap_or("");
+                if let Some(path_match) = import_text.split('"').nth(1) {
+                    let is_external = path_match.starts_with('@') || path_match.starts_with("http");
+                    (path_match.to_string(), path_match.to_string(), is_external)
+                } else {
+                    (String::new(), String::new(), false)
+                }
+            },
+        };
+    }
+
+    // ------------------------------------------------------------------------
+    // C IMPLEMENTATION
+    // ------------------------------------------------------------------------
+    pub mod c {
+        use super::*;
+        pub static SPEC: LanguageSpec = LanguageSpec {
+            is_doc_comment: |text| text.starts_with("/**") || text.starts_with("/*!"),
+            parse_visibility: |_node, _name, _source| true,
+            has_async: |_node, _source| false,
+            has_unsafe: |_node, _source| true,
+            extract_params: |node, source| {
+                if let Some(params_node) = node
+                    .child_by_field_name("declarator")
+                    .and_then(|d| d.child_by_field_name("parameters"))
+                {
+                    let mut params = Vec::new();
+                    let mut cursor = params_node.walk();
+                    for child in params_node.children(&mut cursor) {
+                        if child.kind() == "parameter_declaration" {
+                            if let Ok(param_text) = child.utf8_text(source) {
+                                params.push(param_text.to_string());
+                            }
+                        }
+                    }
+                    params
+                } else {
+                    Vec::new()
+                }
+            },
+            extract_return_type: |node, source| {
+                node.child_by_field_name("type")
+                    .and_then(|t| t.utf8_text(source).ok())
+                    .map(String::from)
+            },
+            extract_generics: |_node, _source| None,
+            get_symbol_kind: |node_kind| match node_kind {
+                "function_definition" => "function",
+                "struct_specifier" => "struct",
+                "union_specifier" => "union",
+                "enum_specifier" => "enum",
+                "type_definition" => "type_alias",
+                "declaration" => "variable",
+                "preproc_include" => "import",
+                _ => "unknown",
+            },
+            get_symbol_kind_complex: |_node, _source| None,
+            clean_doc_comment: |raw| {
+                raw.lines()
+                    .map(|line| {
+                        line.trim()
+                            .strip_prefix("///")
+                            .or_else(|| line.strip_prefix("//!"))
+                            .or_else(|| line.strip_prefix("//"))
+                            .or_else(|| line.strip_prefix("/**"))
+                            .or_else(|| line.strip_prefix("/*"))
+                            .or_else(|| line.strip_prefix('*'))
+                            .or_else(|| line.strip_suffix("*/"))
+                            .unwrap_or(line)
+                            .trim()
+                    })
+                    .filter(|line| !line.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            },
+            extract_import_details: |node, source| {
+                let import_text = node.utf8_text(source).unwrap_or("");
+                let import_clean = import_text
+                    .trim_start_matches("#include")
+                    .trim()
+                    .trim_start_matches('<')
+                    .trim_start_matches('"')
+                    .trim_end_matches('>')
+                    .trim_end_matches('"');
+                let is_external = import_text.contains('<');
+                (
+                    import_clean.to_string(),
+                    import_clean.to_string(),
+                    is_external,
+                )
+            },
+        };
+    }
+
+    // ------------------------------------------------------------------------
+    // C++ IMPLEMENTATION
+    // ------------------------------------------------------------------------
+    pub mod cpp {
+        use super::*;
+        pub static SPEC: LanguageSpec = LanguageSpec {
+            is_doc_comment: |text| {
+                text.starts_with("/**") || text.starts_with("///") || text.starts_with("//!")
+            },
+            parse_visibility: |node, _name, source| {
+                let mut cursor = node.walk();
+                let parent = node.parent();
+                let default_public = parent.is_none_or(|p| {
+                    p.kind() == "struct_specifier" || p.kind() == "namespace_definition"
+                });
+                for child in node.children(&mut cursor) {
+                    if let Ok(text) = child.utf8_text(source) {
+                        if text.contains("private") {
+                            return false;
+                        } else if text.contains("public") {
+                            return true;
+                        }
+                    }
+                }
+                default_public
+            },
+            has_async: |_node, _source| false,
+            has_unsafe: |_node, _source| true,
+            extract_params: |node, source| {
+                if let Some(params_node) = node
+                    .child_by_field_name("declarator")
+                    .and_then(|d| d.child_by_field_name("parameters"))
+                {
+                    let mut params = Vec::new();
+                    let mut cursor = params_node.walk();
+                    for child in params_node.children(&mut cursor) {
+                        if child.kind() == "parameter_declaration"
+                            || child.kind() == "optional_parameter_declaration"
+                        {
+                            if let Ok(param_text) = child.utf8_text(source) {
+                                params.push(param_text.to_string());
+                            }
+                        }
+                    }
+                    params
+                } else {
+                    Vec::new()
+                }
+            },
+            extract_return_type: |node, source| {
+                node.child_by_field_name("trailing_return_type")
+                    .or_else(|| node.child_by_field_name("type"))
+                    .and_then(|t| t.utf8_text(source).ok())
+                    .map(String::from)
+            },
+            extract_generics: |node, source| {
+                node.parent()
+                    .and_then(|p| {
+                        if p.kind() == "template_declaration" {
+                            p.child_by_field_name("parameters")
+                        } else {
+                            None
+                        }
+                    })
+                    .and_then(|tp| tp.utf8_text(source).ok())
+                    .map(String::from)
+            },
+            get_symbol_kind: |node_kind| match node_kind {
+                "function_definition" => "function",
+                "class_specifier" => "class",
+                "struct_specifier" => "struct",
+                "union_specifier" => "union",
+                "enum_specifier" => "enum",
+                "namespace_definition" => "namespace",
+                "template_declaration" => "template",
+                "type_alias_declaration" | "using_declaration" => "type_alias",
+                "declaration" => "variable",
+                "preproc_include" => "import",
+                _ => "unknown",
+            },
+            get_symbol_kind_complex: |node, _source| {
+                if node.kind() == "template_declaration" {
+                    if let Some(child) = node.named_child(1) {
+                        return match child.kind() {
+                            "class_specifier" => Some("template_class"),
+                            "struct_specifier" => Some("template_struct"),
+                            "function_definition" => Some("template_function"),
+                            _ => Some("template"),
+                        };
+                    }
+                }
+                None
+            },
+            clean_doc_comment: |raw| {
+                raw.lines()
+                    .map(|line| {
+                        line.trim()
+                            .strip_prefix("///")
+                            .or_else(|| line.strip_prefix("//!"))
+                            .or_else(|| line.strip_prefix("//"))
+                            .or_else(|| line.strip_prefix("/**"))
+                            .or_else(|| line.strip_prefix("/*"))
+                            .or_else(|| line.strip_prefix('*'))
+                            .or_else(|| line.strip_suffix("*/"))
+                            .unwrap_or(line)
+                            .trim()
+                    })
+                    .filter(|line| !line.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            },
+            extract_import_details: |node, source| {
+                let import_text = node.utf8_text(source).unwrap_or("");
+                let import_clean = import_text
+                    .trim_start_matches("#include")
+                    .trim()
+                    .trim_start_matches('<')
+                    .trim_start_matches('"')
+                    .trim_end_matches('>')
+                    .trim_end_matches('"');
+                let is_external = import_text.contains('<');
+                (
+                    import_clean.to_string(),
+                    import_clean.to_string(),
+                    is_external,
+                )
+            },
+        };
+    }
+}
+
+// ============================================================================
+// LANGUAGE REGISTRY
+// ============================================================================
+// Central registry of all language specifications, populated from the
+// language-specific modules above.
+
 static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> =
     LazyLock::new(|| {
         let mut registry = HashMap::new();
 
-        // Register all language specifications
-        registry.insert(Language::Rust, &RUST_SPEC);
-        registry.insert(Language::Go, &GO_SPEC);
-        registry.insert(Language::Python, &PYTHON_SPEC);
-        registry.insert(Language::JavaScript, &JS_SPEC);
-        registry.insert(Language::JavaScriptJSX, &JS_SPEC); // JSX uses same spec as JS
-        registry.insert(Language::TypeScript, &TS_SPEC);
-        registry.insert(Language::TypeScriptTSX, &TS_SPEC); // TSX uses same spec as TS
-        registry.insert(Language::Solidity, &SOLIDITY_SPEC);
-        registry.insert(Language::C, &C_SPEC);
-        registry.insert(Language::Cpp, &CPP_SPEC);
+        registry.insert(Language::Rust, &languages::rust::SPEC);
+        registry.insert(Language::Go, &languages::go::SPEC);
+        registry.insert(Language::Python, &languages::python::SPEC);
+        registry.insert(Language::JavaScript, &languages::javascript::SPEC);
+        registry.insert(Language::JavaScriptJSX, &languages::javascript::SPEC); // JSX uses JS spec
+        registry.insert(Language::TypeScript, &languages::typescript::SPEC);
+        registry.insert(Language::TypeScriptTSX, &languages::typescript::SPEC); // TSX uses TS spec
+        registry.insert(Language::Solidity, &languages::solidity::SPEC);
+        registry.insert(Language::C, &languages::c::SPEC);
+        registry.insert(Language::Cpp, &languages::cpp::SPEC);
 
         registry
     });
@@ -1229,7 +1074,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, force: bool) -> Result<
     println!("🧠 Extracting code metadata and semantic information...");
 
     use ignore::WalkBuilder;
-    use languages::{create_parser_for_path, Language};
+    use language_support::{create_parser_for_path, Language};
     use std::collections::HashMap;
     use std::time::SystemTime;
 
@@ -1344,14 +1189,8 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, force: bool) -> Result<
             .iter()
             .filter(|(_, l)| *l == Language::Cairo)
             .count(),
-        all_files
-            .iter()
-            .filter(|(_, l)| *l == Language::C)
-            .count(),
-        all_files
-            .iter()
-            .filter(|(_, l)| *l == Language::Cpp)
-            .count()
+        all_files.iter().filter(|(_, l)| *l == Language::C).count(),
+        all_files.iter().filter(|(_, l)| *l == Language::Cpp).count()
     );
 
     // Build map of current files with mtimes
@@ -1747,9 +1586,9 @@ fn report_skipped_files(skipped: &HashMap<String, (usize, usize, String)>) {
 fn extract_doc_comment(
     node: tree_sitter::Node,
     source: &[u8],
-    language: languages::Language,
+    language: language_support::Language,
 ) -> Option<(String, String, Vec<String>)> {
-    use languages::Language;
+    use language_support::Language;
 
     // Look for doc comment in previous sibling
     if let Some(prev) = node.prev_sibling() {
@@ -1862,7 +1701,7 @@ fn extract_doc_comment(
 }
 
 /// Clean doc text by removing comment markers
-fn clean_doc_text(raw: &str, language: languages::Language) -> String {
+fn clean_doc_text(raw: &str, language: language_support::Language) -> String {
     if let Some(spec) = get_language_spec(language) {
         (spec.clean_doc_comment)(raw)
     } else {
@@ -1901,7 +1740,7 @@ fn process_c_cpp_iterative(
     source: &[u8],
     file_path: &str,
     sql: &mut String,
-    language: languages::Language,
+    language: language_support::Language,
     context: &mut ParseContext,
 ) -> usize {
     use std::collections::VecDeque;
@@ -2099,10 +1938,10 @@ fn extract_c_function_name(declarator: tree_sitter::Node) -> Option<tree_sitter:
 fn extract_call_expressions(
     node: tree_sitter::Node,
     source: &[u8],
-    language: languages::Language,
+    language: language_support::Language,
     context: &mut ParseContext,
 ) {
-    use languages::Language;
+    use language_support::Language;
 
     let line_number = (node.start_position().row + 1) as i32;
 
@@ -2333,10 +2172,10 @@ fn process_ast_node(
     source: &[u8],
     file_path: &str,
     sql: &mut String,
-    language: languages::Language,
+    language: language_support::Language,
     context: &mut ParseContext,
 ) -> usize {
-    use languages::Language;
+    use language_support::Language;
 
     let node = cursor.node();
     let mut count = 0;
@@ -2544,22 +2383,22 @@ fn show_summary(db_path: &str) -> Result<()> {
     println!("\n📈 Summary:");
 
     let summary_query = r#"
-SELECT 
+SELECT
     'Functions indexed' as metric,
     COUNT(*) as value
 FROM function_facts
 UNION ALL
-SELECT 
+SELECT
     'Types defined' as metric,
     COUNT(*) as value
 FROM type_vocabulary
 UNION ALL
-SELECT 
+SELECT
     'Imports tracked' as metric,
     COUNT(*) as value
 FROM import_facts
 UNION ALL
-SELECT 
+SELECT
     SELECT
     'Languages skipped' as metric,
     COUNT(*) as value
@@ -2608,9 +2447,9 @@ fn extract_function_facts(
     file_path: &str,
     name: &str,
     sql: &mut String,
-    language: languages::Language,
+    language: language_support::Language,
 ) {
-    use languages::Language;
+    use language_support::Language;
 
     // Extract visibility
     let is_public = if let Some(spec) = get_language_spec(language) {
@@ -2767,9 +2606,9 @@ fn extract_type_definition(
     name: &str,
     kind: &str,
     sql: &mut String,
-    language: languages::Language,
+    language: language_support::Language,
 ) {
-    use languages::Language;
+    use language_support::Language;
 
     // Get the full definition (first line for brevity)
     let definition = node
@@ -2853,9 +2692,9 @@ fn extract_import_fact(
     source: &[u8],
     file_path: &str,
     sql: &mut String,
-    language: languages::Language,
+    language: language_support::Language,
 ) {
-    use languages::Language;
+    use language_support::Language;
 
     if let Some(spec) = get_language_spec(language) {
         let (imported_item, imported_from, is_external) =
@@ -3016,15 +2855,9 @@ CREATE INDEX IF NOT EXISTS idx_documentation_type ON documentation(symbol_type);
 }
 
 // ============================================================================
-// REMOVED: Pattern detection moved to ask command
-// ============================================================================
-// Pattern detection has been moved to src/commands/ask/patterns.rs
-// The ask command now discovers patterns from the extracted data
-
-// ============================================================================
 // LANGUAGES MODULE
 // ============================================================================
-pub(crate) mod languages {
+pub(crate) mod language_support {
     use anyhow::{Context, Result};
     use std::path::Path;
     use tree_sitter::Parser;

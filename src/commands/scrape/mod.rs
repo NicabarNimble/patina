@@ -3,8 +3,10 @@
 pub mod code;
 pub mod docs;
 pub mod pdf;
+pub mod recode_v2;
 
 use anyhow::{bail, Result};
+use std::path::Path;
 
 /// Common configuration for all scrapers
 pub struct ScrapeConfig {
@@ -21,9 +23,28 @@ impl ScrapeConfig {
     }
 
     pub fn for_repo(&mut self, repo: &str) -> &mut Self {
-        self.db_path = format!("layer/dust/repos/{}.db", repo);
+        // Find the actual directory name with correct case
+        let actual_name = find_repo_actual_name(repo).unwrap_or_else(|| repo.to_string());
+        self.db_path = format!("layer/dust/repos/{}.db", actual_name);
         self
     }
+}
+
+/// Find the actual directory name for a repository (case-insensitive lookup)
+fn find_repo_actual_name(repo_name: &str) -> Option<String> {
+    let repos_dir = Path::new("layer/dust/repos");
+    if !repos_dir.exists() {
+        return None;
+    }
+
+    std::fs::read_dir(repos_dir)
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .find(|entry| {
+            entry.file_name().to_string_lossy().to_lowercase() == repo_name.to_lowercase()
+                && entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false)
+        })
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
 }
 
 /// Common stats that all scrapers return
@@ -128,6 +149,33 @@ pub fn execute_pdf(
         println!("  • PDFs found: {}", stats.items_processed);
         println!("  • Time elapsed: {:?}", stats.time_elapsed);
         println!("  • Total size: {} KB", stats.database_size_kb);
+    }
+    Ok(())
+}
+
+/// Execute recode scraper (modular v2 architecture)
+pub fn execute_recode(
+    init: bool,
+    query: Option<String>,
+    repo: Option<String>,
+    force: bool,
+) -> Result<()> {
+    let mut config = ScrapeConfig::new(force);
+    if let Some(r) = repo.as_ref() {
+        config.for_repo(r);
+    }
+
+    if init {
+        recode_v2::initialize(&config)?;
+    } else if let Some(_q) = query {
+        bail!("Query functionality has moved. Use 'patina ask' instead.");
+    } else {
+        let stats = recode_v2::run(config)?;
+
+        println!("\n📊 Recode Extraction Summary:");
+        println!("  • Items processed: {}", stats.items_processed);
+        println!("  • Time elapsed: {:?}", stats.time_elapsed);
+        println!("  • Database size: {} KB", stats.database_size_kb);
     }
     Ok(())
 }

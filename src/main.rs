@@ -83,6 +83,12 @@ enum Commands {
         #[command(subcommand)]
         command: Option<ScrapeCommands>,
     },
+
+    /// Ask questions about the codebase
+    Ask {
+        #[command(flatten)]
+        args: commands::ask::AskCommand,
+    },
 }
 
 /// Common arguments for all scrape subcommands
@@ -109,6 +115,12 @@ struct ScrapeArgs {
 enum ScrapeCommands {
     /// Extract semantic information from source code
     Code {
+        #[command(flatten)]
+        args: ScrapeArgs,
+    },
+
+    /// Extract semantic information using modular architecture (v2)
+    Recode {
         #[command(flatten)]
         args: ScrapeArgs,
     },
@@ -276,6 +288,9 @@ fn main() -> Result<()> {
                 ScrapeCommands::Code { args } => {
                     commands::scrape::execute(args.init, args.query, args.repo, args.force)?;
                 }
+                ScrapeCommands::Recode { args } => {
+                    commands::scrape::execute_recode(args.init, args.query, args.repo, args.force)?;
+                }
                 ScrapeCommands::Docs { args } => {
                     commands::scrape::execute_docs(args.init, args.query, args.repo, args.force)?;
                 }
@@ -289,6 +304,9 @@ fn main() -> Result<()> {
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
+        }
+        Commands::Ask { args } => {
+            commands::ask::run(args)?;
         }
         Commands::Version { json, components } => {
             commands::version::execute(json, components)?;

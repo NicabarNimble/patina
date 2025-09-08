@@ -199,16 +199,6 @@ impl Analyzer {
         Ok(results)
     }
 
-    /// Generate fingerprint for pattern matching
-    pub fn generate_fingerprint(&self, node: Node, _source: &[u8]) -> u64 {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::Hasher;
-
-        let mut hasher = DefaultHasher::new();
-        Self::hash_node_structure(&mut hasher, node);
-        hasher.finish()
-    }
-
     // Helper methods
 
     fn visit_node(
@@ -294,21 +284,6 @@ impl Analyzer {
                 }
             }
             cursor.goto_parent();
-        }
-    }
-
-    fn hash_node_structure(hasher: &mut impl std::hash::Hasher, node: Node) {
-        use std::hash::Hash;
-        node.kind().hash(hasher);
-
-        let mut cursor = node.walk();
-        if cursor.goto_first_child() {
-            loop {
-                Self::hash_node_structure(hasher, cursor.node());
-                if !cursor.goto_next_sibling() {
-                    break;
-                }
-            }
         }
     }
 }
