@@ -11,7 +11,7 @@
 //! - Decorators and class definitions
 //! - Import system (from/import statements)
 
-use crate::commands::scrape::recode_v2::types::{python_nodes::*, SymbolKind, CallType};
+use crate::commands::scrape::recode_v2::types::{python_nodes::*, CallType, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Python language specification
@@ -129,11 +129,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                         } else {
                             CallType::Direct
                         };
-                        context.add_call(
-                            callee.replace("await ", ""),
-                            call_type,
-                            line_number,
-                        );
+                        context.add_call(callee.replace("await ", ""), call_type, line_number);
                     }
                 }
             }

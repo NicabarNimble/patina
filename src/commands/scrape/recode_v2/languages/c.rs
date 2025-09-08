@@ -10,7 +10,7 @@
 //! - Structs, unions, and enums
 //! - No built-in visibility (header exposure = public)
 
-use crate::commands::scrape::recode_v2::types::{c_nodes::*, SymbolKind, CallType};
+use crate::commands::scrape::recode_v2::types::{c_nodes::*, CallType, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// C language specification

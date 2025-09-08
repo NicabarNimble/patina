@@ -101,7 +101,7 @@ impl CallType {
             _ => Self::Direct, // Default to direct for unknown
         }
     }
-    
+
     /// Convert to string (for SQL generation)
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -159,17 +159,17 @@ impl<'a> FilePath<'a> {
     pub fn new(path: &'a str) -> Self {
         FilePath(path)
     }
-    
+
     /// Get the inner string
     pub fn as_str(&self) -> &'a str {
         self.0
     }
-    
+
     /// Check if this is a Rust file
     pub fn is_rust_file(&self) -> bool {
         self.0.ends_with(".rs")
     }
-    
+
     /// Get the file extension
     pub fn extension(&self) -> Option<&'a str> {
         self.0.rsplit('.').next()
@@ -197,18 +197,18 @@ impl<'a> SymbolName<'a> {
     pub fn new(name: &'a str) -> Self {
         SymbolName(name)
     }
-    
+
     /// Get the inner string
     pub fn as_str(&self) -> &'a str {
         self.0
     }
-    
+
     /// Check if this is a public symbol (for languages that use naming conventions)
     pub fn is_public_by_convention(&self) -> bool {
         // Go convention: uppercase first letter
         self.0.chars().next().map_or(false, |c| c.is_uppercase())
     }
-    
+
     /// Check if this is private by Python convention
     pub fn is_private_python(&self) -> bool {
         self.0.starts_with('_')
@@ -236,16 +236,18 @@ impl<'a> DocString<'a> {
     pub fn new(doc: &'a str) -> Self {
         DocString(doc)
     }
-    
+
     /// Get the inner string
     pub fn as_str(&self) -> &'a str {
         self.0
     }
-    
+
     /// Check if this is a doc comment
     pub fn is_doc_comment(&self) -> bool {
-        self.0.starts_with("///") || self.0.starts_with("//!") || 
-        self.0.starts_with("/**") || self.0.starts_with("\"\"\"")
+        self.0.starts_with("///")
+            || self.0.starts_with("//!")
+            || self.0.starts_with("/**")
+            || self.0.starts_with("\"\"\"")
     }
 }
 
@@ -372,14 +374,11 @@ pub mod solidity_nodes {
 // ============================================================================
 pub mod sql {
     /// Prepared statement for function facts
-    pub const INSERT_FUNCTION_FACT: &str = 
-        "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    pub const INSERT_FUNCTION_FACT: &str = "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     /// Prepared statement for type vocabulary
-    pub const INSERT_TYPE_VOCAB: &str = 
-        "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility, usage_count) VALUES (?, ?, ?, ?, ?, ?)";
+    pub const INSERT_TYPE_VOCAB: &str = "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility, usage_count) VALUES (?, ?, ?, ?, ?, ?)";
 
     /// Prepared statement for imports
-    pub const INSERT_IMPORT: &str = 
-        "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES (?, ?, ?, ?, ?)";
+    pub const INSERT_IMPORT: &str = "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES (?, ?, ?, ?, ?)";
 }

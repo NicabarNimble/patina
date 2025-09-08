@@ -103,7 +103,7 @@ impl From<Vec<&str>> for SqlValue {
 }
 
 /// Escape a string for use in DuckDB SQL
-/// 
+///
 /// DuckDB uses standard SQL escaping:
 /// - Single quotes are doubled: ' becomes ''
 /// - No backslash escaping needed (unlike MySQL)
@@ -114,7 +114,7 @@ pub fn escape_string(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_escape_string() {
         assert_eq!(escape_string("hello"), "hello");
@@ -122,33 +122,33 @@ mod tests {
         assert_eq!(escape_string("'quoted'"), "''quoted''");
         assert_eq!(escape_string("back\\slash"), "back\\slash"); // No escaping needed
     }
-    
+
     #[test]
     fn test_sql_value_text() {
         let val = SqlValue::Text("it's a test".to_string());
         assert_eq!(val.to_sql(), "'it''s a test'");
     }
-    
+
     #[test]
     fn test_sql_value_array() {
         let val = SqlValue::Array(vec!["one".to_string(), "it's two".to_string()]);
         assert_eq!(val.to_sql(), "ARRAY['one', 'it''s two']");
-        
+
         let empty = SqlValue::Array(vec![]);
         assert_eq!(empty.to_sql(), "ARRAY[]::VARCHAR[]");
     }
-    
+
     #[test]
     fn test_sql_value_conversions() {
         let text: SqlValue = "test".into();
         assert_eq!(text.to_sql(), "'test'");
-        
+
         let num: SqlValue = 42i64.into();
         assert_eq!(num.to_sql(), "42");
-        
+
         let boolean: SqlValue = true.into();
         assert_eq!(boolean.to_sql(), "TRUE");
-        
+
         let null: SqlValue = None::<String>.into();
         assert_eq!(null.to_sql(), "NULL");
     }

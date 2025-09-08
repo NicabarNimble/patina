@@ -10,7 +10,7 @@
 //! - Unsafe blocks
 //! - Macro usage
 
-use crate::commands::scrape::recode_v2::types::{rust_nodes::*, SymbolKind, CallType};
+use crate::commands::scrape::recode_v2::types::{rust_nodes::*, CallType, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Rust language specification

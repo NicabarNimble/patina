@@ -4,9 +4,9 @@
 // Cairo uses cairo-lang-parser instead of tree-sitter, requiring special handling.
 // This module provides direct symbol extraction from Cairo's parsed AST.
 
-use anyhow::Result;
-use crate::commands::scrape::recode_v2::types::FilePath;
 use crate::commands::scrape::recode_v2::sql_builder::{InsertBuilder, TableName};
+use crate::commands::scrape::recode_v2::types::FilePath;
+use anyhow::Result;
 
 /// Cairo processor for extracting symbols without tree-sitter
 pub struct CairoProcessor;
@@ -39,8 +39,14 @@ impl CairoProcessor {
                 .value("name", func.name.as_str())
                 .value("takes_mut_self", false)
                 .value("takes_mut_params", false)
-                .value("returns_result", func.return_type.as_deref().unwrap_or("").contains("Result"))
-                .value("returns_option", func.return_type.as_deref().unwrap_or("").contains("Option"))
+                .value(
+                    "returns_result",
+                    func.return_type.as_deref().unwrap_or("").contains("Result"),
+                )
+                .value(
+                    "returns_option",
+                    func.return_type.as_deref().unwrap_or("").contains("Option"),
+                )
                 .value("is_async", false)
                 .value("is_unsafe", false)
                 .value("is_public", func.is_public)
@@ -136,4 +142,3 @@ impl CairoProcessor {
         Ok((sql_statements, functions, types, imports))
     }
 }
-
