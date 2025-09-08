@@ -25,7 +25,7 @@ use std::sync::LazyLock;
 use tree_sitter::Node;
 
 use super::ScrapeConfig;
-use self::types::{FilePath, SymbolName};
+use self::types::{FilePath, SymbolName, SymbolKind};
 
 // ============================================================================
 // LANGUAGE MODULES
@@ -63,10 +63,10 @@ pub struct LanguageSpec {
     pub extract_generics: fn(&Node, &[u8]) -> Option<String>,
 
     /// Map node kind to symbol kind (simple mapping)
-    pub get_symbol_kind: fn(&str) -> &'static str,
+    pub get_symbol_kind: fn(&str) -> SymbolKind,
 
     /// Map node to symbol kind (complex cases that need node inspection)
-    pub get_symbol_kind_complex: fn(&Node, &[u8]) -> Option<&'static str>,
+    pub get_symbol_kind_complex: fn(&Node, &[u8]) -> Option<SymbolKind>,
 
     /// Clean documentation text for a language
     pub clean_doc_comment: fn(&str) -> String,
@@ -384,7 +384,7 @@ pub struct ParseContext {
 struct SymbolInfo<'a> {
     node: &'a Node<'a>,
     name: SymbolName<'a>,
-    kind: &'a str,
+    kind: SymbolKind,
     source: &'a [u8],
     file_path: FilePath<'a>,
     language: Language,
@@ -634,14 +634,14 @@ fn extract_symbols_from_tree(
     let symbol_kind = (spec.get_symbol_kind)(node.kind());
 
     // Handle imports specially - they don't have a "name" field
-    if symbol_kind == "import" {
+    if symbol_kind == SymbolKind::Import {
         extract_import_fact(node, source, file_path, sql, language);
         import_count += 1;
         // Still need to recurse into children
-    } else if symbol_kind == "impl" || symbol_kind == "module" {
+    } else if symbol_kind == SymbolKind::Impl || symbol_kind == SymbolKind::Module {
         // Skip impl blocks and modules - they don't get stored in tables
         // but still recurse into their children
-    } else if symbol_kind == "unknown" {
+    } else if symbol_kind == SymbolKind::Unknown {
         // Try complex symbol detection
         if let Some(kind) = (spec.get_symbol_kind_complex)(&node, source) {
             // Process this symbol - handle different name extraction strategies
@@ -669,7 +669,7 @@ fn extract_symbols_from_tree(
                 }
             }
         }
-    } else if symbol_kind != "unknown" {
+    } else if symbol_kind != SymbolKind::Unknown {
         // Process regular symbol
         if let Some(name) = extract_symbol_name(&node, source, language) {
             let symbol_info = SymbolInfo {
@@ -778,7 +778,7 @@ fn process_symbol(
             "INSERT OR REPLACE INTO documentation (file, symbol_name, symbol_type, line_number, doc_raw, doc_clean, doc_summary, keywords, doc_length, has_examples) VALUES ('{}', '{}', '{}', {}, '{}', '{}', '{}', {}, {}, {});\n",
             escape_sql(symbol.file_path.as_str()),
             escape_sql(symbol.name.as_str()),
-            symbol.kind,
+            symbol.kind.as_str(),
             symbol.node.start_position().row + 1,
             escape_sql(&doc_raw),
             escape_sql(&doc_clean),
@@ -790,7 +790,7 @@ fn process_symbol(
     }
 
     match symbol.kind {
-        "function" => {
+        SymbolKind::Function => {
             // Update context with current function
             context.current_function = Some(symbol.name.as_str().to_string());
 
@@ -820,7 +820,8 @@ fn process_symbol(
             ));
             (true, false)
         }
-        "struct" | "class" | "enum" | "interface" | "type_alias" | "const" => {
+        SymbolKind::Struct | SymbolKind::Class | SymbolKind::Enum | 
+        SymbolKind::Interface | SymbolKind::TypeAlias | SymbolKind::Const => {
             extract_type_definition(
                 symbol.node,
                 symbol.source,
@@ -832,7 +833,7 @@ fn process_symbol(
             );
             (false, true)
         }
-        "import" => {
+        SymbolKind::Import => {
             // This shouldn't be reached anymore as imports are handled specially
             // in extract_symbols_from_tree, but keep for safety
             extract_import_fact(
@@ -844,11 +845,11 @@ fn process_symbol(
             );
             (false, false)
         }
-        "impl" | "module" => {
+        SymbolKind::Impl | SymbolKind::Module => {
             // These don't get stored, just used for context/recursion
             (false, false)
         }
-        _ => (false, false),
+        SymbolKind::Trait | SymbolKind::Unknown => (false, false),
     }
 }
 
@@ -931,7 +932,7 @@ fn extract_type_definition(
     source: &[u8],
     file_path: &str,
     name: &str,
-    kind: &str,
+    kind: SymbolKind,
     sql: &mut String,
     language: Language,
 ) {
@@ -961,7 +962,7 @@ fn extract_type_definition(
         escape_sql(file_path),
         escape_sql(name),
         escape_sql(&definition),
-        kind,
+        kind.as_str(),
         visibility
     ));
 }

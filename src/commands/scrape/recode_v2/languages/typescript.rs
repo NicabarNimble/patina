@@ -64,20 +64,17 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             .map(String::from)
     },
 
-    get_symbol_kind: |node_kind| {
-        let kind = match node_kind {
-            FUNCTION_DECLARATION | ARROW_FUNCTION | FUNCTION_EXPRESSION | METHOD_DEFINITION => {
-                SymbolKind::Function
-            }
-            CLASS_DECLARATION => SymbolKind::Struct,
-            INTERFACE_DECLARATION => SymbolKind::Trait,
-            TYPE_ALIAS_DECLARATION => SymbolKind::TypeAlias,
-            IMPORT_STATEMENT => SymbolKind::Import,
-            "const_statement" | "let_statement" => SymbolKind::Const,
-            ENUM_DECLARATION => SymbolKind::Struct,
-            _ => SymbolKind::Unknown,
-        };
-        kind.as_str()
+    get_symbol_kind: |node_kind| match node_kind {
+        FUNCTION_DECLARATION | ARROW_FUNCTION | FUNCTION_EXPRESSION | METHOD_DEFINITION => {
+            SymbolKind::Function
+        }
+        CLASS_DECLARATION => SymbolKind::Struct,
+        INTERFACE_DECLARATION => SymbolKind::Trait,
+        TYPE_ALIAS_DECLARATION => SymbolKind::TypeAlias,
+        IMPORT_STATEMENT => SymbolKind::Import,
+        "const_statement" | "let_statement" => SymbolKind::Const,
+        ENUM_DECLARATION => SymbolKind::Struct,
+        _ => SymbolKind::Unknown,
     },
 
     get_symbol_kind_complex: |node, _source| {
@@ -86,12 +83,12 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                 .child_by_field_name("value")
                 .is_some_and(|n| n.kind() == "arrow_function" || n.kind() == "function_expression")
             {
-                Some("function")
+                Some(SymbolKind::Function)
             } else if node
                 .child_by_field_name("value")
                 .is_some_and(|n| n.kind() == "class_expression")
             {
-                Some("struct")
+                Some(SymbolKind::Struct)
             } else {
                 None
             }

@@ -98,21 +98,18 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             .map(String::from)
     },
 
-    get_symbol_kind: |node_kind| {
-        let kind = match node_kind {
-            FUNCTION_DEFINITION => SymbolKind::Function,
-            CLASS_SPECIFIER => SymbolKind::Class,
-            STRUCT_SPECIFIER => SymbolKind::Struct,
-            "union_specifier" => SymbolKind::Struct,
-            "enum_specifier" => SymbolKind::Enum,
-            NAMESPACE_DEFINITION => SymbolKind::Module,
-            TEMPLATE_DECLARATION => SymbolKind::Function,
-            "type_alias_declaration" | USING_DECLARATION => SymbolKind::TypeAlias,
-            DECLARATION => SymbolKind::Const,
-            PREPROC_INCLUDE => SymbolKind::Import,
-            _ => SymbolKind::Unknown,
-        };
-        kind.as_str()
+    get_symbol_kind: |node_kind| match node_kind {
+        FUNCTION_DEFINITION => SymbolKind::Function,
+        CLASS_SPECIFIER => SymbolKind::Class,
+        STRUCT_SPECIFIER => SymbolKind::Struct,
+        "union_specifier" => SymbolKind::Struct,
+        "enum_specifier" => SymbolKind::Enum,
+        NAMESPACE_DEFINITION => SymbolKind::Module,
+        TEMPLATE_DECLARATION => SymbolKind::Function,
+        "type_alias_declaration" | USING_DECLARATION => SymbolKind::TypeAlias,
+        DECLARATION => SymbolKind::Const,
+        PREPROC_INCLUDE => SymbolKind::Import,
+        _ => SymbolKind::Unknown,
     },
 
     get_symbol_kind_complex: |node, _source| {
@@ -120,10 +117,10 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         if node.kind() == "template_declaration" {
             if let Some(child) = node.named_child(1) {
                 return match child.kind() {
-                    "class_specifier" => Some("template_class"),
-                    "struct_specifier" => Some("template_struct"),
-                    "function_definition" => Some("template_function"),
-                    _ => Some("template"),
+                    "class_specifier" => Some(SymbolKind::Class),
+                    "struct_specifier" => Some(SymbolKind::Struct),
+                    "function_definition" => Some(SymbolKind::Function),
+                    _ => None,
                 };
             }
         }
