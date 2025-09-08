@@ -10,7 +10,7 @@
 //! - Structs, unions, and enums
 //! - No built-in visibility (header exposure = public)
 
-use crate::commands::scrape::recode_v2::types::{c_nodes::*, SymbolKind};
+use crate::commands::scrape::recode_v2::types::{c_nodes::*, SymbolKind, CallType};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// C language specification
@@ -125,7 +125,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                 // C function calls
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
-                        context.add_call(callee.to_string(), "direct".to_string(), line_number);
+                        context.add_call(callee.to_string(), CallType::Direct, line_number);
                     }
                 }
             }
@@ -133,7 +133,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
                 // C preprocessor macros
                 if let Some(macro_node) = node.child_by_field_name("macro") {
                     if let Ok(macro_name) = macro_node.utf8_text(source) {
-                        context.add_call(macro_name.to_string(), "macro".to_string(), line_number);
+                        context.add_call(macro_name.to_string(), CallType::Macro, line_number);
                     }
                 }
             }

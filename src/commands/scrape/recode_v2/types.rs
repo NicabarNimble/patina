@@ -67,6 +67,87 @@ impl fmt::Display for SymbolKind {
 }
 
 // ============================================================================
+// CALL GRAPH TYPES
+// ============================================================================
+/// Type-safe representation of call types in the call graph
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CallType {
+    Direct,      // Regular function call
+    Method,      // Method call (obj.method())
+    Async,       // Async/await call
+    Goroutine,   // Go goroutine (go func())
+    Defer,       // Deferred call (Go defer, Swift defer)
+    Macro,       // Macro invocation
+    Constructor, // Constructor call (new Class())
+    Decorator,   // Python decorator (@decorator)
+    Template,    // C++ template instantiation
+    Event,       // Solidity event emission
+}
+
+impl CallType {
+    /// Convert from string (for gradual migration)
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "direct" => Self::Direct,
+            "method" => Self::Method,
+            "async" => Self::Async,
+            "goroutine" => Self::Goroutine,
+            "defer" => Self::Defer,
+            "macro" => Self::Macro,
+            "constructor" => Self::Constructor,
+            "decorator" => Self::Decorator,
+            "template" => Self::Template,
+            "event" => Self::Event,
+            _ => Self::Direct, // Default to direct for unknown
+        }
+    }
+    
+    /// Convert to string (for SQL generation)
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Direct => "direct",
+            Self::Method => "method",
+            Self::Async => "async",
+            Self::Goroutine => "goroutine",
+            Self::Defer => "defer",
+            Self::Macro => "macro",
+            Self::Constructor => "constructor",
+            Self::Decorator => "decorator",
+            Self::Template => "template",
+            Self::Event => "event",
+        }
+    }
+}
+
+impl fmt::Display for CallType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Type-safe call graph entry
+#[derive(Debug, Clone)]
+pub struct CallGraphEntry {
+    pub caller: String,
+    pub callee: String,
+    pub file: String,
+    pub call_type: CallType,
+    pub line_number: i32,
+}
+
+impl CallGraphEntry {
+    pub fn new(caller: String, callee: String, call_type: CallType, line_number: i32) -> Self {
+        CallGraphEntry {
+            caller,
+            callee,
+            file: String::new(), // File will be filled in later
+            call_type,
+            line_number,
+        }
+    }
+}
+
+// ============================================================================
 // NEWTYPES FOR SAFETY
 // ============================================================================
 /// Type-safe wrapper for file paths

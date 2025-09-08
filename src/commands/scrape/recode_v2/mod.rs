@@ -25,7 +25,7 @@ use std::sync::LazyLock;
 use tree_sitter::Node;
 
 use super::ScrapeConfig;
-use self::types::{FilePath, SymbolName, SymbolKind};
+use self::types::{FilePath, SymbolName, SymbolKind, CallType, CallGraphEntry};
 
 // ============================================================================
 // LANGUAGE MODULES
@@ -377,7 +377,7 @@ fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<usiz
 #[derive(Default)]
 pub struct ParseContext {
     pub current_function: Option<String>,
-    pub call_graph_entries: Vec<(String, String, String, String, i32)>, // (caller, callee, file, call_type, line)
+    pub call_graph_entries: Vec<CallGraphEntry>,
 }
 
 /// Groups parameters for symbol processing to avoid too many arguments
@@ -391,12 +391,11 @@ struct SymbolInfo<'a> {
 }
 
 impl ParseContext {
-    pub fn add_call(&mut self, callee: String, call_type: String, line_number: i32) {
+    pub fn add_call(&mut self, callee: String, call_type: CallType, line_number: i32) {
         if let Some(ref caller) = self.current_function {
-            self.call_graph_entries.push((
+            self.call_graph_entries.push(CallGraphEntry::new(
                 caller.clone(),
                 callee,
-                String::new(), // file will be filled in later
                 call_type,
                 line_number,
             ));
@@ -574,14 +573,14 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         _files_processed += 1;
 
         // Add call graph entries with proper file path
-        for (caller, callee, _file, call_type, line) in &context.call_graph_entries {
+        for entry in &context.call_graph_entries {
             sql_statements.push_str(&format!(
                 "INSERT INTO call_graph (caller, callee, file, call_type, line_number) VALUES ('{}', '{}', '{}', '{}', {});\n",
-                escape_sql(caller),
-                escape_sql(callee),
+                escape_sql(&entry.caller),
+                escape_sql(&entry.callee),
                 escape_sql(&relative_path),
-                call_type,
-                line
+                entry.call_type.as_str(),
+                entry.line_number
             ));
         }
     }
