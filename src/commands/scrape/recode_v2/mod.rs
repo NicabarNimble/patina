@@ -155,14 +155,8 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
         initialize_database(&config.db_path)?;
     }
 
-    // Extract and index - use new v2 implementation with embedded DuckDB
-    let items_processed = if std::env::var("USE_EMBEDDED_DB").is_ok() {
-        // New implementation with embedded DuckDB library
-        extract_v2::extract_code_metadata_v2(&config.db_path, &work_dir, config.force)?
-    } else {
-        // Original implementation with SQL string concatenation
-        extract_and_index(&config.db_path, &work_dir, config.force)?
-    };
+    // Always use the new embedded DuckDB implementation
+    let items_processed = extract_v2::extract_code_metadata_v2(&config.db_path, &work_dir, config.force)?;
 
     // Get database size
     let metadata = std::fs::metadata(&config.db_path)?;
@@ -203,64 +197,20 @@ fn determine_work_directory(config: &ScrapeConfig) -> Result<PathBuf> {
     }
 }
 
-/// Initialize DuckDB database with lean schema and optimal settings for small size
+/// Initialize DuckDB database with embedded library
 fn initialize_database(db_path: &str) -> Result<()> {
-    // Use embedded library if flag is set
-    if std::env::var("USE_EMBEDDED_DB").is_ok() {
-        let mut db = database::Database::open(db_path)?;
-        db.init_schema()?;
-        return Ok(());
-    }
-    
-    // Original implementation with CLI
-    use std::process::Command;
-
     // Create parent directory if needed
     if let Some(parent) = Path::new(db_path).parent() {
         std::fs::create_dir_all(parent)?;
     }
 
-    // Remove old database if exists
+    // Remove old database if exists (when force flag is used)
     if Path::new(db_path).exists() {
         std::fs::remove_file(db_path)?;
     }
 
-    // Create with 16KB block size for minimal overhead
-    let init_script = format!(
-        r#"
--- Attach with minimal block size (16KB instead of default 256KB)
-ATTACH '{db_path}' AS knowledge (BLOCK_SIZE 16384);
-USE knowledge;
-
-{}
-
-"#,
-        generate_schema(),
-        db_path = db_path
-    );
-
-    // Execute via stdin to avoid command line escaping issues
-    let mut child = Command::new("duckdb")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .context("Failed to start DuckDB. Is duckdb installed?")?;
-
-    if let Some(stdin) = child.stdin.as_mut() {
-        use std::io::Write;
-        stdin.write_all(init_script.as_bytes())?;
-    }
-
-    let output = child.wait_with_output()?;
-
-    if !output.status.success() {
-        anyhow::bail!(
-            "Failed to create database: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
+    let mut db = database::Database::open(db_path)?;
+    db.init_schema()?;
     Ok(())
 }
 
@@ -682,20 +632,20 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         sql_statements.push_str(&insert_sql);
         sql_statements.push_str(";\n");
 
-        // Process Rust file with isolated processor
+        // Process Rust file with isolated processor (now returns ExtractedData)
         match languages::rust::RustProcessor::process_file(
             FilePath::from(relative_path.as_str()),
             &content,
         ) {
-            Ok((statements, funcs, types, imps)) => {
-                for stmt in statements {
-                    sql_statements.push_str(&stmt);
-                    sql_statements.push('\n');
-                }
-                functions_count += funcs;
-                types_count += types;
-                imports_count += imps;
+            Ok(extracted_data) => {
+                // For now, just count the items (old SQL path is deprecated)
+                functions_count += extracted_data.functions.len();
+                types_count += extracted_data.types.len();
+                imports_count += extracted_data.imports.len();
                 _files_processed += 1;
+                
+                // TODO: This entire old SQL path should be removed
+                // For now, we skip SQL generation for Rust files
             }
             Err(e) => {
                 eprintln!("  ⚠️  Rust parsing error in {}: {}", relative_path, e);
@@ -794,20 +744,20 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         sql_statements.push_str(&insert_sql);
         sql_statements.push_str(";\n");
 
-        // Process Python file with isolated processor
+        // Process Python file with isolated processor (now returns ExtractedData)
         match languages::python::PythonProcessor::process_file(
             FilePath::from(relative_path.as_str()),
             &content,
         ) {
-            Ok((statements, funcs, types, imps)) => {
-                for stmt in statements {
-                    sql_statements.push_str(&stmt);
-                    sql_statements.push('\n');
-                }
-                functions_count += funcs;
-                types_count += types;
-                imports_count += imps;
+            Ok(extracted_data) => {
+                // For now, just count the items (old SQL path is deprecated)
+                functions_count += extracted_data.functions.len();
+                types_count += extracted_data.types.len();
+                imports_count += extracted_data.imports.len();
                 _files_processed += 1;
+                
+                // TODO: This entire old SQL path should be removed
+                // For now, we skip SQL generation for Python files
             }
             Err(e) => {
                 eprintln!("  ⚠️  Python parsing error in {}: {}", relative_path, e);
@@ -1263,7 +1213,8 @@ fn process_symbol(
         | SymbolKind::Enum
         | SymbolKind::Interface
         | SymbolKind::TypeAlias
-        | SymbolKind::Const => {
+        | SymbolKind::Const
+        | SymbolKind::Static => {
             extract_type_definition(
                 symbol.node,
                 symbol.source,
