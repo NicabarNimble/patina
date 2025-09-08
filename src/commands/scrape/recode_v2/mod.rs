@@ -483,7 +483,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         ));
 
         // Process Cairo file with special parser
-        match languages::cairo::CairoProcessor::process_file(&relative_path, &content) {
+        match languages::cairo::CairoProcessor::process_file(FilePath::from(relative_path.as_str()), &content) {
             Ok((statements, funcs, types, imps)) => {
                 for stmt in statements {
                     sql_statements.push_str(&stmt);
