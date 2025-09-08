@@ -5,6 +5,7 @@
 // This module provides direct symbol extraction from Cairo's parsed AST.
 
 use anyhow::Result;
+use crate::commands::scrape::recode_v2::types::FilePath;
 
 /// Cairo processor for extracting symbols without tree-sitter
 pub struct CairoProcessor;
@@ -12,10 +13,10 @@ pub struct CairoProcessor;
 impl CairoProcessor {
     /// Process a Cairo file and extract all symbols to SQL statements
     pub fn process_file(
-        file_path: &str,
+        file_path: FilePath,
         content: &str,
     ) -> Result<(Vec<String>, usize, usize, usize)> {
-        let symbols = patina_metal::cairo::parse_cairo(content, file_path)?;
+        let symbols = patina_metal::cairo::parse_cairo(content, file_path.as_str())?;
         let mut sql_statements = Vec::new();
         let mut functions = 0;
         let mut types = 0;
@@ -33,7 +34,7 @@ impl CairoProcessor {
             // Insert into function_facts - match the actual schema
             sql_statements.push(format!(
                 "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES ('{}', '{}', 0, 0, {}, {}, 0, 0, {}, {}, 0, '{}', '{}');",
-                escape_sql(file_path),
+                escape_sql(file_path.as_str()),
                 escape_sql(&func.name),
                 if func.return_type.as_deref().unwrap_or("").contains("Result") { 1 } else { 0 },
                 if func.return_type.as_deref().unwrap_or("").contains("Option") { 1 } else { 0 },
@@ -46,7 +47,7 @@ impl CairoProcessor {
             // Also insert into code_search for consistency - match the actual schema
             sql_statements.push(format!(
                 "INSERT OR REPLACE INTO code_search (path, name, signature, context) VALUES ('{}', '{}', '{}', '{}');",
-                escape_sql(file_path),
+                escape_sql(file_path.as_str()),
                 escape_sql(&func.name),
                 escape_sql(&signature),
                 escape_sql("") // Context not available from cairo parser
@@ -65,7 +66,7 @@ impl CairoProcessor {
 
             sql_statements.push(format!(
                 "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', '{}', 'struct', '{}');",
-                escape_sql(file_path),
+                escape_sql(file_path.as_str()),
                 escape_sql(&s.name),
                 escape_sql(&definition),
                 if s.is_public { "pub" } else { "private" }
@@ -77,7 +78,7 @@ impl CairoProcessor {
         for t in symbols.traits {
             sql_statements.push(format!(
                 "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', 'trait {}', 'trait', '{}');",
-                escape_sql(file_path),
+                escape_sql(file_path.as_str()),
                 escape_sql(&t.name),
                 escape_sql(&t.name),
                 if t.is_public { "pub" } else { "private" }
@@ -93,7 +94,7 @@ impl CairoProcessor {
 
             sql_statements.push(format!(
                 "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');",
-                escape_sql(file_path),
+                escape_sql(file_path.as_str()),
                 escape_sql(imported_item),
                 escape_sql(&imp.path),
                 if is_external { 1 } else { 0 }
@@ -105,7 +106,7 @@ impl CairoProcessor {
         for m in symbols.modules {
             sql_statements.push(format!(
                 "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', 'mod {}', 'module', '{}');",
-                escape_sql(file_path),
+                escape_sql(file_path.as_str()),
                 escape_sql(&m.name),
                 escape_sql(&m.name),
                 if m.is_public { "pub" } else { "private" }
