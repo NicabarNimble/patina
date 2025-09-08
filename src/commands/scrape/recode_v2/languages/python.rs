@@ -11,6 +11,7 @@
 //! - Decorators and class definitions
 //! - Import system (from/import statements)
 
+use crate::commands::scrape::recode_v2::types::{python_nodes::*, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Python language specification
@@ -63,24 +64,27 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         None
     },
 
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_definition" | "async_function_definition" => "function",
-        "class_definition" => "struct",
-        "import_statement" | "import_from_statement" => "import",
-        _ => "unknown",
+    get_symbol_kind: |node_kind| {
+        let kind = match node_kind {
+            FUNCTION_DEFINITION | "async_function_definition" => SymbolKind::Function,
+            CLASS_DEFINITION => SymbolKind::Struct,
+            IMPORT_STATEMENT | IMPORT_FROM_STATEMENT => SymbolKind::Import,
+            _ => SymbolKind::Unknown,
+        };
+        kind.as_str()
     },
 
     get_symbol_kind_complex: |node, _source| {
-        if node.kind() == "decorated_definition" {
+        if node.kind() == DECORATED_DEFINITION {
             if node.child_by_field_name("definition").is_some_and(|n| {
-                n.kind() == "function_definition" || n.kind() == "async_function_definition"
+                n.kind() == FUNCTION_DEFINITION || n.kind() == "async_function_definition"
             }) {
-                Some("function")
+                Some(SymbolKind::Function.as_str())
             } else if node
                 .child_by_field_name("definition")
-                .is_some_and(|n| n.kind() == "class_definition")
+                .is_some_and(|n| n.kind() == CLASS_DEFINITION)
             {
-                Some("struct")
+                Some(SymbolKind::Struct.as_str())
             } else {
                 None
             }
@@ -119,7 +123,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         let line_number = (node.start_position().row + 1) as i32;
 
         match node.kind() {
-            "call" => {
+            CALL => {
                 // Python function/method calls
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {

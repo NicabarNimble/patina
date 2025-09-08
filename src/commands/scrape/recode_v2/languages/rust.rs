@@ -10,8 +10,8 @@
 //! - Unsafe blocks
 //! - Macro usage
 
+use crate::commands::scrape::recode_v2::types::{rust_nodes::*, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
-use crate::commands::scrape::recode_v2::types::{SymbolKind, rust_nodes::*};
 
 /// Rust language specification
 pub static SPEC: LanguageSpec = LanguageSpec {
@@ -77,7 +77,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             MODULE => SymbolKind::Module,
             _ => SymbolKind::Unknown,
         };
-        kind.as_str()  // Convert back to string for backward compatibility
+        kind.as_str() // Convert back to string for backward compatibility
     },
 
     get_symbol_kind_complex: |_node, _source| None,

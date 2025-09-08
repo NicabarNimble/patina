@@ -10,6 +10,7 @@
 //! - Structs, unions, and enums
 //! - No built-in visibility (header exposure = public)
 
+use crate::commands::scrape::recode_v2::types::{c_nodes::*, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// C language specification
@@ -65,15 +66,18 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         None
     },
 
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_definition" => "function",
-        "struct_specifier" => "struct",
-        "union_specifier" => "union",
-        "enum_specifier" => "enum",
-        "type_definition" => "type_alias",
-        "declaration" => "variable",
-        "preproc_include" => "import",
-        _ => "unknown",
+    get_symbol_kind: |node_kind| {
+        let kind = match node_kind {
+            FUNCTION_DEFINITION => SymbolKind::Function,
+            STRUCT_SPECIFIER => SymbolKind::Struct,
+            UNION_SPECIFIER => SymbolKind::Struct,
+            ENUM_SPECIFIER => SymbolKind::Enum,
+            TYPE_DEFINITION => SymbolKind::TypeAlias,
+            DECLARATION => SymbolKind::Const,
+            PREPROC_INCLUDE => SymbolKind::Import,
+            _ => SymbolKind::Unknown,
+        };
+        kind.as_str()
     },
 
     get_symbol_kind_complex: |_node, _source| None,
@@ -120,7 +124,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         let line_number = (node.start_position().row + 1) as i32;
 
         match node.kind() {
-            "call_expression" => {
+            CALL_EXPRESSION => {
                 // C function calls
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {

@@ -12,6 +12,7 @@
 //! - Decorators and metadata
 //! - JSX support (.tsx files)
 
+use crate::commands::scrape::recode_v2::types::{js_nodes::*, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// TypeScript language specification
@@ -63,17 +64,20 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             .map(String::from)
     },
 
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_declaration" | "arrow_function" | "function_expression" | "method_definition" => {
-            "function"
-        }
-        "class_declaration" => "struct",
-        "interface_declaration" => "trait",
-        "type_alias_declaration" => "type_alias",
-        "import_statement" => "import",
-        "const_statement" | "let_statement" => "const",
-        "enum_declaration" => "struct",
-        _ => "unknown",
+    get_symbol_kind: |node_kind| {
+        let kind = match node_kind {
+            FUNCTION_DECLARATION | ARROW_FUNCTION | FUNCTION_EXPRESSION | METHOD_DEFINITION => {
+                SymbolKind::Function
+            }
+            CLASS_DECLARATION => SymbolKind::Struct,
+            INTERFACE_DECLARATION => SymbolKind::Trait,
+            TYPE_ALIAS_DECLARATION => SymbolKind::TypeAlias,
+            IMPORT_STATEMENT => SymbolKind::Import,
+            "const_statement" | "let_statement" => SymbolKind::Const,
+            ENUM_DECLARATION => SymbolKind::Struct,
+            _ => SymbolKind::Unknown,
+        };
+        kind.as_str()
     },
 
     get_symbol_kind_complex: |node, _source| {
@@ -138,7 +142,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         let line_number = (node.start_position().row + 1) as i32;
 
         match node.kind() {
-            "call_expression" => {
+            CALL_EXPRESSION => {
                 // TypeScript function calls
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {

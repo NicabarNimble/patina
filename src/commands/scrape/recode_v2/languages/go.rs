@@ -10,6 +10,7 @@
 //! - Multiple return values
 //! - Package-level declarations
 
+use crate::commands::scrape::recode_v2::types::{go_nodes::*, SymbolKind};
 use crate::commands::scrape::recode_v2::LanguageSpec;
 
 /// Go language specification
@@ -64,30 +65,33 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             .map(String::from)
     },
 
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_declaration" => "function",
-        "method_declaration" => "function",
-        "type_declaration" => "type_alias",
-        "const_declaration" => "const",
-        "var_declaration" => "const",
-        "import_declaration" => "import",
-        _ => "unknown",
+    get_symbol_kind: |node_kind| {
+        let kind = match node_kind {
+            FUNCTION_DECLARATION => SymbolKind::Function,
+            METHOD_DECLARATION => SymbolKind::Function,
+            TYPE_DECLARATION => SymbolKind::TypeAlias,
+            CONST_DECLARATION => SymbolKind::Const,
+            VAR_DECLARATION => SymbolKind::Const,
+            IMPORT_DECLARATION => SymbolKind::Import,
+            _ => SymbolKind::Unknown,
+        };
+        kind.as_str()
     },
 
     get_symbol_kind_complex: |node, _source| {
-        if node.kind() == "type_spec" {
+        if node.kind() == TYPE_SPEC {
             if node
                 .child_by_field_name("type")
-                .is_some_and(|n| n.kind() == "struct_type")
+                .is_some_and(|n| n.kind() == STRUCT_TYPE)
             {
-                Some("struct")
+                Some(SymbolKind::Struct.as_str())
             } else if node
                 .child_by_field_name("type")
-                .is_some_and(|n| n.kind() == "interface_type")
+                .is_some_and(|n| n.kind() == INTERFACE_TYPE)
             {
-                Some("trait")
+                Some(SymbolKind::Trait.as_str())
             } else {
-                Some("type_alias")
+                Some(SymbolKind::TypeAlias.as_str())
             }
         } else {
             None
@@ -123,7 +127,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
         let line_number = (node.start_position().row + 1) as i32;
 
         match node.kind() {
-            "call_expression" => {
+            CALL_EXPRESSION => {
                 // Regular function calls and goroutines
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
@@ -143,7 +147,7 @@ pub static SPEC: LanguageSpec = LanguageSpec {
             "selector_expression" => {
                 // Go method calls are selector expressions followed by call_expression
                 if let Some(parent) = node.parent() {
-                    if parent.kind() == "call_expression" {
+                    if parent.kind() == CALL_EXPRESSION {
                         if let Some(field_node) = node.child_by_field_name("field") {
                             if let Ok(callee) = field_node.utf8_text(source) {
                                 context.add_call(
