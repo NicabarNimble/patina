@@ -25,6 +25,7 @@ use std::sync::LazyLock;
 use tree_sitter::Node;
 
 use super::ScrapeConfig;
+use self::types::{FilePath, SymbolName};
 
 // ============================================================================
 // LANGUAGE MODULES
@@ -382,10 +383,10 @@ pub struct ParseContext {
 /// Groups parameters for symbol processing to avoid too many arguments
 struct SymbolInfo<'a> {
     node: &'a Node<'a>,
-    name: &'a str,
+    name: SymbolName<'a>,
     kind: &'a str,
     source: &'a [u8],
-    file_path: &'a str,
+    file_path: FilePath<'a>,
     language: Language,
 }
 
@@ -562,7 +563,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
         let (funcs, types, imps) = extract_symbols_from_tree(
             tree.root_node(),
             &source,
-            &relative_path,
+            FilePath::from(relative_path.as_str()),
             language,
             &mut sql_statements,
             &mut context,
@@ -610,7 +611,7 @@ fn extract_code_metadata(db_path: &str, work_dir: &Path, _force: bool) -> Result
 fn extract_symbols_from_tree(
     node: Node,
     source: &[u8],
-    file_path: &str,
+    file_path: FilePath,
     language: Language,
     sql: &mut String,
     context: &mut ParseContext,
@@ -653,10 +654,10 @@ fn extract_symbols_from_tree(
             if let Some(name) = name {
                 let symbol_info = SymbolInfo {
                     node: &node,
-                    name: &name,
+                    name: SymbolName::from(name.as_str()),
                     kind,
                     source,
-                    file_path,
+                    file_path: FilePath::from(file_path),
                     language,
                 };
                 let (is_func, is_type) = process_symbol(symbol_info, sql, context);
@@ -673,10 +674,10 @@ fn extract_symbols_from_tree(
         if let Some(name) = extract_symbol_name(&node, source, language) {
             let symbol_info = SymbolInfo {
                 node: &node,
-                name: &name,
+                name: SymbolName::from(name.as_str()),
                 kind: symbol_kind,
                 source,
-                file_path,
+                file_path: FilePath::from(file_path),
                 language,
             };
             let (is_func, is_type) = process_symbol(symbol_info, sql, context);
@@ -775,8 +776,8 @@ fn process_symbol(
 
         sql.push_str(&format!(
             "INSERT OR REPLACE INTO documentation (file, symbol_name, symbol_type, line_number, doc_raw, doc_clean, doc_summary, keywords, doc_length, has_examples) VALUES ('{}', '{}', '{}', {}, '{}', '{}', '{}', {}, {}, {});\n",
-            escape_sql(symbol.file_path),
-            escape_sql(symbol.name),
+            escape_sql(symbol.file_path.as_str()),
+            escape_sql(symbol.name.as_str()),
             symbol.kind,
             symbol.node.start_position().row + 1,
             escape_sql(&doc_raw),
@@ -791,13 +792,13 @@ fn process_symbol(
     match symbol.kind {
         "function" => {
             // Update context with current function
-            context.current_function = Some(symbol.name.to_string());
+            context.current_function = Some(symbol.name.as_str().to_string());
 
             extract_function_facts(
                 symbol.node,
                 symbol.source,
-                symbol.file_path,
-                symbol.name,
+                symbol.file_path.as_str(),
+                symbol.name.as_str(),
                 sql,
                 symbol.language,
             );
@@ -813,8 +814,8 @@ fn process_symbol(
 
             sql.push_str(&format!(
                 "INSERT OR REPLACE INTO code_search (path, name, signature) VALUES ('{}', '{}', '{}');\n",
-                escape_sql(symbol.file_path),
-                escape_sql(symbol.name),
+                escape_sql(symbol.file_path.as_str()),
+                escape_sql(symbol.name.as_str()),
                 escape_sql(signature)
             ));
             (true, false)
@@ -823,8 +824,8 @@ fn process_symbol(
             extract_type_definition(
                 symbol.node,
                 symbol.source,
-                symbol.file_path,
-                symbol.name,
+                symbol.file_path.as_str(),
+                symbol.name.as_str(),
                 symbol.kind,
                 sql,
                 symbol.language,
@@ -968,7 +969,7 @@ fn extract_type_definition(
 fn extract_import_fact(
     node: Node,
     source: &[u8],
-    file_path: &str,
+    file_path: FilePath,
     sql: &mut String,
     language: Language,
 ) {
@@ -978,7 +979,7 @@ fn extract_import_fact(
 
         sql.push_str(&format!(
             "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');\n",
-            escape_sql(file_path),
+            escape_sql(file_path.as_str()),
             escape_sql(&imported_item),
             escape_sql(&imported_from),
             is_external
