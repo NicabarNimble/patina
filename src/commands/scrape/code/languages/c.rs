@@ -111,6 +111,10 @@ fn extract_c_symbols(
         "preproc_include" => {
             process_c_include(node, source, file_path, data);
         }
+        "preproc_def" => {
+            // Extract #define macros
+            process_c_macro(node, source, file_path, data);
+        }
         "call_expression" => {
             // Track function calls for call graph
             if let Some(ref caller) = current_function {
@@ -256,6 +260,49 @@ fn process_c_include(node: &Node, source: &[u8], file_path: &str, data: &mut Ext
             import_kind: if is_external { "system" } else { "local" }.to_string(),
             line_number: (node.start_position().row + 1) as i32,
         });
+    }
+}
+
+/// Process a #define macro and add to ExtractedData  
+fn process_c_macro(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
+    // Get the macro name
+    if let Some(name_node) = node.child_by_field_name("name") {
+        if let Ok(name) = name_node.utf8_text(source) {
+            // Try to get the value if present
+            let value = node
+                .child_by_field_name("value")
+                .and_then(|v| v.utf8_text(source).ok())
+                .map(|s| s.to_string());
+            
+            // Get the full macro text for context
+            let context = node
+                .utf8_text(source)
+                .ok()
+                .and_then(|s| s.lines().next())
+                .unwrap_or("")
+                .to_string();
+            
+            // Add as a symbol with kind "macro"
+            data.add_symbol(CodeSymbol {
+                path: file_path.to_string(),
+                name: name.to_string(),
+                kind: "macro".to_string(),
+                line: node.start_position().row + 1,
+                context,
+            });
+            
+            // Also add to type vocabulary if it looks like a constant
+            if let Some(val) = value {
+                data.add_type(TypeFact {
+                    file: file_path.to_string(),
+                    name: name.to_string(),
+                    definition: format!("#define {} {}", name, val),
+                    kind: "macro".to_string(),
+                    visibility: "public".to_string(),
+                    usage_count: 0,
+                });
+            }
+        }
     }
 }
 
