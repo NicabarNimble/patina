@@ -621,14 +621,14 @@ fn has_unchecked_block(node: &Node, source: &[u8]) -> bool {
     let mut has_unchecked = false;
     let mut cursor = node.walk();
 
-    fn check_unchecked(node: &Node, source: &[u8], has_unchecked: &mut bool) {
+    fn check_unchecked(node: &Node, _source: &[u8], has_unchecked: &mut bool) {
         if node.kind() == "unchecked_block" {
             *has_unchecked = true;
             return;
         }
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            check_unchecked(&child, source, has_unchecked);
+            check_unchecked(&child, _source, has_unchecked);
         }
     }
 
