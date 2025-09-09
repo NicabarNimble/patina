@@ -32,7 +32,7 @@ impl SolidityProcessor {
     /// Process a Solidity file and extract all symbols to typed structs
     pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
         let mut data = ExtractedData::new();
-        
+
         // Set up tree-sitter parser for Solidity
         let mut parser = Parser::new();
         let metal = patina_metal::Metal::Solidity;
@@ -78,8 +78,8 @@ fn extract_solidity_symbols(
     let symbol_kind = match node.kind() {
         "function_definition" => SymbolKind::Function,
         "modifier_definition" => SymbolKind::Function, // Modifiers are like special functions
-        "event_definition" => SymbolKind::Function, // Events are like special functions
-        "contract_declaration" => SymbolKind::Struct, // Contracts are like structs
+        "event_definition" => SymbolKind::Function,    // Events are like special functions
+        "contract_declaration" => SymbolKind::Struct,  // Contracts are like structs
         "struct_declaration" => SymbolKind::Struct,
         "interface_declaration" => SymbolKind::Interface,
         "library_declaration" => SymbolKind::Module, // Libraries are like modules
@@ -99,7 +99,7 @@ fn extract_solidity_symbols(
                     name.clone()
                 };
                 process_solidity_function(node, source, file_path, &full_name, data);
-                
+
                 // Recursively process function body
                 let mut cursor = node.walk();
                 for child in node.children(&mut cursor) {
@@ -128,7 +128,7 @@ fn extract_solidity_symbols(
         "contract_declaration" | "library_declaration" | "interface_declaration" => {
             if let Some(name) = extract_contract_name(node, source) {
                 process_solidity_contract(node, source, file_path, &name, data);
-                
+
                 // Process contract body with updated context
                 let mut cursor = node.walk();
                 for child in node.children(&mut cursor) {
@@ -208,26 +208,31 @@ fn process_solidity_function(
     let params = extract_params(node, source);
     let return_type = extract_return_type(node, source);
     let is_unsafe = has_unchecked_block(node, source);
-    
+
     // Add code symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
         name: name.to_string(),
-        kind: if node.kind() == "modifier_definition" { "modifier" } else { "function" }.to_string(),
+        kind: if node.kind() == "modifier_definition" {
+            "modifier"
+        } else {
+            "function"
+        }
+        .to_string(),
         line: node.start_position().row + 1,
         context: get_node_context(node, source),
     });
-    
+
     // Add function fact
     data.add_function(FunctionFact {
         file: file_path.to_string(),
         name: name.to_string(),
-        takes_mut_self: false, // Solidity doesn't have self
+        takes_mut_self: false,                     // Solidity doesn't have self
         takes_mut_params: mutability == "payable", // payable functions modify state
-        returns_result: false, // Solidity uses revert for errors
-        returns_option: false, // Solidity doesn't have Option
-        is_async: false, // Solidity doesn't have async
-        is_unsafe, // unchecked blocks
+        returns_result: false,                     // Solidity uses revert for errors
+        returns_option: false,                     // Solidity doesn't have Option
+        is_async: false,                           // Solidity doesn't have async
+        is_unsafe,                                 // unchecked blocks
         is_public,
         parameter_count: params.len() as i32,
         generic_count: 0, // Solidity doesn't have generics
@@ -245,7 +250,7 @@ fn process_solidity_event(
     data: &mut ExtractedData,
 ) {
     let params = extract_event_params(node, source);
-    
+
     // Add code symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
@@ -254,7 +259,7 @@ fn process_solidity_event(
         line: node.start_position().row + 1,
         context: get_node_context(node, source),
     });
-    
+
     // Add as function fact with special marker
     data.add_function(FunctionFact {
         file: file_path.to_string(),
@@ -287,7 +292,7 @@ fn process_solidity_contract(
         "interface_declaration" => "interface",
         _ => "unknown",
     };
-    
+
     // Add code symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
@@ -296,7 +301,7 @@ fn process_solidity_contract(
         line: node.start_position().row + 1,
         context: get_node_context(node, source),
     });
-    
+
     // Add type fact
     data.add_type(TypeFact {
         file: file_path.to_string(),
@@ -324,7 +329,7 @@ fn process_solidity_struct(
         line: node.start_position().row + 1,
         context: get_node_context(node, source),
     });
-    
+
     // Add type fact
     data.add_type(TypeFact {
         file: file_path.to_string(),
@@ -352,7 +357,7 @@ fn process_solidity_enum(
         line: node.start_position().row + 1,
         context: get_node_context(node, source),
     });
-    
+
     // Add type fact
     data.add_type(TypeFact {
         file: file_path.to_string(),
@@ -375,7 +380,7 @@ fn process_solidity_state_variable(
     let visibility = extract_visibility(node, source);
     let is_public = visibility == "public" || visibility == "external";
     let var_type = extract_variable_type(node, source);
-    
+
     // Add code symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
@@ -384,7 +389,7 @@ fn process_solidity_state_variable(
         line: node.start_position().row + 1,
         context: get_node_context(node, source),
     });
-    
+
     // Add type fact for state variable
     data.add_type(TypeFact {
         file: file_path.to_string(),
@@ -397,12 +402,7 @@ fn process_solidity_state_variable(
 }
 
 /// Process a Solidity import and add to ExtractedData
-fn process_solidity_import(
-    node: &Node,
-    source: &[u8],
-    file_path: &str,
-    data: &mut ExtractedData,
-) {
+fn process_solidity_import(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
     if let Some((imported_item, import_path, is_external)) = extract_import_details(node, source) {
         data.add_import(ImportFact {
             file: file_path.to_string(),
@@ -464,7 +464,9 @@ fn extract_solidity_calls(
             // Handle contract creation
             if let Some(caller) = current_function {
                 if let Ok(text) = node.utf8_text(source) {
-                    if let Some(contract_name) = text.strip_prefix("new ").and_then(|s| s.split('(').next()) {
+                    if let Some(contract_name) =
+                        text.strip_prefix("new ").and_then(|s| s.split('(').next())
+                    {
                         data.add_call_edge(CallEdge {
                             caller: caller.clone(),
                             callee: format!("new {}", contract_name.trim()),
@@ -618,7 +620,7 @@ fn extract_variable_type(node: &Node, source: &[u8]) -> Option<String> {
 fn has_unchecked_block(node: &Node, source: &[u8]) -> bool {
     let mut has_unchecked = false;
     let mut cursor = node.walk();
-    
+
     fn check_unchecked(node: &Node, source: &[u8], has_unchecked: &mut bool) {
         if node.kind() == "unchecked_block" {
             *has_unchecked = true;
@@ -629,11 +631,11 @@ fn has_unchecked_block(node: &Node, source: &[u8]) -> bool {
             check_unchecked(&child, source, has_unchecked);
         }
     }
-    
+
     for child in node.children(&mut cursor) {
         check_unchecked(&child, source, &mut has_unchecked);
     }
-    
+
     has_unchecked
 }
 
@@ -645,7 +647,7 @@ fn extract_import_details(node: &Node, source: &[u8]) -> Option<(String, String,
             .trim_start_matches("import ")
             .trim_end_matches(';')
             .trim();
-        
+
         // Check for various import styles
         if import_clean.contains(" from ") {
             let parts: Vec<&str> = import_clean.split(" from ").collect();
@@ -667,7 +669,7 @@ fn extract_import_details(node: &Node, source: &[u8]) -> Option<(String, String,
             // Simple import
             let path = import_clean.trim_matches('"').trim_matches('\'');
             let is_external = !path.starts_with('.');
-            let imported = path.split('/').last().unwrap_or(path);
+            let imported = path.split('/').next_back().unwrap_or(path);
             return Some((imported.to_string(), path.to_string(), is_external));
         }
     }

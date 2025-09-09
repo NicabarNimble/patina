@@ -32,7 +32,6 @@ pub mod extracted_data;
 pub mod languages;
 pub mod types;
 
-
 // ============================================================================
 // PUBLIC INTERFACE
 // ============================================================================
@@ -86,7 +85,8 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
     }
 
     // Always use the new embedded DuckDB implementation
-    let items_processed = extract_v2::extract_code_metadata_v2(&config.db_path, &work_dir, config.force)?;
+    let items_processed =
+        extract_v2::extract_code_metadata_v2(&config.db_path, &work_dir, config.force)?;
 
     // Get database size
     let metadata = std::fs::metadata(&config.db_path)?;

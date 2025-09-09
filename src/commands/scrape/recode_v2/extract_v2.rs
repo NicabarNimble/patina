@@ -14,9 +14,7 @@ use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use super::database::{
-    CallEdge, CodeSymbol, Database, FunctionFact, ImportFact, TypeFact,
-};
+use super::database::{CallEdge, CodeSymbol, Database, FunctionFact, ImportFact, TypeFact};
 use super::extracted_data::ExtractedData;
 use super::languages::Language;
 use super::types::FilePath;
@@ -60,7 +58,7 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     let mut all_types = Vec::new();
     let mut all_imports = Vec::new();
     let mut all_call_edges = Vec::new();
-    
+
     let mut files_with_errors = 0;
     let mut files_processed = 0;
 
@@ -115,7 +113,7 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
 
     // Bulk insert all collected data
     println!("  💾 Writing to database using bulk operations...");
-    
+
     let symbols_count = db.insert_symbols(&all_symbols)?;
     let functions_count = db.insert_functions(&all_functions)?;
     let types_count = db.insert_types(&all_types)?;
@@ -136,7 +134,6 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
 
     Ok(symbols_count + functions_count + types_count + imports_count)
 }
-
 
 /// Process a single file based on its language
 fn process_file_by_language(
@@ -196,7 +193,7 @@ fn process_file_by_language(
 
 fn process_rust_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
     use super::languages::rust::RustProcessor;
-    
+
     // Rust processor now returns ExtractedData directly!
     let extracted = RustProcessor::process_file(FilePath::from(file_path), content)?;
     data.merge(extracted);
@@ -205,7 +202,7 @@ fn process_rust_file(file_path: &str, content: &[u8], data: &mut ExtractedData) 
 
 fn process_go_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
     use super::languages::go::GoProcessor;
-    
+
     match GoProcessor::process_file(FilePath::from(file_path), content) {
         Ok(extracted) => {
             // Merge the extracted data
@@ -222,7 +219,7 @@ fn process_go_file(file_path: &str, content: &[u8], data: &mut ExtractedData) ->
 
 fn process_python_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
     use super::languages::python::PythonProcessor;
-    
+
     match PythonProcessor::process_file(FilePath::from(file_path), content) {
         Ok(extracted) => {
             // Merge the extracted data
@@ -237,9 +234,13 @@ fn process_python_file(file_path: &str, content: &[u8], data: &mut ExtractedData
     }
 }
 
-fn process_javascript_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
+fn process_javascript_file(
+    file_path: &str,
+    content: &[u8],
+    data: &mut ExtractedData,
+) -> Result<()> {
     use super::languages::javascript::JavaScriptProcessor;
-    
+
     match JavaScriptProcessor::process_file(FilePath::from(file_path), content) {
         Ok(extracted) => {
             // Merge the extracted data
@@ -254,9 +255,13 @@ fn process_javascript_file(file_path: &str, content: &[u8], data: &mut Extracted
     }
 }
 
-fn process_typescript_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
+fn process_typescript_file(
+    file_path: &str,
+    content: &[u8],
+    data: &mut ExtractedData,
+) -> Result<()> {
     use super::languages::typescript::TypeScriptProcessor;
-    
+
     match TypeScriptProcessor::process_file(FilePath::from(file_path), content) {
         Ok(extracted) => {
             // Merge the extracted data
@@ -273,7 +278,7 @@ fn process_typescript_file(file_path: &str, content: &[u8], data: &mut Extracted
 
 fn process_c_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
     use super::languages::c::CProcessor;
-    
+
     match CProcessor::process_file(FilePath::from(file_path), content) {
         Ok(extracted) => {
             // Merge the extracted data
@@ -290,7 +295,7 @@ fn process_c_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> 
 
 fn process_cpp_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
     use super::languages::cpp::CppProcessor;
-    
+
     match CppProcessor::process_file(FilePath::from(file_path), content) {
         Ok(extracted) => {
             // Merge the extracted data
@@ -307,7 +312,7 @@ fn process_cpp_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -
 
 fn process_cairo_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
     use super::languages::cairo::CairoProcessor;
-    
+
     // Cairo needs string content
     let content_str = std::str::from_utf8(content)?;
     match CairoProcessor::process_file(FilePath::from(file_path), content_str) {
@@ -326,7 +331,7 @@ fn process_cairo_file(file_path: &str, content: &[u8], data: &mut ExtractedData)
 
 fn process_solidity_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
     use super::languages::solidity::SolidityProcessor;
-    
+
     match SolidityProcessor::process_file(FilePath::from(file_path), content) {
         Ok(extracted) => {
             // Merge the extracted data
@@ -346,7 +351,7 @@ fn process_solidity_file(file_path: &str, content: &[u8], data: &mut ExtractedDa
 fn parse_sql_into_structs(file_path: &str, sql_statements: &[String], data: &mut ExtractedData) {
     // This is a simplified parser - in production we'd refactor the processors
     // to return structs directly instead of SQL strings
-    
+
     for sql in sql_statements {
         if sql.contains("INSERT") && sql.contains("code_search") {
             // Extract code search entry

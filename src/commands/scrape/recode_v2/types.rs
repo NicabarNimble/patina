@@ -10,7 +10,7 @@ use std::fmt;
 pub enum SymbolKind {
     Function,
     Struct,
-    Union,     // C/C++ union
+    Union, // C/C++ union
     Class,
     Trait,
     Interface,
@@ -215,7 +215,7 @@ impl<'a> SymbolName<'a> {
     /// Check if this is a public symbol (for languages that use naming conventions)
     pub fn is_public_by_convention(&self) -> bool {
         // Go convention: uppercase first letter
-        self.0.chars().next().map_or(false, |c| c.is_uppercase())
+        self.0.chars().next().is_some_and(|c| c.is_uppercase())
     }
 
     /// Check if this is private by Python convention

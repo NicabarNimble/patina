@@ -2,7 +2,7 @@
 // COMMON DATA STRUCTURES FOR LANGUAGE PROCESSORS
 // ============================================================================
 //! Shared data structures that all language processors return.
-//! 
+//!
 //! This replaces SQL string generation with type-safe structs that can be
 //! directly inserted into the database using prepared statements.
 

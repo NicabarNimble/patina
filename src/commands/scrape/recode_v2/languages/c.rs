@@ -31,7 +31,7 @@ impl CProcessor {
     /// Process a C file and extract all symbols to typed structs
     pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
         let mut data = ExtractedData::new();
-        
+
         // Set up tree-sitter parser for C
         let mut parser = Parser::new();
         let metal = patina_metal::Metal::C;
@@ -72,17 +72,11 @@ fn extract_c_symbols(
         "function_definition" => {
             if let Some(name) = extract_function_name(node, source) {
                 process_c_function(node, source, file_path, &name, data);
-                
+
                 // Process function body with updated context
                 let mut cursor = node.walk();
                 for child in node.children(&mut cursor) {
-                    extract_c_symbols(
-                        &child,
-                        source,
-                        file_path,
-                        data,
-                        Some(name.clone()),
-                    );
+                    extract_c_symbols(&child, source, file_path, data, Some(name.clone()));
                 }
                 return; // Don't recurse again
             }
@@ -139,13 +133,7 @@ fn extract_c_symbols(
     // Recurse into children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_c_symbols(
-            &child,
-            source,
-            file_path,
-            data,
-            current_function.clone(),
-        );
+        extract_c_symbols(&child, source, file_path, data, current_function.clone());
     }
 }
 
@@ -160,7 +148,7 @@ fn process_c_function(
     let params = extract_parameters(node, source);
     let return_type = extract_return_type(node, source);
     let is_public = file_path.ends_with(".h"); // Headers are public
-    
+
     // Add code symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
@@ -169,7 +157,7 @@ fn process_c_function(
         line: node.start_position().row + 1,
         context: extract_context(node, source),
     });
-    
+
     // Add function fact
     data.add_function(FunctionFact {
         file: file_path.to_string(),
@@ -178,8 +166,8 @@ fn process_c_function(
         takes_mut_params: params.iter().any(|p| p.contains('*')),
         returns_result: false, // C uses error codes
         returns_option: false, // C uses NULL
-        is_async: false, // C doesn't have async
-        is_unsafe: true, // All C is unsafe
+        is_async: false,       // C doesn't have async
+        is_unsafe: true,       // All C is unsafe
         is_public,
         parameter_count: params.len() as i32,
         generic_count: 0, // C doesn't have generics
@@ -198,7 +186,7 @@ fn process_c_type(
     data: &mut ExtractedData,
 ) {
     let is_public = file_path.ends_with(".h");
-    
+
     // Add code symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
@@ -207,12 +195,12 @@ fn process_c_type(
         line: node.start_position().row + 1,
         context: extract_context(node, source),
     });
-    
+
     // Add type fact
     data.add_type(TypeFact {
         file: file_path.to_string(),
         name: name.to_string(),
-        definition: format!("{} {}", kind.to_string(), name),
+        definition: format!("{} {}", kind, name),
         kind: kind.to_string(),
         visibility: if is_public { "public" } else { "private" }.to_string(),
         usage_count: 0,
@@ -228,7 +216,7 @@ fn process_c_typedef(
     data: &mut ExtractedData,
 ) {
     let is_public = file_path.ends_with(".h");
-    
+
     // Add code symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
@@ -237,7 +225,7 @@ fn process_c_typedef(
         line: node.start_position().row + 1,
         context: extract_context(node, source),
     });
-    
+
     // Add type fact
     data.add_type(TypeFact {
         file: file_path.to_string(),
@@ -250,12 +238,7 @@ fn process_c_typedef(
 }
 
 /// Process a C include directive and add to ExtractedData
-fn process_c_include(
-    node: &Node,
-    source: &[u8],
-    file_path: &str,
-    data: &mut ExtractedData,
-) {
+fn process_c_include(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
     if let Ok(include_text) = node.utf8_text(source) {
         let header = include_text
             .trim_start_matches("#include")
@@ -265,7 +248,7 @@ fn process_c_include(
             .trim_end_matches('>')
             .trim_end_matches('"');
         let is_external = include_text.contains('<');
-        
+
         data.add_import(ImportFact {
             file: file_path.to_string(),
             import_path: header.to_string(),
@@ -382,7 +365,7 @@ fn extract_context(node: &Node, source: &[u8]) -> String {
     // Get a few lines around the symbol for context
     let start_byte = node.start_byte();
     let end_byte = node.end_byte().min(start_byte + 200); // Limit context size
-    
+
     if let Ok(context) = std::str::from_utf8(&source[start_byte..end_byte]) {
         context.lines().take(3).collect::<Vec<_>>().join(" ")
     } else {

@@ -32,22 +32,27 @@ impl TypeScriptProcessor {
     /// Process a TypeScript file and extract all symbols to typed structs
     pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
         let mut data = ExtractedData::new();
-        
+
         // Set up tree-sitter parser for TypeScript
         // IMPORTANT: TypeScript uses different parsers for .ts and .tsx files
         let mut parser = Parser::new();
         let metal = patina_metal::Metal::TypeScript;
-        
+
         // Extract extension from file path to choose the right parser
         let path_str = file_path.as_str();
         let extension = path_str
             .rfind('.')
             .and_then(|idx| path_str.get(idx + 1..))
             .unwrap_or("ts");
-        
+
         let language = metal
             .tree_sitter_language_for_ext(extension)
-            .ok_or_else(|| anyhow::anyhow!("No TypeScript parser available for extension: {}", extension))?;
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No TypeScript parser available for extension: {}",
+                    extension
+                )
+            })?;
         parser
             .set_language(&language)
             .context("Failed to set TypeScript language")?;
@@ -87,8 +92,10 @@ fn extract_symbols(
     // Process based on node kind
     match node.kind() {
         // Function declarations and expressions
-        "function_declaration" | "function_expression" | "arrow_function" | 
-        "generator_function_declaration" => {
+        "function_declaration"
+        | "function_expression"
+        | "arrow_function"
+        | "generator_function_declaration" => {
             if let Some(name) = extract_function_name(&node, source) {
                 let old_function = current_function.clone();
                 *current_function = Some(name.clone());
@@ -110,7 +117,7 @@ fn extract_symbols(
         "method_definition" | "method_signature" => {
             if let Some(name) = extract_method_name(&node, source) {
                 process_method(&node, source, file_path, &name, data);
-                
+
                 let old_function = current_function.clone();
                 *current_function = Some(name);
 
@@ -142,17 +149,23 @@ fn extract_symbols(
                                 let full_name = format!("{}.{}", name, method_name);
                                 let old_function = current_function.clone();
                                 *current_function = Some(full_name.clone());
-                                
+
                                 process_method(&child, source, file_path, &full_name, data);
-                                
+
                                 // Process method body if it exists
                                 if let Some(method_body) = child.child_by_field_name("body") {
                                     let mut method_cursor = method_body.walk();
                                     for method_child in method_body.children(&mut method_cursor) {
-                                        extract_symbols(method_child, source, file_path, data, current_function);
+                                        extract_symbols(
+                                            method_child,
+                                            source,
+                                            file_path,
+                                            data,
+                                            current_function,
+                                        );
                                     }
                                 }
-                                
+
                                 *current_function = old_function;
                             }
                         } else {
@@ -229,16 +242,19 @@ fn process_function(
     let params = extract_params(node, source);
     let return_type = extract_return_type(node, source);
     let generics = extract_generics(node, source);
-    
+
     // Create function fact
     let function = FunctionFact {
         file: file_path.to_string(),
         name: name.to_string(),
-        takes_mut_self: false, // Not applicable in TS
+        takes_mut_self: false,   // Not applicable in TS
         takes_mut_params: false, // TS doesn't have explicit mutability
-        returns_result: return_type.as_ref().map_or(false, |rt| rt.contains("Promise")),
-        returns_option: return_type.as_ref().map_or(false, |rt| 
-            rt.contains("undefined") || rt.contains("null") || rt.contains("?")),
+        returns_result: return_type
+            .as_ref()
+            .is_some_and(|rt| rt.contains("Promise")),
+        returns_option: return_type.as_ref().is_some_and(|rt| {
+            rt.contains("undefined") || rt.contains("null") || rt.contains("?")
+        }),
         is_async,
         is_unsafe: false, // No unsafe in TS
         is_public,
@@ -250,16 +266,22 @@ fn process_function(
     data.add_function(function);
 
     // Add to code search
-    let context = node.utf8_text(source)
+    let context = node
+        .utf8_text(source)
         .ok()
         .and_then(|s| s.lines().next())
         .unwrap_or("")
         .to_string();
-    
+
     let symbol = CodeSymbol {
         path: file_path.to_string(),
         name: name.to_string(),
-        kind: if is_generator { "generator" } else { "function" }.to_string(),
+        kind: if is_generator {
+            "generator"
+        } else {
+            "function"
+        }
+        .to_string(),
         line: node.start_position().row + 1,
         context,
     };
@@ -280,20 +302,23 @@ fn process_method(
     let is_abstract = has_abstract_keyword(node, source);
     let is_getter = is_getter_method(node, source);
     let is_setter = is_setter_method(node, source);
-    
+
     let params = extract_params(node, source);
     let return_type = extract_return_type(node, source);
     let generics = extract_generics(node, source);
-    
+
     // Create function fact for method
     let function = FunctionFact {
         file: file_path.to_string(),
         name: name.to_string(),
         takes_mut_self: !is_static,
         takes_mut_params: false,
-        returns_result: return_type.as_ref().map_or(false, |rt| rt.contains("Promise")),
-        returns_option: return_type.as_ref().map_or(false, |rt| 
-            rt.contains("undefined") || rt.contains("null") || rt.contains("?")),
+        returns_result: return_type
+            .as_ref()
+            .is_some_and(|rt| rt.contains("Promise")),
+        returns_option: return_type.as_ref().is_some_and(|rt| {
+            rt.contains("undefined") || rt.contains("null") || rt.contains("?")
+        }),
         is_async,
         is_unsafe: false,
         is_public: visibility,
@@ -305,24 +330,25 @@ fn process_method(
     data.add_function(function);
 
     // Add to code search
-    let kind = if is_getter { 
-        "getter" 
-    } else if is_setter { 
-        "setter" 
+    let kind = if is_getter {
+        "getter"
+    } else if is_setter {
+        "setter"
     } else if is_abstract {
         "abstract_method"
-    } else if is_static { 
-        "static_method" 
-    } else { 
-        "method" 
+    } else if is_static {
+        "static_method"
+    } else {
+        "method"
     };
-    
-    let context = node.utf8_text(source)
+
+    let context = node
+        .utf8_text(source)
         .ok()
         .and_then(|s| s.lines().next())
         .unwrap_or("")
         .to_string();
-    
+
     let symbol = CodeSymbol {
         path: file_path.to_string(),
         name: name.to_string(),
@@ -343,9 +369,10 @@ fn process_class(
 ) {
     let is_public = extract_visibility(node, source);
     let is_abstract = has_abstract_keyword(node, source);
-    
+
     // Get the class definition line
-    let definition = node.utf8_text(source)
+    let definition = node
+        .utf8_text(source)
         .ok()
         .and_then(|s| s.lines().next())
         .unwrap_or("")
@@ -356,7 +383,12 @@ fn process_class(
         file: file_path.to_string(),
         name: name.to_string(),
         definition: definition.clone(),
-        kind: if is_abstract { "abstract_class" } else { "class" }.to_string(),
+        kind: if is_abstract {
+            "abstract_class"
+        } else {
+            "class"
+        }
+        .to_string(),
         visibility: if is_public { "public" } else { "private" }.to_string(),
         usage_count: 0,
     };
@@ -366,7 +398,12 @@ fn process_class(
     let symbol = CodeSymbol {
         path: file_path.to_string(),
         name: name.to_string(),
-        kind: if is_abstract { "abstract_class" } else { "class" }.to_string(),
+        kind: if is_abstract {
+            "abstract_class"
+        } else {
+            "class"
+        }
+        .to_string(),
         line: node.start_position().row + 1,
         context: definition,
     };
@@ -382,9 +419,10 @@ fn process_interface(
     data: &mut ExtractedData,
 ) {
     let is_public = extract_visibility(node, source);
-    
+
     // Get the interface definition line
-    let definition = node.utf8_text(source)
+    let definition = node
+        .utf8_text(source)
         .ok()
         .and_then(|s| s.lines().next())
         .unwrap_or("")
@@ -421,9 +459,10 @@ fn process_type_alias(
     data: &mut ExtractedData,
 ) {
     let is_public = extract_visibility(node, source);
-    
+
     // Get the type alias definition
-    let definition = node.utf8_text(source)
+    let definition = node
+        .utf8_text(source)
         .ok()
         .and_then(|s| s.lines().next())
         .unwrap_or("")
@@ -461,9 +500,10 @@ fn process_enum(
 ) {
     let is_public = extract_visibility(node, source);
     let is_const = has_const_keyword(node, source);
-    
+
     // Get the enum definition line
-    let definition = node.utf8_text(source)
+    let definition = node
+        .utf8_text(source)
         .ok()
         .and_then(|s| s.lines().next())
         .unwrap_or("")
@@ -511,17 +551,23 @@ fn process_variable_declaration(
                             "arrow_function" | "function_expression" => {
                                 let old_function = current_function.clone();
                                 *current_function = Some(name.to_string());
-                                
+
                                 process_function(&value_node, source, file_path, name, data);
-                                
+
                                 // Process function body
                                 if let Some(body) = value_node.child_by_field_name("body") {
                                     let mut body_cursor = body.walk();
                                     for body_child in body.children(&mut body_cursor) {
-                                        extract_symbols(body_child, source, file_path, data, current_function);
+                                        extract_symbols(
+                                            body_child,
+                                            source,
+                                            file_path,
+                                            data,
+                                            current_function,
+                                        );
                                     }
                                 }
-                                
+
                                 *current_function = old_function;
                             }
                             "class_expression" => {
@@ -537,20 +583,15 @@ fn process_variable_declaration(
 }
 
 /// Process TypeScript import statements
-fn process_import(
-    node: &Node,
-    source: &[u8],
-    file_path: &FilePath,
-    data: &mut ExtractedData,
-) {
+fn process_import(node: &Node, source: &[u8], file_path: &FilePath, data: &mut ExtractedData) {
     let import_text = node.utf8_text(source).unwrap_or("");
-    
+
     // Extract module path
     let module_path = extract_import_path(node, source).unwrap_or_default();
-    
+
     // Extract imported items
     let mut imported_names = Vec::new();
-    
+
     // Named imports: import { a, b } from 'module'
     if let Some(import_clause) = node.child_by_field_name("import") {
         let mut cursor = import_clause.walk();
@@ -564,7 +605,9 @@ fn process_import(
                             if let Some(name_node) = import_child.child_by_field_name("name") {
                                 if let Ok(name) = name_node.utf8_text(source) {
                                     // Check for alias
-                                    if let Some(alias_node) = import_child.child_by_field_name("alias") {
+                                    if let Some(alias_node) =
+                                        import_child.child_by_field_name("alias")
+                                    {
                                         if let Ok(alias) = alias_node.utf8_text(source) {
                                             imported_names.push(format!("{} as {}", name, alias));
                                         } else {
@@ -596,28 +639,29 @@ fn process_import(
             }
         }
     }
-    
+
     // Type-only imports: import type { ... } from 'module'
     let is_type_import = import_text.starts_with("import type");
-    
+
     if imported_names.is_empty() && !module_path.is_empty() {
         // Side-effect import: import 'module'
         imported_names.push("*".to_string());
     }
-    
+
     let is_external = !module_path.starts_with('.') && !module_path.starts_with('/');
-    
+
     let import = ImportFact {
         file: file_path.to_string(),
         import_path: module_path,
         imported_names,
-        import_kind: if is_type_import { 
-            "type_import" 
-        } else if is_external { 
-            "external" 
-        } else { 
-            "internal" 
-        }.to_string(),
+        import_kind: if is_type_import {
+            "type_import"
+        } else if is_external {
+            "external"
+        } else {
+            "internal"
+        }
+        .to_string(),
         line_number: (node.start_position().row + 1) as i32,
     };
     data.add_import(import);
@@ -626,7 +670,12 @@ fn process_import(
     let symbol = CodeSymbol {
         path: file_path.to_string(),
         name: import_text.to_string(),
-        kind: if is_type_import { "type_import" } else { "import" }.to_string(),
+        kind: if is_type_import {
+            "type_import"
+        } else {
+            "import"
+        }
+        .to_string(),
         line: node.start_position().row + 1,
         context: import_text.to_string(),
     };
@@ -677,9 +726,10 @@ fn extract_enum_name(node: &Node, source: &[u8]) -> Option<String> {
 
 /// Extract function parameters with types
 fn extract_params(node: &Node, source: &[u8]) -> Vec<String> {
-    let params_node = node.child_by_field_name("parameters")
+    let params_node = node
+        .child_by_field_name("parameters")
         .or_else(|| node.child_by_field_name("parameter"));
-    
+
     if let Some(params) = params_node {
         let mut result = Vec::new();
         let mut cursor = params.walk();
@@ -754,7 +804,11 @@ fn extract_import_path(node: &Node, source: &[u8]) -> Option<String> {
     for child in node.children(&mut cursor) {
         if child.kind() == "string" {
             if let Ok(path_text) = child.utf8_text(source) {
-                return Some(path_text.trim_matches(|c| c == '"' || c == '\'' || c == '`').to_string());
+                return Some(
+                    path_text
+                        .trim_matches(|c| c == '"' || c == '\'' || c == '`')
+                        .to_string(),
+                );
             }
         }
     }
@@ -771,7 +825,7 @@ fn is_async_function(node: &Node, source: &[u8]) -> bool {
     }
     // Also check in the node's text for arrow functions
     node.utf8_text(source)
-        .map_or(false, |text| text.starts_with("async "))
+        .is_ok_and(|text| text.starts_with("async "))
 }
 
 /// Check if method has static keyword
@@ -855,13 +909,15 @@ fn extract_calls(
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
                         // Check for await
-                        let call_type = if node.parent()
-                            .map_or(false, |p| p.kind() == "await_expression") {
+                        let call_type = if node
+                            .parent()
+                            .is_some_and(|p| p.kind() == "await_expression")
+                        {
                             CallType::Async
                         } else {
                             CallType::Direct
                         };
-                        
+
                         data.add_call_edge(CallEdge {
                             file: file_path.to_string(),
                             caller: caller.clone(),

@@ -31,7 +31,7 @@ impl PythonProcessor {
     /// Process a Python file and extract all symbols to typed structs
     pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
         let mut data = ExtractedData::new();
-        
+
         // Set up tree-sitter parser for Python
         let mut parser = Parser::new();
         let metal = patina_metal::Metal::Python;
@@ -102,7 +102,7 @@ fn extract_symbols(
         "class_definition" => {
             if let Some(name) = extract_class_name(&node, source) {
                 let old_function = current_function.clone();
-                
+
                 process_class(&node, source, file_path, &name, data);
 
                 // Process class methods
@@ -110,7 +110,10 @@ fn extract_symbols(
                     let mut cursor = body_node.walk();
                     for child in body_node.children(&mut cursor) {
                         // For methods, include class name in context
-                        if matches!(child.kind(), "function_definition" | "async_function_definition") {
+                        if matches!(
+                            child.kind(),
+                            "function_definition" | "async_function_definition"
+                        ) {
                             if let Some(method_name) = extract_function_name(&child, source) {
                                 *current_function = Some(format!("{}.{}", name, method_name));
                             }
@@ -150,7 +153,7 @@ fn process_decorated_definition(
         if child.kind() == "decorator" {
             if let Ok(decorator_text) = child.utf8_text(source) {
                 let decorator_name = decorator_text.trim_start_matches('@');
-                
+
                 // Add decorator as a call edge if we're in a function
                 if let Some(caller) = current_function {
                     data.add_call_edge(CallEdge {
@@ -200,10 +203,12 @@ fn process_function(
     // Check for patterns in parameters
     let takes_mut_self = params.iter().any(|p| p == "self");
     let takes_mut_params = false; // Python doesn't have explicit mutability
-    let returns_result = return_type.as_ref().map_or(false, |rt| 
-        rt.contains("Result") || rt.contains("Union") || rt.contains("Optional"));
-    let returns_option = return_type.as_ref().map_or(false, |rt| 
-        rt.contains("Optional") || rt.contains("None"));
+    let returns_result = return_type.as_ref().is_some_and(|rt| {
+        rt.contains("Result") || rt.contains("Union") || rt.contains("Optional")
+    });
+    let returns_option = return_type
+        .as_ref()
+        .is_some_and(|rt| rt.contains("Optional") || rt.contains("None"));
 
     // Create function fact
     let function = FunctionFact {
@@ -224,12 +229,13 @@ fn process_function(
     data.add_function(function);
 
     // Add to code search
-    let context = node.utf8_text(source)
+    let context = node
+        .utf8_text(source)
         .ok()
         .and_then(|s| s.lines().next())
         .unwrap_or("")
         .to_string();
-    
+
     let symbol = CodeSymbol {
         path: file_path.to_string(),
         name: name.to_string(),
@@ -252,7 +258,8 @@ fn process_class(
     let _docs = extract_docstring(node, source);
 
     // Get the class definition line
-    let definition = node.utf8_text(source)
+    let definition = node
+        .utf8_text(source)
         .ok()
         .and_then(|s| s.lines().next())
         .unwrap_or("")
@@ -281,12 +288,7 @@ fn process_class(
 }
 
 /// Process Python imports and add to data
-fn process_import(
-    node: &Node,
-    source: &[u8],
-    file_path: &FilePath,
-    data: &mut ExtractedData,
-) {
+fn process_import(node: &Node, source: &[u8], file_path: &FilePath, data: &mut ExtractedData) {
     if let Some((imported_item, import_path, is_external)) = extract_import_details(node, source) {
         let import = ImportFact {
             file: file_path.to_string(),
@@ -391,21 +393,25 @@ fn clean_docstring(raw: &str) -> String {
 /// Extract import details
 fn extract_import_details(node: &Node, source: &[u8]) -> Option<(String, String, bool)> {
     let import_text = node.utf8_text(source).ok()?;
-    
+
     match node.kind() {
         "import_statement" => {
             // Handle: import module, import module as alias
             let clean = import_text.trim_start_matches("import ").trim();
             let module_name = clean.split(" as ").next().unwrap_or(clean);
             let is_external = !module_name.starts_with('.');
-            Some((module_name.to_string(), module_name.to_string(), is_external))
+            Some((
+                module_name.to_string(),
+                module_name.to_string(),
+                is_external,
+            ))
         }
         "import_from_statement" => {
             // Handle: from module import item, from . import item
             if let Some(module_node) = node.child_by_field_name("module_name") {
                 if let Ok(module_name) = module_node.utf8_text(source) {
                     let is_external = !import_text.contains("from .");
-                    
+
                     // Extract imported items
                     let items = if import_text.contains("import *") {
                         "*".to_string()
@@ -414,14 +420,18 @@ fn extract_import_details(node: &Node, source: &[u8]) -> Option<(String, String,
                     } else {
                         module_name.to_string()
                     };
-                    
+
                     return Some((items, module_name.to_string(), is_external));
                 }
             }
-            
+
             // Fallback parsing
             let is_external = !import_text.contains("from .");
-            Some((import_text.to_string(), import_text.to_string(), is_external))
+            Some((
+                import_text.to_string(),
+                import_text.to_string(),
+                is_external,
+            ))
         }
         _ => None,
     }
@@ -444,11 +454,14 @@ fn extract_calls(
                     if let Ok(callee) = func_node.utf8_text(source) {
                         // Check for await
                         let (call_type, callee_name) = if callee.starts_with("await ") {
-                            (CallType::Async, callee.strip_prefix("await ").unwrap_or(callee))
+                            (
+                                CallType::Async,
+                                callee.strip_prefix("await ").unwrap_or(callee),
+                            )
                         } else {
                             (CallType::Direct, callee)
                         };
-                        
+
                         data.add_call_edge(CallEdge {
                             file: file_path.to_string(),
                             caller: caller.clone(),
