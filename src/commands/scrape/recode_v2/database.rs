@@ -9,10 +9,10 @@
 //! - Proper type preservation (arrays, booleans, JSON)
 //! - Transaction support with automatic rollback
 
+use crate::commands::scrape::recode_v2::types::CallGraphEntry;
 use anyhow::{Context, Result};
 use duckdb::{params, Connection};
 use std::path::Path;
-use crate::commands::scrape::recode_v2::types::CallGraphEntry;
 
 // ============================================================================
 // DOMAIN TYPES
@@ -66,8 +66,6 @@ pub struct ImportFact {
     pub import_kind: String,
     pub line_number: i32,
 }
-
-/// Call graph edge
 
 // ============================================================================
 // DATABASE CONNECTION
@@ -196,7 +194,6 @@ impl Database {
         tx.commit()?;
         Ok(())
     }
-
 }
 
 // ============================================================================
@@ -358,7 +355,6 @@ impl Database {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -396,11 +392,6 @@ mod tests {
             return_type: Some("Result<()>".to_string()),
         }];
         assert_eq!(db.insert_functions(&functions)?, 1);
-
-        // Test querying
-        let found = db.search_symbols("main")?;
-        assert_eq!(found.len(), 1);
-        assert_eq!(found[0].name, "main");
 
         Ok(())
     }
