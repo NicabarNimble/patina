@@ -153,6 +153,8 @@ fn process_file_by_language(
         types: Vec::new(),
         imports: Vec::new(),
         call_edges: Vec::new(),
+        constants: Vec::new(),
+        members: Vec::new(),
     };
 
     // For now, we'll still use the existing processors but convert their output
