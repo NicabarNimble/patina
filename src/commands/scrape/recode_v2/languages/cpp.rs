@@ -32,7 +32,7 @@ impl CppProcessor {
     /// Process a C++ file and extract all symbols to typed structs
     pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
         let mut data = ExtractedData::new();
-        
+
         // Set up tree-sitter parser for C++
         let mut parser = Parser::new();
         let metal = patina_metal::Metal::Cpp;
@@ -108,9 +108,9 @@ fn extract_cpp_symbols(
                 } else {
                     format!("{}::{}", namespace_stack.join("::"), name)
                 };
-                
+
                 process_cpp_function(node, source, file_path, &full_name, data);
-                
+
                 // Process function body with updated context
                 let mut cursor = node.walk();
                 for child in node.children(&mut cursor) {
@@ -134,16 +134,16 @@ fn extract_cpp_symbols(
                     } else {
                         SymbolKind::Struct
                     };
-                    
+
                     // Include namespace in type name
                     let full_name = if namespace_stack.is_empty() {
                         name.to_string()
                     } else {
                         format!("{}::{}", namespace_stack.join("::"), name)
                     };
-                    
+
                     process_cpp_class(node, source, file_path, &full_name, kind, data);
-                    
+
                     // Process class body with updated namespace
                     namespace_stack.push(name.to_string());
                     if let Some(body) = node.child_by_field_name("body") {
@@ -266,7 +266,7 @@ fn process_cpp_function(
     let return_type = extract_return_type(node, source);
     let is_template = has_template_parent(node);
     let is_public = is_public_member(node, source);
-    
+
     // Add code symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
@@ -275,7 +275,7 @@ fn process_cpp_function(
         line: node.start_position().row + 1,
         context: extract_context(node, source),
     });
-    
+
     // Add function fact
     data.add_function(FunctionFact {
         file: file_path.to_string(),
@@ -283,7 +283,9 @@ fn process_cpp_function(
         takes_mut_self: false, // Would need more analysis
         takes_mut_params: params.iter().any(|p| !p.contains("const")),
         returns_result: false, // C++ uses exceptions
-        returns_option: return_type.as_ref().map_or(false, |r| r.contains("optional")),
+        returns_option: return_type
+            .as_ref()
+            .is_some_and(|r| r.contains("optional")),
         is_async: false, // C++ doesn't have built-in async
         is_unsafe: true, // All C++ is unsafe
         is_public,
@@ -304,7 +306,7 @@ fn process_cpp_class(
     data: &mut ExtractedData,
 ) {
     let is_template = has_template_parent(node);
-    
+
     // Add code symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
@@ -313,7 +315,7 @@ fn process_cpp_class(
         line: node.start_position().row + 1,
         context: extract_context(node, source),
     });
-    
+
     // Add type fact
     data.add_type(TypeFact {
         file: file_path.to_string(),
@@ -334,7 +336,7 @@ fn process_cpp_enum(
     data: &mut ExtractedData,
 ) {
     let is_enum_class = node.kind() == "enum_class_specifier";
-    
+
     // Add code symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
@@ -343,7 +345,7 @@ fn process_cpp_enum(
         line: node.start_position().row + 1,
         context: extract_context(node, source),
     });
-    
+
     // Add type fact
     data.add_type(TypeFact {
         file: file_path.to_string(),
@@ -364,7 +366,7 @@ fn process_cpp_typedef(
     data: &mut ExtractedData,
 ) {
     let is_using = node.kind() == "alias_declaration";
-    
+
     // Add code symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
@@ -373,7 +375,7 @@ fn process_cpp_typedef(
         line: node.start_position().row + 1,
         context: extract_context(node, source),
     });
-    
+
     // Add type fact
     data.add_type(TypeFact {
         file: file_path.to_string(),
@@ -386,12 +388,7 @@ fn process_cpp_typedef(
 }
 
 /// Process a C++ include directive and add to ExtractedData
-fn process_cpp_include(
-    node: &Node,
-    source: &[u8],
-    file_path: &str,
-    data: &mut ExtractedData,
-) {
+fn process_cpp_include(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
     if let Ok(include_text) = node.utf8_text(source) {
         let header = include_text
             .trim_start_matches("#include")
@@ -402,7 +399,7 @@ fn process_cpp_include(
             .trim_end_matches('>')
             .trim_end_matches('"');
         let is_external = include_text.contains('<');
-        
+
         data.add_import(ImportFact {
             file: file_path.to_string(),
             import_path: header.to_string(),
@@ -589,7 +586,7 @@ fn is_public_member(node: &Node, source: &[u8]) -> bool {
             _ => current = parent.parent(),
         }
     }
-    
+
     // Not in a class/struct, so it's public
     true
 }
@@ -598,7 +595,7 @@ fn is_public_member(node: &Node, source: &[u8]) -> bool {
 fn extract_context(node: &Node, source: &[u8]) -> String {
     let start_byte = node.start_byte();
     let end_byte = node.end_byte().min(start_byte + 200);
-    
+
     if let Ok(context) = std::str::from_utf8(&source[start_byte..end_byte]) {
         context.lines().take(3).collect::<Vec<_>>().join(" ")
     } else {

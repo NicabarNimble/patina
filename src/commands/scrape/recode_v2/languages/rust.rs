@@ -23,7 +23,7 @@ impl RustProcessor {
     /// Process a Rust file and extract all symbols to typed structs
     pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
         let mut data = ExtractedData::new();
-        
+
         // Set up tree-sitter parser for Rust
         let mut parser = Parser::new();
         let metal = patina_metal::Metal::Rust;
@@ -80,15 +80,19 @@ fn extract_rust_symbols(
         if let Some(name_node) = node.child_by_field_name("name") {
             if let Ok(name) = name_node.utf8_text(source) {
                 process_rust_function(node, source, file_path, name, data);
-                
+
                 // Extract calls within this function
                 extract_rust_calls(node, source, file_path, &Some(name.to_string()), data);
             }
         }
     } else if matches!(
         symbol_kind,
-        SymbolKind::Struct | SymbolKind::Enum | SymbolKind::Trait | 
-        SymbolKind::TypeAlias | SymbolKind::Const | SymbolKind::Static
+        SymbolKind::Struct
+            | SymbolKind::Enum
+            | SymbolKind::Trait
+            | SymbolKind::TypeAlias
+            | SymbolKind::Const
+            | SymbolKind::Static
     ) {
         if let Some(name_node) = node.child_by_field_name("name") {
             if let Ok(name) = name_node.utf8_text(source) {
@@ -102,13 +106,7 @@ fn extract_rust_symbols(
     // Recursively process children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_rust_symbols(
-            &child,
-            source,
-            file_path,
-            data,
-            current_function.clone(),
-        );
+        extract_rust_symbols(&child, source, file_path, data, current_function.clone());
     }
 }
 
@@ -126,15 +124,18 @@ fn process_rust_function(
     let is_public = has_visibility_modifier(node);
     let is_async = has_async(node);
     let is_unsafe = has_unsafe(node);
-    
+
     // Check for specific patterns
     let takes_mut_self = params.iter().any(|p| p.contains("&mut self"));
-    let takes_mut_params = params.iter().any(|p| p.contains("&mut ") && !p.contains("self"));
+    let takes_mut_params = params
+        .iter()
+        .any(|p| p.contains("&mut ") && !p.contains("self"));
     let returns_result = return_type.as_deref().unwrap_or("").contains("Result");
     let returns_option = return_type.as_deref().unwrap_or("").contains("Option");
-    
+
     // Count generics
-    let generic_count = node.child_by_field_name("type_parameters")
+    let generic_count = node
+        .child_by_field_name("type_parameters")
         .map(|n| n.named_child_count() as i32)
         .unwrap_or(0);
 
@@ -157,12 +158,13 @@ fn process_rust_function(
     data.add_function(function);
 
     // Add to code search
-    let context = node.utf8_text(source)
+    let context = node
+        .utf8_text(source)
         .ok()
         .and_then(|s| s.lines().next())
         .unwrap_or("")
         .to_string();
-    
+
     let symbol = CodeSymbol {
         path: file_path.to_string(),
         name: name.to_string(),
@@ -183,20 +185,27 @@ fn process_rust_type(
     data: &mut ExtractedData,
 ) {
     let is_public = has_visibility_modifier(node);
-    
+
     // Get the node text for definition
-    let definition = node.utf8_text(source)
+    let definition = node
+        .utf8_text(source)
         .ok()
         .and_then(|s| s.lines().next())
         .unwrap_or("")
         .to_string();
-    
+
     let kind_str = match kind {
         SymbolKind::Struct => "struct",
         SymbolKind::Enum => "enum",
         SymbolKind::Trait => "trait",
         SymbolKind::TypeAlias => "type_alias",
-        SymbolKind::Const => if node.kind() == "static_item" { "static" } else { "const" },
+        SymbolKind::Const => {
+            if node.kind() == "static_item" {
+                "static"
+            } else {
+                "const"
+            }
+        }
         _ => "unknown",
     };
 
@@ -223,18 +232,13 @@ fn process_rust_type(
 }
 
 /// Process Rust imports and add to data
-fn process_rust_import(
-    node: &Node,
-    source: &[u8],
-    file_path: &str,
-    data: &mut ExtractedData,
-) {
+fn process_rust_import(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
     // Find the use_tree to extract the import path
     if let Some(use_tree) = node.child_by_field_name("argument") {
         if let Ok(import_text) = use_tree.utf8_text(source) {
             // Clean up the import path
             let import_path = import_text.trim();
-            
+
             // Extract imported names
             let imported_names = if import_path.contains('{') {
                 // Multiple imports: use foo::{Bar, Baz}

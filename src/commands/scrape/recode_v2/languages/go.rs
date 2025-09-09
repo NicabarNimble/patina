@@ -30,7 +30,7 @@ impl GoProcessor {
     /// Process a Go file and extract all symbols to typed structs
     pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
         let mut data = ExtractedData::new();
-        
+
         // Set up tree-sitter parser for Go
         let mut parser = Parser::new();
         let metal = patina_metal::Metal::Go;
@@ -98,17 +98,11 @@ fn extract_go_symbols(
     if symbol_kind == SymbolKind::Function {
         if let Some(name) = extract_function_name(node, source) {
             process_go_function(node, source, file_path, &name, data);
-            
+
             // Extract calls within this function
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
-                extract_go_symbols(
-                    &child,
-                    source,
-                    file_path,
-                    data,
-                    Some(name.clone()),
-                );
+                extract_go_symbols(&child, source, file_path, data, Some(name.clone()));
             }
             return; // Don't recurse again
         }
@@ -126,13 +120,7 @@ fn extract_go_symbols(
     // Recurse to children
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        extract_go_symbols(
-            &child,
-            source,
-            file_path,
-            data,
-            current_function.clone(),
-        );
+        extract_go_symbols(&child, source, file_path, data, current_function.clone());
     }
 }
 
@@ -148,7 +136,7 @@ fn process_go_function(
     let params = extract_params(node, source);
     let return_type = extract_return_type(node, source);
     let _generics = extract_generics(node, source);
-    
+
     // Add code symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
@@ -157,17 +145,17 @@ fn process_go_function(
         line: node.start_position().row + 1,
         context: get_node_context(node, source),
     });
-    
+
     // Add function fact
     data.add_function(FunctionFact {
         file: file_path.to_string(),
         name: name.to_string(),
-        takes_mut_self: false, // Go doesn't have self
+        takes_mut_self: false,   // Go doesn't have self
         takes_mut_params: false, // Go passes by value by default
-        returns_result: false, // Go uses multiple returns for errors
-        returns_option: false, // Go uses nil
-        is_async: false, // Go uses goroutines
-        is_unsafe: false, // Go doesn't have unsafe keyword
+        returns_result: false,   // Go uses multiple returns for errors
+        returns_option: false,   // Go uses nil
+        is_async: false,         // Go uses goroutines
+        is_unsafe: false,        // Go doesn't have unsafe keyword
         is_public,
         parameter_count: params.len() as i32,
         generic_count: if _generics.is_some() { 1 } else { 0 },
@@ -186,7 +174,7 @@ fn process_go_type(
     data: &mut ExtractedData,
 ) {
     let is_public = is_exported(name);
-    
+
     // Add code symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
@@ -195,7 +183,7 @@ fn process_go_type(
         line: node.start_position().row + 1,
         context: get_node_context(node, source),
     });
-    
+
     // Add type fact
     data.add_type(TypeFact {
         file: file_path.to_string(),
@@ -208,12 +196,7 @@ fn process_go_type(
 }
 
 /// Process a Go import and add to ExtractedData
-fn process_go_import(
-    node: &Node,
-    source: &[u8],
-    file_path: &str,
-    data: &mut ExtractedData,
-) {
+fn process_go_import(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
     // Handle both single imports and import blocks
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -223,14 +206,23 @@ fn process_go_import(
                     vec![alias]
                 } else {
                     // Extract package name from path
-                    vec![import_path.split('/').last().unwrap_or(&import_path).to_string()]
+                    vec![import_path
+                        .split('/')
+                        .next_back()
+                        .unwrap_or(&import_path)
+                        .to_string()]
                 };
-                
+
                 data.add_import(ImportFact {
                     file: file_path.to_string(),
                     import_path: import_path.clone(),
                     imported_names,
-                    import_kind: if import_path.starts_with('.') { "relative" } else { "external" }.to_string(),
+                    import_kind: if import_path.starts_with('.') {
+                        "relative"
+                    } else {
+                        "external"
+                    }
+                    .to_string(),
                     line_number: (node.start_position().row + 1) as i32,
                 });
             }
@@ -243,14 +235,23 @@ fn process_go_import(
                         let imported_names = if let Some(alias) = alias {
                             vec![alias]
                         } else {
-                            vec![import_path.split('/').last().unwrap_or(&import_path).to_string()]
+                            vec![import_path
+                                .split('/')
+                                .next_back()
+                                .unwrap_or(&import_path)
+                                .to_string()]
                         };
-                        
+
                         data.add_import(ImportFact {
                             file: file_path.to_string(),
                             import_path: import_path.clone(),
                             imported_names,
-                            import_kind: if import_path.starts_with('.') { "relative" } else { "external" }.to_string(),
+                            import_kind: if import_path.starts_with('.') {
+                                "relative"
+                            } else {
+                                "external"
+                            }
+                            .to_string(),
                             line_number: (spec.start_position().row + 1) as i32,
                         });
                     }
@@ -264,7 +265,7 @@ fn process_go_import(
 fn extract_import_spec(node: &Node, source: &[u8]) -> Option<(String, Option<String>)> {
     let mut alias = None;
     let mut path = None;
-    
+
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
@@ -281,7 +282,7 @@ fn extract_import_spec(node: &Node, source: &[u8]) -> Option<(String, Option<Str
             _ => {}
         }
     }
-    
+
     path.map(|p| (p, alias))
 }
 

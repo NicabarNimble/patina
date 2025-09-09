@@ -41,7 +41,7 @@ pub struct FunctionFact {
     pub is_public: bool,
     pub parameter_count: i32,
     pub generic_count: i32,
-    pub parameters: Vec<String>,  // Preserved as array!
+    pub parameters: Vec<String>, // Preserved as array!
     pub return_type: Option<String>,
 }
 
@@ -61,7 +61,7 @@ pub struct TypeFact {
 pub struct ImportFact {
     pub file: String,
     pub import_path: String,
-    pub imported_names: Vec<String>,  // Preserved as array!
+    pub imported_names: Vec<String>, // Preserved as array!
     pub import_kind: String,
     pub line_number: i32,
 }
@@ -87,17 +87,15 @@ pub struct Database {
 impl Database {
     /// Open or create a DuckDB database file
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let conn = Connection::open(path)
-            .context("Failed to open DuckDB database")?;
-        
+        let conn = Connection::open(path).context("Failed to open DuckDB database")?;
+
         Ok(Self { conn })
     }
 
     /// Create an in-memory database for testing
     pub fn open_in_memory() -> Result<Self> {
-        let conn = Connection::open_in_memory()
-            .context("Failed to create in-memory database")?;
-        
+        let conn = Connection::open_in_memory().context("Failed to create in-memory database")?;
+
         Ok(Self { conn })
     }
 
@@ -105,7 +103,7 @@ impl Database {
     pub fn init_schema(&mut self) -> Result<()> {
         // Use a transaction for atomic schema creation
         let tx = self.conn.transaction()?;
-        
+
         // Code search table with full-text indexing
         tx.execute(
             "CREATE TABLE IF NOT EXISTS code_search (
@@ -248,7 +246,7 @@ impl Database {
         }
 
         let mut appender = self.conn.appender("code_search")?;
-        
+
         for symbol in symbols {
             appender.append_row(params![
                 &symbol.path,
@@ -258,7 +256,7 @@ impl Database {
                 &symbol.context,
             ])?;
         }
-        
+
         appender.flush()?;
         Ok(symbols.len())
     }
@@ -271,14 +269,14 @@ impl Database {
 
         // Use prepared statement for better performance with many rows
         let mut stmt = self.conn.prepare(
-            "INSERT OR REPLACE INTO function_facts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT OR REPLACE INTO function_facts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )?;
 
         for func in functions {
             // Convert Vec<String> to a comma-separated string for now
             // TODO: Use proper array support when available in duckdb-rs
             let params_str = func.parameters.join(", ");
-            
+
             stmt.execute(params![
                 &func.file,
                 &func.name,
@@ -291,7 +289,7 @@ impl Database {
                 func.is_public,
                 func.parameter_count,
                 func.generic_count,
-                &params_str,  // Temporary: store as string
+                &params_str, // Temporary: store as string
                 &func.return_type,
             ])?;
         }
@@ -306,7 +304,7 @@ impl Database {
         }
 
         let mut appender = self.conn.appender("type_vocabulary")?;
-        
+
         for type_fact in types {
             appender.append_row(params![
                 &type_fact.file,
@@ -317,7 +315,7 @@ impl Database {
                 type_fact.usage_count,
             ])?;
         }
-        
+
         appender.flush()?;
         Ok(types.len())
     }
@@ -329,21 +327,21 @@ impl Database {
         }
 
         let mut appender = self.conn.appender("import_facts")?;
-        
+
         for import in imports {
             // Convert Vec<String> to comma-separated string for now
             // TODO: Use proper array support when available in duckdb-rs
             let names_str = import.imported_names.join(", ");
-            
+
             appender.append_row(params![
                 &import.file,
                 &import.import_path,
-                &names_str,  // Temporary: store as string
+                &names_str, // Temporary: store as string
                 &import.import_kind,
                 import.line_number,
             ])?;
         }
-        
+
         appender.flush()?;
         Ok(imports.len())
     }
@@ -355,7 +353,7 @@ impl Database {
         }
 
         let mut appender = self.conn.appender("call_graph")?;
-        
+
         for edge in edges {
             appender.append_row(params![
                 &edge.caller,
@@ -365,13 +363,19 @@ impl Database {
                 edge.line_number,
             ])?;
         }
-        
+
         appender.flush()?;
         Ok(edges.len())
     }
 
     /// Update index state for a file
-    pub fn update_index_state(&self, path: &str, mtime: i64, size: i64, hash: Option<&str>) -> Result<()> {
+    pub fn update_index_state(
+        &self,
+        path: &str,
+        mtime: i64,
+        size: i64,
+        hash: Option<&str>,
+    ) -> Result<()> {
         self.conn.execute(
             "INSERT OR REPLACE INTO index_state (path, mtime, size, hash) VALUES (?, ?, ?, ?)",
             params![path, mtime, size, hash],
@@ -396,14 +400,12 @@ impl Database {
 impl Database {
     /// Check if a file needs reindexing
     pub fn needs_reindex(&self, path: &str, mtime: i64) -> Result<bool> {
-        let mut stmt = self.conn.prepare(
-            "SELECT mtime FROM index_state WHERE path = ?"
-        )?;
-        
-        let mut rows = stmt.query_map(params![path], |row| {
-            row.get::<_, i64>(0)
-        })?;
-        
+        let mut stmt = self
+            .conn
+            .prepare("SELECT mtime FROM index_state WHERE path = ?")?;
+
+        let mut rows = stmt.query_map(params![path], |row| row.get::<_, i64>(0))?;
+
         match rows.next() {
             Some(Ok(stored_mtime)) => Ok(stored_mtime < mtime),
             _ => Ok(true), // Not indexed yet
@@ -416,24 +418,25 @@ impl Database {
             "SELECT name, parameters, return_type 
              FROM function_facts 
              WHERE file = ?
-             ORDER BY name"
+             ORDER BY name",
         )?;
-        
+
         let functions = stmt.query_map(params![file_path], |row| {
             let name: String = row.get(0)?;
-            let params_str: String = row.get(1)?;  // Now stored as string
+            let params_str: String = row.get(1)?; // Now stored as string
             let return_type: Option<String> = row.get(2)?;
-            
+
             let signature = format!(
                 "{}({}){}",
                 name,
-                params_str,  // Already formatted
+                params_str, // Already formatted
                 return_type.map_or(String::new(), |t| format!(" -> {}", t))
             );
             Ok(signature)
         })?;
-        
-        functions.collect::<Result<Vec<_>, _>>()
+
+        functions
+            .collect::<Result<Vec<_>, _>>()
             .context("Failed to fetch functions")
     }
 
@@ -444,9 +447,9 @@ impl Database {
              FROM code_search 
              WHERE name LIKE ?
              ORDER BY path, line
-             LIMIT 100"
+             LIMIT 100",
         )?;
-        
+
         let symbols = stmt.query_map(params![format!("%{}%", pattern)], |row| {
             Ok(CodeSymbol {
                 path: row.get(0)?,
@@ -456,8 +459,9 @@ impl Database {
                 context: row.get(4)?,
             })
         })?;
-        
-        symbols.collect::<Result<Vec<_>, _>>()
+
+        symbols
+            .collect::<Result<Vec<_>, _>>()
             .context("Failed to search symbols")
     }
 
@@ -467,14 +471,13 @@ impl Database {
             "SELECT callee, call_type 
              FROM call_graph 
              WHERE caller = ?
-             ORDER BY line_number"
+             ORDER BY line_number",
         )?;
-        
-        let edges = stmt.query_map(params![function], |row| {
-            Ok((row.get(0)?, row.get(1)?))
-        })?;
-        
-        edges.collect::<Result<Vec<_>, _>>()
+
+        let edges = stmt.query_map(params![function], |row| Ok((row.get(0)?, row.get(1)?)))?;
+
+        edges
+            .collect::<Result<Vec<_>, _>>()
             .context("Failed to fetch call graph")
     }
 }
@@ -486,39 +489,35 @@ mod tests {
     #[test]
     fn test_database_operations() -> Result<()> {
         // Create in-memory database for testing
-        let db = Database::open_in_memory()?;
+        let mut db = Database::open_in_memory()?;
         db.init_schema()?;
 
         // Test inserting symbols
-        let symbols = vec![
-            CodeSymbol {
-                path: "src/main.rs".to_string(),
-                name: "main".to_string(),
-                kind: "function".to_string(),
-                line: 10,
-                context: "fn main() {".to_string(),
-            },
-        ];
+        let symbols = vec![CodeSymbol {
+            path: "src/main.rs".to_string(),
+            name: "main".to_string(),
+            kind: "function".to_string(),
+            line: 10,
+            context: "fn main() {".to_string(),
+        }];
         assert_eq!(db.insert_symbols(&symbols)?, 1);
 
         // Test inserting functions with arrays
-        let functions = vec![
-            FunctionFact {
-                file: "src/lib.rs".to_string(),
-                name: "process".to_string(),
-                takes_mut_self: false,
-                takes_mut_params: true,
-                returns_result: true,
-                returns_option: false,
-                is_async: true,
-                is_unsafe: false,
-                is_public: true,
-                parameter_count: 2,
-                generic_count: 1,
-                parameters: vec!["data: &mut [u8]".to_string(), "opts: Options".to_string()],
-                return_type: Some("Result<()>".to_string()),
-            },
-        ];
+        let functions = vec![FunctionFact {
+            file: "src/lib.rs".to_string(),
+            name: "process".to_string(),
+            takes_mut_self: false,
+            takes_mut_params: true,
+            returns_result: true,
+            returns_option: false,
+            is_async: true,
+            is_unsafe: false,
+            is_public: true,
+            parameter_count: 2,
+            generic_count: 1,
+            parameters: vec!["data: &mut [u8]".to_string(), "opts: Options".to_string()],
+            return_type: Some("Result<()>".to_string()),
+        }];
         assert_eq!(db.insert_functions(&functions)?, 1);
 
         // Test querying
