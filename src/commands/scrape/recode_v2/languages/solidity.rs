@@ -18,10 +18,10 @@
 //! - Library and contract declarations
 
 use crate::commands::scrape::recode_v2::database::{
-    CallEdge, CodeSymbol, FunctionFact, ImportFact, TypeFact,
+    CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
 use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
-use crate::commands::scrape::recode_v2::types::{CallType, FilePath, SymbolKind};
+use crate::commands::scrape::recode_v2::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
@@ -429,13 +429,13 @@ fn extract_solidity_calls(
             if let Some(caller) = current_function {
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
-                        data.add_call_edge(CallEdge {
-                            caller: caller.clone(),
-                            callee: callee.to_string(),
-                            file: file_path.to_string(),
-                            call_type: CallType::Direct.to_string(),
+                        data.add_call_edge(CallGraphEntry::new(
+                            caller.clone(),
+                            callee.to_string(),
+                            file_path.to_string(),
+                            CallType::Direct,
                             line_number,
-                        });
+                        ));
                     }
                 }
             }
@@ -447,13 +447,13 @@ fn extract_solidity_calls(
                     if let Some(caller) = current_function {
                         if let Some(property) = node.child_by_field_name("property") {
                             if let Ok(callee) = property.utf8_text(source) {
-                                data.add_call_edge(CallEdge {
-                                    caller: caller.clone(),
-                                    callee: callee.to_string(),
-                                    file: file_path.to_string(),
-                                    call_type: CallType::Method.to_string(),
+                                data.add_call_edge(CallGraphEntry::new(
+                                    caller.clone(),
+                                    callee.to_string(),
+                                    file_path.to_string(),
+                                    CallType::Method,
                                     line_number,
-                                });
+                                ));
                             }
                         }
                     }
@@ -467,13 +467,13 @@ fn extract_solidity_calls(
                     if let Some(contract_name) =
                         text.strip_prefix("new ").and_then(|s| s.split('(').next())
                     {
-                        data.add_call_edge(CallEdge {
-                            caller: caller.clone(),
-                            callee: format!("new {}", contract_name.trim()),
-                            file: file_path.to_string(),
-                            call_type: CallType::Constructor.to_string(),
+                        data.add_call_edge(CallGraphEntry::new(
+                            caller.clone(),
+                            format!("new {}", contract_name.trim()),
+                            file_path.to_string(),
+                            CallType::Constructor,
                             line_number,
-                        });
+                        ));
                     }
                 }
             }
