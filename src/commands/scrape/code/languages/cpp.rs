@@ -20,7 +20,7 @@
 use crate::commands::scrape::code::database::{
     CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
-use crate::commands::scrape::code::extracted_data::ExtractedData;
+use crate::commands::scrape::code::extracted_data::{ExtractedData, ConstantFact, MemberFact};
 use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
@@ -389,6 +389,48 @@ fn process_cpp_enum(
         visibility: "public".to_string(),
         usage_count: 0,
     });
+    
+    // Extract enum values
+    if let Some(list_node) = node.child_by_field_name("body") {
+        let mut cursor = list_node.walk();
+        for child in list_node.children(&mut cursor) {
+            if child.kind() == "enumerator" {
+                if let Some(name_node) = child.child_by_field_name("name") {
+                    if let Ok(value_name) = name_node.utf8_text(source) {
+                        let value = child
+                            .child_by_field_name("value")
+                            .and_then(|v| v.utf8_text(source).ok())
+                            .map(|s| s.to_string());
+                        
+                        let full_name = format!("{}::{}", name, value_name);
+                        
+                        // Add as symbol for backwards compatibility
+                        data.add_symbol(CodeSymbol {
+                            path: file_path.to_string(),
+                            name: full_name.clone(),
+                            kind: "enum_value".to_string(),
+                            line: child.start_position().row + 1,
+                            context: if let Some(val) = &value {
+                                format!("{} = {}", value_name, val)
+                            } else {
+                                value_name.to_string()
+                            },
+                        });
+                        
+                        // Add as ConstantFact for better organization
+                        data.add_constant(ConstantFact {
+                            file: file_path.to_string(),
+                            name: full_name,
+                            value: value.clone(),
+                            const_type: "enum_value".to_string(),
+                            scope: name.to_string(),
+                            line: child.start_position().row + 1,
+                        });
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Process a C++ typedef/using and add to ExtractedData
@@ -467,13 +509,32 @@ fn extract_class_members(
                 // Extract member fields
                 if let Some(declarator) = child.child_by_field_name("declarator") {
                     if let Some(name) = extract_declarator_name(&declarator, source) {
+                        // Check for static/const modifiers
+                        let mut modifiers = Vec::new();
+                        let text = child.utf8_text(source).unwrap_or("");
+                        if text.contains("static") { modifiers.push("static".to_string()); }
+                        if text.contains("const") { modifiers.push("const".to_string()); }
+                        if text.contains("mutable") { modifiers.push("mutable".to_string()); }
+                        
+                        // Add as symbol for backwards compatibility
                         data.add_symbol(CodeSymbol {
                             path: file_path.to_string(),
                             name: format!("{}::{}", class_name, name),
                             kind: "field".to_string(),
                             line: child.start_position().row + 1,
                             context: format!("{} {}", current_visibility, 
-                                child.utf8_text(source).unwrap_or("").lines().next().unwrap_or("")),
+                                text.lines().next().unwrap_or("")),
+                        });
+                        
+                        // Add as MemberFact for better organization
+                        data.add_member(MemberFact {
+                            file: file_path.to_string(),
+                            container: class_name.to_string(),
+                            name: name.clone(),
+                            member_type: "field".to_string(),
+                            visibility: current_visibility.to_string(),
+                            modifiers,
+                            line: child.start_position().row + 1,
                         });
                     }
                 }
@@ -481,16 +542,32 @@ fn extract_class_members(
             "function_definition" | "declaration" => {
                 // Methods are handled separately but we track visibility
                 if let Some(name) = extract_function_name(&child, source) {
-                    let is_static = child.utf8_text(source)
-                        .unwrap_or("")
-                        .contains("static");
-                    let is_virtual = child.utf8_text(source)
-                        .unwrap_or("")
-                        .contains("virtual");
+                    let text = child.utf8_text(source).unwrap_or("");
+                    let is_static = text.contains("static");
+                    let is_virtual = text.contains("virtual");
+                    let is_const = text.contains(") const");
+                    let is_override = text.contains("override");
+                    let is_constructor = name == class_name.split("::").last().unwrap_or(class_name);
+                    let is_destructor = name.starts_with('~');
                     
-                    let kind = if name == class_name.split("::").last().unwrap_or(class_name) {
+                    // Build modifiers list
+                    let mut modifiers = Vec::new();
+                    if is_static { modifiers.push("static".to_string()); }
+                    if is_virtual { modifiers.push("virtual".to_string()); }
+                    if is_const { modifiers.push("const".to_string()); }
+                    if is_override { modifiers.push("override".to_string()); }
+                    
+                    let member_type = if is_constructor {
                         "constructor"
-                    } else if name.starts_with('~') {
+                    } else if is_destructor {
+                        "destructor"
+                    } else {
+                        "method"
+                    };
+                    
+                    let kind = if is_constructor {
+                        "constructor"
+                    } else if is_destructor {
                         "destructor"
                     } else if is_static {
                         "static_method"
@@ -500,13 +577,25 @@ fn extract_class_members(
                         "method"
                     };
                     
+                    // Add as symbol for backwards compatibility
                     data.add_symbol(CodeSymbol {
                         path: file_path.to_string(),
                         name: format!("{}::{}", class_name, name),
                         kind: kind.to_string(),
                         line: child.start_position().row + 1,
                         context: format!("{} {}", current_visibility,
-                            child.utf8_text(source).unwrap_or("").lines().next().unwrap_or("")),
+                            text.lines().next().unwrap_or("")),
+                    });
+                    
+                    // Add as MemberFact for better organization
+                    data.add_member(MemberFact {
+                        file: file_path.to_string(),
+                        container: class_name.to_string(),
+                        name: name.clone(),
+                        member_type: member_type.to_string(),
+                        visibility: current_visibility.to_string(),
+                        modifiers,
+                        line: child.start_position().row + 1,
                     });
                 }
             }
@@ -592,6 +681,7 @@ fn process_cpp_macro(node: &Node, source: &[u8], file_path: &str, data: &mut Ext
                 .unwrap_or("")
                 .to_string();
             
+            // Add as symbol for backwards compatibility
             data.add_symbol(CodeSymbol {
                 path: file_path.to_string(),
                 name: name.to_string(),
@@ -600,16 +690,15 @@ fn process_cpp_macro(node: &Node, source: &[u8], file_path: &str, data: &mut Ext
                 context,
             });
             
-            if let Some(val) = value {
-                data.add_type(TypeFact {
-                    file: file_path.to_string(),
-                    name: name.to_string(),
-                    definition: format!("#define {} {}", name, val),
-                    kind: "macro".to_string(),
-                    visibility: "public".to_string(),
-                    usage_count: 0,
-                });
-            }
+            // Add as ConstantFact for better organization
+            data.add_constant(ConstantFact {
+                file: file_path.to_string(),
+                name: name.to_string(),
+                value: value.clone(),
+                const_type: "macro".to_string(),
+                scope: "global".to_string(),
+                line: node.start_position().row + 1,
+            });
         }
     }
 }
@@ -662,12 +751,35 @@ fn process_cpp_declaration(node: &Node, source: &[u8], file_path: &str, data: &m
                         .unwrap_or("")
                         .to_string();
                     
+                    // Add as symbol for backwards compatibility
                     data.add_symbol(CodeSymbol {
                         path: file_path.to_string(),
                         name: name.clone(),
                         kind: kind.to_string(),
                         line: node.start_position().row + 1,
-                        context,
+                        context: context.clone(),
+                    });
+                    
+                    // Add as ConstantFact for better organization
+                    let const_type = if is_constexpr {
+                        "constexpr"
+                    } else if is_const {
+                        "const"
+                    } else if is_static {
+                        "static"
+                    } else if is_extern {
+                        "extern"
+                    } else {
+                        "global"
+                    }.to_string();
+                    
+                    data.add_constant(ConstantFact {
+                        file: file_path.to_string(),
+                        name: name.clone(),
+                        value: None, // Could extract initializer value here
+                        const_type,
+                        scope: "global".to_string(),
+                        line: node.start_position().row + 1,
                     });
                 }
             }
