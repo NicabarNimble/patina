@@ -4,9 +4,7 @@
 //! Central module for all language implementations.
 //! Each language gets its own file with a complete, self-contained implementation.
 
-use anyhow::{Context, Result};
 use std::path::Path;
-use tree_sitter::Parser;
 
 // ============================================================================
 // LANGUAGE MODULES
