@@ -9,7 +9,7 @@
 //! - Proper type preservation (arrays, booleans, JSON)
 //! - Transaction support with automatic rollback
 
-use crate::commands::scrape::recode_v2::types::CallGraphEntry;
+use crate::commands::scrape::code::types::CallGraphEntry;
 use anyhow::{Context, Result};
 use duckdb::{params, Connection};
 use std::path::Path;
