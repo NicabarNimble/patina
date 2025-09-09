@@ -10,7 +10,7 @@
 //! - Transaction support with automatic rollback
 
 use anyhow::{Context, Result};
-use duckdb::{params, Connection, Transaction};
+use duckdb::{params, Connection};
 use std::path::Path;
 use crate::commands::scrape::recode_v2::types::CallGraphEntry;
 
@@ -68,8 +68,6 @@ pub struct ImportFact {
 }
 
 /// Call graph edge
-// Type alias for backward compatibility during migration
-pub type CallEdge = CallGraphEntry;
 
 // ============================================================================
 // DATABASE CONNECTION
