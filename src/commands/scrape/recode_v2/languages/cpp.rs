@@ -1,7 +1,13 @@
 // ============================================================================
-// C++ LANGUAGE IMPLEMENTATION
+// C++ LANGUAGE PROCESSOR V2 - STRUCT-BASED
 // ============================================================================
-//! C++-specific code extraction and analysis.
+//! C++ language processor that returns typed structs instead of SQL strings.
+//!
+//! This is the refactored version that:
+//! - Returns ExtractedData with typed structs
+//! - No SQL string generation
+//! - Direct data extraction to domain types
+//! - Uses iterative approach for nested declarators to avoid stack overflow
 //!
 //! Handles C++'s features:
 //! - Classes with access modifiers (public/private/protected)
@@ -11,195 +17,601 @@
 //! - RAII and constructors/destructors
 //! - Modern C++ features (auto, lambdas, etc.)
 
-use crate::commands::scrape::recode_v2::LanguageSpec;
+use crate::commands::scrape::recode_v2::database::{
+    CodeSymbol, FunctionFact, ImportFact, TypeFact,
+};
+use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
+use crate::commands::scrape::recode_v2::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
+use anyhow::{Context, Result};
+use tree_sitter::{Node, Parser};
 
-/// C++ language specification
-pub static SPEC: LanguageSpec = LanguageSpec {
-    is_doc_comment: |text| {
-        // C++ uses /** */ or /// for doc comments
-        text.starts_with("/**") || text.starts_with("///") || text.starts_with("//!")
-    },
+/// C++ language processor - returns typed structs
+pub struct CppProcessor;
 
-    parse_visibility: |node, _name, source| {
-        // Check for public/private/protected access specifiers
-        // Default is private for class, public for struct
-        let mut cursor = node.walk();
-        let parent = node.parent();
+impl CppProcessor {
+    /// Process a C++ file and extract all symbols to typed structs
+    pub fn process_file(file_path: FilePath, content: &[u8]) -> Result<ExtractedData> {
+        let mut data = ExtractedData::new();
 
-        // Check if we're in a class (default private) or struct (default public)
-        let default_public = parent
-            .is_none_or(|p| p.kind() == "struct_specifier" || p.kind() == "namespace_definition");
+        // Set up tree-sitter parser for C++
+        let mut parser = Parser::new();
+        let metal = patina_metal::Metal::Cpp;
+        let language = metal
+            .tree_sitter_language_for_ext("cpp")
+            .ok_or_else(|| anyhow::anyhow!("No C++ parser available"))?;
+        parser
+            .set_language(&language)
+            .context("Failed to set C++ language")?;
 
-        // Look for explicit access specifiers
-        for child in node.children(&mut cursor) {
-            if let Ok(text) = child.utf8_text(source) {
-                if text.contains("private") {
-                    return false;
-                } else if text.contains("public") {
-                    return true;
+        // Parse the file
+        let tree = parser
+            .parse(content, None)
+            .context("Failed to parse C++ file")?;
+
+        // Walk the AST and extract symbols
+        let mut namespace_stack = Vec::new();
+        extract_cpp_symbols(
+            &tree.root_node(),
+            content,
+            &file_path.to_string(),
+            &mut data,
+            None,
+            &mut namespace_stack,
+        );
+
+        Ok(data)
+    }
+}
+
+/// Recursively extract symbols from the C++ AST
+fn extract_cpp_symbols(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    data: &mut ExtractedData,
+    current_function: Option<String>,
+    namespace_stack: &mut Vec<String>,
+) {
+    match node.kind() {
+        "namespace_definition" => {
+            // Enter namespace
+            if let Some(name_node) = node.child_by_field_name("name") {
+                if let Ok(name) = name_node.utf8_text(source) {
+                    namespace_stack.push(name.to_string());
+                }
+            }
+
+            // Process namespace body
+            if let Some(body) = node.child_by_field_name("body") {
+                let mut cursor = body.walk();
+                for child in body.children(&mut cursor) {
+                    extract_cpp_symbols(
+                        &child,
+                        source,
+                        file_path,
+                        data,
+                        current_function.clone(),
+                        namespace_stack,
+                    );
+                }
+            }
+
+            // Exit namespace
+            namespace_stack.pop();
+            return; // Don't recurse again
+        }
+        "function_definition" => {
+            if let Some(name) = extract_function_name(node, source) {
+                // Include namespace in function name
+                let full_name = if namespace_stack.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{}::{}", namespace_stack.join("::"), name)
+                };
+
+                process_cpp_function(node, source, file_path, &full_name, data);
+
+                // Process function body with updated context
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    extract_cpp_symbols(
+                        &child,
+                        source,
+                        file_path,
+                        data,
+                        Some(full_name.clone()),
+                        namespace_stack,
+                    );
+                }
+                return; // Don't recurse again
+            }
+        }
+        "class_specifier" | "struct_specifier" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                if let Ok(name) = name_node.utf8_text(source) {
+                    let kind = if node.kind() == "class_specifier" {
+                        SymbolKind::Class
+                    } else {
+                        SymbolKind::Struct
+                    };
+
+                    // Include namespace in type name
+                    let full_name = if namespace_stack.is_empty() {
+                        name.to_string()
+                    } else {
+                        format!("{}::{}", namespace_stack.join("::"), name)
+                    };
+
+                    process_cpp_class(node, source, file_path, &full_name, kind, data);
+
+                    // Process class body with updated namespace
+                    namespace_stack.push(name.to_string());
+                    if let Some(body) = node.child_by_field_name("body") {
+                        let mut cursor = body.walk();
+                        for child in body.children(&mut cursor) {
+                            extract_cpp_symbols(
+                                &child,
+                                source,
+                                file_path,
+                                data,
+                                current_function.clone(),
+                                namespace_stack,
+                            );
+                        }
+                    }
+                    namespace_stack.pop();
+                    return; // Don't recurse again
                 }
             }
         }
-        default_public
-    },
-
-    has_async: |_node, _source| {
-        // C++ doesn't have async keyword (uses std::async)
-        false
-    },
-
-    has_unsafe: |_node, _source| {
-        // All C++ is technically unsafe from Rust's perspective
-        true
-    },
-
-    extract_params: |node, source| {
-        if let Some(params_node) = node
-            .child_by_field_name("declarator")
-            .and_then(|d| d.child_by_field_name("parameters"))
-        {
-            let mut params = Vec::new();
-            let mut cursor = params_node.walk();
-            for child in params_node.children(&mut cursor) {
-                if child.kind() == "parameter_declaration"
-                    || child.kind() == "optional_parameter_declaration"
-                {
-                    if let Ok(param_text) = child.utf8_text(source) {
-                        params.push(param_text.to_string());
+        "enum_specifier" | "enum_class_specifier" => {
+            if let Some(name_node) = node.child_by_field_name("name") {
+                if let Ok(name) = name_node.utf8_text(source) {
+                    let full_name = if namespace_stack.is_empty() {
+                        name.to_string()
+                    } else {
+                        format!("{}::{}", namespace_stack.join("::"), name)
+                    };
+                    process_cpp_enum(node, source, file_path, &full_name, data);
+                }
+            }
+        }
+        "type_definition" | "alias_declaration" => {
+            if let Some(name) = extract_typedef_name(node, source) {
+                let full_name = if namespace_stack.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{}::{}", namespace_stack.join("::"), name)
+                };
+                process_cpp_typedef(node, source, file_path, &full_name, data);
+            }
+        }
+        "preproc_include" | "preproc_import" => {
+            process_cpp_include(node, source, file_path, data);
+        }
+        "call_expression" => {
+            // Track function calls for call graph
+            if let Some(ref caller) = current_function {
+                if let Some(func_node) = node.child_by_field_name("function") {
+                    if let Ok(callee) = func_node.utf8_text(source) {
+                        data.add_call_edge(CallGraphEntry::new(
+                            caller.clone(),
+                            callee.to_string(),
+                            file_path.to_string(),
+                            CallType::Direct,
+                            (node.start_position().row + 1) as i32,
+                        ));
                     }
                 }
             }
-            params
-        } else {
-            Vec::new()
         }
-    },
-
-    extract_return_type: |node, source| {
-        // Look for trailing return type first (C++11 style)
-        node.child_by_field_name("trailing_return_type")
-            .or_else(|| node.child_by_field_name("type"))
-            .and_then(|t| t.utf8_text(source).ok())
-            .map(String::from)
-    },
-
-    extract_generics: |node, source| {
-        // Look for template parameters
-        node.parent()
-            .and_then(|p| {
-                if p.kind() == "template_declaration" {
-                    p.child_by_field_name("parameters")
-                } else {
-                    None
+        "new_expression" => {
+            // Constructor calls
+            if let Some(ref caller) = current_function {
+                if let Some(type_node) = node.child_by_field_name("type") {
+                    if let Ok(class_name) = type_node.utf8_text(source) {
+                        data.add_call_edge(CallGraphEntry::new(
+                            caller.clone(),
+                            format!("{}::constructor", class_name),
+                            file_path.to_string(),
+                            CallType::Constructor,
+                            (node.start_position().row + 1) as i32,
+                        ));
+                    }
                 }
-            })
-            .and_then(|tp| tp.utf8_text(source).ok())
-            .map(String::from)
-    },
-
-    get_symbol_kind: |node_kind| match node_kind {
-        "function_definition" => "function",
-        "class_specifier" => "class",
-        "struct_specifier" => "struct",
-        "union_specifier" => "union",
-        "enum_specifier" => "enum",
-        "namespace_definition" => "namespace",
-        "template_declaration" => "template",
-        "type_alias_declaration" | "using_declaration" => "type_alias",
-        "declaration" => "variable",
-        "preproc_include" => "import",
-        _ => "unknown",
-    },
-
-    get_symbol_kind_complex: |node, _source| {
-        // Check if template_declaration contains a class/struct/function
-        if node.kind() == "template_declaration" {
-            if let Some(child) = node.named_child(1) {
-                return match child.kind() {
-                    "class_specifier" => Some("template_class"),
-                    "struct_specifier" => Some("template_struct"),
-                    "function_definition" => Some("template_function"),
-                    _ => Some("template"),
-                };
             }
         }
-        None
-    },
+        "delete_expression" => {
+            // Destructor calls
+            if let Some(ref caller) = current_function {
+                if let Some(arg_node) = node.child_by_field_name("argument") {
+                    if let Ok(var_name) = arg_node.utf8_text(source) {
+                        data.add_call_edge(CallGraphEntry::new(
+                            caller.clone(),
+                            format!("~{}", var_name),
+                            file_path.to_string(),
+                            CallType::Destructor,
+                            (node.start_position().row + 1) as i32,
+                        ));
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
 
-    clean_doc_comment: |raw| {
-        raw.lines()
-            .map(|line| {
-                line.trim()
-                    .strip_prefix("///")
-                    .or_else(|| line.strip_prefix("//!"))
-                    .or_else(|| line.strip_prefix("//"))
-                    .or_else(|| line.strip_prefix("/**"))
-                    .or_else(|| line.strip_prefix("/*"))
-                    .or_else(|| line.strip_prefix("*"))
-                    .or_else(|| line.strip_suffix("*/"))
-                    .unwrap_or(line)
-                    .trim()
-            })
-            .filter(|line| !line.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ")
-    },
+    // Recurse into children
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        extract_cpp_symbols(
+            &child,
+            source,
+            file_path,
+            data,
+            current_function.clone(),
+            namespace_stack,
+        );
+    }
+}
 
-    extract_import_details: |node, source| {
-        let import_text = node.utf8_text(source).unwrap_or("");
-        let import_clean = import_text
+/// Process a C++ function and add to ExtractedData
+fn process_cpp_function(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let params = extract_parameters(node, source);
+    let return_type = extract_return_type(node, source);
+    let _is_template = has_template_parent(node);
+    let is_public = is_public_member(node, source);
+
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: "function".to_string(),
+        line: node.start_position().row + 1,
+        context: extract_context(node, source),
+    });
+
+    // Add function fact
+    data.add_function(FunctionFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        takes_mut_self: false, // Would need more analysis
+        takes_mut_params: params.iter().any(|p| !p.contains("const")),
+        returns_result: false, // C++ uses exceptions
+        returns_option: return_type.as_ref().is_some_and(|r| r.contains("optional")),
+        is_async: false, // C++ doesn't have built-in async
+        is_unsafe: true, // All C++ is unsafe
+        is_public,
+        parameter_count: params.len() as i32,
+        generic_count: if _is_template { 1 } else { 0 },
+        parameters: params,
+        return_type,
+    });
+}
+
+/// Process a C++ class/struct and add to ExtractedData
+fn process_cpp_class(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    kind: SymbolKind,
+    data: &mut ExtractedData,
+) {
+    let _is_template = has_template_parent(node);
+
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: kind.to_string(),
+        line: node.start_position().row + 1,
+        context: extract_context(node, source),
+    });
+
+    // Add type fact
+    data.add_type(TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: get_type_definition(node, source),
+        kind: kind.to_string(),
+        visibility: "public".to_string(), // Top-level types are public
+        usage_count: 0,
+    });
+}
+
+/// Process a C++ enum and add to ExtractedData
+fn process_cpp_enum(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let is_enum_class = node.kind() == "enum_class_specifier";
+
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: if is_enum_class { "enum_class" } else { "enum" }.to_string(),
+        line: node.start_position().row + 1,
+        context: extract_context(node, source),
+    });
+
+    // Add type fact
+    data.add_type(TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: get_type_definition(node, source),
+        kind: if is_enum_class { "enum_class" } else { "enum" }.to_string(),
+        visibility: "public".to_string(),
+        usage_count: 0,
+    });
+}
+
+/// Process a C++ typedef/using and add to ExtractedData
+fn process_cpp_typedef(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    let is_using = node.kind() == "alias_declaration";
+
+    // Add code symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: if is_using { "using" } else { "typedef" }.to_string(),
+        line: node.start_position().row + 1,
+        context: extract_context(node, source),
+    });
+
+    // Add type fact
+    data.add_type(TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: get_type_definition(node, source),
+        kind: if is_using { "using" } else { "typedef" }.to_string(),
+        visibility: "public".to_string(),
+        usage_count: 0,
+    });
+}
+
+/// Process a C++ include directive and add to ExtractedData
+fn process_cpp_include(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
+    if let Ok(include_text) = node.utf8_text(source) {
+        let header = include_text
             .trim_start_matches("#include")
+            .trim_start_matches("#import")
             .trim()
             .trim_start_matches('<')
             .trim_start_matches('"')
             .trim_end_matches('>')
             .trim_end_matches('"');
-        // System headers use <>, local headers use ""
-        let is_external = import_text.contains('<');
-        (
-            import_clean.to_string(),
-            import_clean.to_string(),
-            is_external,
-        )
-    },
+        let is_external = include_text.contains('<');
 
-    extract_calls: Some(|node, source, context| {
-        let line_number = (node.start_position().row + 1) as i32;
+        data.add_import(ImportFact {
+            file: file_path.to_string(),
+            import_path: header.to_string(),
+            imported_names: vec![header.to_string()],
+            import_kind: if is_external { "system" } else { "local" }.to_string(),
+            line_number: (node.start_position().row + 1) as i32,
+        });
+    }
+}
 
-        match node.kind() {
-            "call_expression" => {
-                // C++ function/method calls
-                if let Some(func_node) = node.child_by_field_name("function") {
-                    if let Ok(callee) = func_node.utf8_text(source) {
-                        context.add_call(callee.to_string(), "direct".to_string(), line_number);
-                    }
+/// Extract function name from C++ function_definition node
+fn extract_function_name(node: &Node, source: &[u8]) -> Option<String> {
+    // First check for simple declarator with name
+    if let Some(declarator) = node.child_by_field_name("declarator") {
+        return extract_cpp_function_name(declarator)
+            .and_then(|n| n.utf8_text(source).ok())
+            .map(|s| s.to_string());
+    }
+
+    // Fallback to standard name field
+    node.child_by_field_name("name")
+        .and_then(|n| n.utf8_text(source).ok())
+        .map(|s| s.to_string())
+}
+
+/// Extract C++ function name from declarator (iterative to avoid stack overflow)
+fn extract_cpp_function_name(declarator: Node) -> Option<Node> {
+    let mut current = declarator;
+
+    loop {
+        match current.kind() {
+            "identifier" | "field_identifier" | "destructor_name" | "operator_name" => {
+                return Some(current);
+            }
+            "qualified_identifier" => {
+                // For qualified names like Class::method
+                if let Some(name) = current.child_by_field_name("name") {
+                    return Some(name);
                 }
             }
-            "template_function" => {
-                // C++ template instantiations
-                if let Some(name_node) = node.child_by_field_name("name") {
-                    if let Ok(template_name) = name_node.utf8_text(source) {
-                        context.add_call(
-                            template_name.to_string(),
-                            "template".to_string(),
-                            line_number,
-                        );
-                    }
+            "function_declarator" => {
+                if let Some(inner) = current.child_by_field_name("declarator") {
+                    current = inner;
+                    continue;
                 }
             }
-            "new_expression" => {
-                // C++ new operator
-                if let Some(type_node) = node.child_by_field_name("type") {
-                    if let Ok(type_name) = type_node.utf8_text(source) {
-                        context.add_call(
-                            format!("new {}", type_name),
-                            "constructor".to_string(),
-                            line_number,
-                        );
-                    }
+            "pointer_declarator" | "reference_declarator" => {
+                if let Some(inner) = current.child_by_field_name("declarator") {
+                    current = inner;
+                    continue;
                 }
             }
             _ => {}
         }
-    }),
-};
+
+        // Check children
+        let mut cursor = current.walk();
+        for child in current.children(&mut cursor) {
+            if matches!(
+                child.kind(),
+                "identifier" | "field_identifier" | "destructor_name" | "operator_name"
+            ) {
+                return Some(child);
+            }
+        }
+
+        return None;
+    }
+}
+
+/// Extract typedef/using name
+fn extract_typedef_name(node: &Node, source: &[u8]) -> Option<String> {
+    // For using declarations
+    if node.kind() == "alias_declaration" {
+        return node
+            .child_by_field_name("name")
+            .and_then(|n| n.utf8_text(source).ok())
+            .map(|s| s.to_string());
+    }
+
+    // For typedef
+    if let Some(declarator) = node.child_by_field_name("declarator") {
+        return extract_declarator_name(&declarator, source);
+    }
+
+    None
+}
+
+/// Extract name from a declarator
+fn extract_declarator_name(declarator: &Node, source: &[u8]) -> Option<String> {
+    if matches!(declarator.kind(), "type_identifier" | "identifier") {
+        return declarator.utf8_text(source).ok().map(|s| s.to_string());
+    }
+
+    if declarator.kind() == "pointer_declarator" || declarator.kind() == "reference_declarator" {
+        if let Some(inner) = declarator.child_by_field_name("declarator") {
+            return extract_declarator_name(&inner, source);
+        }
+    }
+
+    let mut cursor = declarator.walk();
+    for child in declarator.children(&mut cursor) {
+        if matches!(child.kind(), "type_identifier" | "identifier") {
+            return child.utf8_text(source).ok().map(|s| s.to_string());
+        }
+    }
+
+    None
+}
+
+/// Extract function parameters
+fn extract_parameters(node: &Node, source: &[u8]) -> Vec<String> {
+    if let Some(declarator) = node.child_by_field_name("declarator") {
+        if let Some(params_node) = declarator.child_by_field_name("parameters") {
+            let mut params = Vec::new();
+            let mut cursor = params_node.walk();
+            for child in params_node.children(&mut cursor) {
+                if matches!(
+                    child.kind(),
+                    "parameter_declaration" | "optional_parameter_declaration"
+                ) {
+                    if let Ok(param_text) = child.utf8_text(source) {
+                        params.push(param_text.to_string());
+                    }
+                }
+            }
+            return params;
+        }
+    }
+    Vec::new()
+}
+
+/// Extract return type
+fn extract_return_type(node: &Node, source: &[u8]) -> Option<String> {
+    // Check for trailing return type (C++11)
+    if let Some(trailing) = node.child_by_field_name("trailing_return_type") {
+        if let Ok(text) = trailing.utf8_text(source) {
+            return Some(text.trim_start_matches("->").trim().to_string());
+        }
+    }
+
+    // Standard return type
+    node.child_by_field_name("type")
+        .and_then(|t| t.utf8_text(source).ok())
+        .map(String::from)
+}
+
+/// Check if node has a template parent
+fn has_template_parent(node: &Node) -> bool {
+    let mut current = Some(*node);
+    while let Some(n) = current {
+        if n.kind() == "template_declaration" {
+            return true;
+        }
+        current = n.parent();
+    }
+    false
+}
+
+/// Check if a member is public
+fn is_public_member(node: &Node, source: &[u8]) -> bool {
+    // Check parent for class/struct context
+    let mut current = node.parent();
+    while let Some(parent) = current {
+        match parent.kind() {
+            "struct_specifier" => return true, // Struct members are public by default
+            "class_specifier" => {
+                // Class members are private by default
+                // Look for access specifier before this node
+                let mut is_public = false;
+                let mut cursor = parent.walk();
+                for sibling in parent.children(&mut cursor) {
+                    if sibling.kind() == "access_specifier" {
+                        if let Ok(text) = sibling.utf8_text(source) {
+                            is_public = text.contains("public");
+                        }
+                    }
+                    if sibling.start_byte() >= node.start_byte() {
+                        return is_public;
+                    }
+                }
+                return false;
+            }
+            _ => current = parent.parent(),
+        }
+    }
+
+    // Not in a class/struct, so it's public
+    true
+}
+
+/// Extract context around a symbol
+fn extract_context(node: &Node, source: &[u8]) -> String {
+    let start_byte = node.start_byte();
+    let end_byte = node.end_byte().min(start_byte + 200);
+
+    if let Ok(context) = std::str::from_utf8(&source[start_byte..end_byte]) {
+        context.lines().take(3).collect::<Vec<_>>().join(" ")
+    } else {
+        String::new()
+    }
+}
+
+/// Get type definition text
+fn get_type_definition(node: &Node, source: &[u8]) -> String {
+    if let Ok(text) = node.utf8_text(source) {
+        let lines: Vec<&str> = text.lines().take(3).collect();
+        let preview = lines.join("\n");
+        if preview.len() > 200 {
+            format!("{}...", &preview[..200])
+        } else {
+            preview
+        }
+    } else {
+        String::new()
+    }
+}

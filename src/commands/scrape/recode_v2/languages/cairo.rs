@@ -1,25 +1,31 @@
 // ============================================================================
-// CAIRO LANGUAGE MODULE - Special Non-Tree-Sitter Parser
+// CAIRO LANGUAGE PROCESSOR V2 - STRUCT-BASED
 // ============================================================================
-// Cairo uses cairo-lang-parser instead of tree-sitter, requiring special handling.
-// This module provides direct symbol extraction from Cairo's parsed AST.
+//! Cairo language processor that returns typed structs instead of SQL strings.
+//!
+//! This is the refactored version that:
+//! - Returns ExtractedData with typed structs
+//! - No SQL string generation
+//! - Direct data extraction to domain types
+//!
+//! Cairo is unique - it uses cairo-lang-parser instead of tree-sitter,
+//! requiring special handling but the same output format.
 
+use crate::commands::scrape::recode_v2::database::{
+    CodeSymbol, FunctionFact, ImportFact, TypeFact,
+};
+use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
+use crate::commands::scrape::recode_v2::types::FilePath;
 use anyhow::Result;
 
 /// Cairo processor for extracting symbols without tree-sitter
 pub struct CairoProcessor;
 
 impl CairoProcessor {
-    /// Process a Cairo file and extract all symbols to SQL statements
-    pub fn process_file(
-        file_path: &str,
-        content: &str,
-    ) -> Result<(Vec<String>, usize, usize, usize)> {
-        let symbols = patina_metal::cairo::parse_cairo(content, file_path)?;
-        let mut sql_statements = Vec::new();
-        let mut functions = 0;
-        let mut types = 0;
-        let mut imports = 0;
+    /// Process a Cairo file and extract all symbols to typed structs
+    pub fn process_file(file_path: FilePath, content: &str) -> Result<ExtractedData> {
+        let mut data = ExtractedData::new();
+        let symbols = patina_metal::cairo::parse_cairo(content, file_path.as_str())?;
 
         // Extract functions with full details
         for func in symbols.functions {
@@ -30,29 +36,33 @@ impl CairoProcessor {
                 format!("fn {}({})", func.name, func.parameters.join(", "))
             };
 
-            // Insert into function_facts - match the actual schema
-            sql_statements.push(format!(
-                "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES ('{}', '{}', 0, 0, {}, {}, 0, 0, {}, {}, 0, '{}', '{}');",
-                escape_sql(file_path),
-                escape_sql(&func.name),
-                if func.return_type.as_deref().unwrap_or("").contains("Result") { 1 } else { 0 },
-                if func.return_type.as_deref().unwrap_or("").contains("Option") { 1 } else { 0 },
-                if func.is_public { 1 } else { 0 },
-                func.parameters.len(),
-                escape_sql(&func.parameters.join(", ")),
-                escape_sql(func.return_type.as_deref().unwrap_or(""))
-            ));
+            // Create FunctionFact struct
+            let function_fact = FunctionFact {
+                file: file_path.as_str().to_string(),
+                name: func.name.clone(),
+                takes_mut_self: false,
+                takes_mut_params: false,
+                returns_result: func.return_type.as_deref().unwrap_or("").contains("Result"),
+                returns_option: func.return_type.as_deref().unwrap_or("").contains("Option"),
+                is_async: false,
+                is_unsafe: false,
+                is_public: func.is_public,
+                parameter_count: func.parameters.len() as i32,
+                generic_count: 0,
+                parameters: func.parameters.clone(),
+                return_type: func.return_type.clone(),
+            };
+            data.add_function(function_fact);
 
-            // Also insert into code_search for consistency - match the actual schema
-            sql_statements.push(format!(
-                "INSERT OR REPLACE INTO code_search (path, name, signature, context) VALUES ('{}', '{}', '{}', '{}');",
-                escape_sql(file_path),
-                escape_sql(&func.name),
-                escape_sql(&signature),
-                escape_sql("") // Context not available from cairo parser
-            ));
-
-            functions += 1;
+            // Create CodeSymbol for search
+            let code_symbol = CodeSymbol {
+                path: file_path.as_str().to_string(),
+                name: func.name,
+                kind: "function".to_string(),
+                line: 0, // Line number not available from cairo parser
+                context: signature,
+            };
+            data.add_symbol(code_symbol);
         }
 
         // Extract structs as types
@@ -63,66 +73,60 @@ impl CairoProcessor {
                 format!("struct {} {{ {} }}", s.name, s.fields.join(", "))
             };
 
-            sql_statements.push(format!(
-                "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', '{}', 'struct', '{}');",
-                escape_sql(file_path),
-                escape_sql(&s.name),
-                escape_sql(&definition),
-                if s.is_public { "pub" } else { "private" }
-            ));
-            types += 1;
+            let type_fact = TypeFact {
+                file: file_path.as_str().to_string(),
+                name: s.name,
+                definition,
+                kind: "struct".to_string(),
+                visibility: if s.is_public { "pub" } else { "private" }.to_string(),
+                usage_count: 0,
+            };
+            data.add_type(type_fact);
         }
 
         // Extract traits as types
         for t in symbols.traits {
-            sql_statements.push(format!(
-                "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', 'trait {}', 'trait', '{}');",
-                escape_sql(file_path),
-                escape_sql(&t.name),
-                escape_sql(&t.name),
-                if t.is_public { "pub" } else { "private" }
-            ));
-            types += 1;
+            let type_fact = TypeFact {
+                file: file_path.as_str().to_string(),
+                name: t.name.clone(),
+                definition: format!("trait {}", t.name),
+                kind: "trait".to_string(),
+                visibility: if t.is_public { "pub" } else { "private" }.to_string(),
+                usage_count: 0,
+            };
+            data.add_type(type_fact);
         }
 
         // Extract imports
         for imp in symbols.imports {
-            // Determine if import is external (not relative)
-            let is_external = !imp.path.starts_with("super::") && !imp.path.starts_with("self::");
-            let imported_item = imp.path.split("::").last().unwrap_or(&imp.path);
+            let imported_item = imp.path.split("::").last().unwrap_or(&imp.path).to_string();
 
-            sql_statements.push(format!(
-                "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES ('{}', '{}', '{}', {}, 'use');",
-                escape_sql(file_path),
-                escape_sql(imported_item),
-                escape_sql(&imp.path),
-                if is_external { 1 } else { 0 }
-            ));
-            imports += 1;
+            let import_fact = ImportFact {
+                file: file_path.as_str().to_string(),
+                import_path: imp.path,
+                imported_names: vec![imported_item],
+                import_kind: "use".to_string(),
+                line_number: 0, // Line number not available from cairo parser
+            };
+            data.add_import(import_fact);
         }
 
         // Extract modules as types (they define a namespace)
         for m in symbols.modules {
-            sql_statements.push(format!(
-                "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility) VALUES ('{}', '{}', 'mod {}', 'module', '{}');",
-                escape_sql(file_path),
-                escape_sql(&m.name),
-                escape_sql(&m.name),
-                if m.is_public { "pub" } else { "private" }
-            ));
-            types += 1;
+            let type_fact = TypeFact {
+                file: file_path.as_str().to_string(),
+                name: m.name.clone(),
+                definition: format!("mod {}", m.name),
+                kind: "module".to_string(),
+                visibility: if m.is_public { "pub" } else { "private" }.to_string(),
+                usage_count: 0,
+            };
+            data.add_type(type_fact);
         }
 
         // Note: We could also extract impls for call graph analysis in the future
         // For now, we're focusing on the main symbols
 
-        Ok((sql_statements, functions, types, imports))
+        Ok(data)
     }
-}
-
-/// Escape SQL special characters
-fn escape_sql(s: &str) -> String {
-    s.replace('\'', "''")
-        .replace('\\', "\\\\")
-        .replace(['\n', '\r', '\t'], " ")
 }

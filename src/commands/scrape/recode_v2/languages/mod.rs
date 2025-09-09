@@ -4,9 +4,7 @@
 //! Central module for all language implementations.
 //! Each language gets its own file with a complete, self-contained implementation.
 
-use anyhow::{Context, Result};
 use std::path::Path;
-use tree_sitter::Parser;
 
 // ============================================================================
 // LANGUAGE MODULES
@@ -68,59 +66,4 @@ impl Language {
         };
         Some(lang)
     }
-
-    /// Convert to patina_metal::Metal enum
-    pub fn to_metal(self) -> Option<patina_metal::Metal> {
-        match self {
-            Language::Rust => Some(patina_metal::Metal::Rust),
-            Language::Go => Some(patina_metal::Metal::Go),
-            Language::Python => Some(patina_metal::Metal::Python),
-            Language::JavaScript | Language::JavaScriptJSX => Some(patina_metal::Metal::JavaScript),
-            Language::TypeScript | Language::TypeScriptTSX => Some(patina_metal::Metal::TypeScript),
-            Language::Solidity => Some(patina_metal::Metal::Solidity),
-            Language::Cairo => Some(patina_metal::Metal::Cairo),
-            Language::C => Some(patina_metal::Metal::C),
-            Language::Cpp => Some(patina_metal::Metal::Cpp),
-            Language::Unknown => None,
-        }
-    }
-
-    /// Get human-readable name
-    pub fn name(&self) -> &'static str {
-        match self {
-            Language::Rust => "Rust",
-            Language::Go => "Go",
-            Language::Python => "Python",
-            Language::JavaScript => "JavaScript",
-            Language::JavaScriptJSX => "JavaScript (JSX)",
-            Language::TypeScript => "TypeScript",
-            Language::TypeScriptTSX => "TypeScript (TSX)",
-            Language::Solidity => "Solidity",
-            Language::Cairo => "Cairo",
-            Language::C => "C",
-            Language::Cpp => "C++",
-            Language::Unknown => "Unknown",
-        }
-    }
-}
-
-/// Create a parser for a specific file path, handling TypeScript's tsx vs ts distinction
-pub fn create_parser_for_path(path: &Path) -> Result<Parser> {
-    let language = Language::from_path(path);
-    let metal = language
-        .to_metal()
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language.name()))?;
-
-    // Use the extension-aware method for TypeScript to get the right parser
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    let ts_lang = metal
-        .tree_sitter_language_for_ext(ext)
-        .ok_or_else(|| anyhow::anyhow!("No parser available for {}", language.name()))?;
-
-    let mut parser = Parser::new();
-    parser
-        .set_language(&ts_lang)
-        .context("Failed to set language")?;
-
-    Ok(parser)
 }
