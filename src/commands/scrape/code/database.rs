@@ -157,6 +157,35 @@ impl Database {
             [],
         )?;
 
+        // Constants table for macros, enum values, globals, statics
+        tx.execute(
+            "CREATE TABLE IF NOT EXISTS constant_facts (
+                file VARCHAR NOT NULL,
+                name VARCHAR NOT NULL,
+                value TEXT,
+                const_type VARCHAR NOT NULL,  -- macro, const, enum_value, static, global
+                scope VARCHAR NOT NULL,        -- global, ClassName::, namespace::, module
+                line INTEGER,
+                PRIMARY KEY (file, name, scope)
+            )",
+            [],
+        )?;
+
+        // Members table for class/struct fields and methods
+        tx.execute(
+            "CREATE TABLE IF NOT EXISTS member_facts (
+                file VARCHAR NOT NULL,
+                container VARCHAR NOT NULL,   -- Class/struct/interface name
+                name VARCHAR NOT NULL,
+                member_type VARCHAR NOT NULL, -- field, method, property, constructor, destructor
+                visibility VARCHAR,           -- public, private, protected, internal
+                modifiers TEXT,              -- JSON array: [\"static\", \"const\", \"virtual\"]
+                line INTEGER,
+                PRIMARY KEY (file, container, name)
+            )",
+            [],
+        )?;
+
         // Call graph
         tx.execute(
             "CREATE TABLE IF NOT EXISTS call_graph (
@@ -352,6 +381,58 @@ impl Database {
             params![path, reason],
         )?;
         Ok(())
+    }
+
+    /// Bulk insert constants
+    pub fn insert_constants(&self, constants: &[crate::commands::scrape::code::extracted_data::ConstantFact]) -> Result<usize> {
+        if constants.is_empty() {
+            return Ok(0);
+        }
+
+        let mut stmt = self.conn.prepare(
+            "INSERT OR REPLACE INTO constant_facts VALUES (?, ?, ?, ?, ?, ?)",
+        )?;
+
+        for constant in constants {
+            stmt.execute(params![
+                &constant.file,
+                &constant.name,
+                &constant.value,
+                &constant.const_type,
+                &constant.scope,
+                constant.line as i32,
+            ])?;
+        }
+
+        Ok(constants.len())
+    }
+
+    /// Bulk insert members
+    pub fn insert_members(&self, members: &[crate::commands::scrape::code::extracted_data::MemberFact]) -> Result<usize> {
+        if members.is_empty() {
+            return Ok(0);
+        }
+
+        let mut stmt = self.conn.prepare(
+            "INSERT OR REPLACE INTO member_facts VALUES (?, ?, ?, ?, ?, ?, ?)",
+        )?;
+
+        for member in members {
+            // Convert Vec<String> modifiers to JSON string
+            let modifiers_json = serde_json::to_string(&member.modifiers)?;
+            
+            stmt.execute(params![
+                &member.file,
+                &member.container,
+                &member.name,
+                &member.member_type,
+                &member.visibility,
+                &modifiers_json,
+                member.line as i32,
+            ])?;
+        }
+
+        Ok(members.len())
     }
 }
 
