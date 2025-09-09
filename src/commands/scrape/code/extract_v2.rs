@@ -126,9 +126,6 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     let constants_count = db.insert_constants(&all_constants)?;
     let members_count = db.insert_members(&all_members)?;
 
-    // Debug: Check what we collected
-    eprintln!("  📊 Debug: Collected {} constants, {} members", all_constants.len(), all_members.len());
-    
     println!(
         "  ✅ Inserted: {} symbols, {} functions, {} types, {} imports, {} call edges, {} constants, {} members",
         symbols_count, functions_count, types_count, imports_count, edges_count, constants_count, members_count
