@@ -12,7 +12,7 @@ use crate::commands::scrape::recode_v2::database::{
     CallEdge, CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
 use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
-use crate::commands::scrape::recode_v2::types::{CallType, FilePath, SymbolKind};
+use crate::commands::scrape::recode_v2::types::{FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
