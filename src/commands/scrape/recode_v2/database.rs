@@ -93,6 +93,7 @@ impl Database {
     }
 
     /// Create an in-memory database for testing
+    #[cfg(test)]
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory().context("Failed to create in-memory database")?;
 
@@ -203,35 +204,6 @@ impl Database {
         Ok(())
     }
 
-    /// Clear all data (useful for reindexing)
-    pub fn clear_all(&mut self) -> Result<()> {
-        let tables = [
-            "code_search",
-            "function_facts",
-            "type_vocabulary",
-            "import_facts",
-            "call_graph",
-            "index_state",
-            "skipped_files",
-        ];
-
-        let tx = self.conn.transaction()?;
-        for table in &tables {
-            tx.execute(&format!("DELETE FROM {}", table), [])?;
-        }
-        tx.commit()?;
-        Ok(())
-    }
-
-    /// Begin a transaction for batch operations
-    pub fn transaction(&mut self) -> Result<Transaction> {
-        Ok(self.conn.transaction()?)
-    }
-
-    /// Get connection for advanced operations
-    pub fn connection(&self) -> &Connection {
-        &self.conn
-    }
 }
 
 // ============================================================================
@@ -393,94 +365,6 @@ impl Database {
     }
 }
 
-// ============================================================================
-// QUERY OPERATIONS
-// ============================================================================
-
-impl Database {
-    /// Check if a file needs reindexing
-    pub fn needs_reindex(&self, path: &str, mtime: i64) -> Result<bool> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT mtime FROM index_state WHERE path = ?")?;
-
-        let mut rows = stmt.query_map(params![path], |row| row.get::<_, i64>(0))?;
-
-        match rows.next() {
-            Some(Ok(stored_mtime)) => Ok(stored_mtime < mtime),
-            _ => Ok(true), // Not indexed yet
-        }
-    }
-
-    /// Get function signatures for a file
-    pub fn get_functions(&self, file_path: &str) -> Result<Vec<String>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT name, parameters, return_type 
-             FROM function_facts 
-             WHERE file = ?
-             ORDER BY name",
-        )?;
-
-        let functions = stmt.query_map(params![file_path], |row| {
-            let name: String = row.get(0)?;
-            let params_str: String = row.get(1)?; // Now stored as string
-            let return_type: Option<String> = row.get(2)?;
-
-            let signature = format!(
-                "{}({}){}",
-                name,
-                params_str, // Already formatted
-                return_type.map_or(String::new(), |t| format!(" -> {}", t))
-            );
-            Ok(signature)
-        })?;
-
-        functions
-            .collect::<Result<Vec<_>, _>>()
-            .context("Failed to fetch functions")
-    }
-
-    /// Search for symbols by name pattern
-    pub fn search_symbols(&self, pattern: &str) -> Result<Vec<CodeSymbol>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT path, name, kind, line, context 
-             FROM code_search 
-             WHERE name LIKE ?
-             ORDER BY path, line
-             LIMIT 100",
-        )?;
-
-        let symbols = stmt.query_map(params![format!("%{}%", pattern)], |row| {
-            Ok(CodeSymbol {
-                path: row.get(0)?,
-                name: row.get(1)?,
-                kind: row.get(2)?,
-                line: row.get(3)?,
-                context: row.get(4)?,
-            })
-        })?;
-
-        symbols
-            .collect::<Result<Vec<_>, _>>()
-            .context("Failed to search symbols")
-    }
-
-    /// Get call graph for a function
-    pub fn get_call_graph(&self, function: &str) -> Result<Vec<(String, String)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT callee, call_type 
-             FROM call_graph 
-             WHERE caller = ?
-             ORDER BY line_number",
-        )?;
-
-        let edges = stmt.query_map(params![function], |row| Ok((row.get(0)?, row.get(1)?)))?;
-
-        edges
-            .collect::<Result<Vec<_>, _>>()
-            .context("Failed to fetch call graph")
-    }
-}
 
 #[cfg(test)]
 mod tests {
