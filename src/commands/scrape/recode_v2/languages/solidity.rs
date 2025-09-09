@@ -676,6 +676,7 @@ fn extract_import_details(node: &Node, source: &[u8]) -> Option<(String, String,
     None
 }
 
+
 /// Extract NatSpec documentation
 fn extract_natspec(node: &Node, source: &[u8]) -> String {
     // Look for comment nodes immediately before this node
@@ -706,8 +707,15 @@ fn clean_natspec_comment(raw: &str) -> String {
         .join(" ")
 }
 
-/// Get the context around a node (first line of the node)
+/// Get the context around a node (first line of the node, or NatSpec if available)
 fn get_node_context(node: &Node, source: &[u8]) -> String {
+    // First try to get NatSpec documentation
+    let natspec = extract_natspec(node, source);
+    if !natspec.is_empty() {
+        return natspec;
+    }
+    
+    // Fall back to first line of the node
     if let Ok(text) = node.utf8_text(source) {
         text.lines().next().unwrap_or("").to_string()
     } else {
