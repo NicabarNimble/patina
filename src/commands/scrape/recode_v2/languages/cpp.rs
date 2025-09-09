@@ -264,7 +264,7 @@ fn process_cpp_function(
 ) {
     let params = extract_parameters(node, source);
     let return_type = extract_return_type(node, source);
-    let is_template = has_template_parent(node);
+    let _is_template = has_template_parent(node);
     let is_public = is_public_member(node, source);
 
     // Add code symbol
@@ -283,14 +283,12 @@ fn process_cpp_function(
         takes_mut_self: false, // Would need more analysis
         takes_mut_params: params.iter().any(|p| !p.contains("const")),
         returns_result: false, // C++ uses exceptions
-        returns_option: return_type
-            .as_ref()
-            .is_some_and(|r| r.contains("optional")),
+        returns_option: return_type.as_ref().is_some_and(|r| r.contains("optional")),
         is_async: false, // C++ doesn't have built-in async
         is_unsafe: true, // All C++ is unsafe
         is_public,
         parameter_count: params.len() as i32,
-        generic_count: if is_template { 1 } else { 0 },
+        generic_count: if _is_template { 1 } else { 0 },
         parameters: params,
         return_type,
     });
@@ -305,7 +303,7 @@ fn process_cpp_class(
     kind: SymbolKind,
     data: &mut ExtractedData,
 ) {
-    let is_template = has_template_parent(node);
+    let _is_template = has_template_parent(node);
 
     // Add code symbol
     data.add_symbol(CodeSymbol {

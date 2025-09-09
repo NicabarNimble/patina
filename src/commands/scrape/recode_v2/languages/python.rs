@@ -203,9 +203,9 @@ fn process_function(
     // Check for patterns in parameters
     let takes_mut_self = params.iter().any(|p| p == "self");
     let takes_mut_params = false; // Python doesn't have explicit mutability
-    let returns_result = return_type.as_ref().is_some_and(|rt| {
-        rt.contains("Result") || rt.contains("Union") || rt.contains("Optional")
-    });
+    let returns_result = return_type
+        .as_ref()
+        .is_some_and(|rt| rt.contains("Result") || rt.contains("Union") || rt.contains("Optional"));
     let returns_option = return_type
         .as_ref()
         .is_some_and(|rt| rt.contains("Optional") || rt.contains("None"));

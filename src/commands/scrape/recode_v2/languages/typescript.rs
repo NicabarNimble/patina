@@ -252,9 +252,9 @@ fn process_function(
         returns_result: return_type
             .as_ref()
             .is_some_and(|rt| rt.contains("Promise")),
-        returns_option: return_type.as_ref().is_some_and(|rt| {
-            rt.contains("undefined") || rt.contains("null") || rt.contains("?")
-        }),
+        returns_option: return_type
+            .as_ref()
+            .is_some_and(|rt| rt.contains("undefined") || rt.contains("null") || rt.contains("?")),
         is_async,
         is_unsafe: false, // No unsafe in TS
         is_public,
@@ -316,9 +316,9 @@ fn process_method(
         returns_result: return_type
             .as_ref()
             .is_some_and(|rt| rt.contains("Promise")),
-        returns_option: return_type.as_ref().is_some_and(|rt| {
-            rt.contains("undefined") || rt.contains("null") || rt.contains("?")
-        }),
+        returns_option: return_type
+            .as_ref()
+            .is_some_and(|rt| rt.contains("undefined") || rt.contains("null") || rt.contains("?")),
         is_async,
         is_unsafe: false,
         is_public: visibility,

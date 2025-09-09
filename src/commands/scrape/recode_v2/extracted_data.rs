@@ -27,10 +27,11 @@ impl ExtractedData {
     /// Add a code symbol (with deduplication)
     pub fn add_symbol(&mut self, symbol: CodeSymbol) {
         // Check if we already have this exact symbol (same path, name, and line)
-        let already_exists = self.symbols.iter().any(|s| {
-            s.path == symbol.path && s.name == symbol.name && s.line == symbol.line
-        });
-        
+        let already_exists = self
+            .symbols
+            .iter()
+            .any(|s| s.path == symbol.path && s.name == symbol.name && s.line == symbol.line);
+
         if !already_exists {
             self.symbols.push(symbol);
         }
@@ -39,10 +40,11 @@ impl ExtractedData {
     /// Add a function fact (with deduplication)
     pub fn add_function(&mut self, function: FunctionFact) {
         // Check if we already have this function (same file and name)
-        let already_exists = self.functions.iter().any(|f| {
-            f.file == function.file && f.name == function.name
-        });
-        
+        let already_exists = self
+            .functions
+            .iter()
+            .any(|f| f.file == function.file && f.name == function.name);
+
         if !already_exists {
             self.functions.push(function);
         }
@@ -51,10 +53,11 @@ impl ExtractedData {
     /// Add a type fact (with deduplication)
     pub fn add_type(&mut self, type_fact: TypeFact) {
         // Check if we already have this type (same file and name)
-        let already_exists = self.types.iter().any(|t| {
-            t.file == type_fact.file && t.name == type_fact.name
-        });
-        
+        let already_exists = self
+            .types
+            .iter()
+            .any(|t| t.file == type_fact.file && t.name == type_fact.name);
+
         if !already_exists {
             self.types.push(type_fact);
         }
@@ -63,10 +66,11 @@ impl ExtractedData {
     /// Add an import fact (with deduplication)
     pub fn add_import(&mut self, import: ImportFact) {
         // Check if we already have this import (same file and import_path)
-        let already_exists = self.imports.iter().any(|i| {
-            i.file == import.file && i.import_path == import.import_path
-        });
-        
+        let already_exists = self
+            .imports
+            .iter()
+            .any(|i| i.file == import.file && i.import_path == import.import_path);
+
         if !already_exists {
             self.imports.push(import);
         }
@@ -76,10 +80,12 @@ impl ExtractedData {
     pub fn add_call_edge(&mut self, edge: CallEdge) {
         // Check if we already have this edge (same caller, callee, file, and line)
         let already_exists = self.call_edges.iter().any(|e| {
-            e.caller == edge.caller && e.callee == edge.callee && 
-            e.file == edge.file && e.line_number == edge.line_number
+            e.caller == edge.caller
+                && e.callee == edge.callee
+                && e.file == edge.file
+                && e.line_number == edge.line_number
         });
-        
+
         if !already_exists {
             self.call_edges.push(edge);
         }
@@ -110,145 +116,5 @@ impl ExtractedData {
             && self.types.is_empty()
             && self.imports.is_empty()
             && self.call_edges.is_empty()
-    }
-}
-
-/// Helper builders for common patterns
-
-impl ExtractedData {
-    /// Create a function fact with common defaults
-    pub fn function_builder(file: &str, name: &str) -> FunctionFactBuilder {
-        FunctionFactBuilder::new(file, name)
-    }
-
-    /// Create a type fact with common defaults
-    pub fn type_builder(file: &str, name: &str) -> TypeFactBuilder {
-        TypeFactBuilder::new(file, name)
-    }
-}
-
-/// Builder for FunctionFact with fluent API
-pub struct FunctionFactBuilder {
-    fact: FunctionFact,
-}
-
-impl FunctionFactBuilder {
-    pub fn new(file: &str, name: &str) -> Self {
-        Self {
-            fact: FunctionFact {
-                file: file.to_string(),
-                name: name.to_string(),
-                takes_mut_self: false,
-                takes_mut_params: false,
-                returns_result: false,
-                returns_option: false,
-                is_async: false,
-                is_unsafe: false,
-                is_public: false,
-                parameter_count: 0,
-                generic_count: 0,
-                parameters: Vec::new(),
-                return_type: None,
-            },
-        }
-    }
-
-    pub fn takes_mut_self(mut self, value: bool) -> Self {
-        self.fact.takes_mut_self = value;
-        self
-    }
-
-    pub fn takes_mut_params(mut self, value: bool) -> Self {
-        self.fact.takes_mut_params = value;
-        self
-    }
-
-    pub fn returns_result(mut self, value: bool) -> Self {
-        self.fact.returns_result = value;
-        self
-    }
-
-    pub fn returns_option(mut self, value: bool) -> Self {
-        self.fact.returns_option = value;
-        self
-    }
-
-    pub fn is_async(mut self, value: bool) -> Self {
-        self.fact.is_async = value;
-        self
-    }
-
-    pub fn is_unsafe(mut self, value: bool) -> Self {
-        self.fact.is_unsafe = value;
-        self
-    }
-
-    pub fn is_public(mut self, value: bool) -> Self {
-        self.fact.is_public = value;
-        self
-    }
-
-    pub fn parameters(mut self, params: Vec<String>) -> Self {
-        self.fact.parameter_count = params.len() as i32;
-        self.fact.parameters = params;
-        self
-    }
-
-    pub fn generic_count(mut self, count: i32) -> Self {
-        self.fact.generic_count = count;
-        self
-    }
-
-    pub fn return_type(mut self, return_type: Option<String>) -> Self {
-        self.fact.return_type = return_type;
-        self
-    }
-
-    pub fn build(self) -> FunctionFact {
-        self.fact
-    }
-}
-
-/// Builder for TypeFact with fluent API
-pub struct TypeFactBuilder {
-    fact: TypeFact,
-}
-
-impl TypeFactBuilder {
-    pub fn new(file: &str, name: &str) -> Self {
-        Self {
-            fact: TypeFact {
-                file: file.to_string(),
-                name: name.to_string(),
-                definition: String::new(),
-                kind: String::new(),
-                visibility: "private".to_string(),
-                usage_count: 0,
-            },
-        }
-    }
-
-    pub fn definition(mut self, def: String) -> Self {
-        self.fact.definition = def;
-        self
-    }
-
-    pub fn kind(mut self, kind: &str) -> Self {
-        self.fact.kind = kind.to_string();
-        self
-    }
-
-    pub fn visibility(mut self, vis: &str) -> Self {
-        self.fact.visibility = vis.to_string();
-        self
-    }
-
-    pub fn usage_count(mut self, count: i32) -> Self {
-        self.fact.usage_count = count;
-        self
-    }
-
-    pub fn build(self) -> TypeFact {
-        self.fact
     }
 }

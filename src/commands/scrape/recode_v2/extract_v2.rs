@@ -60,7 +60,7 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     let mut all_call_edges = Vec::new();
 
     let mut files_with_errors = 0;
-    let mut files_processed = 0;
+    let mut _files_processed = 0;
 
     // Process each file and collect data
     for (file_path, language) in all_files {
@@ -101,7 +101,7 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                 all_types.extend(extracted.types);
                 all_imports.extend(extracted.imports);
                 all_call_edges.extend(extracted.call_edges);
-                files_processed += 1;
+                _files_processed += 1;
             }
             Err(e) => {
                 eprintln!("  ⚠️  Processing error in {}: {}", relative_path, e);
@@ -344,103 +344,4 @@ fn process_solidity_file(file_path: &str, content: &[u8], data: &mut ExtractedDa
         }
         Err(e) => Err(e),
     }
-}
-
-/// Temporary function to parse SQL statements into structs
-/// This is a bridge while we refactor the language processors
-fn parse_sql_into_structs(file_path: &str, sql_statements: &[String], data: &mut ExtractedData) {
-    // This is a simplified parser - in production we'd refactor the processors
-    // to return structs directly instead of SQL strings
-
-    for sql in sql_statements {
-        if sql.contains("INSERT") && sql.contains("code_search") {
-            // Extract code search entry
-            if let Some(symbol) = parse_code_search_sql(file_path, sql) {
-                data.symbols.push(symbol);
-            }
-        } else if sql.contains("INSERT") && sql.contains("function_facts") {
-            // Extract function fact
-            if let Some(func) = parse_function_fact_sql(file_path, sql) {
-                data.functions.push(func);
-            }
-        } else if sql.contains("INSERT") && sql.contains("type_vocabulary") {
-            // Extract type fact
-            if let Some(type_fact) = parse_type_fact_sql(file_path, sql) {
-                data.types.push(type_fact);
-            }
-        } else if sql.contains("INSERT") && sql.contains("import_facts") {
-            // Extract import fact
-            if let Some(import) = parse_import_fact_sql(file_path, sql) {
-                data.imports.push(import);
-            }
-        } else if sql.contains("INSERT") && sql.contains("call_graph") {
-            // Extract call edge
-            if let Some(edge) = parse_call_edge_sql(file_path, sql) {
-                data.call_edges.push(edge);
-            }
-        }
-    }
-}
-
-// These are simplified parsers - in the real implementation we'd refactor
-// the language processors to return structs directly
-fn parse_code_search_sql(file_path: &str, _sql: &str) -> Option<CodeSymbol> {
-    // Basic extraction - this is temporary
-    Some(CodeSymbol {
-        path: file_path.to_string(),
-        name: "temp".to_string(),
-        kind: "function".to_string(),
-        line: 1,
-        context: "".to_string(),
-    })
-}
-
-fn parse_function_fact_sql(file_path: &str, _sql: &str) -> Option<FunctionFact> {
-    // Basic extraction - this is temporary
-    Some(FunctionFact {
-        file: file_path.to_string(),
-        name: "temp".to_string(),
-        takes_mut_self: false,
-        takes_mut_params: false,
-        returns_result: false,
-        returns_option: false,
-        is_async: false,
-        is_unsafe: false,
-        is_public: false,
-        parameter_count: 0,
-        generic_count: 0,
-        parameters: Vec::new(),
-        return_type: None,
-    })
-}
-
-fn parse_type_fact_sql(file_path: &str, _sql: &str) -> Option<TypeFact> {
-    Some(TypeFact {
-        file: file_path.to_string(),
-        name: "temp".to_string(),
-        definition: "".to_string(),
-        kind: "struct".to_string(),
-        visibility: "private".to_string(),
-        usage_count: 0,
-    })
-}
-
-fn parse_import_fact_sql(file_path: &str, _sql: &str) -> Option<ImportFact> {
-    Some(ImportFact {
-        file: file_path.to_string(),
-        import_path: "".to_string(),
-        imported_names: Vec::new(),
-        import_kind: "use".to_string(),
-        line_number: 1,
-    })
-}
-
-fn parse_call_edge_sql(file_path: &str, _sql: &str) -> Option<CallEdge> {
-    Some(CallEdge {
-        caller: "".to_string(),
-        callee: "".to_string(),
-        file: file_path.to_string(),
-        call_type: "direct".to_string(),
-        line_number: 1,
-    })
 }
