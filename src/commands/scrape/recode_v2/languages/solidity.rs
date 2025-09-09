@@ -75,7 +75,7 @@ fn extract_solidity_symbols(
     extract_solidity_calls(node, source, file_path, &current_function, data);
 
     // Determine symbol kind
-    let symbol_kind = match node.kind() {
+    let _symbol_kind = match node.kind() {
         "function_definition" => SymbolKind::Function,
         "modifier_definition" => SymbolKind::Function, // Modifiers are like special functions
         "event_definition" => SymbolKind::Function,    // Events are like special functions

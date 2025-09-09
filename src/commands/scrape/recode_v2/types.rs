@@ -377,17 +377,3 @@ pub mod solidity_nodes {
     pub const IMPORT_DIRECTIVE: &str = "import_directive";
     pub const CALL_EXPRESSION: &str = "call_expression";
 }
-
-// ============================================================================
-// SQL CONSTANTS (Type-safe SQL)
-// ============================================================================
-pub mod sql {
-    /// Prepared statement for function facts
-    pub const INSERT_FUNCTION_FACT: &str = "INSERT OR REPLACE INTO function_facts (file, name, takes_mut_self, takes_mut_params, returns_result, returns_option, is_async, is_unsafe, is_public, parameter_count, generic_count, parameters, return_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-
-    /// Prepared statement for type vocabulary
-    pub const INSERT_TYPE_VOCAB: &str = "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility, usage_count) VALUES (?, ?, ?, ?, ?, ?)";
-
-    /// Prepared statement for imports
-    pub const INSERT_IMPORT: &str = "INSERT OR REPLACE INTO import_facts (importer_file, imported_item, imported_from, is_external, import_kind) VALUES (?, ?, ?, ?, ?)";
-}

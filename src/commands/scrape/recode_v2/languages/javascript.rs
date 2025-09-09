@@ -265,10 +265,12 @@ fn process_method(
     let is_static = has_static_keyword(node, source);
     let is_getter = node
         .child_by_field_name("kind")
-        .and_then(|n| n.utf8_text(source).ok()) == Some("get");
+        .and_then(|n| n.utf8_text(source).ok())
+        == Some("get");
     let is_setter = node
         .child_by_field_name("kind")
-        .and_then(|n| n.utf8_text(source).ok()) == Some("set");
+        .and_then(|n| n.utf8_text(source).ok())
+        == Some("set");
 
     let params = extract_parameters(node, source);
 
@@ -590,7 +592,7 @@ fn has_async_keyword(node: &Node, source: &[u8]) -> bool {
 }
 
 /// Check if method has static keyword
-fn has_static_keyword(node: &Node, source: &[u8]) -> bool {
+fn has_static_keyword(node: &Node, _source: &[u8]) -> bool {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.kind() == "static" {
