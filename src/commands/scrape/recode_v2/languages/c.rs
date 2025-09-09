@@ -17,10 +17,10 @@
 //! - No built-in visibility (header exposure = public)
 
 use crate::commands::scrape::recode_v2::database::{
-    CallEdge, CodeSymbol, FunctionFact, ImportFact, TypeFact,
+    CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
 use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
-use crate::commands::scrape::recode_v2::types::{CallType, FilePath, SymbolKind};
+use crate::commands::scrape::recode_v2::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
@@ -116,13 +116,13 @@ fn extract_c_symbols(
             if let Some(ref caller) = current_function {
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
-                        data.add_call_edge(CallEdge {
-                            caller: caller.clone(),
-                            callee: callee.to_string(),
-                            file: file_path.to_string(),
-                            call_type: CallType::Direct.to_string(),
-                            line_number: (node.start_position().row + 1) as i32,
-                        });
+                        data.add_call_edge(CallGraphEntry::new(
+                            caller.clone(),
+                            callee.to_string(),
+                            file_path.to_string(),
+                            CallType::Direct,
+                            (node.start_position().row + 1) as i32,
+                        ));
                     }
                 }
             }
