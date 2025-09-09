@@ -117,6 +117,13 @@ fn extract_c_symbols(
             // Extract #define macros
             process_c_macro(node, source, file_path, data);
         }
+        "declaration" => {
+            // Extract global variables and constants
+            // Only process if we're at file scope (not inside a function)
+            if current_function.is_none() {
+                process_c_declaration(node, source, file_path, data);
+            }
+        }
         "call_expression" => {
             // Track function calls for call graph
             if let Some(ref caller) = current_function {
@@ -307,6 +314,93 @@ fn process_c_enum_values(
             }
         }
     }
+}
+
+/// Process global variable/constant declarations
+fn process_c_declaration(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
+    // Check for storage class specifiers (static, extern, const)
+    let mut is_static = false;
+    let mut is_const = false;
+    let mut is_extern = false;
+    
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "storage_class_specifier" => {
+                if let Ok(text) = child.utf8_text(source) {
+                    match text {
+                        "static" => is_static = true,
+                        "extern" => is_extern = true,
+                        _ => {}
+                    }
+                }
+            }
+            "type_qualifier" => {
+                if let Ok(text) = child.utf8_text(source) {
+                    if text == "const" {
+                        is_const = true;
+                    }
+                }
+            }
+            "init_declarator" | "declarator" => {
+                // Extract variable name
+                if let Some(name) = extract_declarator_name(&child, source) {
+                    let kind = if is_const {
+                        "const"
+                    } else if is_static {
+                        "static"
+                    } else if is_extern {
+                        "extern"
+                    } else {
+                        "global"
+                    };
+                    
+                    // Get the full declaration as context
+                    let context = node
+                        .utf8_text(source)
+                        .ok()
+                        .and_then(|s| s.lines().next())
+                        .unwrap_or("")
+                        .to_string();
+                    
+                    // Add as symbol
+                    data.add_symbol(CodeSymbol {
+                        path: file_path.to_string(),
+                        name: name.clone(),
+                        kind: kind.to_string(),
+                        line: node.start_position().row + 1,
+                        context,
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Extract name from a declarator node
+fn extract_declarator_name(node: &Node, source: &[u8]) -> Option<String> {
+    // Handle simple identifiers
+    if node.kind() == "identifier" {
+        return node.utf8_text(source).ok().map(|s| s.to_string());
+    }
+    
+    // Handle nested declarators (pointers, arrays, etc.)
+    let mut current = Some(*node);
+    while let Some(n) = current {
+        if n.kind() == "identifier" {
+            return n.utf8_text(source).ok().map(|s| s.to_string());
+        }
+        // Try to find identifier in children
+        let mut cursor = n.walk();
+        current = n.children(&mut cursor).find(|c| 
+            c.kind() == "identifier" || 
+            c.kind() == "declarator" || 
+            c.kind() == "pointer_declarator" ||
+            c.kind() == "array_declarator"
+        );
+    }
+    None
 }
 
 /// Process a #define macro and add to ExtractedData  
