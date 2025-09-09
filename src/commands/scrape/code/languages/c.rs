@@ -97,6 +97,8 @@ fn extract_c_symbols(
             if let Some(name_node) = node.child_by_field_name("name") {
                 if let Ok(name) = name_node.utf8_text(source) {
                     process_c_type(node, source, file_path, name, SymbolKind::Enum, data);
+                    // Extract enum values
+                    process_c_enum_values(node, source, file_path, name, data);
                 }
             }
         }
@@ -260,6 +262,50 @@ fn process_c_include(node: &Node, source: &[u8], file_path: &str, data: &mut Ext
             import_kind: if is_external { "system" } else { "local" }.to_string(),
             line_number: (node.start_position().row + 1) as i32,
         });
+    }
+}
+
+/// Process enum values and add to ExtractedData
+fn process_c_enum_values(
+    node: &Node, 
+    source: &[u8], 
+    file_path: &str, 
+    enum_name: &str,
+    data: &mut ExtractedData,
+) {
+    // Look for enumerator_list child
+    if let Some(list_node) = node.child_by_field_name("body") {
+        let mut cursor = list_node.walk();
+        for child in list_node.children(&mut cursor) {
+            if child.kind() == "enumerator" {
+                // Get the enumerator name
+                if let Some(name_node) = child.child_by_field_name("name") {
+                    if let Ok(value_name) = name_node.utf8_text(source) {
+                        // Try to get explicit value if present
+                        let value = child
+                            .child_by_field_name("value")
+                            .and_then(|v| v.utf8_text(source).ok())
+                            .map(|s| s.to_string());
+                        
+                        // Add as symbol with full context
+                        let full_name = format!("{}::{}", enum_name, value_name);
+                        let context = if let Some(val) = &value {
+                            format!("{} = {}", value_name, val)
+                        } else {
+                            value_name.to_string()
+                        };
+                        
+                        data.add_symbol(CodeSymbol {
+                            path: file_path.to_string(),
+                            name: full_name,
+                            kind: "enum_value".to_string(),
+                            line: child.start_position().row + 1,
+                            context,
+                        });
+                    }
+                }
+            }
+        }
     }
 }
 
