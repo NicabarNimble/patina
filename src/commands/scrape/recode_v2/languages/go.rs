@@ -361,13 +361,13 @@ fn extract_go_calls(
                     if let Some(caller) = current_function {
                         if let Some(field_node) = node.child_by_field_name("field") {
                             if let Ok(callee) = field_node.utf8_text(source) {
-                                data.add_call_edge(CallEdge {
-                                    caller: caller.clone(),
-                                    callee: callee.to_string(),
-                                    file: file_path.to_string(),
-                                    call_type: CallType::Method.to_string(),
+                                data.add_call_edge(CallGraphEntry::new(
+                                    caller.clone(),
+                                    callee.to_string(),
+                                    file_path.to_string(),
+                                    CallType::Method,
                                     line_number,
-                                });
+                                ));
                             }
                         }
                     }
