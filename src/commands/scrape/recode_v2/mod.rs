@@ -32,8 +32,6 @@ pub mod extracted_data;
 pub mod languages;
 pub mod types;
 
-// Re-export the Language enum for convenience
-pub use languages::Language;
 
 // ============================================================================
 // PUBLIC INTERFACE
