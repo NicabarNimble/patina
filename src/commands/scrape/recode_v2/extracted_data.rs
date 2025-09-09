@@ -100,21 +100,4 @@ impl ExtractedData {
         self.call_edges.extend(other.call_edges);
     }
 
-    /// Get total count of all extracted items
-    pub fn total_count(&self) -> usize {
-        self.symbols.len()
-            + self.functions.len()
-            + self.types.len()
-            + self.imports.len()
-            + self.call_edges.len()
-    }
-
-    /// Check if empty
-    pub fn is_empty(&self) -> bool {
-        self.symbols.is_empty()
-            && self.functions.is_empty()
-            && self.types.is_empty()
-            && self.imports.is_empty()
-            && self.call_edges.is_empty()
-    }
 }
