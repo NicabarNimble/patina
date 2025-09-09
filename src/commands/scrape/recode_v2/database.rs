@@ -12,6 +12,7 @@
 use anyhow::{Context, Result};
 use duckdb::{params, Connection, Transaction};
 use std::path::Path;
+use crate::commands::scrape::recode_v2::types::CallGraphEntry;
 
 // ============================================================================
 // DOMAIN TYPES
@@ -67,14 +68,8 @@ pub struct ImportFact {
 }
 
 /// Call graph edge
-#[derive(Debug, Clone)]
-pub struct CallEdge {
-    pub caller: String,
-    pub callee: String,
-    pub file: String,
-    pub call_type: String,
-    pub line_number: i32,
-}
+// Type alias for backward compatibility during migration
+pub type CallEdge = CallGraphEntry;
 
 // ============================================================================
 // DATABASE CONNECTION
@@ -319,7 +314,7 @@ impl Database {
     }
 
     /// Bulk insert call graph edges
-    pub fn insert_call_edges(&self, edges: &[CallEdge]) -> Result<usize> {
+    pub fn insert_call_edges(&self, edges: &[CallGraphEntry]) -> Result<usize> {
         if edges.is_empty() {
             return Ok(0);
         }
@@ -331,7 +326,7 @@ impl Database {
                 &edge.caller,
                 &edge.callee,
                 &edge.file,
-                &edge.call_type,
+                edge.call_type.as_str(),
                 edge.line_number,
             ])?;
         }
