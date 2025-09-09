@@ -6,7 +6,8 @@
 //! This replaces SQL string generation with type-safe structs that can be
 //! directly inserted into the database using prepared statements.
 
-use super::database::{CallEdge, CodeSymbol, FunctionFact, ImportFact, TypeFact};
+use super::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
+use super::types::CallGraphEntry;
 
 /// Container for all data extracted from a source file
 #[derive(Debug, Default)]
@@ -15,7 +16,7 @@ pub struct ExtractedData {
     pub functions: Vec<FunctionFact>,
     pub types: Vec<TypeFact>,
     pub imports: Vec<ImportFact>,
-    pub call_edges: Vec<CallEdge>,
+    pub call_edges: Vec<CallGraphEntry>,
 }
 
 impl ExtractedData {
@@ -77,7 +78,7 @@ impl ExtractedData {
     }
 
     /// Add a call graph edge (with deduplication)
-    pub fn add_call_edge(&mut self, edge: CallEdge) {
+    pub fn add_call_edge(&mut self, edge: CallGraphEntry) {
         // Check if we already have this edge (same caller, callee, file, and line)
         let already_exists = self.call_edges.iter().any(|e| {
             e.caller == edge.caller

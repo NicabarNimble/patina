@@ -25,27 +25,7 @@ pub enum SymbolKind {
 }
 
 impl SymbolKind {
-    /// Convert from string (for gradual migration)
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "function" => Self::Function,
-            "struct" => Self::Struct,
-            "union" => Self::Union,
-            "class" => Self::Class,
-            "trait" => Self::Trait,
-            "interface" => Self::Interface,
-            "module" => Self::Module,
-            "import" => Self::Import,
-            "const" => Self::Const,
-            "static" => Self::Static,
-            "type_alias" => Self::TypeAlias,
-            "enum" => Self::Enum,
-            "impl" => Self::Impl,
-            _ => Self::Unknown,
-        }
-    }
-
-    /// Convert to string (for backward compatibility)
+    /// Convert to string for DuckDB storage
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Function => "function",
@@ -92,25 +72,7 @@ pub enum CallType {
 }
 
 impl CallType {
-    /// Convert from string (for gradual migration)
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "direct" => Self::Direct,
-            "method" => Self::Method,
-            "async" => Self::Async,
-            "goroutine" => Self::Goroutine,
-            "defer" => Self::Defer,
-            "macro" => Self::Macro,
-            "constructor" => Self::Constructor,
-            "destructor" => Self::Destructor,
-            "decorator" => Self::Decorator,
-            "template" => Self::Template,
-            "event" => Self::Event,
-            _ => Self::Direct, // Default to direct for unknown
-        }
-    }
-
-    /// Convert to string (for SQL generation)
+    /// Convert to string for DuckDB storage
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Direct => "direct",
@@ -145,11 +107,11 @@ pub struct CallGraphEntry {
 }
 
 impl CallGraphEntry {
-    pub fn new(caller: String, callee: String, call_type: CallType, line_number: i32) -> Self {
+    pub fn new(caller: String, callee: String, file: String, call_type: CallType, line_number: i32) -> Self {
         CallGraphEntry {
             caller,
             callee,
-            file: String::new(), // File will be filled in later
+            file,
             call_type,
             line_number,
         }
