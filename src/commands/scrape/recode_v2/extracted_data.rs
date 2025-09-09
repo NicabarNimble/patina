@@ -24,29 +24,65 @@ impl ExtractedData {
         Self::default()
     }
 
-    /// Add a code symbol
+    /// Add a code symbol (with deduplication)
     pub fn add_symbol(&mut self, symbol: CodeSymbol) {
-        self.symbols.push(symbol);
+        // Check if we already have this exact symbol (same path, name, and line)
+        let already_exists = self.symbols.iter().any(|s| {
+            s.path == symbol.path && s.name == symbol.name && s.line == symbol.line
+        });
+        
+        if !already_exists {
+            self.symbols.push(symbol);
+        }
     }
 
-    /// Add a function fact
+    /// Add a function fact (with deduplication)
     pub fn add_function(&mut self, function: FunctionFact) {
-        self.functions.push(function);
+        // Check if we already have this function (same file and name)
+        let already_exists = self.functions.iter().any(|f| {
+            f.file == function.file && f.name == function.name
+        });
+        
+        if !already_exists {
+            self.functions.push(function);
+        }
     }
 
-    /// Add a type fact
+    /// Add a type fact (with deduplication)
     pub fn add_type(&mut self, type_fact: TypeFact) {
-        self.types.push(type_fact);
+        // Check if we already have this type (same file and name)
+        let already_exists = self.types.iter().any(|t| {
+            t.file == type_fact.file && t.name == type_fact.name
+        });
+        
+        if !already_exists {
+            self.types.push(type_fact);
+        }
     }
 
-    /// Add an import fact
+    /// Add an import fact (with deduplication)
     pub fn add_import(&mut self, import: ImportFact) {
-        self.imports.push(import);
+        // Check if we already have this import (same file and import_path)
+        let already_exists = self.imports.iter().any(|i| {
+            i.file == import.file && i.import_path == import.import_path
+        });
+        
+        if !already_exists {
+            self.imports.push(import);
+        }
     }
 
-    /// Add a call graph edge
+    /// Add a call graph edge (with deduplication)
     pub fn add_call_edge(&mut self, edge: CallEdge) {
-        self.call_edges.push(edge);
+        // Check if we already have this edge (same caller, callee, file, and line)
+        let already_exists = self.call_edges.iter().any(|e| {
+            e.caller == edge.caller && e.callee == edge.callee && 
+            e.file == edge.file && e.line_number == edge.line_number
+        });
+        
+        if !already_exists {
+            self.call_edges.push(edge);
+        }
     }
 
     /// Merge another ExtractedData into this one
