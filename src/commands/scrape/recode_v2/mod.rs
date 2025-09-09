@@ -143,4 +143,3 @@ fn initialize_database(db_path: &str) -> Result<()> {
     db.init_schema()?;
     Ok(())
 }
-

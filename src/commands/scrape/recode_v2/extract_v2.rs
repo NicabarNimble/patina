@@ -14,7 +14,7 @@ use ignore::WalkBuilder;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use super::database::{CallEdge, CodeSymbol, Database, FunctionFact, ImportFact, TypeFact};
+use super::database::Database;
 use super::extracted_data::ExtractedData;
 use super::languages::Language;
 use super::types::FilePath;
