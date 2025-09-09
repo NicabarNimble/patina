@@ -126,6 +126,9 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     let constants_count = db.insert_constants(&all_constants)?;
     let members_count = db.insert_members(&all_members)?;
 
+    // Debug: Check what we collected
+    eprintln!("  📊 Debug: Collected {} constants, {} members", all_constants.len(), all_members.len());
+    
     println!(
         "  ✅ Inserted: {} symbols, {} functions, {} types, {} imports, {} call edges, {} constants, {} members",
         symbols_count, functions_count, types_count, imports_count, edges_count, constants_count, members_count
@@ -219,6 +222,8 @@ fn process_go_file(file_path: &str, content: &[u8], data: &mut ExtractedData) ->
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -236,6 +241,8 @@ fn process_python_file(file_path: &str, content: &[u8], data: &mut ExtractedData
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -257,6 +264,8 @@ fn process_javascript_file(
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -278,6 +287,8 @@ fn process_typescript_file(
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -295,6 +306,8 @@ fn process_c_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> 
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -312,6 +325,8 @@ fn process_cpp_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -331,6 +346,8 @@ fn process_cairo_file(file_path: &str, content: &[u8], data: &mut ExtractedData)
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -348,6 +365,8 @@ fn process_solidity_file(file_path: &str, content: &[u8], data: &mut ExtractedDa
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
