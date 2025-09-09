@@ -17,10 +17,10 @@
 //! - Import system (from/import statements)
 
 use crate::commands::scrape::recode_v2::database::{
-    CallEdge, CodeSymbol, FunctionFact, ImportFact, TypeFact,
+    CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
 use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
-use crate::commands::scrape::recode_v2::types::{CallType, FilePath};
+use crate::commands::scrape::recode_v2::types::{CallGraphEntry, CallType, FilePath};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
@@ -156,13 +156,13 @@ fn process_decorated_definition(
 
                 // Add decorator as a call edge if we're in a function
                 if let Some(caller) = current_function {
-                    data.add_call_edge(CallEdge {
-                        file: file_path.to_string(),
-                        caller: caller.clone(),
-                        callee: format!("@{}", decorator_name),
-                        call_type: CallType::Decorator.as_str().to_string(),
-                        line_number: (child.start_position().row + 1) as i32,
-                    });
+                    data.add_call_edge(CallGraphEntry::new(
+                        caller.clone(),
+                        format!("@{}", decorator_name),
+                        file_path.to_string(),
+                        CallType::Decorator,
+                        (child.start_position().row + 1) as i32,
+                    ));
                 }
             }
         }
@@ -462,13 +462,13 @@ fn extract_calls(
                             (CallType::Direct, callee)
                         };
 
-                        data.add_call_edge(CallEdge {
-                            file: file_path.to_string(),
-                            caller: caller.clone(),
-                            callee: callee_name.to_string(),
-                            call_type: call_type.as_str().to_string(),
+                        data.add_call_edge(CallGraphEntry::new(
+                            caller.clone(),
+                            callee_name.to_string(),
+                            file_path.to_string(),
+                            call_type,
                             line_number,
-                        });
+                        ));
                     }
                 }
             }
@@ -481,13 +481,13 @@ fn extract_calls(
                     if child.kind() == "call" {
                         if let Some(func_node) = child.child_by_field_name("function") {
                             if let Ok(callee) = func_node.utf8_text(source) {
-                                data.add_call_edge(CallEdge {
-                                    file: file_path.to_string(),
-                                    caller: caller.clone(),
-                                    callee: callee.to_string(),
-                                    call_type: CallType::Async.as_str().to_string(),
+                                data.add_call_edge(CallGraphEntry::new(
+                                    caller.clone(),
+                                    callee.to_string(),
+                                    file_path.to_string(),
+                                    CallType::Async,
                                     line_number,
-                                });
+                                ));
                             }
                         }
                     }
