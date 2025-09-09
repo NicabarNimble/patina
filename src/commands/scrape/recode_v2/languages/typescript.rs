@@ -18,10 +18,10 @@
 //! - JSX support (.tsx files with different parser)
 
 use crate::commands::scrape::recode_v2::database::{
-    CallEdge, CodeSymbol, FunctionFact, ImportFact, TypeFact,
+    CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
 use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
-use crate::commands::scrape::recode_v2::types::{CallType, FilePath};
+use crate::commands::scrape::recode_v2::types::{CallGraphEntry, CallType, FilePath};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
@@ -918,13 +918,13 @@ fn extract_calls(
                             CallType::Direct
                         };
 
-                        data.add_call_edge(CallEdge {
-                            file: file_path.to_string(),
-                            caller: caller.clone(),
-                            callee: callee.to_string(),
-                            call_type: call_type.as_str().to_string(),
+                        data.add_call_edge(CallGraphEntry::new(
+                            caller.clone(),
+                            callee.to_string(),
+                            file_path.to_string(),
+                            call_type,
                             line_number,
-                        });
+                        ));
                     }
                 }
             }
@@ -937,13 +937,13 @@ fn extract_calls(
                     if child.kind() == "call_expression" {
                         if let Some(func_node) = child.child_by_field_name("function") {
                             if let Ok(callee) = func_node.utf8_text(source) {
-                                data.add_call_edge(CallEdge {
-                                    file: file_path.to_string(),
-                                    caller: caller.clone(),
-                                    callee: callee.to_string(),
-                                    call_type: CallType::Async.as_str().to_string(),
+                                data.add_call_edge(CallGraphEntry::new(
+                                    caller.clone(),
+                                    callee.to_string(),
+                                    file_path.to_string(),
+                                    CallType::Async,
                                     line_number,
-                                });
+                                ));
                             }
                         }
                     }
@@ -955,13 +955,13 @@ fn extract_calls(
             if let Some(caller) = current_function {
                 if let Some(constructor_node) = node.child_by_field_name("constructor") {
                     if let Ok(callee) = constructor_node.utf8_text(source) {
-                        data.add_call_edge(CallEdge {
-                            file: file_path.to_string(),
-                            caller: caller.clone(),
-                            callee: format!("new {}", callee),
-                            call_type: CallType::Constructor.as_str().to_string(),
+                        data.add_call_edge(CallGraphEntry::new(
+                            caller.clone(),
+                            format!("new {}", callee),
+                            file_path.to_string(),
+                            CallType::Constructor,
                             line_number,
-                        });
+                        ));
                     }
                 }
             }
@@ -970,13 +970,13 @@ fn extract_calls(
             // TypeScript decorators
             if let Some(caller) = current_function {
                 if let Ok(decorator_text) = node.utf8_text(source) {
-                    data.add_call_edge(CallEdge {
-                        file: file_path.to_string(),
-                        caller: caller.clone(),
-                        callee: decorator_text.to_string(),
-                        call_type: CallType::Decorator.as_str().to_string(),
+                    data.add_call_edge(CallGraphEntry::new(
+                        caller.clone(),
+                        decorator_text.to_string(),
+                        file_path.to_string(),
+                        CallType::Decorator,
                         line_number,
-                    });
+                    ));
                 }
             }
         }
