@@ -1,4 +1,4 @@
-// Type-safe wrappers for recode_v2
+// Type-safe wrappers for code
 // Gradual migration from strings to types
 
 use std::fmt;

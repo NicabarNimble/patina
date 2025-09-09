@@ -11,11 +11,11 @@
 //! Cairo is unique - it uses cairo-lang-parser instead of tree-sitter,
 //! requiring special handling but the same output format.
 
-use crate::commands::scrape::recode_v2::database::{
+use crate::commands::scrape::code::database::{
     CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
-use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
-use crate::commands::scrape::recode_v2::types::FilePath;
+use crate::commands::scrape::code::extracted_data::ExtractedData;
+use crate::commands::scrape::code::types::FilePath;
 use anyhow::Result;
 
 /// Cairo processor for extracting symbols without tree-sitter

@@ -8,11 +8,11 @@
 //! - No SQL string generation
 //! - Direct data extraction to domain types
 
-use crate::commands::scrape::recode_v2::database::{
+use crate::commands::scrape::code::database::{
     CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
-use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
-use crate::commands::scrape::recode_v2::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
+use crate::commands::scrape::code::extracted_data::ExtractedData;
+use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
