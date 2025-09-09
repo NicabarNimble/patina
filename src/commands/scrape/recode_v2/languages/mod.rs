@@ -66,6 +66,4 @@ impl Language {
         };
         Some(lang)
     }
-
 }
-

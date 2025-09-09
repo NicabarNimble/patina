@@ -100,5 +100,4 @@ impl ExtractedData {
         self.imports.extend(other.imports);
         self.call_edges.extend(other.call_edges);
     }
-
 }
