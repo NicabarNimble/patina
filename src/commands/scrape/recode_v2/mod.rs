@@ -24,8 +24,6 @@ use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 use tree_sitter::Node;
 
-use self::sql_builder::{InsertBuilder, SqlValue, TableName};
-use self::types::{CallGraphEntry, CallType, FilePath, SymbolKind, SymbolName};
 use super::ScrapeConfig;
 
 // ============================================================================
@@ -35,7 +33,6 @@ pub mod database;
 pub mod extract_v2;
 pub mod extracted_data;
 pub mod languages;
-pub mod sql_builder;
 pub mod types;
 
 // Re-export the Language enum for convenience
