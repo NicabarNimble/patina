@@ -69,7 +69,22 @@ mod tests {
         let sub_dir = temp_dir.path().join("src").join("commands");
         fs::create_dir_all(&sub_dir).unwrap();
 
-        let original_dir = std::env::current_dir().unwrap();
+        // Use a guard to ensure directory is restored even on panic
+        struct DirGuard {
+            original: Option<PathBuf>,
+        }
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(ref path) = self.original {
+                    let _ = std::env::set_current_dir(path);
+                }
+            }
+        }
+
+        let _guard = DirGuard {
+            original: std::env::current_dir().ok(),
+        };
+
         std::env::set_current_dir(&sub_dir).unwrap();
 
         // Should find the project root from the subdirectory
@@ -78,15 +93,28 @@ mod tests {
             found_root.canonicalize().unwrap(),
             temp_dir.path().canonicalize().unwrap()
         );
-
-        std::env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
     fn test_find_project_root_not_in_project() {
         // Create a directory without .patina
         let temp_dir = TempDir::new().unwrap();
-        let original_dir = std::env::current_dir().unwrap();
+
+        // Use a guard to ensure directory is restored even on panic
+        struct DirGuard {
+            original: Option<PathBuf>,
+        }
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(ref path) = self.original {
+                    let _ = std::env::set_current_dir(path);
+                }
+            }
+        }
+
+        let _guard = DirGuard {
+            original: std::env::current_dir().ok(),
+        };
 
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
@@ -97,8 +125,6 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Not in a Patina project directory"));
-
-        std::env::set_current_dir(original_dir).unwrap();
     }
 
     #[test]
@@ -108,7 +134,22 @@ mod tests {
         let patina_dir = temp_dir.path().join(".patina");
         fs::create_dir(&patina_dir).unwrap();
 
-        let original_dir = std::env::current_dir().unwrap();
+        // Use a guard to ensure directory is restored even on panic
+        struct DirGuard {
+            original: Option<PathBuf>,
+        }
+        impl Drop for DirGuard {
+            fn drop(&mut self) {
+                if let Some(ref path) = self.original {
+                    let _ = std::env::set_current_dir(path);
+                }
+            }
+        }
+
+        let _guard = DirGuard {
+            original: std::env::current_dir().ok(),
+        };
+
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
         // Should find the project root when already at root
@@ -117,7 +158,5 @@ mod tests {
             found_root.canonicalize().unwrap(),
             temp_dir.path().canonicalize().unwrap()
         );
-
-        std::env::set_current_dir(original_dir).unwrap();
     }
 }

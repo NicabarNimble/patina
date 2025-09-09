@@ -2,7 +2,6 @@ pub mod agent;
 pub mod ask;
 pub mod build;
 pub mod doctor;
-pub mod incremental;
 pub mod init;
 pub mod scrape;
 pub mod test;
