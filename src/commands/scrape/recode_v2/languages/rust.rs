@@ -9,10 +9,10 @@
 //! - Direct data extraction to domain types
 
 use crate::commands::scrape::recode_v2::database::{
-    CallEdge, CodeSymbol, FunctionFact, ImportFact, TypeFact,
+    CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
 use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
-use crate::commands::scrape::recode_v2::types::{FilePath, SymbolKind};
+use crate::commands::scrape::recode_v2::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
@@ -298,13 +298,13 @@ fn extract_rust_calls(
             "call_expression" => {
                 if let Some(function_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = function_node.utf8_text(source) {
-                        let call_edge = CallEdge {
-                            caller: caller.clone(),
-                            callee: callee.to_string(),
-                            file: file_path.to_string(),
-                            call_type: "direct".to_string(),
-                            line_number: (node.start_position().row + 1) as i32,
-                        };
+                        let call_edge = CallGraphEntry::new(
+                            caller.clone(),
+                            callee.to_string(),
+                            file_path.to_string(),
+                            CallType::Direct,
+                            (node.start_position().row + 1) as i32,
+                        );
                         data.add_call_edge(call_edge);
                     }
                 }
@@ -312,13 +312,13 @@ fn extract_rust_calls(
             "macro_invocation" => {
                 if let Some(macro_node) = node.child_by_field_name("macro") {
                     if let Ok(macro_name) = macro_node.utf8_text(source) {
-                        let call_edge = CallEdge {
-                            caller: caller.clone(),
-                            callee: format!("{}!", macro_name),
-                            file: file_path.to_string(),
-                            call_type: "macro".to_string(),
-                            line_number: (node.start_position().row + 1) as i32,
-                        };
+                        let call_edge = CallGraphEntry::new(
+                            caller.clone(),
+                            format!("{}!", macro_name),
+                            file_path.to_string(),
+                            CallType::Macro,
+                            (node.start_position().row + 1) as i32,
+                        );
                         data.add_call_edge(call_edge);
                     }
                 }
