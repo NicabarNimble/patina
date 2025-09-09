@@ -102,14 +102,36 @@ fn extract_cpp_symbols(
         }
         "function_definition" => {
             if let Some(name) = extract_function_name(node, source) {
-                // Include namespace in function name
+                // Check if this is a method (inside a class) or free function
+                let is_method = namespace_stack.iter().any(|ns| {
+                    // Check if any namespace entry is actually a class name
+                    // This is a simplified check - could be improved
+                    true // For now, assume functions in namespace stack might be methods
+                });
+                
+                // Include namespace/class in function name
                 let full_name = if namespace_stack.is_empty() {
                     name.clone()
                 } else {
                     format!("{}::{}", namespace_stack.join("::"), name)
                 };
+                
+                // Check for special method types
+                let is_constructor = namespace_stack.last()
+                    .map(|class| name == class.as_str())
+                    .unwrap_or(false);
+                let is_destructor = name.starts_with('~');
 
-                process_cpp_function(node, source, file_path, &full_name, data);
+                process_cpp_function_enhanced(
+                    node, 
+                    source, 
+                    file_path, 
+                    &full_name, 
+                    data,
+                    is_method,
+                    is_constructor,
+                    is_destructor,
+                );
 
                 // Process function body with updated context
                 let mut cursor = node.walk();
@@ -144,9 +166,13 @@ fn extract_cpp_symbols(
 
                     process_cpp_class(node, source, file_path, &full_name, kind, data);
 
-                    // Process class body with updated namespace
+                    // Process class body with updated namespace and extract members
                     namespace_stack.push(name.to_string());
                     if let Some(body) = node.child_by_field_name("body") {
+                        // Extract class members with visibility tracking
+                        extract_class_members(&body, source, file_path, &full_name, data);
+                        
+                        // Also process nested types and methods
                         let mut cursor = body.walk();
                         for child in body.children(&mut cursor) {
                             extract_cpp_symbols(
@@ -188,6 +214,16 @@ fn extract_cpp_symbols(
         }
         "preproc_include" | "preproc_import" => {
             process_cpp_include(node, source, file_path, data);
+        }
+        "preproc_def" => {
+            // Extract #define macros (same as C)
+            process_cpp_macro(node, source, file_path, data);
+        }
+        "declaration" => {
+            // Extract global variables and constants (at file/namespace scope)
+            if current_function.is_none() {
+                process_cpp_declaration(node, source, file_path, data);
+            }
         }
         "call_expression" => {
             // Track function calls for call graph
@@ -408,6 +444,283 @@ fn process_cpp_include(node: &Node, source: &[u8], file_path: &str, data: &mut E
     }
 }
 
+/// Extract class members with visibility tracking
+fn extract_class_members(
+    body: &Node,
+    source: &[u8],
+    file_path: &str,
+    class_name: &str,
+    data: &mut ExtractedData,
+) {
+    let mut current_visibility = "private"; // Default for class
+    
+    let mut cursor = body.walk();
+    for child in body.children(&mut cursor) {
+        match child.kind() {
+            "access_specifier" => {
+                // Track visibility changes (public:, private:, protected:)
+                if let Ok(text) = child.utf8_text(source) {
+                    current_visibility = text.trim_end_matches(':');
+                }
+            }
+            "field_declaration" => {
+                // Extract member fields
+                if let Some(declarator) = child.child_by_field_name("declarator") {
+                    if let Some(name) = extract_declarator_name(&declarator, source) {
+                        data.add_symbol(CodeSymbol {
+                            path: file_path.to_string(),
+                            name: format!("{}::{}", class_name, name),
+                            kind: "field".to_string(),
+                            line: child.start_position().row + 1,
+                            context: format!("{} {}", current_visibility, 
+                                child.utf8_text(source).unwrap_or("").lines().next().unwrap_or("")),
+                        });
+                    }
+                }
+            }
+            "function_definition" | "declaration" => {
+                // Methods are handled separately but we track visibility
+                if let Some(name) = extract_function_name(&child, source) {
+                    let is_static = child.utf8_text(source)
+                        .unwrap_or("")
+                        .contains("static");
+                    let is_virtual = child.utf8_text(source)
+                        .unwrap_or("")
+                        .contains("virtual");
+                    
+                    let kind = if name == class_name.split("::").last().unwrap_or(class_name) {
+                        "constructor"
+                    } else if name.starts_with('~') {
+                        "destructor"
+                    } else if is_static {
+                        "static_method"
+                    } else if is_virtual {
+                        "virtual_method"
+                    } else {
+                        "method"
+                    };
+                    
+                    data.add_symbol(CodeSymbol {
+                        path: file_path.to_string(),
+                        name: format!("{}::{}", class_name, name),
+                        kind: kind.to_string(),
+                        line: child.start_position().row + 1,
+                        context: format!("{} {}", current_visibility,
+                            child.utf8_text(source).unwrap_or("").lines().next().unwrap_or("")),
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Enhanced function processing with method detection
+fn process_cpp_function_enhanced(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+    is_method: bool,
+    is_constructor: bool,
+    is_destructor: bool,
+) {
+    let params = extract_parameters(node, source);
+    let return_type = if is_constructor || is_destructor {
+        None
+    } else {
+        extract_return_type(node, source)
+    };
+    
+    // Check for const method
+    let is_const_method = node.utf8_text(source)
+        .unwrap_or("")
+        .contains(") const");
+    
+    // Determine function kind
+    let kind = if is_constructor {
+        "constructor"
+    } else if is_destructor {
+        "destructor"
+    } else if is_method {
+        if is_const_method { "const_method" } else { "method" }
+    } else {
+        "function"
+    };
+    
+    // Add enhanced symbol
+    data.add_symbol(CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: kind.to_string(),
+        line: node.start_position().row + 1,
+        context: extract_context(node, source),
+    });
+    
+    // Add function fact with method info
+    data.add_function(FunctionFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        takes_mut_self: is_method && !is_const_method,
+        takes_mut_params: params.iter().any(|p| !p.contains("const")),
+        returns_result: false,
+        returns_option: false,
+        is_async: false,
+        is_unsafe: false,
+        is_public: true, // Would need more context for accurate visibility
+        parameter_count: params.len() as i32,
+        generic_count: count_template_params(node),
+        parameters: params,
+        return_type,
+    });
+}
+
+/// Process C++ macros (same as C)
+fn process_cpp_macro(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
+    if let Some(name_node) = node.child_by_field_name("name") {
+        if let Ok(name) = name_node.utf8_text(source) {
+            let value = node
+                .child_by_field_name("value")
+                .and_then(|v| v.utf8_text(source).ok())
+                .map(|s| s.to_string());
+            
+            let context = node
+                .utf8_text(source)
+                .ok()
+                .and_then(|s| s.lines().next())
+                .unwrap_or("")
+                .to_string();
+            
+            data.add_symbol(CodeSymbol {
+                path: file_path.to_string(),
+                name: name.to_string(),
+                kind: "macro".to_string(),
+                line: node.start_position().row + 1,
+                context,
+            });
+            
+            if let Some(val) = value {
+                data.add_type(TypeFact {
+                    file: file_path.to_string(),
+                    name: name.to_string(),
+                    definition: format!("#define {} {}", name, val),
+                    kind: "macro".to_string(),
+                    visibility: "public".to_string(),
+                    usage_count: 0,
+                });
+            }
+        }
+    }
+}
+
+/// Process C++ global declarations (constants, statics, etc.)
+fn process_cpp_declaration(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
+    let mut is_static = false;
+    let mut is_const = false;
+    let mut is_constexpr = false;
+    let mut is_extern = false;
+    
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "storage_class_specifier" => {
+                if let Ok(text) = child.utf8_text(source) {
+                    match text {
+                        "static" => is_static = true,
+                        "extern" => is_extern = true,
+                        "constexpr" => is_constexpr = true,
+                        _ => {}
+                    }
+                }
+            }
+            "type_qualifier" => {
+                if let Ok(text) = child.utf8_text(source) {
+                    if text == "const" {
+                        is_const = true;
+                    }
+                }
+            }
+            "init_declarator" | "declarator" => {
+                if let Some(name) = extract_declarator_name(&child, source) {
+                    let kind = if is_constexpr {
+                        "constexpr"
+                    } else if is_const {
+                        "const"
+                    } else if is_static {
+                        "static"
+                    } else if is_extern {
+                        "extern"
+                    } else {
+                        "global"
+                    };
+                    
+                    let context = node
+                        .utf8_text(source)
+                        .ok()
+                        .and_then(|s| s.lines().next())
+                        .unwrap_or("")
+                        .to_string();
+                    
+                    data.add_symbol(CodeSymbol {
+                        path: file_path.to_string(),
+                        name: name.clone(),
+                        kind: kind.to_string(),
+                        line: node.start_position().row + 1,
+                        context,
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Count template parameters for a function/class
+fn count_template_params(node: &Node) -> i32 {
+    // Look for template_declaration parent
+    let mut current = node.parent();
+    while let Some(parent) = current {
+        if parent.kind() == "template_declaration" {
+            if let Some(params) = parent.child_by_field_name("parameters") {
+                let mut count = 0;
+                let mut cursor = params.walk();
+                for child in params.children(&mut cursor) {
+                    if matches!(child.kind(), "type_parameter_declaration" | "parameter_declaration") {
+                        count += 1;
+                    }
+                }
+                return count;
+            }
+        }
+        current = parent.parent();
+    }
+    0
+}
+
+/// Extract declarator name (reused from C)
+fn extract_declarator_name(node: &Node, source: &[u8]) -> Option<String> {
+    if node.kind() == "identifier" {
+        return node.utf8_text(source).ok().map(|s| s.to_string());
+    }
+    
+    let mut current = Some(*node);
+    while let Some(n) = current {
+        if n.kind() == "identifier" {
+            return n.utf8_text(source).ok().map(|s| s.to_string());
+        }
+        let mut cursor = n.walk();
+        current = n.children(&mut cursor).find(|c| 
+            c.kind() == "identifier" || 
+            c.kind() == "declarator" || 
+            c.kind() == "pointer_declarator" ||
+            c.kind() == "array_declarator" ||
+            c.kind() == "reference_declarator"
+        );
+    }
+    None
+}
+
 /// Extract function name from C++ function_definition node
 fn extract_function_name(node: &Node, source: &[u8]) -> Option<String> {
     // First check for simple declarator with name
@@ -486,27 +799,6 @@ fn extract_typedef_name(node: &Node, source: &[u8]) -> Option<String> {
     None
 }
 
-/// Extract name from a declarator
-fn extract_declarator_name(declarator: &Node, source: &[u8]) -> Option<String> {
-    if matches!(declarator.kind(), "type_identifier" | "identifier") {
-        return declarator.utf8_text(source).ok().map(|s| s.to_string());
-    }
-
-    if declarator.kind() == "pointer_declarator" || declarator.kind() == "reference_declarator" {
-        if let Some(inner) = declarator.child_by_field_name("declarator") {
-            return extract_declarator_name(&inner, source);
-        }
-    }
-
-    let mut cursor = declarator.walk();
-    for child in declarator.children(&mut cursor) {
-        if matches!(child.kind(), "type_identifier" | "identifier") {
-            return child.utf8_text(source).ok().map(|s| s.to_string());
-        }
-    }
-
-    None
-}
 
 /// Extract function parameters
 fn extract_parameters(node: &Node, source: &[u8]) -> Vec<String> {
