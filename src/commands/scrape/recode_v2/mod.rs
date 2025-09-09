@@ -8,8 +8,8 @@
 //!
 //! ## Architecture
 //! - Each language gets its own file (rust.rs, go.rs, etc.)
-//! - Common LanguageSpec trait defines the interface
-//! - Registry pattern for language lookup
+//! - Each language processor returns ExtractedData structs
+//! - Database module uses DuckDB Appender API for 10-100x performance
 //! - Clean separation of concerns
 //!
 //! ## Usage
@@ -19,10 +19,7 @@
 //! ```
 
 use anyhow::{Context, Result};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
-use tree_sitter::Node;
 
 use super::ScrapeConfig;
 
@@ -37,68 +34,6 @@ pub mod types;
 
 // Re-export the Language enum for convenience
 pub use languages::Language;
-
-// ============================================================================
-// LANGUAGE SPECIFICATION TRAIT
-// ============================================================================
-/// Common interface that each language module must implement
-pub struct LanguageSpec {
-    /// Check if a comment is a documentation comment
-    pub is_doc_comment: fn(&str) -> bool,
-
-    /// Parse visibility from node and name
-    pub parse_visibility: fn(&Node, &str, &[u8]) -> bool,
-
-    /// Check if function is async
-    pub has_async: fn(&Node, &[u8]) -> bool,
-
-    /// Check if function is unsafe
-    pub has_unsafe: fn(&Node, &[u8]) -> bool,
-
-    /// Extract function parameters
-    pub extract_params: fn(&Node, &[u8]) -> Vec<String>,
-
-    /// Extract return type
-    pub extract_return_type: fn(&Node, &[u8]) -> Option<String>,
-
-    /// Extract generic parameters
-    pub extract_generics: fn(&Node, &[u8]) -> Option<String>,
-
-    /// Map node kind to symbol kind (simple mapping)
-    pub get_symbol_kind: fn(&str) -> SymbolKind,
-
-    /// Map node to symbol kind (complex cases that need node inspection)
-    pub get_symbol_kind_complex: fn(&Node, &[u8]) -> Option<SymbolKind>,
-
-    /// Clean documentation text for a language
-    pub clean_doc_comment: fn(&str) -> String,
-
-    /// Extract import details from an import node
-    pub extract_import_details: fn(&Node, &[u8]) -> (String, String, bool),
-
-    /// Extract call expressions from a node (language-specific)
-    /// This allows each language to handle its unique call patterns
-    pub extract_calls: Option<fn(&Node, &[u8], &mut ParseContext)>,
-}
-
-// ============================================================================
-// LANGUAGE REGISTRY
-// ============================================================================
-/// Central registry of all language specifications
-static LANGUAGE_REGISTRY: LazyLock<HashMap<Language, &'static LanguageSpec>> =
-    LazyLock::new(|| {
-        let registry = HashMap::new();
-
-        // All languages now use isolated processors instead of LanguageSpec
-        // The registry is kept for backward compatibility but is empty
-
-        registry
-    });
-
-/// Get language specification from registry
-pub fn get_language_spec(language: Language) -> Option<&'static LanguageSpec> {
-    LANGUAGE_REGISTRY.get(&language).copied()
-}
 
 // ============================================================================
 // PUBLIC INTERFACE
@@ -310,51 +245,4 @@ CREATE TABLE IF NOT EXISTS skipped_files (
 CREATE INDEX IF NOT EXISTS idx_type_vocabulary_kind ON type_vocabulary(kind);
 CREATE INDEX IF NOT EXISTS idx_function_facts_public ON function_facts(is_public);
 "#
-}
-
-fn extract_and_index(db_path: &str, work_dir: &Path, force: bool) -> Result<usize> {
-    println!("🔍 Indexing codebase...\n");
-
-    // If force flag is set, reinitialize database to ensure clean state
-    if force {
-        initialize_database(db_path)?;
-    }
-
-    // Step 3: Extract code metadata with tree-sitter
-    let symbol_count = extract_code_metadata(db_path, work_dir, force)?;
-
-    println!("\n✅ Extraction complete!");
-    Ok(symbol_count)
-}
-
-// ============================================================================
-// PARSING CONTEXT
-// ============================================================================
-#[derive(Default)]
-pub struct ParseContext {
-    pub current_function: Option<String>,
-    pub call_graph_entries: Vec<CallGraphEntry>,
-}
-
-/// Groups parameters for symbol processing to avoid too many arguments
-struct SymbolInfo<'a> {
-    node: &'a Node<'a>,
-    name: SymbolName<'a>,
-    kind: SymbolKind,
-    source: &'a [u8],
-    file_path: FilePath<'a>,
-    language: Language,
-}
-
-impl ParseContext {
-    pub fn add_call(&mut self, callee: String, call_type: CallType, line_number: i32) {
-        if let Some(ref caller) = self.current_function {
-            self.call_graph_entries.push(CallGraphEntry::new(
-                caller.clone(),
-                callee,
-                call_type,
-                line_number,
-            ));
-        }
-    }
 }
