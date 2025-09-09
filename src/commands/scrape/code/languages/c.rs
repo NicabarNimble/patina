@@ -19,7 +19,7 @@
 use crate::commands::scrape::code::database::{
     CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
-use crate::commands::scrape::code::extracted_data::ExtractedData;
+use crate::commands::scrape::code::extracted_data::{ExtractedData, ConstantFact, MemberFact};
 use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
@@ -294,7 +294,7 @@ fn process_c_enum_values(
                             .and_then(|v| v.utf8_text(source).ok())
                             .map(|s| s.to_string());
                         
-                        // Add as symbol with full context
+                        // Add as symbol for backwards compatibility
                         let full_name = format!("{}::{}", enum_name, value_name);
                         let context = if let Some(val) = &value {
                             format!("{} = {}", value_name, val)
@@ -304,10 +304,20 @@ fn process_c_enum_values(
                         
                         data.add_symbol(CodeSymbol {
                             path: file_path.to_string(),
-                            name: full_name,
+                            name: full_name.clone(),
                             kind: "enum_value".to_string(),
                             line: child.start_position().row + 1,
                             context,
+                        });
+                        
+                        // Add as ConstantFact for better organization
+                        data.add_constant(ConstantFact {
+                            file: file_path.to_string(),
+                            name: format!("{}::{}", enum_name, value_name),
+                            value: value.clone(),
+                            const_type: "enum_value".to_string(),
+                            scope: enum_name.to_string(),
+                            line: child.start_position().row + 1,
                         });
                     }
                 }
@@ -363,13 +373,33 @@ fn process_c_declaration(node: &Node, source: &[u8], file_path: &str, data: &mut
                         .unwrap_or("")
                         .to_string();
                     
-                    // Add as symbol
+                    // Add as symbol for backwards compatibility
                     data.add_symbol(CodeSymbol {
                         path: file_path.to_string(),
                         name: name.clone(),
                         kind: kind.to_string(),
                         line: node.start_position().row + 1,
-                        context,
+                        context: context.clone(),
+                    });
+                    
+                    // Add as ConstantFact for better organization
+                    let const_type = if is_const {
+                        "const"
+                    } else if is_static {
+                        "static" 
+                    } else if is_extern {
+                        "extern"
+                    } else {
+                        "global"
+                    }.to_string();
+                    
+                    data.add_constant(ConstantFact {
+                        file: file_path.to_string(),
+                        name: name.clone(),
+                        value: None, // Could extract initializer value here
+                        const_type,
+                        scope: "global".to_string(),
+                        line: node.start_position().row + 1,
                     });
                 }
             }
@@ -422,7 +452,7 @@ fn process_c_macro(node: &Node, source: &[u8], file_path: &str, data: &mut Extra
                 .unwrap_or("")
                 .to_string();
             
-            // Add as a symbol with kind "macro"
+            // Add as a symbol for backwards compatibility
             data.add_symbol(CodeSymbol {
                 path: file_path.to_string(),
                 name: name.to_string(),
@@ -431,17 +461,15 @@ fn process_c_macro(node: &Node, source: &[u8], file_path: &str, data: &mut Extra
                 context,
             });
             
-            // Also add to type vocabulary if it looks like a constant
-            if let Some(val) = value {
-                data.add_type(TypeFact {
-                    file: file_path.to_string(),
-                    name: name.to_string(),
-                    definition: format!("#define {} {}", name, val),
-                    kind: "macro".to_string(),
-                    visibility: "public".to_string(),
-                    usage_count: 0,
-                });
-            }
+            // Add as a ConstantFact for better organization
+            data.add_constant(ConstantFact {
+                file: file_path.to_string(),
+                name: name.to_string(),
+                value: value.clone(),
+                const_type: "macro".to_string(),
+                scope: "global".to_string(),
+                line: node.start_position().row + 1,
+            });
         }
     }
 }
