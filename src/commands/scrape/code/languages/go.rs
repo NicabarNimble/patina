@@ -18,7 +18,7 @@
 use crate::commands::scrape::code::database::{
     CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
-use crate::commands::scrape::code::extracted_data::ExtractedData;
+use crate::commands::scrape::code::extracted_data::{ConstantFact, ExtractedData, MemberFact};
 use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
@@ -70,11 +70,50 @@ fn extract_go_symbols(
     // First extract any calls
     extract_go_calls(node, source, file_path, &current_function, data);
 
-    // Determine symbol kind
+    // Handle package declaration
+    if node.kind() == "package_clause" {
+        // Package identifier is a direct child, not a field
+        let mut pkg_cursor = node.walk();
+        for child in node.children(&mut pkg_cursor) {
+            if child.kind() == "package_identifier" {
+                if let Ok(package_name) = child.utf8_text(source) {
+                    // Store package as a special constant
+                    data.add_constant(ConstantFact {
+                        file: file_path.to_string(),
+                        name: format!("package:{}", package_name),
+                        value: Some(package_name.to_string()),
+                        const_type: "package".to_string(),
+                        scope: "file".to_string(),
+                        line: node.start_position().row + 1,
+                    });
+                    break;
+                }
+            }
+        }
+        return; // Package clause is fully processed
+    }
+
+    // Handle const declarations
+    if node.kind() == "const_declaration" {
+        process_go_constants(node, source, file_path, data);
+        // Don't recurse further for const declarations
+        return;
+    }
+
+    // Handle var declarations (check if global)
+    if node.kind() == "var_declaration" {
+        // Check if this is at package level (global)
+        if current_function.is_none() {
+            process_go_globals(node, source, file_path, data);
+        }
+        // Don't recurse further for var declarations
+        return;
+    }
+
+    // Determine symbol kind for other nodes
     let symbol_kind = match node.kind() {
         "function_declaration" | "method_declaration" => SymbolKind::Function,
         "type_declaration" => SymbolKind::TypeAlias,
-        "const_declaration" | "var_declaration" => SymbolKind::Const,
         "import_declaration" => SymbolKind::Import,
         _ => {
             // Check for complex types that need node inspection
@@ -193,6 +232,14 @@ fn process_go_type(
         visibility: if is_public { "public" } else { "private" }.to_string(),
         usage_count: 0, // Will be populated later
     });
+
+    // Extract struct fields or interface methods
+    if kind == SymbolKind::Struct {
+        extract_struct_fields(node, source, file_path, name, data);
+    } else if kind == SymbolKind::Trait {
+        // In Go, Trait represents interfaces
+        extract_interface_methods(node, source, file_path, name, data);
+    }
 }
 
 /// Process a Go import and add to ExtractedData
@@ -486,5 +533,259 @@ fn get_type_definition(node: &Node, source: &[u8]) -> String {
         }
     } else {
         String::new()
+    }
+}
+
+/// Process Go constants (both single and blocks with iota)
+fn process_go_constants(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
+    let mut cursor = node.walk();
+    let mut iota_counter = 0;
+    
+    for child in node.children(&mut cursor) {
+        if child.kind() == "const_spec" {
+            // Extract constant name and value
+            let mut const_name = None;
+            let mut const_value = None;
+            let mut const_type = None;
+            
+            let mut spec_cursor = child.walk();
+            for spec_child in child.children(&mut spec_cursor) {
+                match spec_child.kind() {
+                    "identifier" => {
+                        if const_name.is_none() {
+                            const_name = spec_child.utf8_text(source).ok().map(String::from);
+                        }
+                    }
+                    "type_identifier" | "qualified_type" => {
+                        const_type = spec_child.utf8_text(source).ok().map(String::from);
+                    }
+                    "expression_list" => {
+                        if let Ok(text) = spec_child.utf8_text(source) {
+                            const_value = Some(text.to_string());
+                            // Check for iota
+                            if text.contains("iota") {
+                                const_value = Some(format!("{} (={})", text, iota_counter));
+                            }
+                        }
+                    }
+                    _ => {
+                        // Check for direct expression
+                        if spec_child.kind().ends_with("_literal") || spec_child.kind() == "identifier" {
+                            if const_value.is_none() {
+                                const_value = spec_child.utf8_text(source).ok().map(String::from);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if let Some(name) = const_name {
+                // If no value is specified in a const block, use iota
+                if const_value.is_none() && node.child_count() > 1 {
+                    const_value = Some(iota_counter.to_string());
+                }
+                
+                data.add_constant(ConstantFact {
+                    file: file_path.to_string(),
+                    name: name.clone(),
+                    value: const_value,
+                    const_type: "const".to_string(),
+                    scope: "global".to_string(),
+                    line: child.start_position().row + 1,
+                });
+                
+                // Also add as symbol for search
+                data.add_symbol(CodeSymbol {
+                    path: file_path.to_string(),
+                    name,
+                    kind: "constant".to_string(),
+                    line: child.start_position().row + 1,
+                    context: get_node_context(&child, source),
+                });
+                
+                iota_counter += 1;
+            }
+        }
+    }
+}
+
+/// Process Go global variables
+fn process_go_globals(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
+    let mut cursor = node.walk();
+    
+    for child in node.children(&mut cursor) {
+        if child.kind() == "var_spec" {
+            // Extract variable name and value
+            let mut var_name = None;
+            let mut var_value = None;
+            let mut var_type = None;
+            
+            let mut spec_cursor = child.walk();
+            for spec_child in child.children(&mut spec_cursor) {
+                match spec_child.kind() {
+                    "identifier" => {
+                        if var_name.is_none() {
+                            var_name = spec_child.utf8_text(source).ok().map(String::from);
+                        }
+                    }
+                    "type_identifier" | "qualified_type" | "pointer_type" | "slice_type" | "map_type" => {
+                        var_type = spec_child.utf8_text(source).ok().map(String::from);
+                    }
+                    "expression_list" => {
+                        var_value = spec_child.utf8_text(source).ok().map(String::from);
+                    }
+                    _ => {}
+                }
+            }
+            
+            if let Some(name) = var_name {
+                data.add_constant(ConstantFact {
+                    file: file_path.to_string(),
+                    name: name.clone(),
+                    value: var_value.or(var_type),
+                    const_type: "global".to_string(),
+                    scope: "global".to_string(),
+                    line: child.start_position().row + 1,
+                });
+                
+                // Also add as symbol for search
+                data.add_symbol(CodeSymbol {
+                    path: file_path.to_string(),
+                    name,
+                    kind: "variable".to_string(),
+                    line: child.start_position().row + 1,
+                    context: get_node_context(&child, source),
+                });
+            }
+        }
+    }
+}
+
+/// Extract struct fields
+fn extract_struct_fields(node: &Node, source: &[u8], file_path: &str, struct_name: &str, data: &mut ExtractedData) {
+    // Find the struct_type node
+    let struct_node = if node.kind() == "type_spec" {
+        node.child_by_field_name("type")
+    } else {
+        Some(*node)
+    };
+    
+    if let Some(struct_node) = struct_node {
+        if struct_node.kind() == "struct_type" {
+            let mut cursor = struct_node.walk();
+            for child in struct_node.children(&mut cursor) {
+                if child.kind() == "field_declaration_list" {
+                    let mut field_cursor = child.walk();
+                    for field in child.children(&mut field_cursor) {
+                        if field.kind() == "field_declaration" {
+                            extract_field_declaration(&field, source, file_path, struct_name, data);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Extract a single field declaration
+fn extract_field_declaration(node: &Node, source: &[u8], file_path: &str, struct_name: &str, data: &mut ExtractedData) {
+    let mut field_names = Vec::new();
+    let mut field_type = None;
+    let mut field_tag = None;
+    
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "field_identifier" => {
+                if let Ok(name) = child.utf8_text(source) {
+                    field_names.push(name.to_string());
+                }
+            }
+            "type_identifier" | "pointer_type" | "slice_type" | "map_type" | "qualified_type" => {
+                field_type = child.utf8_text(source).ok().map(String::from);
+            }
+            "tag" => {
+                field_tag = child.utf8_text(source).ok().map(String::from);
+            }
+            _ => {}
+        }
+    }
+    
+    // Add each field name as a member
+    for name in field_names {
+        let visibility = if is_exported(&name) { "public" } else { "private" };
+        let mut modifiers = Vec::new();
+        if field_tag.is_some() {
+            modifiers.push("tagged".to_string());
+        }
+        
+        data.add_member(MemberFact {
+            file: file_path.to_string(),
+            container: struct_name.to_string(),
+            name: name.clone(),
+            member_type: "field".to_string(),
+            visibility: visibility.to_string(),
+            modifiers,
+            line: node.start_position().row + 1,
+        });
+    }
+}
+
+/// Extract interface methods
+fn extract_interface_methods(node: &Node, source: &[u8], file_path: &str, interface_name: &str, data: &mut ExtractedData) {
+    // Find the interface_type node
+    let interface_node = if node.kind() == "type_spec" {
+        node.child_by_field_name("type")
+    } else {
+        Some(*node)
+    };
+    
+    if let Some(interface_node) = interface_node {
+        if interface_node.kind() == "interface_type" {
+            // Interface methods and embedded types are direct children of interface_type
+            let mut cursor = interface_node.walk();
+            for child in interface_node.children(&mut cursor) {
+                match child.kind() {
+                    "method_elem" => {
+                        // Extract method name using the name field
+                        if let Some(name_node) = child.child_by_field_name("name") {
+                            if let Ok(method_name) = name_node.utf8_text(source) {
+                                let visibility = if is_exported(method_name) { "public" } else { "private" };
+                                
+                                data.add_member(MemberFact {
+                                    file: file_path.to_string(),
+                                    container: interface_name.to_string(),
+                                    name: method_name.to_string(),
+                                    member_type: "method".to_string(),
+                                    visibility: visibility.to_string(),
+                                    modifiers: vec!["abstract".to_string()], // Interface methods are abstract
+                                    line: child.start_position().row + 1,
+                                });
+                            }
+                        }
+                    }
+                    "type_elem" => {
+                        // Handle embedded interfaces - type_elem contains the embedded type
+                        let mut type_cursor = child.walk();
+                        for type_child in child.children(&mut type_cursor) {
+                            if matches!(type_child.kind(), "type_identifier" | "qualified_type") {
+                                if let Ok(embedded_name) = type_child.utf8_text(source) {
+                                    data.add_member(MemberFact {
+                                        file: file_path.to_string(),
+                                        container: interface_name.to_string(),
+                                        name: embedded_name.to_string(),
+                                        member_type: "embedded".to_string(),
+                                        visibility: "public".to_string(),
+                                        modifiers: vec!["embedded".to_string()],
+                                        line: type_child.start_position().row + 1,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                    _ => {} // Skip punctuation nodes like "{", "}", etc.
+                }
+            }
+        }
     }
 }
