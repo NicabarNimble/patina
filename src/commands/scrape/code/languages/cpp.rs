@@ -103,7 +103,7 @@ fn extract_cpp_symbols(
         "function_definition" => {
             if let Some(name) = extract_function_name(node, source) {
                 // Check if this is a method (inside a class) or free function
-                let is_method = namespace_stack.iter().any(|ns| {
+                let is_method = namespace_stack.iter().any(|_ns| {
                     // Check if any namespace entry is actually a class name
                     // This is a simplified check - could be improved
                     true // For now, assume functions in namespace stack might be methods
@@ -290,45 +290,6 @@ fn extract_cpp_symbols(
     }
 }
 
-/// Process a C++ function and add to ExtractedData
-fn process_cpp_function(
-    node: &Node,
-    source: &[u8],
-    file_path: &str,
-    name: &str,
-    data: &mut ExtractedData,
-) {
-    let params = extract_parameters(node, source);
-    let return_type = extract_return_type(node, source);
-    let _is_template = has_template_parent(node);
-    let is_public = is_public_member(node, source);
-
-    // Add code symbol
-    data.add_symbol(CodeSymbol {
-        path: file_path.to_string(),
-        name: name.to_string(),
-        kind: "function".to_string(),
-        line: node.start_position().row + 1,
-        context: extract_context(node, source),
-    });
-
-    // Add function fact
-    data.add_function(FunctionFact {
-        file: file_path.to_string(),
-        name: name.to_string(),
-        takes_mut_self: false, // Would need more analysis
-        takes_mut_params: params.iter().any(|p| !p.contains("const")),
-        returns_result: false, // C++ uses exceptions
-        returns_option: return_type.as_ref().is_some_and(|r| r.contains("optional")),
-        is_async: false, // C++ doesn't have built-in async
-        is_unsafe: true, // All C++ is unsafe
-        is_public,
-        parameter_count: params.len() as i32,
-        generic_count: if _is_template { 1 } else { 0 },
-        parameters: params,
-        return_type,
-    });
-}
 
 /// Process a C++ class/struct and add to ExtractedData
 fn process_cpp_class(
@@ -359,6 +320,9 @@ fn process_cpp_class(
         visibility: "public".to_string(), // Top-level types are public
         usage_count: 0,
     });
+    
+    // Extract inheritance relationships
+    process_cpp_inheritance(node, source, file_path, name, data);
 }
 
 /// Process a C++ enum and add to ExtractedData
@@ -487,6 +451,75 @@ fn process_cpp_include(node: &Node, source: &[u8], file_path: &str, data: &mut E
 }
 
 /// Extract class members with visibility tracking
+/// Process C++ class inheritance relationships
+fn process_cpp_inheritance(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    class_name: &str,
+    data: &mut ExtractedData,
+) {
+    // Look for base_clause child which contains inheritance information
+    // The base_clause appears directly after the class name and before the body
+    let mut cursor = node.walk();
+    let mut found_name = false;
+    
+    for child in node.children(&mut cursor) {
+        // Skip until we find the name
+        if child.kind() == "type_identifier" && !found_name {
+            found_name = true;
+            continue;
+        }
+        
+        // After the name, look for the base clause
+        // Note: In tree-sitter-cpp, it's "base_class_clause" not "base_clause"
+        if child.kind() == "base_class_clause" {
+            // Extract access specifier (public, private, protected)
+            let mut access = "private"; // Default for class
+            if node.kind() == "struct_specifier" {
+                access = "public"; // Default for struct
+            }
+            
+            // Check for explicit access specifier
+            let mut spec_cursor = child.walk();
+            for spec_child in child.children(&mut spec_cursor) {
+                if spec_child.kind() == "access_specifier" {
+                    if let Ok(text) = spec_child.utf8_text(source) {
+                        access = text.trim();
+                    }
+                }
+            }
+            
+            // Extract base class name
+            if let Some(type_node) = child.children(&mut child.walk())
+                .find(|c| matches!(c.kind(), "type_identifier" | "qualified_identifier" | "template_type")) 
+            {
+                if let Ok(base_name) = type_node.utf8_text(source) {
+                    // Store inheritance as a special constant fact with relationship info
+                    data.constants.push(ConstantFact {
+                        file: file_path.to_string(),
+                        name: format!("{}::inherits::{}", class_name, base_name),
+                        value: Some(access.to_string()),
+                        const_type: "inheritance".to_string(),
+                        scope: class_name.to_string(),
+                        line: child.start_position().row + 1,
+                    });
+                    
+                    // Also add as a symbol for searchability
+                    data.add_symbol(CodeSymbol {
+                        path: file_path.to_string(),
+                        name: format!("{} : {} {}", class_name, access, base_name),
+                        kind: "inheritance".to_string(),
+                        line: child.start_position().row + 1,
+                        context: format!("class {} inherits from {} with {} access", 
+                                       class_name, base_name, access),
+                    });
+                }
+            }
+        }
+    }
+}
+
 fn extract_class_members(
     body: &Node,
     source: &[u8],
@@ -657,7 +690,7 @@ fn process_cpp_function_enhanced(
         returns_option: false,
         is_async: false,
         is_unsafe: false,
-        is_public: true, // Would need more context for accurate visibility
+        is_public: is_public_member(node, source),
         parameter_count: params.len() as i32,
         generic_count: count_template_params(node),
         parameters: params,

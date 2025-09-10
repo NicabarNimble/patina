@@ -19,7 +19,7 @@
 use crate::commands::scrape::code::database::{
     CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
-use crate::commands::scrape::code::extracted_data::{ExtractedData, ConstantFact};
+use crate::commands::scrape::code::extracted_data::{ExtractedData, ConstantFact, MemberFact};
 use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
@@ -218,6 +218,11 @@ fn process_c_type(
         visibility: if is_public { "public" } else { "private" }.to_string(),
         usage_count: 0,
     });
+    
+    // Extract struct/union fields
+    if matches!(kind, SymbolKind::Struct | SymbolKind::Union) {
+        process_c_struct_fields(node, source, file_path, name, data);
+    }
 }
 
 /// Process a C typedef and add to ExtractedData
@@ -431,6 +436,57 @@ fn extract_declarator_name(node: &Node, source: &[u8]) -> Option<String> {
         );
     }
     None
+}
+
+/// Process struct/union fields and add them as MemberFacts
+fn process_c_struct_fields(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    struct_name: &str,
+    data: &mut ExtractedData,
+) {
+    // Look for field_declaration_list child
+    if let Some(body) = node.child_by_field_name("body") {
+        let mut cursor = body.walk();
+        for child in body.children(&mut cursor) {
+            if child.kind() == "field_declaration" {
+                // Extract field type
+                let field_type = if let Some(type_node) = child.child_by_field_name("type") {
+                    type_node.utf8_text(source).ok()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "unknown".to_string())
+                } else {
+                    "unknown".to_string()
+                };
+                
+                // Extract field declarators (there can be multiple in one declaration)
+                if let Some(declarator) = child.child_by_field_name("declarator") {
+                    if let Some(field_name) = extract_declarator_name(&declarator, source) {
+                        // Add as MemberFact
+                        data.members.push(MemberFact {
+                            file: file_path.to_string(),
+                            container: struct_name.to_string(),
+                            name: field_name.clone(),
+                            member_type: "field".to_string(),
+                            visibility: "public".to_string(), // C struct fields are always public
+                            modifiers: vec![],
+                            line: child.start_position().row + 1,
+                        });
+                        
+                        // Also add as symbol for searchability with type info
+                        data.add_symbol(CodeSymbol {
+                            path: file_path.to_string(),
+                            name: format!("{}::{}", struct_name, field_name),
+                            kind: "field".to_string(),
+                            line: child.start_position().row + 1,
+                            context: format!("{} {}", field_type, field_name),
+                        });
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Process a #define macro and add to ExtractedData  
