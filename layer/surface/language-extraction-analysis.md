@@ -13,10 +13,14 @@ A comprehensive analysis of what each language processor extracts and what criti
 
 The `patina scrape code` command uses language-specific processors to extract semantic information from codebases. Each processor returns `ExtractedData` structs that populate DuckDB tables. This analysis documents the current extraction capabilities and missing facts for each language, based on real database analysis of production repositories.
 
+**Extraction Complete:** C, C++, Go, Rust, Python ✅  
+**Partial Extraction:** TypeScript/JavaScript, Solidity, Cairo ⚠️
+
 **Repositories Analyzed:**
 - **SDL** - C codebase with 11,997 functions
 - **DuckDB** - C++ codebase with 52,424 functions  
 - **Dagger** - Go (+ TypeScript/Python/Rust) with 9,402 functions
+- **Cortex** - Python codebase with 205 functions, 85 constants, 165 members
 - **Dust** - Solidity/TypeScript with 2,746 functions
 - **Dojo** - Rust/Cairo with 2,376 functions
 
@@ -132,58 +136,28 @@ Rust extraction validated on Loro repository (309 files):
 ## Python Language (src/commands/scrape/code/languages/python.rs)
 
 ### Currently Extracts ✅
-- **Functions**: Including async functions
-- **Classes**: Class definitions with methods
-- **Methods**: Distinguished from functions (have `self`)
+- **Functions**: Including async functions with full type hints
+- **Classes**: Class definitions with methods and inheritance
+- **Methods**: Distinguished from functions with visibility (public/private/special)
 - **Imports**: from/import statements
 - **Decorators**: Tracked in call graph
 - **Docstrings**: Captured for functions/classes
+- **Type Hints**: Full preservation of parameter and return type annotations
+- **Module Constants**: UPPER_CASE convention-based detection stored as ConstantFact
+- **Module Variables**: Package-level assignments stored as ConstantFact
+- **Class Inheritance**: Parent classes stored as ConstantFact with type="inheritance"
+- **Class Members**: Methods and constructors stored as MemberFact with visibility
+- **Class Variables**: Extracted from class body assignments
 
-### Missing Facts ❌
-1. **Global Variables/Constants**
-   - `MAX_SIZE = 100` - Convention-based constants not tracked
-   - Impact: Missing configuration values
+### Implementation Complete ✅
 
-2. **Class Inheritance**
-   - `class Child(Parent):` - Parent not captured
-   - Impact: Can't understand class hierarchies
-
-3. **Type Hints**
-   - `def foo(x: int) -> str:` - Type annotations ignored
-   - Impact: Missing type information
-
-4. **Class Variables vs Instance Variables**
-   - Can't distinguish `Class.var` from `self.var`
-   - Impact: Confusion about scope
-
-### Implementation Changes Needed
-
-**File: `src/commands/scrape/code/languages/python.rs`**
-
-Add type hints and inheritance:
-```rust
-"class_definition" => {
-    // ADD: Extract superclasses
-    if let Some(args) = node.child_by_field_name("superclasses") {
-        // Extract parent classes
-    }
-}
-
-"function_definition" => {
-    // ADD: Extract type annotations
-    if let Some(return_type) = node.child_by_field_name("return_type") {
-        // Extract return type hint
-    }
-    
-    // For parameters, extract type hints
-}
-
-// ADD: Module-level assignments (constants)
-"assignment" => {
-    // Check if at module level
-    // Extract as potential constant (UPPER_CASE convention)
-}
-```
+All critical Python language features are now extracted:
+- Cortex validation: 85 constants, 165 class members, 205 functions
+- Module-level constants detected by UPPER_CASE naming convention
+- Full type hint preservation including complex annotations like `Optional[str]`, `Dict[str, Union[str, int]]`
+- Inheritance relationships stored as special constant_facts (e.g., `OpenAIController::inherits_from::BaseLLMController`)
+- Method visibility detection based on underscore conventions (public, private with `_`, special with `__magic__`)
+- Constructor/destructor classification for `__init__` and `__del__` methods
 
 ## TypeScript/JavaScript Language (src/commands/scrape/code/languages/typescript.rs)
 
