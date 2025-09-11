@@ -20,7 +20,7 @@
 use crate::commands::scrape::code::database::{
     CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
-use crate::commands::scrape::code::extracted_data::ExtractedData;
+use crate::commands::scrape::code::extracted_data::{ConstantFact, ExtractedData, MemberFact};
 use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
@@ -210,6 +210,21 @@ fn extract_symbols(
 
         // Export statements
         "export_statement" => {
+            // Track export as a special constant for understanding module API
+            if let Ok(export_text) = node.utf8_text(source) {
+                // Check for default export
+                if export_text.starts_with("export default") {
+                    data.constants.push(ConstantFact {
+                        file: file_path.to_string(),
+                        name: "default_export".to_string(),
+                        value: Some(export_text.to_string()),
+                        const_type: "export".to_string(),
+                        scope: "module".to_string(),
+                        line: node.start_position().row + 1,
+                    });
+                }
+            }
+
             // Process the declaration inside the export
             if let Some(decl) = node.child_by_field_name("declaration") {
                 extract_symbols(decl, source, file_path, data, current_function);
@@ -378,6 +393,132 @@ fn process_class(
         .unwrap_or("")
         .to_string();
 
+    // Extract inheritance - extends clause
+    if let Some(heritage) = node.child_by_field_name("heritage") {
+        let mut cursor = heritage.walk();
+        for child in heritage.children(&mut cursor) {
+            if child.kind() == "extends_clause" {
+                // Find the type identifier
+                let mut extends_cursor = child.walk();
+                for extends_child in child.children(&mut extends_cursor) {
+                    if extends_child.kind() == "expression" || extends_child.kind() == "identifier" {
+                        if let Ok(parent_name) = extends_child.utf8_text(source) {
+                            // Skip "extends" keyword
+                            if parent_name != "extends" {
+                                data.constants.push(ConstantFact {
+                                    file: file_path.to_string(),
+                                    name: format!("{}::extends::{}", name, parent_name),
+                                    value: Some(parent_name.to_string()),
+                                    const_type: "inheritance".to_string(),
+                                    scope: name.to_string(),
+                                    line: child.start_position().row + 1,
+                                });
+                            }
+                        }
+                    }
+                }
+            } else if child.kind() == "implements_clause" {
+                // Find implemented interfaces
+                let mut implements_cursor = child.walk();
+                for implements_child in child.children(&mut implements_cursor) {
+                    if implements_child.kind() == "type" || implements_child.kind() == "identifier" {
+                        if let Ok(interface_name) = implements_child.utf8_text(source) {
+                            // Skip "implements" keyword
+                            if interface_name != "implements" && !interface_name.contains(',') {
+                                data.constants.push(ConstantFact {
+                                    file: file_path.to_string(),
+                                    name: format!("{}::implements::{}", name, interface_name),
+                                    value: Some(interface_name.to_string()),
+                                    const_type: "implements".to_string(),
+                                    scope: name.to_string(),
+                                    line: child.start_position().row + 1,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Extract class members (fields and methods)
+    if let Some(body) = node.child_by_field_name("body") {
+        let mut cursor = body.walk();
+        for child in body.children(&mut cursor) {
+            match child.kind() {
+                // Property declarations
+                "property_signature" | "public_field_definition" => {
+                    if let Some(prop_name) = child.child_by_field_name("name") {
+                        if let Ok(field_name) = prop_name.utf8_text(source) {
+                            let visibility = extract_member_visibility(&child, source);
+                            let is_static = has_static_keyword(&child, source);
+                            let is_readonly = has_readonly_keyword(&child, source);
+                            
+                            let mut modifiers = Vec::new();
+                            if is_static {
+                                modifiers.push("static".to_string());
+                            }
+                            if is_readonly {
+                                modifiers.push("readonly".to_string());
+                            }
+
+                            data.members.push(MemberFact {
+                                file: file_path.to_string(),
+                                container: name.to_string(),
+                                name: field_name.to_string(),
+                                member_type: "field".to_string(),
+                                visibility: visibility.to_string(),
+                                modifiers,
+                                line: child.start_position().row + 1,
+                            });
+                        }
+                    }
+                }
+                // Methods are already handled in extract_symbols
+                "method_definition" | "method_signature" => {
+                    if let Some(method_name) = extract_method_name(&child, source) {
+                        let visibility = extract_member_visibility(&child, source);
+                        let is_static = has_static_keyword(&child, source);
+                        let is_abstract = has_abstract_keyword(&child, source);
+                        let is_async = is_async_function(&child, source);
+                        
+                        let mut modifiers = Vec::new();
+                        if is_static {
+                            modifiers.push("static".to_string());
+                        }
+                        if is_abstract {
+                            modifiers.push("abstract".to_string());
+                        }
+                        if is_async {
+                            modifiers.push("async".to_string());
+                        }
+
+                        let member_type = if method_name == "constructor" {
+                            "constructor"
+                        } else if is_getter_method(&child, source) {
+                            "getter"
+                        } else if is_setter_method(&child, source) {
+                            "setter"
+                        } else {
+                            "method"
+                        };
+
+                        data.members.push(MemberFact {
+                            file: file_path.to_string(),
+                            container: name.to_string(),
+                            name: method_name.to_string(),
+                            member_type: member_type.to_string(),
+                            visibility: visibility.to_string(),
+                            modifiers,
+                            line: child.start_position().row + 1,
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     // Create type fact
     let type_fact = TypeFact {
         file: file_path.to_string(),
@@ -427,6 +568,104 @@ fn process_interface(
         .and_then(|s| s.lines().next())
         .unwrap_or("")
         .to_string();
+
+    // Extract generic type parameters
+    if let Some(type_params) = node.child_by_field_name("type_parameters") {
+        if let Ok(params_text) = type_params.utf8_text(source) {
+            // Extract each type parameter as a constant
+            let params_str = params_text.trim_start_matches('<').trim_end_matches('>');
+            for param in params_str.split(',') {
+                let param_name = param.trim().split_whitespace().next().unwrap_or(param.trim());
+                if !param_name.is_empty() {
+                    data.constants.push(ConstantFact {
+                        file: file_path.to_string(),
+                        name: format!("{}::<{}>", name, param_name),
+                        value: Some(param.trim().to_string()),
+                        const_type: "type_parameter".to_string(),
+                        scope: name.to_string(),
+                        line: type_params.start_position().row + 1,
+                    });
+                }
+            }
+        }
+    }
+
+    // Extract interface members
+    if let Some(body) = node.child_by_field_name("body") {
+        let mut cursor = body.walk();
+        for child in body.children(&mut cursor) {
+            match child.kind() {
+                "property_signature" | "method_signature" => {
+                    if let Some(member_name) = child.child_by_field_name("name") {
+                        if let Ok(field_name) = member_name.utf8_text(source) {
+                            let is_optional = child.child_by_field_name("optional").is_some();
+                            let is_readonly = has_readonly_keyword(&child, source);
+                            
+                            let mut modifiers = Vec::new();
+                            if is_optional {
+                                modifiers.push("optional".to_string());
+                            }
+                            if is_readonly {
+                                modifiers.push("readonly".to_string());
+                            }
+
+                            let member_type = if child.kind() == "method_signature" {
+                                "method"
+                            } else {
+                                "property"
+                            };
+
+                            data.members.push(MemberFact {
+                                file: file_path.to_string(),
+                                container: name.to_string(),
+                                name: field_name.to_string(),
+                                member_type: member_type.to_string(),
+                                visibility: "public".to_string(), // Interface members are always public
+                                modifiers,
+                                line: child.start_position().row + 1,
+                            });
+                        }
+                    }
+                }
+                "index_signature" => {
+                    // Handle index signatures like [key: string]: any
+                    if let Ok(sig_text) = child.utf8_text(source) {
+                        data.members.push(MemberFact {
+                            file: file_path.to_string(),
+                            container: name.to_string(),
+                            name: sig_text.to_string(),
+                            member_type: "index_signature".to_string(),
+                            visibility: "public".to_string(),
+                            modifiers: Vec::new(),
+                            line: child.start_position().row + 1,
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Extract interface extensions
+    if let Some(extends) = node.child_by_field_name("extends") {
+        let mut cursor = extends.walk();
+        for child in extends.children(&mut cursor) {
+            if child.kind() == "type" || child.kind() == "identifier" {
+                if let Ok(parent_name) = child.utf8_text(source) {
+                    if parent_name != "extends" {
+                        data.constants.push(ConstantFact {
+                            file: file_path.to_string(),
+                            name: format!("{}::extends::{}", name, parent_name),
+                            value: Some(parent_name.to_string()),
+                            const_type: "extends".to_string(),
+                            scope: name.to_string(),
+                            line: child.start_position().row + 1,
+                        });
+                    }
+                }
+            }
+        }
+    }
 
     // Create type fact
     let type_fact = TypeFact {
@@ -509,6 +748,46 @@ fn process_enum(
         .unwrap_or("")
         .to_string();
 
+    // Extract enum members
+    if let Some(body) = node.child_by_field_name("body") {
+        let mut cursor = body.walk();
+        for child in body.children(&mut cursor) {
+            if child.kind() == "enum_member" || child.kind() == "property_identifier" {
+                if let Some(member_name_node) = child.child_by_field_name("name") {
+                    if let Ok(member_name) = member_name_node.utf8_text(source) {
+                        // Get the value if it exists
+                        let value = child
+                            .child_by_field_name("value")
+                            .and_then(|v| v.utf8_text(source).ok())
+                            .map(String::from);
+
+                        data.constants.push(ConstantFact {
+                            file: file_path.to_string(),
+                            name: format!("{}.{}", name, member_name),
+                            value,
+                            const_type: "enum_member".to_string(),
+                            scope: name.to_string(),
+                            line: child.start_position().row + 1,
+                        });
+                    }
+                }
+                // Also handle simple enum members without explicit name field
+                else if child.kind() == "property_identifier" {
+                    if let Ok(member_name) = child.utf8_text(source) {
+                        data.constants.push(ConstantFact {
+                            file: file_path.to_string(),
+                            name: format!("{}.{}", name, member_name),
+                            value: None,
+                            const_type: "enum_member".to_string(),
+                            scope: name.to_string(),
+                            line: child.start_position().row + 1,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     // Create type fact
     let type_fact = TypeFact {
         file: file_path.to_string(),
@@ -539,6 +818,18 @@ fn process_variable_declaration(
     data: &mut ExtractedData,
     current_function: &mut Option<String>,
 ) {
+    // Determine if this is a const declaration
+    let is_const = node.kind() == "lexical_declaration" && {
+        if let Ok(text) = node.utf8_text(source) {
+            text.starts_with("const ")
+        } else {
+            false
+        }
+    };
+
+    // Check if we're at module level (not inside a function)
+    let is_module_level = current_function.is_none();
+
     // Check each declarator in the declaration
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -573,8 +864,40 @@ fn process_variable_declaration(
                             "class_expression" => {
                                 process_class(&value_node, source, file_path, name, data);
                             }
-                            _ => {}
+                            _ => {
+                                // If it's a const at module level, extract it as a constant
+                                if is_const && is_module_level {
+                                    // Try to get the value
+                                    let value = value_node.utf8_text(source).ok().map(String::from);
+                                    
+                                    // Check if the name follows UPPER_CASE convention
+                                    let const_type = if name.chars().all(|c| c.is_uppercase() || c == '_' || c.is_numeric()) {
+                                        "constant"
+                                    } else {
+                                        "const_variable"
+                                    };
+
+                                    data.constants.push(ConstantFact {
+                                        file: file_path.to_string(),
+                                        name: name.to_string(),
+                                        value,
+                                        const_type: const_type.to_string(),
+                                        scope: "module".to_string(),
+                                        line: child.start_position().row + 1,
+                                    });
+                                }
+                            }
                         }
+                    } else if is_const && is_module_level {
+                        // Const declaration without initialization
+                        data.constants.push(ConstantFact {
+                            file: file_path.to_string(),
+                            name: name.to_string(),
+                            value: None,
+                            const_type: "const_variable".to_string(),
+                            scope: "module".to_string(),
+                            line: child.start_position().row + 1,
+                        });
                     }
                 }
             }
@@ -967,9 +1290,20 @@ fn extract_calls(
             }
         }
         "decorator" => {
-            // TypeScript decorators
-            if let Some(caller) = current_function {
-                if let Ok(decorator_text) = node.utf8_text(source) {
+            // TypeScript decorators - also extract as ConstantFact
+            if let Ok(decorator_text) = node.utf8_text(source) {
+                // Extract decorator as a constant fact for tracking framework patterns
+                let decorator_name = decorator_text.trim_start_matches('@');
+                data.constants.push(ConstantFact {
+                    file: file_path.to_string(),
+                    name: format!("@{}", decorator_name),
+                    value: Some(decorator_text.to_string()),
+                    const_type: "decorator".to_string(),
+                    scope: current_function.clone().unwrap_or_else(|| "module".to_string()),
+                    line: line_number as usize,
+                });
+
+                if let Some(caller) = current_function {
                     data.add_call_edge(CallGraphEntry::new(
                         caller.clone(),
                         decorator_text.to_string(),
@@ -982,4 +1316,34 @@ fn extract_calls(
         }
         _ => {}
     }
+}
+
+/// Extract member-specific visibility (public/private/protected)
+fn extract_member_visibility(node: &Node, source: &[u8]) -> &'static str {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Ok(text) = child.utf8_text(source) {
+            match text {
+                "public" => return "public",
+                "private" => return "private",
+                "protected" => return "protected",
+                _ => {}
+            }
+        }
+    }
+    // Default to public if no modifier
+    "public"
+}
+
+/// Check if has readonly keyword
+fn has_readonly_keyword(node: &Node, source: &[u8]) -> bool {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if let Ok(text) = child.utf8_text(source) {
+            if text == "readonly" {
+                return true;
+            }
+        }
+    }
+    false
 }
