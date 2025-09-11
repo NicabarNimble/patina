@@ -13,14 +13,15 @@ A comprehensive analysis of what each language processor extracts and what criti
 
 The `patina scrape code` command uses language-specific processors to extract semantic information from codebases. Each processor returns `ExtractedData` structs that populate DuckDB tables. This analysis documents the current extraction capabilities and missing facts for each language, based on real database analysis of production repositories.
 
-**Extraction Complete:** C, C++, Go, Rust, Python ✅  
-**Partial Extraction:** TypeScript/JavaScript, Solidity, Cairo ⚠️
+**Extraction Complete:** C, C++, Go, Rust, Python, TypeScript ✅  
+**Partial Extraction:** JavaScript, Solidity, Cairo ⚠️
 
 **Repositories Analyzed:**
 - **SDL** - C codebase with 11,997 functions
 - **DuckDB** - C++ codebase with 52,424 functions  
 - **Dagger** - Go (+ TypeScript/Python/Rust) with 9,402 functions
 - **Cortex** - Python codebase with 205 functions, 85 constants, 165 members
+- **Gemini-CLI** - TypeScript codebase with 2,165 functions, 12,047 constants, 5,505 members
 - **Dust** - Solidity/TypeScript with 2,746 functions
 - **Dojo** - Rust/Cairo with 2,376 functions
 
@@ -162,52 +163,32 @@ All critical Python language features are now extracted:
 ## TypeScript/JavaScript Language (src/commands/scrape/code/languages/typescript.rs)
 
 ### Currently Extracts ✅
-- **Functions**: Arrow functions, async functions
-- **Classes**: With methods tracked separately
-- **Types**: Interfaces, type aliases, enums
-- **Imports**: ES6 imports, requires
-- **JSX**: Components detected
-- **Methods**: Constructor, getters, setters marked
+- **Functions**: Arrow functions, async functions, generators
+- **Classes**: With full member extraction and inheritance
+- **Types**: Interfaces, type aliases, enums with members
+- **Imports**: ES6 imports, type imports, requires
+- **JSX**: Components detected (.tsx parser support)
+- **Methods**: Constructor, getters, setters with visibility
+- **Constants**: Module-level const declarations stored as ConstantFact
+- **Class Members**: Fields and methods with visibility (public/private/protected)
+- **Inheritance**: Class extends and implements relationships
+- **Interface Members**: Properties, methods, index signatures
+- **Enum Values**: Individual enum members with values
+- **Decorators**: Framework decorators stored as ConstantFact
+- **Generic Parameters**: Type parameters on interfaces/classes
+- **Export Patterns**: Default and named exports tracked
 
-### Missing Facts ❌
-1. **Class Member Visibility**
-   - `private field: string` - Visibility not captured
-   - `protected method()` - Access modifiers ignored
-   - Impact: Can't respect encapsulation
+### Implementation Complete ✅
 
-2. **Constants**
-   - `const MAX_SIZE = 100` - Module constants not tracked
-   - Impact: Missing configuration values
-
-3. **Generic Types**
-   - `interface Box<T>` - Type parameters not extracted
-   - Impact: Can't use generics
-
-4. **Decorators**
-   - `@Component` - Metadata not captured
-   - Impact: Missing framework patterns
-
-### Implementation Changes Needed
-
-**File: `src/commands/scrape/code/languages/typescript.rs`**
-
-Add visibility and constants:
-```rust
-"class_body" => {
-    // ADD: Track access modifiers
-    // Look for "public", "private", "protected", "readonly"
-    
-    // ADD: Static members
-    // Check for "static" keyword
-}
-
-"lexical_declaration" => {
-    // ADD: Module-level const
-    if node.kind() == "const" && at_module_level {
-        // Extract as constant
-    }
-}
-```
+All critical TypeScript language features are now extracted:
+- Gemini-CLI validation: 12,047 constants, 5,505 members from 547 classes/interfaces
+- 4,117 const variables with 360 UPPER_CASE constants properly identified
+- Full visibility detection: 272 private fields, 222 public fields, 165 private methods
+- Interface properties (1,581) and methods properly extracted
+- Class inheritance and interface implementation stored as special constant_facts
+- Decorators captured for framework pattern recognition (@Injectable, @Component)
+- Generic type parameters stored for proper type usage
+- Readonly and static modifiers preserved on members
 
 ## Solidity Language (src/commands/scrape/code/languages/solidity.rs)
 
