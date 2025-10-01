@@ -16,11 +16,9 @@
 //! - Structs, unions, and enums
 //! - No built-in visibility (header exposure = public)
 
-use crate::commands::scrape::recode_v2::database::{
-    CodeSymbol, FunctionFact, ImportFact, TypeFact,
-};
-use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
-use crate::commands::scrape::recode_v2::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
+use crate::commands::scrape::code::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
+use crate::commands::scrape::code::extracted_data::{ConstantFact, ExtractedData, MemberFact};
+use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
@@ -97,6 +95,8 @@ fn extract_c_symbols(
             if let Some(name_node) = node.child_by_field_name("name") {
                 if let Ok(name) = name_node.utf8_text(source) {
                     process_c_type(node, source, file_path, name, SymbolKind::Enum, data);
+                    // Extract enum values
+                    process_c_enum_values(node, source, file_path, name, data);
                 }
             }
         }
@@ -110,6 +110,17 @@ fn extract_c_symbols(
         }
         "preproc_include" => {
             process_c_include(node, source, file_path, data);
+        }
+        "preproc_def" => {
+            // Extract #define macros
+            process_c_macro(node, source, file_path, data);
+        }
+        "declaration" => {
+            // Extract global variables and constants
+            // Only process if we're at file scope (not inside a function)
+            if current_function.is_none() {
+                process_c_declaration(node, source, file_path, data);
+            }
         }
         "call_expression" => {
             // Track function calls for call graph
@@ -205,6 +216,11 @@ fn process_c_type(
         visibility: if is_public { "public" } else { "private" }.to_string(),
         usage_count: 0,
     });
+
+    // Extract struct/union fields
+    if matches!(kind, SymbolKind::Struct | SymbolKind::Union) {
+        process_c_struct_fields(node, source, file_path, name, data);
+    }
 }
 
 /// Process a C typedef and add to ExtractedData
@@ -256,6 +272,262 @@ fn process_c_include(node: &Node, source: &[u8], file_path: &str, data: &mut Ext
             import_kind: if is_external { "system" } else { "local" }.to_string(),
             line_number: (node.start_position().row + 1) as i32,
         });
+    }
+}
+
+/// Process enum values and add to ExtractedData
+fn process_c_enum_values(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    enum_name: &str,
+    data: &mut ExtractedData,
+) {
+    // Look for enumerator_list child
+    if let Some(list_node) = node.child_by_field_name("body") {
+        let mut cursor = list_node.walk();
+        for child in list_node.children(&mut cursor) {
+            if child.kind() == "enumerator" {
+                // Get the enumerator name
+                if let Some(name_node) = child.child_by_field_name("name") {
+                    if let Ok(value_name) = name_node.utf8_text(source) {
+                        // Try to get explicit value if present
+                        let value = child
+                            .child_by_field_name("value")
+                            .and_then(|v| v.utf8_text(source).ok())
+                            .map(|s| s.to_string());
+
+                        // Add as symbol for backwards compatibility
+                        let full_name = format!("{}::{}", enum_name, value_name);
+                        let context = if let Some(val) = &value {
+                            format!("{} = {}", value_name, val)
+                        } else {
+                            value_name.to_string()
+                        };
+
+                        data.add_symbol(CodeSymbol {
+                            path: file_path.to_string(),
+                            name: full_name.clone(),
+                            kind: "enum_value".to_string(),
+                            line: child.start_position().row + 1,
+                            context,
+                        });
+
+                        // Add as ConstantFact for better organization
+                        data.add_constant(ConstantFact {
+                            file: file_path.to_string(),
+                            name: format!("{}::{}", enum_name, value_name),
+                            value: value.clone(),
+                            const_type: "enum_value".to_string(),
+                            scope: enum_name.to_string(),
+                            line: child.start_position().row + 1,
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Process global variable/constant declarations
+fn process_c_declaration(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
+    // Check for storage class specifiers (static, extern, const)
+    let mut is_static = false;
+    let mut is_const = false;
+    let mut is_extern = false;
+
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        match child.kind() {
+            "storage_class_specifier" => {
+                if let Ok(text) = child.utf8_text(source) {
+                    match text {
+                        "static" => is_static = true,
+                        "extern" => is_extern = true,
+                        _ => {}
+                    }
+                }
+            }
+            "type_qualifier" => {
+                if let Ok(text) = child.utf8_text(source) {
+                    if text == "const" {
+                        is_const = true;
+                    }
+                }
+            }
+            "init_declarator" | "declarator" => {
+                // Extract variable name
+                if let Some(name) = extract_declarator_name(&child, source) {
+                    let kind = if is_const {
+                        "const"
+                    } else if is_static {
+                        "static"
+                    } else if is_extern {
+                        "extern"
+                    } else {
+                        "global"
+                    };
+
+                    // Get the full declaration as context
+                    let context = node
+                        .utf8_text(source)
+                        .ok()
+                        .and_then(|s| s.lines().next())
+                        .unwrap_or("")
+                        .to_string();
+
+                    // Add as symbol for backwards compatibility
+                    data.add_symbol(CodeSymbol {
+                        path: file_path.to_string(),
+                        name: name.clone(),
+                        kind: kind.to_string(),
+                        line: node.start_position().row + 1,
+                        context: context.clone(),
+                    });
+
+                    // Add as ConstantFact for better organization
+                    let const_type = if is_const {
+                        "const"
+                    } else if is_static {
+                        "static"
+                    } else if is_extern {
+                        "extern"
+                    } else {
+                        "global"
+                    }
+                    .to_string();
+
+                    data.add_constant(ConstantFact {
+                        file: file_path.to_string(),
+                        name: name.clone(),
+                        value: None, // Could extract initializer value here
+                        const_type,
+                        scope: "global".to_string(),
+                        line: node.start_position().row + 1,
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Extract name from a declarator node
+fn extract_declarator_name(node: &Node, source: &[u8]) -> Option<String> {
+    // Handle simple identifiers
+    if node.kind() == "identifier" {
+        return node.utf8_text(source).ok().map(|s| s.to_string());
+    }
+
+    // Handle nested declarators (pointers, arrays, etc.)
+    let mut current = Some(*node);
+    while let Some(n) = current {
+        if n.kind() == "identifier" {
+            return n.utf8_text(source).ok().map(|s| s.to_string());
+        }
+        // Try to find identifier in children
+        let mut cursor = n.walk();
+        current = n.children(&mut cursor).find(|c| {
+            c.kind() == "identifier"
+                || c.kind() == "declarator"
+                || c.kind() == "pointer_declarator"
+                || c.kind() == "array_declarator"
+        });
+    }
+    None
+}
+
+/// Process struct/union fields and add them as MemberFacts
+fn process_c_struct_fields(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    struct_name: &str,
+    data: &mut ExtractedData,
+) {
+    // Look for field_declaration_list child
+    if let Some(body) = node.child_by_field_name("body") {
+        let mut cursor = body.walk();
+        for child in body.children(&mut cursor) {
+            if child.kind() == "field_declaration" {
+                // Extract field type
+                let field_type = if let Some(type_node) = child.child_by_field_name("type") {
+                    type_node
+                        .utf8_text(source)
+                        .ok()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "unknown".to_string())
+                } else {
+                    "unknown".to_string()
+                };
+
+                // Extract field declarators (there can be multiple in one declaration)
+                if let Some(declarator) = child.child_by_field_name("declarator") {
+                    if let Some(field_name) = extract_declarator_name(&declarator, source) {
+                        // Add as MemberFact
+                        data.members.push(MemberFact {
+                            file: file_path.to_string(),
+                            container: struct_name.to_string(),
+                            name: field_name.clone(),
+                            member_type: "field".to_string(),
+                            visibility: "public".to_string(), // C struct fields are always public
+                            modifiers: vec![],
+                            line: child.start_position().row + 1,
+                        });
+
+                        // Also add as symbol for searchability with type info
+                        data.add_symbol(CodeSymbol {
+                            path: file_path.to_string(),
+                            name: format!("{}::{}", struct_name, field_name),
+                            kind: "field".to_string(),
+                            line: child.start_position().row + 1,
+                            context: format!("{} {}", field_type, field_name),
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Process a #define macro and add to ExtractedData  
+fn process_c_macro(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
+    // Get the macro name
+    if let Some(name_node) = node.child_by_field_name("name") {
+        if let Ok(name) = name_node.utf8_text(source) {
+            // Try to get the value if present
+            let value = node
+                .child_by_field_name("value")
+                .and_then(|v| v.utf8_text(source).ok())
+                .map(|s| s.to_string());
+
+            // Get the full macro text for context
+            let context = node
+                .utf8_text(source)
+                .ok()
+                .and_then(|s| s.lines().next())
+                .unwrap_or("")
+                .to_string();
+
+            // Add as a symbol for backwards compatibility
+            data.add_symbol(CodeSymbol {
+                path: file_path.to_string(),
+                name: name.to_string(),
+                kind: "macro".to_string(),
+                line: node.start_position().row + 1,
+                context,
+            });
+
+            // Add as a ConstantFact for better organization
+            data.add_constant(ConstantFact {
+                file: file_path.to_string(),
+                name: name.to_string(),
+                value: value.clone(),
+                const_type: "macro".to_string(),
+                scope: "global".to_string(),
+                line: node.start_position().row + 1,
+            });
+        }
     }
 }
 

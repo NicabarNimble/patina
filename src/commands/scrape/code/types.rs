@@ -1,4 +1,4 @@
-// Type-safe wrappers for recode_v2
+// Type-safe wrappers for code
 // Gradual migration from strings to types
 
 use std::fmt;
@@ -21,6 +21,7 @@ pub enum SymbolKind {
     TypeAlias,
     Enum,
     Impl,
+    Macro,
     Unknown,
 }
 
@@ -41,6 +42,7 @@ impl SymbolKind {
             Self::TypeAlias => "type_alias",
             Self::Enum => "enum",
             Self::Impl => "impl",
+            Self::Macro => "macro",
             Self::Unknown => "unknown",
         }
     }

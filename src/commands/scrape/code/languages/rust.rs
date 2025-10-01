@@ -8,11 +8,9 @@
 //! - No SQL string generation
 //! - Direct data extraction to domain types
 
-use crate::commands::scrape::recode_v2::database::{
-    CodeSymbol, FunctionFact, ImportFact, TypeFact,
-};
-use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
-use crate::commands::scrape::recode_v2::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
+use crate::commands::scrape::code::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
+use crate::commands::scrape::code::extracted_data::{ConstantFact, ExtractedData, MemberFact};
+use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
@@ -72,6 +70,7 @@ fn extract_rust_symbols(
         "impl_item" => SymbolKind::Impl,
         "mod_item" => SymbolKind::Module,
         "use_declaration" => SymbolKind::Import,
+        "macro_definition" => SymbolKind::Macro,
         _ => SymbolKind::Unknown,
     };
 
@@ -85,18 +84,37 @@ fn extract_rust_symbols(
                 extract_rust_calls(node, source, file_path, &Some(name.to_string()), data);
             }
         }
-    } else if matches!(
-        symbol_kind,
-        SymbolKind::Struct
-            | SymbolKind::Enum
-            | SymbolKind::Trait
-            | SymbolKind::TypeAlias
-            | SymbolKind::Const
-            | SymbolKind::Static
-    ) {
+    } else if matches!(symbol_kind, SymbolKind::Const | SymbolKind::Static) {
+        // Process constants and statics separately for ConstantFact
         if let Some(name_node) = node.child_by_field_name("name") {
             if let Ok(name) = name_node.utf8_text(source) {
+                process_rust_constant(node, source, file_path, name, symbol_kind, data);
+            }
+        }
+    } else if matches!(symbol_kind, SymbolKind::Struct | SymbolKind::Enum) {
+        // Process structs and enums with member extraction
+        if let Some(name_node) = node.child_by_field_name("name") {
+            if let Ok(name) = name_node.utf8_text(source) {
+                process_rust_type_with_members(node, source, file_path, name, symbol_kind, data);
+            }
+        }
+    } else if matches!(
+        symbol_kind,
+        SymbolKind::Trait | SymbolKind::TypeAlias | SymbolKind::Impl
+    ) {
+        if symbol_kind == SymbolKind::Impl {
+            // Special handling for impl blocks
+            process_rust_impl(node, source, file_path, data);
+        } else if let Some(name_node) = node.child_by_field_name("name") {
+            if let Ok(name) = name_node.utf8_text(source) {
                 process_rust_type(node, source, file_path, name, symbol_kind, data);
+            }
+        }
+    } else if symbol_kind == SymbolKind::Macro {
+        // Process macro definitions
+        if let Some(name_node) = node.child_by_field_name("name") {
+            if let Ok(name) = name_node.utf8_text(source) {
+                process_rust_macro(node, source, file_path, name, data);
             }
         }
     } else if symbol_kind == SymbolKind::Import {
@@ -229,6 +247,299 @@ fn process_rust_type(
         context: definition,
     };
     data.add_symbol(symbol);
+}
+
+/// Process Rust constants and statics
+fn process_rust_constant(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    kind: SymbolKind,
+    data: &mut ExtractedData,
+) {
+    // Extract value if present
+    let value = node
+        .child_by_field_name("value")
+        .and_then(|v| v.utf8_text(source).ok())
+        .map(|s| s.to_string());
+
+    // Determine const type
+    let const_type = if kind == SymbolKind::Static {
+        "static"
+    } else {
+        "const"
+    };
+
+    // Check visibility
+    let is_public = has_visibility_modifier(node);
+    let visibility = if is_public { "pub" } else { "private" };
+
+    // Create constant fact
+    let constant = ConstantFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        value,
+        const_type: const_type.to_string(),
+        scope: "module".to_string(), // Will be enhanced with module tracking
+        line: node.start_position().row + 1,
+    };
+    data.constants.push(constant);
+
+    // Also add as type fact for compatibility
+    let definition = node
+        .utf8_text(source)
+        .ok()
+        .and_then(|s| s.lines().next())
+        .unwrap_or("")
+        .to_string();
+
+    let type_fact = TypeFact {
+        file: file_path.to_string(),
+        name: name.to_string(),
+        definition: definition.clone(),
+        kind: const_type.to_string(),
+        visibility: visibility.to_string(),
+        usage_count: 0,
+    };
+    data.add_type(type_fact);
+
+    // Add to code search
+    let symbol = CodeSymbol {
+        path: file_path.to_string(),
+        name: name.to_string(),
+        kind: const_type.to_string(),
+        line: node.start_position().row + 1,
+        context: definition,
+    };
+    data.add_symbol(symbol);
+}
+
+/// Process structs and enums with member extraction
+fn process_rust_type_with_members(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    kind: SymbolKind,
+    data: &mut ExtractedData,
+) {
+    // First process as regular type
+    process_rust_type(node, source, file_path, name, kind, data);
+
+    // Then extract members
+    if kind == SymbolKind::Struct {
+        // Look for field_declaration_list or ordered_field_declaration_list
+        if let Some(body) = node.child_by_field_name("body") {
+            extract_struct_fields(&body, source, file_path, name, data);
+        }
+    } else if kind == SymbolKind::Enum {
+        // Look for enum_variant_list
+        if let Some(body) = node.child_by_field_name("body") {
+            extract_enum_variants(&body, source, file_path, name, data);
+        }
+    }
+}
+
+/// Extract struct fields
+fn extract_struct_fields(
+    body_node: &Node,
+    source: &[u8],
+    file_path: &str,
+    struct_name: &str,
+    data: &mut ExtractedData,
+) {
+    let mut cursor = body_node.walk();
+    for child in body_node.children(&mut cursor) {
+        if child.kind() == "field_declaration" {
+            if let Some(name_node) = child.child_by_field_name("name") {
+                if let Ok(field_name) = name_node.utf8_text(source) {
+                    // Check for visibility modifier
+                    let visibility = if has_visibility_modifier(&child) {
+                        "pub"
+                    } else {
+                        "private"
+                    };
+
+                    // Get field type if available
+                    let field_type = child
+                        .child_by_field_name("type")
+                        .and_then(|t| t.utf8_text(source).ok())
+                        .map(|s| s.to_string());
+
+                    let mut modifiers = Vec::new();
+                    if let Some(ref ft) = field_type {
+                        modifiers.push(ft.clone());
+                    }
+
+                    let member = MemberFact {
+                        file: file_path.to_string(),
+                        container: struct_name.to_string(),
+                        name: field_name.to_string(),
+                        member_type: "field".to_string(),
+                        visibility: visibility.to_string(),
+                        modifiers,
+                        line: child.start_position().row + 1,
+                    };
+                    data.members.push(member);
+                }
+            }
+        } else if child.kind() == "shorthand_field_identifier" {
+            // Tuple struct fields (ordered_field_declaration_list)
+            // These don't have names, just types in order
+            if let Ok(field_type) = child.utf8_text(source) {
+                let member = MemberFact {
+                    file: file_path.to_string(),
+                    container: struct_name.to_string(),
+                    name: format!("_{}", data.members.len()), // Unnamed field
+                    member_type: "field".to_string(),
+                    visibility: "pub".to_string(), // Tuple fields are typically public
+                    modifiers: vec![field_type.to_string()],
+                    line: child.start_position().row + 1,
+                };
+                data.members.push(member);
+            }
+        }
+    }
+}
+
+/// Extract enum variants
+fn extract_enum_variants(
+    body_node: &Node,
+    source: &[u8],
+    file_path: &str,
+    enum_name: &str,
+    data: &mut ExtractedData,
+) {
+    let mut cursor = body_node.walk();
+    for child in body_node.children(&mut cursor) {
+        if child.kind() == "enum_variant" {
+            if let Some(name_node) = child.child_by_field_name("name") {
+                if let Ok(variant_name) = name_node.utf8_text(source) {
+                    // Check for discriminant value
+                    let value = child
+                        .child_by_field_name("value")
+                        .and_then(|v| v.utf8_text(source).ok())
+                        .map(|s| s.to_string());
+
+                    // Store as ConstantFact
+                    let constant = ConstantFact {
+                        file: file_path.to_string(),
+                        name: format!("{}::{}", enum_name, variant_name),
+                        value,
+                        const_type: "enum_variant".to_string(),
+                        scope: enum_name.to_string(),
+                        line: child.start_position().row + 1,
+                    };
+                    data.constants.push(constant);
+
+                    // Also store as MemberFact for consistency
+                    let mut modifiers = Vec::new();
+
+                    // Check if variant has fields (struct-like or tuple-like)
+                    if let Some(body) = child.child_by_field_name("body") {
+                        if body.kind() == "field_declaration_list" {
+                            modifiers.push("struct_variant".to_string());
+                        } else if body.kind() == "ordered_field_declaration_list" {
+                            modifiers.push("tuple_variant".to_string());
+                        }
+                    }
+
+                    let member = MemberFact {
+                        file: file_path.to_string(),
+                        container: enum_name.to_string(),
+                        name: variant_name.to_string(),
+                        member_type: "variant".to_string(),
+                        visibility: "pub".to_string(), // Enum variants are always public
+                        modifiers,
+                        line: child.start_position().row + 1,
+                    };
+                    data.members.push(member);
+                }
+            }
+        }
+    }
+}
+
+/// Process macro definitions
+fn process_rust_macro(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    name: &str,
+    data: &mut ExtractedData,
+) {
+    // Get macro definition (first line for context)
+    let definition = node
+        .utf8_text(source)
+        .ok()
+        .and_then(|s| s.lines().next())
+        .unwrap_or("")
+        .to_string();
+
+    // Store as ConstantFact
+    let constant = ConstantFact {
+        file: file_path.to_string(),
+        name: format!("{}!", name), // Add ! to indicate it's a macro
+        value: Some(definition.clone()),
+        const_type: "macro_definition".to_string(),
+        scope: "module".to_string(),
+        line: node.start_position().row + 1,
+    };
+    data.constants.push(constant);
+
+    // Also add as type fact for compatibility
+    let type_fact = TypeFact {
+        file: file_path.to_string(),
+        name: format!("{}!", name),
+        definition: definition.clone(),
+        kind: "macro".to_string(),
+        visibility: "pub".to_string(), // Most macros are public
+        usage_count: 0,
+    };
+    data.add_type(type_fact);
+
+    // Add to code search
+    let symbol = CodeSymbol {
+        path: file_path.to_string(),
+        name: format!("{}!", name),
+        kind: "macro".to_string(),
+        line: node.start_position().row + 1,
+        context: definition,
+    };
+    data.add_symbol(symbol);
+}
+
+/// Process impl blocks for trait implementations
+fn process_rust_impl(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
+    // Check if this is a trait implementation
+    if let Some(trait_node) = node.child_by_field_name("trait") {
+        if let Ok(trait_name) = trait_node.utf8_text(source) {
+            // Get the type being implemented for
+            if let Some(type_node) = node.child_by_field_name("type") {
+                if let Ok(type_name) = type_node.utf8_text(source) {
+                    // Store trait implementation as a ConstantFact
+                    let constant = ConstantFact {
+                        file: file_path.to_string(),
+                        name: format!("impl {} for {}", trait_name, type_name),
+                        value: None,
+                        const_type: "trait_impl".to_string(),
+                        scope: "module".to_string(),
+                        line: node.start_position().row + 1,
+                    };
+                    data.constants.push(constant);
+                }
+            }
+        }
+    }
+
+    // Process methods within the impl block
+    if let Some(body) = node.child_by_field_name("body") {
+        let mut cursor = body.walk();
+        for child in body.children(&mut cursor) {
+            extract_rust_symbols(&child, source, file_path, data, None);
+        }
+    }
 }
 
 /// Process Rust imports and add to data

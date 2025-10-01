@@ -59,6 +59,14 @@ enum Commands {
         /// Output results as JSON
         #[arg(short, long)]
         json: bool,
+
+        /// Check reference repositories in layer/dust/repos
+        #[arg(long)]
+        repos: bool,
+
+        /// Update stale repositories (requires --repos)
+        #[arg(long, requires = "repos")]
+        update: bool,
     },
 
     /// Show version information
@@ -114,7 +122,7 @@ struct ScrapeArgs {
 #[derive(Subcommand)]
 enum ScrapeCommands {
     /// Extract semantic information using modular architecture
-    Recode {
+    Code {
         #[command(flatten)]
         args: ScrapeArgs,
     },
@@ -270,7 +278,7 @@ fn main() -> Result<()> {
         },
         Commands::Scrape { command } => {
             // Default to Code subcommand with default args for backward compatibility
-            let subcommand = command.unwrap_or(ScrapeCommands::Recode {
+            let subcommand = command.unwrap_or(ScrapeCommands::Code {
                 args: ScrapeArgs {
                     init: false,
                     query: None,
@@ -279,8 +287,8 @@ fn main() -> Result<()> {
                 },
             });
             match subcommand {
-                ScrapeCommands::Recode { args } => {
-                    commands::scrape::execute_recode(args.init, args.query, args.repo, args.force)?;
+                ScrapeCommands::Code { args } => {
+                    commands::scrape::execute_code(args.init, args.query, args.repo, args.force)?;
                 }
                 ScrapeCommands::Docs { args } => {
                     commands::scrape::execute_docs(args.init, args.query, args.repo, args.force)?;
@@ -290,8 +298,12 @@ fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Doctor { json } => {
-            let exit_code = commands::doctor::execute(json)?;
+        Commands::Doctor {
+            json,
+            repos,
+            update,
+        } => {
+            let exit_code = commands::doctor::execute(json, repos, update)?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
