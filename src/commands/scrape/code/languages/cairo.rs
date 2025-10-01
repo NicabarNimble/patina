@@ -65,7 +65,7 @@ impl CairoProcessor {
             data.add_symbol(code_symbol);
         }
 
-        // Extract structs as types
+        // Extract structs as types and their fields as members
         for s in symbols.structs {
             let definition = if s.fields.is_empty() {
                 format!("struct {} {{}}", s.name)
@@ -75,13 +75,28 @@ impl CairoProcessor {
 
             let type_fact = TypeFact {
                 file: file_path.as_str().to_string(),
-                name: s.name,
+                name: s.name.clone(),
                 definition,
                 kind: "struct".to_string(),
                 visibility: if s.is_public { "pub" } else { "private" }.to_string(),
                 usage_count: 0,
             };
             data.add_type(type_fact);
+
+            // Extract struct fields as MemberFacts
+            for field in s.fields.iter() {
+                use crate::commands::scrape::code::extracted_data::MemberFact;
+
+                data.members.push(MemberFact {
+                    file: file_path.as_str().to_string(),
+                    container: s.name.clone(),
+                    name: field.clone(),
+                    member_type: "field".to_string(),
+                    visibility: if s.is_public { "pub".to_string() } else { "private".to_string() },
+                    modifiers: vec![],
+                    line: s.start_line,
+                });
+            }
         }
 
         // Extract traits as types
@@ -124,8 +139,38 @@ impl CairoProcessor {
             data.add_type(type_fact);
         }
 
-        // Note: We could also extract impls for call graph analysis in the future
-        // For now, we're focusing on the main symbols
+        // Extract trait implementations as ConstantFacts
+        // Following the same pattern as Rust: impl Trait for Type
+        for impl_sym in symbols.impls {
+            use crate::commands::scrape::code::extracted_data::ConstantFact;
+
+            if let Some(trait_name) = impl_sym.trait_name {
+                let trait_clean = trait_name.trim();
+                let type_clean = impl_sym.type_name.trim();
+
+                // Skip empty trait names (happens with inherent impls)
+                if !trait_clean.is_empty() && trait_clean != "EmptyTraitPath" {
+                    // Store as ConstantFact: TypeName::implements::TraitName
+                    data.constants.push(ConstantFact {
+                        file: file_path.as_str().to_string(),
+                        name: format!("{}::implements::{}", type_clean, trait_clean),
+                        value: None,
+                        const_type: "trait_impl".to_string(),
+                        scope: type_clean.to_string(),
+                        line: impl_sym.start_line,
+                    });
+
+                    // Also add as searchable symbol
+                    data.add_symbol(CodeSymbol {
+                        path: file_path.as_str().to_string(),
+                        name: format!("{} impl {}", type_clean, trait_clean),
+                        kind: "impl".to_string(),
+                        line: impl_sym.start_line,
+                        context: format!("impl {} for {}", trait_clean, type_clean),
+                    });
+                }
+            }
+        }
 
         Ok(data)
     }
