@@ -59,6 +59,14 @@ enum Commands {
         /// Output results as JSON
         #[arg(short, long)]
         json: bool,
+
+        /// Check reference repositories in layer/dust/repos
+        #[arg(long)]
+        repos: bool,
+
+        /// Update stale repositories (requires --repos)
+        #[arg(long, requires = "repos")]
+        update: bool,
     },
 
     /// Show version information
@@ -290,8 +298,8 @@ fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Doctor { json } => {
-            let exit_code = commands::doctor::execute(json)?;
+        Commands::Doctor { json, repos, update } => {
+            let exit_code = commands::doctor::execute(json, repos, update)?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
