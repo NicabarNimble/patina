@@ -3,6 +3,8 @@ use patina::environment::Environment;
 use patina::session::SessionManager;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Serialize, Deserialize)]
 struct HealthCheck {
@@ -35,7 +37,11 @@ struct ProjectStatus {
     sessions: usize,
 }
 
-pub fn execute(json_output: bool) -> Result<i32> {
+pub fn execute(json_output: bool, check_repos: bool, update_repos: bool) -> Result<i32> {
+    // If --repos flag is set, handle repo management instead
+    if check_repos {
+        return handle_repos(update_repos);
+    }
     // Find project root
     let project_root = SessionManager::find_project_root()
         .context("Not in a Patina project directory. Run 'patina init' first.")?;
@@ -297,6 +303,297 @@ fn display_health_check(health: &HealthCheck, _env: &Environment) -> Result<()> 
             println!("  {}. {rec}", i + 1);
         }
     }
+
+    Ok(())
+}
+
+// ============================================================================
+// REFERENCE REPOSITORY MANAGEMENT
+// ============================================================================
+
+#[derive(Debug)]
+struct RepoInfo {
+    name: String,
+    path: PathBuf,
+}
+
+#[derive(Debug)]
+enum RepoStatus {
+    UpToDate,
+    Behind(usize),
+    Dirty,
+    DetachedHead,
+    Error(String),
+}
+
+fn handle_repos(update: bool) -> Result<i32> {
+    println!("🔍 Checking reference repositories in layer/dust/repos/...\n");
+
+    let repos_dir = Path::new("layer/dust/repos");
+    if !repos_dir.exists() {
+        println!("No reference repositories directory found.");
+        println!("Create one with: mkdir -p layer/dust/repos");
+        return Ok(0);
+    }
+
+    // Discover all git repositories
+    let repos = discover_repos(repos_dir)?;
+    if repos.is_empty() {
+        println!("No git repositories found in layer/dust/repos/");
+        return Ok(0);
+    }
+
+    // Check status of each repo
+    let mut stale_repos = Vec::new();
+    let mut total_repos = 0;
+
+    for repo in &repos {
+        total_repos += 1;
+        let status = check_repo_status(repo)?;
+
+        match &status {
+            RepoStatus::UpToDate => {
+                println!("✓ {} - up to date", repo.name);
+                log_repo_status(&repo.name, "CHECK", "up to date")?;
+            }
+            RepoStatus::Behind(count) => {
+                println!("⚠ {} - {} commits behind origin", repo.name, count);
+                stale_repos.push((repo, *count));
+                log_repo_status(&repo.name, "CHECK", &format!("behind: {} commits", count))?;
+            }
+            RepoStatus::Dirty => {
+                println!("✗ {} - has local changes, skipping", repo.name);
+                log_repo_status(&repo.name, "SKIP", "local changes present")?;
+            }
+            RepoStatus::DetachedHead => {
+                println!("⚠ {} - on detached HEAD, skipping", repo.name);
+                log_repo_status(&repo.name, "SKIP", "detached HEAD")?;
+            }
+            RepoStatus::Error(err) => {
+                println!("✗ {} - error: {}", repo.name, err);
+                log_repo_status(&repo.name, "ERROR", err)?;
+            }
+        }
+    }
+
+    // Summary
+    println!();
+    if stale_repos.is_empty() {
+        println!("✅ All {} repos up to date", total_repos);
+        return Ok(0);
+    }
+
+    println!("{} of {} repos need updates", stale_repos.len(), total_repos);
+
+    if !update {
+        println!("\n💡 Run: patina doctor --repos --update");
+        return Ok(2); // Warning exit code
+    }
+
+    // Perform updates
+    println!("\n🔄 Updating reference repositories...\n");
+    let mut updated_count = 0;
+    let mut stale_dbs = Vec::new();
+
+    for (repo, _count) in stale_repos {
+        print!("⚠ {} - pulling changes... ", repo.name);
+        match update_repo(repo) {
+            Ok(commits) => {
+                println!("✓ Updated: {}", commits);
+                updated_count += 1;
+                log_repo_status(&repo.name, "UPDATE", &format!("pulled: {}", commits))?;
+
+                // Mark database as stale
+                let db_name = format!("{}.db", repo.name);
+                stale_dbs.push(db_name.clone());
+                log_repo_status(&db_name, "STALE", "needs rescrape")?;
+            }
+            Err(e) => {
+                println!("✗ Failed: {}", e);
+                log_repo_status(&repo.name, "ERROR", &format!("update failed: {}", e))?;
+            }
+        }
+    }
+
+    // Summary
+    println!();
+    if updated_count > 0 {
+        println!("✅ Updated {} repos. Their databases may be stale:", updated_count);
+        for db in &stale_dbs {
+            println!("  • layer/dust/repos/{}", db);
+        }
+        println!("\n💡 To refresh: patina scrape code --repo <repo-name> --force");
+        println!("💡 Or batch update later with: patina scrape --sync-updated-repos (coming soon)");
+    }
+
+    Ok(0)
+}
+
+fn discover_repos(repos_dir: &Path) -> Result<Vec<RepoInfo>> {
+    let mut repos = Vec::new();
+
+    for entry in fs::read_dir(repos_dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() {
+            let git_dir = path.join(".git");
+            if git_dir.exists() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    repos.push(RepoInfo {
+                        name: name.to_string(),
+                        path,
+                    });
+                }
+            }
+        }
+    }
+
+    repos.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(repos)
+}
+
+fn check_repo_status(repo: &RepoInfo) -> Result<RepoStatus> {
+    // Check if working tree is clean
+    let status_output = Command::new("git")
+        .arg("-C")
+        .arg(&repo.path)
+        .arg("status")
+        .arg("--porcelain")
+        .output()?;
+
+    if !status_output.stdout.is_empty() {
+        return Ok(RepoStatus::Dirty);
+    }
+
+    // Check if on a branch (not detached HEAD)
+    let branch_output = Command::new("git")
+        .arg("-C")
+        .arg(&repo.path)
+        .arg("symbolic-ref")
+        .arg("-q")
+        .arg("HEAD")
+        .output();
+
+    if branch_output.is_err() || !branch_output.unwrap().status.success() {
+        return Ok(RepoStatus::DetachedHead);
+    }
+
+    // Fetch from origin (quietly)
+    let fetch_result = Command::new("git")
+        .arg("-C")
+        .arg(&repo.path)
+        .arg("fetch")
+        .arg("origin")
+        .arg("--quiet")
+        .output();
+
+    if let Err(e) = fetch_result {
+        return Ok(RepoStatus::Error(format!("fetch failed: {}", e)));
+    }
+
+    // Check how many commits behind
+    let behind_output = Command::new("git")
+        .arg("-C")
+        .arg(&repo.path)
+        .arg("rev-list")
+        .arg("HEAD..@{u}")
+        .arg("--count")
+        .output()?;
+
+    if !behind_output.status.success() {
+        return Ok(RepoStatus::Error("failed to check commit count".to_string()));
+    }
+
+    let count_str = String::from_utf8_lossy(&behind_output.stdout);
+    let count: usize = count_str.trim().parse().unwrap_or(0);
+
+    if count > 0 {
+        Ok(RepoStatus::Behind(count))
+    } else {
+        Ok(RepoStatus::UpToDate)
+    }
+}
+
+fn update_repo(repo: &RepoInfo) -> Result<String> {
+    // Get current commit before pull
+    let before_output = Command::new("git")
+        .arg("-C")
+        .arg(&repo.path)
+        .arg("rev-parse")
+        .arg("--short")
+        .arg("HEAD")
+        .output()?;
+    let before = String::from_utf8_lossy(&before_output.stdout).trim().to_string();
+
+    // Pull with fast-forward only
+    let pull_output = Command::new("git")
+        .arg("-C")
+        .arg(&repo.path)
+        .arg("pull")
+        .arg("--ff-only")
+        .output()?;
+
+    if !pull_output.status.success() {
+        let stderr = String::from_utf8_lossy(&pull_output.stderr);
+        anyhow::bail!("git pull failed: {}", stderr);
+    }
+
+    // Get commit after pull
+    let after_output = Command::new("git")
+        .arg("-C")
+        .arg(&repo.path)
+        .arg("rev-parse")
+        .arg("--short")
+        .arg("HEAD")
+        .output()?;
+    let after = String::from_utf8_lossy(&after_output.stdout).trim().to_string();
+
+    // Count commits pulled
+    let count_output = Command::new("git")
+        .arg("-C")
+        .arg(&repo.path)
+        .arg("rev-list")
+        .arg("--count")
+        .arg(&format!("{}..{}", before, after))
+        .output()?;
+    let count = String::from_utf8_lossy(&count_output.stdout).trim().to_string();
+
+    Ok(format!("{}..{} ({} commits)", before, after, count))
+}
+
+fn log_repo_status(name: &str, action: &str, message: &str) -> Result<()> {
+    use std::io::Write;
+    use std::time::SystemTime;
+
+    let log_path = Path::new("layer/dust/repos/.patina-update.log");
+
+    // Ensure directory exists
+    if let Some(parent) = log_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)?;
+
+    let timestamp = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_secs();
+
+    // Use ISO 8601 format
+    let datetime = chrono::DateTime::from_timestamp(timestamp as i64, 0)
+        .unwrap_or_else(|| chrono::Utc::now());
+
+    writeln!(
+        file,
+        "{} | {:8} | {:20} | {}",
+        datetime.format("%Y-%m-%dT%H:%M:%SZ"),
+        action,
+        name,
+        message
+    )?;
 
     Ok(())
 }
