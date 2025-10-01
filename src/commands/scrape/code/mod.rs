@@ -1,7 +1,7 @@
 // ============================================================================
 // SEMANTIC CODE EXTRACTION PIPELINE V2 - MODULAR ARCHITECTURE
 // ============================================================================
-//! # Code → Knowledge ETL Pipeline (Recode Version)
+//! # Code → Knowledge ETL Pipeline
 //!
 //! A clean, modular refactor of the code extraction pipeline where each
 //! language is fully self-contained in its own module file.
@@ -14,8 +14,8 @@
 //!
 //! ## Usage
 //! ```bash
-//! patina scrape recode          # Index using modular architecture
-//! patina scrape recode --force  # Rebuild from scratch
+//! patina scrape code          # Index using modular architecture
+//! patina scrape code --force  # Rebuild from scratch
 //! ```
 
 use anyhow::{Context, Result};
@@ -38,7 +38,7 @@ pub mod types;
 
 /// Initialize a new knowledge database
 pub fn initialize(config: &ScrapeConfig) -> Result<()> {
-    println!("🗄️  Initializing optimized knowledge database (recode v2)...");
+    println!("🗄️  Initializing optimized knowledge database...");
 
     // Create parent directory if needed
     if let Some(parent) = Path::new(&config.db_path).parent() {
@@ -57,9 +57,9 @@ pub fn initialize(config: &ScrapeConfig) -> Result<()> {
     Ok(())
 }
 
-/// Main entry point for the recode command
+/// Main entry point for the code command
 pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
-    println!("🔄 Running recode v2 with modular language architecture...");
+    println!("🔄 Extracting semantic code information...");
 
     let start = std::time::Instant::now();
 

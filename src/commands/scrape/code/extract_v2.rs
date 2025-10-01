@@ -58,6 +58,8 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     let mut all_types = Vec::new();
     let mut all_imports = Vec::new();
     let mut all_call_edges = Vec::new();
+    let mut all_constants = Vec::new();
+    let mut all_members = Vec::new();
 
     let mut files_with_errors = 0;
     let mut _files_processed = 0;
@@ -101,6 +103,8 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                 all_types.extend(extracted.types);
                 all_imports.extend(extracted.imports);
                 all_call_edges.extend(extracted.call_edges);
+                all_constants.extend(extracted.constants);
+                all_members.extend(extracted.members);
                 _files_processed += 1;
             }
             Err(e) => {
@@ -119,10 +123,12 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     let types_count = db.insert_types(&all_types)?;
     let imports_count = db.insert_imports(&all_imports)?;
     let edges_count = db.insert_call_edges(&all_call_edges)?;
+    let constants_count = db.insert_constants(&all_constants)?;
+    let members_count = db.insert_members(&all_members)?;
 
     println!(
-        "  ✅ Inserted: {} symbols, {} functions, {} types, {} imports, {} call edges",
-        symbols_count, functions_count, types_count, imports_count, edges_count
+        "  ✅ Inserted: {} symbols, {} functions, {} types, {} imports, {} call edges, {} constants, {} members",
+        symbols_count, functions_count, types_count, imports_count, edges_count, constants_count, members_count
     );
 
     if files_with_errors > 0 {
@@ -147,6 +153,8 @@ fn process_file_by_language(
         types: Vec::new(),
         imports: Vec::new(),
         call_edges: Vec::new(),
+        constants: Vec::new(),
+        members: Vec::new(),
     };
 
     // For now, we'll still use the existing processors but convert their output
@@ -211,6 +219,8 @@ fn process_go_file(file_path: &str, content: &[u8], data: &mut ExtractedData) ->
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -228,6 +238,8 @@ fn process_python_file(file_path: &str, content: &[u8], data: &mut ExtractedData
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -249,6 +261,8 @@ fn process_javascript_file(
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -270,6 +284,8 @@ fn process_typescript_file(
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -287,6 +303,8 @@ fn process_c_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> 
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -304,6 +322,8 @@ fn process_cpp_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -323,6 +343,8 @@ fn process_cairo_file(file_path: &str, content: &[u8], data: &mut ExtractedData)
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),
@@ -340,6 +362,8 @@ fn process_solidity_file(file_path: &str, content: &[u8], data: &mut ExtractedDa
             data.types.extend(extracted.types);
             data.imports.extend(extracted.imports);
             data.call_edges.extend(extracted.call_edges);
+            data.constants.extend(extracted.constants);
+            data.members.extend(extracted.members);
             Ok(())
         }
         Err(e) => Err(e),

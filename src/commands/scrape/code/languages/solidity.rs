@@ -17,11 +17,9 @@
 //! - Unchecked blocks (similar to unsafe)
 //! - Library and contract declarations
 
-use crate::commands::scrape::recode_v2::database::{
-    CodeSymbol, FunctionFact, ImportFact, TypeFact,
-};
-use crate::commands::scrape::recode_v2::extracted_data::ExtractedData;
-use crate::commands::scrape::recode_v2::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
+use crate::commands::scrape::code::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
+use crate::commands::scrape::code::extracted_data::ExtractedData;
+use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
 
@@ -311,6 +309,9 @@ fn process_solidity_contract(
         visibility: "public".to_string(), // Contracts are public by nature
         usage_count: 0,
     });
+
+    // Extract inheritance relationships
+    extract_solidity_inheritance(node, source, file_path, name, data);
 }
 
 /// Process a Solidity struct and add to ExtractedData
@@ -479,6 +480,62 @@ fn extract_solidity_calls(
             }
         }
         _ => {}
+    }
+}
+
+/// Extract Solidity contract inheritance relationships
+fn extract_solidity_inheritance(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    contract_name: &str,
+    data: &mut ExtractedData,
+) {
+    use crate::commands::scrape::code::extracted_data::ConstantFact;
+
+    // Look for inheritance_specifier nodes
+    // In Solidity: contract Token is ERC20, Ownable { ... }
+    // The tree-sitter grammar has "inheritance_specifier" for the "is" clause
+    let mut cursor = node.walk();
+
+    for child in node.children(&mut cursor) {
+        if child.kind() == "inheritance_specifier" {
+            // Walk through the inheritance specifier to find base contracts
+            let mut inherit_cursor = child.walk();
+            for inherit_child in child.children(&mut inherit_cursor) {
+                // Base contracts appear as type identifiers or user_defined_types
+                if matches!(
+                    inherit_child.kind(),
+                    "type_name" | "user_defined_type" | "identifier"
+                ) {
+                    if let Ok(base_name) = inherit_child.utf8_text(source) {
+                        let base_clean = base_name.trim();
+
+                        // Store inheritance as a special constant fact
+                        data.constants.push(ConstantFact {
+                            file: file_path.to_string(),
+                            name: format!("{}::inherits::{}", contract_name, base_clean),
+                            value: None, // Solidity doesn't have access specifiers for inheritance
+                            const_type: "inheritance".to_string(),
+                            scope: contract_name.to_string(),
+                            line: child.start_position().row + 1,
+                        });
+
+                        // Also add as a symbol for searchability
+                        data.add_symbol(CodeSymbol {
+                            path: file_path.to_string(),
+                            name: format!("{} : {}", contract_name, base_clean),
+                            kind: "inheritance".to_string(),
+                            line: child.start_position().row + 1,
+                            context: format!(
+                                "contract {} inherits from {}",
+                                contract_name, base_clean
+                            ),
+                        });
+                    }
+                }
+            }
+        }
     }
 }
 
