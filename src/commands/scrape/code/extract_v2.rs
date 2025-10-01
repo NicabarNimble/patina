@@ -63,29 +63,20 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
 
     let mut files_with_errors = 0;
     let mut _files_processed = 0;
-    let total_files = all_files.len();
 
     // Process each file and collect data
-    for (i, (file_path, language)) in all_files.into_iter().enumerate() {
+    for (file_path, language) in all_files {
         let relative_path = if let Ok(stripped) = file_path.strip_prefix(work_dir) {
             format!("./{}", stripped.to_string_lossy())
         } else {
             file_path.to_string_lossy().to_string()
         };
 
-        // Show progress every 100 files or on large repos every 500 files
-        let progress_interval = if total_files > 1000 { 500 } else { 100 };
-        if i % progress_interval == 0 || i == total_files - 1 {
-            print!("\r  📝 Processing files: {}/{} ({:.1}%)", i + 1, total_files, (i + 1) as f64 / total_files as f64 * 100.0);
-            use std::io::Write;
-            std::io::stdout().flush().ok();
-        }
-
         // Read file content
         let content = match std::fs::read(&file_path) {
             Ok(content) => content,
             Err(e) => {
-                eprintln!("\n  ⚠️  Failed to read {}: {}", relative_path, e);
+                eprintln!("  ⚠️  Failed to read {}: {}", relative_path, e);
                 files_with_errors += 1;
                 continue;
             }
@@ -117,15 +108,12 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
                 _files_processed += 1;
             }
             Err(e) => {
-                eprintln!("\n  ⚠️  Processing error in {}: {}", relative_path, e);
+                eprintln!("  ⚠️  Processing error in {}: {}", relative_path, e);
                 db.mark_skipped(&relative_path, &e.to_string())?;
                 files_with_errors += 1;
             }
         }
     }
-
-    // Clear progress line and show completion
-    println!("\r  ✅ Processed {}/{} files", total_files, total_files);
 
     // Bulk insert all collected data
     println!("  💾 Writing to database using bulk operations...");
