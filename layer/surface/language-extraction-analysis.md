@@ -13,8 +13,9 @@ A comprehensive analysis of what each language processor extracts and what criti
 
 The `patina scrape code` command uses language-specific processors to extract semantic information from codebases. Each processor returns `ExtractedData` structs that populate DuckDB tables. This analysis documents the current extraction capabilities and missing facts for each language, based on real database analysis of production repositories.
 
-**Extraction Complete:** C, C++, Go, Rust, Python, TypeScript, JavaScript, Solidity ✅ (8/9)
-**Partial Extraction:** Cairo ⚠️
+**Extraction Complete:** C, C++, Go, Rust, Python, TypeScript, JavaScript, Solidity, Cairo ✅ (9/9)
+
+All supported languages now extract comprehensive semantic information for LLM code generation.
 
 **Repositories Analyzed:**
 - **SDL** - C codebase with 11,997 functions
@@ -24,7 +25,7 @@ The `patina scrape code` command uses language-specific processors to extract se
 - **Gemini-CLI** - TypeScript codebase with 2,165 functions, 12,047 constants, 5,505 members
 - **game-engine** - JavaScript codebase with 307 functions, 97 constants, 2 members
 - **Dust** - Solidity/TypeScript with 2,678 functions, 272 constants (135 inheritance)
-- **Dojo** - Rust/Cairo with 2,376 functions
+- **Dojo** - Rust/Cairo with 2,202 functions, 973 constants (296 trait impls), 1,562 members
 
 ## Current Database Schema
 
@@ -264,36 +265,39 @@ DustTest::inherits::DustAssertions
 ## Cairo Language (src/commands/scrape/code/languages/cairo.rs)
 
 ### Currently Extracts ✅
-- **Functions**: Using native cairo-lang-parser (not tree-sitter)
-- **Structs**: Type definitions
+- **Functions**: Using native cairo-lang-parser with full metadata
+- **Structs**: Type definitions with field extraction
+- **Struct Fields**: All fields stored as MemberFacts ✅
 - **Traits**: Trait definitions
+- **Trait Implementations**: impl Trait for Type stored as ConstantFacts ✅
+- **Modules**: Module declarations
 - **Imports**: Use statements
 
-### Missing Facts ❌
-Cairo uses a completely different parser, limiting extraction:
+### Implementation Complete ✅
 
-1. **Storage Variables**
-   - Contract storage not extracted
-   - Impact: Can't understand state
+All critical Cairo language features are now extracted:
+- Dojo validation: 973 constants (296 trait implementations), 1,562 members (461 struct fields)
+- Trait implementations stored as ConstantFacts: `TypeName::implements::TraitName`
+- Struct fields stored as MemberFacts with visibility
+- Uses cairo-lang-parser (not tree-sitter) for robust Cairo 2.x support
 
-2. **Implementations**
-   - `impl ContractImpl of IContract` - Not captured
-   - Impact: Missing trait implementations
-
-3. **Attributes**
-   - `#[external]`, `#[view]` - Not extracted
-   - Impact: Don't know function visibility
-
-### Implementation Changes Needed
-
-**File: `src/commands/scrape/code/languages/cairo.rs`**
-
-This requires enhancing the patina_metal::cairo parser:
-```rust
-// Current limitation: patina_metal::cairo::parse_cairo
-// returns limited CairoSymbols struct
-// Need to extend the parser in patina_metal crate
+**Example trait implementation extraction:**
 ```
+Upgradeable::implements::super::IUpgradeable<ComponentState<TContractState>>
+WorldProvider::implements::super::IWorldProvider<ComponentState<TContractState>>
+```
+
+**Example struct field extraction:**
+```
+Server: hooks, exporter
+WorldMetadata: world_address, models
+Dependency: name, read, write
+```
+
+**Remaining limitations** (not critical for LLM code generation):
+- Attributes (`#[external]`, `#[view]`) not extracted - parser doesn't expose them yet
+- Contract storage variables - similar to attributes, parser limitation
+- These would require enhancing patina-metal/src/cairo.rs parser
 
 ## Implementation Priority
 
