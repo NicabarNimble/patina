@@ -281,12 +281,9 @@ pub fn execute_code(
     let start_time = std::time::Instant::now();
 
     for (i, repo_name) in repos_to_scrape.iter().enumerate() {
-        println!(
-            "[{}/{}] Scraping {}...",
-            i + 1,
-            repos_to_scrape.len(),
-            repo_name
-        );
+        println!("\n{}", "=".repeat(60));
+        println!("[{}/{}] 📦 {}", i + 1, repos_to_scrape.len(), repo_name);
+        println!("{}", "=".repeat(60));
 
         let mut config = ScrapeConfig::new(force_flag);
         config.for_repo(repo_name);
