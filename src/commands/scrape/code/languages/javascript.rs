@@ -20,7 +20,7 @@
 use crate::commands::scrape::code::database::{
     CodeSymbol, FunctionFact, ImportFact, TypeFact,
 };
-use crate::commands::scrape::code::extracted_data::ExtractedData;
+use crate::commands::scrape::code::extracted_data::{ConstantFact, ExtractedData, MemberFact};
 use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
@@ -164,9 +164,9 @@ fn extract_symbols(
             }
         }
 
-        // Variable declarations that might be functions
-        "variable_declarator" => {
-            process_variable_declarator(&node, source, file_path, data, current_function);
+        // Variable declarations that might be functions or constants
+        "lexical_declaration" | "variable_declaration" => {
+            process_variable_declaration(&node, source, file_path, data, current_function);
         }
 
         // Import statements
@@ -355,41 +355,194 @@ fn process_class(
         context: definition,
     };
     data.add_symbol(symbol);
+
+    // Extract inheritance - extends clause
+    if let Some(heritage) = node.child_by_field_name("heritage") {
+        if let Ok(parent_name) = heritage.utf8_text(source) {
+            // Remove "extends " prefix
+            let parent = parent_name.trim().strip_prefix("extends ").unwrap_or(parent_name.trim());
+            if !parent.is_empty() {
+                data.add_constant(ConstantFact {
+                    file: file_path.to_string(),
+                    name: format!("{}::extends::{}", name, parent),
+                    value: Some(parent.to_string()),
+                    const_type: "inheritance".to_string(),
+                    scope: name.to_string(),
+                    line: heritage.start_position().row + 1,
+                });
+            }
+        }
+    }
+
+    // Extract class members (fields and methods)
+    if let Some(body) = node.child_by_field_name("body") {
+        let mut cursor = body.walk();
+        for child in body.children(&mut cursor) {
+            match child.kind() {
+                // Field definitions (class properties)
+                "field_definition" | "public_field_definition" => {
+                    if let Some(prop_name) = child.child_by_field_name("property") {
+                        if let Ok(field_name) = prop_name.utf8_text(source) {
+                            let is_static = has_static_keyword(&child, source);
+                            let mut modifiers = Vec::new();
+                            if is_static {
+                                modifiers.push("static".to_string());
+                            }
+
+                            data.add_member(MemberFact {
+                                file: file_path.to_string(),
+                                container: name.to_string(),
+                                name: field_name.to_string(),
+                                member_type: "field".to_string(),
+                                visibility: "public".to_string(), // JS doesn't have visibility (except # private)
+                                modifiers,
+                                line: child.start_position().row + 1,
+                            });
+                        }
+                    }
+                }
+                // Methods are already handled in extract_symbols but we also add them as MemberFacts
+                "method_definition" => {
+                    if let Some(method_name) = extract_method_name(&child, source) {
+                        let is_static = has_static_keyword(&child, source);
+                        let is_async = has_async_keyword(&child, source);
+                        let is_getter = child
+                            .child_by_field_name("kind")
+                            .and_then(|n| n.utf8_text(source).ok())
+                            == Some("get");
+                        let is_setter = child
+                            .child_by_field_name("kind")
+                            .and_then(|n| n.utf8_text(source).ok())
+                            == Some("set");
+
+                        let mut modifiers = Vec::new();
+                        if is_static {
+                            modifiers.push("static".to_string());
+                        }
+                        if is_async {
+                            modifiers.push("async".to_string());
+                        }
+
+                        let member_type = if method_name == "constructor" {
+                            "constructor"
+                        } else if is_getter {
+                            "getter"
+                        } else if is_setter {
+                            "setter"
+                        } else {
+                            "method"
+                        };
+
+                        // Check for private fields (starting with #)
+                        let visibility = if method_name.starts_with('#') {
+                            "private"
+                        } else {
+                            "public"
+                        };
+
+                        data.add_member(MemberFact {
+                            file: file_path.to_string(),
+                            container: name.to_string(),
+                            name: method_name.to_string(),
+                            member_type: member_type.to_string(),
+                            visibility: visibility.to_string(),
+                            modifiers,
+                            line: child.start_position().row + 1,
+                        });
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
-/// Process variable declarators (const/let/var)
-fn process_variable_declarator(
+/// Process variable declarations (const/let/var) - extract constants and functions
+fn process_variable_declaration(
     node: &Node,
     source: &[u8],
     file_path: &FilePath,
     data: &mut ExtractedData,
     current_function: &mut Option<String>,
 ) {
-    if let Some(name_node) = node.child_by_field_name("name") {
-        if let Ok(name) = name_node.utf8_text(source) {
-            // Check if it's a function assignment
-            if let Some(value_node) = node.child_by_field_name("value") {
-                match value_node.kind() {
-                    "arrow_function" | "function" => {
-                        let old_function = current_function.clone();
-                        *current_function = Some(name.to_string());
+    // Determine if this is a const declaration
+    let is_const = node.kind() == "lexical_declaration" && {
+        if let Ok(text) = node.utf8_text(source) {
+            text.starts_with("const ")
+        } else {
+            false
+        }
+    };
 
-                        process_function(&value_node, source, file_path, name, data);
+    // Check if we're at module level (not inside a function)
+    let is_module_level = current_function.is_none();
 
-                        // Process function body
-                        if let Some(body) = value_node.child_by_field_name("body") {
-                            let mut cursor = body.walk();
-                            for child in body.children(&mut cursor) {
-                                extract_symbols(child, source, file_path, data, current_function);
+    // Check each declarator in the declaration
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "variable_declarator" {
+            if let Some(name_node) = child.child_by_field_name("name") {
+                if let Ok(name) = name_node.utf8_text(source) {
+                    // Get the value if present
+                    if let Some(value_node) = child.child_by_field_name("value") {
+                        match value_node.kind() {
+                            "arrow_function" | "function" => {
+                                // This is a function stored in a variable
+                                let old_function = current_function.clone();
+                                *current_function = Some(name.to_string());
+
+                                process_function(&value_node, source, file_path, name, data);
+
+                                // Process function body
+                                if let Some(body) = value_node.child_by_field_name("body") {
+                                    let mut body_cursor = body.walk();
+                                    for body_child in body.children(&mut body_cursor) {
+                                        extract_symbols(body_child, source, file_path, data, current_function);
+                                    }
+                                }
+
+                                *current_function = old_function;
+                            }
+                            "class" => {
+                                // This is a class stored in a variable
+                                process_class(&value_node, source, file_path, name, data);
+                            }
+                            _ => {
+                                // For const declarations at module level, extract as constants
+                                if is_const && is_module_level {
+                                    let value_text = value_node.utf8_text(source).ok().map(|s| s.to_string());
+
+                                    // Detect if it's an UPPER_CASE constant (common convention)
+                                    let is_upper_case = name.chars().all(|c| c.is_uppercase() || c == '_' || c.is_numeric());
+
+                                    let const_type = if is_upper_case {
+                                        "const" // Configuration constant
+                                    } else {
+                                        "variable" // Regular module-level const
+                                    };
+
+                                    data.add_constant(ConstantFact {
+                                        file: file_path.to_string(),
+                                        name: name.to_string(),
+                                        value: value_text,
+                                        const_type: const_type.to_string(),
+                                        scope: "module".to_string(),
+                                        line: child.start_position().row + 1,
+                                    });
+                                }
                             }
                         }
-
-                        *current_function = old_function;
+                    } else if is_const && is_module_level {
+                        // Const declaration without initializer (rare but valid)
+                        data.add_constant(ConstantFact {
+                            file: file_path.to_string(),
+                            name: name.to_string(),
+                            value: None,
+                            const_type: "variable".to_string(),
+                            scope: "module".to_string(),
+                            line: child.start_position().row + 1,
+                        });
                     }
-                    "class" => {
-                        process_class(&value_node, source, file_path, name, data);
-                    }
-                    _ => {}
                 }
             }
         }

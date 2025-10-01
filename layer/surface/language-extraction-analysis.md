@@ -13,8 +13,8 @@ A comprehensive analysis of what each language processor extracts and what criti
 
 The `patina scrape code` command uses language-specific processors to extract semantic information from codebases. Each processor returns `ExtractedData` structs that populate DuckDB tables. This analysis documents the current extraction capabilities and missing facts for each language, based on real database analysis of production repositories.
 
-**Extraction Complete:** C, C++, Go, Rust, Python, TypeScript ✅  
-**Partial Extraction:** JavaScript, Solidity, Cairo ⚠️
+**Extraction Complete:** C, C++, Go, Rust, Python, TypeScript, JavaScript ✅
+**Partial Extraction:** Solidity, Cairo ⚠️
 
 **Repositories Analyzed:**
 - **SDL** - C codebase with 11,997 functions
@@ -22,6 +22,7 @@ The `patina scrape code` command uses language-specific processors to extract se
 - **Dagger** - Go (+ TypeScript/Python/Rust) with 9,402 functions
 - **Cortex** - Python codebase with 205 functions, 85 constants, 165 members
 - **Gemini-CLI** - TypeScript codebase with 2,165 functions, 12,047 constants, 5,505 members
+- **game-engine** - JavaScript codebase with 307 functions, 97 constants, 2 members
 - **Dust** - Solidity/TypeScript with 2,746 functions
 - **Dojo** - Rust/Cairo with 2,376 functions
 
@@ -189,6 +190,39 @@ All critical TypeScript language features are now extracted:
 - Decorators captured for framework pattern recognition (@Injectable, @Component)
 - Generic type parameters stored for proper type usage
 - Readonly and static modifiers preserved on members
+
+## JavaScript Language (src/commands/scrape/code/languages/javascript.rs)
+
+### Currently Extracts ✅
+- **Functions**: Function declarations, arrow functions, async functions, generators
+- **Classes**: With full member extraction and inheritance
+- **Methods**: Constructor, getters, setters with modifiers
+- **Imports**: ES6 imports and CommonJS require statements
+- **JSX**: Components detected (same parser handles .js and .jsx)
+- **Constants**: Module-level const declarations stored as ConstantFact
+- **Class Members**: Fields and methods with static/async modifiers
+- **Inheritance**: Class extends relationships tracked
+- **Private Fields**: Modern # private fields detected
+- **Export Patterns**: Module exports tracked
+- **Call Graph**: Async/await, new expressions, direct calls
+
+### Implementation Complete ✅
+
+All critical JavaScript language features are now extracted:
+- game-engine validation: 307 functions, 97 constants (22 UPPER_CASE config constants, 73 module variables), 2 members
+- Full support for ES6+ module patterns (import/export)
+- Class inheritance tracked via extends clause
+- Method modifiers (static, async) properly preserved
+- Private fields using # syntax detected
+- Module-level const detection with UPPER_CASE convention for config constants
+- Both arrow functions and traditional function declarations handled
+- Constructor, getter, and setter classification
+
+**JavaScript vs TypeScript:**
+- JavaScript extraction is simpler (no type system, decorators, or interfaces)
+- Same tree-sitter parser handles both .js and .jsx files
+- Focuses on runtime patterns rather than compile-time types
+- Inheritance tracking works identically but only extends (no implements)
 
 ## Solidity Language (src/commands/scrape/code/languages/solidity.rs)
 
