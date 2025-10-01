@@ -17,10 +17,8 @@
 //! - RAII and constructors/destructors
 //! - Modern C++ features (auto, lambdas, etc.)
 
-use crate::commands::scrape::code::database::{
-    CodeSymbol, FunctionFact, ImportFact, TypeFact,
-};
-use crate::commands::scrape::code::extracted_data::{ExtractedData, ConstantFact, MemberFact};
+use crate::commands::scrape::code::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
+use crate::commands::scrape::code::extracted_data::{ConstantFact, ExtractedData, MemberFact};
 use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
@@ -108,29 +106,28 @@ fn extract_cpp_symbols(
                     // This is a simplified check - could be improved
                     true // For now, assume functions in namespace stack might be methods
                 });
-                
+
                 // Include namespace/class in function name
                 let full_name = if namespace_stack.is_empty() {
                     name.clone()
                 } else {
                     format!("{}::{}", namespace_stack.join("::"), name)
                 };
-                
+
                 // Check for special method types
-                let is_constructor = namespace_stack.last()
+                let is_constructor = namespace_stack
+                    .last()
                     .map(|class| name == class.as_str())
                     .unwrap_or(false);
                 let is_destructor = name.starts_with('~');
 
                 process_cpp_function_enhanced(
-                    node, 
-                    source, 
-                    file_path, 
-                    &full_name, 
+                    node,
+                    source,
+                    file_path,
+                    &full_name,
                     data,
-                    is_method,
-                    is_constructor,
-                    is_destructor,
+                    (is_method, is_constructor, is_destructor),
                 );
 
                 // Process function body with updated context
@@ -171,7 +168,7 @@ fn extract_cpp_symbols(
                     if let Some(body) = node.child_by_field_name("body") {
                         // Extract class members with visibility tracking
                         extract_class_members(&body, source, file_path, &full_name, data);
-                        
+
                         // Also process nested types and methods
                         let mut cursor = body.walk();
                         for child in body.children(&mut cursor) {
@@ -290,7 +287,6 @@ fn extract_cpp_symbols(
     }
 }
 
-
 /// Process a C++ class/struct and add to ExtractedData
 fn process_cpp_class(
     node: &Node,
@@ -320,7 +316,7 @@ fn process_cpp_class(
         visibility: "public".to_string(), // Top-level types are public
         usage_count: 0,
     });
-    
+
     // Extract inheritance relationships
     process_cpp_inheritance(node, source, file_path, name, data);
 }
@@ -353,7 +349,7 @@ fn process_cpp_enum(
         visibility: "public".to_string(),
         usage_count: 0,
     });
-    
+
     // Extract enum values
     if let Some(list_node) = node.child_by_field_name("body") {
         let mut cursor = list_node.walk();
@@ -365,9 +361,9 @@ fn process_cpp_enum(
                             .child_by_field_name("value")
                             .and_then(|v| v.utf8_text(source).ok())
                             .map(|s| s.to_string());
-                        
+
                         let full_name = format!("{}::{}", name, value_name);
-                        
+
                         // Add as symbol for backwards compatibility
                         data.add_symbol(CodeSymbol {
                             path: file_path.to_string(),
@@ -380,7 +376,7 @@ fn process_cpp_enum(
                                 value_name.to_string()
                             },
                         });
-                        
+
                         // Add as ConstantFact for better organization
                         data.add_constant(ConstantFact {
                             file: file_path.to_string(),
@@ -463,14 +459,14 @@ fn process_cpp_inheritance(
     // The base_clause appears directly after the class name and before the body
     let mut cursor = node.walk();
     let mut found_name = false;
-    
+
     for child in node.children(&mut cursor) {
         // Skip until we find the name
         if child.kind() == "type_identifier" && !found_name {
             found_name = true;
             continue;
         }
-        
+
         // After the name, look for the base clause
         // Note: In tree-sitter-cpp, it's "base_class_clause" not "base_clause"
         if child.kind() == "base_class_clause" {
@@ -479,7 +475,7 @@ fn process_cpp_inheritance(
             if node.kind() == "struct_specifier" {
                 access = "public"; // Default for struct
             }
-            
+
             // Check for explicit access specifier
             let mut spec_cursor = child.walk();
             for spec_child in child.children(&mut spec_cursor) {
@@ -489,11 +485,14 @@ fn process_cpp_inheritance(
                     }
                 }
             }
-            
+
             // Extract base class name
-            if let Some(type_node) = child.children(&mut child.walk())
-                .find(|c| matches!(c.kind(), "type_identifier" | "qualified_identifier" | "template_type")) 
-            {
+            if let Some(type_node) = child.children(&mut child.walk()).find(|c| {
+                matches!(
+                    c.kind(),
+                    "type_identifier" | "qualified_identifier" | "template_type"
+                )
+            }) {
                 if let Ok(base_name) = type_node.utf8_text(source) {
                     // Store inheritance as a special constant fact with relationship info
                     data.constants.push(ConstantFact {
@@ -504,15 +503,17 @@ fn process_cpp_inheritance(
                         scope: class_name.to_string(),
                         line: child.start_position().row + 1,
                     });
-                    
+
                     // Also add as a symbol for searchability
                     data.add_symbol(CodeSymbol {
                         path: file_path.to_string(),
                         name: format!("{} : {} {}", class_name, access, base_name),
                         kind: "inheritance".to_string(),
                         line: child.start_position().row + 1,
-                        context: format!("class {} inherits from {} with {} access", 
-                                       class_name, base_name, access),
+                        context: format!(
+                            "class {} inherits from {} with {} access",
+                            class_name, base_name, access
+                        ),
                     });
                 }
             }
@@ -528,7 +529,7 @@ fn extract_class_members(
     data: &mut ExtractedData,
 ) {
     let mut current_visibility = "private"; // Default for class
-    
+
     let mut cursor = body.walk();
     for child in body.children(&mut cursor) {
         match child.kind() {
@@ -545,20 +546,29 @@ fn extract_class_members(
                         // Check for static/const modifiers
                         let mut modifiers = Vec::new();
                         let text = child.utf8_text(source).unwrap_or("");
-                        if text.contains("static") { modifiers.push("static".to_string()); }
-                        if text.contains("const") { modifiers.push("const".to_string()); }
-                        if text.contains("mutable") { modifiers.push("mutable".to_string()); }
-                        
+                        if text.contains("static") {
+                            modifiers.push("static".to_string());
+                        }
+                        if text.contains("const") {
+                            modifiers.push("const".to_string());
+                        }
+                        if text.contains("mutable") {
+                            modifiers.push("mutable".to_string());
+                        }
+
                         // Add as symbol for backwards compatibility
                         data.add_symbol(CodeSymbol {
                             path: file_path.to_string(),
                             name: format!("{}::{}", class_name, name),
                             kind: "field".to_string(),
                             line: child.start_position().row + 1,
-                            context: format!("{} {}", current_visibility, 
-                                text.lines().next().unwrap_or("")),
+                            context: format!(
+                                "{} {}",
+                                current_visibility,
+                                text.lines().next().unwrap_or("")
+                            ),
                         });
-                        
+
                         // Add as MemberFact for better organization
                         data.add_member(MemberFact {
                             file: file_path.to_string(),
@@ -580,16 +590,25 @@ fn extract_class_members(
                     let is_virtual = text.contains("virtual");
                     let is_const = text.contains(") const");
                     let is_override = text.contains("override");
-                    let is_constructor = name == class_name.split("::").last().unwrap_or(class_name);
+                    let is_constructor =
+                        name == class_name.split("::").last().unwrap_or(class_name);
                     let is_destructor = name.starts_with('~');
-                    
+
                     // Build modifiers list
                     let mut modifiers = Vec::new();
-                    if is_static { modifiers.push("static".to_string()); }
-                    if is_virtual { modifiers.push("virtual".to_string()); }
-                    if is_const { modifiers.push("const".to_string()); }
-                    if is_override { modifiers.push("override".to_string()); }
-                    
+                    if is_static {
+                        modifiers.push("static".to_string());
+                    }
+                    if is_virtual {
+                        modifiers.push("virtual".to_string());
+                    }
+                    if is_const {
+                        modifiers.push("const".to_string());
+                    }
+                    if is_override {
+                        modifiers.push("override".to_string());
+                    }
+
                     let member_type = if is_constructor {
                         "constructor"
                     } else if is_destructor {
@@ -597,7 +616,7 @@ fn extract_class_members(
                     } else {
                         "method"
                     };
-                    
+
                     let kind = if is_constructor {
                         "constructor"
                     } else if is_destructor {
@@ -609,17 +628,20 @@ fn extract_class_members(
                     } else {
                         "method"
                     };
-                    
+
                     // Add as symbol for backwards compatibility
                     data.add_symbol(CodeSymbol {
                         path: file_path.to_string(),
                         name: format!("{}::{}", class_name, name),
                         kind: kind.to_string(),
                         line: child.start_position().row + 1,
-                        context: format!("{} {}", current_visibility,
-                            text.lines().next().unwrap_or("")),
+                        context: format!(
+                            "{} {}",
+                            current_visibility,
+                            text.lines().next().unwrap_or("")
+                        ),
                     });
-                    
+
                     // Add as MemberFact for better organization
                     data.add_member(MemberFact {
                         file: file_path.to_string(),
@@ -644,33 +666,34 @@ fn process_cpp_function_enhanced(
     file_path: &str,
     name: &str,
     data: &mut ExtractedData,
-    is_method: bool,
-    is_constructor: bool,
-    is_destructor: bool,
+    flags: (bool, bool, bool), // (is_method, is_constructor, is_destructor)
 ) {
+    let (is_method, is_constructor, is_destructor) = flags;
     let params = extract_parameters(node, source);
     let return_type = if is_constructor || is_destructor {
         None
     } else {
         extract_return_type(node, source)
     };
-    
+
     // Check for const method
-    let is_const_method = node.utf8_text(source)
-        .unwrap_or("")
-        .contains(") const");
-    
+    let is_const_method = node.utf8_text(source).unwrap_or("").contains(") const");
+
     // Determine function kind
     let kind = if is_constructor {
         "constructor"
     } else if is_destructor {
         "destructor"
     } else if is_method {
-        if is_const_method { "const_method" } else { "method" }
+        if is_const_method {
+            "const_method"
+        } else {
+            "method"
+        }
     } else {
         "function"
     };
-    
+
     // Add enhanced symbol
     data.add_symbol(CodeSymbol {
         path: file_path.to_string(),
@@ -679,7 +702,7 @@ fn process_cpp_function_enhanced(
         line: node.start_position().row + 1,
         context: extract_context(node, source),
     });
-    
+
     // Add function fact with method info
     data.add_function(FunctionFact {
         file: file_path.to_string(),
@@ -706,14 +729,14 @@ fn process_cpp_macro(node: &Node, source: &[u8], file_path: &str, data: &mut Ext
                 .child_by_field_name("value")
                 .and_then(|v| v.utf8_text(source).ok())
                 .map(|s| s.to_string());
-            
+
             let context = node
                 .utf8_text(source)
                 .ok()
                 .and_then(|s| s.lines().next())
                 .unwrap_or("")
                 .to_string();
-            
+
             // Add as symbol for backwards compatibility
             data.add_symbol(CodeSymbol {
                 path: file_path.to_string(),
@@ -722,7 +745,7 @@ fn process_cpp_macro(node: &Node, source: &[u8], file_path: &str, data: &mut Ext
                 line: node.start_position().row + 1,
                 context,
             });
-            
+
             // Add as ConstantFact for better organization
             data.add_constant(ConstantFact {
                 file: file_path.to_string(),
@@ -742,7 +765,7 @@ fn process_cpp_declaration(node: &Node, source: &[u8], file_path: &str, data: &m
     let mut is_const = false;
     let mut is_constexpr = false;
     let mut is_extern = false;
-    
+
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
@@ -776,14 +799,14 @@ fn process_cpp_declaration(node: &Node, source: &[u8], file_path: &str, data: &m
                     } else {
                         "global"
                     };
-                    
+
                     let context = node
                         .utf8_text(source)
                         .ok()
                         .and_then(|s| s.lines().next())
                         .unwrap_or("")
                         .to_string();
-                    
+
                     // Add as symbol for backwards compatibility
                     data.add_symbol(CodeSymbol {
                         path: file_path.to_string(),
@@ -792,7 +815,7 @@ fn process_cpp_declaration(node: &Node, source: &[u8], file_path: &str, data: &m
                         line: node.start_position().row + 1,
                         context: context.clone(),
                     });
-                    
+
                     // Add as ConstantFact for better organization
                     let const_type = if is_constexpr {
                         "constexpr"
@@ -804,8 +827,9 @@ fn process_cpp_declaration(node: &Node, source: &[u8], file_path: &str, data: &m
                         "extern"
                     } else {
                         "global"
-                    }.to_string();
-                    
+                    }
+                    .to_string();
+
                     data.add_constant(ConstantFact {
                         file: file_path.to_string(),
                         name: name.clone(),
@@ -831,7 +855,10 @@ fn count_template_params(node: &Node) -> i32 {
                 let mut count = 0;
                 let mut cursor = params.walk();
                 for child in params.children(&mut cursor) {
-                    if matches!(child.kind(), "type_parameter_declaration" | "parameter_declaration") {
+                    if matches!(
+                        child.kind(),
+                        "type_parameter_declaration" | "parameter_declaration"
+                    ) {
                         count += 1;
                     }
                 }
@@ -848,20 +875,20 @@ fn extract_declarator_name(node: &Node, source: &[u8]) -> Option<String> {
     if node.kind() == "identifier" {
         return node.utf8_text(source).ok().map(|s| s.to_string());
     }
-    
+
     let mut current = Some(*node);
     while let Some(n) = current {
         if n.kind() == "identifier" {
             return n.utf8_text(source).ok().map(|s| s.to_string());
         }
         let mut cursor = n.walk();
-        current = n.children(&mut cursor).find(|c| 
-            c.kind() == "identifier" || 
-            c.kind() == "declarator" || 
-            c.kind() == "pointer_declarator" ||
-            c.kind() == "array_declarator" ||
-            c.kind() == "reference_declarator"
-        );
+        current = n.children(&mut cursor).find(|c| {
+            c.kind() == "identifier"
+                || c.kind() == "declarator"
+                || c.kind() == "pointer_declarator"
+                || c.kind() == "array_declarator"
+                || c.kind() == "reference_declarator"
+        });
     }
     None
 }
@@ -943,7 +970,6 @@ fn extract_typedef_name(node: &Node, source: &[u8]) -> Option<String> {
 
     None
 }
-
 
 /// Extract function parameters
 fn extract_parameters(node: &Node, source: &[u8]) -> Vec<String> {

@@ -8,9 +8,7 @@
 //! - No SQL string generation
 //! - Direct data extraction to domain types
 
-use crate::commands::scrape::code::database::{
-    CodeSymbol, FunctionFact, ImportFact, TypeFact,
-};
+use crate::commands::scrape::code::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
 use crate::commands::scrape::code::extracted_data::{ConstantFact, ExtractedData, MemberFact};
 use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
@@ -437,7 +435,7 @@ fn extract_enum_variants(
 
                     // Also store as MemberFact for consistency
                     let mut modifiers = Vec::new();
-                    
+
                     // Check if variant has fields (struct-like or tuple-like)
                     if let Some(body) = child.child_by_field_name("body") {
                         if body.kind() == "field_declaration_list" {
@@ -534,7 +532,7 @@ fn process_rust_impl(node: &Node, source: &[u8], file_path: &str, data: &mut Ext
             }
         }
     }
-    
+
     // Process methods within the impl block
     if let Some(body) = node.child_by_field_name("body") {
         let mut cursor = body.walk();

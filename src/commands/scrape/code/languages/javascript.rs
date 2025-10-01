@@ -17,9 +17,7 @@
 //! - Flexible parameter patterns (destructuring, rest)
 //! - JSX support (same parser handles .js and .jsx)
 
-use crate::commands::scrape::code::database::{
-    CodeSymbol, FunctionFact, ImportFact, TypeFact,
-};
+use crate::commands::scrape::code::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
 use crate::commands::scrape::code::extracted_data::{ConstantFact, ExtractedData, MemberFact};
 use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath};
 use anyhow::{Context, Result};
@@ -360,7 +358,10 @@ fn process_class(
     if let Some(heritage) = node.child_by_field_name("heritage") {
         if let Ok(parent_name) = heritage.utf8_text(source) {
             // Remove "extends " prefix
-            let parent = parent_name.trim().strip_prefix("extends ").unwrap_or(parent_name.trim());
+            let parent = parent_name
+                .trim()
+                .strip_prefix("extends ")
+                .unwrap_or(parent_name.trim());
             if !parent.is_empty() {
                 data.add_constant(ConstantFact {
                     file: file_path.to_string(),
@@ -497,7 +498,13 @@ fn process_variable_declaration(
                                 if let Some(body) = value_node.child_by_field_name("body") {
                                     let mut body_cursor = body.walk();
                                     for body_child in body.children(&mut body_cursor) {
-                                        extract_symbols(body_child, source, file_path, data, current_function);
+                                        extract_symbols(
+                                            body_child,
+                                            source,
+                                            file_path,
+                                            data,
+                                            current_function,
+                                        );
                                     }
                                 }
 
@@ -510,10 +517,13 @@ fn process_variable_declaration(
                             _ => {
                                 // For const declarations at module level, extract as constants
                                 if is_const && is_module_level {
-                                    let value_text = value_node.utf8_text(source).ok().map(|s| s.to_string());
+                                    let value_text =
+                                        value_node.utf8_text(source).ok().map(|s| s.to_string());
 
                                     // Detect if it's an UPPER_CASE constant (common convention)
-                                    let is_upper_case = name.chars().all(|c| c.is_uppercase() || c == '_' || c.is_numeric());
+                                    let is_upper_case = name
+                                        .chars()
+                                        .all(|c| c.is_uppercase() || c == '_' || c.is_numeric());
 
                                     let const_type = if is_upper_case {
                                         "const" // Configuration constant

@@ -1,8 +1,8 @@
 // Shared utilities for all scrape subcommands
 
+pub mod code;
 pub mod docs;
 pub mod pdf;
-pub mod code;
 
 use anyhow::{bail, Result};
 use std::path::Path;

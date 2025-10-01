@@ -16,10 +16,8 @@
 //! - Decorators and class definitions
 //! - Import system (from/import statements)
 
-use crate::commands::scrape::code::database::{
-    CodeSymbol, FunctionFact, ImportFact, TypeFact,
-};
-use crate::commands::scrape::code::extracted_data::{ExtractedData, ConstantFact, MemberFact};
+use crate::commands::scrape::code::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
+use crate::commands::scrape::code::extracted_data::{ConstantFact, ExtractedData, MemberFact};
 use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath};
 use anyhow::{Context, Result};
 use tree_sitter::{Node, Parser};
@@ -351,7 +349,7 @@ fn extract_params(node: &Node, source: &[u8]) -> Vec<String> {
             if matches!(child.kind(), "," | "(" | ")") {
                 continue;
             }
-            
+
             match child.kind() {
                 "identifier" => {
                     // Simple parameter without type hint
@@ -366,7 +364,10 @@ fn extract_params(node: &Node, source: &[u8]) -> Vec<String> {
                     // Parameter with type hint: name: type
                     if let Ok(param_text) = child.utf8_text(source) {
                         let cleaned = param_text.trim();
-                        if !cleaned.is_empty() && !cleaned.starts_with("self") && !cleaned.starts_with("cls") {
+                        if !cleaned.is_empty()
+                            && !cleaned.starts_with("self")
+                            && !cleaned.starts_with("cls")
+                        {
                             params.push(cleaned.to_string());
                         }
                     }
@@ -375,7 +376,10 @@ fn extract_params(node: &Node, source: &[u8]) -> Vec<String> {
                     // Parameter with default value: name = value or name: type = value
                     if let Ok(param_text) = child.utf8_text(source) {
                         let cleaned = param_text.trim();
-                        if !cleaned.is_empty() && !cleaned.starts_with("self") && !cleaned.starts_with("cls") {
+                        if !cleaned.is_empty()
+                            && !cleaned.starts_with("self")
+                            && !cleaned.starts_with("cls")
+                        {
                             params.push(cleaned.to_string());
                         }
                     }
@@ -576,19 +580,23 @@ fn process_module_assignment(
     if let Some(left_node) = node.child_by_field_name("left") {
         if let Ok(var_name) = left_node.utf8_text(source) {
             let name = var_name.trim();
-            
+
             // Extract the value if possible
-            let value = node.child_by_field_name("right")
+            let value = node
+                .child_by_field_name("right")
                 .and_then(|v| v.utf8_text(source).ok())
                 .map(|s| s.trim().to_string());
-            
+
             // Determine if this looks like a constant based on naming convention
-            let const_type = if name.chars().all(|c| c.is_uppercase() || c == '_' || c.is_ascii_digit()) {
+            let const_type = if name
+                .chars()
+                .all(|c| c.is_uppercase() || c == '_' || c.is_ascii_digit())
+            {
                 "module_constant"
             } else {
                 "module_variable"
             };
-            
+
             let constant = ConstantFact {
                 file: file_path.to_string(),
                 name: name.to_string(),
@@ -611,8 +619,7 @@ fn extract_class_inheritance(
     data: &mut ExtractedData,
 ) {
     let mut cursor = superclasses_node.walk();
-    let mut parent_index = 0;
-    
+
     for child in superclasses_node.children(&mut cursor) {
         if child.kind() == "identifier" || child.kind() == "attribute" {
             if let Ok(parent_name) = child.utf8_text(source) {
@@ -628,7 +635,6 @@ fn extract_class_inheritance(
                         line: superclasses_node.start_position().row + 1,
                     };
                     data.add_constant(inheritance);
-                    parent_index += 1;
                 }
             }
         }
@@ -651,12 +657,13 @@ fn extract_class_members(
                 if let Some(left_node) = child.child_by_field_name("left") {
                     if let Ok(var_name) = left_node.utf8_text(source) {
                         let name = var_name.trim();
-                        
+
                         // Extract the value if possible
-                        let value = child.child_by_field_name("right")
+                        let value = child
+                            .child_by_field_name("right")
                             .and_then(|v| v.utf8_text(source).ok())
                             .map(|s| s.trim().to_string());
-                        
+
                         // Store class variables as constants
                         let constant = ConstantFact {
                             file: file_path.to_string(),
@@ -673,19 +680,20 @@ fn extract_class_members(
             "function_definition" | "async_function_definition" => {
                 // Class method - store as member
                 if let Some(method_name) = extract_function_name(&child, source) {
-                    let visibility = if method_name.starts_with("__") && method_name.ends_with("__") {
+                    let visibility = if method_name.starts_with("__") && method_name.ends_with("__")
+                    {
                         "special" // Magic methods
                     } else if method_name.starts_with("_") {
                         "private"
                     } else {
                         "public"
                     };
-                    
+
                     let mut modifiers = Vec::new();
                     if child.kind() == "async_function_definition" {
                         modifiers.push("async".to_string());
                     }
-                    
+
                     // Check if it's a special method
                     let member_type = if method_name == "__init__" {
                         "constructor"
@@ -694,7 +702,7 @@ fn extract_class_members(
                     } else {
                         "method"
                     };
-                    
+
                     let member = MemberFact {
                         file: file_path.to_string(),
                         container: class_name.to_string(),

@@ -17,9 +17,7 @@
 //! - Decorators and metadata
 //! - JSX support (.tsx files with different parser)
 
-use crate::commands::scrape::code::database::{
-    CodeSymbol, FunctionFact, ImportFact, TypeFact,
-};
+use crate::commands::scrape::code::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
 use crate::commands::scrape::code::extracted_data::{ConstantFact, ExtractedData, MemberFact};
 use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath};
 use anyhow::{Context, Result};
@@ -401,7 +399,8 @@ fn process_class(
                 // Find the type identifier
                 let mut extends_cursor = child.walk();
                 for extends_child in child.children(&mut extends_cursor) {
-                    if extends_child.kind() == "expression" || extends_child.kind() == "identifier" {
+                    if extends_child.kind() == "expression" || extends_child.kind() == "identifier"
+                    {
                         if let Ok(parent_name) = extends_child.utf8_text(source) {
                             // Skip "extends" keyword
                             if parent_name != "extends" {
@@ -421,7 +420,8 @@ fn process_class(
                 // Find implemented interfaces
                 let mut implements_cursor = child.walk();
                 for implements_child in child.children(&mut implements_cursor) {
-                    if implements_child.kind() == "type" || implements_child.kind() == "identifier" {
+                    if implements_child.kind() == "type" || implements_child.kind() == "identifier"
+                    {
                         if let Ok(interface_name) = implements_child.utf8_text(source) {
                             // Skip "implements" keyword
                             if interface_name != "implements" && !interface_name.contains(',') {
@@ -453,7 +453,7 @@ fn process_class(
                             let visibility = extract_member_visibility(&child, source);
                             let is_static = has_static_keyword(&child, source);
                             let is_readonly = has_readonly_keyword(&child, source);
-                            
+
                             let mut modifiers = Vec::new();
                             if is_static {
                                 modifiers.push("static".to_string());
@@ -481,7 +481,7 @@ fn process_class(
                         let is_static = has_static_keyword(&child, source);
                         let is_abstract = has_abstract_keyword(&child, source);
                         let is_async = is_async_function(&child, source);
-                        
+
                         let mut modifiers = Vec::new();
                         if is_static {
                             modifiers.push("static".to_string());
@@ -575,7 +575,7 @@ fn process_interface(
             // Extract each type parameter as a constant
             let params_str = params_text.trim_start_matches('<').trim_end_matches('>');
             for param in params_str.split(',') {
-                let param_name = param.trim().split_whitespace().next().unwrap_or(param.trim());
+                let param_name = param.split_whitespace().next().unwrap_or(param.trim());
                 if !param_name.is_empty() {
                     data.constants.push(ConstantFact {
                         file: file_path.to_string(),
@@ -600,7 +600,7 @@ fn process_interface(
                         if let Ok(field_name) = member_name.utf8_text(source) {
                             let is_optional = child.child_by_field_name("optional").is_some();
                             let is_readonly = has_readonly_keyword(&child, source);
-                            
+
                             let mut modifiers = Vec::new();
                             if is_optional {
                                 modifiers.push("optional".to_string());
@@ -869,9 +869,12 @@ fn process_variable_declaration(
                                 if is_const && is_module_level {
                                     // Try to get the value
                                     let value = value_node.utf8_text(source).ok().map(String::from);
-                                    
+
                                     // Check if the name follows UPPER_CASE convention
-                                    let const_type = if name.chars().all(|c| c.is_uppercase() || c == '_' || c.is_numeric()) {
+                                    let const_type = if name
+                                        .chars()
+                                        .all(|c| c.is_uppercase() || c == '_' || c.is_numeric())
+                                    {
                                         "constant"
                                     } else {
                                         "const_variable"
@@ -1299,7 +1302,9 @@ fn extract_calls(
                     name: format!("@{}", decorator_name),
                     value: Some(decorator_text.to_string()),
                     const_type: "decorator".to_string(),
-                    scope: current_function.clone().unwrap_or_else(|| "module".to_string()),
+                    scope: current_function
+                        .clone()
+                        .unwrap_or_else(|| "module".to_string()),
                     line: line_number as usize,
                 });
 

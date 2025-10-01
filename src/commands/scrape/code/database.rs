@@ -384,14 +384,17 @@ impl Database {
     }
 
     /// Bulk insert constants
-    pub fn insert_constants(&self, constants: &[crate::commands::scrape::code::extracted_data::ConstantFact]) -> Result<usize> {
+    pub fn insert_constants(
+        &self,
+        constants: &[crate::commands::scrape::code::extracted_data::ConstantFact],
+    ) -> Result<usize> {
         if constants.is_empty() {
             return Ok(0);
         }
 
-        let mut stmt = self.conn.prepare(
-            "INSERT OR REPLACE INTO constant_facts VALUES (?, ?, ?, ?, ?, ?)",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("INSERT OR REPLACE INTO constant_facts VALUES (?, ?, ?, ?, ?, ?)")?;
 
         for constant in constants {
             stmt.execute(params![
@@ -408,19 +411,22 @@ impl Database {
     }
 
     /// Bulk insert members
-    pub fn insert_members(&self, members: &[crate::commands::scrape::code::extracted_data::MemberFact]) -> Result<usize> {
+    pub fn insert_members(
+        &self,
+        members: &[crate::commands::scrape::code::extracted_data::MemberFact],
+    ) -> Result<usize> {
         if members.is_empty() {
             return Ok(0);
         }
 
-        let mut stmt = self.conn.prepare(
-            "INSERT OR REPLACE INTO member_facts VALUES (?, ?, ?, ?, ?, ?, ?)",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("INSERT OR REPLACE INTO member_facts VALUES (?, ?, ?, ?, ?, ?, ?)")?;
 
         for member in members {
             // Convert Vec<String> modifiers to JSON string
             let modifiers_json = serde_json::to_string(&member.modifiers)?;
-            
+
             stmt.execute(params![
                 &member.file,
                 &member.container,

@@ -298,7 +298,11 @@ fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Doctor { json, repos, update } => {
+        Commands::Doctor {
+            json,
+            repos,
+            update,
+        } => {
             let exit_code = commands::doctor::execute(json, repos, update)?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
