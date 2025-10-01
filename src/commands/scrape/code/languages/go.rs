@@ -15,9 +15,7 @@
 //! - Multiple return values
 //! - Package-level declarations
 
-use crate::commands::scrape::code::database::{
-    CodeSymbol, FunctionFact, ImportFact, TypeFact,
-};
+use crate::commands::scrape::code::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
 use crate::commands::scrape::code::extracted_data::{ConstantFact, ExtractedData, MemberFact};
 use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
@@ -540,14 +538,14 @@ fn get_type_definition(node: &Node, source: &[u8]) -> String {
 fn process_go_constants(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
     let mut cursor = node.walk();
     let mut iota_counter = 0;
-    
+
     for child in node.children(&mut cursor) {
         if child.kind() == "const_spec" {
             // Extract constant name and value
             let mut const_name = None;
             let mut const_value = None;
-            let mut const_type = None;
-            
+            let mut _const_type = None;
+
             let mut spec_cursor = child.walk();
             for spec_child in child.children(&mut spec_cursor) {
                 match spec_child.kind() {
@@ -557,7 +555,7 @@ fn process_go_constants(node: &Node, source: &[u8], file_path: &str, data: &mut 
                         }
                     }
                     "type_identifier" | "qualified_type" => {
-                        const_type = spec_child.utf8_text(source).ok().map(String::from);
+                        _const_type = spec_child.utf8_text(source).ok().map(String::from);
                     }
                     "expression_list" => {
                         if let Ok(text) = spec_child.utf8_text(source) {
@@ -570,21 +568,22 @@ fn process_go_constants(node: &Node, source: &[u8], file_path: &str, data: &mut 
                     }
                     _ => {
                         // Check for direct expression
-                        if spec_child.kind().ends_with("_literal") || spec_child.kind() == "identifier" {
-                            if const_value.is_none() {
-                                const_value = spec_child.utf8_text(source).ok().map(String::from);
-                            }
+                        if (spec_child.kind().ends_with("_literal")
+                            || spec_child.kind() == "identifier")
+                            && const_value.is_none()
+                        {
+                            const_value = spec_child.utf8_text(source).ok().map(String::from);
                         }
                     }
                 }
             }
-            
+
             if let Some(name) = const_name {
                 // If no value is specified in a const block, use iota
                 if const_value.is_none() && node.child_count() > 1 {
                     const_value = Some(iota_counter.to_string());
                 }
-                
+
                 data.add_constant(ConstantFact {
                     file: file_path.to_string(),
                     name: name.clone(),
@@ -593,7 +592,7 @@ fn process_go_constants(node: &Node, source: &[u8], file_path: &str, data: &mut 
                     scope: "global".to_string(),
                     line: child.start_position().row + 1,
                 });
-                
+
                 // Also add as symbol for search
                 data.add_symbol(CodeSymbol {
                     path: file_path.to_string(),
@@ -602,7 +601,7 @@ fn process_go_constants(node: &Node, source: &[u8], file_path: &str, data: &mut 
                     line: child.start_position().row + 1,
                     context: get_node_context(&child, source),
                 });
-                
+
                 iota_counter += 1;
             }
         }
@@ -612,14 +611,14 @@ fn process_go_constants(node: &Node, source: &[u8], file_path: &str, data: &mut 
 /// Process Go global variables
 fn process_go_globals(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
     let mut cursor = node.walk();
-    
+
     for child in node.children(&mut cursor) {
         if child.kind() == "var_spec" {
             // Extract variable name and value
             let mut var_name = None;
             let mut var_value = None;
             let mut var_type = None;
-            
+
             let mut spec_cursor = child.walk();
             for spec_child in child.children(&mut spec_cursor) {
                 match spec_child.kind() {
@@ -628,7 +627,8 @@ fn process_go_globals(node: &Node, source: &[u8], file_path: &str, data: &mut Ex
                             var_name = spec_child.utf8_text(source).ok().map(String::from);
                         }
                     }
-                    "type_identifier" | "qualified_type" | "pointer_type" | "slice_type" | "map_type" => {
+                    "type_identifier" | "qualified_type" | "pointer_type" | "slice_type"
+                    | "map_type" => {
                         var_type = spec_child.utf8_text(source).ok().map(String::from);
                     }
                     "expression_list" => {
@@ -637,7 +637,7 @@ fn process_go_globals(node: &Node, source: &[u8], file_path: &str, data: &mut Ex
                     _ => {}
                 }
             }
-            
+
             if let Some(name) = var_name {
                 data.add_constant(ConstantFact {
                     file: file_path.to_string(),
@@ -647,7 +647,7 @@ fn process_go_globals(node: &Node, source: &[u8], file_path: &str, data: &mut Ex
                     scope: "global".to_string(),
                     line: child.start_position().row + 1,
                 });
-                
+
                 // Also add as symbol for search
                 data.add_symbol(CodeSymbol {
                     path: file_path.to_string(),
@@ -662,14 +662,20 @@ fn process_go_globals(node: &Node, source: &[u8], file_path: &str, data: &mut Ex
 }
 
 /// Extract struct fields
-fn extract_struct_fields(node: &Node, source: &[u8], file_path: &str, struct_name: &str, data: &mut ExtractedData) {
+fn extract_struct_fields(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    struct_name: &str,
+    data: &mut ExtractedData,
+) {
     // Find the struct_type node
     let struct_node = if node.kind() == "type_spec" {
         node.child_by_field_name("type")
     } else {
         Some(*node)
     };
-    
+
     if let Some(struct_node) = struct_node {
         if struct_node.kind() == "struct_type" {
             let mut cursor = struct_node.walk();
@@ -688,11 +694,17 @@ fn extract_struct_fields(node: &Node, source: &[u8], file_path: &str, struct_nam
 }
 
 /// Extract a single field declaration
-fn extract_field_declaration(node: &Node, source: &[u8], file_path: &str, struct_name: &str, data: &mut ExtractedData) {
+fn extract_field_declaration(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    struct_name: &str,
+    data: &mut ExtractedData,
+) {
     let mut field_names = Vec::new();
-    let mut field_type = None;
+    let mut _field_type = None;
     let mut field_tag = None;
-    
+
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         match child.kind() {
@@ -702,7 +714,7 @@ fn extract_field_declaration(node: &Node, source: &[u8], file_path: &str, struct
                 }
             }
             "type_identifier" | "pointer_type" | "slice_type" | "map_type" | "qualified_type" => {
-                field_type = child.utf8_text(source).ok().map(String::from);
+                _field_type = child.utf8_text(source).ok().map(String::from);
             }
             "tag" => {
                 field_tag = child.utf8_text(source).ok().map(String::from);
@@ -710,15 +722,19 @@ fn extract_field_declaration(node: &Node, source: &[u8], file_path: &str, struct
             _ => {}
         }
     }
-    
+
     // Add each field name as a member
     for name in field_names {
-        let visibility = if is_exported(&name) { "public" } else { "private" };
+        let visibility = if is_exported(&name) {
+            "public"
+        } else {
+            "private"
+        };
         let mut modifiers = Vec::new();
         if field_tag.is_some() {
             modifiers.push("tagged".to_string());
         }
-        
+
         data.add_member(MemberFact {
             file: file_path.to_string(),
             container: struct_name.to_string(),
@@ -732,14 +748,20 @@ fn extract_field_declaration(node: &Node, source: &[u8], file_path: &str, struct
 }
 
 /// Extract interface methods
-fn extract_interface_methods(node: &Node, source: &[u8], file_path: &str, interface_name: &str, data: &mut ExtractedData) {
+fn extract_interface_methods(
+    node: &Node,
+    source: &[u8],
+    file_path: &str,
+    interface_name: &str,
+    data: &mut ExtractedData,
+) {
     // Find the interface_type node
     let interface_node = if node.kind() == "type_spec" {
         node.child_by_field_name("type")
     } else {
         Some(*node)
     };
-    
+
     if let Some(interface_node) = interface_node {
         if interface_node.kind() == "interface_type" {
             // Interface methods and embedded types are direct children of interface_type
@@ -750,8 +772,12 @@ fn extract_interface_methods(node: &Node, source: &[u8], file_path: &str, interf
                         // Extract method name using the name field
                         if let Some(name_node) = child.child_by_field_name("name") {
                             if let Ok(method_name) = name_node.utf8_text(source) {
-                                let visibility = if is_exported(method_name) { "public" } else { "private" };
-                                
+                                let visibility = if is_exported(method_name) {
+                                    "public"
+                                } else {
+                                    "private"
+                                };
+
                                 data.add_member(MemberFact {
                                     file: file_path.to_string(),
                                     container: interface_name.to_string(),

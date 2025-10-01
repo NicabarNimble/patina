@@ -383,7 +383,11 @@ fn handle_repos(update: bool) -> Result<i32> {
         return Ok(0);
     }
 
-    println!("{} of {} repos need updates", stale_repos.len(), total_repos);
+    println!(
+        "{} of {} repos need updates",
+        stale_repos.len(),
+        total_repos
+    );
 
     if !update {
         println!("\n💡 Run: patina doctor --repos --update");
@@ -418,7 +422,10 @@ fn handle_repos(update: bool) -> Result<i32> {
     // Summary
     println!();
     if updated_count > 0 {
-        println!("✅ Updated {} repos. Their databases may be stale:", updated_count);
+        println!(
+            "✅ Updated {} repos. Their databases may be stale:",
+            updated_count
+        );
         for db in &stale_dbs {
             println!("  • layer/dust/repos/{}", db);
         }
@@ -502,7 +509,9 @@ fn check_repo_status(repo: &RepoInfo) -> Result<RepoStatus> {
         .output()?;
 
     if !behind_output.status.success() {
-        return Ok(RepoStatus::Error("failed to check commit count".to_string()));
+        return Ok(RepoStatus::Error(
+            "failed to check commit count".to_string(),
+        ));
     }
 
     let count_str = String::from_utf8_lossy(&behind_output.stdout);
@@ -524,7 +533,9 @@ fn update_repo(repo: &RepoInfo) -> Result<String> {
         .arg("--short")
         .arg("HEAD")
         .output()?;
-    let before = String::from_utf8_lossy(&before_output.stdout).trim().to_string();
+    let before = String::from_utf8_lossy(&before_output.stdout)
+        .trim()
+        .to_string();
 
     // Pull with fast-forward only
     let pull_output = Command::new("git")
@@ -547,7 +558,9 @@ fn update_repo(repo: &RepoInfo) -> Result<String> {
         .arg("--short")
         .arg("HEAD")
         .output()?;
-    let after = String::from_utf8_lossy(&after_output.stdout).trim().to_string();
+    let after = String::from_utf8_lossy(&after_output.stdout)
+        .trim()
+        .to_string();
 
     // Count commits pulled
     let count_output = Command::new("git")
@@ -555,9 +568,11 @@ fn update_repo(repo: &RepoInfo) -> Result<String> {
         .arg(&repo.path)
         .arg("rev-list")
         .arg("--count")
-        .arg(&format!("{}..{}", before, after))
+        .arg(format!("{}..{}", before, after))
         .output()?;
-    let count = String::from_utf8_lossy(&count_output.stdout).trim().to_string();
+    let count = String::from_utf8_lossy(&count_output.stdout)
+        .trim()
+        .to_string();
 
     Ok(format!("{}..{} ({} commits)", before, after, count))
 }
@@ -583,8 +598,8 @@ fn log_repo_status(name: &str, action: &str, message: &str) -> Result<()> {
         .as_secs();
 
     // Use ISO 8601 format
-    let datetime = chrono::DateTime::from_timestamp(timestamp as i64, 0)
-        .unwrap_or_else(|| chrono::Utc::now());
+    let datetime =
+        chrono::DateTime::from_timestamp(timestamp as i64, 0).unwrap_or_else(chrono::Utc::now);
 
     writeln!(
         file,

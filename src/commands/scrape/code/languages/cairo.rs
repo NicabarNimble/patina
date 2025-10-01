@@ -11,9 +11,7 @@
 //! Cairo is unique - it uses cairo-lang-parser instead of tree-sitter,
 //! requiring special handling but the same output format.
 
-use crate::commands::scrape::code::database::{
-    CodeSymbol, FunctionFact, ImportFact, TypeFact,
-};
+use crate::commands::scrape::code::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
 use crate::commands::scrape::code::extracted_data::ExtractedData;
 use crate::commands::scrape::code::types::FilePath;
 use anyhow::Result;
@@ -92,7 +90,11 @@ impl CairoProcessor {
                     container: s.name.clone(),
                     name: field.clone(),
                     member_type: "field".to_string(),
-                    visibility: if s.is_public { "pub".to_string() } else { "private".to_string() },
+                    visibility: if s.is_public {
+                        "pub".to_string()
+                    } else {
+                        "private".to_string()
+                    },
                     modifiers: vec![],
                     line: s.start_line,
                 });

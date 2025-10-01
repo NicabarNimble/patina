@@ -16,7 +16,7 @@ pub struct ConstantFact {
     pub name: String,
     pub value: Option<String>,
     pub const_type: String, // "macro", "const", "enum_value", "static", "global"
-    pub scope: String,       // "global", "ClassName::", "namespace::", "module"
+    pub scope: String,      // "global", "ClassName::", "namespace::", "module"
     pub line: usize,
 }
 
@@ -24,10 +24,10 @@ pub struct ConstantFact {
 #[derive(Debug, Clone)]
 pub struct MemberFact {
     pub file: String,
-    pub container: String,     // Class/struct/interface name
+    pub container: String, // Class/struct/interface name
     pub name: String,
-    pub member_type: String,   // "field", "method", "property", "constructor", "destructor"
-    pub visibility: String,    // "public", "private", "protected", "internal"
+    pub member_type: String, // "field", "method", "property", "constructor", "destructor"
+    pub visibility: String,  // "public", "private", "protected", "internal"
     pub modifiers: Vec<String>, // ["static", "const", "virtual", "override", "abstract"]
     pub line: usize,
 }
@@ -133,9 +133,7 @@ impl ExtractedData {
     pub fn add_member(&mut self, member: MemberFact) {
         // Check if we already have this member (same container and name)
         let already_exists = self.members.iter().any(|m| {
-            m.file == member.file
-                && m.container == member.container
-                && m.name == member.name
+            m.file == member.file && m.container == member.container && m.name == member.name
         });
 
         if !already_exists {

@@ -17,9 +17,7 @@
 //! - Unchecked blocks (similar to unsafe)
 //! - Library and contract declarations
 
-use crate::commands::scrape::code::database::{
-    CodeSymbol, FunctionFact, ImportFact, TypeFact,
-};
+use crate::commands::scrape::code::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
 use crate::commands::scrape::code::extracted_data::ExtractedData;
 use crate::commands::scrape::code::types::{CallGraphEntry, CallType, FilePath, SymbolKind};
 use anyhow::{Context, Result};
@@ -506,7 +504,10 @@ fn extract_solidity_inheritance(
             let mut inherit_cursor = child.walk();
             for inherit_child in child.children(&mut inherit_cursor) {
                 // Base contracts appear as type identifiers or user_defined_types
-                if matches!(inherit_child.kind(), "type_name" | "user_defined_type" | "identifier") {
+                if matches!(
+                    inherit_child.kind(),
+                    "type_name" | "user_defined_type" | "identifier"
+                ) {
                     if let Ok(base_name) = inherit_child.utf8_text(source) {
                         let base_clean = base_name.trim();
 
@@ -526,7 +527,10 @@ fn extract_solidity_inheritance(
                             name: format!("{} : {}", contract_name, base_clean),
                             kind: "inheritance".to_string(),
                             line: child.start_position().row + 1,
-                            context: format!("contract {} inherits from {}", contract_name, base_clean),
+                            context: format!(
+                                "contract {} inherits from {}",
+                                contract_name, base_clean
+                            ),
                         });
                     }
                 }
