@@ -18,7 +18,7 @@ Patina accumulates knowledge like the protective layer that forms on metal - you
 
 ## Development Guidelines
 - Rust for CLI and core logic - let the compiler be your guard rail
-- Go for Dagger integration - embrace Go idioms with solid testing
+- Docker for containerized builds and tests
 - Patterns evolve from projects → topics → core
 - Always provide escape hatches
 
@@ -47,18 +47,15 @@ The CI will fail if any of these checks don't pass! The pre-push script runs all
 ## Key Commands
 ```bash
 # Project lifecycle
-patina init <name> --llm=claude --dev=dagger  # Initialize new project
+patina init <name> --llm=claude --dev=docker  # Initialize new project
 patina init .                                  # Re-init/update current project
 patina init . --llm=gemini                    # Switch LLM adapter
-patina init . --dev=docker                    # Switch dev environment
-patina init . --llm=claude --dev=dagger       # Update or switch both adapters
 
 # Development
-patina build                # Smart build (Dagger or Docker)
+patina build                # Docker containerized builds
 patina test                 # Run tests in container
 patina doctor               # Check project health
 patina scrape                # Build semantic knowledge database
-patina agent <command>      # Manage modular workspace environments
 
 # Session Management (Claude adapter)
 /session-git-start <name>       # Begin development session
@@ -69,9 +66,8 @@ patina agent <command>      # Manage modular workspace environments
 ```
 
 ## Build System
-- Attempts Dagger pipeline if Go is available
-- Falls back to Docker automatically
-- Never requires specific tools
+- Uses Docker for containerized builds
+- Never requires specific tools beyond Docker
 - Clear feedback about what's being used
 
 ## Project Structure
@@ -86,18 +82,10 @@ patina/
 │   ├── surface/           # Active development & architecture docs
 │   ├── dust/              # Historical/archived patterns
 │   └── sessions/          # Distilled session knowledge
-├── resources/             # Templates and scripts
-│   ├── claude/            # Claude adapter resources (session/git scripts)
-│   ├── gemini/            # Gemini adapter resources
-│   └── templates/         # Go, Docker, Dagger templates
-├── modules/               # Modular workspace system (Go)
-│   ├── environment-registry/  # Track active environments
-│   ├── environment-provider/  # Create containers
-│   ├── code-executor/         # Execute commands
-│   ├── git-manager/           # Git operations
-│   └── api-gateway/           # HTTP coordination
-└── pipelines/             # Generated Dagger code
-    └── main.go            # Container orchestration
+└── resources/             # Templates and scripts
+    ├── claude/            # Claude adapter resources (session/git scripts)
+    ├── gemini/            # Gemini adapter resources
+    └── templates/         # Docker templates
 ```
 
 ## Design Philosophy

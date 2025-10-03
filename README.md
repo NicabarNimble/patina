@@ -27,8 +27,8 @@ Core (Universal principles)
 Project patterns that prove successful can be promoted to topics, making them available for future projects. Your personal database project might become a "personal-data" topic for other projects to build upon.
 
 ### Pluggable Architecture
-- **Environment Providers**: Docker, Dagger, Nix
-- **LLM Adapters**: Claude, OpenAI, Local models
+- **Environment Providers**: Docker
+- **LLM Adapters**: Claude, Gemini
 - **Layer Storage**: File-based (now), SQLite (future)
 
 ## Quick Start
