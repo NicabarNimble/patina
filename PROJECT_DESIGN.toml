@@ -91,12 +91,12 @@ deployment = "Single binary distributed via cargo install"
 [development]
 [development.environment]
 required_tools = ["rust", "cargo", "git"]
-recommended_tools = ["docker", "go", "dagger", "claude"]
+recommended_tools = ["docker", "claude"]
 setup_instructions = """
 1. Install Rust via rustup
 2. Clone repository
 3. cargo build --release
-4. Optional: Install Go and Dagger for enhanced builds
+4. Optional: Install Docker for containerized builds
 """
 
 [development.commands]

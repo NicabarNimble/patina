@@ -9,12 +9,12 @@
 //! ```no_run
 //! use patina::commands::init;
 //!
-//! // Initialize a new project with Claude and Dagger
+//! // Initialize a new project with Claude and Docker
 //! init::execute(
 //!     "my-project".to_string(),
 //!     "claude".to_string(),
 //!     "PROJECT_DESIGN.toml".to_string(),
-//!     Some("dagger".to_string())
+//!     Some("docker".to_string())
 //! ).expect("Failed to initialize project");
 //! ```
 
@@ -31,14 +31,14 @@ use anyhow::Result;
 /// * `name` - Project name or "." for current directory
 /// * `llm` - LLM adapter to use (e.g., "claude", "gemini")
 /// * `design` - Path to PROJECT_DESIGN.toml file
-/// * `dev` - Optional development environment (e.g., "dagger", "docker")
+/// * `dev` - Optional development environment (e.g., "docker")
 ///
 /// # Process
 ///
 /// 1. **Environment Detection**: Identifies available tools and languages
 /// 2. **Project Setup**: Creates directory structure and configuration
 /// 3. **LLM Integration**: Initializes chosen LLM adapter (Claude, Gemini, etc.)
-/// 4. **Dev Environment**: Sets up development environment (Dagger, Docker)
+/// 4. **Dev Environment**: Sets up development environment (Docker)
 /// 5. **Pattern Copying**: Copies core patterns from Patina
 /// 6. **Navigation Index**: Creates searchable pattern database
 ///

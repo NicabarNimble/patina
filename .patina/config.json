@@ -1,17 +1,16 @@
 {
   "created": "2025-08-21T01:06:46.231194+00:00",
-  "dev": "dagger",
+  "dev": "docker",
   "dev_manifest": {
     "available": true,
-    "environment": "dagger",
-    "version": "2.0.0"
+    "environment": "docker",
+    "version": "0.1.0"
   },
   "environment_snapshot": {
     "arch": "aarch64",
     "detected_tools": [
       "nvim",
       "cargo",
-      "dagger",
       "claude",
       "cargo-fmt",
       "git",

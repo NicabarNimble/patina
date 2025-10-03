@@ -16,15 +16,4 @@ cargo clippy --workspace --fix --allow-dirty --allow-staged
 echo "📦 Rust tests..."
 cargo test --workspace
 
-# Go checks (if workspace exists)
-if [ -d "workspace" ]; then
-    echo "📦 Go formatting..."
-    cd workspace
-    go fmt ./...
-    
-    echo "📦 Go tests..."
-    go test -v ./...
-    cd ..
-fi
-
 echo "✅ All checks passed! Ready to push."
