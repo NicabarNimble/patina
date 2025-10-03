@@ -6,7 +6,6 @@ use std::path::Path;
 
 use crate::adapters::claude::CLAUDE_ADAPTER_VERSION;
 use crate::adapters::gemini::GEMINI_ADAPTER_VERSION;
-use crate::dev_env::dagger::DAGGER_VERSION;
 use crate::dev_env::docker::DOCKER_VERSION;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -49,14 +48,6 @@ impl VersionManifest {
         );
 
         // Dev Environments
-        components.insert(
-            "dagger".to_string(),
-            ComponentInfo {
-                version: DAGGER_VERSION.to_string(),
-                description: "Dagger CI/CD pipeline integration".to_string(),
-            },
-        );
-
         components.insert(
             "docker".to_string(),
             ComponentInfo {
@@ -117,7 +108,6 @@ impl UpdateChecker {
             "gemini-adapter".to_string(),
             GEMINI_ADAPTER_VERSION.to_string(),
         );
-        available.insert("dagger".to_string(), DAGGER_VERSION.to_string());
         available.insert("docker".to_string(), DOCKER_VERSION.to_string());
 
         available
@@ -170,7 +160,6 @@ mod tests {
         // Check all expected components exist
         assert!(manifest.components.contains_key("claude-adapter"));
         assert!(manifest.components.contains_key("gemini-adapter"));
-        assert!(manifest.components.contains_key("dagger"));
         assert!(manifest.components.contains_key("docker"));
 
         // Verify component info
@@ -195,7 +184,7 @@ mod tests {
 
         // Should return a new manifest
         assert_eq!(manifest.patina, env!("CARGO_PKG_VERSION"));
-        assert_eq!(manifest.components.len(), 4);
+        assert_eq!(manifest.components.len(), 3);
     }
 
     #[test]
@@ -247,10 +236,9 @@ mod tests {
     fn test_update_checker_get_available_versions() {
         let versions = UpdateChecker::get_available_versions();
 
-        assert_eq!(versions.len(), 4);
+        assert_eq!(versions.len(), 3);
         assert!(versions.contains_key("claude-adapter"));
         assert!(versions.contains_key("gemini-adapter"));
-        assert!(versions.contains_key("dagger"));
         assert!(versions.contains_key("docker"));
     }
 
@@ -260,7 +248,7 @@ mod tests {
 
         // Set some components to old versions
         manifest.update_component_version("claude-adapter", "0.1.0");
-        manifest.update_component_version("dagger", "0.1.0");
+        manifest.update_component_version("docker", "0.1.0");
 
         let updates = UpdateChecker::check_for_updates(&manifest);
 
@@ -272,7 +260,7 @@ mod tests {
             assert_eq!(current, "0.1.0");
             match component.as_str() {
                 "claude-adapter" => assert_eq!(available, CLAUDE_ADAPTER_VERSION),
-                "dagger" => assert_eq!(available, DAGGER_VERSION),
+                "docker" => assert_eq!(available, DOCKER_VERSION),
                 _ => panic!("Unexpected component in updates"),
             }
         }
@@ -313,13 +301,12 @@ mod tests {
         let updates = UpdateChecker::force_all_updates(&manifest);
 
         // Should return all components even if up to date
-        assert_eq!(updates.len(), 4);
+        assert_eq!(updates.len(), 3);
 
         // Verify all components are included
         let components: Vec<String> = updates.iter().map(|(c, _, _)| c.clone()).collect();
         assert!(components.contains(&"claude-adapter".to_string()));
         assert!(components.contains(&"gemini-adapter".to_string()));
-        assert!(components.contains(&"dagger".to_string()));
         assert!(components.contains(&"docker".to_string()));
     }
 }
