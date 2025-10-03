@@ -248,7 +248,7 @@ mod tests {
 
         // Set some components to old versions
         manifest.update_component_version("claude-adapter", "0.1.0");
-        manifest.update_component_version("docker", "0.1.0");
+        manifest.update_component_version("docker", "0.0.9");
 
         let updates = UpdateChecker::check_for_updates(&manifest);
 
@@ -257,10 +257,15 @@ mod tests {
 
         // Verify update details
         for (component, current, available) in &updates {
-            assert_eq!(current, "0.1.0");
             match component.as_str() {
-                "claude-adapter" => assert_eq!(available, CLAUDE_ADAPTER_VERSION),
-                "docker" => assert_eq!(available, DOCKER_VERSION),
+                "claude-adapter" => {
+                    assert_eq!(current, "0.1.0");
+                    assert_eq!(available, CLAUDE_ADAPTER_VERSION);
+                }
+                "docker" => {
+                    assert_eq!(current, "0.0.9");
+                    assert_eq!(available, DOCKER_VERSION);
+                }
                 _ => panic!("Unexpected component in updates"),
             }
         }
