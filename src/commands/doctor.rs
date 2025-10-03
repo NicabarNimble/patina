@@ -208,18 +208,13 @@ fn is_tool_required(tool: &str, config: &serde_json::Value) -> bool {
     match tool {
         "cargo" | "rust" => true, // Always required for Patina
         "docker" => {
-            // Required if dev environment is docker or dagger
+            // Required if dev environment is docker
             config
                 .get("dev")
                 .and_then(|d| d.as_str())
-                .map(|d| d == "docker" || d == "dagger")
+                .map(|d| d == "docker")
                 .unwrap_or(false)
         }
-        "dagger" => config
-            .get("dev")
-            .and_then(|d| d.as_str())
-            .map(|d| d == "dagger")
-            .unwrap_or(false),
         _ => false,
     }
 }
@@ -228,7 +223,6 @@ fn get_install_command(tool: &str) -> &'static str {
     match tool {
         "cargo" | "rust" => "curl https://sh.rustup.rs -sSf | sh",
         "docker" => "Visit https://docker.com/get-started",
-        "dagger" => "curl -L https://dl.dagger.io/install.sh | sh",
         "git" => "brew install git (macOS) or apt install git (Linux)",
         _ => "Check your package manager",
     }

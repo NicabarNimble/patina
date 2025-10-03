@@ -50,7 +50,7 @@ fn generate_minimal_context(project_name: &str, environment: &Environment) -> St
     content.push_str(&format!("- **Directory**: {}\n", environment.current_dir));
 
     // Only show critical tools that are available
-    let critical_tools = ["cargo", "git", "docker", "go", "dagger"];
+    let critical_tools = ["cargo", "git", "docker", "go"];
     let available: Vec<_> = critical_tools
         .iter()
         .filter_map(|&tool| {

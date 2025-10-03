@@ -15,10 +15,8 @@ pub fn create_project_design_wizard(default_name: &str, env: &Environment) -> Re
     if env.tools.get("docker").is_some_and(|info| info.available) {
         println!("  ✓ Docker (can containerize apps)");
     }
-    if env.tools.get("go").is_some_and(|info| info.available)
-        && env.tools.get("dagger").is_some_and(|info| info.available)
-    {
-        println!("  ✓ Go + Dagger (advanced CI/CD available)");
+    if env.tools.get("go").is_some_and(|info| info.available) {
+        println!("  ✓ Go (can build Go projects)");
     }
 
     println!("\nProject type:");
@@ -59,7 +57,6 @@ pub fn create_project_design_wizard(default_name: &str, env: &Environment) -> Re
     }
     if has_go && project_type == "app" {
         recommended_tools.push("\"go\"");
-        recommended_tools.push("\"dagger\"");
     }
 
     // Build development commands based on language

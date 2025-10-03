@@ -15,15 +15,13 @@ pub struct Tool {
 ///
 /// These are optional tools that enhance the Patina experience:
 /// - docker: Container runtime for development environments
-/// - go: Required for Dagger pipelines
-/// - dagger: CI/CD pipeline engine
+/// - go: For Go-based projects
 /// - gh: GitHub CLI for PR workflows
 /// - jq: JSON processing for scripting
 pub fn get_available_tools() -> Vec<Tool> {
     vec![
         Tool { name: "docker" },
         Tool { name: "go" },
-        Tool { name: "dagger" },
         Tool { name: "gh" },
         Tool { name: "jq" },
     ]

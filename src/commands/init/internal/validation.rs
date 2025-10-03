@@ -46,26 +46,15 @@ pub fn validate_environment(env: &Environment, design: &Value) -> Result<Option<
 }
 
 /// Determine the best development environment based on what's available
-pub fn determine_dev_environment(environment: &Environment) -> String {
+pub fn determine_dev_environment(_environment: &Environment) -> String {
     // If PATINA_DEV is set, respect it
     if let Ok(dev_env) = std::env::var("PATINA_DEV") {
         eprintln!("   Using PATINA_DEV={dev_env}");
         return dev_env;
     }
 
-    // Check for Dagger (requires Go)
-    let has_go = environment
-        .languages
-        .get("go")
-        .is_some_and(|info| info.available);
-
-    if has_go {
-        println!("📦 Using Dagger for development (fastest, cached builds)");
-        println!("   💡 Dagger will be used for containerized builds and tests");
-        "dagger".to_string()
-    } else {
-        println!("🐳 Using Docker for development");
-        println!("   💡 Install Go to unlock Dagger's fast, cached builds");
-        "docker".to_string()
-    }
+    // Docker-only now
+    println!("🐳 Using Docker for development");
+    println!("   💡 Docker provides containerized builds and tests");
+    "docker".to_string()
 }

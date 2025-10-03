@@ -1,4 +1,3 @@
-pub mod dagger;
 pub mod docker;
 
 use anyhow::Result;
@@ -38,7 +37,6 @@ pub trait DevEnvironment {
 /// Get a development environment by name
 pub fn get_dev_env(name: &str) -> Box<dyn DevEnvironment> {
     match name.to_lowercase().as_str() {
-        "dagger" => Box::new(dagger::DaggerEnvironment),
         "docker" => Box::new(docker::DockerEnvironment),
         _ => Box::new(docker::DockerEnvironment), // Default to Docker
     }
