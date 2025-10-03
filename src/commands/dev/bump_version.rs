@@ -9,7 +9,6 @@ pub fn execute(component: &str, bump_type: &str, dry_run: bool) -> Result<()> {
         "claude-adapter" => bump_component_version("claude-adapter", bump_type, dry_run)?,
         "gemini-adapter" => bump_component_version("gemini-adapter", bump_type, dry_run)?,
         "openai-adapter" => bump_component_version("openai-adapter", bump_type, dry_run)?,
-        "dagger-templates" => bump_component_version("dagger-templates", bump_type, dry_run)?,
         "docker-templates" => bump_component_version("docker-templates", bump_type, dry_run)?,
         _ => anyhow::bail!("Unknown component: {}", component),
     }
