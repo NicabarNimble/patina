@@ -66,7 +66,6 @@ impl Environment {
             ("apt", &["--version"]),
             ("yum", &["--version"]),
             ("go", &["version"]),
-            ("dagger", &["version"]),
             ("claude", &["--version"]),
             ("code", &["--version"]),
             ("vim", &["--version"]),
