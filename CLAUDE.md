@@ -37,9 +37,6 @@ Before pushing, ALWAYS run these checks locally:
 cargo fmt --all           # Fix Rust formatting
 cargo clippy --workspace  # Check for warnings
 cargo test --workspace    # Run tests
-
-# Go checks (if workspace/ exists)
-cd workspace && go fmt ./... && go test -v ./... && cd ..
 ```
 
 The CI will fail if any of these checks don't pass! The pre-push script runs all checks for you.
