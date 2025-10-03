@@ -80,12 +80,6 @@ enum Commands {
         components: bool,
     },
 
-    /// Manage agent environments
-    Agent {
-        #[command(subcommand)]
-        command: AgentCommands,
-    },
-
     /// Build semantic knowledge database
     Scrape {
         #[command(subcommand)]
@@ -138,21 +132,6 @@ enum ScrapeCommands {
         #[command(flatten)]
         args: ScrapeArgs,
     },
-}
-
-#[derive(Subcommand)]
-enum AgentCommands {
-    /// Start the agent environment service
-    Start,
-
-    /// Stop the agent environment service
-    Stop,
-
-    /// Show agent service status
-    Status,
-
-    /// List active agent environments
-    List,
 }
 
 #[cfg(feature = "dev")]
@@ -270,12 +249,6 @@ fn main() -> Result<()> {
         Commands::Test => {
             commands::test::execute()?;
         }
-        Commands::Agent { command } => match command {
-            AgentCommands::Start => commands::agent::start()?,
-            AgentCommands::Stop => commands::agent::stop()?,
-            AgentCommands::Status => commands::agent::status()?,
-            AgentCommands::List => commands::agent::list()?,
-        },
         Commands::Scrape { command } => {
             // Default to Code subcommand with default args for backward compatibility
             let subcommand = command.unwrap_or(ScrapeCommands::Code {
