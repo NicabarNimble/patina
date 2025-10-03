@@ -11,12 +11,8 @@ pub fn execute(json: bool) -> Result<()> {
     let mut issues = Vec::new();
     let project_root = std::env::current_dir()?;
 
-    // Check templates
-    let template_checks = vec![
-        ("dagger/main.go.tmpl", "Dagger main template"),
-        ("dagger/go.mod.tmpl", "Dagger module template"),
-        ("dagger/CONSTRAINTS.md", "Dagger constraints"),
-    ];
+    // Check templates (Dagger templates removed)
+    let template_checks: Vec<(&str, &str)> = vec![];
 
     for (path, description) in &template_checks {
         let full_path = project_root.join("resources/templates").join(path);
