@@ -22,6 +22,14 @@ Patina accumulates knowledge like the protective layer that forms on metal - you
 - Patterns evolve from projects → topics → core
 - Always provide escape hatches
 
+## Testing Guidelines - IMPORTANT
+**Always build release and test with live install:**
+```bash
+cargo build --release                    # Build release binary
+cargo install --path .                   # Install to ~/.cargo/bin
+patina <command>                         # Test with actual installed binary
+```
+
 ## Git Commit Guidelines
 - NEVER add "🤖 Generated with Claude Code" or "Co-Authored-By: Claude" to commit messages
 - Keep commit messages clean and professional without AI attribution
