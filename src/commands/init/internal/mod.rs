@@ -118,8 +118,13 @@ pub fn execute_init(name: String, llm: String, design: String, dev: Option<Strin
     // Restore preserved session files if any
     restore_session_files()?;
 
-    // Initialize dev environment
-    dev_env.init_project(&project_path, &name, "app")?;
+    // Initialize dev environment - use real project name from Cargo.toml if re-initializing
+    let dev_project_name = if name == "." {
+        detect_project_name_from_cargo_toml(&project_path).unwrap_or_else(|_| name.to_string())
+    } else {
+        name.clone()
+    };
+    dev_env.init_project(&project_path, &dev_project_name, "app")?;
     println!("  ✓ Created {dev} environment files");
 
     // Copy core patterns
@@ -326,6 +331,26 @@ fn suggest_missing_tools(environment: &Environment, _design: &Value) -> Result<(
     }
 
     Ok(())
+}
+
+/// Detect project name from Cargo.toml
+fn detect_project_name_from_cargo_toml(project_path: &Path) -> Result<String> {
+    let cargo_toml_path = project_path.join("Cargo.toml");
+
+    if !cargo_toml_path.exists() {
+        anyhow::bail!("Cargo.toml not found");
+    }
+
+    let cargo_content =
+        fs::read_to_string(&cargo_toml_path).context("Failed to read Cargo.toml")?;
+    let cargo_toml: Value = toml::from_str(&cargo_content).context("Failed to parse Cargo.toml")?;
+
+    cargo_toml
+        .get("package")
+        .and_then(|p| p.get("name"))
+        .and_then(|n| n.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| anyhow::anyhow!("No package.name found in Cargo.toml"))
 }
 
 // Helper trait for string formatting
