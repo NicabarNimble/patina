@@ -85,6 +85,10 @@ Each component does one thing well, following Unix philosophy.
 ### Requirements
 - Rust toolchain
 - Git (for state detection)
+- DuckDB (for semantic code analysis)
+  - macOS: `brew install duckdb`
+  - Ubuntu/Debian: `sudo apt-get install libduckdb-dev`
+  - Other platforms: https://duckdb.org/docs/installation/
 - Docker (optional, for rqlite persistence)
 
 ### Quick Setup
