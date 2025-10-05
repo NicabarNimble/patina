@@ -45,7 +45,7 @@ notify = "6.1"
 rusqlite = { version = "0.32", features = ["bundled", "chrono", "serde_json", "load_extension"] }
 
 # DuckDB for semantic analysis database
-duckdb = { version = "1.1", features = ["bundled"] }
+duckdb = "1.1"
 
 # Parallel processing (better than async for our use case)
 rayon = "1.10"
