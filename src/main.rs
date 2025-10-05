@@ -28,6 +28,10 @@ enum Commands {
         /// Development environment (docker, dagger, native)
         #[arg(long)]
         dev: Option<String>,
+
+        /// Force initialization, backup and replace existing patina branch
+        #[arg(long)]
+        force: bool,
     },
 
     /// Check for new Patina CLI versions
@@ -203,8 +207,9 @@ fn main() -> Result<()> {
             llm,
             design,
             dev,
+            force,
         } => {
-            commands::init::execute(name, llm, design, dev)?;
+            commands::init::execute(name, llm, design, dev, force)?;
         }
         Commands::Upgrade { check, json } => {
             commands::upgrade::execute(check, json)?;

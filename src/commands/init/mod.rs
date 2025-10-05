@@ -32,15 +32,17 @@ use anyhow::Result;
 /// * `llm` - LLM adapter to use (e.g., "claude", "gemini")
 /// * `design` - Path to PROJECT_DESIGN.toml file
 /// * `dev` - Optional development environment (e.g., "docker")
+/// * `force` - Force initialization, backup and replace existing patina branch
 ///
 /// # Process
 ///
-/// 1. **Environment Detection**: Identifies available tools and languages
-/// 2. **Project Setup**: Creates directory structure and configuration
-/// 3. **LLM Integration**: Initializes chosen LLM adapter (Claude, Gemini, etc.)
-/// 4. **Dev Environment**: Sets up development environment (Docker)
-/// 5. **Pattern Copying**: Copies core patterns from Patina
-/// 6. **Navigation Index**: Creates searchable pattern database
+/// 1. **Git Setup**: Ensures proper git branch and fork (if external repo)
+/// 2. **Environment Detection**: Identifies available tools and languages
+/// 3. **Project Setup**: Creates directory structure and configuration
+/// 4. **LLM Integration**: Initializes chosen LLM adapter (Claude, Gemini, etc.)
+/// 5. **Dev Environment**: Sets up development environment (Docker)
+/// 6. **Pattern Copying**: Copies core patterns from Patina
+/// 7. **Navigation Index**: Creates searchable pattern database
 ///
 /// # Re-initialization
 ///
@@ -55,16 +57,25 @@ use anyhow::Result;
 /// - Never overwrites PROJECT_DESIGN.toml in re-initialization
 /// - Prevents self-overwriting when run in Patina source
 /// - Creates backups of user data before updates
+/// - Ensures git workflow is properly set up before making changes
 ///
 /// # Errors
 ///
 /// Returns an error if:
+/// - Not a git repository
+/// - Working tree has uncommitted changes (unless --force)
 /// - PROJECT_DESIGN.toml cannot be created or read
 /// - Directory creation fails
 /// - LLM adapter initialization fails
 /// - Environment validation shows critical missing tools
-pub fn execute(name: String, llm: String, design: String, dev: Option<String>) -> Result<()> {
-    internal::execute_init(name, llm, design, dev)
+pub fn execute(
+    name: String,
+    llm: String,
+    design: String,
+    dev: Option<String>,
+    force: bool,
+) -> Result<()> {
+    internal::execute_init(name, llm, design, dev, force)
 }
 
 #[cfg(test)]
