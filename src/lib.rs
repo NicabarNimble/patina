@@ -1,6 +1,7 @@
 pub mod adapters;
 pub mod dev_env;
 pub mod environment;
+pub mod git;
 pub mod layer;
 pub mod session;
 pub mod version;
