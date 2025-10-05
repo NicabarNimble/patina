@@ -12,9 +12,9 @@ mod validation;
 
 pub use fork::{detect_fork_status, ensure_fork, ForkStatus};
 pub use operations::{
-    add_all, add_remote, branch_exists, branch_rename, checkout_new_branch, commit,
-    commits_behind, current_branch, default_branch, has_remote, is_clean, is_git_repo, remote_url,
-    repo_name, status_count,
+    add_all, add_remote, branch_exists, branch_rename, checkout_new_branch, commit, commits_behind,
+    current_branch, default_branch, has_remote, is_clean, is_git_repo, remote_url, repo_name,
+    status_count,
 };
 pub use validation::ensure_patina_branch;
 

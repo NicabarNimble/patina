@@ -1,8 +1,8 @@
 //! Git repository validation and branch management
 
 use super::operations::{
-    branch_exists, checkout_new_branch, commits_behind, current_branch, default_branch,
-    is_clean, status_count,
+    branch_exists, checkout_new_branch, commits_behind, current_branch, default_branch, is_clean,
+    status_count,
 };
 use super::timestamp;
 use crate::git::operations::{branch_rename, is_git_repo};

@@ -92,11 +92,7 @@ pub fn status_count() -> Result<usize> {
 /// Get number of commits current branch is behind another
 pub fn commits_behind(current: &str, other: &str) -> Result<usize> {
     let output = Command::new("git")
-        .args([
-            "rev-list",
-            "--count",
-            &format!("{}..{}", current, other),
-        ])
+        .args(["rev-list", "--count", &format!("{}..{}", current, other)])
         .output()
         .context("Failed to count commits behind")?;
 
@@ -105,9 +101,7 @@ pub fn commits_behind(current: &str, other: &str) -> Result<usize> {
     }
 
     let count_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    count_str
-        .parse()
-        .context("Failed to parse commit count")
+    count_str.parse().context("Failed to parse commit count")
 }
 
 /// Create and checkout a new branch
