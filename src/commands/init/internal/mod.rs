@@ -22,8 +22,34 @@ use self::validation::{determine_dev_environment, validate_environment};
 use super::design_wizard::{confirm, create_project_design_wizard};
 
 /// Main execution logic for init command
-pub fn execute_init(name: String, llm: String, design: String, dev: Option<String>) -> Result<()> {
+pub fn execute_init(
+    name: String,
+    llm: String,
+    design: String,
+    dev: Option<String>,
+    force: bool,
+) -> Result<()> {
     let json_output = false; // For init command, always false
+
+    // === STEP 1: GIT SETUP (FIRST - BEFORE ANY DESTRUCTIVE CHANGES) ===
+    println!("🎨 Initializing Patina...\n");
+
+    // Ensure fork if needed (always fork external repos)
+    patina::git::ensure_fork()?;
+    println!();
+
+    // Ensure we're on patina branch
+    patina::git::ensure_patina_branch(force)?;
+    println!("✓ On branch 'patina'\n");
+
+    // === STEP 2: SAFE TO PROCEED WITH DESTRUCTIVE CHANGES ===
+
+    // Backup existing devcontainer if it exists
+    if Path::new(".devcontainer").exists() {
+        fs::rename(".devcontainer", ".devcontainer.backup")
+            .context("Failed to backup existing .devcontainer")?;
+        println!("✓ Backed up .devcontainer/ → .devcontainer.backup/");
+    }
 
     // Backup gitignored directories if re-initializing
     if name == "." && Path::new(".claude").exists() {
@@ -153,6 +179,22 @@ pub fn execute_init(name: String, llm: String, design: String, dev: Option<Strin
         for warning in warnings {
             println!("   {warning}");
         }
+    }
+
+    // === STEP 3: COMMIT PATINA SETUP ===
+    if name == "." {
+        // Only commit if we're initializing in current directory
+        println!("\n📦 Committing Patina setup...");
+        patina::git::add_all()?;
+
+        let commit_msg = if is_reinit {
+            "chore: update Patina configuration"
+        } else {
+            "chore: initialize Patina"
+        };
+
+        patina::git::commit(commit_msg)?;
+        println!("✓ Committed Patina initialization");
     }
 
     // Suggest tool installation if needed
