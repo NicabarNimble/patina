@@ -44,10 +44,10 @@ fn gh_repo_exists(full_name: &str) -> Result<bool> {
     Ok(output.status.success())
 }
 
-/// Create a fork on GitHub
+/// Create a fork on GitHub (private for Pro users)
 fn gh_repo_fork() -> Result<()> {
     let output = Command::new("gh")
-        .args(["repo", "fork", "--remote=false"])
+        .args(["repo", "fork", "--remote=false", "--private"])
         .output()
         .context("Failed to create fork")?;
 
