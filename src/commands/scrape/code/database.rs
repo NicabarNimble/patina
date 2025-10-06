@@ -1,17 +1,17 @@
 // ============================================================================
-// TYPE-SAFE DATABASE OPERATIONS WITH EMBEDDED DUCKDB
+// TYPE-SAFE DATABASE OPERATIONS WITH EMBEDDED SQLITE
 // ============================================================================
-//! Direct DuckDB library integration for safe, high-performance data storage.
+//! Direct SQLite library integration for safe, high-performance data storage.
 //!
 //! This module replaces unsafe SQL string concatenation with:
 //! - Prepared statements (no SQL injection possible)
-//! - Appender API for bulk inserts (10-100x faster)
-//! - Proper type preservation (arrays, booleans, JSON)
+//! - Bulk inserts via transactions
+//! - Proper type preservation (arrays as JSON, booleans, JSON)
 //! - Transaction support with automatic rollback
 
 use crate::commands::scrape::code::types::CallGraphEntry;
 use anyhow::{Context, Result};
-use duckdb::{params, Connection};
+use rusqlite::{params, Connection};
 use std::path::Path;
 
 // ============================================================================
@@ -76,9 +76,9 @@ pub struct Database {
 }
 
 impl Database {
-    /// Open or create a DuckDB database file
+    /// Open or create a SQLite database file
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let conn = Connection::open(path).context("Failed to open DuckDB database")?;
+        let conn = Connection::open(path).context("Failed to open SQLite database")?;
 
         Ok(Self { conn })
     }
