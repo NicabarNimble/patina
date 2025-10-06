@@ -276,7 +276,7 @@ patina scrape code --init
 patina scrape code
 
 # Query results
-duckdb .patina/knowledge.db -c "SELECT * FROM behavioral_hints"
+sqlite3 .patina/knowledge.db "SELECT * FROM behavioral_hints"
 ```
 
 ### Step 6: Run CI Checks

@@ -41,11 +41,8 @@ reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], def
 # File watching
 notify = "6.1"
 
-# Database - embedded SQLite for pattern storage
+# Database - embedded SQLite for pattern storage and semantic analysis
 rusqlite = { version = "0.32", features = ["bundled", "chrono", "serde_json", "load_extension"] }
-
-# DuckDB for semantic analysis database
-duckdb = "1.1"
 
 # Parallel processing (better than async for our use case)
 rayon = "1.10"

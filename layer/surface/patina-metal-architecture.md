@@ -32,7 +32,7 @@ tree-sitter-{rust,go,solidity,cairo}
     ↓ generates
 Unified AST + Metadata
     ↓ consumed by
-scrape command → DuckDB
+scrape command → SQLite
 ```
 
 ### Core Abstractions

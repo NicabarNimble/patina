@@ -1,17 +1,17 @@
 // ============================================================================
-// TYPE-SAFE DATABASE OPERATIONS WITH EMBEDDED DUCKDB
+// TYPE-SAFE DATABASE OPERATIONS WITH EMBEDDED SQLITE
 // ============================================================================
-//! Direct DuckDB library integration for safe, high-performance data storage.
+//! Direct SQLite library integration for safe, high-performance data storage.
 //!
 //! This module replaces unsafe SQL string concatenation with:
 //! - Prepared statements (no SQL injection possible)
-//! - Appender API for bulk inserts (10-100x faster)
-//! - Proper type preservation (arrays, booleans, JSON)
+//! - Bulk inserts via transactions
+//! - Proper type preservation (arrays as JSON, booleans, JSON)
 //! - Transaction support with automatic rollback
 
 use crate::commands::scrape::code::types::CallGraphEntry;
 use anyhow::{Context, Result};
-use duckdb::{params, Connection};
+use rusqlite::{params, Connection};
 use std::path::Path;
 
 // ============================================================================
@@ -76,9 +76,9 @@ pub struct Database {
 }
 
 impl Database {
-    /// Open or create a DuckDB database file
+    /// Open or create a SQLite database file
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let conn = Connection::open(path).context("Failed to open DuckDB database")?;
+        let conn = Connection::open(path).context("Failed to open SQLite database")?;
 
         Ok(Self { conn })
     }
@@ -99,9 +99,9 @@ impl Database {
         // Code search table with full-text indexing
         tx.execute(
             "CREATE TABLE IF NOT EXISTS code_search (
-                path VARCHAR NOT NULL,
-                name VARCHAR NOT NULL,
-                kind VARCHAR,
+                path TEXT NOT NULL,
+                name TEXT NOT NULL,
+                kind TEXT,
                 line INTEGER,
                 context TEXT,
                 PRIMARY KEY (path, name, line)
@@ -112,8 +112,8 @@ impl Database {
         // Function facts with proper boolean types
         tx.execute(
             "CREATE TABLE IF NOT EXISTS function_facts (
-                file VARCHAR NOT NULL,
-                name VARCHAR NOT NULL,
+                file TEXT NOT NULL,
+                name TEXT NOT NULL,
                 takes_mut_self BOOLEAN DEFAULT FALSE,
                 takes_mut_params BOOLEAN DEFAULT FALSE,
                 returns_result BOOLEAN DEFAULT FALSE,
@@ -123,8 +123,8 @@ impl Database {
                 is_public BOOLEAN DEFAULT FALSE,
                 parameter_count INTEGER DEFAULT 0,
                 generic_count INTEGER DEFAULT 0,
-                parameters TEXT,  -- TODO: Use VARCHAR[] when duckdb-rs supports it
-                return_type VARCHAR,
+                parameters TEXT,  -- Comma-separated parameter names
+                return_type TEXT,
                 PRIMARY KEY (file, name)
             )",
             [],
@@ -133,11 +133,11 @@ impl Database {
         // Type vocabulary
         tx.execute(
             "CREATE TABLE IF NOT EXISTS type_vocabulary (
-                file VARCHAR NOT NULL,
-                name VARCHAR NOT NULL,
+                file TEXT NOT NULL,
+                name TEXT NOT NULL,
                 definition TEXT,
-                kind VARCHAR,
-                visibility VARCHAR,
+                kind TEXT,
+                visibility TEXT,
                 usage_count INTEGER DEFAULT 0,
                 PRIMARY KEY (file, name)
             )",
@@ -147,10 +147,10 @@ impl Database {
         // Import facts
         tx.execute(
             "CREATE TABLE IF NOT EXISTS import_facts (
-                file VARCHAR NOT NULL,
-                import_path VARCHAR NOT NULL,
-                imported_names TEXT,  -- TODO: Use VARCHAR[] when duckdb-rs supports it
-                import_kind VARCHAR,
+                file TEXT NOT NULL,
+                import_path TEXT NOT NULL,
+                imported_names TEXT,  -- Comma-separated import names
+                import_kind TEXT,
                 line_number INTEGER,
                 PRIMARY KEY (file, import_path)
             )",
@@ -160,11 +160,11 @@ impl Database {
         // Constants table for macros, enum values, globals, statics
         tx.execute(
             "CREATE TABLE IF NOT EXISTS constant_facts (
-                file VARCHAR NOT NULL,
-                name VARCHAR NOT NULL,
+                file TEXT NOT NULL,
+                name TEXT NOT NULL,
                 value TEXT,
-                const_type VARCHAR NOT NULL,  -- macro, const, enum_value, static, global
-                scope VARCHAR NOT NULL,        -- global, ClassName::, namespace::, module
+                const_type TEXT NOT NULL,  -- macro, const, enum_value, static, global
+                scope TEXT NOT NULL,        -- global, ClassName::, namespace::, module
                 line INTEGER,
                 PRIMARY KEY (file, name, scope)
             )",
@@ -174,11 +174,11 @@ impl Database {
         // Members table for class/struct fields and methods
         tx.execute(
             "CREATE TABLE IF NOT EXISTS member_facts (
-                file VARCHAR NOT NULL,
-                container VARCHAR NOT NULL,   -- Class/struct/interface name
-                name VARCHAR NOT NULL,
-                member_type VARCHAR NOT NULL, -- field, method, property, constructor, destructor
-                visibility VARCHAR,           -- public, private, protected, internal
+                file TEXT NOT NULL,
+                container TEXT NOT NULL,   -- Class/struct/interface name
+                name TEXT NOT NULL,
+                member_type TEXT NOT NULL, -- field, method, property, constructor, destructor
+                visibility TEXT,           -- public, private, protected, internal
                 modifiers TEXT,              -- JSON array: [\"static\", \"const\", \"virtual\"]
                 line INTEGER,
                 PRIMARY KEY (file, container, name)
@@ -189,10 +189,10 @@ impl Database {
         // Call graph
         tx.execute(
             "CREATE TABLE IF NOT EXISTS call_graph (
-                caller VARCHAR NOT NULL,
-                callee VARCHAR NOT NULL,
-                file VARCHAR NOT NULL,
-                call_type VARCHAR DEFAULT 'direct',
+                caller TEXT NOT NULL,
+                callee TEXT NOT NULL,
+                file TEXT NOT NULL,
+                call_type TEXT DEFAULT 'direct',
                 line_number INTEGER,
                 PRIMARY KEY (caller, callee, file, line_number)
             )",
@@ -202,10 +202,10 @@ impl Database {
         // Index state for incremental updates
         tx.execute(
             "CREATE TABLE IF NOT EXISTS index_state (
-                path VARCHAR PRIMARY KEY,
+                path TEXT PRIMARY KEY,
                 mtime BIGINT NOT NULL,
                 size BIGINT NOT NULL,
-                hash VARCHAR
+                hash TEXT
             )",
             [],
         )?;
@@ -213,8 +213,8 @@ impl Database {
         // Skipped files tracking
         tx.execute(
             "CREATE TABLE IF NOT EXISTS skipped_files (
-                path VARCHAR PRIMARY KEY,
-                reason VARCHAR,
+                path TEXT PRIMARY KEY,
+                reason TEXT,
                 attempted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )",
             [],
@@ -230,16 +230,19 @@ impl Database {
 // ============================================================================
 
 impl Database {
-    /// Bulk insert code symbols using Appender
+    /// Bulk insert code symbols using transaction
     pub fn insert_symbols(&self, symbols: &[CodeSymbol]) -> Result<usize> {
         if symbols.is_empty() {
             return Ok(0);
         }
 
-        let mut appender = self.conn.appender("code_search")?;
+        let tx = self.conn.unchecked_transaction()?;
+        let mut stmt = tx.prepare(
+            "INSERT OR REPLACE INTO code_search (path, name, kind, line, context) VALUES (?, ?, ?, ?, ?)"
+        )?;
 
         for symbol in symbols {
-            appender.append_row(params![
+            stmt.execute(params![
                 &symbol.path,
                 &symbol.name,
                 &symbol.kind,
@@ -248,7 +251,8 @@ impl Database {
             ])?;
         }
 
-        appender.flush()?;
+        drop(stmt);
+        tx.commit()?;
         Ok(symbols.len())
     }
 
@@ -264,8 +268,7 @@ impl Database {
         )?;
 
         for func in functions {
-            // Convert Vec<String> to a comma-separated string for now
-            // TODO: Use proper array support when available in duckdb-rs
+            // Convert Vec<String> to comma-separated string for storage
             let params_str = func.parameters.join(", ");
 
             stmt.execute(params![
@@ -294,10 +297,13 @@ impl Database {
             return Ok(0);
         }
 
-        let mut appender = self.conn.appender("type_vocabulary")?;
+        let tx = self.conn.unchecked_transaction()?;
+        let mut stmt = tx.prepare(
+            "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility, usage_count) VALUES (?, ?, ?, ?, ?, ?)"
+        )?;
 
         for type_fact in types {
-            appender.append_row(params![
+            stmt.execute(params![
                 &type_fact.file,
                 &type_fact.name,
                 &type_fact.definition,
@@ -307,7 +313,8 @@ impl Database {
             ])?;
         }
 
-        appender.flush()?;
+        drop(stmt);
+        tx.commit()?;
         Ok(types.len())
     }
 
@@ -317,23 +324,26 @@ impl Database {
             return Ok(0);
         }
 
-        let mut appender = self.conn.appender("import_facts")?;
+        let tx = self.conn.unchecked_transaction()?;
+        let mut stmt = tx.prepare(
+            "INSERT OR REPLACE INTO import_facts (file, import_path, imported_names, import_kind, line_number) VALUES (?, ?, ?, ?, ?)"
+        )?;
 
         for import in imports {
-            // Convert Vec<String> to comma-separated string for now
-            // TODO: Use proper array support when available in duckdb-rs
+            // Convert Vec<String> to comma-separated string
             let names_str = import.imported_names.join(", ");
 
-            appender.append_row(params![
+            stmt.execute(params![
                 &import.file,
                 &import.import_path,
-                &names_str, // Temporary: store as string
+                &names_str,
                 &import.import_kind,
                 import.line_number,
             ])?;
         }
 
-        appender.flush()?;
+        drop(stmt);
+        tx.commit()?;
         Ok(imports.len())
     }
 
@@ -343,10 +353,13 @@ impl Database {
             return Ok(0);
         }
 
-        let mut appender = self.conn.appender("call_graph")?;
+        let tx = self.conn.unchecked_transaction()?;
+        let mut stmt = tx.prepare(
+            "INSERT OR REPLACE INTO call_graph (caller, callee, file, call_type, line_number) VALUES (?, ?, ?, ?, ?)"
+        )?;
 
         for edge in edges {
-            appender.append_row(params![
+            stmt.execute(params![
                 &edge.caller,
                 &edge.callee,
                 &edge.file,
@@ -355,7 +368,8 @@ impl Database {
             ])?;
         }
 
-        appender.flush()?;
+        drop(stmt);
+        tx.commit()?;
         Ok(edges.len())
     }
 
