@@ -31,12 +31,12 @@ Cairo            | N/A        | N/A         | Custom parser
 Cairo demonstrates an escape hatch: when tree-sitter versioning becomes problematic, use an alternative parser. This works because:
 1. The scraper abstracts over parser implementations
 2. The Metal enum doesn't care how parsing happens
-3. Results are normalized to a common schema (DuckDB tables)
+3. Results are normalized to a common schema (SQLite tables)
 
 ## Proposed Solution: Version Provenance Tracking
 
 ### 1. Grammar Metadata Table
-Track provenance for each grammar in DuckDB:
+Track provenance for each grammar in SQLite:
 
 ```sql
 CREATE TABLE grammar_provenance (
@@ -125,8 +125,8 @@ pub fn check_grammar_compatibility() -> Result<CompatibilityReport> {
         
         report.add(metal, status);
     }
-    
-    // Write to DuckDB for tracking
+
+    // Write to SQLite for tracking
     report.persist_to_db()?;
     
     Ok(report)

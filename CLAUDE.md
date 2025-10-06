@@ -109,8 +109,6 @@ patina/
 - If warned about old uncommitted changes, commit immediately
 - Prefer `git add -p` for surgical staging when files have multiple changes
 
-## Recent Developments
-
 ### Session-Git Commands
 - Integrated Git workflow into session tracking
 - Automatic tagging at session boundaries

@@ -56,8 +56,8 @@ patina test                       # Test in container
 
 Patina's scrape command builds a searchable database from your codebase:
 - Indexes code structure and documentation
-- Tracks incremental changes for efficiency  
-- Uses DuckDB for fast semantic queries
+- Tracks incremental changes for efficiency
+- Uses SQLite for fast semantic queries
 - Integrates with Git for freshness checks
 
 ```bash
@@ -85,11 +85,7 @@ Each component does one thing well, following Unix philosophy.
 ### Requirements
 - Rust toolchain
 - Git (for state detection)
-- DuckDB (for semantic code analysis)
-  - macOS: `brew install duckdb`
-  - Ubuntu/Debian: `sudo apt-get install libduckdb-dev`
-  - Other platforms: https://duckdb.org/docs/installation/
-- Docker (optional, for rqlite persistence)
+- Docker (optional, for containerized builds)
 
 ### Quick Setup
 ```bash
@@ -101,10 +97,6 @@ cd patina
 # git submodule update --init --recursive
 
 cargo build --release
-
-# Copy docker-compose.yml.example for rqlite
-cp docker-compose.yml.example docker-compose.yml
-docker compose up -d  # Optional: for persistence
 ```
 
 ## Development Status
@@ -113,11 +105,10 @@ docker compose up -d  # Optional: for persistence
 - Core layer system with pattern management
 - Git-aware navigation with confidence scoring
 - Real-time git state detection
-- rqlite persistence for decentralized sharing
+- SQLite-based semantic code indexing
 - Claude adapter with session commands
 
 🚧 **In Progress:**
-- Auto-management of rqlite process
 - Workspace integration for pattern exploration
 - Pattern promotion workflows
 - Additional LLM adapters

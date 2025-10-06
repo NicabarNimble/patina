@@ -1,11 +1,11 @@
 // ============================================================================
-// REFACTORED EXTRACTION WITH EMBEDDED DUCKDB
+// REFACTORED EXTRACTION WITH EMBEDDED SQLITE
 // ============================================================================
 //! New extraction pipeline using type-safe database operations.
 //!
 //! This replaces the unsafe SQL string concatenation with:
-//! - Direct DuckDB library integration
-//! - Prepared statements and Appender API
+//! - Direct SQLite library integration
+//! - Prepared statements and transactions
 //! - Type-preserving data structures
 //! - Batch operations for performance
 
@@ -21,7 +21,7 @@ use super::types::FilePath;
 
 /// Process all source files and extract metadata using safe database operations
 pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) -> Result<usize> {
-    println!("🧠 Extracting code metadata with embedded DuckDB...");
+    println!("🧠 Extracting code metadata with embedded SQLite...");
 
     // Open database connection
     let mut db = Database::open(db_path)?;

@@ -102,7 +102,7 @@ This provides temporal context but NOT freshness validation.
 
 | Aspect | Patina (Current) | HumanLayer | Patina Opportunity |
 |--------|-----------------|------------|-------------------|
-| **Knowledge Storage** | Session files + DuckDB | Git-backed thoughts/ + hard links | Add thoughts-style system |
+| **Knowledge Storage** | Session files + SQLite | Git-backed thoughts/ + hard links | Add thoughts-style system |
 | **Code Intelligence** | Structured SQL queries | Unstructured markdown | Already superior |
 | **Temporal Tracking** | Sessions + Git tags | Timestamps + commit refs | Combine both |
 | **Token Efficiency** | Single context | Parallel agents | Adopt agent pattern |
@@ -125,7 +125,7 @@ Nobody has solved this because:
 
 ### Patina's Unique Opportunity
 
-With DuckDB + Sessions + Git, Patina could implement:
+With SQLite + Sessions + Git, Patina could implement:
 
 ```sql
 -- Track what docs reference
@@ -159,7 +159,7 @@ CREATE TABLE knowledge_timeline (
 ### Practical Freshness Tracking
 
 ```rust
-fn calculate_doc_freshness(doc: &Document, current_db: &DuckDB) -> Freshness {
+fn calculate_doc_freshness(doc: &Document, current_db: &SQLite) -> Freshness {
     let references = extract_code_references(doc);
     let mut valid = 0;
     let mut total = 0;
@@ -192,7 +192,7 @@ fn calculate_doc_freshness(doc: &Document, current_db: &DuckDB) -> Freshness {
 - Git hooks for auto-sync (but not validation)
 
 **Keep Patina's Strengths**:
-- DuckDB for structured code intelligence
+- SQLite for structured code intelligence
 - Session-based development tracking
 - Pattern evolution through layers
 - Git survival metrics
@@ -203,7 +203,7 @@ fn calculate_doc_freshness(doc: &Document, current_db: &DuckDB) -> Freshness {
 ```
 Sessions → Scrapes → Knowledge → Patterns
     ↓         ↓          ↓          ↓
-Git Tags   DuckDB    Thoughts    Evolution
+Git Tags   SQLite    Thoughts    Evolution
 ```
 
 **Pattern Success Tracking**:
@@ -248,7 +248,7 @@ Instead of fighting staleness, make it visible and useful:
 4. Build synthesis patterns
 
 ### Phase 3: Temporal Tracking
-1. Link DuckDB scrapes to sessions
+1. Link SQLite scrapes to sessions
 2. Add freshness scoring to docs
 3. Create knowledge evolution tables
 4. Build staleness detection queries
@@ -278,4 +278,4 @@ The key insight: **Don't fight documentation drift - embrace it, track it, and m
 - Research orchestration: `.claude/commands/research_codebase.md`
 - Agent patterns: `.claude/agents/*.md`
 - Session tracking: Current Patina implementation
-- DuckDB scraping: Current Patina implementation
+- SQLite scraping: Current Patina implementation

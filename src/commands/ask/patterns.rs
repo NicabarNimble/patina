@@ -1,5 +1,5 @@
 use anyhow::Result;
-use duckdb::Connection;
+use rusqlite::Connection;
 use std::path::Path;
 
 /// Analyze naming patterns from the extracted data
@@ -8,21 +8,15 @@ pub fn analyze_naming_patterns(db_path: &Path) -> Result<()> {
 
     println!("🔍 Discovering Naming Patterns...\n");
 
-    // Discover function prefixes (adaptive, not hardcoded!)
+    // Discover function prefixes (snake_case style)
     let prefix_query = r#"
         WITH prefixes AS (
-            SELECT 
-                CASE 
-                    WHEN position('_' in name) > 0 THEN 
-                        substring(name, 1, position('_' in name))
-                    ELSE 
-                        substring(name, 1, 
-                            CASE 
-                                WHEN regexp_matches(name, '[a-z][A-Z]') THEN 
-                                    position(regexp_extract(name, '[a-z][A-Z]', 0) in name) + 1
-                                ELSE length(name) 
-                            END
-                        )
+            SELECT
+                CASE
+                    WHEN instr(name, '_') > 0 THEN
+                        substr(name, 1, instr(name, '_'))
+                    ELSE
+                        substr(name, 1, length(name))
                 END as prefix,
                 COUNT(*) as count
             FROM function_facts
