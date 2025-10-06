@@ -11,7 +11,7 @@ A comprehensive analysis of what each language processor extracts and what criti
 
 ## Overview
 
-The `patina scrape code` command uses language-specific processors to extract semantic information from codebases. Each processor returns `ExtractedData` structs that populate DuckDB tables. This analysis documents the current extraction capabilities and missing facts for each language, based on real database analysis of production repositories.
+The `patina scrape code` command uses language-specific processors to extract semantic information from codebases. Each processor returns `ExtractedData` structs that populate SQLite tables. This analysis documents the current extraction capabilities and missing facts for each language, based on real database analysis of production repositories.
 
 **Extraction Complete:** C, C++, Go, Rust, Python, TypeScript, JavaScript, Solidity, Cairo ✅ (9/9)
 

@@ -51,7 +51,7 @@ Developer + AI → Patina Context → Patterns + Sessions + Scrapes → Better A
 **Key Components**:
 - Layer system (Core → Surface → Dust)
 - Session tracking with Git integration
-- DuckDB code intelligence
+- SQLite code intelligence
 - Multi-LLM adapters (Claude, Gemini)
 
 ## Knowledge Management Strategies
@@ -103,7 +103,7 @@ layer/
 
 ### Patina
 **Current State**: No specific token optimization
-**Opportunity**: Could track via DuckDB:
+**Opportunity**: Could track via SQLite:
 ```sql
 CREATE TABLE token_usage (
   operation VARCHAR,
@@ -118,7 +118,7 @@ CREATE TABLE token_usage (
 | Aspect | HumanLayer | Patina |
 |--------|------------|--------|
 | **Staleness** | Accept it, regenerate often | Track via Git, evolve patterns |
-| **Storage** | Markdown in thoughts/ | Sessions + DuckDB + patterns |
+| **Storage** | Markdown in thoughts/ | Sessions + SQLite + patterns |
 | **Validation** | None - always re-research | Git survival metrics |
 | **Updates** | Append, don't modify | Layer evolution (Core→Surface→Dust) |
 
@@ -157,8 +157,8 @@ CREATE TABLE token_usage (
 ❌ No cross-project learning  
 
 ### Patina Strengths
-✅ Excellent Git integration with sessions  
-✅ Structured code intelligence (DuckDB)  
+✅ Excellent Git integration with sessions
+✅ Structured code intelligence (SQLite)
 ✅ Pattern evolution framework  
 ✅ Multi-LLM support  
 ✅ Reference repo analysis (dust/)  
@@ -194,7 +194,7 @@ CREATE TABLE token_usage (
 ### What HumanLayer Could Learn from Patina
 
 1. **Structured Code Intelligence**
-   - DuckDB for queryable code structure
+   - SQLite for queryable code structure
    - Pattern tracking across projects
    - Success metrics for patterns
 

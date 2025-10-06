@@ -2,7 +2,7 @@
 id: semantic-reality-system
 status: exploration
 created: 2025-08-20
-tags: [architecture, semantic-search, git-integration, tree-sitter, duckdb]
+tags: [architecture, semantic-search, git-integration, tree-sitter, sqlite]
 references: [pattern-selection-framework]
 ---
 
@@ -87,7 +87,7 @@ Stop grepping for text, start understanding structure:
 
 This finds actual implementations, not text matches!
 
-### 4. DuckDB as Semantic Storage
+### 4. SQLite as Semantic Storage
 
 Fast analytical queries over code reality:
 
@@ -138,19 +138,19 @@ ORDER BY implementations DESC;
 
 ```bash
 # 1. Tree-sitter extracts ALL patterns from surviving code
-tree-sitter-rust extract src/ | 
-  duckdb "INSERT INTO discovered_patterns..."
+tree-sitter-rust extract src/ |
+  sqlite3 knowledge.db "INSERT INTO discovered_patterns..."
 
 # 2. Git provides timeline and quality metrics
 git log --all --format="%H %ar" -- "*.rs" |
-  duckdb "UPDATE code_symbols SET survival_days = ..."
+  sqlite3 knowledge.db "UPDATE code_symbols SET survival_days = ..."
 
 # 3. GitHub API provides context
 gh api graphql -f query="..." |
-  duckdb "INSERT INTO discussions..."
+  sqlite3 knowledge.db "INSERT INTO discussions..."
 
 # 4. Query for reality
-duckdb "
+sqlite3 knowledge.db "
   SELECT p.name, COUNT(*) as implementations, AVG(s.survival_days)
   FROM patterns p
   JOIN pattern_implementations pi ON p.id = pi.pattern_id
@@ -217,7 +217,7 @@ REALITY: 30 files exceed this (avg 287 lines, survived 180+ days)
 1. **Phase 1**: Git-based reality extraction
    - Use git survival metrics
    - Track co-modification patterns
-   - Build basic DuckDB schema
+   - Build basic SQLite schema
 
 2. **Phase 2**: Tree-sitter integration
    - Extract AST patterns from Rust code
@@ -242,6 +242,6 @@ The semantic system isn't about embeddings or AI - it's about:
 - Structured extraction (tree-sitter)
 - Relationship tracking (graph in SQL)
 - Reality measurement (Git survival)
-- Simple queries (DuckDB)
+- Simple queries (SQLite)
 
 This gives us a semantic understanding that's actually grounded in reality, not inference.
