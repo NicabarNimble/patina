@@ -9,7 +9,7 @@
 //! ## Architecture
 //! - Each language gets its own file (rust.rs, go.rs, etc.)
 //! - Each language processor returns ExtractedData structs
-//! - Database module uses DuckDB Appender API for 10-100x performance
+//! - Database module uses transactions for bulk insert performance
 //! - Clean separation of concerns
 //!
 //! ## Usage
@@ -84,7 +84,7 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
         initialize_database(&config.db_path)?;
     }
 
-    // Always use the new embedded DuckDB implementation
+    // Always use the new embedded SQLite implementation
     let items_processed =
         extract_v2::extract_code_metadata_v2(&config.db_path, &work_dir, config.force)?;
 
@@ -127,7 +127,7 @@ fn determine_work_directory(config: &ScrapeConfig) -> Result<PathBuf> {
     }
 }
 
-/// Initialize DuckDB database with embedded library
+/// Initialize SQLite database with embedded library
 fn initialize_database(db_path: &str) -> Result<()> {
     // Create parent directory if needed
     if let Some(parent) = Path::new(db_path).parent() {

@@ -81,7 +81,7 @@ fn parse_stale_repos() -> Result<Vec<String>> {
     // Parse log lines for STALE entries
     for line in contents.lines() {
         if line.contains("| STALE") {
-            // Format: "2025-10-01T15:52:10Z | STALE | duckdb.db | needs rescrape"
+            // Format: "2025-10-01T15:52:10Z | STALE | repo.db | needs rescrape"
             let parts: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
             if parts.len() >= 3 {
                 let db_name = parts[2];

@@ -26,7 +26,7 @@ pub enum SymbolKind {
 }
 
 impl SymbolKind {
-    /// Convert to string for DuckDB storage
+    /// Convert to string for database storage
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Function => "function",
@@ -72,7 +72,7 @@ pub enum CallType {
 }
 
 impl CallType {
-    /// Convert to string for DuckDB storage
+    /// Convert to string for database storage
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Direct => "direct",
