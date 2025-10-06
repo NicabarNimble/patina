@@ -33,10 +33,8 @@ impl Generator {
             self.generate_dockerfile(&devcontainer_path, profile, features)?;
         }
 
-        // Generate docker-compose.yml if services are needed
-        if !profile.services.is_empty() {
-            self.generate_docker_compose(&devcontainer_path, profile)?;
-        }
+        // Always generate docker-compose.yml for CLI usage
+        self.generate_docker_compose(&devcontainer_path, profile, features)?;
 
         // Generate YOLO setup script
         self.generate_yolo_setup(&devcontainer_path, profile)?;
@@ -144,6 +142,30 @@ FROM mcr.microsoft.com/devcontainers/base:ubuntu
 # Avoid prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Install Node.js for Claude Code CLI
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g npm@latest \
+    && npm install -g pnpm@latest
+
+# Install Claude Code CLI for autonomous AI work
+RUN npm install -g @anthropic-ai/claude-code@latest \
+    && mkdir -p /root/.claude-linux
+
+# Create Claude wrapper script with YOLO permissions
+RUN echo '#!/bin/bash' > /usr/local/bin/claude \
+    && echo 'export IS_SANDBOX=1' >> /usr/local/bin/claude \
+    && echo 'export CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=true' >> /usr/local/bin/claude \
+    && echo 'export CLAUDE_CONFIG_DIR=/root/.claude-linux' >> /usr/local/bin/claude \
+    && echo 'CLAUDE_CLI="/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js"' >> /usr/local/bin/claude \
+    && echo '[ ! -f "$CLAUDE_CLI" ] && CLAUDE_CLI="/usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js"' >> /usr/local/bin/claude \
+    && echo 'exec node "$CLAUDE_CLI" --dangerously-skip-permissions "$@"' >> /usr/local/bin/claude \
+    && chmod +x /usr/local/bin/claude
+
+# Add Claude alias to bashrc for interactive sessions
+RUN echo 'export CLAUDE_CONFIG_DIR=/root/.claude-linux' >> /etc/bash.bashrc \
+    && echo 'alias claude="claude --dangerously-skip-permissions"' >> /etc/bash.bashrc
+
 "#
         );
 
@@ -186,6 +208,7 @@ CMD ["/bin/bash"]
         &self,
         devcontainer_path: &Path,
         profile: &RepoProfile,
+        features: &[DevContainerFeature],
     ) -> Result<()> {
         let project_name = profile.project_name.as_deref()
             .or_else(|| self.root_path.file_name().and_then(|n| n.to_str()))
@@ -193,21 +216,62 @@ CMD ["/bin/bash"]
 
         let mut services = serde_json::Map::new();
 
-        // Main workspace service
-        let workspace_config = if self.needs_custom_dockerfile(&[]) {
+        // Get home directory for credential mounts
+        let home_dir = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+
+        // Common development ports to expose
+        let common_ports = vec![
+            "3000:3000",   // Common web dev
+            "3001:3001",   // Alternative web
+            "3008:3008",   // MUD explorer
+            "8000:8000",   // Alternative web
+            "8080:8080",   // Alternative web
+            "8545:8545",   // Anvil/local blockchain
+        ];
+
+        // Main workspace service with YOLO environment variables
+        let workspace_config = if self.needs_custom_dockerfile(features) {
             json!({
                 "build": {
                     "context": ".",
                     "dockerfile": "Dockerfile"
                 },
-                "volumes": ["..:/workspace:cached"],
-                "command": "sleep infinity"
+                "volumes": [
+                    "../:/workspace:cached",
+                    format!("{}/.patina/claude-linux:/root/.claude-linux:cached", home_dir),
+                    format!("{}/.claude:/root/.claude-macos:ro", home_dir)
+                ],
+                "working_dir": "/workspace",
+                "command": "sleep infinity",
+                "ports": common_ports.clone(),
+                "environment": {
+                    "PATINA_YOLO": "1",
+                    "SKIP_PERMISSIONS": "1",
+                    "AI_WORKSPACE": "1",
+                    "IS_SANDBOX": "1",
+                    "CLAUDE_CONFIG_DIR": "/root/.claude-linux",
+                    "CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS": "true"
+                }
             })
         } else {
             json!({
                 "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
-                "volumes": ["..:/workspace:cached"],
-                "command": "sleep infinity"
+                "volumes": [
+                    "../:/workspace:cached",
+                    format!("{}/.patina/claude-linux:/root/.claude-linux:cached", home_dir),
+                    format!("{}/.claude:/root/.claude-macos:ro", home_dir)
+                ],
+                "working_dir": "/workspace",
+                "command": "sleep infinity",
+                "ports": common_ports,
+                "environment": {
+                    "PATINA_YOLO": "1",
+                    "SKIP_PERMISSIONS": "1",
+                    "AI_WORKSPACE": "1",
+                    "IS_SANDBOX": "1",
+                    "CLAUDE_CONFIG_DIR": "/root/.claude-linux",
+                    "CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS": "true"
+                }
             })
         };
         services.insert("workspace".to_string(), workspace_config);
@@ -248,6 +312,7 @@ fi
 
 # Create credentials directory if needed
 mkdir -p ~/.credentials
+mkdir -p ~/.claude-linux
 
 # Set up shell aliases for YOLO mode
 cat >> ~/.bashrc <<'EOF'
@@ -259,15 +324,34 @@ EOF
 # Install additional tools if needed
 if command -v npm &> /dev/null; then
     echo "📦 Installing global npm packages..."
-    npm install -g typescript ts-node
+    npm install -g typescript ts-node 2>/dev/null || true
+fi
+
+# Check Claude authentication
+echo ""
+echo "🤖 Checking Claude Code authentication..."
+if [ -f ~/.claude-linux/.credentials.json ]; then
+    echo "✅ Claude already authenticated"
+else
+    echo "⚠️  Claude not authenticated yet"
+    echo ""
+    echo "To enable autonomous AI work, authenticate Claude:"
+    echo "  1. Run: claude login"
+    echo "  2. Follow the browser authentication flow"
+    echo "  3. Credentials will persist across container rebuilds"
+    echo ""
+    echo "After authentication, you can use:"
+    echo "  • claude 'task description' - for autonomous AI work"
+    echo "  • All changes stay isolated in this container"
+    echo ""
 fi
 
 echo "✅ YOLO workspace ready!"
 echo ""
-echo "💭 Tips:"
-echo "  • Use 'claude --dangerously-skip-permissions' for autonomous work"
-echo "  • All changes are isolated in this container"
-echo "  • Git worktree provides safe experimentation"
+echo "💭 Available Commands:"
+echo "  • claude 'task' - Autonomous AI assistant (requires authentication)"
+echo "  • forge, anvil, cast - Blockchain development tools"
+echo "  • git, npm, node - Standard development tools"
 echo ""
 "#;
 
@@ -352,6 +436,9 @@ RUN curl -L https://foundry.paradigm.xyz | bash && \
     /root/.foundry/bin/foundryup && \
     echo 'export PATH="/root/.foundry/bin:$PATH"' >> /etc/bash.bashrc
 
+# Add Foundry to PATH for docker exec
+ENV PATH="/root/.foundry/bin:$PATH"
+
 "#.to_string()
     }
 
@@ -361,6 +448,9 @@ RUN curl -L https://foundry.paradigm.xyz | bash && \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://cairo-lang.org/install.sh | sh && \
     echo 'export PATH="/root/.cairo/bin:$PATH"' >> /etc/bash.bashrc
 
+# Add Cairo to PATH for docker exec
+ENV PATH="/root/.cairo/bin:$PATH"
+
 "#.to_string()
     }
 
@@ -369,6 +459,9 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://cairo-lang.org/install.sh | sh 
 # Install Scarb (Cairo package manager)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://docs.swmansion.com/scarb/install.sh | bash && \
     echo 'export PATH="/root/.scarb/bin:$PATH"' >> /etc/bash.bashrc
+
+# Add Scarb to PATH for docker exec
+ENV PATH="/root/.scarb/bin:$PATH"
 
 "#.to_string()
     }
