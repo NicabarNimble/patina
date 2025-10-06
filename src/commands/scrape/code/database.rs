@@ -99,9 +99,9 @@ impl Database {
         // Code search table with full-text indexing
         tx.execute(
             "CREATE TABLE IF NOT EXISTS code_search (
-                path VARCHAR NOT NULL,
-                name VARCHAR NOT NULL,
-                kind VARCHAR,
+                path TEXT NOT NULL,
+                name TEXT NOT NULL,
+                kind TEXT,
                 line INTEGER,
                 context TEXT,
                 PRIMARY KEY (path, name, line)
