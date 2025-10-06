@@ -1,0 +1,43 @@
+{
+  "name": "{{PROJECT_NAME}} - Patina YOLO",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+
+  // Mount Patina patterns for access
+  "mounts": [
+    "source=${localWorkspaceFolder}/layer,target=/workspace/layer,type=bind"
+  ],
+
+  // Environment variables for safe experimentation
+  "containerEnv": {
+    "IS_SANDBOX": "1",
+    "PATINA_YOLO": "1"
+  },
+
+  // VSCode/Claude Code extensions to install
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "ms-python.python",
+        "golang.go"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+
+  // Forward ports (can be customized per project)
+  "forwardPorts": [],
+
+  // Run as root for full control in sandbox
+  "remoteUser": "root",
+
+  // Keep container running
+  "overrideCommand": true
+}

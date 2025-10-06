@@ -8,6 +8,25 @@ pub const DOCKER_VERSION: &str = "0.1.0";
 
 pub struct DockerEnvironment;
 
+/// Detect project languages from manifest files
+fn detect_project_languages(project_path: &Path) -> ProjectLanguages {
+    ProjectLanguages {
+        has_rust: project_path.join("Cargo.toml").exists(),
+        has_node: project_path.join("package.json").exists(),
+        has_python: project_path.join("requirements.txt").exists()
+                    || project_path.join("pyproject.toml").exists()
+                    || project_path.join("setup.py").exists(),
+        has_go: project_path.join("go.mod").exists(),
+    }
+}
+
+struct ProjectLanguages {
+    has_rust: bool,
+    has_node: bool,
+    has_python: bool,
+    has_go: bool,
+}
+
 impl DevEnvironment for DockerEnvironment {
     fn name(&self) -> &'static str {
         "docker"
@@ -21,37 +40,62 @@ impl DevEnvironment for DockerEnvironment {
         &self,
         project_path: &Path,
         project_name: &str,
-        project_type: &str,
+        _project_type: &str,
     ) -> Result<()> {
-        // Create appropriate Dockerfile based on project type
-        let dockerfile_content = match project_type {
-            "app" => include_str!("../../resources/templates/docker/Dockerfile.app.tmpl"),
-            "tool" => include_str!("../../resources/templates/docker/Dockerfile.tool.tmpl"),
-            _ => include_str!("../../resources/templates/docker/Dockerfile.app.tmpl"),
-        };
+        // Detect project languages
+        let langs = detect_project_languages(project_path);
 
-        let dockerfile_content = dockerfile_content.replace("{{.name}}", project_name);
-        fs::write(project_path.join("Dockerfile"), dockerfile_content)?;
+        // Create .devcontainer directory
+        let devcontainer_dir = project_path.join(".devcontainer");
+        fs::create_dir_all(&devcontainer_dir)?;
 
-        // Create docker-compose.yml for apps
-        if project_type == "app" {
-            let compose_content =
-                include_str!("../../resources/templates/docker/docker-compose.tmpl")
-                    .replace("{{.name}}", project_name);
-            fs::write(project_path.join("docker-compose.yml"), compose_content)?;
-        }
+        // Generate Dockerfile with language-specific setup
+        let mut dockerfile_content = include_str!("../../resources/templates/devcontainer/Dockerfile").to_string();
 
-        // Create .dockerignore
-        let dockerignore = r#"target/
-Dockerfile
-.dockerignore
-.git/
-.gitignore
-*.md
-.patina/
-.claude/
-"#;
-        fs::write(project_path.join(".dockerignore"), dockerignore)?;
+        // Replace language setup placeholders
+        dockerfile_content = dockerfile_content.replace(
+            "{{RUST_SETUP}}",
+            if langs.has_rust {
+                "# Install Rust\nRUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y\nENV PATH=\"/root/.cargo/bin:${PATH}\""
+            } else {
+                ""
+            }
+        );
+
+        dockerfile_content = dockerfile_content.replace(
+            "{{NODE_SETUP}}",
+            if langs.has_node {
+                "# Install Node.js\nRUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \\\n    && apt-get install -y nodejs \\\n    && rm -rf /var/lib/apt/lists/*"
+            } else {
+                ""
+            }
+        );
+
+        dockerfile_content = dockerfile_content.replace(
+            "{{PYTHON_SETUP}}",
+            if langs.has_python {
+                "# Install Python\nRUN apt-get update && apt-get install -y \\\n    python3 \\\n    python3-pip \\\n    python3-venv \\\n    && rm -rf /var/lib/apt/lists/*"
+            } else {
+                ""
+            }
+        );
+
+        dockerfile_content = dockerfile_content.replace(
+            "{{GO_SETUP}}",
+            if langs.has_go {
+                "# Install Go\nRUN curl -L https://go.dev/dl/go1.22.0.linux-amd64.tar.gz | tar -C /usr/local -xzf - \\\n    && ln -s /usr/local/go/bin/go /usr/local/bin/go"
+            } else {
+                ""
+            }
+        );
+
+        fs::write(devcontainer_dir.join("Dockerfile"), dockerfile_content)?;
+
+        // Generate devcontainer.json
+        let devcontainer_json = include_str!("../../resources/templates/devcontainer/devcontainer.json")
+            .replace("{{PROJECT_NAME}}", project_name);
+
+        fs::write(devcontainer_dir.join("devcontainer.json"), devcontainer_json)?;
 
         Ok(())
     }
