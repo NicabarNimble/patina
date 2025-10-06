@@ -230,16 +230,19 @@ impl Database {
 // ============================================================================
 
 impl Database {
-    /// Bulk insert code symbols using Appender
+    /// Bulk insert code symbols using transaction
     pub fn insert_symbols(&self, symbols: &[CodeSymbol]) -> Result<usize> {
         if symbols.is_empty() {
             return Ok(0);
         }
 
-        let mut appender = self.conn.appender("code_search")?;
+        let tx = self.conn.unchecked_transaction()?;
+        let mut stmt = tx.prepare(
+            "INSERT OR REPLACE INTO code_search (path, name, kind, line, context) VALUES (?, ?, ?, ?, ?)"
+        )?;
 
         for symbol in symbols {
-            appender.append_row(params![
+            stmt.execute(params![
                 &symbol.path,
                 &symbol.name,
                 &symbol.kind,
@@ -248,7 +251,8 @@ impl Database {
             ])?;
         }
 
-        appender.flush()?;
+        drop(stmt);
+        tx.commit()?;
         Ok(symbols.len())
     }
 
@@ -294,10 +298,13 @@ impl Database {
             return Ok(0);
         }
 
-        let mut appender = self.conn.appender("type_vocabulary")?;
+        let tx = self.conn.unchecked_transaction()?;
+        let mut stmt = tx.prepare(
+            "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility, usage_count) VALUES (?, ?, ?, ?, ?, ?)"
+        )?;
 
         for type_fact in types {
-            appender.append_row(params![
+            stmt.execute(params![
                 &type_fact.file,
                 &type_fact.name,
                 &type_fact.definition,
@@ -307,7 +314,8 @@ impl Database {
             ])?;
         }
 
-        appender.flush()?;
+        drop(stmt);
+        tx.commit()?;
         Ok(types.len())
     }
 
