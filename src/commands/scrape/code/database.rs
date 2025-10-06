@@ -325,23 +325,26 @@ impl Database {
             return Ok(0);
         }
 
-        let mut appender = self.conn.appender("import_facts")?;
+        let tx = self.conn.unchecked_transaction()?;
+        let mut stmt = tx.prepare(
+            "INSERT OR REPLACE INTO import_facts (file, import_path, imported_names, import_kind, line_number) VALUES (?, ?, ?, ?, ?)"
+        )?;
 
         for import in imports {
-            // Convert Vec<String> to comma-separated string for now
-            // TODO: Use proper array support when available in duckdb-rs
+            // Convert Vec<String> to comma-separated string
             let names_str = import.imported_names.join(", ");
 
-            appender.append_row(params![
+            stmt.execute(params![
                 &import.file,
                 &import.import_path,
-                &names_str, // Temporary: store as string
+                &names_str,
                 &import.import_kind,
                 import.line_number,
             ])?;
         }
 
-        appender.flush()?;
+        drop(stmt);
+        tx.commit()?;
         Ok(imports.len())
     }
 
@@ -351,10 +354,13 @@ impl Database {
             return Ok(0);
         }
 
-        let mut appender = self.conn.appender("call_graph")?;
+        let tx = self.conn.unchecked_transaction()?;
+        let mut stmt = tx.prepare(
+            "INSERT OR REPLACE INTO call_graph (caller, callee, file, call_type, line_number) VALUES (?, ?, ?, ?, ?)"
+        )?;
 
         for edge in edges {
-            appender.append_row(params![
+            stmt.execute(params![
                 &edge.caller,
                 &edge.callee,
                 &edge.file,
@@ -363,7 +369,8 @@ impl Database {
             ])?;
         }
 
-        appender.flush()?;
+        drop(stmt);
+        tx.commit()?;
         Ok(edges.len())
     }
 
