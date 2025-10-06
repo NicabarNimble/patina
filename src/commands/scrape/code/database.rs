@@ -112,8 +112,8 @@ impl Database {
         // Function facts with proper boolean types
         tx.execute(
             "CREATE TABLE IF NOT EXISTS function_facts (
-                file VARCHAR NOT NULL,
-                name VARCHAR NOT NULL,
+                file TEXT NOT NULL,
+                name TEXT NOT NULL,
                 takes_mut_self BOOLEAN DEFAULT FALSE,
                 takes_mut_params BOOLEAN DEFAULT FALSE,
                 returns_result BOOLEAN DEFAULT FALSE,
@@ -123,8 +123,8 @@ impl Database {
                 is_public BOOLEAN DEFAULT FALSE,
                 parameter_count INTEGER DEFAULT 0,
                 generic_count INTEGER DEFAULT 0,
-                parameters TEXT,  -- TODO: Use VARCHAR[] when duckdb-rs supports it
-                return_type VARCHAR,
+                parameters TEXT,  -- Comma-separated parameter names
+                return_type TEXT,
                 PRIMARY KEY (file, name)
             )",
             [],
@@ -133,11 +133,11 @@ impl Database {
         // Type vocabulary
         tx.execute(
             "CREATE TABLE IF NOT EXISTS type_vocabulary (
-                file VARCHAR NOT NULL,
-                name VARCHAR NOT NULL,
+                file TEXT NOT NULL,
+                name TEXT NOT NULL,
                 definition TEXT,
-                kind VARCHAR,
-                visibility VARCHAR,
+                kind TEXT,
+                visibility TEXT,
                 usage_count INTEGER DEFAULT 0,
                 PRIMARY KEY (file, name)
             )",
@@ -147,10 +147,10 @@ impl Database {
         // Import facts
         tx.execute(
             "CREATE TABLE IF NOT EXISTS import_facts (
-                file VARCHAR NOT NULL,
-                import_path VARCHAR NOT NULL,
-                imported_names TEXT,  -- TODO: Use VARCHAR[] when duckdb-rs supports it
-                import_kind VARCHAR,
+                file TEXT NOT NULL,
+                import_path TEXT NOT NULL,
+                imported_names TEXT,  -- Comma-separated import names
+                import_kind TEXT,
                 line_number INTEGER,
                 PRIMARY KEY (file, import_path)
             )",
@@ -160,11 +160,11 @@ impl Database {
         // Constants table for macros, enum values, globals, statics
         tx.execute(
             "CREATE TABLE IF NOT EXISTS constant_facts (
-                file VARCHAR NOT NULL,
-                name VARCHAR NOT NULL,
+                file TEXT NOT NULL,
+                name TEXT NOT NULL,
                 value TEXT,
-                const_type VARCHAR NOT NULL,  -- macro, const, enum_value, static, global
-                scope VARCHAR NOT NULL,        -- global, ClassName::, namespace::, module
+                const_type TEXT NOT NULL,  -- macro, const, enum_value, static, global
+                scope TEXT NOT NULL,        -- global, ClassName::, namespace::, module
                 line INTEGER,
                 PRIMARY KEY (file, name, scope)
             )",
@@ -174,11 +174,11 @@ impl Database {
         // Members table for class/struct fields and methods
         tx.execute(
             "CREATE TABLE IF NOT EXISTS member_facts (
-                file VARCHAR NOT NULL,
-                container VARCHAR NOT NULL,   -- Class/struct/interface name
-                name VARCHAR NOT NULL,
-                member_type VARCHAR NOT NULL, -- field, method, property, constructor, destructor
-                visibility VARCHAR,           -- public, private, protected, internal
+                file TEXT NOT NULL,
+                container TEXT NOT NULL,   -- Class/struct/interface name
+                name TEXT NOT NULL,
+                member_type TEXT NOT NULL, -- field, method, property, constructor, destructor
+                visibility TEXT,           -- public, private, protected, internal
                 modifiers TEXT,              -- JSON array: [\"static\", \"const\", \"virtual\"]
                 line INTEGER,
                 PRIMARY KEY (file, container, name)
@@ -189,10 +189,10 @@ impl Database {
         // Call graph
         tx.execute(
             "CREATE TABLE IF NOT EXISTS call_graph (
-                caller VARCHAR NOT NULL,
-                callee VARCHAR NOT NULL,
-                file VARCHAR NOT NULL,
-                call_type VARCHAR DEFAULT 'direct',
+                caller TEXT NOT NULL,
+                callee TEXT NOT NULL,
+                file TEXT NOT NULL,
+                call_type TEXT DEFAULT 'direct',
                 line_number INTEGER,
                 PRIMARY KEY (caller, callee, file, line_number)
             )",
@@ -202,10 +202,10 @@ impl Database {
         // Index state for incremental updates
         tx.execute(
             "CREATE TABLE IF NOT EXISTS index_state (
-                path VARCHAR PRIMARY KEY,
+                path TEXT PRIMARY KEY,
                 mtime BIGINT NOT NULL,
                 size BIGINT NOT NULL,
-                hash VARCHAR
+                hash TEXT
             )",
             [],
         )?;
@@ -213,8 +213,8 @@ impl Database {
         // Skipped files tracking
         tx.execute(
             "CREATE TABLE IF NOT EXISTS skipped_files (
-                path VARCHAR PRIMARY KEY,
-                reason VARCHAR,
+                path TEXT PRIMARY KEY,
+                reason TEXT,
                 attempted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )",
             [],
@@ -268,8 +268,7 @@ impl Database {
         )?;
 
         for func in functions {
-            // Convert Vec<String> to a comma-separated string for now
-            // TODO: Use proper array support when available in duckdb-rs
+            // Convert Vec<String> to comma-separated string for storage
             let params_str = func.parameters.join(", ");
 
             stmt.execute(params![
