@@ -264,7 +264,7 @@ confidence = stability * 0.4    -- Old stable code is reliable
 
 ## The Ask Command: Using Pattern Facts
 
-**Note**: The `ask` command is a separate command outside of `code.rs` in the `scrape` module. It will query the DuckDB database created by `scrape` to provide evidence-based answers about codebase patterns.
+**Note**: The `ask` command is a separate command outside of `code.rs` in the `scrape` module. It will query the SQLite database created by `scrape` to provide evidence-based answers about codebase patterns.
 
 ### Example 1: Writing a New Function (dust repo)
 
@@ -321,7 +321,7 @@ SELECT COUNT(*) FROM function_facts WHERE name LIKE 'test%'
 - ✅ "handlers never import from database" (rule)
 
 ### 3. Complete Context in Database
-The DuckDB database contains everything needed to write native-like code:
+The SQLite database contains everything needed to write native-like code:
 - Function signatures (how to call things)
 - Import patterns (what libraries to use)
 - Naming conventions (how to name things)

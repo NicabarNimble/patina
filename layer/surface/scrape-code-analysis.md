@@ -8,7 +8,7 @@ The `patina scrape` command has been successfully refactored with a **Language R
 - Code parsing via tree-sitter for 8 languages (Rust, Go, Python, JavaScript, TypeScript, JSX/TSX, Solidity)
 - Git history analysis for code evolution metrics
 - Pattern reference extraction from documentation
-- DuckDB database creation and population
+- SQLite database creation and population
 - Incremental update tracking
 
 ### Structural Organization
