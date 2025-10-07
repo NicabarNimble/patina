@@ -163,6 +163,41 @@ impl Scanner {
             });
         }
 
+        // Dojo Framework (Cairo game engine)
+        // Check for dojo config files (dojo_dev.toml, dojo_sepolia.toml, etc.)
+        // Look in root directory and contracts/ subdirectory (common location)
+        let dojo_configs = vec!["dojo_dev.toml", "dojo_sepolia.toml", "dojo_mainnet.toml", "dojo.toml"];
+        let has_dojo_config = dojo_configs.iter().any(|config| {
+            self.root_path.join(config).exists() ||
+            self.root_path.join("contracts").join(config).exists()
+        });
+
+        if has_dojo_config {
+            profile.add_tool(Tool::Dojo, ToolInfo {
+                detected_by: vec!["dojo_*.toml".to_string()],
+                version: None,
+            });
+
+            // Dojo projects also need Scarb (Cairo package manager)
+            // Check root and contracts/ subdirectory
+            if self.root_path.join("Scarb.toml").exists() ||
+               self.root_path.join("contracts/Scarb.toml").exists() {
+                profile.add_tool(Tool::Scarb, ToolInfo {
+                    detected_by: vec!["Scarb.toml (Dojo project)".to_string()],
+                    version: self.extract_scarb_version()?,
+                });
+            }
+
+            // Also implies Cairo
+            if !profile.languages.contains_key(&Language::Cairo) {
+                profile.add_language(Language::Cairo, LanguageInfo {
+                    detected_by: vec!["dojo_*.toml".to_string()],
+                    version: self.extract_cairo_version()?,
+                    file_count: 0,
+                });
+            }
+        }
+
         Ok(())
     }
 
@@ -306,6 +341,16 @@ impl Scanner {
 
     fn extract_solc_version(&self) -> Result<Option<String>> {
         // TODO: Parse foundry.toml for solc version
+        Ok(None)
+    }
+
+    fn extract_scarb_version(&self) -> Result<Option<String>> {
+        // TODO: Parse Scarb.toml for cairo-version
+        Ok(None)
+    }
+
+    fn extract_cairo_version(&self) -> Result<Option<String>> {
+        // TODO: Parse Scarb.toml for cairo-version field
         Ok(None)
     }
 }
