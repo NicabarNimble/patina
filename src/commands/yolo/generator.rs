@@ -28,10 +28,8 @@ impl Generator {
         // Generate devcontainer.json
         self.generate_devcontainer_json(&devcontainer_path, profile, features)?;
 
-        // Generate Dockerfile if needed for custom features
-        if self.needs_custom_dockerfile(features) {
-            self.generate_dockerfile(&devcontainer_path, profile, features)?;
-        }
+        // Always generate Dockerfile with Claude Code CLI
+        self.generate_dockerfile(&devcontainer_path, profile, features)?;
 
         // Always generate docker-compose.yml for CLI usage
         self.generate_docker_compose(&devcontainer_path, profile, features)?;
@@ -70,13 +68,14 @@ impl Generator {
                 "PATINA_YOLO": "1",
                 "SKIP_PERMISSIONS": "1",
                 "AI_WORKSPACE": "1",
-                "IS_SANDBOX": "1"
+                "IS_SANDBOX": "1",
+                "CLAUDE_CONFIG_DIR": "/root/.claude-linux"
             },
 
-            // Mounts for credentials
+            // Mounts for shared Claude credentials (Max subscription)
             "mounts": [
                 "source=${localWorkspaceFolder}/layer,target=/workspace/layer,type=bind",
-                "source=${localEnv:HOME}/.patina/credentials,target=/root/.credentials,type=bind,readonly"
+                "source=${localEnv:HOME}/.patina/claude-linux,target=/root/.claude-linux,type=bind"
             ],
 
             // VSCode/Claude Code extensions
@@ -102,16 +101,11 @@ impl Generator {
             "postCreateCommand": "bash /workspace/.devcontainer/yolo-setup.sh"
         });
 
-        // If we have a dockerfile, reference it
-        if self.needs_custom_dockerfile(features) {
-            config["build"] = json!({
-                "dockerfile": "Dockerfile",
-                "context": "."
-            });
-        } else {
-            // Use base image
-            config["image"] = json!("mcr.microsoft.com/devcontainers/base:ubuntu");
-        }
+        // Always reference Dockerfile (includes Claude Code CLI)
+        config["build"] = json!({
+            "dockerfile": "Dockerfile",
+            "context": "."
+        });
 
         // If we have services, reference docker-compose
         if !profile.services.is_empty() {
@@ -152,19 +146,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 RUN npm install -g @anthropic-ai/claude-code@latest \
     && mkdir -p /root/.claude-linux
 
-# Create Claude wrapper script with YOLO permissions
-RUN echo '#!/bin/bash' > /usr/local/bin/claude \
-    && echo 'export IS_SANDBOX=1' >> /usr/local/bin/claude \
-    && echo 'export CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS=true' >> /usr/local/bin/claude \
-    && echo 'export CLAUDE_CONFIG_DIR=/root/.claude-linux' >> /usr/local/bin/claude \
-    && echo 'CLAUDE_CLI="/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js"' >> /usr/local/bin/claude \
-    && echo '[ ! -f "$CLAUDE_CLI" ] && CLAUDE_CLI="/usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js"' >> /usr/local/bin/claude \
-    && echo 'exec node "$CLAUDE_CLI" --dangerously-skip-permissions "$@"' >> /usr/local/bin/claude \
-    && chmod +x /usr/local/bin/claude
+# Configure Claude settings using official settings.json API
+# YOLO mode with extended timeouts (1 hour for long builds)
+RUN echo '{"permissions":{"defaultMode":"bypassPermissions","allow":[],"deny":[]},"env":{"BASH_DEFAULT_TIMEOUT_MS":3600000,"BASH_MAX_TIMEOUT_MS":3600000}}' > /root/.claude-linux/settings.json
 
-# Add Claude alias to bashrc for interactive sessions
-RUN echo 'export CLAUDE_CONFIG_DIR=/root/.claude-linux' >> /etc/bash.bashrc \
-    && echo 'alias claude="claude --dangerously-skip-permissions"' >> /etc/bash.bashrc
+# Set Claude config directory for bind-mounted credentials
+RUN echo 'export CLAUDE_CONFIG_DIR=/root/.claude-linux' >> /etc/bash.bashrc
 
 "#
         );
@@ -230,50 +217,28 @@ CMD ["/bin/bash"]
         ];
 
         // Main workspace service with YOLO environment variables
-        let workspace_config = if self.needs_custom_dockerfile(features) {
-            json!({
-                "build": {
-                    "context": ".",
-                    "dockerfile": "Dockerfile"
-                },
-                "volumes": [
-                    "../:/workspace:cached",
-                    format!("{}/.patina/claude-linux:/root/.claude-linux:cached", home_dir),
-                    format!("{}/.claude:/root/.claude-macos:ro", home_dir)
-                ],
-                "working_dir": "/workspace",
-                "command": "sleep infinity",
-                "ports": common_ports.clone(),
-                "environment": {
-                    "PATINA_YOLO": "1",
-                    "SKIP_PERMISSIONS": "1",
-                    "AI_WORKSPACE": "1",
-                    "IS_SANDBOX": "1",
-                    "CLAUDE_CONFIG_DIR": "/root/.claude-linux",
-                    "CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS": "true"
-                }
-            })
-        } else {
-            json!({
-                "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
-                "volumes": [
-                    "../:/workspace:cached",
-                    format!("{}/.patina/claude-linux:/root/.claude-linux:cached", home_dir),
-                    format!("{}/.claude:/root/.claude-macos:ro", home_dir)
-                ],
-                "working_dir": "/workspace",
-                "command": "sleep infinity",
-                "ports": common_ports,
-                "environment": {
-                    "PATINA_YOLO": "1",
-                    "SKIP_PERMISSIONS": "1",
-                    "AI_WORKSPACE": "1",
-                    "IS_SANDBOX": "1",
-                    "CLAUDE_CONFIG_DIR": "/root/.claude-linux",
-                    "CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS": "true"
-                }
-            })
-        };
+        // Always build from Dockerfile (includes Claude Code CLI)
+        let workspace_config = json!({
+            "build": {
+                "context": ".",
+                "dockerfile": "Dockerfile"
+            },
+            "volumes": [
+                "../:/workspace:cached",
+                format!("{}/.patina/claude-linux:/root/.claude-linux:cached", home_dir),
+                format!("{}/.claude:/root/.claude-macos:ro", home_dir)
+            ],
+            "working_dir": "/workspace",
+            "command": "sleep infinity",
+            "ports": common_ports,
+            "environment": {
+                "PATINA_YOLO": "1",
+                "SKIP_PERMISSIONS": "1",
+                "AI_WORKSPACE": "1",
+                "IS_SANDBOX": "1",
+                "CLAUDE_CONFIG_DIR": "/root/.claude-linux"
+            }
+        });
         services.insert("workspace".to_string(), workspace_config);
 
         // Add detected services
@@ -310,9 +275,29 @@ if [ -z "$(git config --global user.email)" ]; then
     git config --global user.name "AI Assistant"
 fi
 
-# Create credentials directory if needed
-mkdir -p ~/.credentials
+# Create Claude config directory
 mkdir -p ~/.claude-linux
+
+# Configure Claude settings using official settings.json API
+# This ensures settings are up-to-date even if Dockerfile settings were cached
+echo "🔧 Configuring Claude settings..."
+cat > ~/.claude-linux/settings.json <<'EOF'
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [],
+    "deny": []
+  },
+  "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": 3600000,
+    "BASH_MAX_TIMEOUT_MS": 3600000
+  }
+}
+EOF
+
+echo "✅ Claude configured with:"
+echo "  - Permissions: YOLO mode (bypassed)"
+echo "  - Bash timeout: 1 hour (3600000ms)"
 
 # Set up shell aliases for YOLO mode
 cat >> ~/.bashrc <<'EOF'
@@ -331,26 +316,28 @@ fi
 echo ""
 echo "🤖 Checking Claude Code authentication..."
 if [ -f ~/.claude-linux/.credentials.json ]; then
-    echo "✅ Claude already authenticated"
+    echo "✅ Claude already authenticated with Max subscription"
+    echo "   Credentials shared from ~/.patina/claude-linux/"
 else
     echo "⚠️  Claude not authenticated yet"
     echo ""
-    echo "To enable autonomous AI work, authenticate Claude:"
-    echo "  1. Run: claude login"
-    echo "  2. Follow the browser authentication flow"
-    echo "  3. Credentials will persist across container rebuilds"
+    echo "To enable autonomous AI work with Max subscription:"
+    echo "  1. On your HOST machine (Mac), run: claude login"
+    echo "  2. Move credentials: mv ~/.claude/.credentials.json ~/.patina/claude-linux/"
+    echo "  3. Credentials will work in ALL patina containers"
     echo ""
     echo "After authentication, you can use:"
     echo "  • claude 'task description' - for autonomous AI work"
     echo "  • All changes stay isolated in this container"
+    echo "  • One login works across all projects"
     echo ""
 fi
 
 echo "✅ YOLO workspace ready!"
 echo ""
 echo "💭 Available Commands:"
-echo "  • claude 'task' - Autonomous AI assistant (requires authentication)"
-echo "  • forge, anvil, cast - Blockchain development tools"
+echo "  • claude 'task' - Autonomous AI assistant (Max subscription shared)"
+echo "  • Language tools based on detected stack"
 echo "  • git, npm, node - Standard development tools"
 echo ""
 "#;
