@@ -444,18 +444,36 @@ ENV PATH="/root/.cairo/bin:$PATH"
 
     fn get_dojo_install(&self) -> String {
         r#"
-# Install Dojo Framework (includes sozo, torii, katana)
+# Install asdf version manager for Dojo/Scarb version management
+RUN mkdir -p /root/.local/bin && \
+    wget -q https://github.com/asdf-vm/asdf/releases/download/v0.18.0/asdf-v0.18.0-linux-amd64.tar.gz && \
+    tar -xzf asdf-v0.18.0-linux-amd64.tar.gz -C /root/.local/bin/ && \
+    chmod +x /root/.local/bin/asdf && \
+    rm asdf-v0.18.0-linux-amd64.tar.gz
+
+# Configure asdf environment
+ENV ASDF_DATA_DIR="/root/.asdf"
+ENV PATH="/root/.local/bin:/root/.asdf/shims:$PATH"
+
+# Install Scarb via asdf (multiple versions for compatibility)
+RUN /root/.local/bin/asdf plugin add scarb && \
+    /root/.local/bin/asdf install scarb 2.10.1 && \
+    /root/.local/bin/asdf install scarb 2.12.2 && \
+    /root/.local/bin/asdf reshim
+
+# Install Dojo using dojoup (asdf-dojo plugin has bugs)
+# Install latest as default, projects can specify version in .tool-versions for scarb
 RUN curl -L https://install.dojoengine.org | bash && \
     . /root/.dojo/env && \
     dojoup install && \
     echo '. /root/.dojo/env' >> /etc/bash.bashrc
 
-# Install Scarb (Cairo package manager for Dojo)
-RUN curl --proto '=https' --tlsv1.2 -sSf https://docs.swmansion.com/scarb/install.sh | bash && \
-    echo 'export PATH="/root/.local/bin:$PATH"' >> /etc/bash.bashrc
+# Add asdf and Dojo to PATH
+RUN echo 'export ASDF_DATA_DIR="/root/.asdf"' >> /etc/bash.bashrc && \
+    echo 'export PATH="/root/.dojo/bin:/root/.local/bin:/root/.asdf/shims:$PATH"' >> /etc/bash.bashrc
 
-# Add Dojo and Scarb to PATH for docker exec
-ENV PATH="/root/.dojo/bin:/root/.local/bin:$PATH"
+# Set PATH for docker exec
+ENV PATH="/root/.dojo/bin:/root/.local/bin:/root/.asdf/shims:$PATH"
 
 "#.to_string()
     }
