@@ -49,9 +49,13 @@ impl FeatureMapper {
                     }
                 }
                 Language::Cairo => {
-                    features.push(DevContainerFeature::Cairo {
-                        version: info.version.clone().unwrap_or_else(|| "latest".to_string()),
-                    });
+                    // Only add Cairo if Dojo is not present
+                    // Dojo projects will be handled by Tool::Dojo below
+                    if !profile.tools.contains_key(&Tool::Dojo) {
+                        features.push(DevContainerFeature::Cairo {
+                            version: info.version.clone().unwrap_or_else(|| "latest".to_string()),
+                        });
+                    }
                 }
                 _ => {}
             }
@@ -81,10 +85,18 @@ impl FeatureMapper {
                 Tool::MudFramework => {
                     features.push(DevContainerFeature::MudCli);
                 }
-                Tool::Scarb => {
-                    features.push(DevContainerFeature::Scarb {
+                Tool::Dojo => {
+                    features.push(DevContainerFeature::Dojo {
                         version: info.version.clone().unwrap_or_else(|| "latest".to_string()),
                     });
+                }
+                Tool::Scarb => {
+                    // Skip Scarb if Dojo is present (Dojo installs its own Scarb)
+                    if !profile.tools.contains_key(&Tool::Dojo) {
+                        features.push(DevContainerFeature::Scarb {
+                            version: info.version.clone().unwrap_or_else(|| "latest".to_string()),
+                        });
+                    }
                 }
                 Tool::Poetry => {
                     features.push(DevContainerFeature::Poetry);
@@ -113,6 +125,7 @@ pub enum DevContainerFeature {
     Foundry { version: String },
     Solc { version: String },
     Cairo { version: String },
+    Dojo { version: String },
     Scarb { version: String },
     Hardhat,
     MudCli,
@@ -185,6 +198,10 @@ impl DevContainerFeature {
             DevContainerFeature::Cairo { version } => {
                 let spec = serde_json::json!({ "version": version });
                 ("ghcr.io/patina/features/cairo:1".to_string(), spec)
+            }
+            DevContainerFeature::Dojo { version } => {
+                let spec = serde_json::json!({ "version": version });
+                ("ghcr.io/patina/features/dojo:1".to_string(), spec)
             }
             DevContainerFeature::Scarb { version } => {
                 let spec = serde_json::json!({ "version": version });
