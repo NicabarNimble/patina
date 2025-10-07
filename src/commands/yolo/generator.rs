@@ -107,12 +107,10 @@ impl Generator {
             "context": "."
         });
 
-        // If we have services, reference docker-compose
-        if !profile.services.is_empty() {
-            config["dockerComposeFile"] = json!("docker-compose.yml");
-            config["service"] = json!("workspace");
-            config["shutdownAction"] = json!("stopCompose");
-        }
+        // Always reference docker-compose.yml (we always generate it)
+        config["dockerComposeFile"] = json!("docker-compose.yml");
+        config["service"] = json!("workspace");
+        config["shutdownAction"] = json!("stopCompose");
 
         let json_content = serde_json::to_string_pretty(&config)?;
         let json_path = devcontainer_path.join("devcontainer.json");
@@ -161,6 +159,9 @@ RUN echo 'export CLAUDE_CONFIG_DIR=/root/.claude-linux' >> /etc/bash.bashrc
             match feature {
                 DevContainerFeature::Foundry { .. } => {
                     dockerfile.push_str(&self.get_foundry_install());
+                }
+                DevContainerFeature::Dojo { .. } => {
+                    dockerfile.push_str(&self.get_dojo_install());
                 }
                 DevContainerFeature::Cairo { .. } => {
                     dockerfile.push_str(&self.get_cairo_install());
@@ -248,7 +249,6 @@ CMD ["/bin/bash"]
         }
 
         let compose = json!({
-            "version": "3.8",
             "services": services
         });
 
@@ -352,6 +352,7 @@ echo ""
     fn needs_custom_dockerfile(&self, features: &[DevContainerFeature]) -> bool {
         features.iter().any(|f| matches!(f,
             DevContainerFeature::Foundry { .. } |
+            DevContainerFeature::Dojo { .. } |
             DevContainerFeature::Cairo { .. } |
             DevContainerFeature::Scarb { .. }
         ))
@@ -441,14 +442,32 @@ ENV PATH="/root/.cairo/bin:$PATH"
 "#.to_string()
     }
 
+    fn get_dojo_install(&self) -> String {
+        r#"
+# Install Dojo Framework (includes sozo, torii, katana)
+RUN curl -L https://install.dojoengine.org | bash && \
+    . /root/.dojo/env && \
+    dojoup install && \
+    echo '. /root/.dojo/env' >> /etc/bash.bashrc
+
+# Install Scarb (Cairo package manager for Dojo)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://docs.swmansion.com/scarb/install.sh | bash && \
+    echo 'export PATH="/root/.local/bin:$PATH"' >> /etc/bash.bashrc
+
+# Add Dojo and Scarb to PATH for docker exec
+ENV PATH="/root/.dojo/bin:/root/.local/bin:$PATH"
+
+"#.to_string()
+    }
+
     fn get_scarb_install(&self) -> String {
         r#"
 # Install Scarb (Cairo package manager)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://docs.swmansion.com/scarb/install.sh | bash && \
-    echo 'export PATH="/root/.scarb/bin:$PATH"' >> /etc/bash.bashrc
+    echo 'export PATH="/root/.local/bin:$PATH"' >> /etc/bash.bashrc
 
 # Add Scarb to PATH for docker exec
-ENV PATH="/root/.scarb/bin:$PATH"
+ENV PATH="/root/.local/bin:$PATH"
 
 "#.to_string()
     }
