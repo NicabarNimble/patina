@@ -105,6 +105,7 @@ pub enum Tool {
     Hardhat,
     Truffle,
     MudFramework,
+    Dojo,
     Scarb,
 
     // Dev Tools
@@ -126,6 +127,7 @@ impl Tool {
             "hardhat" => Some(Tool::Hardhat),
             "truffle" => Some(Tool::Truffle),
             "mud" | "mud-framework" => Some(Tool::MudFramework),
+            "dojo" => Some(Tool::Dojo),
             "scarb" => Some(Tool::Scarb),
             "git" => Some(Tool::Git),
             "docker" => Some(Tool::Docker),
@@ -148,6 +150,7 @@ impl fmt::Display for Tool {
             Tool::Hardhat => write!(f, "Hardhat"),
             Tool::Truffle => write!(f, "Truffle"),
             Tool::MudFramework => write!(f, "MUD Framework"),
+            Tool::Dojo => write!(f, "Dojo"),
             Tool::Scarb => write!(f, "Scarb"),
             Tool::Git => write!(f, "Git"),
             Tool::Docker => write!(f, "Docker"),
