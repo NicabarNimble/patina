@@ -204,9 +204,6 @@ CMD ["/bin/bash"]
 
         let mut services = serde_json::Map::new();
 
-        // Get home directory for credential mounts
-        let home_dir = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-
         // Common development ports to expose
         let common_ports = vec![
             "3000:3000",   // Common web dev
@@ -226,8 +223,8 @@ CMD ["/bin/bash"]
             },
             "volumes": [
                 "../:/workspace:cached",
-                format!("{}/.patina/claude-linux:/root/.claude-linux:cached", home_dir),
-                format!("{}/.claude:/root/.claude-macos:ro", home_dir)
+                "${HOME}/.patina/claude-linux:/root/.claude-linux:cached",
+                "${HOME}/.claude:/root/.claude-macos:ro"
             ],
             "working_dir": "/workspace",
             "command": "sleep infinity",
