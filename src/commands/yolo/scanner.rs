@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use std::path::{Path, PathBuf};
-use glob::glob;
+use ignore::WalkBuilder;
 
 use super::profile::{RepoProfile, Language, LanguageInfo, Tool, ToolInfo, Service};
 
@@ -287,10 +287,20 @@ impl Scanner {
 
     // Helper methods
     fn count_files_with_extension(&self, ext: &str) -> Result<usize> {
-        let pattern = format!("{}/**/*.{}", self.root_path.display(), ext);
-        let count = glob(&pattern)?
+        // Use ignore crate which respects .gitignore and common patterns
+        let count = WalkBuilder::new(&self.root_path)
+            .hidden(false)  // Include hidden files
+            .git_ignore(true)  // Respect .gitignore
+            .git_global(true)  // Respect global gitignore
+            .git_exclude(true)  // Respect .git/info/exclude
+            .require_git(false)  // Work even if not a git repo
+            .max_depth(Some(10))  // Limit depth to avoid infinite recursion
+            .build()
             .filter_map(Result::ok)
-            .filter(|p| p.is_file())
+            .filter(|entry| {
+                entry.file_type().map(|ft| ft.is_file()).unwrap_or(false)
+                    && entry.path().extension().and_then(|e| e.to_str()) == Some(ext)
+            })
             .count();
         Ok(count)
     }
