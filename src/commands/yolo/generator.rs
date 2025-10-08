@@ -3,6 +3,7 @@
 use anyhow::{Result, Context};
 use std::path::{Path, PathBuf};
 use std::fs;
+use std::process::Command;
 use serde_json::json;
 
 use super::profile::{RepoProfile, Service};
@@ -10,13 +11,24 @@ use super::features::DevContainerFeature;
 
 pub struct Generator {
     root_path: PathBuf,
+    has_1password_cli: bool,
 }
 
 impl Generator {
     pub fn new(path: &Path) -> Self {
+        let has_1password_cli = Self::detect_1password_cli();
         Self {
             root_path: path.to_path_buf(),
+            has_1password_cli,
         }
+    }
+
+    fn detect_1password_cli() -> bool {
+        Command::new("which")
+            .arg("op")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
     }
 
     pub fn generate(&self, profile: &RepoProfile, features: &[DevContainerFeature]) -> Result<()> {
@@ -150,9 +162,27 @@ RUN echo '{"permissions":{"defaultMode":"bypassPermissions","allow":[],"deny":[]
 
 # Set Claude config directory for bind-mounted credentials
 RUN echo 'export CLAUDE_CONFIG_DIR=/root/.claude-linux' >> /etc/bash.bashrc
-
 "#
         );
+
+        // Install 1Password CLI if available on host (for secure credential management)
+        if self.has_1password_cli {
+            dockerfile.push_str(r#"
+# Install 1Password CLI for secure credential management
+RUN curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
+    gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" | \
+    tee /etc/apt/sources.list.d/1password.list && \
+    mkdir -p /etc/debsig/policies/AC2D62742012EA22/ && \
+    curl -sS https://downloads.1password.com/linux/debian/debsig/1password.pol | \
+    tee /etc/debsig/policies/AC2D62742012EA22/1password.pol && \
+    mkdir -p /usr/share/debsig/keyrings/AC2D62742012EA22 && \
+    curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
+    gpg --dearmor --output /usr/share/debsig/keyrings/AC2D62742012EA22/debsig.gpg && \
+    apt-get update && apt-get install -y 1password-cli
+
+"#);
+        }
 
         // Add custom installations for features not available as official features
         for feature in features {
@@ -216,16 +246,35 @@ CMD ["/bin/bash"]
 
         // Main workspace service with YOLO environment variables
         // Always build from Dockerfile (includes Claude Code CLI)
+
+        // Configure volumes based on 1Password CLI availability
+        let mut volumes = vec![
+            json!("../:/workspace:cached"),
+            json!("${HOME}/.claude:/root/.claude-macos:ro"),
+        ];
+
+        // If 1Password CLI available, use tmpfs for credentials (RAM-only storage)
+        // and mount op config for authentication
+        if self.has_1password_cli {
+            volumes.push(json!({
+                "type": "tmpfs",
+                "target": "/root/.claude-linux",
+                "tmpfs": {
+                    "size": 10485760  // 10MB tmpfs
+                }
+            }));
+            // Mount 1Password config for authentication
+            volumes.push(json!("${HOME}/.config/op:/root/.config/op:ro"));
+        } else {
+            volumes.push(json!("${HOME}/.patina/claude-linux:/root/.claude-linux:cached"));
+        }
+
         let workspace_config = json!({
             "build": {
                 "context": ".",
                 "dockerfile": "Dockerfile"
             },
-            "volumes": [
-                "../:/workspace:cached",
-                "${HOME}/.patina/claude-linux:/root/.claude-linux:cached",
-                "${HOME}/.claude:/root/.claude-macos:ro"
-            ],
+            "volumes": volumes,
             "working_dir": "/workspace",
             "command": "sleep infinity",
             "ports": common_ports,
@@ -234,7 +283,8 @@ CMD ["/bin/bash"]
                 "SKIP_PERMISSIONS": "1",
                 "AI_WORKSPACE": "1",
                 "IS_SANDBOX": "1",
-                "CLAUDE_CONFIG_DIR": "/root/.claude-linux"
+                "CLAUDE_CONFIG_DIR": "/root/.claude-linux",
+                "PATINA_USE_1PASSWORD": if self.has_1password_cli { "1" } else { "0" }
             }
         });
         services.insert("workspace".to_string(), workspace_config);
@@ -312,7 +362,32 @@ fi
 # Check Claude authentication
 echo ""
 echo "🤖 Checking Claude Code authentication..."
-if [ -f ~/.claude-linux/.credentials.json ]; then
+
+# If 1Password CLI is available, fetch credentials from vault
+if [ "${PATINA_USE_1PASSWORD}" = "1" ]; then
+    echo "🔐 Fetching credentials from 1Password vault..."
+
+    # Check if op CLI is available
+    if command -v op &> /dev/null; then
+        # Fetch credential from 1Password and save to tmpfs
+        if op document get "Patina Claude Max Subscription" --vault Private > ~/.claude-linux/.credentials.json 2>/dev/null; then
+            chmod 600 ~/.claude-linux/.credentials.json
+            echo "✅ Claude authenticated with Max subscription (from 1Password)"
+            echo "   🔒 Credentials in RAM-only storage (tmpfs)"
+            echo "   🔒 Credentials never touch disk"
+        else
+            echo "⚠️  Failed to fetch credentials from 1Password"
+            echo ""
+            echo "To fix:"
+            echo "  1. Ensure you're signed in: op signin"
+            echo "  2. Store credential: op document create ~/.patina/claude-linux/.credentials.json --title 'Patina Claude Max Subscription'"
+            echo ""
+        fi
+    else
+        echo "⚠️  1Password CLI not available in container"
+        echo "   Install op CLI: https://developer.1password.com/docs/cli/get-started/"
+    fi
+elif [ -f ~/.claude-linux/.credentials.json ]; then
     echo "✅ Claude already authenticated with Max subscription"
     echo "   Credentials shared from ~/.patina/claude-linux/"
 else
@@ -323,10 +398,10 @@ else
     echo "  2. Move credentials: mv ~/.claude/.credentials.json ~/.patina/claude-linux/"
     echo "  3. Credentials will work in ALL patina containers"
     echo ""
-    echo "After authentication, you can use:"
-    echo "  • claude 'task description' - for autonomous AI work"
-    echo "  • All changes stay isolated in this container"
-    echo "  • One login works across all projects"
+    echo "Or use 1Password for secure credential storage:"
+    echo "  1. Install op CLI: brew install --cask 1password-cli"
+    echo "  2. Store credential: op document create ~/.patina/claude-linux/.credentials.json --title 'Patina Claude Max Subscription'"
+    echo "  3. Regenerate devcontainer: patina yolo"
     echo ""
 fi
 
@@ -341,6 +416,65 @@ echo ""
 
         let setup_path = devcontainer_path.join("yolo-setup.sh");
         fs::write(setup_path, setup_script)?;
+
+        // Generate 1Password credential launcher script if op CLI available
+        if self.has_1password_cli {
+            self.generate_1password_launcher(&devcontainer_path)?;
+        }
+
+        Ok(())
+    }
+
+    fn generate_1password_launcher(&self, devcontainer_path: &Path) -> Result<()> {
+        let launcher_script = r#"#!/bin/bash
+# 1Password Secure Launcher
+# Fetches credentials from 1Password on HOST and injects into container
+
+set -e
+
+echo "🔐 Fetching credentials from 1Password..."
+
+# Fetch credential from 1Password on the host (uses biometric auth)
+CRED=$(op document get "Patina Claude Max Subscription" --vault Private 2>/dev/null)
+
+if [ $? -ne 0 ]; then
+    echo "❌ Failed to fetch credentials from 1Password"
+    echo "   Make sure you're authenticated: op signin"
+    exit 1
+fi
+
+# Encode credential to pass safely through environment
+CRED_B64=$(echo "$CRED" | base64)
+
+# Launch container with credential as environment variable
+echo "🚀 Launching container with secure credentials..."
+docker compose -f .devcontainer/docker-compose.yml up -d --build
+
+# Inject credential into container's tmpfs
+docker exec devcontainer-workspace-1 bash -c "
+    echo '$CRED_B64' | base64 -d > /root/.claude-linux/.credentials.json
+    chmod 600 /root/.claude-linux/.credentials.json
+    echo '✅ Credentials injected into RAM-only storage'
+"
+
+echo ""
+echo "✅ Container ready with secure credentials!"
+echo "   Connect: docker exec -it devcontainer-workspace-1 bash"
+echo "   🔒 Credentials in tmpfs (RAM-only)"
+echo ""
+"#;
+
+        let launcher_path = devcontainer_path.join("launch-secure.sh");
+        fs::write(&launcher_path, launcher_script)?;
+
+        // Make executable
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&launcher_path)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&launcher_path, perms)?;
+        }
 
         Ok(())
     }
