@@ -1,0 +1,103 @@
+name: Populate Repo Cleanup Project
+
+on:
+  workflow_dispatch:  # Manual trigger only
+
+jobs:
+  populate-project:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Fetch all repos and populate project
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔍 Fetching all repos..."
+
+          # Fetch all repos with metadata
+          REPOS=$(gh repo list NicabarNimble --limit 1000 \
+            --json name,isFork,isPrivate,pushedAt,diskUsage,stargazerCount,url)
+
+          TOTAL=$(echo "$REPOS" | jq 'length')
+          echo "📊 Found $TOTAL repositories"
+
+          # Process each repo
+          echo "$REPOS" | jq -c '.[]' | while read -r repo; do
+            NAME=$(echo "$repo" | jq -r '.name')
+            IS_FORK=$(echo "$repo" | jq -r '.isFork')
+            IS_PRIVATE=$(echo "$repo" | jq -r '.isPrivate')
+            PUSHED_AT=$(echo "$repo" | jq -r '.pushedAt[:10]')
+            DISK_KB=$(echo "$repo" | jq -r '.diskUsage')
+            STARS=$(echo "$repo" | jq -r '.stargazerCount')
+            URL=$(echo "$repo" | jq -r '.url')
+
+            # Determine fork status
+            if [ "$IS_FORK" = "true" ]; then
+              # Check if fork is old (pre-2024)
+              if [[ "$PUSHED_AT" < "2024-01-01" ]]; then
+                FORK_STATUS="Abandoned Fork"
+                DECISION="Needs Review"
+              else
+                FORK_STATUS="Active Fork"
+                DECISION="Keep"
+              fi
+            else
+              FORK_STATUS="Original"
+              # Check if original is old and unused
+              if [[ "$PUSHED_AT" < "2023-01-01" ]] && [ "$STARS" = "0" ]; then
+                DECISION="Needs Review"
+              else
+                DECISION="Keep"
+              fi
+            fi
+
+            # Visibility badge
+            if [ "$IS_PRIVATE" = "true" ]; then
+              VIS="🔒 Private"
+            else
+              VIS="🌐 Public"
+            fi
+
+            # Build description
+            BODY="**Repo**: [$NAME]($URL)
+**Type**: $FORK_STATUS
+**Visibility**: $VIS
+**Last Activity**: $PUSHED_AT
+**Size**: ${DISK_KB}KB
+**Stars**: $STARS
+
+---
+### Auto-Assessment
+**Suggested Decision**: $DECISION
+
+### Review Notes
+<!-- Add your notes here -->
+"
+
+            echo "  Adding: $NAME ($FORK_STATUS, $PUSHED_AT)"
+
+            # Create draft issue in project
+            gh project item-create 4 --owner NicabarNimble \
+              --title "$NAME" \
+              --body "$BODY" || echo "    ⚠️  Failed to add $NAME"
+
+            # Small delay to avoid rate limits
+            sleep 0.5
+          done
+
+          echo "✅ Project populated with $TOTAL repositories"
+          echo "🔗 View at: https://github.com/users/NicabarNimble/projects/4"
+
+      - name: Summary
+        run: |
+          echo "## 📋 Repo Cleanup Project Populated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All 134 repositories have been added to Project #4" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Next Steps:**" >> $GITHUB_STEP_SUMMARY
+          echo "1. Visit: https://github.com/users/NicabarNimble/projects/4" >> $GITHUB_STEP_SUMMARY
+          echo "2. Review each repo's auto-assessment" >> $GITHUB_STEP_SUMMARY
+          echo "3. Update 'Decision' field: Keep / Archive / Delete" >> $GITHUB_STEP_SUMMARY
+          echo "4. Add notes for repos that need further investigation" >> $GITHUB_STEP_SUMMARY
