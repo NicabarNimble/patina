@@ -1,13 +1,13 @@
 //! Generator - Creates devcontainer files from profile and features
 
-use anyhow::{Result, Context};
-use std::path::{Path, PathBuf};
-use std::fs;
-use std::process::Command;
+use anyhow::{Context, Result};
 use serde_json::json;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
-use super::profile::{RepoProfile, Service};
 use super::features::DevContainerFeature;
+use super::profile::{RepoProfile, Service};
 
 pub struct Generator {
     root_path: PathBuf,
@@ -58,7 +58,9 @@ impl Generator {
         profile: &RepoProfile,
         features: &[DevContainerFeature],
     ) -> Result<()> {
-        let project_name = profile.project_name.as_deref()
+        let project_name = profile
+            .project_name
+            .as_deref()
             .or_else(|| self.root_path.file_name().and_then(|n| n.to_str()))
             .unwrap_or("workspace");
 
@@ -162,7 +164,7 @@ RUN echo '{"permissions":{"defaultMode":"bypassPermissions","allow":[],"deny":[]
 
 # Set Claude config directory for bind-mounted credentials
 RUN echo 'export CLAUDE_CONFIG_DIR=/root/.claude-linux' >> /etc/bash.bashrc
-"#
+"#,
         );
 
         // Install 1Password CLI if available on host (for secure credential management)
@@ -213,7 +215,7 @@ ENV PATINA_YOLO=1
 
 # Set up shell
 CMD ["/bin/bash"]
-"#
+"#,
         );
 
         let dockerfile_path = devcontainer_path.join("Dockerfile");
@@ -228,7 +230,9 @@ CMD ["/bin/bash"]
         profile: &RepoProfile,
         features: &[DevContainerFeature],
     ) -> Result<()> {
-        let project_name = profile.project_name.as_deref()
+        let project_name = profile
+            .project_name
+            .as_deref()
             .or_else(|| self.root_path.file_name().and_then(|n| n.to_str()))
             .unwrap_or("workspace");
 
@@ -236,12 +240,12 @@ CMD ["/bin/bash"]
 
         // Common development ports to expose
         let common_ports = vec![
-            "3000:3000",   // Common web dev
-            "3001:3001",   // Alternative web
-            "3008:3008",   // MUD explorer
-            "8000:8000",   // Alternative web
-            "8080:8080",   // Alternative web
-            "8545:8545",   // Anvil/local blockchain
+            "3000:3000", // Common web dev
+            "3001:3001", // Alternative web
+            "3008:3008", // MUD explorer
+            "8000:8000", // Alternative web
+            "8080:8080", // Alternative web
+            "8545:8545", // Anvil/local blockchain
         ];
 
         // Main workspace service with YOLO environment variables
@@ -266,7 +270,9 @@ CMD ["/bin/bash"]
             // Mount 1Password config for authentication
             volumes.push(json!("${HOME}/.config/op:/root/.config/op:ro"));
         } else {
-            volumes.push(json!("${HOME}/.patina/claude-linux:/root/.claude-linux:cached"));
+            volumes.push(json!(
+                "${HOME}/.patina/claude-linux:/root/.claude-linux:cached"
+            ));
         }
 
         let workspace_config = json!({
@@ -306,11 +312,7 @@ CMD ["/bin/bash"]
         Ok(())
     }
 
-    fn generate_yolo_setup(
-        &self,
-        devcontainer_path: &Path,
-        _profile: &RepoProfile,
-    ) -> Result<()> {
+    fn generate_yolo_setup(&self, devcontainer_path: &Path, _profile: &RepoProfile) -> Result<()> {
         let setup_script = r#"#!/bin/bash
 # YOLO Workspace Setup Script
 
@@ -481,12 +483,15 @@ echo ""
 
     // Helper methods
     fn needs_custom_dockerfile(&self, features: &[DevContainerFeature]) -> bool {
-        features.iter().any(|f| matches!(f,
-            DevContainerFeature::Foundry { .. } |
-            DevContainerFeature::Dojo { .. } |
-            DevContainerFeature::Cairo { .. } |
-            DevContainerFeature::Scarb { .. }
-        ))
+        features.iter().any(|f| {
+            matches!(
+                f,
+                DevContainerFeature::Foundry { .. }
+                    | DevContainerFeature::Dojo { .. }
+                    | DevContainerFeature::Cairo { .. }
+                    | DevContainerFeature::Scarb { .. }
+            )
+        })
     }
 
     fn get_vscode_extensions(&self, features: &[DevContainerFeature]) -> Vec<String> {
@@ -506,8 +511,7 @@ echo ""
                 DevContainerFeature::Node { .. } => {
                     extensions.push("dbaeumer.vscode-eslint".to_string());
                 }
-                DevContainerFeature::Solc { .. } |
-                DevContainerFeature::Foundry { .. } => {
+                DevContainerFeature::Solc { .. } | DevContainerFeature::Foundry { .. } => {
                     extensions.push("JuanBlanco.solidity".to_string());
                 }
                 _ => {}
@@ -544,7 +548,7 @@ echo ""
             _ => json!({
                 "image": service.image.clone().unwrap_or_else(|| "alpine:latest".to_string()),
                 "ports": service.ports.iter().map(|p| format!("{}:{}", p, p)).collect::<Vec<_>>()
-            })
+            }),
         }
     }
 
@@ -558,7 +562,8 @@ RUN curl -L https://foundry.paradigm.xyz | bash && \
 # Add Foundry to PATH for docker exec
 ENV PATH="/root/.foundry/bin:$PATH"
 
-"#.to_string()
+"#
+        .to_string()
     }
 
     fn get_cairo_install(&self) -> String {
@@ -570,7 +575,8 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://cairo-lang.org/install.sh | sh 
 # Add Cairo to PATH for docker exec
 ENV PATH="/root/.cairo/bin:$PATH"
 
-"#.to_string()
+"#
+        .to_string()
     }
 
     fn get_dojo_install(&self) -> String {
@@ -618,6 +624,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://docs.swmansion.com/scarb/instal
 # Add Scarb to PATH for docker exec
 ENV PATH="/root/.local/bin:$PATH"
 
-"#.to_string()
+"#
+        .to_string()
     }
 }

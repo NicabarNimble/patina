@@ -1,10 +1,10 @@
 //! Repository Scanner - Detects languages, tools, and services
 
 use anyhow::Result;
-use std::path::{Path, PathBuf};
 use ignore::WalkBuilder;
+use std::path::{Path, PathBuf};
 
-use super::profile::{RepoProfile, Language, LanguageInfo, Tool, ToolInfo, Service};
+use super::profile::{Language, LanguageInfo, RepoProfile, Service, Tool, ToolInfo};
 
 pub struct Scanner {
     root_path: PathBuf,
@@ -44,28 +44,40 @@ impl Scanner {
             let detected_by = vec!["package.json".to_string()];
             let version = self.read_node_version()?;
 
-            profile.add_language(Language::JavaScript, LanguageInfo {
-                detected_by,
-                version,
-                file_count: 0, // Will be updated by scan_source_files
-            });
+            profile.add_language(
+                Language::JavaScript,
+                LanguageInfo {
+                    detected_by,
+                    version,
+                    file_count: 0, // Will be updated by scan_source_files
+                },
+            );
 
             // Detect package manager
             if self.root_path.join("pnpm-lock.yaml").exists() {
-                profile.add_tool(Tool::Pnpm, ToolInfo {
-                    detected_by: vec!["pnpm-lock.yaml".to_string()],
-                    version: self.extract_pnpm_version()?,
-                });
+                profile.add_tool(
+                    Tool::Pnpm,
+                    ToolInfo {
+                        detected_by: vec!["pnpm-lock.yaml".to_string()],
+                        version: self.extract_pnpm_version()?,
+                    },
+                );
             } else if self.root_path.join("yarn.lock").exists() {
-                profile.add_tool(Tool::Yarn, ToolInfo {
-                    detected_by: vec!["yarn.lock".to_string()],
-                    version: None,
-                });
+                profile.add_tool(
+                    Tool::Yarn,
+                    ToolInfo {
+                        detected_by: vec!["yarn.lock".to_string()],
+                        version: None,
+                    },
+                );
             } else if self.root_path.join("package-lock.json").exists() {
-                profile.add_tool(Tool::Npm, ToolInfo {
-                    detected_by: vec!["package-lock.json".to_string()],
-                    version: None,
-                });
+                profile.add_tool(
+                    Tool::Npm,
+                    ToolInfo {
+                        detected_by: vec!["package-lock.json".to_string()],
+                        version: None,
+                    },
+                );
             }
         }
 
@@ -74,18 +86,21 @@ impl Scanner {
             let detected_by = vec!["Cargo.toml".to_string()];
             let version = self.read_rust_version()?;
 
-            profile.add_language(Language::Rust, LanguageInfo {
-                detected_by,
-                version,
-                file_count: 0,
-            });
+            profile.add_language(
+                Language::Rust,
+                LanguageInfo {
+                    detected_by,
+                    version,
+                    file_count: 0,
+                },
+            );
         }
 
         // Python
         if self.root_path.join("requirements.txt").exists()
             || self.root_path.join("pyproject.toml").exists()
-            || self.root_path.join("setup.py").exists() {
-
+            || self.root_path.join("setup.py").exists()
+        {
             let mut detected_by = vec![];
             if self.root_path.join("requirements.txt").exists() {
                 detected_by.push("requirements.txt".to_string());
@@ -99,11 +114,14 @@ impl Scanner {
 
             let version = self.read_python_version()?;
 
-            profile.add_language(Language::Python, LanguageInfo {
-                detected_by,
-                version,
-                file_count: 0,
-            });
+            profile.add_language(
+                Language::Python,
+                LanguageInfo {
+                    detected_by,
+                    version,
+                    file_count: 0,
+                },
+            );
         }
 
         // Go
@@ -111,11 +129,14 @@ impl Scanner {
             let detected_by = vec!["go.mod".to_string()];
             let version = self.read_go_version()?;
 
-            profile.add_language(Language::Go, LanguageInfo {
-                detected_by,
-                version,
-                file_count: 0,
-            });
+            profile.add_language(
+                Language::Go,
+                LanguageInfo {
+                    detected_by,
+                    version,
+                    file_count: 0,
+                },
+            );
         }
 
         Ok(())
@@ -124,77 +145,108 @@ impl Scanner {
     fn scan_configs(&self, profile: &mut RepoProfile) -> Result<()> {
         // Foundry (Solidity framework)
         if self.root_path.join("foundry.toml").exists() {
-            profile.add_tool(Tool::Foundry, ToolInfo {
-                detected_by: vec!["foundry.toml".to_string()],
-                version: self.extract_foundry_version()?,
-            });
+            profile.add_tool(
+                Tool::Foundry,
+                ToolInfo {
+                    detected_by: vec!["foundry.toml".to_string()],
+                    version: self.extract_foundry_version()?,
+                },
+            );
 
             // Also implies Solidity
-            profile.add_language(Language::Solidity, LanguageInfo {
-                detected_by: vec!["foundry.toml".to_string()],
-                version: self.extract_solc_version()?,
-                file_count: 0,
-            });
+            profile.add_language(
+                Language::Solidity,
+                LanguageInfo {
+                    detected_by: vec!["foundry.toml".to_string()],
+                    version: self.extract_solc_version()?,
+                    file_count: 0,
+                },
+            );
         }
 
         // Hardhat
         if self.root_path.join("hardhat.config.js").exists()
-            || self.root_path.join("hardhat.config.ts").exists() {
-            profile.add_tool(Tool::Hardhat, ToolInfo {
-                detected_by: vec!["hardhat.config.*".to_string()],
-                version: None,
-            });
+            || self.root_path.join("hardhat.config.ts").exists()
+        {
+            profile.add_tool(
+                Tool::Hardhat,
+                ToolInfo {
+                    detected_by: vec!["hardhat.config.*".to_string()],
+                    version: None,
+                },
+            );
         }
 
         // MUD Framework
         if self.root_path.join("mud.config.ts").exists() {
-            profile.add_tool(Tool::MudFramework, ToolInfo {
-                detected_by: vec!["mud.config.ts".to_string()],
-                version: None,
-            });
+            profile.add_tool(
+                Tool::MudFramework,
+                ToolInfo {
+                    detected_by: vec!["mud.config.ts".to_string()],
+                    version: None,
+                },
+            );
         }
 
         // TypeScript
         if self.root_path.join("tsconfig.json").exists() {
-            profile.add_language(Language::TypeScript, LanguageInfo {
-                detected_by: vec!["tsconfig.json".to_string()],
-                version: None,
-                file_count: 0,
-            });
+            profile.add_language(
+                Language::TypeScript,
+                LanguageInfo {
+                    detected_by: vec!["tsconfig.json".to_string()],
+                    version: None,
+                    file_count: 0,
+                },
+            );
         }
 
         // Dojo Framework (Cairo game engine)
         // Check for dojo config files (dojo_dev.toml, dojo_sepolia.toml, etc.)
         // Look in root directory and contracts/ subdirectory (common location)
-        let dojo_configs = vec!["dojo_dev.toml", "dojo_sepolia.toml", "dojo_mainnet.toml", "dojo.toml"];
+        let dojo_configs = vec![
+            "dojo_dev.toml",
+            "dojo_sepolia.toml",
+            "dojo_mainnet.toml",
+            "dojo.toml",
+        ];
         let has_dojo_config = dojo_configs.iter().any(|config| {
-            self.root_path.join(config).exists() ||
-            self.root_path.join("contracts").join(config).exists()
+            self.root_path.join(config).exists()
+                || self.root_path.join("contracts").join(config).exists()
         });
 
         if has_dojo_config {
-            profile.add_tool(Tool::Dojo, ToolInfo {
-                detected_by: vec!["dojo_*.toml".to_string()],
-                version: None,
-            });
+            profile.add_tool(
+                Tool::Dojo,
+                ToolInfo {
+                    detected_by: vec!["dojo_*.toml".to_string()],
+                    version: None,
+                },
+            );
 
             // Dojo projects also need Scarb (Cairo package manager)
             // Check root and contracts/ subdirectory
-            if self.root_path.join("Scarb.toml").exists() ||
-               self.root_path.join("contracts/Scarb.toml").exists() {
-                profile.add_tool(Tool::Scarb, ToolInfo {
-                    detected_by: vec!["Scarb.toml (Dojo project)".to_string()],
-                    version: self.extract_scarb_version()?,
-                });
+            if self.root_path.join("Scarb.toml").exists()
+                || self.root_path.join("contracts/Scarb.toml").exists()
+            {
+                profile.add_tool(
+                    Tool::Scarb,
+                    ToolInfo {
+                        detected_by: vec!["Scarb.toml (Dojo project)".to_string()],
+                        version: self.extract_scarb_version()?,
+                    },
+                );
             }
 
             // Also implies Cairo
             if !profile.languages.contains_key(&Language::Cairo) {
-                profile.add_language(Language::Cairo, LanguageInfo {
-                    detected_by: vec!["dojo_*.toml".to_string()],
-                    version: self.extract_cairo_version()?,
-                    file_count: 0,
-                });
+                profile.add_language(
+                    Language::Cairo,
+                    LanguageInfo {
+                        detected_by: vec!["dojo_*.toml".to_string()],
+                        version: self.extract_cairo_version()?,
+                        file_count: 0,
+                    },
+                );
             }
         }
 
@@ -205,35 +257,41 @@ impl Scanner {
         // Count Solidity files
         let sol_files = self.count_files_with_extension("sol")?;
         if sol_files > 0 && !profile.languages.contains_key(&Language::Solidity) {
-            profile.add_language(Language::Solidity, LanguageInfo {
-                detected_by: vec![format!("{} .sol files", sol_files)],
-                version: None,
-                file_count: sol_files,
-            });
+            profile.add_language(
+                Language::Solidity,
+                LanguageInfo {
+                    detected_by: vec![format!("{} .sol files", sol_files)],
+                    version: None,
+                    file_count: sol_files,
+                },
+            );
         }
 
         // Count Cairo files
         let cairo_files = self.count_files_with_extension("cairo")?;
         if cairo_files > 0 {
-            profile.add_language(Language::Cairo, LanguageInfo {
-                detected_by: vec![format!("{} .cairo files", cairo_files)],
-                version: None,
-                file_count: cairo_files,
-            });
+            profile.add_language(
+                Language::Cairo,
+                LanguageInfo {
+                    detected_by: vec![format!("{} .cairo files", cairo_files)],
+                    version: None,
+                    file_count: cairo_files,
+                },
+            );
         }
 
         // Update file counts for detected languages
         if profile.languages.contains_key(&Language::JavaScript) {
-            let js_count = self.count_files_with_extension("js")?
-                + self.count_files_with_extension("jsx")?;
+            let js_count =
+                self.count_files_with_extension("js")? + self.count_files_with_extension("jsx")?;
             if let Some(info) = profile.languages.get_mut(&Language::JavaScript) {
                 info.file_count = js_count;
             }
         }
 
         if profile.languages.contains_key(&Language::TypeScript) {
-            let ts_count = self.count_files_with_extension("ts")?
-                + self.count_files_with_extension("tsx")?;
+            let ts_count =
+                self.count_files_with_extension("ts")? + self.count_files_with_extension("tsx")?;
             if let Some(info) = profile.languages.get_mut(&Language::TypeScript) {
                 info.file_count = ts_count;
             }
@@ -245,7 +303,8 @@ impl Scanner {
     fn scan_services(&self, profile: &mut RepoProfile) -> Result<()> {
         // Check for docker-compose files
         if self.root_path.join("docker-compose.yml").exists()
-            || self.root_path.join("docker-compose.yaml").exists() {
+            || self.root_path.join("docker-compose.yaml").exists()
+        {
             // TODO: Parse docker-compose and extract services
         }
 
@@ -289,12 +348,12 @@ impl Scanner {
     fn count_files_with_extension(&self, ext: &str) -> Result<usize> {
         // Use ignore crate which respects .gitignore and common patterns
         let count = WalkBuilder::new(&self.root_path)
-            .hidden(false)  // Include hidden files
-            .git_ignore(true)  // Respect .gitignore
-            .git_global(true)  // Respect global gitignore
-            .git_exclude(true)  // Respect .git/info/exclude
-            .require_git(false)  // Work even if not a git repo
-            .max_depth(Some(10))  // Limit depth to avoid infinite recursion
+            .hidden(false) // Include hidden files
+            .git_ignore(true) // Respect .gitignore
+            .git_global(true) // Respect global gitignore
+            .git_exclude(true) // Respect .git/info/exclude
+            .require_git(false) // Work even if not a git repo
+            .max_depth(Some(10)) // Limit depth to avoid infinite recursion
             .build()
             .filter_map(Result::ok)
             .filter(|entry| {

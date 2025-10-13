@@ -6,15 +6,15 @@
 use anyhow::Result;
 use std::path::Path;
 
-mod scanner;
-mod profile;
 mod features;
 mod generator;
+mod profile;
+mod scanner;
 
-use scanner::Scanner;
-use profile::RepoProfile;
-use features::{FeatureMapper, DevContainerFeature};
+use features::{DevContainerFeature, FeatureMapper};
 use generator::Generator;
+use profile::RepoProfile;
+use scanner::Scanner;
 
 /// Main entry point for the yolo command
 pub fn execute(
@@ -129,6 +129,9 @@ fn display_success_message(work_dir: &Path) {
     println!("  • Git worktree isolation configured");
 
     println!("\n🚀 Launch: docker compose -f .devcontainer/docker-compose.yml up -d");
-    println!("   Then: docker exec -it {}-yolo bash", work_dir.file_name().unwrap().to_string_lossy());
+    println!(
+        "   Then: docker exec -it {}-yolo bash",
+        work_dir.file_name().unwrap().to_string_lossy()
+    );
     println!("   \n⚡ For Claude Code: claude --dangerously-skip-permissions");
 }
