@@ -203,7 +203,7 @@ impl Scanner {
         // Dojo Framework (Cairo game engine)
         // Check for dojo config files (dojo_dev.toml, dojo_sepolia.toml, etc.)
         // Look in root directory and contracts/ subdirectory (common location)
-        let dojo_configs = vec![
+        let dojo_configs = [
             "dojo_dev.toml",
             "dojo_sepolia.toml",
             "dojo_mainnet.toml",
