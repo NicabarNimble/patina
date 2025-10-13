@@ -1,7 +1,7 @@
 //! Repository Profile - Data structures for detected languages, tools, and services
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
 use std::fmt;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -27,10 +27,13 @@ impl RepoProfile {
 
     pub fn add_tool_override(&mut self, tool_name: &str) {
         if let Some(tool) = Tool::from_string(tool_name) {
-            self.tools.insert(tool, ToolInfo {
-                detected_by: vec!["--with flag".to_string()],
-                version: None,
-            });
+            self.tools.insert(
+                tool,
+                ToolInfo {
+                    detected_by: vec!["--with flag".to_string()],
+                    version: None,
+                },
+            );
         }
     }
 

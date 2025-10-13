@@ -14,8 +14,8 @@ fn detect_project_languages(project_path: &Path) -> ProjectLanguages {
         has_rust: project_path.join("Cargo.toml").exists(),
         has_node: project_path.join("package.json").exists(),
         has_python: project_path.join("requirements.txt").exists()
-                    || project_path.join("pyproject.toml").exists()
-                    || project_path.join("setup.py").exists(),
+            || project_path.join("pyproject.toml").exists()
+            || project_path.join("setup.py").exists(),
         has_go: project_path.join("go.mod").exists(),
     }
 }
@@ -50,7 +50,8 @@ impl DevEnvironment for DockerEnvironment {
         fs::create_dir_all(&devcontainer_dir)?;
 
         // Generate Dockerfile with language-specific setup
-        let mut dockerfile_content = include_str!("../../resources/templates/devcontainer/Dockerfile").to_string();
+        let mut dockerfile_content =
+            include_str!("../../resources/templates/devcontainer/Dockerfile").to_string();
 
         // Replace language setup placeholders
         dockerfile_content = dockerfile_content.replace(
@@ -92,10 +93,14 @@ impl DevEnvironment for DockerEnvironment {
         fs::write(devcontainer_dir.join("Dockerfile"), dockerfile_content)?;
 
         // Generate devcontainer.json
-        let devcontainer_json = include_str!("../../resources/templates/devcontainer/devcontainer.json")
-            .replace("{{PROJECT_NAME}}", project_name);
+        let devcontainer_json =
+            include_str!("../../resources/templates/devcontainer/devcontainer.json")
+                .replace("{{PROJECT_NAME}}", project_name);
 
-        fs::write(devcontainer_dir.join("devcontainer.json"), devcontainer_json)?;
+        fs::write(
+            devcontainer_dir.join("devcontainer.json"),
+            devcontainer_json,
+        )?;
 
         Ok(())
     }

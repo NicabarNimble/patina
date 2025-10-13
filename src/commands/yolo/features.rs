@@ -1,8 +1,8 @@
 //! Feature Mapper - Maps repository profile to Dev Container Features
 
+use super::profile::{Language, RepoProfile, Tool};
 use anyhow::Result;
-use serde::{Serialize, Deserialize};
-use super::profile::{RepoProfile, Language, Tool};
+use serde::{Deserialize, Serialize};
 
 pub struct FeatureMapper;
 
@@ -19,7 +19,10 @@ impl FeatureMapper {
             match lang {
                 Language::JavaScript | Language::TypeScript => {
                     // Node.js feature
-                    if !features.iter().any(|f| matches!(f, DevContainerFeature::Node { .. })) {
+                    if !features
+                        .iter()
+                        .any(|f| matches!(f, DevContainerFeature::Node { .. }))
+                    {
                         features.push(DevContainerFeature::Node {
                             version: info.version.clone(),
                         });
@@ -171,7 +174,10 @@ impl DevContainerFeature {
                 } else {
                     serde_json::json!({})
                 };
-                ("ghcr.io/devcontainers-contrib/features/pnpm:1".to_string(), spec)
+                (
+                    "ghcr.io/devcontainers-contrib/features/pnpm:1".to_string(),
+                    spec,
+                )
             }
             DevContainerFeature::Yarn { version } => {
                 let spec = if let Some(v) = version {
@@ -179,17 +185,23 @@ impl DevContainerFeature {
                 } else {
                     serde_json::json!({})
                 };
-                ("ghcr.io/devcontainers-contrib/features/yarn:1".to_string(), spec)
+                (
+                    "ghcr.io/devcontainers-contrib/features/yarn:1".to_string(),
+                    spec,
+                )
             }
-            DevContainerFeature::Git => {
-                ("ghcr.io/devcontainers/features/git:1".to_string(), serde_json::json!({}))
-            }
-            DevContainerFeature::GitHubCli => {
-                ("ghcr.io/devcontainers/features/github-cli:1".to_string(), serde_json::json!({}))
-            }
-            DevContainerFeature::DockerInDocker => {
-                ("ghcr.io/devcontainers/features/docker-in-docker:2".to_string(), serde_json::json!({}))
-            }
+            DevContainerFeature::Git => (
+                "ghcr.io/devcontainers/features/git:1".to_string(),
+                serde_json::json!({}),
+            ),
+            DevContainerFeature::GitHubCli => (
+                "ghcr.io/devcontainers/features/github-cli:1".to_string(),
+                serde_json::json!({}),
+            ),
+            DevContainerFeature::DockerInDocker => (
+                "ghcr.io/devcontainers/features/docker-in-docker:2".to_string(),
+                serde_json::json!({}),
+            ),
             // Custom Patina features (will be published to ghcr.io/patina/features/)
             DevContainerFeature::Foundry { version } => {
                 let spec = serde_json::json!({ "version": version });
@@ -211,15 +223,18 @@ impl DevContainerFeature {
                 let spec = serde_json::json!({ "version": version });
                 ("ghcr.io/patina/features/solc:1".to_string(), spec)
             }
-            DevContainerFeature::Hardhat => {
-                ("ghcr.io/patina/features/hardhat:1".to_string(), serde_json::json!({}))
-            }
-            DevContainerFeature::MudCli => {
-                ("ghcr.io/patina/features/mud:1".to_string(), serde_json::json!({}))
-            }
-            DevContainerFeature::Poetry => {
-                ("ghcr.io/devcontainers-contrib/features/poetry:2".to_string(), serde_json::json!({}))
-            }
+            DevContainerFeature::Hardhat => (
+                "ghcr.io/patina/features/hardhat:1".to_string(),
+                serde_json::json!({}),
+            ),
+            DevContainerFeature::MudCli => (
+                "ghcr.io/patina/features/mud:1".to_string(),
+                serde_json::json!({}),
+            ),
+            DevContainerFeature::Poetry => (
+                "ghcr.io/devcontainers-contrib/features/poetry:2".to_string(),
+                serde_json::json!({}),
+            ),
         }
     }
 }
