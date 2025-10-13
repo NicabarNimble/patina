@@ -228,9 +228,9 @@ CMD ["/bin/bash"]
         &self,
         devcontainer_path: &Path,
         profile: &RepoProfile,
-        features: &[DevContainerFeature],
+        _features: &[DevContainerFeature],
     ) -> Result<()> {
-        let project_name = profile
+        let _project_name = profile
             .project_name
             .as_deref()
             .or_else(|| self.root_path.file_name().and_then(|n| n.to_str()))
@@ -421,7 +421,7 @@ echo ""
 
         // Generate 1Password credential launcher script if op CLI available
         if self.has_1password_cli {
-            self.generate_1password_launcher(&devcontainer_path)?;
+            self.generate_1password_launcher(devcontainer_path)?;
         }
 
         Ok(())
@@ -482,7 +482,7 @@ echo ""
     }
 
     // Helper methods
-    fn needs_custom_dockerfile(&self, features: &[DevContainerFeature]) -> bool {
+    fn _needs_custom_dockerfile(&self, features: &[DevContainerFeature]) -> bool {
         features.iter().any(|f| {
             matches!(
                 f,
