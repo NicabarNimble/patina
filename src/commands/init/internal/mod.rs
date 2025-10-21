@@ -28,14 +28,23 @@ pub fn execute_init(
     design: String,
     dev: Option<String>,
     force: bool,
+    local: bool,
 ) -> Result<()> {
     let json_output = false; // For init command, always false
 
     // === STEP 1: GIT SETUP (FIRST - BEFORE ANY DESTRUCTIVE CHANGES) ===
     println!("🎨 Initializing Patina...\n");
 
+    // Check for gh CLI early (unless local mode)
+    if !local {
+        check_gh_cli_available()?;
+    }
+
+    // Initialize git if needed
+    ensure_git_initialized()?;
+
     // Ensure fork if needed (always fork external repos)
-    patina::git::ensure_fork()?;
+    patina::git::ensure_fork(local)?;
     println!();
 
     // Ensure we're on patina branch
@@ -408,4 +417,57 @@ impl TitleCase for str {
             Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
         }
     }
+}
+
+/// Check if gh CLI is available
+fn check_gh_cli_available() -> Result<()> {
+    use std::process::Command;
+
+    let output = Command::new("gh")
+        .arg("--version")
+        .output();
+
+    match output {
+        Ok(output) if output.status.success() => Ok(()),
+        _ => {
+            eprintln!("Error: GitHub CLI (gh) is required but not found.");
+            eprintln!();
+            eprintln!("Please install the GitHub CLI:");
+            eprintln!("  • macOS: brew install gh");
+            eprintln!("  • Linux: See https://cli.github.com/manual/installation");
+            eprintln!("  • Windows: winget install GitHub.cli");
+            eprintln!();
+            eprintln!("Or use --local flag to skip GitHub integration.");
+            anyhow::bail!("GitHub CLI (gh) not found")
+        }
+    }
+}
+
+/// Ensure git is initialized in the current directory
+fn ensure_git_initialized() -> Result<()> {
+    use std::process::Command;
+
+    // Check if we're in a git repository
+    let output = Command::new("git")
+        .args(["rev-parse", "--git-dir"])
+        .output()
+        .context("Failed to check git status")?;
+
+    if !output.status.success() {
+        // Not a git repo, initialize it
+        println!("📝 No git repository found. Initializing...");
+
+        let output = Command::new("git")
+            .arg("init")
+            .output()
+            .context("Failed to initialize git repository")?;
+
+        if !output.status.success() {
+            anyhow::bail!("Failed to initialize git repository");
+        }
+
+        println!("✓ Initialized git repository");
+    }
+
+    Ok(())
 }
