@@ -33,6 +33,7 @@ use anyhow::Result;
 /// * `design` - Path to PROJECT_DESIGN.toml file
 /// * `dev` - Optional development environment (e.g., "docker")
 /// * `force` - Force initialization, backup and replace existing patina branch
+/// * `local` - Skip GitHub integration (local-only mode)
 ///
 /// # Process
 ///
@@ -74,8 +75,9 @@ pub fn execute(
     design: String,
     dev: Option<String>,
     force: bool,
+    local: bool,
 ) -> Result<()> {
-    internal::execute_init(name, llm, design, dev, force)
+    internal::execute_init(name, llm, design, dev, force, local)
 }
 
 #[cfg(test)]
