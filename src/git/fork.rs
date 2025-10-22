@@ -2,6 +2,7 @@
 
 use super::operations::{add_remote, has_remote, parse_github_url, remote_url};
 use anyhow::{Context, Result};
+use std::path::Path;
 use std::process::Command;
 
 /// Fork status for current repository
@@ -191,6 +192,175 @@ fn current_dir_name() -> Result<String> {
         .ok_or_else(|| anyhow::anyhow!("Invalid directory name"))
 }
 
+/// Handle connecting to an existing GitHub repository
+fn handle_existing_github_repo(repo_name: &str, user: &str) -> Result<()> {
+    use std::fs;
+
+    // Check if directory has any files
+    let current_dir = std::env::current_dir()?;
+    let has_local_files = fs::read_dir(&current_dir)?
+        .any(|_| true);
+
+    if !has_local_files {
+        // Empty directory - just clone normally
+        println!("📥 Cloning repository...");
+        clone_to_current_directory(repo_name, user)?;
+    } else {
+        // Directory has files - need to preserve them
+        println!("📋 Preserving local files before syncing with GitHub...");
+
+        // Clone just the .git directory
+        clone_git_dir_only(repo_name, user)?;
+
+        // Check for local changes
+        let status_output = Command::new("git")
+            .args(["status", "--porcelain"])
+            .output()?;
+
+        if !status_output.stdout.is_empty() {
+            // There are local changes - preserve them in a branch
+            preserve_local_work_in_branch()?;
+
+            // Switch to main/master/patina branch
+            ensure_clean_branch()?;
+
+            println!("✓ Local work preserved in branch");
+            println!("💡 To review your local work: git branch -a");
+        } else {
+            println!("✓ Local files match repository");
+        }
+    }
+
+    Ok(())
+}
+
+/// Clone repository to current directory (must be empty)
+fn clone_to_current_directory(repo_name: &str, user: &str) -> Result<()> {
+    let output = Command::new("gh")
+        .args([
+            "repo",
+            "clone",
+            &format!("{}/{}", user, repo_name),
+            ".",
+        ])
+        .output()
+        .context("Failed to clone repository")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to clone repository: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    Ok(())
+}
+
+/// Clone only the .git directory to current location
+fn clone_git_dir_only(repo_name: &str, user: &str) -> Result<()> {
+    use std::fs;
+
+    // Create temp directory for cloning
+    let temp_dir = format!(".patina-clone-tmp-{}", std::process::id());
+
+    // Clone to temp directory
+    let output = Command::new("gh")
+        .args([
+            "repo",
+            "clone",
+            &format!("{}/{}", user, repo_name),
+            &temp_dir,
+        ])
+        .output()
+        .context("Failed to clone repository")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to clone repository: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    // Move .git directory from temp to current directory
+    let temp_git = Path::new(&temp_dir).join(".git");
+    let target_git = Path::new(".git");
+
+    if target_git.exists() {
+        anyhow::bail!(".git directory already exists - cannot proceed");
+    }
+
+    fs::rename(&temp_git, target_git)
+        .context("Failed to move .git directory")?;
+
+    // Clean up temp directory
+    fs::remove_dir_all(&temp_dir)
+        .context("Failed to clean up temporary directory")?;
+
+    Ok(())
+}
+
+/// Preserve local work in a timestamped branch
+fn preserve_local_work_in_branch() -> Result<()> {
+    use chrono::Utc;
+
+    // Create timestamped branch name
+    let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
+    let branch_name = format!("local-work-{}", timestamp);
+
+    // Create and checkout new branch
+    Command::new("git")
+        .args(["checkout", "-b", &branch_name])
+        .output()
+        .context("Failed to create branch")?;
+
+    // Add all files (respects .gitignore)
+    Command::new("git")
+        .args(["add", "-A"])
+        .output()
+        .context("Failed to add files")?;
+
+    // Commit the local work
+    let commit_message = format!(
+        "Local work preserved by patina init at {}",
+        timestamp
+    );
+
+    Command::new("git")
+        .args(["commit", "-m", &commit_message])
+        .output()
+        .context("Failed to commit local work")?;
+
+    println!("🌿 Created branch '{}' with your local work", branch_name);
+
+    Ok(())
+}
+
+/// Ensure we're on a clean main/master/patina branch
+fn ensure_clean_branch() -> Result<()> {
+    // Try branches in order of preference
+    let branches = ["patina", "main", "master"];
+
+    for branch in branches {
+        let output = Command::new("git")
+            .args(["checkout", branch])
+            .output()?;
+
+        if output.status.success() {
+            println!("✓ Switched to '{}' branch", branch);
+            return Ok(());
+        }
+    }
+
+    // If no standard branch exists, create patina from HEAD
+    Command::new("git")
+        .args(["checkout", "-b", "patina"])
+        .output()
+        .context("Failed to create patina branch")?;
+
+    println!("✓ Created 'patina' branch");
+    Ok(())
+}
+
 /// Ensure fork exists and is configured
 pub fn ensure_fork(local: bool) -> Result<ForkStatus> {
     // Local-only mode - skip GitHub integration
@@ -206,19 +376,33 @@ pub fn ensure_fork(local: bool) -> Result<ForkStatus> {
             ensure_fork_with_origin(url)
         }
         Err(_) => {
-            // No origin remote - create a new GitHub repo
-            println!("📦 No GitHub remote found. Creating new repository...");
-
+            // No origin remote - check if GitHub repo exists
             let repo_name = current_dir_name()?;
-            println!("   Repository name: {}", repo_name);
+            let current_user = gh_current_user()?;
+            let full_repo_name = format!("{}/{}", current_user, repo_name);
 
-            // Create the repository (this also sets origin and pushes)
-            gh_repo_create(&repo_name)?;
+            if gh_repo_exists(&full_repo_name)? {
+                // Repository exists on GitHub - clone it
+                println!("📦 Found existing GitHub repository: {}", full_repo_name);
 
-            println!("✓ Created private repository: github.com/{}/{}", gh_current_user()?, repo_name);
-            println!("✓ Added origin remote and pushed initial commit");
+                // Handle existing repo (clone and preserve local work)
+                handle_existing_github_repo(&repo_name, &current_user)?;
 
-            Ok(ForkStatus::CreatedNew { repo_name })
+                println!("✓ Connected to existing repository");
+                Ok(ForkStatus::CreatedNew { repo_name })
+            } else {
+                // No GitHub repo exists - create a new one
+                println!("📦 No GitHub repository found. Creating new repository...");
+                println!("   Repository name: {}", repo_name);
+
+                // Create the repository (this also sets origin and pushes)
+                gh_repo_create(&repo_name)?;
+
+                println!("✓ Created private repository: github.com/{}/{}", current_user, repo_name);
+                println!("✓ Added origin remote and pushed initial commit");
+
+                Ok(ForkStatus::CreatedNew { repo_name })
+            }
         }
     }
 }
