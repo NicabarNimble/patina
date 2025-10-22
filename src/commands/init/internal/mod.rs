@@ -41,6 +41,9 @@ pub fn execute_init(
     // Initialize git if needed
     ensure_git_initialized()?;
 
+    // Ensure proper .gitignore exists
+    ensure_gitignore(&Path::new("."))?;
+
     // Ensure fork if needed (always fork external repos)
     patina::git::ensure_fork(local)?;
     println!();
@@ -446,6 +449,143 @@ fn ensure_git_initialized() -> Result<()> {
         }
 
         println!("✓ Initialized git repository");
+    }
+
+    Ok(())
+}
+
+/// Ensure a proper .gitignore exists with sensible defaults
+pub fn ensure_gitignore(project_path: &Path) -> Result<()> {
+    let gitignore_path = project_path.join(".gitignore");
+
+    if !gitignore_path.exists() {
+        // Create opinionated defaults for new projects
+        create_default_gitignore(&gitignore_path)?;
+    } else {
+        // Ensure critical entries exist in existing .gitignore
+        ensure_gitignore_entries(&gitignore_path)?;
+    }
+
+    Ok(())
+}
+
+/// Create a new .gitignore with sensible defaults
+fn create_default_gitignore(gitignore_path: &Path) -> Result<()> {
+    let content = r#"# Build artifacts
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+secrets.toml
+
+# Dependencies
+node_modules/
+vendor/
+venv/
+__pycache__/
+*.pyc
+
+# Build outputs
+dist/
+build/
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+
+# IDE and editor files
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Patina-specific
+.patina/
+ENVIRONMENT.toml
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+*.old
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+"#;
+
+    fs::write(gitignore_path, content)
+        .context("Failed to create .gitignore")?;
+
+    println!("✓ Created .gitignore with standard patterns");
+    Ok(())
+}
+
+/// Ensure critical entries exist in an existing .gitignore
+fn ensure_gitignore_entries(gitignore_path: &Path) -> Result<()> {
+    let content = fs::read_to_string(gitignore_path)
+        .context("Failed to read .gitignore")?;
+
+    // Critical entries that should always be ignored
+    let must_have = [
+        ("/target/", "Rust build artifacts"),
+        ("node_modules/", "Node.js dependencies"),
+        (".env", "Environment secrets"),
+        (".patina/", "Patina cache"),
+        ("*.db", "Database files"),
+        ("*.key", "Private keys"),
+        ("*.pem", "Certificates"),
+    ];
+
+    let mut added = Vec::new();
+    let mut updated_content = content.clone();
+
+    for (pattern, _description) in must_have {
+        // Check if pattern already exists (accounting for variations)
+        let pattern_exists = content.lines().any(|line| {
+            let line = line.trim();
+            line == pattern || line == pattern.trim_end_matches('/')
+        });
+
+        if !pattern_exists {
+            // Add a newline if file doesn't end with one
+            if !updated_content.ends_with('\n') {
+                updated_content.push('\n');
+            }
+
+            // Add the pattern with a comment if we're adding multiple
+            if added.is_empty() {
+                updated_content.push_str("\n# Added by Patina for safety\n");
+            }
+            updated_content.push_str(pattern);
+            updated_content.push('\n');
+
+            added.push(pattern);
+        }
+    }
+
+    if !added.is_empty() {
+        fs::write(gitignore_path, updated_content)
+            .context("Failed to update .gitignore")?;
+
+        println!("✓ Added to .gitignore: {}", added.join(", "));
     }
 
     Ok(())
