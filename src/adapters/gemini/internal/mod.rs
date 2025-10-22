@@ -3,7 +3,6 @@
 use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
-use toml::Value;
 
 use crate::environment::Environment;
 
@@ -12,17 +11,10 @@ const ADAPTER_DIR: &str = ".gemini";
 const CONTEXT_FILE: &str = "GEMINI.md";
 
 /// Initialize Gemini project structure
-pub fn init_project(project_path: &Path, design: &Value, environment: &Environment) -> Result<()> {
+pub fn init_project(project_path: &Path, project_name: &str, environment: &Environment) -> Result<()> {
     // Create .gemini directory
     let gemini_path = project_path.join(ADAPTER_DIR);
     fs::create_dir_all(&gemini_path)?;
-
-    // Extract project name
-    let project_name = design
-        .get("project")
-        .and_then(|p| p.get("name"))
-        .and_then(|n| n.as_str())
-        .unwrap_or("project");
 
     // Generate initial context
     let content = generate_minimal_context(project_name, environment);
