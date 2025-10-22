@@ -21,10 +21,6 @@ enum Commands {
         #[arg(long)]
         llm: String,
 
-        /// Design document path
-        #[arg(long, default_value = "PROJECT_DESIGN.toml")]
-        design: String,
-
         /// Development environment (docker, dagger, native)
         #[arg(long)]
         dev: Option<String>,
@@ -209,12 +205,11 @@ fn main() -> Result<()> {
         Commands::Init {
             name,
             llm,
-            design,
             dev,
             force,
             local,
         } => {
-            commands::init::execute(name, llm, design, dev, force, local)?;
+            commands::init::execute(name, llm, dev, force, local)?;
         }
         Commands::Upgrade { check, json } => {
             commands::upgrade::execute(check, json)?;

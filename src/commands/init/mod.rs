@@ -30,7 +30,6 @@ use anyhow::Result;
 ///
 /// * `name` - Project name or "." for current directory
 /// * `llm` - LLM adapter to use (e.g., "claude", "gemini")
-/// * `design` - Path to PROJECT_DESIGN.toml file
 /// * `dev` - Optional development environment (e.g., "docker")
 /// * `force` - Force initialization, backup and replace existing patina branch
 /// * `local` - Skip GitHub integration (local-only mode)
@@ -72,12 +71,11 @@ use anyhow::Result;
 pub fn execute(
     name: String,
     llm: String,
-    design: String,
     dev: Option<String>,
     force: bool,
     local: bool,
 ) -> Result<()> {
-    internal::execute_init(name, llm, design, dev, force, local)
+    internal::execute_init(name, llm, dev, force, local)
 }
 
 #[cfg(test)]
