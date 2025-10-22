@@ -260,6 +260,35 @@ fn clone_to_current_directory(repo_name: &str, user: &str) -> Result<()> {
 fn clone_git_dir_only(repo_name: &str, user: &str) -> Result<()> {
     use std::fs;
 
+    let target_git = Path::new(".git");
+
+    // If .git already exists, just add the origin remote
+    if target_git.exists() {
+        println!("📝 Using existing git repository, adding origin remote...");
+
+        // Add origin remote
+        let remote_url = format!("git@github.com:{}/{}.git", user, repo_name);
+        let output = Command::new("git")
+            .args(["remote", "add", "origin", &remote_url])
+            .output()?;
+
+        // If remote already exists, update it
+        if !output.status.success() {
+            Command::new("git")
+                .args(["remote", "set-url", "origin", &remote_url])
+                .output()
+                .context("Failed to set origin remote")?;
+        }
+
+        // Fetch from origin
+        Command::new("git")
+            .args(["fetch", "origin"])
+            .output()
+            .context("Failed to fetch from origin")?;
+
+        return Ok(());
+    }
+
     // Create temp directory for cloning
     let temp_dir = format!(".patina-clone-tmp-{}", std::process::id());
 
@@ -283,11 +312,6 @@ fn clone_git_dir_only(repo_name: &str, user: &str) -> Result<()> {
 
     // Move .git directory from temp to current directory
     let temp_git = Path::new(&temp_dir).join(".git");
-    let target_git = Path::new(".git");
-
-    if target_git.exists() {
-        anyhow::bail!(".git directory already exists - cannot proceed");
-    }
 
     fs::rename(&temp_git, target_git)
         .context("Failed to move .git directory")?;
