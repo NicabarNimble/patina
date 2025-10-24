@@ -10,7 +10,6 @@ use crate::adapters::LLMAdapter;
 use crate::environment::Environment;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
-use toml::Value;
 
 mod internal;
 
@@ -41,14 +40,14 @@ impl LLMAdapter for ClaudeAdapter {
     fn init_project(
         &self,
         project_path: &Path,
-        design: &Value,
+        project_name: &str,
         environment: &Environment,
     ) -> Result<()> {
-        internal::init_project(project_path, design, environment)
+        internal::init_project(project_path, project_name, environment)
     }
 
-    fn post_init(&self, project_path: &Path, design: &Value, dev_env: &str) -> Result<()> {
-        internal::post_init(project_path, design, dev_env)
+    fn post_init(&self, project_path: &Path, dev_env: &str) -> Result<()> {
+        internal::post_init(project_path, dev_env)
     }
 
     fn get_custom_commands(&self) -> Vec<(&'static str, &'static str)> {

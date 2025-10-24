@@ -1,22 +1,14 @@
 //! Environment and project validation
 
 use anyhow::Result;
-use toml::Value;
 
 use patina::environment::Environment;
 
 /// Validate environment against project requirements
-pub fn validate_environment(env: &Environment, design: &Value) -> Result<Option<Vec<String>>> {
+pub fn validate_environment(env: &Environment) -> Result<Option<Vec<String>>> {
     let mut warnings = Vec::new();
 
-    // For Patina projects, we always want Rust
-    let _project_type = design
-        .get("project")
-        .and_then(|p| p.get("type"))
-        .and_then(|t| t.as_str())
-        .unwrap_or("tool");
-
-    // All Patina project types benefit from Rust
+    // All Patina projects benefit from Rust
     if !env.languages.get("rust").is_some_and(|info| info.available) {
         warnings.push(
             "⚠️  Rust not detected - Patina is built for Rust projects (install via rustup)"

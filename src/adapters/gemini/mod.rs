@@ -7,7 +7,6 @@ use crate::adapters::LLMAdapter;
 use crate::environment::Environment;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
-use toml::Value;
 
 mod internal;
 
@@ -38,13 +37,13 @@ impl LLMAdapter for GeminiAdapter {
     fn init_project(
         &self,
         project_path: &Path,
-        design: &Value,
+        project_name: &str,
         environment: &Environment,
     ) -> Result<()> {
-        internal::init_project(project_path, design, environment)
+        internal::init_project(project_path, project_name, environment)
     }
 
-    fn post_init(&self, _project_path: &Path, _design: &Value, _dev_env: &str) -> Result<()> {
+    fn post_init(&self, _project_path: &Path, _dev_env: &str) -> Result<()> {
         Ok(())
     }
 

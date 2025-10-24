@@ -21,10 +21,6 @@ enum Commands {
         #[arg(long)]
         llm: String,
 
-        /// Design document path
-        #[arg(long, default_value = "PROJECT_DESIGN.toml")]
-        design: String,
-
         /// Development environment (docker, dagger, native)
         #[arg(long)]
         dev: Option<String>,
@@ -32,6 +28,10 @@ enum Commands {
         /// Force initialization, backup and replace existing patina branch
         #[arg(long)]
         force: bool,
+
+        /// Local-only mode (skip GitHub integration)
+        #[arg(long)]
+        local: bool,
     },
 
     /// Check for new Patina CLI versions
@@ -228,11 +228,11 @@ fn main() -> Result<()> {
         Commands::Init {
             name,
             llm,
-            design,
             dev,
             force,
+            local,
         } => {
-            commands::init::execute(name, llm, design, dev, force)?;
+            commands::init::execute(name, llm, dev, force, local)?;
         }
         Commands::Upgrade { check, json } => {
             commands::upgrade::execute(check, json)?;

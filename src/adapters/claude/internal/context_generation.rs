@@ -8,18 +8,16 @@ use std::fs;
 use std::path::Path;
 
 use crate::environment::Environment;
-use toml::Value;
 
 use super::paths;
 
 /// Generate initial context during project setup
 pub fn generate_initial_context(
     project_path: &Path,
-    design: &Value,
+    project_name: &str,
     environment: &Environment,
 ) -> Result<()> {
-    let project_name = extract_project_name(design);
-    let content = generate_minimal_context(&project_name, environment);
+    let content = generate_minimal_context(project_name, environment);
 
     let output_path = paths::get_context_file_path(project_path);
     fs::write(output_path, content)?;
@@ -87,14 +85,4 @@ fn generate_minimal_context(project_name: &str, environment: &Environment) -> St
     ));
 
     content
-}
-
-/// Extract project name from design TOML
-fn extract_project_name(design: &Value) -> String {
-    design
-        .get("project")
-        .and_then(|p| p.get("name"))
-        .and_then(|n| n.as_str())
-        .unwrap_or("project")
-        .to_string()
 }

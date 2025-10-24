@@ -4,7 +4,6 @@ pub mod gemini;
 use crate::environment::Environment;
 use anyhow::Result;
 use std::path::Path;
-use toml::Value;
 
 /// Trait for LLM-specific implementations
 pub trait LLMAdapter {
@@ -15,13 +14,13 @@ pub trait LLMAdapter {
     fn init_project(
         &self,
         project_path: &Path,
-        design: &Value,
+        project_name: &str,
         environment: &Environment,
     ) -> Result<()>;
 
     /// Called after project initialization to perform additional setup
     /// This is where adapters can create development environment files, etc.
-    fn post_init(&self, _project_path: &Path, _design: &Value, _dev_env: &str) -> Result<()> {
+    fn post_init(&self, _project_path: &Path, _dev_env: &str) -> Result<()> {
         Ok(()) // Default: no-op
     }
 
