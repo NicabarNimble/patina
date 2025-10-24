@@ -66,7 +66,6 @@ fn gh_repo_fork() -> Result<()> {
     Ok(())
 }
 
-
 /// Create initial README and commit for new projects
 fn create_initial_commit(repo_name: &str) -> Result<()> {
     use std::fs;
@@ -161,14 +160,7 @@ fn gh_repo_create(name: &str) -> Result<()> {
     create_initial_commit(name)?;
 
     let output = Command::new("gh")
-        .args([
-            "repo",
-            "create",
-            name,
-            "--private",
-            "--source=.",
-            "--push",
-        ])
+        .args(["repo", "create", name, "--private", "--source=.", "--push"])
         .output()
         .context("Failed to create GitHub repository")?;
 
@@ -198,8 +190,7 @@ fn handle_existing_github_repo(repo_name: &str, user: &str) -> Result<()> {
 
     // Check if directory has any files
     let current_dir = std::env::current_dir()?;
-    let has_local_files = fs::read_dir(&current_dir)?
-        .any(|_| true);
+    let has_local_files = fs::read_dir(&current_dir)?.any(|_| true);
 
     if !has_local_files {
         // Empty directory - just clone normally
@@ -237,12 +228,7 @@ fn handle_existing_github_repo(repo_name: &str, user: &str) -> Result<()> {
 /// Clone repository to current directory (must be empty)
 fn clone_to_current_directory(repo_name: &str, user: &str) -> Result<()> {
     let output = Command::new("gh")
-        .args([
-            "repo",
-            "clone",
-            &format!("{}/{}", user, repo_name),
-            ".",
-        ])
+        .args(["repo", "clone", &format!("{}/{}", user, repo_name), "."])
         .output()
         .context("Failed to clone repository")?;
 
@@ -313,12 +299,10 @@ fn clone_git_dir_only(repo_name: &str, user: &str) -> Result<()> {
     // Move .git directory from temp to current directory
     let temp_git = Path::new(&temp_dir).join(".git");
 
-    fs::rename(&temp_git, target_git)
-        .context("Failed to move .git directory")?;
+    fs::rename(&temp_git, target_git).context("Failed to move .git directory")?;
 
     // Clean up temp directory
-    fs::remove_dir_all(&temp_dir)
-        .context("Failed to clean up temporary directory")?;
+    fs::remove_dir_all(&temp_dir).context("Failed to clean up temporary directory")?;
 
     Ok(())
 }
@@ -344,10 +328,7 @@ fn preserve_local_work_in_branch() -> Result<()> {
         .context("Failed to add files")?;
 
     // Commit the local work
-    let commit_message = format!(
-        "Local work preserved by patina init at {}",
-        timestamp
-    );
+    let commit_message = format!("Local work preserved by patina init at {}", timestamp);
 
     Command::new("git")
         .args(["commit", "-m", &commit_message])
@@ -365,9 +346,7 @@ fn ensure_clean_branch() -> Result<()> {
     let branches = ["patina", "main", "master"];
 
     for branch in branches {
-        let output = Command::new("git")
-            .args(["checkout", branch])
-            .output()?;
+        let output = Command::new("git").args(["checkout", branch]).output()?;
 
         if output.status.success() {
             println!("✓ Switched to '{}' branch", branch);
@@ -422,7 +401,10 @@ pub fn ensure_fork(local: bool) -> Result<ForkStatus> {
                 // Create the repository (this also sets origin and pushes)
                 gh_repo_create(&repo_name)?;
 
-                println!("✓ Created private repository: github.com/{}/{}", current_user, repo_name);
+                println!(
+                    "✓ Created private repository: github.com/{}/{}",
+                    current_user, repo_name
+                );
                 println!("✓ Added origin remote and pushed initial commit");
 
                 Ok(ForkStatus::CreatedNew { repo_name })

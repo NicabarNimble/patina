@@ -42,7 +42,7 @@ pub fn execute_init(
     ensure_git_initialized()?;
 
     // Ensure proper .gitignore exists
-    ensure_gitignore(&Path::new("."))?;
+    ensure_gitignore(Path::new("."))?;
 
     // Ensure fork if needed (always fork external repos)
     patina::git::ensure_fork(local)?;
@@ -107,7 +107,8 @@ pub fn execute_init(
 
     // Get project name from directory
     let project_name = if name == "." {
-        project_path.file_name()
+        project_path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("project")
             .to_string()
@@ -241,16 +242,14 @@ fn display_environment_info(environment: &Environment) {
 fn write_environment_toml(project_path: &Path, environment: &Environment) -> Result<()> {
     let toml_path = project_path.join("ENVIRONMENT.toml");
 
-    let content = toml::to_string_pretty(environment)
-        .context("Failed to serialize environment data")?;
+    let content =
+        toml::to_string_pretty(environment).context("Failed to serialize environment data")?;
 
-    fs::write(&toml_path, content)
-        .context("Failed to write ENVIRONMENT.toml")?;
+    fs::write(&toml_path, content).context("Failed to write ENVIRONMENT.toml")?;
 
     println!("  ✓ Created ENVIRONMENT.toml with full environment data");
     Ok(())
 }
-
 
 fn setup_project_path(name: &str) -> Result<PathBuf> {
     let path = if name == "." {
@@ -265,13 +264,7 @@ fn setup_project_path(name: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-
-fn create_init_session(
-    layer_path: &Path,
-    name: &str,
-    llm: &str,
-    dev: &str,
-) -> Result<()> {
+fn create_init_session(layer_path: &Path, name: &str, llm: &str, dev: &str) -> Result<()> {
     let session_filename = format!("{}-init.md", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
     let session_content = format!(
         "# {} Initialization\n\nInitialized on: {}\nLLM: {}\nDev Environment: {}\n",
@@ -376,7 +369,8 @@ fn detect_project_name_from_cargo_toml(project_path: &Path) -> Result<String> {
 
     let cargo_content =
         fs::read_to_string(&cargo_toml_path).context("Failed to read Cargo.toml")?;
-    let cargo_toml: toml::Value = toml::from_str(&cargo_content).context("Failed to parse Cargo.toml")?;
+    let cargo_toml: toml::Value =
+        toml::from_str(&cargo_content).context("Failed to parse Cargo.toml")?;
 
     cargo_toml
         .get("package")
@@ -405,9 +399,7 @@ impl TitleCase for str {
 fn check_gh_cli_available() -> Result<()> {
     use std::process::Command;
 
-    let output = Command::new("gh")
-        .arg("--version")
-        .output();
+    let output = Command::new("gh").arg("--version").output();
 
     match output {
         Ok(output) if output.status.success() => Ok(()),
@@ -531,8 +523,7 @@ ENVIRONMENT.toml
 logs/
 "#;
 
-    fs::write(gitignore_path, content)
-        .context("Failed to create .gitignore")?;
+    fs::write(gitignore_path, content).context("Failed to create .gitignore")?;
 
     println!("✓ Created .gitignore with standard patterns");
     Ok(())
@@ -540,8 +531,7 @@ logs/
 
 /// Ensure critical entries exist in an existing .gitignore
 fn ensure_gitignore_entries(gitignore_path: &Path) -> Result<()> {
-    let content = fs::read_to_string(gitignore_path)
-        .context("Failed to read .gitignore")?;
+    let content = fs::read_to_string(gitignore_path).context("Failed to read .gitignore")?;
 
     // Critical entries that should always be ignored
     let must_have = [
@@ -582,8 +572,7 @@ fn ensure_gitignore_entries(gitignore_path: &Path) -> Result<()> {
     }
 
     if !added.is_empty() {
-        fs::write(gitignore_path, updated_content)
-            .context("Failed to update .gitignore")?;
+        fs::write(gitignore_path, updated_content).context("Failed to update .gitignore")?;
 
         println!("✓ Added to .gitignore: {}", added.join(", "));
     }

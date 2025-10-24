@@ -11,7 +11,11 @@ const ADAPTER_DIR: &str = ".gemini";
 const CONTEXT_FILE: &str = "GEMINI.md";
 
 /// Initialize Gemini project structure
-pub fn init_project(project_path: &Path, project_name: &str, environment: &Environment) -> Result<()> {
+pub fn init_project(
+    project_path: &Path,
+    project_name: &str,
+    environment: &Environment,
+) -> Result<()> {
     // Create .gemini directory
     let gemini_path = project_path.join(ADAPTER_DIR);
     fs::create_dir_all(&gemini_path)?;
