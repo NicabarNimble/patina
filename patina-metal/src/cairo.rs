@@ -116,7 +116,7 @@ impl CairoParser {
                     .declaration(&self.db)
                     .name(&self.db)
                     .text(&self.db)
-                    .to_string();
+                    .to_string(&self.db);
                 let (start_line, end_line) = self.get_line_range(node, content);
 
                 // Extract parameters
@@ -125,7 +125,7 @@ impl CairoParser {
                     .signature(&self.db)
                     .parameters(&self.db)
                     .elements(&self.db)
-                    .map(|p| p.name(&self.db).text(&self.db).to_string())
+                    .map(|p| p.name(&self.db).text(&self.db).to_string(&self.db))
                     .collect();
 
                 // Extract return type if present - simplified approach
@@ -136,7 +136,7 @@ impl CairoParser {
                 {
                     ast::OptionReturnTypeClause::Empty(_) => None,
                     ast::OptionReturnTypeClause::ReturnTypeClause(clause) => {
-                        Some(clause.ty(&self.db).as_syntax_node().get_text(&self.db))
+                        Some(clause.ty(&self.db).as_syntax_node().get_text(&self.db).to_string())
                     }
                 };
 
@@ -151,14 +151,14 @@ impl CairoParser {
             }
             ItemStruct => {
                 let struct_item = ast::ItemStruct::from_syntax_node(&self.db, *node);
-                let name = struct_item.name(&self.db).text(&self.db).to_string();
+                let name = struct_item.name(&self.db).text(&self.db).to_string(&self.db);
                 let (start_line, end_line) = self.get_line_range(node, content);
 
                 // Extract field names
                 let fields = struct_item
                     .members(&self.db)
                     .elements(&self.db)
-                    .map(|member| member.name(&self.db).text(&self.db).to_string())
+                    .map(|member| member.name(&self.db).text(&self.db).to_string(&self.db))
                     .collect();
 
                 symbols.structs.push(StructSymbol {
@@ -171,7 +171,7 @@ impl CairoParser {
             }
             ItemTrait => {
                 let trait_item = ast::ItemTrait::from_syntax_node(&self.db, *node);
-                let name = trait_item.name(&self.db).text(&self.db).to_string();
+                let name = trait_item.name(&self.db).text(&self.db).to_string(&self.db);
                 let (start_line, end_line) = self.get_line_range(node, content);
 
                 symbols.traits.push(TraitSymbol {
@@ -183,7 +183,7 @@ impl CairoParser {
             }
             ItemImpl => {
                 let impl_item = ast::ItemImpl::from_syntax_node(&self.db, *node);
-                let type_name = impl_item.name(&self.db).as_syntax_node().get_text(&self.db);
+                let type_name = impl_item.name(&self.db).as_syntax_node().get_text(&self.db).to_string();
                 let (start_line, end_line) = self.get_line_range(node, content);
 
                 // Check if this is a trait impl - simplified approach
@@ -191,7 +191,8 @@ impl CairoParser {
                     impl_item
                         .trait_path(&self.db)
                         .as_syntax_node()
-                        .get_text(&self.db),
+                        .get_text(&self.db)
+                        .to_string(),
                 );
 
                 symbols.impls.push(ImplSymbol {
@@ -203,7 +204,7 @@ impl CairoParser {
             }
             ItemModule => {
                 let module = ast::ItemModule::from_syntax_node(&self.db, *node);
-                let name = module.name(&self.db).text(&self.db).to_string();
+                let name = module.name(&self.db).text(&self.db).to_string(&self.db);
                 let (start_line, end_line) = self.get_line_range(node, content);
 
                 symbols.modules.push(ModuleSymbol {
@@ -218,7 +219,8 @@ impl CairoParser {
                 let path = use_item
                     .use_path(&self.db)
                     .as_syntax_node()
-                    .get_text(&self.db);
+                    .get_text(&self.db)
+                    .to_string();
                 let (line, _) = self.get_line_range(node, content);
 
                 symbols.imports.push(ImportSymbol { path, line });
@@ -242,7 +244,7 @@ impl CairoParser {
         let node_lines = node_text.lines().count().max(1);
 
         // Try to find the node text in the content to estimate position
-        if let Some(position) = content.find(&node_text) {
+        if let Some(position) = content.find(node_text) {
             let prefix = &content[..position];
             let start_line = prefix.lines().count();
             let end_line = start_line + node_lines - 1;
