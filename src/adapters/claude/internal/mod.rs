@@ -5,7 +5,6 @@
 
 use anyhow::Result;
 use std::path::{Path, PathBuf};
-use toml::Value;
 
 use crate::environment::Environment;
 
@@ -20,7 +19,11 @@ mod paths;
 mod session_scripts;
 
 // Public API for parent module
-pub fn init_project(project_path: &Path, design: &Value, environment: &Environment) -> Result<()> {
+pub fn init_project(
+    project_path: &Path,
+    project_name: &str,
+    environment: &Environment,
+) -> Result<()> {
     // Create directory structure
     paths::create_directory_structure(project_path)?;
 
@@ -28,7 +31,7 @@ pub fn init_project(project_path: &Path, design: &Value, environment: &Environme
     session_scripts::create_session_scripts(project_path)?;
 
     // Generate initial context
-    context_generation::generate_initial_context(project_path, design, environment)?;
+    context_generation::generate_initial_context(project_path, project_name, environment)?;
 
     // Create adapter manifest
     manifest::create_adapter_manifest(project_path)?;
@@ -36,7 +39,7 @@ pub fn init_project(project_path: &Path, design: &Value, environment: &Environme
     Ok(())
 }
 
-pub fn post_init(_project_path: &Path, _design: &Value, _dev_env: &str) -> Result<()> {
+pub fn post_init(_project_path: &Path, _dev_env: &str) -> Result<()> {
     // Currently no post-init actions needed
     Ok(())
 }
