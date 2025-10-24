@@ -95,6 +95,29 @@ enum Commands {
         #[command(flatten)]
         args: commands::ask::AskCommand,
     },
+
+    /// Generate YOLO devcontainer for autonomous AI development
+    Yolo {
+        /// Use interactive mode to choose options
+        #[arg(short, long)]
+        interactive: bool,
+
+        /// Use all defaults without prompting
+        #[arg(short, long, conflicts_with = "interactive")]
+        defaults: bool,
+
+        /// Additional tools to include (e.g., --with cairo,solidity)
+        #[arg(long, value_delimiter = ',')]
+        with: Option<Vec<String>>,
+
+        /// Tools to exclude from detection (e.g., --without python)
+        #[arg(long, value_delimiter = ',')]
+        without: Option<Vec<String>>,
+
+        /// Output results as JSON
+        #[arg(short, long)]
+        json: bool,
+    },
 }
 
 /// Common arguments for all scrape subcommands
@@ -288,6 +311,15 @@ fn main() -> Result<()> {
         }
         Commands::Ask { args } => {
             commands::ask::run(args)?;
+        }
+        Commands::Yolo {
+            interactive,
+            defaults,
+            with,
+            without,
+            json,
+        } => {
+            commands::yolo::execute(interactive, defaults, with, without, json)?;
         }
         Commands::Version { json, components } => {
             commands::version::execute(json, components)?;
