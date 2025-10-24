@@ -135,9 +135,13 @@ impl CairoParser {
                     .ret_ty(&self.db)
                 {
                     ast::OptionReturnTypeClause::Empty(_) => None,
-                    ast::OptionReturnTypeClause::ReturnTypeClause(clause) => {
-                        Some(clause.ty(&self.db).as_syntax_node().get_text(&self.db).to_string())
-                    }
+                    ast::OptionReturnTypeClause::ReturnTypeClause(clause) => Some(
+                        clause
+                            .ty(&self.db)
+                            .as_syntax_node()
+                            .get_text(&self.db)
+                            .to_string(),
+                    ),
                 };
 
                 symbols.functions.push(FunctionSymbol {
@@ -151,7 +155,10 @@ impl CairoParser {
             }
             ItemStruct => {
                 let struct_item = ast::ItemStruct::from_syntax_node(&self.db, *node);
-                let name = struct_item.name(&self.db).text(&self.db).to_string(&self.db);
+                let name = struct_item
+                    .name(&self.db)
+                    .text(&self.db)
+                    .to_string(&self.db);
                 let (start_line, end_line) = self.get_line_range(node, content);
 
                 // Extract field names
@@ -183,7 +190,11 @@ impl CairoParser {
             }
             ItemImpl => {
                 let impl_item = ast::ItemImpl::from_syntax_node(&self.db, *node);
-                let type_name = impl_item.name(&self.db).as_syntax_node().get_text(&self.db).to_string();
+                let type_name = impl_item
+                    .name(&self.db)
+                    .as_syntax_node()
+                    .get_text(&self.db)
+                    .to_string();
                 let (start_line, end_line) = self.get_line_range(node, content);
 
                 // Check if this is a trait impl - simplified approach
