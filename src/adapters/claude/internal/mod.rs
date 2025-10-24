@@ -19,7 +19,11 @@ mod paths;
 mod session_scripts;
 
 // Public API for parent module
-pub fn init_project(project_path: &Path, project_name: &str, environment: &Environment) -> Result<()> {
+pub fn init_project(
+    project_path: &Path,
+    project_name: &str,
+    environment: &Environment,
+) -> Result<()> {
     // Create directory structure
     paths::create_directory_structure(project_path)?;
 

@@ -86,4 +86,3 @@ fn generate_minimal_context(project_name: &str, environment: &Environment) -> St
 
     content
 }
-
