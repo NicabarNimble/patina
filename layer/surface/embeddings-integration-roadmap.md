@@ -1,19 +1,21 @@
 ---
 id: embeddings-integration-roadmap
-version: 1
+version: 2
 status: active
 created_date: 2025-10-30
 updated_date: 2025-10-30
 oxidizer: nicabar
-tags: [embeddings, implementation, roadmap, sqlite-vss, semantic-search]
+tags: [embeddings, implementation, roadmap, sqlite-vss, semantic-search, coreml]
 ---
 
 # Embeddings Integration Roadmap
 
 **Goal:** Add semantic search capability to the neuro-symbolic persona architecture using embeddings + sqlite-vss.
 
-**Status:** Planning phase
-**Target:** 4-week implementation
+**Status:** Planning phase (CoreML-first approach)
+**Target:** 3-week implementation
+
+**Implementation Strategy:** CoreML on-device embeddings (primary), rust-bert fallback (if needed)
 
 ---
 
@@ -58,19 +60,239 @@ From neuro-symbolic-architecture-critique.md, embeddings are THE missing piece:
 
 ---
 
-## Phase 1: Foundation (Week 1)
+## Architecture Decision: CoreML-First
 
-### Goal: Add embedding infrastructure and generate embeddings for existing data
+**Choice:** Start with CoreML on-device embeddings (not rust-bert)
+
+**Rationale:**
+
+**Aligns with Project Philosophy:**
+- ✅ Privacy-first: Session content stays on-device
+- ✅ Zero cost: No cloud API calls, no ongoing fees
+- ✅ Apple Silicon native: Fully optimized for Neural Engine
+- ✅ Consistent with hybrid-extraction design (CoreML for facts)
+
+**Technical Benefits:**
+- ✅ Fast: ~20ms/embedding on Neural Engine (vs 50-100ms CPU)
+- ✅ Efficient: Neural Engine is 10x more power-efficient than CPU
+- ✅ Offline: Works without network after model export
+- ✅ Already have CoreML infrastructure (MobileBERT for extraction)
+
+**Implementation Strategy:**
+- Build trait abstraction (`EmbeddingEngine`) for flexibility
+- Implement `CoreMLEmbedder` as primary
+- Keep `RustBertEmbedder` as fallback if CoreML has issues
+- Ship whichever works best
+
+**Risk Mitigation:**
+If CoreML export/integration is painful:
+```rust
+// Easy pivot to rust-bert
+cargo add rust-bert
+impl EmbeddingEngine for RustBertEmbedder { ... }
+patina embeddings generate --mode rust-bert
+```
+
+The trait abstraction means we're not locked in.
+
+---
+
+## Phase 1: CoreML Embedding Foundation (Week 1)
+
+### Goal: Build on-device embedding generation using CoreML + sqlite-vss
 
 ### Tasks
 
-#### 1.1 Add Dependencies
+#### 1.1 Export CoreML Embedding Model
+
+Convert sentence transformer to CoreML format:
+
+```python
+# scripts/export_coreml_embedder.py
+from sentence_transformers import SentenceTransformer
+import coremltools as ct
+import torch
+
+# Load model
+print("Loading all-MiniLM-L6-v2...")
+model = SentenceTransformer('all-MiniLM-L6-v2')
+
+# Get model components
+word_embedding_model = model[0]  # Transformer
+pooling_model = model[1]  # Mean pooling
+
+# Create example input
+example_input = "This is a test sentence"
+tokens = model.tokenize([example_input])
+
+# Convert to CoreML
+print("Converting to CoreML...")
+traced_model = torch.jit.trace(model, tokens)
+coreml_model = ct.convert(
+    traced_model,
+    inputs=[ct.TensorType(name="input_ids", shape=(1, 128))],
+    outputs=[ct.TensorType(name="embedding", shape=(1, 384))],
+    minimum_deployment_target=ct.target.macOS13,
+)
+
+# Add metadata
+coreml_model.short_description = "Sentence embeddings (all-MiniLM-L6-v2)"
+coreml_model.author = "Patina"
+coreml_model.version = "1.0"
+
+# Save
+output_path = "resources/models/sentence_embedder.mlmodel"
+coreml_model.save(output_path)
+print(f"✓ Saved to {output_path}")
+```
+
+**Test the model:**
+```python
+# Test with sample inputs
+import coremltools as ct
+
+model = ct.models.MLModel("resources/models/sentence_embedder.mlmodel")
+result = model.predict({"input": "test"})
+print(f"Embedding dimension: {len(result['embedding'])}")  # Should be 384
+```
+
+**Files to create:**
+- `scripts/export_coreml_embedder.py`
+- `resources/models/sentence_embedder.mlmodel` (generated)
+- `resources/models/README.md` (model documentation)
+
+---
+
+#### 1.2 Build Swift Embedding Helper
+
+Simple CLI tool that uses CoreML model:
+
+```swift
+// resources/coreml-extractor/embedder.swift
+import Foundation
+import CoreML
+import NaturalLanguage
+
+@available(macOS 13.0, *)
+class SentenceEmbedder {
+    let model: MLModel
+
+    init() throws {
+        let modelURL = URL(fileURLWithPath: "resources/models/sentence_embedder.mlmodel")
+
+        guard FileManager.default.fileExists(atPath: modelURL.path) else {
+            throw EmbedderError.modelNotFound
+        }
+
+        self.model = try MLModel(contentsOf: modelURL)
+    }
+
+    func embed(_ text: String) throws -> [Float] {
+        // Tokenize input
+        let input = try MLDictionaryFeatureProvider(dictionary: ["input": text])
+
+        // Run inference
+        let output = try model.prediction(from: input)
+
+        // Extract embedding
+        guard let embedding = output.featureValue(for: "embedding")?.multiArrayValue else {
+            throw EmbedderError.invalidOutput
+        }
+
+        // Convert to Float array
+        let count = embedding.count
+        var result = [Float](repeating: 0, count: count)
+        for i in 0..<count {
+            result[i] = Float(truncating: embedding[i])
+        }
+
+        return result
+    }
+
+    func embedBatch(_ texts: [String]) throws -> [[Float]] {
+        return try texts.map { try embed($0) }
+    }
+}
+
+enum EmbedderError: Error {
+    case modelNotFound
+    case invalidOutput
+}
+
+// CLI interface
+@available(macOS 13.0, *)
+func main() {
+    do {
+        let embedder = try SentenceEmbedder()
+
+        // Read from stdin, one line at a time
+        while let line = readLine() {
+            let embedding = try embedder.embed(line)
+
+            // Output as comma-separated values
+            let output = embedding.map { String($0) }.joined(separator: ",")
+            print(output)
+        }
+    } catch {
+        fputs("Error: \(error)\n", stderr)
+        exit(1)
+    }
+}
+
+if #available(macOS 13.0, *) {
+    main()
+} else {
+    fputs("Error: Requires macOS 13.0 or later\n", stderr)
+    exit(1)
+}
+```
+
+**Build script:**
+```swift
+// resources/coreml-extractor/Package.swift
+// swift-tools-version: 5.9
+import PackageDescription
+
+let package = Package(
+    name: "coreml-embedder",
+    platforms: [.macOS(.v13)],
+    targets: [
+        .executableTarget(
+            name: "coreml-embedder",
+            path: ".",
+            sources: ["embedder.swift"]
+        )
+    ]
+)
+```
+
+**Build command:**
+```bash
+cd resources/coreml-extractor
+swift build -c release
+# Binary: .build/release/coreml-embedder
+```
+
+**Files to create:**
+- `resources/coreml-extractor/embedder.swift`
+- `resources/coreml-extractor/Package.swift`
+- `resources/coreml-extractor/README.md` (build instructions)
+
+---
+
+#### 1.3 Add Dependencies (Minimal)
+
 ```toml
 # Cargo.toml additions
 [dependencies]
 sqlite-vss = "0.1"              # Vector similarity search extension
-rust-bert = "0.21"              # Sentence embeddings (all-MiniLM-L6-v2)
 ndarray = "0.15"                # Array operations for embeddings
+
+# Optional fallback (only if CoreML fails)
+rust-bert = { version = "0.21", optional = true }
+
+[features]
+rust-bert-embeddings = ["rust-bert"]
 
 [dev-dependencies]
 approx = "0.5"                  # Testing similarity scores
@@ -81,7 +303,7 @@ approx = "0.5"                  # Testing similarity scores
 
 ---
 
-#### 1.2 Extend Database Schema
+#### 1.4 Extend Database Schema
 Add vector tables to `.patina/schema.sql`:
 
 ```sql
@@ -119,49 +341,181 @@ CREATE TABLE IF NOT EXISTS embedding_metadata (
 
 ---
 
-#### 1.3 Build Embedding Module
+#### 1.5 Build Rust Integration with CoreML
 
-Create `src/embeddings/` module:
+Create `src/embeddings/` module with trait abstraction:
 
 **Structure:**
 ```
 src/embeddings/
-├── mod.rs           # Public API, EmbeddingEngine struct
-├── models.rs        # Model loading and management
+├── mod.rs           # Public API, EmbeddingEngine trait
+├── coreml.rs        # CoreML implementation (primary)
+├── rust_bert.rs     # rust-bert fallback (optional)
 ├── similarity.rs    # Cosine similarity, distance metrics
 └── generation.rs    # Batch embedding generation
 ```
 
-**Key components:**
+**Trait abstraction:**
 
 ```rust
 // src/embeddings/mod.rs
-pub struct EmbeddingEngine {
-    model: SentenceEmbeddingsModel,
+pub trait EmbeddingEngine {
+    fn embed(&self, text: &str) -> Result<Vec<f32>>;
+    fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>>;
+    fn dimension(&self) -> usize;
+    fn model_name(&self) -> &str;
+}
+
+// Factory function
+pub fn create_embedder(mode: EmbedderMode) -> Result<Box<dyn EmbeddingEngine>> {
+    match mode {
+        EmbedderMode::CoreML => Ok(Box::new(CoreMLEmbedder::new()?)),
+        EmbedderMode::RustBert => {
+            #[cfg(feature = "rust-bert-embeddings")]
+            Ok(Box::new(RustBertEmbedder::new()?))
+            #[cfg(not(feature = "rust-bert-embeddings"))]
+            bail!("rust-bert feature not enabled")
+        }
+        EmbedderMode::Auto => {
+            // Try CoreML first, fallback to rust-bert
+            CoreMLEmbedder::new()
+                .map(|e| Box::new(e) as Box<dyn EmbeddingEngine>)
+                .or_else(|_| {
+                    #[cfg(feature = "rust-bert-embeddings")]
+                    RustBertEmbedder::new().map(|e| Box::new(e) as Box<dyn EmbeddingEngine>)
+                    #[cfg(not(feature = "rust-bert-embeddings"))]
+                    bail!("No embedder available")
+                })
+        }
+    }
+}
+
+pub enum EmbedderMode {
+    CoreML,
+    RustBert,
+    Auto,
+}
+```
+
+**CoreML implementation:**
+
+```rust
+// src/embeddings/coreml.rs
+use std::process::{Command, Stdio};
+use std::io::Write;
+
+pub struct CoreMLEmbedder {
+    helper_path: PathBuf,
     dimension: usize,
 }
 
-impl EmbeddingEngine {
-    pub fn new() -> Result<Self>;
-    pub fn embed_belief(&self, statement: &str, why: &str) -> Result<Vec<f32>>;
-    pub fn embed_observation(&self, obs: &Observation) -> Result<Vec<f32>>;
-    pub fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>>;
+impl CoreMLEmbedder {
+    pub fn new() -> Result<Self> {
+        // Check if CoreML helper is built
+        let helper_path = Path::new("resources/coreml-extractor/.build/release/coreml-embedder");
+
+        if !helper_path.exists() {
+            bail!(
+                "CoreML embedder not built. Run:\n  \
+                cd resources/coreml-extractor && swift build -c release"
+            );
+        }
+
+        Ok(Self {
+            helper_path: helper_path.to_path_buf(),
+            dimension: 384,  // all-MiniLM-L6-v2
+        })
+    }
 }
 
+impl EmbeddingEngine for CoreMLEmbedder {
+    fn embed(&self, text: &str) -> Result<Vec<f32>> {
+        let mut child = Command::new(&self.helper_path)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context("Failed to spawn CoreML embedder")?;
+
+        // Write text to stdin
+        {
+            let stdin = child.stdin.as_mut().unwrap();
+            writeln!(stdin, "{}", text)?;
+        }
+
+        // Read embedding from stdout
+        let output = child.wait_with_output()?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("CoreML embedder failed: {}", stderr);
+        }
+
+        // Parse CSV output
+        let stdout = String::from_utf8(output.stdout)?;
+        let embedding: Vec<f32> = stdout
+            .trim()
+            .split(',')
+            .map(|s| s.parse::<f32>())
+            .collect::<Result<Vec<_>, _>>()
+            .context("Failed to parse embedding output")?;
+
+        if embedding.len() != self.dimension {
+            bail!("Invalid embedding dimension: expected {}, got {}", self.dimension, embedding.len());
+        }
+
+        Ok(embedding)
+    }
+
+    fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        texts.iter().map(|t| self.embed(t)).collect()
+    }
+
+    fn dimension(&self) -> usize {
+        self.dimension
+    }
+
+    fn model_name(&self) -> &str {
+        "all-MiniLM-L6-v2 (CoreML)"
+    }
+}
+```
+
+**Utility functions:**
+
+```rust
 // src/embeddings/similarity.rs
-pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32;
-pub fn euclidean_distance(a: &[f32], b: &[f32]) -> f32;
+pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    assert_eq!(a.len(), b.len(), "Vectors must have same dimension");
+
+    let dot_product: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+    let magnitude_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let magnitude_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+
+    dot_product / (magnitude_a * magnitude_b)
+}
+
+pub fn euclidean_distance(a: &[f32], b: &[f32]) -> f32 {
+    assert_eq!(a.len(), b.len(), "Vectors must have same dimension");
+
+    a.iter()
+        .zip(b.iter())
+        .map(|(x, y)| (x - y).powi(2))
+        .sum::<f32>()
+        .sqrt()
+}
 ```
 
 **Files to create:**
 - `src/embeddings/mod.rs`
-- `src/embeddings/models.rs`
+- `src/embeddings/coreml.rs`
+- `src/embeddings/rust_bert.rs` (optional, feature-gated)
 - `src/embeddings/similarity.rs`
 - `src/embeddings/generation.rs`
 
 ---
 
-#### 1.4 Create Embedding Generation Command
+#### 1.6 Create Embedding Generation Command
 
 Build `patina embeddings generate` command:
 
@@ -180,9 +534,11 @@ pub async fn generate_all_embeddings(db_path: &Path, force: bool) -> Result<()> 
 
 **Command usage:**
 ```bash
-patina embeddings generate           # Generate for new items only
-patina embeddings generate --force   # Regenerate all embeddings
-patina embeddings status             # Show embedding coverage
+patina embeddings generate                    # Auto-detect (CoreML preferred)
+patina embeddings generate --mode coreml      # Force CoreML
+patina embeddings generate --mode rust-bert   # Force rust-bert (if enabled)
+patina embeddings generate --force            # Regenerate all embeddings
+patina embeddings status                      # Show embedding coverage
 ```
 
 **Files to create:**
@@ -192,16 +548,26 @@ patina embeddings status             # Show embedding coverage
 
 ---
 
-#### 1.5 Test Semantic Search
+#### 1.7 Test Semantic Search
 
 Create basic semantic search test:
 
 ```rust
 // tests/integration/semantic_search.rs
 #[test]
+fn test_coreml_embedding() {
+    let embedder = CoreMLEmbedder::new().unwrap();
+
+    let embedding = embedder.embed("This is a test").unwrap();
+
+    assert_eq!(embedding.len(), 384);
+    assert!(embedding.iter().any(|&x| x != 0.0));  // Not all zeros
+}
+
+#[test]
 fn test_belief_semantic_search() {
     let conn = setup_test_db();
-    let embedder = EmbeddingEngine::new().unwrap();
+    let embedder = create_embedder(EmbedderMode::Auto).unwrap();
 
     // Insert test beliefs
     insert_belief(&conn, "prefers_rust_for_cli_tools");
@@ -209,10 +575,10 @@ fn test_belief_semantic_search() {
     insert_belief(&conn, "values_type_safety");
 
     // Generate embeddings
-    generate_embeddings(&conn, &embedder);
+    generate_embeddings(&conn, &*embedder);
 
     // Search
-    let results = search_beliefs(&conn, "type safe languages", &embedder, 5).unwrap();
+    let results = search_beliefs(&conn, "type safe languages", &*embedder, 5).unwrap();
 
     // Should find "values_type_safety" with high similarity
     assert!(results[0].0 == belief_id("values_type_safety"));
@@ -227,9 +593,12 @@ fn test_belief_semantic_search() {
 
 ### Phase 1 Deliverables
 
-- [x] Dependencies added (`sqlite-vss`, `rust-bert`)
+- [x] CoreML model exported (`sentence_embedder.mlmodel`)
+- [x] Swift embedding helper built (CLI tool)
+- [x] Rust-CoreML integration working (trait abstraction)
+- [x] Dependencies added (`sqlite-vss`, optional `rust-bert`)
 - [x] Schema extended with vector tables
-- [x] Embedding module implemented
+- [x] Embedding module implemented with CoreML backend
 - [x] `patina embeddings generate` command working
 - [x] Basic semantic search tested
 - [x] Embeddings generated for existing 22 beliefs + observations
@@ -560,179 +929,6 @@ patina persona discover-universal-beliefs
 
 ---
 
-## Phase 4: On-Device Embeddings (Week 4)
-
-### Goal: Generate embeddings on-device via CoreML (maintain privacy, zero cost)
-
-### Tasks
-
-#### 4.1 Export CoreML Embedding Model
-
-```python
-# scripts/export_coreml_embedder.py
-from sentence_transformers import SentenceTransformer
-import coremltools as ct
-
-# Load model
-model = SentenceTransformer('all-MiniLM-L6-v2')
-
-# Convert to CoreML
-coreml_model = ct.convert(
-    model.to_torchscript(),
-    inputs=[ct.TensorType(name="text", shape=(1, 512))],
-    outputs=[ct.TensorType(name="embedding", shape=(1, 384))]
-)
-
-# Save
-coreml_model.save("resources/models/sentence_embedder.mlmodel")
-```
-
-**Files to create:**
-- `scripts/export_coreml_embedder.py`
-- `resources/models/sentence_embedder.mlmodel` (generated)
-
----
-
-#### 4.2 Build Swift Embedding Helper
-
-```swift
-// resources/coreml-extractor/embedder.swift
-import CoreML
-import NaturalLanguage
-
-class SentenceEmbedder {
-    let model: SentenceEmbedderModel
-
-    init() throws {
-        let modelURL = Bundle.main.url(
-            forResource: "sentence_embedder",
-            withExtension: "mlmodel"
-        )!
-        self.model = try SentenceEmbedderModel(contentsOf: modelURL)
-    }
-
-    func embed(_ text: String) throws -> [Float] {
-        let input = SentenceEmbedderInput(text: text)
-        let output = try model.prediction(input: input)
-        return output.embedding
-    }
-
-    func embedBatch(_ texts: [String]) throws -> [[Float]] {
-        return try texts.map { try embed($0) }
-    }
-}
-
-// Command-line interface
-func main() {
-    let embedder = try! SentenceEmbedder()
-
-    for line in stdin {
-        let embedding = try! embedder.embed(line)
-        print(embedding.map { String($0) }.joined(separator: ","))
-    }
-}
-```
-
-**Files to create:**
-- `resources/coreml-extractor/embedder.swift`
-- `resources/coreml-extractor/Package.swift` (Swift package manifest)
-
----
-
-#### 4.3 Integrate CoreML Embedder with Rust
-
-```rust
-// src/embeddings/coreml.rs
-pub struct CoreMLEmbedder {
-    helper_path: PathBuf,
-}
-
-impl CoreMLEmbedder {
-    pub fn new() -> Result<Self> {
-        let helper_path = Path::new("target/release/coreml-embedder");
-        if !helper_path.exists() {
-            bail!("CoreML embedder not built. Run: cd resources/coreml-extractor && swift build -c release");
-        }
-        Ok(Self { helper_path: helper_path.to_path_buf() })
-    }
-
-    pub fn embed(&self, text: &str) -> Result<Vec<f32>> {
-        let output = Command::new(&self.helper_path)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .spawn()?;
-
-        // Write text to stdin
-        output.stdin.unwrap().write_all(text.as_bytes())?;
-
-        // Read embedding from stdout
-        let embedding = parse_embedding(&output.stdout)?;
-        Ok(embedding)
-    }
-}
-```
-
-**Files to create:**
-- `src/embeddings/coreml.rs`
-
----
-
-#### 4.4 Update Extraction Pipeline
-
-```rust
-// src/commands/session/extract.rs
-pub fn extract_session_with_embeddings(
-    session_path: &Path,
-    embedder: &CoreMLEmbedder,
-) -> Result<SessionData> {
-    // 1. Extract facts (existing)
-    let facts = extract_session_facts(session_path)?;
-
-    // 2. Generate embeddings on-device (new)
-    let embeddings = embedder.embed_batch(&facts.to_text_batch())?;
-
-    // 3. Insert both into database
-    insert_observations_with_embeddings(&conn, &facts, &embeddings)?;
-
-    Ok(SessionData { facts, embeddings })
-}
-```
-
-**Files to modify:**
-- `src/commands/session/extract.rs`
-
----
-
-#### 4.5 Add Embedding Mode Selection
-
-```bash
-# Use Rust-BERT (CPU/GPU)
-patina embeddings generate --mode rust-bert
-
-# Use CoreML (Neural Engine, on-device)
-patina embeddings generate --mode coreml
-
-# Auto-detect (prefer CoreML on macOS)
-patina embeddings generate
-```
-
-**Files to modify:**
-- `src/commands/embeddings/generate.rs` (add `--mode` flag)
-
----
-
-### Phase 4 Deliverables
-
-- [x] CoreML embedding model exported
-- [x] Swift embedding helper built
-- [x] Rust integration with CoreML embedder
-- [x] Extraction pipeline generates embeddings on-device
-- [x] Mode selection (rust-bert vs coreml)
-
-**Validation:** Generate embeddings using CoreML and verify performance (~20ms/embedding on Neural Engine)
-
----
-
 ## Testing & Validation
 
 ### Unit Tests
@@ -811,10 +1007,12 @@ time patina query hybrid "prefer functional style" --top 10
 - [x] Relationship discovery suggests connections
 - [x] Cross-domain beliefs detected
 
-### Phase 4 Complete
-- [x] CoreML embeddings generated on-device
+### All Phases Complete
+- [x] CoreML embeddings generated on-device (Phase 1)
+- [x] Hybrid retrieval working (Phase 2)
+- [x] Persona integration complete (Phase 3)
 - [x] Privacy maintained (no cloud calls)
-- [x] Performance: <20ms per embedding
+- [x] Performance: <20ms per embedding (CoreML on Neural Engine)
 
 ---
 
@@ -898,6 +1096,6 @@ Once embeddings are integrated:
 
 ---
 
-**Status:** Ready to begin Phase 1
+**Status:** Ready to begin Phase 1 (CoreML-first approach)
 **Owner:** @nicabar
-**Timeline:** 4 weeks (1 week per phase)
+**Timeline:** 3 weeks (CoreML foundation + hybrid retrieval + persona enhancement)
