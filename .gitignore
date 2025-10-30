@@ -27,3 +27,6 @@ docker-compose.yml.backup/
 *.db
 *.db-shm
 *.db-wal
+
+# Patina databases (regeneratable)
+.patina/db/
