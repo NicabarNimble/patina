@@ -22,7 +22,9 @@ fn get_test_embedder() -> Box<dyn EmbeddingEngine> {
     }
 
     use patina::embeddings::OnnxEmbedder;
-    Box::new(OnnxEmbedder::new_from_paths(test_model, test_tokenizer).expect("Test model should load"))
+    Box::new(
+        OnnxEmbedder::new_from_paths(test_model, test_tokenizer).expect("Test model should load"),
+    )
 }
 
 #[test]
@@ -94,10 +96,16 @@ fn test_belief_semantic_search() {
 
     // Simulate belief statements
     let beliefs = vec![
-        ("prefers_rust_for_cli_tools", "I prefer using Rust for command-line tools"),
+        (
+            "prefers_rust_for_cli_tools",
+            "I prefer using Rust for command-line tools",
+        ),
         ("values_type_safety", "Type safety is important to me"),
         ("avoid_global_state", "I avoid using global mutable state"),
-        ("prefers_composition", "I prefer composition over inheritance"),
+        (
+            "prefers_composition",
+            "I prefer composition over inheritance",
+        ),
     ];
 
     // Generate embeddings
@@ -167,7 +175,10 @@ fn test_cross_domain_belief_detection() {
 
     // Informational assertion - cross-domain similarity is typically low (0.05-0.15)
     if similarity < 0.15 {
-        println!("Note: Cross-domain similarity is low ({:.3}), which is expected", similarity);
+        println!(
+            "Note: Cross-domain similarity is low ({:.3}), which is expected",
+            similarity
+        );
     }
 }
 
@@ -187,12 +198,7 @@ fn test_batch_embedding_generation() {
 
     assert_eq!(embeddings.len(), 3, "Should generate 3 embeddings");
     for (i, emb) in embeddings.iter().enumerate() {
-        assert_eq!(
-            emb.len(),
-            384,
-            "Embedding {} should have 384 dimensions",
-            i
-        );
+        assert_eq!(emb.len(), 384, "Embedding {} should have 384 dimensions", i);
         assert!(
             emb.iter().any(|&x| x != 0.0),
             "Embedding {} should not be all zeros",
@@ -207,19 +213,28 @@ fn test_cosine_similarity_properties() {
     let a = vec![1.0, 2.0, 3.0];
     let b = vec![1.0, 2.0, 3.0];
     let sim = cosine_similarity(&a, &b);
-    assert!((sim - 1.0).abs() < 0.001, "Identical vectors should have similarity ~1.0");
+    assert!(
+        (sim - 1.0).abs() < 0.001,
+        "Identical vectors should have similarity ~1.0"
+    );
 
     // Orthogonal vectors
     let a = vec![1.0, 0.0, 0.0];
     let b = vec![0.0, 1.0, 0.0];
     let sim = cosine_similarity(&a, &b);
-    assert!((sim - 0.0).abs() < 0.001, "Orthogonal vectors should have similarity ~0.0");
+    assert!(
+        (sim - 0.0).abs() < 0.001,
+        "Orthogonal vectors should have similarity ~0.0"
+    );
 
     // Opposite vectors
     let a = vec![1.0, 2.0, 3.0];
     let b = vec![-1.0, -2.0, -3.0];
     let sim = cosine_similarity(&a, &b);
-    assert!((sim + 1.0).abs() < 0.001, "Opposite vectors should have similarity ~-1.0");
+    assert!(
+        (sim + 1.0).abs() < 0.001,
+        "Opposite vectors should have similarity ~-1.0"
+    );
 }
 
 #[test]
@@ -228,13 +243,19 @@ fn test_euclidean_distance_properties() {
     let a = vec![1.0, 2.0, 3.0];
     let b = vec![1.0, 2.0, 3.0];
     let dist = euclidean_distance(&a, &b);
-    assert!((dist - 0.0).abs() < 0.001, "Identical vectors should have distance ~0.0");
+    assert!(
+        (dist - 0.0).abs() < 0.001,
+        "Identical vectors should have distance ~0.0"
+    );
 
     // Unit distance
     let a = vec![0.0, 0.0, 0.0];
     let b = vec![1.0, 0.0, 0.0];
     let dist = euclidean_distance(&a, &b);
-    assert!((dist - 1.0).abs() < 0.001, "Unit vectors should have distance ~1.0");
+    assert!(
+        (dist - 1.0).abs() < 0.001,
+        "Unit vectors should have distance ~1.0"
+    );
 }
 
 #[test]

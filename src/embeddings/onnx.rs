@@ -197,11 +197,8 @@ impl EmbeddingEngine for OnnxEmbedder {
 
             // Convert flat data to Array2 for the first batch item
             let batch_offset = seq_len * hidden_dim;
-            Array2::from_shape_vec(
-                (seq_len, hidden_dim),
-                data[0..batch_offset].to_vec()
-            )
-            .context("Failed to reshape token embeddings")?
+            Array2::from_shape_vec((seq_len, hidden_dim), data[0..batch_offset].to_vec())
+                .context("Failed to reshape token embeddings")?
             // outputs is dropped here, releasing the mutable borrow
         };
 
@@ -249,8 +246,7 @@ mod tests {
             panic!("Test models missing. Run: ./scripts/download-test-models.sh");
         }
 
-        OnnxEmbedder::new_from_paths(test_model, test_tokenizer)
-            .expect("Test model should load")
+        OnnxEmbedder::new_from_paths(test_model, test_tokenizer).expect("Test model should load")
     }
 
     #[test]
@@ -265,7 +261,10 @@ mod tests {
         let embedding = embedder.embed("This is a test").unwrap();
 
         assert_eq!(embedding.len(), 384);
-        assert!(embedding.iter().any(|&x| x != 0.0), "Embedding is all zeros");
+        assert!(
+            embedding.iter().any(|&x| x != 0.0),
+            "Embedding is all zeros"
+        );
 
         // Check normalization (L2 norm should be ~1.0)
         let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -290,6 +289,9 @@ mod tests {
             sim_12,
             sim_13
         );
-        assert!(sim_12 > 0.7, "Expected high similarity for similar sentences");
+        assert!(
+            sim_12 > 0.7,
+            "Expected high similarity for similar sentences"
+        );
     }
 }

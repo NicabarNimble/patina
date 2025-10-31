@@ -47,10 +47,7 @@ fn compare_int8_vs_fp32_quality() {
             "I prefer using Rust for command-line tools",
         ),
         ("values_type_safety", "Type safety is important to me"),
-        (
-            "avoid_global_state",
-            "I avoid using global mutable state",
-        ),
+        ("avoid_global_state", "I avoid using global mutable state"),
         (
             "prefers_composition",
             "I prefer composition over inheritance",

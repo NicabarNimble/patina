@@ -42,23 +42,33 @@ fn test_int8_and_fp32_produce_similar_results() {
     // INT8 model
     std::env::remove_var("PATINA_MODEL");
     let mut int8_embedder = create_embedder().expect("Should load INT8 model");
-    let int8_embedding = int8_embedder.embed(text).expect("Should generate embedding");
+    let int8_embedding = int8_embedder
+        .embed(text)
+        .expect("Should generate embedding");
 
     // FP32 model
     std::env::set_var("PATINA_MODEL", "fp32");
     let mut fp32_embedder = create_embedder().expect("Should load FP32 model");
-    let fp32_embedding = fp32_embedder.embed(text).expect("Should generate embedding");
+    let fp32_embedding = fp32_embedder
+        .embed(text)
+        .expect("Should generate embedding");
 
     // Calculate difference
-    let diff: f32 = int8_embedding.iter()
+    let diff: f32 = int8_embedding
+        .iter()
         .zip(fp32_embedding.iter())
         .map(|(a, b)| (a - b).abs())
-        .sum::<f32>() / int8_embedding.len() as f32;
+        .sum::<f32>()
+        / int8_embedding.len() as f32;
 
     println!("Average element difference: {:.6}", diff);
 
     // Difference should be small
-    assert!(diff < 0.01, "INT8 and FP32 embeddings should be similar (diff={:.6})", diff);
+    assert!(
+        diff < 0.01,
+        "INT8 and FP32 embeddings should be similar (diff={:.6})",
+        diff
+    );
 
     // Clean up
     std::env::remove_var("PATINA_MODEL");
