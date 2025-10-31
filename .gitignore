@@ -34,3 +34,6 @@ docker-compose.yml.backup/
 # ONNX models (large binary files, download on-demand)
 resources/models/*.onnx
 resources/models/tokenizer.json
+
+# Test models (downloaded to target/ during testing)
+# Note: Production uses resources/models/, tests use target/test-models/
