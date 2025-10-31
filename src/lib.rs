@@ -1,5 +1,6 @@
 pub mod adapters;
 pub mod dev_env;
+pub mod embeddings;
 pub mod environment;
 pub mod git;
 pub mod layer;
