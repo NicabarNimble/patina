@@ -17,12 +17,29 @@ pub struct OnnxEmbedder {
 impl OnnxEmbedder {
     /// Create a new ONNX embedder from default paths
     ///
-    /// Loads the ONNX model and tokenizer from resources/models/
+    /// Defaults to INT8 quantized model for speed.
+    /// Set PATINA_MODEL=fp32 to use full precision model.
     pub fn new() -> Result<Self> {
-        Self::new_from_paths(
-            Path::new("resources/models/all-MiniLM-L6-v2.onnx"),
-            Path::new("resources/models/tokenizer.json"),
-        )
+        // Check environment variable for model preference
+        let use_fp32 = std::env::var("PATINA_MODEL")
+            .map(|v| v.to_lowercase() == "fp32")
+            .unwrap_or(false);
+
+        let (model_path, tokenizer_path) = if use_fp32 {
+            // FP32 full precision model (90MB, slower, slightly better accuracy)
+            (
+                Path::new("resources/models/all-MiniLM-L6-v2.onnx"),
+                Path::new("resources/models/tokenizer.json"),
+            )
+        } else {
+            // INT8 quantized model (23MB, 3-4x faster, 98% accuracy)
+            (
+                Path::new("resources/models/all-MiniLM-L6-v2-int8.onnx"),
+                Path::new("resources/models/tokenizer.json"),
+            )
+        };
+
+        Self::new_from_paths(model_path, tokenizer_path)
     }
 
     /// Create a new ONNX embedder from custom paths
@@ -31,13 +48,28 @@ impl OnnxEmbedder {
     pub fn new_from_paths(model_path: &Path, tokenizer_path: &Path) -> Result<Self> {
         // Load ONNX model
         if !model_path.exists() {
+            let download_cmd = if model_path.to_string_lossy().contains("int8") {
+                format!(
+                    "curl -L -o {} \\\n  \
+                    https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model_quantized.onnx",
+                    model_path.display()
+                )
+            } else {
+                format!(
+                    "curl -L -o {} \\\n  \
+                    https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx",
+                    model_path.display()
+                )
+            };
+
             bail!(
                 "ONNX model not found at: {}\n\n\
                 Download it with:\n  \
-                curl -L -o {} \\\n  \
-                  https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx",
+                mkdir -p $(dirname {}) && \\\n  \
+                {}",
                 model_path.display(),
-                model_path.display()
+                model_path.display(),
+                download_cmd
             );
         }
 
