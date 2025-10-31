@@ -30,7 +30,8 @@ fn get_test_embedder() -> Box<dyn EmbeddingEngine> {
 }
 
 /// Setup a test database with vector tables
-fn setup_test_db() -> (TempDir, Connection) {
+/// Returns None if sqlite-vss extension is not available
+fn setup_test_db() -> Option<(TempDir, Connection)> {
     let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
     let conn = Connection::open(&db_path).expect("Failed to open test database");
@@ -40,22 +41,25 @@ fn setup_test_db() -> (TempDir, Connection) {
     unsafe {
         if let Err(_) = conn.load_extension_enable() {
             eprintln!("\n⚠️  Cannot enable extension loading");
+            return None;
         }
 
         if let Err(_) = conn.load_extension("vss0", None) {
-            eprintln!("\n⚠️  sqlite-vss extension not available - skipping test");
-            eprintln!("To run this test, install sqlite-vss:");
-            eprintln!("  brew install sqlite-vss (macOS)");
-            eprintln!("  Or download from: https://github.com/asg017/sqlite-vss\n");
-            // Return early - caller will skip test
+            eprintln!("\n⚠️  sqlite-vss extension not available - tests will be skipped");
+            eprintln!("To run these tests, install sqlite-vss:");
+            eprintln!("  Download from: https://github.com/asg017/sqlite-vss");
+            eprintln!("  Or build from source\n");
+            return None;
         }
     }
 
     // Create vector tables
-    conn.execute_batch(include_str!("../.patina/vector-tables.sql"))
-        .expect("Failed to create vector tables");
+    if let Err(e) = conn.execute_batch(include_str!("../.patina/vector-tables.sql")) {
+        eprintln!("\n⚠️  Failed to create vector tables: {}", e);
+        return None;
+    }
 
-    (temp_dir, conn)
+    Some((temp_dir, conn))
 }
 
 /// Insert test belief with embedding
@@ -106,16 +110,12 @@ fn insert_test_observation(
 #[test]
 fn test_search_beliefs_basic() {
     let mut embedder = get_test_embedder();
-    let (_temp_dir, conn) = setup_test_db();
 
-    // Check if extension loaded successfully
-    if conn
-        .query_row("SELECT 1 FROM belief_vectors LIMIT 1", [], |_| Ok(()))
-        .is_err()
-    {
-        eprintln!("⚠️  Skipping test - sqlite-vss not available");
+    // Setup database - skip test if sqlite-vss not available
+    let Some((_temp_dir, conn)) = setup_test_db() else {
+        eprintln!("⚠️  Skipping test_search_beliefs_basic - sqlite-vss not available");
         return;
-    }
+    };
 
     // Insert test beliefs
     insert_test_belief(
@@ -150,16 +150,12 @@ fn test_search_beliefs_basic() {
 #[test]
 fn test_search_beliefs_ranking() {
     let mut embedder = get_test_embedder();
-    let (_temp_dir, conn) = setup_test_db();
 
-    // Check if extension loaded successfully
-    if conn
-        .query_row("SELECT 1 FROM belief_vectors LIMIT 1", [], |_| Ok(()))
-        .is_err()
-    {
-        eprintln!("⚠️  Skipping test - sqlite-vss not available");
+    // Setup database - skip test if sqlite-vss not available
+    let Some((_temp_dir, conn)) = setup_test_db() else {
+        eprintln!("⚠️  Skipping test_search_beliefs_ranking - sqlite-vss not available");
         return;
-    }
+    };
 
     // Insert test beliefs with varying relevance
     insert_test_belief(
@@ -212,16 +208,12 @@ fn test_search_beliefs_ranking() {
 #[test]
 fn test_search_observations_basic() {
     let mut embedder = get_test_embedder();
-    let (_temp_dir, conn) = setup_test_db();
 
-    // Check if extension loaded successfully
-    if conn
-        .query_row("SELECT 1 FROM observation_vectors LIMIT 1", [], |_| Ok(()))
-        .is_err()
-    {
-        eprintln!("⚠️  Skipping test - sqlite-vss not available");
+    // Setup database - skip test if sqlite-vss not available
+    let Some((_temp_dir, conn)) = setup_test_db() else {
+        eprintln!("⚠️  Skipping test_search_observations_basic - sqlite-vss not available");
         return;
-    }
+    };
 
     // Insert test observations
     insert_test_observation(
@@ -265,16 +257,12 @@ fn test_search_observations_basic() {
 #[test]
 fn test_search_observations_with_type_filter() {
     let mut embedder = get_test_embedder();
-    let (_temp_dir, conn) = setup_test_db();
 
-    // Check if extension loaded successfully
-    if conn
-        .query_row("SELECT 1 FROM observation_vectors LIMIT 1", [], |_| Ok(()))
-        .is_err()
-    {
-        eprintln!("⚠️  Skipping test - sqlite-vss not available");
+    // Setup database - skip test if sqlite-vss not available
+    let Some((_temp_dir, conn)) = setup_test_db() else {
+        eprintln!("⚠️  Skipping test_search_observations_with_type_filter - sqlite-vss not available");
         return;
-    }
+    };
 
     // Insert test observations
     insert_test_observation(
@@ -336,16 +324,12 @@ fn test_search_observations_with_type_filter() {
 #[test]
 fn test_search_observations_cross_type() {
     let mut embedder = get_test_embedder();
-    let (_temp_dir, conn) = setup_test_db();
 
-    // Check if extension loaded successfully
-    if conn
-        .query_row("SELECT 1 FROM observation_vectors LIMIT 1", [], |_| Ok(()))
-        .is_err()
-    {
-        eprintln!("⚠️  Skipping test - sqlite-vss not available");
+    // Setup database - skip test if sqlite-vss not available
+    let Some((_temp_dir, conn)) = setup_test_db() else {
+        eprintln!("⚠️  Skipping test_search_observations_cross_type - sqlite-vss not available");
         return;
-    }
+    };
 
     // Insert semantically similar observations across different types
     insert_test_observation(
