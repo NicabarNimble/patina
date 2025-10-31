@@ -1,21 +1,21 @@
 ---
 id: embeddings-integration-roadmap
-version: 2
+version: 3
 status: active
 created_date: 2025-10-30
 updated_date: 2025-10-30
 oxidizer: nicabar
-tags: [embeddings, implementation, roadmap, sqlite-vss, semantic-search, coreml]
+tags: [embeddings, implementation, roadmap, sqlite-vss, semantic-search, onnx, cross-platform]
 ---
 
 # Embeddings Integration Roadmap
 
 **Goal:** Add semantic search capability to the neuro-symbolic persona architecture using embeddings + sqlite-vss.
 
-**Status:** Planning phase (CoreML-first approach)
+**Status:** Planning phase (ONNX Runtime approach)
 **Target:** 3-week implementation
 
-**Implementation Strategy:** CoreML on-device embeddings (primary), rust-bert fallback (if needed)
+**Implementation Strategy:** ONNX Runtime (pure Rust, cross-platform)
 
 ---
 
@@ -60,250 +60,112 @@ From neuro-symbolic-architecture-critique.md, embeddings are THE missing piece:
 
 ---
 
-## Architecture Decision: CoreML-First
+## Architecture Decision: ONNX Runtime
 
-**Choice:** Start with CoreML on-device embeddings (not rust-bert)
+**Choice:** Use ONNX Runtime with pre-converted models (pure Rust, cross-platform)
 
 **Rationale:**
 
 **Aligns with Project Philosophy:**
 - ✅ Privacy-first: Session content stays on-device
 - ✅ Zero cost: No cloud API calls, no ongoing fees
-- ✅ Apple Silicon native: Fully optimized for Neural Engine
-- ✅ Consistent with hybrid-extraction design (CoreML for facts)
+- ✅ Cross-platform: Works on Mac, Linux, Windows
+- ✅ Pure Rust: No Python dependency at runtime
+- ✅ No multi-language complexity: Avoid Python→Swift→Rust stack
 
 **Technical Benefits:**
-- ✅ Fast: ~20ms/embedding on Neural Engine (vs 50-100ms CPU)
-- ✅ Efficient: Neural Engine is 10x more power-efficient than CPU
-- ✅ Offline: Works without network after model export
-- ✅ Already have CoreML infrastructure (MobileBERT for extraction)
+- ✅ Production-proven: Twitter uses `ort` crate for 100M+ users
+- ✅ Fast: Metal GPU acceleration on Mac (~30-50ms/embedding)
+- ✅ Cross-platform search: Query from Mac OR Linux with same vector space
+- ✅ Pre-converted models: No Python needed (download `.onnx` files directly)
+- ✅ Exact model match: `all-MiniLM-L6-v2` (384 dims, industry standard)
+
+**Why Not CoreML/MLX/swift-embeddings:**
+- ❌ Apple-only: Cannot query from Linux
+- ❌ Different vector spaces: Mac embeddings incompatible with Linux queries
+- ❌ Multi-language complexity: Python export + Swift CLI + Rust integration
+
+**Why Not rust-bert/Candle:**
+- ❌ rust-bert: Rosetta 2 emulation on Apple Silicon (slow)
+- ❌ Candle: Metal stability issues, 2x slower than Python
 
 **Implementation Strategy:**
-- Build trait abstraction (`EmbeddingEngine`) for flexibility
-- Implement `CoreMLEmbedder` as primary
-- Keep `RustBertEmbedder` as fallback if CoreML has issues
-- Ship whichever works best
-
-**Risk Mitigation:**
-If CoreML export/integration is painful:
-```rust
-// Easy pivot to rust-bert
-cargo add rust-bert
-impl EmbeddingEngine for RustBertEmbedder { ... }
-patina embeddings generate --mode rust-bert
-```
-
-The trait abstraction means we're not locked in.
+- Download pre-converted ONNX models from HuggingFace (no Python!)
+- Use `ort` crate for pure Rust inference
+- Same model file works on Mac (Metal GPU) and Linux (CPU)
+- Build trait abstraction for future flexibility
 
 ---
 
-## Phase 1: CoreML Embedding Foundation (Week 1)
+## Phase 1: ONNX Embedding Foundation (Week 1)
 
-### Goal: Build on-device embedding generation using CoreML + sqlite-vss
+### Goal: Build cross-platform embedding generation using ONNX Runtime + sqlite-vss
 
 ### Tasks
 
-#### 1.1 Export CoreML Embedding Model
+#### 1.1 Download Pre-Converted ONNX Models
 
-Convert sentence transformer to CoreML format:
+No Python needed! Download pre-converted models from HuggingFace:
 
-```python
-# scripts/export_coreml_embedder.py
-from sentence_transformers import SentenceTransformer
-import coremltools as ct
-import torch
+```bash
+# Create models directory
+mkdir -p resources/models
 
-# Load model
-print("Loading all-MiniLM-L6-v2...")
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# Download ONNX model (90.4 MB, FP32)
+curl -L -o resources/models/all-MiniLM-L6-v2.onnx \
+  https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx
 
-# Get model components
-word_embedding_model = model[0]  # Transformer
-pooling_model = model[1]  # Mean pooling
+# Or download quantized INT8 version (23 MB, faster)
+curl -L -o resources/models/all-MiniLM-L6-v2-int8.onnx \
+  https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model_int8.onnx
 
-# Create example input
-example_input = "This is a test sentence"
-tokens = model.tokenize([example_input])
+# Download tokenizer
+curl -L -o resources/models/tokenizer.json \
+  https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json
 
-# Convert to CoreML
-print("Converting to CoreML...")
-traced_model = torch.jit.trace(model, tokens)
-coreml_model = ct.convert(
-    traced_model,
-    inputs=[ct.TensorType(name="input_ids", shape=(1, 128))],
-    outputs=[ct.TensorType(name="embedding", shape=(1, 384))],
-    minimum_deployment_target=ct.target.macOS13,
-)
-
-# Add metadata
-coreml_model.short_description = "Sentence embeddings (all-MiniLM-L6-v2)"
-coreml_model.author = "Patina"
-coreml_model.version = "1.0"
-
-# Save
-output_path = "resources/models/sentence_embedder.mlmodel"
-coreml_model.save(output_path)
-print(f"✓ Saved to {output_path}")
+# Verify downloads
+ls -lh resources/models/
 ```
 
-**Test the model:**
-```python
-# Test with sample inputs
-import coremltools as ct
-
-model = ct.models.MLModel("resources/models/sentence_embedder.mlmodel")
-result = model.predict({"input": "test"})
-print(f"Embedding dimension: {len(result['embedding'])}")  # Should be 384
-```
+**Available model variants:**
+- `model.onnx` (90.4 MB) - FP32, best quality
+- `model_fp16.onnx` (45.3 MB) - FP16, good quality, half size
+- `model_int8.onnx` (23 MB) - INT8, faster, smaller
+- `model_q4.onnx` (54.6 MB) - Q4, balanced
 
 **Files to create:**
-- `scripts/export_coreml_embedder.py`
-- `resources/models/sentence_embedder.mlmodel` (generated)
+- `resources/models/all-MiniLM-L6-v2.onnx` (downloaded)
+- `resources/models/tokenizer.json` (downloaded)
 - `resources/models/README.md` (model documentation)
 
 ---
 
-#### 1.2 Build Swift Embedding Helper
-
-Simple CLI tool that uses CoreML model:
-
-```swift
-// resources/coreml-extractor/embedder.swift
-import Foundation
-import CoreML
-import NaturalLanguage
-
-@available(macOS 13.0, *)
-class SentenceEmbedder {
-    let model: MLModel
-
-    init() throws {
-        let modelURL = URL(fileURLWithPath: "resources/models/sentence_embedder.mlmodel")
-
-        guard FileManager.default.fileExists(atPath: modelURL.path) else {
-            throw EmbedderError.modelNotFound
-        }
-
-        self.model = try MLModel(contentsOf: modelURL)
-    }
-
-    func embed(_ text: String) throws -> [Float] {
-        // Tokenize input
-        let input = try MLDictionaryFeatureProvider(dictionary: ["input": text])
-
-        // Run inference
-        let output = try model.prediction(from: input)
-
-        // Extract embedding
-        guard let embedding = output.featureValue(for: "embedding")?.multiArrayValue else {
-            throw EmbedderError.invalidOutput
-        }
-
-        // Convert to Float array
-        let count = embedding.count
-        var result = [Float](repeating: 0, count: count)
-        for i in 0..<count {
-            result[i] = Float(truncating: embedding[i])
-        }
-
-        return result
-    }
-
-    func embedBatch(_ texts: [String]) throws -> [[Float]] {
-        return try texts.map { try embed($0) }
-    }
-}
-
-enum EmbedderError: Error {
-    case modelNotFound
-    case invalidOutput
-}
-
-// CLI interface
-@available(macOS 13.0, *)
-func main() {
-    do {
-        let embedder = try SentenceEmbedder()
-
-        // Read from stdin, one line at a time
-        while let line = readLine() {
-            let embedding = try embedder.embed(line)
-
-            // Output as comma-separated values
-            let output = embedding.map { String($0) }.joined(separator: ",")
-            print(output)
-        }
-    } catch {
-        fputs("Error: \(error)\n", stderr)
-        exit(1)
-    }
-}
-
-if #available(macOS 13.0, *) {
-    main()
-} else {
-    fputs("Error: Requires macOS 13.0 or later\n", stderr)
-    exit(1)
-}
-```
-
-**Build script:**
-```swift
-// resources/coreml-extractor/Package.swift
-// swift-tools-version: 5.9
-import PackageDescription
-
-let package = Package(
-    name: "coreml-embedder",
-    platforms: [.macOS(.v13)],
-    targets: [
-        .executableTarget(
-            name: "coreml-embedder",
-            path: ".",
-            sources: ["embedder.swift"]
-        )
-    ]
-)
-```
-
-**Build command:**
-```bash
-cd resources/coreml-extractor
-swift build -c release
-# Binary: .build/release/coreml-embedder
-```
-
-**Files to create:**
-- `resources/coreml-extractor/embedder.swift`
-- `resources/coreml-extractor/Package.swift`
-- `resources/coreml-extractor/README.md` (build instructions)
-
----
-
-#### 1.3 Add Dependencies (Minimal)
+#### 1.2 Add Rust Dependencies
 
 ```toml
 # Cargo.toml additions
 [dependencies]
+ort = { version = "2.0", features = ["download-binaries"] }  # ONNX Runtime
 sqlite-vss = "0.1"              # Vector similarity search extension
-ndarray = "0.15"                # Array operations for embeddings
-
-# Optional fallback (only if CoreML fails)
-rust-bert = { version = "0.21", optional = true }
-
-[features]
-rust-bert-embeddings = ["rust-bert"]
+tokenizers = "0.15"             # HuggingFace tokenizers (Rust)
+ndarray = "0.16"                # Array operations for embeddings
 
 [dev-dependencies]
 approx = "0.5"                  # Testing similarity scores
 ```
+
+**Why these dependencies:**
+- `ort`: Pure Rust ONNX Runtime bindings (production-ready, used by Twitter)
+- `sqlite-vss`: SQLite extension for vector similarity search
+- `tokenizers`: HuggingFace tokenizers library (Rust port, no Python!)
+- `ndarray`: Efficient array operations
 
 **Files to modify:**
 - `Cargo.toml`
 
 ---
 
-#### 1.4 Extend Database Schema
+#### 1.3 Extend Database Schema
 Add vector tables to `.patina/schema.sql`:
 
 ```sql
@@ -341,16 +203,15 @@ CREATE TABLE IF NOT EXISTS embedding_metadata (
 
 ---
 
-#### 1.5 Build Rust Integration with CoreML
+#### 1.4 Build Rust Integration with ONNX
 
-Create `src/embeddings/` module with trait abstraction:
+Create `src/embeddings/` module with pure Rust ONNX implementation:
 
 **Structure:**
 ```
 src/embeddings/
 ├── mod.rs           # Public API, EmbeddingEngine trait
-├── coreml.rs        # CoreML implementation (primary)
-├── rust_bert.rs     # rust-bert fallback (optional)
+├── onnx.rs          # ONNX Runtime implementation
 ├── similarity.rs    # Cosine similarity, distance metrics
 └── generation.rs    # Batch embedding generation
 ```
@@ -367,104 +228,121 @@ pub trait EmbeddingEngine {
 }
 
 // Factory function
-pub fn create_embedder(mode: EmbedderMode) -> Result<Box<dyn EmbeddingEngine>> {
-    match mode {
-        EmbedderMode::CoreML => Ok(Box::new(CoreMLEmbedder::new()?)),
-        EmbedderMode::RustBert => {
-            #[cfg(feature = "rust-bert-embeddings")]
-            Ok(Box::new(RustBertEmbedder::new()?))
-            #[cfg(not(feature = "rust-bert-embeddings"))]
-            bail!("rust-bert feature not enabled")
-        }
-        EmbedderMode::Auto => {
-            // Try CoreML first, fallback to rust-bert
-            CoreMLEmbedder::new()
-                .map(|e| Box::new(e) as Box<dyn EmbeddingEngine>)
-                .or_else(|_| {
-                    #[cfg(feature = "rust-bert-embeddings")]
-                    RustBertEmbedder::new().map(|e| Box::new(e) as Box<dyn EmbeddingEngine>)
-                    #[cfg(not(feature = "rust-bert-embeddings"))]
-                    bail!("No embedder available")
-                })
-        }
-    }
-}
-
-pub enum EmbedderMode {
-    CoreML,
-    RustBert,
-    Auto,
+pub fn create_embedder() -> Result<Box<dyn EmbeddingEngine>> {
+    Ok(Box::new(OnnxEmbedder::new()?))
 }
 ```
 
-**CoreML implementation:**
+**ONNX implementation:**
 
 ```rust
-// src/embeddings/coreml.rs
-use std::process::{Command, Stdio};
-use std::io::Write;
+// src/embeddings/onnx.rs
+use ort::{Session, Value, inputs};
+use tokenizers::Tokenizer;
+use ndarray::{Array2, s};
 
-pub struct CoreMLEmbedder {
-    helper_path: PathBuf,
+pub struct OnnxEmbedder {
+    session: Session,
+    tokenizer: Tokenizer,
     dimension: usize,
 }
 
-impl CoreMLEmbedder {
+impl OnnxEmbedder {
     pub fn new() -> Result<Self> {
-        // Check if CoreML helper is built
-        let helper_path = Path::new("resources/coreml-extractor/.build/release/coreml-embedder");
+        // Load ONNX model
+        let model_path = Path::new("resources/models/all-MiniLM-L6-v2.onnx");
 
-        if !helper_path.exists() {
+        if !model_path.exists() {
             bail!(
-                "CoreML embedder not built. Run:\n  \
-                cd resources/coreml-extractor && swift build -c release"
+                "ONNX model not found. Download it:\n  \
+                curl -L -o resources/models/all-MiniLM-L6-v2.onnx \\\n  \
+                  https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx"
             );
         }
 
+        let session = Session::builder()?
+            .with_model_from_file(model_path)?;
+
+        // Load tokenizer
+        let tokenizer_path = Path::new("resources/models/tokenizer.json");
+        let tokenizer = Tokenizer::from_file(tokenizer_path)
+            .map_err(|e| anyhow!("Failed to load tokenizer: {}", e))?;
+
         Ok(Self {
-            helper_path: helper_path.to_path_buf(),
+            session,
+            tokenizer,
             dimension: 384,  // all-MiniLM-L6-v2
         })
     }
+
+    fn tokenize(&self, text: &str) -> Result<(Vec<i64>, Vec<i64>)> {
+        let encoding = self.tokenizer
+            .encode(text, false)
+            .map_err(|e| anyhow!("Tokenization failed: {}", e))?;
+
+        let input_ids = encoding.get_ids().iter().map(|&x| x as i64).collect();
+        let attention_mask = encoding.get_attention_mask().iter().map(|&x| x as i64).collect();
+
+        Ok((input_ids, attention_mask))
+    }
+
+    fn mean_pooling(
+        &self,
+        token_embeddings: &Array2<f32>,
+        attention_mask: &[i64],
+    ) -> Vec<f32> {
+        // Mean pooling - average token embeddings weighted by attention mask
+        let mask_sum: f32 = attention_mask.iter().map(|&x| x as f32).sum();
+
+        let mut pooled = vec![0.0; self.dimension];
+        for (i, &mask) in attention_mask.iter().enumerate() {
+            if mask == 1 {
+                for j in 0..self.dimension {
+                    pooled[j] += token_embeddings[[i, j]];
+                }
+            }
+        }
+
+        pooled.iter().map(|&x| x / mask_sum).collect()
+    }
 }
 
-impl EmbeddingEngine for CoreMLEmbedder {
+impl EmbeddingEngine for OnnxEmbedder {
     fn embed(&self, text: &str) -> Result<Vec<f32>> {
-        let mut child = Command::new(&self.helper_path)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .context("Failed to spawn CoreML embedder")?;
+        // Tokenize
+        let (input_ids, attention_mask) = self.tokenize(text)?;
 
-        // Write text to stdin
-        {
-            let stdin = child.stdin.as_mut().unwrap();
-            writeln!(stdin, "{}", text)?;
-        }
+        // Prepare inputs
+        let input_ids_array = Array2::from_shape_vec(
+            (1, input_ids.len()),
+            input_ids.clone()
+        )?;
 
-        // Read embedding from stdout
-        let output = child.wait_with_output()?;
+        let attention_mask_array = Array2::from_shape_vec(
+            (1, attention_mask.len()),
+            attention_mask.clone()
+        )?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("CoreML embedder failed: {}", stderr);
-        }
+        // Run inference
+        let outputs = self.session.run(inputs![
+            "input_ids" => Value::from_array(input_ids_array)?,
+            "attention_mask" => Value::from_array(attention_mask_array)?
+        ]?)?;
 
-        // Parse CSV output
-        let stdout = String::from_utf8(output.stdout)?;
-        let embedding: Vec<f32> = stdout
-            .trim()
-            .split(',')
-            .map(|s| s.parse::<f32>())
-            .collect::<Result<Vec<_>, _>>()
-            .context("Failed to parse embedding output")?;
+        // Extract token embeddings
+        let token_embeddings = outputs["last_hidden_state"]
+            .extract_tensor::<f32>()?
+            .view()
+            .to_owned();
 
-        if embedding.len() != self.dimension {
-            bail!("Invalid embedding dimension: expected {}, got {}", self.dimension, embedding.len());
-        }
+        // Mean pooling
+        let embedding = self.mean_pooling(&token_embeddings.slice(s![0, .., ..]).to_owned(), &attention_mask);
 
-        Ok(embedding)
+        // Normalize (L2 normalization)
+        let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let normalized: Vec<f32> = embedding.iter().map(|x| x / norm).collect();
+
+        Ok(normalized)
     }
 
     fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
@@ -476,7 +354,7 @@ impl EmbeddingEngine for CoreMLEmbedder {
     }
 
     fn model_name(&self) -> &str {
-        "all-MiniLM-L6-v2 (CoreML)"
+        "all-MiniLM-L6-v2 (ONNX)"
     }
 }
 ```
@@ -508,14 +386,13 @@ pub fn euclidean_distance(a: &[f32], b: &[f32]) -> f32 {
 
 **Files to create:**
 - `src/embeddings/mod.rs`
-- `src/embeddings/coreml.rs`
-- `src/embeddings/rust_bert.rs` (optional, feature-gated)
+- `src/embeddings/onnx.rs`
 - `src/embeddings/similarity.rs`
 - `src/embeddings/generation.rs`
 
 ---
 
-#### 1.6 Create Embedding Generation Command
+#### 1.5 Create Embedding Generation Command
 
 Build `patina embeddings generate` command:
 
@@ -534,11 +411,9 @@ pub async fn generate_all_embeddings(db_path: &Path, force: bool) -> Result<()> 
 
 **Command usage:**
 ```bash
-patina embeddings generate                    # Auto-detect (CoreML preferred)
-patina embeddings generate --mode coreml      # Force CoreML
-patina embeddings generate --mode rust-bert   # Force rust-bert (if enabled)
-patina embeddings generate --force            # Regenerate all embeddings
-patina embeddings status                      # Show embedding coverage
+patina embeddings generate           # Generate all embeddings (ONNX)
+patina embeddings generate --force   # Regenerate all embeddings
+patina embeddings status             # Show embedding coverage
 ```
 
 **Files to create:**
@@ -548,15 +423,15 @@ patina embeddings status                      # Show embedding coverage
 
 ---
 
-#### 1.7 Test Semantic Search
+#### 1.6 Test Semantic Search
 
 Create basic semantic search test:
 
 ```rust
 // tests/integration/semantic_search.rs
 #[test]
-fn test_coreml_embedding() {
-    let embedder = CoreMLEmbedder::new().unwrap();
+fn test_onnx_embedding() {
+    let embedder = OnnxEmbedder::new().unwrap();
 
     let embedding = embedder.embed("This is a test").unwrap();
 
@@ -567,7 +442,7 @@ fn test_coreml_embedding() {
 #[test]
 fn test_belief_semantic_search() {
     let conn = setup_test_db();
-    let embedder = create_embedder(EmbedderMode::Auto).unwrap();
+    let embedder = create_embedder().unwrap();
 
     // Insert test beliefs
     insert_belief(&conn, "prefers_rust_for_cli_tools");
@@ -593,17 +468,17 @@ fn test_belief_semantic_search() {
 
 ### Phase 1 Deliverables
 
-- [x] CoreML model exported (`sentence_embedder.mlmodel`)
-- [x] Swift embedding helper built (CLI tool)
-- [x] Rust-CoreML integration working (trait abstraction)
-- [x] Dependencies added (`sqlite-vss`, optional `rust-bert`)
-- [x] Schema extended with vector tables
-- [x] Embedding module implemented with CoreML backend
-- [x] `patina embeddings generate` command working
-- [x] Basic semantic search tested
-- [x] Embeddings generated for existing 22 beliefs + observations
+- [ ] ONNX models downloaded (`all-MiniLM-L6-v2.onnx`, `tokenizer.json`)
+- [ ] Rust dependencies added (`ort`, `sqlite-vss`, `tokenizers`)
+- [ ] Schema extended with vector tables
+- [ ] Embedding module implemented with ONNX backend
+- [ ] `patina embeddings generate` command working
+- [ ] Basic semantic search tested
+- [ ] Embeddings generated for existing 22 beliefs + observations
 
 **Validation:** Run `patina embeddings status` and see 100% coverage
+
+**Cross-platform validation:** Verify same query works on Mac and Linux with identical results
 
 ---
 
@@ -1008,11 +883,12 @@ time patina query hybrid "prefer functional style" --top 10
 - [x] Cross-domain beliefs detected
 
 ### All Phases Complete
-- [x] CoreML embeddings generated on-device (Phase 1)
-- [x] Hybrid retrieval working (Phase 2)
-- [x] Persona integration complete (Phase 3)
-- [x] Privacy maintained (no cloud calls)
-- [x] Performance: <20ms per embedding (CoreML on Neural Engine)
+- [ ] ONNX embeddings generated on-device (Phase 1)
+- [ ] Hybrid retrieval working (Phase 2)
+- [ ] Persona integration complete (Phase 3)
+- [ ] Privacy maintained (no cloud calls)
+- [ ] Cross-platform: Mac (Metal) + Linux (CPU)
+- [ ] Performance: <50ms per embedding (ONNX on Metal/CPU)
 
 ---
 
@@ -1046,13 +922,17 @@ time patina query hybrid "prefer functional style" --top 10
 - **Mitigation:** Provide clear build instructions, test on fresh install
 - **Fallback:** Can use separate vector DB if sqlite-vss doesn't work
 
-### Risk: Embedding model too large/slow
-- **Mitigation:** all-MiniLM-L6-v2 is only 80MB, fast on CPU
-- **Fallback:** Use even smaller model or cloud API
+### Risk: ONNX model file size
+- **Mitigation:** Use INT8 quantized version (23 MB vs 90 MB)
+- **Fallback:** Download on-demand, don't ship in git
 
-### Risk: CoreML conversion issues
-- **Mitigation:** Provide pre-converted model in resources/
-- **Fallback:** Use rust-bert for all embedding generation
+### Risk: ONNX Runtime compatibility
+- **Mitigation:** Use `ort` crate with `download-binaries` feature (auto-downloads correct version)
+- **Fallback:** Pure Rust alternatives exist (`candle`, `burn`)
+
+### Risk: Cross-platform differences
+- **Mitigation:** Use exact same model file on all platforms, validate output matches
+- **Fallback:** Accept minor floating-point differences (<0.001)
 
 ### Risk: Poor semantic search quality
 - **Mitigation:** Test with real queries, tune similarity thresholds
@@ -1089,13 +969,15 @@ Once embeddings are integrated:
 ## References
 
 - `layer/surface/neuro-symbolic-architecture-critique.md` - Expert analysis
-- `layer/surface/neuro-symbolic-hybrid-extraction.md` - CoreML design
 - `layer/surface/persona-belief-architecture.md` - Belief system architecture
 - `.patina/schema.sql` - Current database schema
 - `.patina/confidence-rules.pl` - Confidence scoring rules
+- [ONNX Runtime Rust bindings](https://github.com/pykeio/ort) - `ort` crate documentation
+- [HuggingFace Xenova/all-MiniLM-L6-v2](https://huggingface.co/Xenova/all-MiniLM-L6-v2) - Pre-converted ONNX models
 
 ---
 
-**Status:** Ready to begin Phase 1 (CoreML-first approach)
+**Status:** Ready to begin Phase 1 (ONNX Runtime approach)
 **Owner:** @nicabar
-**Timeline:** 3 weeks (CoreML foundation + hybrid retrieval + persona enhancement)
+**Timeline:** 3 weeks (ONNX foundation + hybrid retrieval + persona enhancement)
+**Platform:** Cross-platform (Mac, Linux, Windows)
