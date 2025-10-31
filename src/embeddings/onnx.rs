@@ -64,7 +64,7 @@ impl OnnxEmbedder {
     fn tokenize(&self, text: &str) -> Result<(Vec<i64>, Vec<i64>)> {
         let encoding = self
             .tokenizer
-            .encode(text, false)
+            .encode(text, true) // Add special tokens ([CLS], [SEP])
             .map_err(|e| anyhow!("Tokenization failed: {}", e))?;
 
         let input_ids = encoding.get_ids().iter().map(|&x| x as i64).collect();
@@ -125,13 +125,19 @@ impl EmbeddingEngine for OnnxEmbedder {
             Array2::from_shape_vec((1, attention_mask.len()), attention_mask.clone())
                 .context("Failed to create attention_mask array")?;
 
+        // Token type IDs - all zeros for single-sentence embeddings
+        let token_type_ids = vec![0i64; seq_len];
+        let token_type_ids_array = Array2::from_shape_vec((1, seq_len), token_type_ids)
+            .context("Failed to create token_type_ids array")?;
+
         // Run inference and extract data (need to finish with outputs before using self methods)
         let token_embeddings_2d = {
             let outputs = self
                 .session
                 .run(inputs![
                     "input_ids" => Value::from_array(input_ids_array)?,
-                    "attention_mask" => Value::from_array(attention_mask_array)?
+                    "attention_mask" => Value::from_array(attention_mask_array)?,
+                    "token_type_ids" => Value::from_array(token_type_ids_array)?
                 ])
                 .context("ONNX inference failed")?;
 
