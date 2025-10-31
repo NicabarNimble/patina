@@ -90,6 +90,12 @@ enum Commands {
         command: Option<ScrapeCommands>,
     },
 
+    /// Generate and manage semantic embeddings
+    Embeddings {
+        #[command(subcommand)]
+        command: EmbeddingsCommands,
+    },
+
     /// Ask questions about the codebase
     Ask {
         #[command(flatten)]
@@ -159,6 +165,19 @@ enum ScrapeCommands {
         #[command(flatten)]
         args: ScrapeArgs,
     },
+}
+
+#[derive(Subcommand)]
+enum EmbeddingsCommands {
+    /// Generate embeddings for all beliefs and observations
+    Generate {
+        /// Force regeneration of all embeddings
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Show embedding coverage status
+    Status,
 }
 
 #[cfg(feature = "dev")]
@@ -299,6 +318,14 @@ fn main() -> Result<()> {
                 }
             }
         }
+        Commands::Embeddings { command } => match command {
+            EmbeddingsCommands::Generate { force } => {
+                commands::embeddings::generate(force)?;
+            }
+            EmbeddingsCommands::Status => {
+                commands::embeddings::status()?;
+            }
+        },
         Commands::Doctor {
             json,
             repos,

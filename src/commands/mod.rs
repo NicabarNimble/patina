@@ -1,6 +1,7 @@
 pub mod ask;
 pub mod build;
 pub mod doctor;
+pub mod embeddings;
 pub mod init;
 pub mod scrape;
 pub mod test;
