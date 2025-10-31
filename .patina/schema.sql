@@ -213,6 +213,38 @@ CREATE TABLE IF NOT EXISTS persona_session_questions (
 );
 
 -- ============================================================================
+-- LAYER 3: EMBEDDINGS & SEMANTIC SEARCH
+-- ============================================================================
+
+-- Embedding metadata (track when embeddings were generated)
+CREATE TABLE IF NOT EXISTS embedding_metadata (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_name TEXT NOT NULL,                   -- e.g., 'all-MiniLM-L6-v2'
+    model_version TEXT NOT NULL,
+    dimension INTEGER NOT NULL,                 -- 384 for all-MiniLM-L6-v2
+    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    belief_count INTEGER DEFAULT 0,
+    observation_count INTEGER DEFAULT 0
+);
+
+-- NOTE: Vector tables are created dynamically when sqlite-vss extension is loaded
+-- These virtual tables require the vss0 extension to be available:
+--
+-- CREATE VIRTUAL TABLE IF NOT EXISTS belief_vectors USING vss0(
+--     belief_id INTEGER PRIMARY KEY,
+--     embedding(384)
+-- );
+--
+-- CREATE VIRTUAL TABLE IF NOT EXISTS observation_vectors USING vss0(
+--     observation_id INTEGER PRIMARY KEY,
+--     observation_type TEXT,
+--     embedding(384)
+-- );
+--
+-- CREATE INDEX IF NOT EXISTS idx_observation_vectors_type
+--     ON observation_vectors(observation_type);
+
+-- ============================================================================
 -- INDEXES for Query Performance
 -- ============================================================================
 
