@@ -15,19 +15,28 @@ pub struct OnnxEmbedder {
 }
 
 impl OnnxEmbedder {
-    /// Create a new ONNX embedder
+    /// Create a new ONNX embedder from default paths
     ///
     /// Loads the ONNX model and tokenizer from resources/models/
     pub fn new() -> Result<Self> {
-        // Load ONNX model
-        let model_path = Path::new("resources/models/all-MiniLM-L6-v2.onnx");
+        Self::new_from_paths(
+            Path::new("resources/models/all-MiniLM-L6-v2.onnx"),
+            Path::new("resources/models/tokenizer.json"),
+        )
+    }
 
+    /// Create a new ONNX embedder from custom paths
+    ///
+    /// Allows specifying different model/tokenizer locations (useful for testing)
+    pub fn new_from_paths(model_path: &Path, tokenizer_path: &Path) -> Result<Self> {
+        // Load ONNX model
         if !model_path.exists() {
             bail!(
                 "ONNX model not found at: {}\n\n\
                 Download it with:\n  \
-                curl -L -o resources/models/all-MiniLM-L6-v2.onnx \\\n  \
+                curl -L -o {} \\\n  \
                   https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx",
+                model_path.display(),
                 model_path.display()
             );
         }
@@ -38,14 +47,13 @@ impl OnnxEmbedder {
             .context("Failed to load ONNX model")?;
 
         // Load tokenizer
-        let tokenizer_path = Path::new("resources/models/tokenizer.json");
-
         if !tokenizer_path.exists() {
             bail!(
                 "Tokenizer not found at: {}\n\n\
                 Download it with:\n  \
-                curl -L -o resources/models/tokenizer.json \\\n  \
+                curl -L -o {} \\\n  \
                   https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json",
+                tokenizer_path.display(),
                 tokenizer_path.display()
             );
         }
@@ -193,18 +201,35 @@ impl EmbeddingEngine for OnnxEmbedder {
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
+    use std::path::Path;
 
-    #[test]
-    #[ignore] // Only run when model files are available
-    fn test_onnx_embedder_creation() {
-        let embedder = OnnxEmbedder::new();
-        assert!(embedder.is_ok(), "Failed to create embedder: {:?}", embedder.err());
+    fn get_test_embedder() -> OnnxEmbedder {
+        // Try production model first
+        if let Ok(embedder) = OnnxEmbedder::new() {
+            return embedder;
+        }
+
+        // Fall back to test model
+        let test_model = Path::new("target/test-models/all-MiniLM-L6-v2-int8.onnx");
+        let test_tokenizer = Path::new("target/test-models/tokenizer.json");
+
+        if !test_model.exists() || !test_tokenizer.exists() {
+            panic!("Test models missing. Run: ./scripts/download-test-models.sh");
+        }
+
+        OnnxEmbedder::new_from_paths(test_model, test_tokenizer)
+            .expect("Test model should load")
     }
 
     #[test]
-    #[ignore] // Only run when model files are available
+    fn test_onnx_embedder_creation() {
+        let _embedder = get_test_embedder();
+        // If we get here, creation succeeded
+    }
+
+    #[test]
     fn test_embed_basic() {
-        let mut embedder = OnnxEmbedder::new().unwrap();
+        let mut embedder = get_test_embedder();
         let embedding = embedder.embed("This is a test").unwrap();
 
         assert_eq!(embedding.len(), 384);
@@ -216,9 +241,8 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Only run when model files are available
     fn test_semantic_similarity() {
-        let mut embedder = OnnxEmbedder::new().unwrap();
+        let mut embedder = get_test_embedder();
 
         let e1 = embedder.embed("The cat sits on the mat").unwrap();
         let e2 = embedder.embed("A cat is sitting on a mat").unwrap();
