@@ -30,3 +30,7 @@ docker-compose.yml.backup/
 
 # Patina databases (regeneratable)
 .patina/db/
+
+# ONNX models (large binary files, download on-demand)
+resources/models/*.onnx
+resources/models/tokenizer.json
