@@ -1,26 +1,40 @@
 //! Integration tests for embeddings module
 
-use patina::embeddings::{cosine_similarity, create_embedder, euclidean_distance};
+use patina::embeddings::{cosine_similarity, create_embedder, euclidean_distance, EmbeddingEngine};
+use std::path::Path;
+
+/// Get embedder for testing - tries production model first, falls back to test model
+fn get_test_embedder() -> Box<dyn EmbeddingEngine> {
+    // Try production model first (for local dev with full model)
+    if let Ok(embedder) = create_embedder() {
+        return embedder;
+    }
+
+    // Fall back to quantized test model
+    let test_model = Path::new("target/test-models/all-MiniLM-L6-v2-int8.onnx");
+    let test_tokenizer = Path::new("target/test-models/tokenizer.json");
+
+    if !test_model.exists() || !test_tokenizer.exists() {
+        eprintln!("\n❌ Test models not found!");
+        eprintln!("\nRun this to download test models:");
+        eprintln!("  ./scripts/download-test-models.sh\n");
+        panic!("Test models missing. See instructions above.");
+    }
+
+    use patina::embeddings::OnnxEmbedder;
+    Box::new(OnnxEmbedder::new_from_paths(test_model, test_tokenizer).expect("Test model should load"))
+}
 
 #[test]
-#[ignore] // Only run when ONNX models are available
 fn test_embedder_creation() {
-    let embedder = create_embedder();
-    assert!(
-        embedder.is_ok(),
-        "Failed to create embedder: {:?}",
-        embedder.err()
-    );
-
-    let embedder = embedder.unwrap();
+    let embedder = get_test_embedder();
     assert_eq!(embedder.dimension(), 384, "Expected 384 dimensions");
     assert_eq!(embedder.model_name(), "all-MiniLM-L6-v2 (ONNX)");
 }
 
 #[test]
-#[ignore] // Only run when ONNX models are available
 fn test_single_embedding_generation() {
-    let mut embedder = create_embedder().expect("Failed to create embedder");
+    let mut embedder = get_test_embedder();
 
     let text = "This is a test sentence for semantic embedding";
     let embedding = embedder.embed(text).expect("Failed to generate embedding");
@@ -41,9 +55,8 @@ fn test_single_embedding_generation() {
 }
 
 #[test]
-#[ignore] // Only run when ONNX models are available
 fn test_semantic_similarity_detection() {
-    let mut embedder = create_embedder().expect("Failed to create embedder");
+    let mut embedder = get_test_embedder();
 
     // Similar sentences
     let e1 = embedder
@@ -76,9 +89,8 @@ fn test_semantic_similarity_detection() {
 }
 
 #[test]
-#[ignore] // Only run when ONNX models are available
 fn test_belief_semantic_search() {
-    let mut embedder = create_embedder().expect("Failed to create embedder");
+    let mut embedder = get_test_embedder();
 
     // Simulate belief statements
     let beliefs = vec![
@@ -128,9 +140,8 @@ fn test_belief_semantic_search() {
 }
 
 #[test]
-#[ignore] // Only run when ONNX models are available
 fn test_cross_domain_belief_detection() {
-    let mut embedder = create_embedder().expect("Failed to create embedder");
+    let mut embedder = get_test_embedder();
 
     // Beliefs from different domains expressing similar concepts
     let film_belief = "I prefer character-driven narratives over plot-driven stories";
@@ -161,9 +172,8 @@ fn test_cross_domain_belief_detection() {
 }
 
 #[test]
-#[ignore] // Only run when ONNX models are available
 fn test_batch_embedding_generation() {
-    let mut embedder = create_embedder().expect("Failed to create embedder");
+    let mut embedder = get_test_embedder();
 
     let texts = vec![
         "First test sentence".to_string(),
