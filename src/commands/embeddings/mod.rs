@@ -22,22 +22,20 @@ pub fn generate(force: bool) -> Result<()> {
     // Create embedder
     let mut embedder = create_embedder().context("Failed to create ONNX embedder")?;
 
-    println!("✓ Loaded {} model ({} dimensions)",
+    println!(
+        "✓ Loaded {} model ({} dimensions)",
         embedder.model_name(),
         embedder.dimension()
     );
 
     // Connect to database
-    let mut conn = Connection::open(db_path)
-        .context("Failed to open database")?;
+    let mut conn = Connection::open(db_path).context("Failed to open database")?;
 
     // Check if we need to generate embeddings
     let existing_count: i64 = conn
-        .query_row(
-            "SELECT COUNT(*) FROM embedding_metadata",
-            [],
-            |row| row.get(0),
-        )
+        .query_row("SELECT COUNT(*) FROM embedding_metadata", [], |row| {
+            row.get(0)
+        })
         .unwrap_or(0);
 
     if existing_count > 0 && !force {
@@ -97,7 +95,15 @@ pub fn status() -> Result<()> {
              FROM embedding_metadata
              ORDER BY generated_at DESC LIMIT 1",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
         )
         .optional()?;
 
@@ -139,7 +145,8 @@ fn generate_belief_embeddings(
     let count = beliefs.len();
 
     for (id, statement) in beliefs {
-        let embedding = embedder.embed(&statement)
+        let embedding = embedder
+            .embed(&statement)
             .context(format!("Failed to generate embedding for belief {}", id))?;
 
         // Note: Storing embeddings as JSON for now since we don't have sqlite-vss loaded yet
@@ -147,7 +154,12 @@ fn generate_belief_embeddings(
         conn.execute(
             "INSERT OR REPLACE INTO embedding_metadata (id, model_name, model_version, dimension)
              VALUES (?, ?, ?, ?)",
-            (id, embedder.model_name(), "1.0", embedder.dimension() as i64),
+            (
+                id,
+                embedder.model_name(),
+                "1.0",
+                embedder.dimension() as i64,
+            ),
         )?;
 
         // For now, just validate the embedding was generated
@@ -182,7 +194,8 @@ fn generate_observation_embeddings(
             Some(d) => format!("{}: {}", name, d),
             None => name.clone(),
         };
-        let _embedding = embedder.embed(&text)
+        let _embedding = embedder
+            .embed(&text)
             .context(format!("Failed to generate embedding for pattern {}", id))?;
         count += 1;
     }
@@ -195,8 +208,10 @@ fn generate_observation_embeddings(
 
     for (id, name, purpose) in technologies {
         let text = format!("{}: {}", name, purpose);
-        let _embedding = embedder.embed(&text)
-            .context(format!("Failed to generate embedding for technology {}", id))?;
+        let _embedding = embedder.embed(&text).context(format!(
+            "Failed to generate embedding for technology {}",
+            id
+        ))?;
         count += 1;
     }
 
@@ -208,7 +223,8 @@ fn generate_observation_embeddings(
 
     for (id, choice, rationale) in decisions {
         let text = format!("{}: {}", choice, rationale);
-        let _embedding = embedder.embed(&text)
+        let _embedding = embedder
+            .embed(&text)
             .context(format!("Failed to generate embedding for decision {}", id))?;
         count += 1;
     }
@@ -221,7 +237,8 @@ fn generate_observation_embeddings(
 
     for (id, problem, solution) in challenges {
         let text = format!("{}: {}", problem, solution);
-        let _embedding = embedder.embed(&text)
+        let _embedding = embedder
+            .embed(&text)
             .context(format!("Failed to generate embedding for challenge {}", id))?;
         count += 1;
     }
