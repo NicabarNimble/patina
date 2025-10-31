@@ -4,6 +4,7 @@ pub mod embeddings;
 pub mod environment;
 pub mod git;
 pub mod layer;
+pub mod query;
 pub mod session;
 pub mod version;
 
