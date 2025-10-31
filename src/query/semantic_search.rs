@@ -167,7 +167,7 @@ pub fn search_observations(
 }
 
 /// Convert f32 vector to bytes for SQLite blob
-fn vec_f32_to_bytes(vec: &[f32]) -> Vec<u8> {
+pub fn vec_f32_to_bytes(vec: &[f32]) -> Vec<u8> {
     vec.iter().flat_map(|&f| f.to_le_bytes()).collect()
 }
 
@@ -180,7 +180,7 @@ fn vec_f32_to_bytes(vec: &[f32]) -> Vec<u8> {
 /// - distance = 0 → similarity = 1.0 (perfect match)
 /// - distance = 1 → similarity = 0.5
 /// - distance = ∞ → similarity = 0.0
-fn distance_to_similarity(distance: f32) -> f32 {
+pub fn distance_to_similarity(distance: f32) -> f32 {
     1.0 / (1.0 + distance)
 }
 
