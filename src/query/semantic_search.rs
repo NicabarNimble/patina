@@ -1,8 +1,9 @@
-//! Semantic search using embeddings and sqlite-vss
+//! Semantic search using embeddings and sqlite-vec
 
 use crate::embeddings::EmbeddingEngine;
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use zerocopy::AsBytes;
 
 /// Result of a belief search: (belief_id, similarity_score)
 pub type BeliefSearchResult = (i64, f32);
@@ -13,7 +14,7 @@ pub type ObservationSearchResult = (i64, String, f32);
 /// Search for beliefs using semantic similarity
 ///
 /// # Arguments
-/// * `conn` - SQLite database connection (must have vss0 extension loaded)
+/// * `conn` - SQLite database connection (must have vec0 extension registered)
 /// * `query` - Query text to search for
 /// * `embedder` - Embedding engine to generate query vector
 /// * `top_k` - Number of results to return
@@ -47,26 +48,24 @@ pub fn search_beliefs(
         .embed(query)
         .context("Failed to generate query embedding")?;
 
-    // Convert Vec<f32> to bytes for SQLite blob
-    let embedding_bytes = vec_f32_to_bytes(&query_embedding);
-
-    // Search using sqlite-vss
-    // Note: vss_search returns distance (lower is better)
-    // We convert to similarity: similarity = 1.0 / (1.0 + distance)
+    // Search using sqlite-vec
+    // Note: sqlite-vec returns distance (lower is better for cosine)
+    // We convert to similarity: similarity = 1.0 - distance (for cosine distance)
     let mut stmt = conn
         .prepare(
-            "SELECT belief_id, distance
+            "SELECT rowid, distance
              FROM belief_vectors
-             WHERE vss_search(embedding, ?)
+             WHERE embedding match ?
+             ORDER BY distance
              LIMIT ?",
         )
         .context("Failed to prepare belief search query")?;
 
     let results = stmt
-        .query_map(rusqlite::params![&embedding_bytes[..], top_k], |row| {
+        .query_map(rusqlite::params![query_embedding.as_bytes(), top_k], |row| {
             let belief_id: i64 = row.get(0)?;
             let distance: f32 = row.get(1)?;
-            let similarity = distance_to_similarity(distance);
+            let similarity = 1.0 - distance;  // Cosine distance to similarity
             Ok((belief_id, similarity))
         })
         .context("Failed to execute belief search query")?
@@ -79,7 +78,7 @@ pub fn search_beliefs(
 /// Search for observations using semantic similarity
 ///
 /// # Arguments
-/// * `conn` - SQLite database connection (must have vss0 extension loaded)
+/// * `conn` - SQLite database connection (must have vec0 extension registered)
 /// * `query` - Query text to search for
 /// * `observation_type` - Optional filter by observation type ('pattern', 'technology', 'decision', 'challenge')
 /// * `embedder` - Embedding engine to generate query vector
@@ -116,19 +115,18 @@ pub fn search_observations(
         .embed(query)
         .context("Failed to generate query embedding")?;
 
-    // Convert Vec<f32> to bytes for SQLite blob
-    let embedding_bytes = vec_f32_to_bytes(&query_embedding);
-
     // Build query with optional type filter
     let sql = if observation_type.is_some() {
-        "SELECT observation_id, observation_type, distance
+        "SELECT rowid, observation_type, distance
          FROM observation_vectors
-         WHERE vss_search(embedding, ?) AND observation_type = ?
+         WHERE embedding match ? AND observation_type = ?
+         ORDER BY distance
          LIMIT ?"
     } else {
-        "SELECT observation_id, observation_type, distance
+        "SELECT rowid, observation_type, distance
          FROM observation_vectors
-         WHERE vss_search(embedding, ?)
+         WHERE embedding match ?
+         ORDER BY distance
          LIMIT ?"
     };
 
@@ -138,12 +136,12 @@ pub fn search_observations(
 
     let results = if let Some(obs_type) = observation_type {
         stmt.query_map(
-            rusqlite::params![&embedding_bytes[..], obs_type, top_k],
+            rusqlite::params![query_embedding.as_bytes(), obs_type, top_k],
             |row| {
                 let observation_id: i64 = row.get(0)?;
                 let observation_type: String = row.get(1)?;
                 let distance: f32 = row.get(2)?;
-                let similarity = distance_to_similarity(distance);
+                let similarity = 1.0 - distance;  // Cosine distance to similarity
                 Ok((observation_id, observation_type, similarity))
             },
         )
@@ -151,11 +149,11 @@ pub fn search_observations(
         .collect::<Result<Vec<_>, _>>()
         .context("Failed to collect observation search results")?
     } else {
-        stmt.query_map(rusqlite::params![&embedding_bytes[..], top_k], |row| {
+        stmt.query_map(rusqlite::params![query_embedding.as_bytes(), top_k], |row| {
             let observation_id: i64 = row.get(0)?;
             let observation_type: String = row.get(1)?;
             let distance: f32 = row.get(2)?;
-            let similarity = distance_to_similarity(distance);
+            let similarity = 1.0 - distance;  // Cosine distance to similarity
             Ok((observation_id, observation_type, similarity))
         })
         .context("Failed to execute observation search query")?
@@ -171,17 +169,17 @@ pub fn vec_f32_to_bytes(vec: &[f32]) -> Vec<u8> {
     vec.iter().flat_map(|&f| f.to_le_bytes()).collect()
 }
 
-/// Convert distance to similarity score
+/// Convert cosine distance to similarity score
 ///
-/// sqlite-vss returns distance (lower is better).
-/// We convert to similarity where higher is better: similarity = 1.0 / (1.0 + distance)
+/// sqlite-vec returns cosine distance (lower is better, range [0, 2]).
+/// We convert to similarity where higher is better: similarity = 1.0 - distance
 ///
-/// This gives a score in range [0, 1]:
-/// - distance = 0 → similarity = 1.0 (perfect match)
-/// - distance = 1 → similarity = 0.5
-/// - distance = ∞ → similarity = 0.0
+/// This gives a score in range [-1, 1]:
+/// - distance = 0 → similarity = 1.0 (identical vectors)
+/// - distance = 1 → similarity = 0.0 (orthogonal vectors)
+/// - distance = 2 → similarity = -1.0 (opposite vectors)
 pub fn distance_to_similarity(distance: f32) -> f32 {
-    1.0 / (1.0 + distance)
+    1.0 - distance
 }
 
 #[cfg(test)]
@@ -190,10 +188,15 @@ mod tests {
     use approx::assert_relative_eq;
 
     #[test]
-    fn test_distance_to_similarity() {
+    fn test_distance_to_similarity_cosine() {
+        // Identical vectors (cosine distance = 0)
         assert_relative_eq!(distance_to_similarity(0.0), 1.0, epsilon = 0.001);
-        assert_relative_eq!(distance_to_similarity(1.0), 0.5, epsilon = 0.001);
-        assert_relative_eq!(distance_to_similarity(9.0), 0.1, epsilon = 0.001);
+
+        // Orthogonal vectors (cosine distance = 1)
+        assert_relative_eq!(distance_to_similarity(1.0), 0.0, epsilon = 0.001);
+
+        // Opposite vectors (cosine distance = 2)
+        assert_relative_eq!(distance_to_similarity(2.0), -1.0, epsilon = 0.001);
     }
 
     #[test]
