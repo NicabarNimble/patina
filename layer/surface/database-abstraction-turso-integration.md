@@ -12,7 +12,7 @@ tags: [turso, database, architecture, refactoring, sqlite, abstraction]
 
 **Goal:** Make database backend a first-class configurable choice, with seamless support for SQLite (sqlite-vec) and Turso (libsql), designed for easy unwinding if needed.
 
-**Status:** Phase 1, 2 & 3 Complete (abstraction + semantic_search + embeddings refactored)
+**Status:** Phase 1-4 Complete! All modules refactored to use abstraction
 **Target:** Clean abstraction that works across all modules (scrape, embeddings, semantic search, beliefs)
 **Philosophy:** Turso-first for pre-alpha, but SQLite fallback is one config change away
 
@@ -23,9 +23,11 @@ tags: [turso, database, architecture, refactoring, sqlite, abstraction]
 - [x] Phase 1: `src/db` module with SqliteDatabase (scrape/code pattern)
 - [x] Phase 2: semantic_search refactored to use abstraction
 - [x] Phase 3: embeddings commands refactored to use abstraction
-- [x] All tests passing (39 lib tests)
+- [x] Phase 4: scrape/code refactored to use abstraction (north star now uses its own pattern!)
+- [x] All modules now consistent: semantic_search, embeddings, scrape/code
+- [x] All tests passing, release builds working
 
-### 🚧 In Progress
+### 🚧 Next Steps
 - [ ] Turso backend implementation
 - [ ] Config-based factory function
 
