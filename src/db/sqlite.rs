@@ -27,7 +27,6 @@ impl SqliteDatabase {
     }
 
     /// Create an in-memory database for testing
-    #[cfg(test)]
     pub fn open_in_memory() -> Result<Self> {
         let conn = Connection::open_in_memory().context("Failed to create in-memory database")?;
 
@@ -152,6 +151,11 @@ impl SqliteDatabase {
     /// Get reference to underlying connection (temporary escape hatch)
     pub fn connection(&self) -> &Connection {
         &self.conn
+    }
+
+    /// Get mutable reference to underlying connection (for transactions)
+    pub fn connection_mut(&mut self) -> &mut Connection {
+        &mut self.conn
     }
 }
 
