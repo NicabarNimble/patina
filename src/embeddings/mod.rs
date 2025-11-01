@@ -2,9 +2,11 @@
 //!
 //! Provides trait-based abstraction for embedding generation with ONNX backend.
 
+mod database;
 mod onnx;
 mod similarity;
 
+pub use database::{EmbeddingMetadata, EmbeddingsDatabase};
 pub use onnx::OnnxEmbedder;
 pub use similarity::{cosine_similarity, euclidean_distance};
 
