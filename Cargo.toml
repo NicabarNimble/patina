@@ -74,6 +74,8 @@ automerge = "0.5"
 ort = { version = "2.0.0-rc.10", features = ["download-binaries"] }  # ONNX Runtime for embeddings
 tokenizers = "0.15"                                                  # HuggingFace tokenizers (Rust)
 ndarray = "0.16"                                                     # Array operations for embeddings
+sqlite-vec = "0.1.7-alpha.2"                                         # Vector similarity search extension
+zerocopy = "0.7"                                                     # Efficient vector byte conversion
 
 [dev-dependencies]
 # Testing utilities

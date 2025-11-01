@@ -1,26 +1,27 @@
 //! Semantic search API demo
 //!
-//! This example demonstrates how to use the semantic search API.
+//! This example demonstrates how to use the semantic search API with sqlite-vec.
 //!
-//! Note: Requires sqlite-vss extension to be installed.
 //! To run: cargo run --example semantic_search_demo
 
 use anyhow::Result;
 use patina::embeddings::create_embedder;
 use patina::query::{search_beliefs, search_observations};
-use rusqlite::Connection;
+use rusqlite::{ffi::sqlite3_auto_extension, Connection};
+use sqlite_vec::sqlite3_vec_init;
 use tempfile::TempDir;
+use zerocopy::AsBytes;
 
 fn setup_demo_db() -> Result<(TempDir, Connection)> {
     let temp_dir = tempfile::tempdir()?;
     let db_path = temp_dir.path().join("demo.db");
-    let conn = Connection::open(&db_path)?;
 
-    // Enable extension loading and load sqlite-vss
+    // Register sqlite-vec extension
     unsafe {
-        conn.load_extension_enable()?;
-        conn.load_extension("vss0", None)?;
+        sqlite3_auto_extension(Some(std::mem::transmute(sqlite3_vec_init as *const ())));
     }
+
+    let conn = Connection::open(&db_path)?;
 
     // Create vector tables
     conn.execute_batch(include_str!("../.patina/vector-tables.sql"))?;
@@ -62,11 +63,10 @@ fn insert_sample_beliefs(conn: &Connection, embedder: &mut dyn patina::embedding
 
         // Generate and insert embedding
         let embedding = embedder.embed(statement)?;
-        let embedding_bytes: Vec<u8> = embedding.iter().flat_map(|&f| f.to_le_bytes()).collect();
 
         conn.execute(
-            "INSERT INTO belief_vectors (belief_id, embedding) VALUES (?, ?)",
-            rusqlite::params![id, &embedding_bytes[..]],
+            "INSERT INTO belief_vectors (rowid, embedding) VALUES (?, ?)",
+            rusqlite::params![id, embedding.as_bytes()],
         )?;
     }
 
@@ -86,11 +86,10 @@ fn insert_sample_observations(conn: &Connection, embedder: &mut dyn patina::embe
     for (id, obs_type, description) in observations {
         // Generate and insert embedding
         let embedding = embedder.embed(description)?;
-        let embedding_bytes: Vec<u8> = embedding.iter().flat_map(|&f| f.to_le_bytes()).collect();
 
         conn.execute(
-            "INSERT INTO observation_vectors (observation_id, observation_type, embedding) VALUES (?, ?, ?)",
-            rusqlite::params![id, obs_type, &embedding_bytes[..]],
+            "INSERT INTO observation_vectors (rowid, embedding, observation_type) VALUES (?, ?, ?)",
+            rusqlite::params![id, embedding.as_bytes(), obs_type],
         )?;
     }
 
@@ -106,8 +105,7 @@ fn main() -> Result<()> {
         Ok(db) => db,
         Err(e) => {
             eprintln!("❌ Failed to setup database: {}", e);
-            eprintln!("\nThis demo requires sqlite-vss extension.");
-            eprintln!("Install from: https://github.com/asg017/sqlite-vss");
+            eprintln!("\nThis demo uses sqlite-vec (should work out of the box).");
             return Ok(());
         }
     };

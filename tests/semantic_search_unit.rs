@@ -1,29 +1,25 @@
-//! Unit tests for semantic search API (no sqlite-vss required)
+//! Unit tests for semantic search API (no sqlite-vec required)
 
 use patina::query::semantic_search::{distance_to_similarity, vec_f32_to_bytes};
 
 #[test]
-fn test_distance_to_similarity_conversion() {
-    // Perfect match (distance = 0)
+fn test_distance_to_similarity_cosine() {
+    // Identical vectors (cosine distance = 0)
     let sim = distance_to_similarity(0.0);
     assert!((sim - 1.0).abs() < 0.001, "Distance 0 should give similarity 1.0");
 
-    // Medium distance
+    // Orthogonal vectors (cosine distance = 1)
     let sim = distance_to_similarity(1.0);
-    assert!((sim - 0.5).abs() < 0.001, "Distance 1 should give similarity 0.5");
+    assert!((sim - 0.0).abs() < 0.001, "Distance 1 should give similarity 0.0");
 
-    // Large distance
-    let sim = distance_to_similarity(9.0);
-    assert!((sim - 0.1).abs() < 0.001, "Distance 9 should give similarity 0.1");
-
-    // Very large distance
-    let sim = distance_to_similarity(99.0);
-    assert!(sim < 0.02, "Very large distance should give very low similarity");
+    // Opposite vectors (cosine distance = 2)
+    let sim = distance_to_similarity(2.0);
+    assert!((sim - (-1.0)).abs() < 0.001, "Distance 2 should give similarity -1.0");
 
     // Verify monotonic decrease
-    assert!(distance_to_similarity(0.0) > distance_to_similarity(1.0));
+    assert!(distance_to_similarity(0.0) > distance_to_similarity(0.5));
+    assert!(distance_to_similarity(0.5) > distance_to_similarity(1.0));
     assert!(distance_to_similarity(1.0) > distance_to_similarity(2.0));
-    assert!(distance_to_similarity(2.0) > distance_to_similarity(5.0));
 }
 
 #[test]
