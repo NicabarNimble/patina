@@ -1,6 +1,6 @@
 ---
 id: database-abstraction-turso-integration
-version: 1
+version: 2
 status: active
 created_date: 2025-11-01
 updated_date: 2025-11-01
@@ -12,9 +12,27 @@ tags: [turso, database, architecture, refactoring, sqlite, abstraction]
 
 **Goal:** Make database backend a first-class configurable choice, with seamless support for SQLite (sqlite-vec) and Turso (libsql), designed for easy unwinding if needed.
 
-**Status:** Design Phase
+**Status:** Phase 1 & 2 Complete (abstraction + semantic_search refactored)
 **Target:** Clean abstraction that works across all modules (scrape, embeddings, semantic search, beliefs)
 **Philosophy:** Turso-first for pre-alpha, but SQLite fallback is one config change away
+
+## Implementation Progress
+
+### ✅ Completed
+- [x] Design document (this file)
+- [x] Phase 1: `src/db` module with SqliteDatabase (scrape/code pattern)
+- [x] Phase 2: semantic_search refactored to use abstraction
+- [x] All tests passing (46 total)
+
+### 🚧 In Progress
+- [ ] Phase 3: embeddings commands refactored
+- [ ] Turso backend implementation
+- [ ] Config-based factory function
+
+### 📝 Lessons Learned
+1. **Rejected trait-based approach**: Generic methods (`query_row<T, F>`) aren't dyn-safe
+2. **Concrete types win**: Following scrape/code pattern (no traits) is simpler and cleaner
+3. **Escape hatches work**: `.connection()` method allows gradual migration
 
 ---
 
