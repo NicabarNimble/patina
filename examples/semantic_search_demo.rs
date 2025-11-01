@@ -5,29 +5,24 @@
 //! To run: cargo run --example semantic_search_demo
 
 use anyhow::Result;
-use patina::embeddings::create_embedder;
-use patina::query::{search_beliefs, search_observations};
-use rusqlite::{ffi::sqlite3_auto_extension, Connection};
-use sqlite_vec::sqlite3_vec_init;
+use patina::db::SqliteDatabase;
+use patina::embeddings::{create_embedder, EmbeddingEngine};
+use patina::query::SemanticSearch;
 use tempfile::TempDir;
 use zerocopy::AsBytes;
 
-fn setup_demo_db() -> Result<(TempDir, Connection)> {
+fn setup_demo_db() -> Result<(TempDir, SqliteDatabase)> {
     let temp_dir = tempfile::tempdir()?;
     let db_path = temp_dir.path().join("demo.db");
 
-    // Register sqlite-vec extension
-    unsafe {
-        sqlite3_auto_extension(Some(std::mem::transmute(sqlite3_vec_init as *const ())));
-    }
-
-    let conn = Connection::open(&db_path)?;
+    // Open database (sqlite-vec loads automatically)
+    let db = SqliteDatabase::open(&db_path)?;
 
     // Create vector tables
-    conn.execute_batch(include_str!("../.patina/vector-tables.sql"))?;
+    db.execute_batch(include_str!("../.patina/vector-tables.sql"))?;
 
     // Create beliefs table
-    conn.execute_batch(
+    db.execute_batch(
         "CREATE TABLE beliefs (
             id INTEGER PRIMARY KEY,
             statement TEXT NOT NULL
@@ -35,17 +30,20 @@ fn setup_demo_db() -> Result<(TempDir, Connection)> {
     )?;
 
     // Create observations tables
-    conn.execute_batch(
+    db.execute_batch(
         "CREATE TABLE patterns (
             id INTEGER PRIMARY KEY,
             description TEXT NOT NULL
         )",
     )?;
 
-    Ok((temp_dir, conn))
+    Ok((temp_dir, db))
 }
 
-fn insert_sample_beliefs(conn: &Connection, embedder: &mut dyn patina::embeddings::EmbeddingEngine) -> Result<()> {
+fn insert_sample_beliefs(
+    db: &SqliteDatabase,
+    embedder: &mut dyn EmbeddingEngine,
+) -> Result<()> {
     let beliefs = vec![
         (1, "I prefer Rust for systems programming due to memory safety"),
         (2, "I value type safety and compile-time guarantees"),
@@ -56,24 +54,28 @@ fn insert_sample_beliefs(conn: &Connection, embedder: &mut dyn patina::embedding
 
     for (id, statement) in beliefs {
         // Insert belief
-        conn.execute(
+        db.execute(
             "INSERT INTO beliefs (id, statement) VALUES (?, ?)",
-            rusqlite::params![id, statement],
+            &[&id, &statement],
         )?;
 
         // Generate and insert embedding
         let embedding = embedder.embed(statement)?;
-
-        conn.execute(
-            "INSERT INTO belief_vectors (rowid, embedding) VALUES (?, ?)",
-            rusqlite::params![id, embedding.as_bytes()],
+        db.vector_insert(
+            patina::db::VectorTable::Beliefs,
+            id,
+            &embedding,
+            None,
         )?;
     }
 
     Ok(())
 }
 
-fn insert_sample_observations(conn: &Connection, embedder: &mut dyn patina::embeddings::EmbeddingEngine) -> Result<()> {
+fn insert_sample_observations(
+    db: &SqliteDatabase,
+    embedder: &mut dyn EmbeddingEngine,
+) -> Result<()> {
     let observations = vec![
         (1, "pattern", "Always validate user input for security"),
         (2, "pattern", "Use dependency injection for loose coupling"),
@@ -86,10 +88,11 @@ fn insert_sample_observations(conn: &Connection, embedder: &mut dyn patina::embe
     for (id, obs_type, description) in observations {
         // Generate and insert embedding
         let embedding = embedder.embed(description)?;
-
-        conn.execute(
-            "INSERT INTO observation_vectors (rowid, embedding, observation_type) VALUES (?, ?, ?)",
-            rusqlite::params![id, embedding.as_bytes(), obs_type],
+        db.vector_insert(
+            patina::db::VectorTable::Observations,
+            id,
+            &embedding,
+            Some(obs_type),
         )?;
     }
 
@@ -101,7 +104,7 @@ fn main() -> Result<()> {
 
     // Setup
     println!("Setting up demo database...");
-    let (_temp_dir, conn) = match setup_demo_db() {
+    let (_temp_dir, db) = match setup_demo_db() {
         Ok(db) => db,
         Err(e) => {
             eprintln!("❌ Failed to setup database: {}", e);
@@ -113,22 +116,28 @@ fn main() -> Result<()> {
     let mut embedder = create_embedder()?;
 
     println!("Inserting sample data...");
-    insert_sample_beliefs(&conn, &mut *embedder)?;
-    insert_sample_observations(&conn, &mut *embedder)?;
+    insert_sample_beliefs(&db, &mut *embedder)?;
+    insert_sample_observations(&db, &mut *embedder)?;
 
     println!();
+
+    // Create semantic search engine
+    let mut search = SemanticSearch::new(db, embedder);
 
     // Demo 1: Search beliefs
     println!("📚 Demo 1: Searching beliefs");
     println!("Query: \"type safe programming languages\"");
-    let results = search_beliefs(&conn, "type safe programming languages", &mut *embedder, 3)?;
+    let results = search.search_beliefs("type safe programming languages", 3)?;
 
     for (i, (belief_id, similarity)) in results.iter().enumerate() {
-        let statement: String = conn.query_row(
-            "SELECT statement FROM beliefs WHERE id = ?",
-            [belief_id],
-            |row| row.get(0),
-        )?;
+        let statement: String = search
+            .database()
+            .connection()
+            .query_row(
+                "SELECT statement FROM beliefs WHERE id = ?",
+                [belief_id],
+                |row| row.get(0),
+            )?;
         println!(
             "  {}. [Similarity: {:.3}] {}",
             i + 1,
@@ -142,7 +151,7 @@ fn main() -> Result<()> {
     // Demo 2: Search observations (all types)
     println!("📋 Demo 2: Searching all observations");
     println!("Query: \"database technology\"");
-    let results = search_observations(&conn, "database technology", None, &mut *embedder, 3)?;
+    let results = search.search_observations("database technology", None, 3)?;
 
     for (i, (obs_id, obs_type, similarity)) in results.iter().enumerate() {
         println!(
@@ -159,7 +168,7 @@ fn main() -> Result<()> {
     // Demo 3: Search observations with type filter
     println!("🔧 Demo 3: Searching patterns only");
     println!("Query: \"code security\"");
-    let results = search_observations(&conn, "code security", Some("pattern"), &mut *embedder, 3)?;
+    let results = search.search_observations("code security", Some("pattern"), 3)?;
 
     for (i, (obs_id, obs_type, similarity)) in results.iter().enumerate() {
         println!(
@@ -176,7 +185,7 @@ fn main() -> Result<()> {
     // Demo 4: Cross-domain search
     println!("🌐 Demo 4: Cross-domain search");
     println!("Query: \"memory safety in system programming\"");
-    let results = search_observations(&conn, "memory safety in system programming", None, &mut *embedder, 5)?;
+    let results = search.search_observations("memory safety in system programming", None, 5)?;
 
     for (i, (obs_id, obs_type, similarity)) in results.iter().enumerate() {
         println!(

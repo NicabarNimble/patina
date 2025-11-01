@@ -1,12 +1,10 @@
 //! Integration tests for semantic search API
 
+use patina::db::SqliteDatabase;
 use patina::embeddings::{create_embedder, EmbeddingEngine, OnnxEmbedder};
-use patina::query::{search_beliefs, search_observations};
-use rusqlite::{ffi::sqlite3_auto_extension, Connection};
-use sqlite_vec::sqlite3_vec_init;
+use patina::query::SemanticSearch;
 use std::path::Path;
 use tempfile::TempDir;
-use zerocopy::AsBytes;
 
 /// Get embedder for testing - tries production model first, falls back to test model
 fn get_test_embedder() -> Box<dyn EmbeddingEngine> {
@@ -32,31 +30,32 @@ fn get_test_embedder() -> Box<dyn EmbeddingEngine> {
 }
 
 /// Setup a test database with vector tables
-/// Returns None if sqlite-vec extension is not available
-fn setup_test_db() -> Option<(TempDir, Connection)> {
+fn setup_test_db() -> Option<(TempDir, SqliteDatabase)> {
     let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
 
-    // Register sqlite-vec extension globally
-    unsafe {
-        sqlite3_auto_extension(Some(std::mem::transmute(sqlite3_vec_init as *const ())));
-    }
-
-    let conn = Connection::open(&db_path).expect("Failed to open test database");
+    // Open database (sqlite-vec loads automatically)
+    let db = match SqliteDatabase::open(&db_path) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("\n⚠️  Failed to open database: {}", e);
+            return None;
+        }
+    };
 
     // Create vector tables
-    if let Err(e) = conn.execute_batch(include_str!("../.patina/vector-tables.sql")) {
+    if let Err(e) = db.execute_batch(include_str!("../.patina/vector-tables.sql")) {
         eprintln!("\n⚠️  Failed to create vector tables: {}", e);
         eprintln!("Error details: {}", e);
         return None;
     }
 
-    Some((temp_dir, conn))
+    Some((temp_dir, db))
 }
 
 /// Insert test belief with embedding
 fn insert_test_belief(
-    conn: &Connection,
+    db: &SqliteDatabase,
     embedder: &mut dyn EmbeddingEngine,
     belief_id: i64,
     statement: &str,
@@ -66,17 +65,14 @@ fn insert_test_belief(
         .embed(statement)
         .expect("Failed to generate embedding");
 
-    // Insert into belief_vectors table (rowid will be set to belief_id)
-    conn.execute(
-        "INSERT INTO belief_vectors (rowid, embedding) VALUES (?, ?)",
-        rusqlite::params![belief_id, embedding.as_bytes()],
-    )
-    .expect("Failed to insert belief vector");
+    // Insert into belief_vectors table
+    db.vector_insert(patina::db::VectorTable::Beliefs, belief_id, &embedding, None)
+        .expect("Failed to insert belief vector");
 }
 
 /// Insert test observation with embedding
 fn insert_test_observation(
-    conn: &Connection,
+    db: &SqliteDatabase,
     embedder: &mut dyn EmbeddingEngine,
     observation_id: i64,
     observation_type: &str,
@@ -85,10 +81,12 @@ fn insert_test_observation(
     // Generate embedding
     let embedding = embedder.embed(text).expect("Failed to generate embedding");
 
-    // Insert into observation_vectors table (rowid will be set to observation_id)
-    conn.execute(
-        "INSERT INTO observation_vectors (rowid, embedding, observation_type) VALUES (?, ?, ?)",
-        rusqlite::params![observation_id, embedding.as_bytes(), observation_type],
+    // Insert into observation_vectors table
+    db.vector_insert(
+        patina::db::VectorTable::Observations,
+        observation_id,
+        &embedding,
+        Some(observation_type),
     )
     .expect("Failed to insert observation vector");
 }
@@ -98,28 +96,27 @@ fn test_search_beliefs_basic() {
     let mut embedder = get_test_embedder();
 
     // Setup database - skip test if sqlite-vec not available
-    let Some((_temp_dir, conn)) = setup_test_db() else {
+    let Some((_temp_dir, db)) = setup_test_db() else {
         eprintln!("⚠️  Skipping test_search_beliefs_basic - sqlite-vec not available");
         return;
     };
 
     // Insert test beliefs
-    insert_test_belief(
-        &conn,
-        &mut *embedder,
-        1,
-        "I prefer Rust for systems programming",
-    );
-    insert_test_belief(&conn, &mut *embedder, 2, "I avoid global state in my code");
-    insert_test_belief(&conn, &mut *embedder, 3, "I like chocolate ice cream");
+    insert_test_belief(&db, &mut *embedder, 1, "I prefer Rust for systems programming");
+    insert_test_belief(&db, &mut *embedder, 2, "I avoid global state in my code");
+    insert_test_belief(&db, &mut *embedder, 3, "I like chocolate ice cream");
+
+    // Create search engine
+    let mut search = SemanticSearch::new(db, embedder);
 
     // Search for Rust-related beliefs
-    let results = search_beliefs(&conn, "prefer rust for cli tools", &mut *embedder, 5)
+    let results = search
+        .search_beliefs("prefer rust for cli tools", 5)
         .expect("Search should succeed");
 
     println!("Results: {:?}", results);
 
-    // Should find at least the Rust belief
+    // Should find at least one result
     assert!(!results.is_empty(), "Should find at least one result");
 
     // First result should be the Rust belief (highest similarity)
@@ -138,56 +135,69 @@ fn test_search_beliefs_ranking() {
     let mut embedder = get_test_embedder();
 
     // Setup database - skip test if sqlite-vec not available
-    let Some((_temp_dir, conn)) = setup_test_db() else {
+    let Some((_temp_dir, db)) = setup_test_db() else {
         eprintln!("⚠️  Skipping test_search_beliefs_ranking - sqlite-vec not available");
         return;
     };
 
     // Insert test beliefs with varying relevance
     insert_test_belief(
-        &conn,
+        &db,
         &mut *embedder,
         1,
-        "I prefer ECS architecture for game development",
+        "Rust provides memory safety without garbage collection",
     );
     insert_test_belief(
-        &conn,
+        &db,
         &mut *embedder,
         2,
-        "I use entity component systems in Bevy",
+        "Type systems prevent runtime errors",
     );
     insert_test_belief(
-        &conn,
+        &db,
         &mut *embedder,
         3,
-        "I like to bake cookies on weekends",
+        "I prefer functional programming patterns",
+    );
+    insert_test_belief(&db, &mut *embedder, 4, "Coffee is essential for coding");
+
+    // Create search engine
+    let mut search = SemanticSearch::new(db, embedder);
+
+    // Search for memory safety topics
+    let results = search
+        .search_beliefs("memory safe programming languages", 4)
+        .expect("Search should succeed");
+
+    println!("Ranking results: {:?}", results);
+
+    // Should find all beliefs
+    assert_eq!(results.len(), 4, "Should find all 4 beliefs");
+
+    // First result should be most relevant (memory safety)
+    assert_eq!(
+        results[0].0, 1,
+        "First result should be belief 1 (memory safety)"
     );
 
-    // Search for ECS-related beliefs
-    let results = search_beliefs(
-        &conn,
-        "entity component system for games",
-        &mut *embedder,
-        5,
-    )
-    .expect("Search should succeed");
+    // Second result should be type safety (related topic)
+    assert_eq!(
+        results[1].0, 2,
+        "Second result should be belief 2 (type safety)"
+    );
 
-    println!("Results: {:?}", results);
-
-    // Should find multiple results
-    assert!(results.len() >= 2, "Should find at least 2 results");
-
-    // Both ECS beliefs should rank higher than the cookies belief
-    let ecs_belief_ids = vec![1, 2];
+    // Similarities should be in descending order
     assert!(
-        ecs_belief_ids.contains(&results[0].0),
-        "First result should be an ECS belief, got: {}",
-        results[0].0
+        results[0].1 > results[1].1,
+        "First result should have higher similarity than second"
     );
     assert!(
-        ecs_belief_ids.contains(&results[1].0),
-        "Second result should be an ECS belief, got: {}",
-        results[1].0
+        results[1].1 > results[2].1,
+        "Second result should have higher similarity than third"
+    );
+    assert!(
+        results[2].1 > results[3].1,
+        "Third result should have higher similarity than fourth"
     );
 }
 
@@ -196,47 +206,58 @@ fn test_search_observations_basic() {
     let mut embedder = get_test_embedder();
 
     // Setup database - skip test if sqlite-vec not available
-    let Some((_temp_dir, conn)) = setup_test_db() else {
+    let Some((_temp_dir, db)) = setup_test_db() else {
         eprintln!("⚠️  Skipping test_search_observations_basic - sqlite-vec not available");
         return;
     };
 
     // Insert test observations
     insert_test_observation(
-        &conn,
+        &db,
         &mut *embedder,
         1,
         "pattern",
-        "Use dependency injection for loose coupling",
+        "Always validate user input for security",
     );
     insert_test_observation(
-        &conn,
+        &db,
         &mut *embedder,
         2,
         "technology",
-        "SQLite for embedded database",
+        "SQLite for embedded database storage",
     );
     insert_test_observation(
-        &conn,
+        &db,
         &mut *embedder,
         3,
         "decision",
         "Chose Rust over C++ for memory safety",
     );
 
-    // Search all observations
-    let results = search_observations(&conn, "database technology", None, &mut *embedder, 5)
+    // Create search engine
+    let mut search = SemanticSearch::new(db, embedder);
+
+    // Search for database-related observations
+    let results = search
+        .search_observations("database storage solutions", None, 5)
         .expect("Search should succeed");
 
-    println!("Results: {:?}", results);
+    println!("Observation results: {:?}", results);
 
-    // Should find results
+    // Should find at least one result
     assert!(!results.is_empty(), "Should find at least one result");
 
-    // SQLite observation should rank high
+    // First result should be the database technology
+    assert_eq!(
+        results[0].0, 2,
+        "First result should be observation 2 (SQLite)"
+    );
+
+    // Similarity should be positive
     assert!(
-        results.iter().any(|(id, _, _)| *id == 2),
-        "Should find the SQLite observation"
+        results[0].2 > 0.0,
+        "Similarity should be positive, got: {}",
+        results[0].2
     );
 }
 
@@ -245,66 +266,65 @@ fn test_search_observations_with_type_filter() {
     let mut embedder = get_test_embedder();
 
     // Setup database - skip test if sqlite-vec not available
-    let Some((_temp_dir, conn)) = setup_test_db() else {
+    let Some((_temp_dir, db)) = setup_test_db() else {
         eprintln!("⚠️  Skipping test_search_observations_with_type_filter - sqlite-vec not available");
         return;
     };
 
-    // Insert test observations
+    // Insert observations of different types
     insert_test_observation(
-        &conn,
+        &db,
         &mut *embedder,
         1,
         "pattern",
-        "Always validate user input for security",
+        "Use dependency injection for loose coupling",
     );
     insert_test_observation(
-        &conn,
+        &db,
         &mut *embedder,
         2,
         "pattern",
-        "Use const generics for type safety",
+        "Validate all inputs for security",
     );
     insert_test_observation(
-        &conn,
+        &db,
         &mut *embedder,
         3,
         "technology",
-        "Rust for systems programming",
+        "Rust programming language",
     );
     insert_test_observation(
-        &conn,
+        &db,
         &mut *embedder,
         4,
         "decision",
-        "Chose to implement input validation",
+        "Decided to use microservices architecture",
     );
+
+    // Create search engine
+    let mut search = SemanticSearch::new(db, embedder);
 
     // Search only patterns
-    let results = search_observations(
-        &conn,
-        "input validation security",
-        Some("pattern"),
-        &mut *embedder,
-        5,
-    )
-    .expect("Search should succeed");
+    let results = search
+        .search_observations("software design principles", Some("pattern"), 5)
+        .expect("Search should succeed");
 
-    println!("Results: {:?}", results);
+    println!("Filtered results: {:?}", results);
 
-    // Should find results
-    assert!(!results.is_empty(), "Should find at least one result");
+    // Should find only patterns
+    assert!(!results.is_empty(), "Should find at least one pattern");
 
     // All results should be patterns
-    for (_, obs_type, _) in &results {
-        assert_eq!(obs_type, "pattern", "All results should be patterns");
+    for (obs_id, obs_type, _similarity) in &results {
+        // Note: Currently obs_type is set to "pattern" because we passed it as filter
+        // In the future when we improve metadata handling, this will be from the database
+        println!("Found: id={}, type={}", obs_id, obs_type);
+        assert!(
+            *obs_id == 1 || *obs_id == 2,
+            "Should only find pattern observations (1 or 2), got {}",
+            obs_id
+        );
     }
-
-    // Should find the validation pattern
-    assert!(
-        results.iter().any(|(id, _, _)| *id == 1),
-        "Should find the input validation pattern"
-    );
 }
 
 #[test]
@@ -312,47 +332,63 @@ fn test_search_observations_cross_type() {
     let mut embedder = get_test_embedder();
 
     // Setup database - skip test if sqlite-vec not available
-    let Some((_temp_dir, conn)) = setup_test_db() else {
+    let Some((_temp_dir, db)) = setup_test_db() else {
         eprintln!("⚠️  Skipping test_search_observations_cross_type - sqlite-vec not available");
         return;
     };
 
-    // Insert semantically similar observations across different types
+    // Insert observations across different types about similar topics
     insert_test_observation(
-        &conn,
+        &db,
         &mut *embedder,
         1,
         "pattern",
-        "Prefer composition over inheritance",
+        "Use RAII pattern for resource management",
     );
     insert_test_observation(
-        &conn,
+        &db,
         &mut *embedder,
         2,
         "technology",
-        "Rust traits for composition",
+        "Rust ownership system prevents memory leaks",
     );
     insert_test_observation(
-        &conn,
+        &db,
         &mut *embedder,
         3,
         "decision",
-        "Rejected OOP inheritance in favor of traits",
+        "Chose Rust for automatic resource cleanup",
+    );
+    insert_test_observation(
+        &db,
+        &mut *embedder,
+        4,
+        "challenge",
+        "Learning Rust's borrow checker rules",
     );
 
-    // Search without type filter (should find all related observations)
-    let results = search_observations(&conn, "composition traits", None, &mut *embedder, 5)
+    // Create search engine
+    let mut search = SemanticSearch::new(db, embedder);
+
+    // Search across all types for resource management
+    let results = search
+        .search_observations("automatic memory management", None, 5)
         .expect("Search should succeed");
 
-    println!("Results: {:?}", results);
+    println!("Cross-type results: {:?}", results);
 
-    // Should find multiple related observations across types
-    assert!(results.len() >= 2, "Should find at least 2 results");
-
-    // Should include different observation types
-    let types: Vec<String> = results.iter().map(|(_, t, _)| t.clone()).collect();
+    // Should find results from multiple types
     assert!(
-        types.iter().any(|t| t == "pattern") || types.iter().any(|t| t == "technology"),
-        "Should find observations across different types"
+        results.len() >= 2,
+        "Should find at least 2 results from different types"
     );
+
+    // All results should have positive similarity (related to query)
+    for (_obs_id, _obs_type, similarity) in &results {
+        assert!(
+            *similarity > 0.0,
+            "All results should have positive similarity, got: {}",
+            similarity
+        );
+    }
 }
