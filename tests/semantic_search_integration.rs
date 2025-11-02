@@ -1,6 +1,6 @@
 //! Integration tests for semantic search API
 
-use patina::db::SqliteDatabase;
+use patina::db::{DatabaseBackend, SqliteDatabase};
 use patina::embeddings::{create_embedder, EmbeddingEngine, OnnxEmbedder};
 use patina::query::SemanticSearch;
 use std::path::Path;
@@ -107,7 +107,7 @@ fn test_search_beliefs_basic() {
     insert_test_belief(&db, &mut *embedder, 3, "I like chocolate ice cream");
 
     // Create search engine
-    let mut search = SemanticSearch::new(db, embedder);
+    let mut search = SemanticSearch::new(DatabaseBackend::Sqlite(db), embedder);
 
     // Search for Rust-related beliefs
     let results = search
@@ -162,7 +162,7 @@ fn test_search_beliefs_ranking() {
     insert_test_belief(&db, &mut *embedder, 4, "Coffee is essential for coding");
 
     // Create search engine
-    let mut search = SemanticSearch::new(db, embedder);
+    let mut search = SemanticSearch::new(DatabaseBackend::Sqlite(db), embedder);
 
     // Search for memory safety topics
     let results = search
@@ -235,7 +235,7 @@ fn test_search_observations_basic() {
     );
 
     // Create search engine
-    let mut search = SemanticSearch::new(db, embedder);
+    let mut search = SemanticSearch::new(DatabaseBackend::Sqlite(db), embedder);
 
     // Search for database-related observations
     let results = search
@@ -302,7 +302,7 @@ fn test_search_observations_with_type_filter() {
     );
 
     // Create search engine
-    let mut search = SemanticSearch::new(db, embedder);
+    let mut search = SemanticSearch::new(DatabaseBackend::Sqlite(db), embedder);
 
     // Search only patterns
     let results = search
@@ -368,7 +368,7 @@ fn test_search_observations_cross_type() {
     );
 
     // Create search engine
-    let mut search = SemanticSearch::new(db, embedder);
+    let mut search = SemanticSearch::new(DatabaseBackend::Sqlite(db), embedder);
 
     // Search across all types for resource management
     let results = search

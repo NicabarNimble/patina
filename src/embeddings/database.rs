@@ -1,9 +1,9 @@
 //! Database operations for embeddings
 //!
-//! Follows the scrape/code pattern: concrete wrapper around SqliteDatabase
+//! Follows the scrape/code pattern: concrete wrapper around DatabaseBackend
 //! with domain-specific methods for embedding generation and management.
 
-use crate::db::SqliteDatabase;
+use crate::db::DatabaseBackend;
 use crate::embeddings::EmbeddingEngine;
 use anyhow::{Context, Result};
 use rusqlite::OptionalExtension;
@@ -22,17 +22,17 @@ pub struct EmbeddingMetadata {
 /// Database wrapper for embeddings operations
 ///
 /// Follows the same pattern as scrape/code/database.rs:
-/// - Owns SqliteDatabase
+/// - Owns DatabaseBackend
 /// - Domain-specific methods
-/// - No trait abstraction
+/// - Uses enum dispatch for backend selection
 pub struct EmbeddingsDatabase {
-    db: SqliteDatabase,
+    db: DatabaseBackend,
 }
 
 impl EmbeddingsDatabase {
     /// Open embeddings database
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let db = SqliteDatabase::open(path)?;
+        let db = DatabaseBackend::open_sqlite(path)?;
         Ok(Self { db })
     }
 

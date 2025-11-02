@@ -82,21 +82,21 @@ impl DatabaseBackend {
 
     /// Get reference to underlying connection (temporary escape hatch)
     ///
-    /// Only available for SQLite backend. Will need refactoring when
-    /// adding Turso support.
-    pub fn connection(&self) -> Option<&Connection> {
+    /// Only available for SQLite backend. Will panic when Turso is added.
+    /// TODO: Refactor callers to use DatabaseBackend methods instead.
+    pub fn connection(&self) -> &Connection {
         match self {
-            Self::Sqlite(db) => Some(db.connection()),
+            Self::Sqlite(db) => db.connection(),
         }
     }
 
     /// Get mutable reference to underlying connection (for transactions)
     ///
-    /// Only available for SQLite backend. Will need refactoring when
-    /// adding Turso support.
-    pub fn connection_mut(&mut self) -> Option<&mut Connection> {
+    /// Only available for SQLite backend. Will panic when Turso is added.
+    /// TODO: Refactor callers to use DatabaseBackend methods instead.
+    pub fn connection_mut(&mut self) -> &mut Connection {
         match self {
-            Self::Sqlite(db) => Some(db.connection_mut()),
+            Self::Sqlite(db) => db.connection_mut(),
         }
     }
 }
