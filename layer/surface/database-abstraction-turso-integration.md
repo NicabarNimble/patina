@@ -1,14 +1,22 @@
 ---
 id: database-abstraction-turso-integration
-version: 4
-status: active
+version: 7
+status: design
 created_date: 2025-11-01
 updated_date: 2025-11-02
 oxidizer: nicabar
-tags: [turso, database, architecture, distributed, vectors, rust, async, dual-api]
+tags: [turso, database, architecture, distributed, vectors, rust, async, dual-api, scrape-code-pattern]
 ---
 
 # Database Backend Strategy: Turso-First with SQLite Fallback
+
+## ⚠️ Implementation Status
+
+**Architecture**: ✅ Finalized (dual API strategy with feature flags)
+**Implementation**: ❌ Not started - design only
+**Current Codebase**: Uses `DatabaseBackend` enum (technical debt from early exploration, must be removed)
+
+**Key Decision**: The enum approach currently in codebase contradicts this design. It was explored and rejected in session 20251102-081406 after architectural review revealed sync wrapper over async is an anti-pattern. This document defines the correct path forward: separate sync (SQLite) and async (Turso) implementations via feature flags.
 
 **Goal:** Enable distributed development knowledge through Turso (async), with SQLite (sync) as a simple fallback option for users who don't need distributed features.
 
@@ -69,6 +77,43 @@ impl SemanticSearch<SqliteDatabase> {
 - ✅ No deadlock risks (no nested async)
 - ✅ Clean separation (Turso = async, SQLite = sync)
 - ✅ User chooses complexity level (features flags)
+
+---
+
+## Design Pattern: Domain Wrapper Over Backend
+
+The `scrape/code` module demonstrates the correct pattern for database abstraction:
+
+**Key Principles:**
+1. **Domain types are backend-agnostic** - `CodeSymbol`, `FunctionFact` work with any backend
+2. **Database struct owns the backend** - No leaking of `Connection` or async runtime
+3. **API mirrors domain operations** - Methods named for *what* they do, not *how*
+4. **Same API shape across backends** - Only difference is `async` vs sync
+
+**Example pattern:**
+```rust
+// Domain types (backend-agnostic)
+pub struct CodeSymbol { path: String, name: String, kind: String, ... }
+
+// Backend-specific implementations
+#[cfg(feature = "sqlite")]
+pub struct Database { db: SqliteDatabase }
+
+#[cfg(feature = "sqlite")]
+impl Database {
+    pub fn insert_symbols(&mut self, symbols: &[CodeSymbol]) -> Result<()>  // sync
+}
+
+#[cfg(feature = "turso")]
+pub struct Database { db: TursoDatabase }
+
+#[cfg(feature = "turso")]
+impl Database {
+    pub async fn insert_symbols(&mut self, symbols: &[CodeSymbol]) -> Result<()>  // async
+}
+```
+
+This pattern applies to all domain modules: `SemanticSearch`, `EmbeddingsDatabase`, scrape `Database`.
 
 ---
 
@@ -159,23 +204,9 @@ src/
 ### Turso Backend (Default, Async)
 
 ```rust
-//! src/db/turso.rs
-//!
-//! Turso backend - asynchronous API
-//! Uses Turso as designed (native async, no wrapper)
+//! src/db/turso.rs - Async API, uses Turso as designed
 
 use turso::{Builder, Connection};
-use once_cell::sync::Lazy;
-use tokio::runtime::Runtime;
-
-// Global runtime for Turso operations (minimal overhead)
-static TURSO_RUNTIME: Lazy<Runtime> = Lazy::new(|| {
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .thread_name("turso-worker")
-        .build()
-        .expect("Failed to create Turso runtime")
-});
 
 pub struct TursoDatabase {
     conn: Connection,
@@ -186,65 +217,29 @@ impl TursoDatabase {
         let db = Builder::new_local(path.as_ref().to_str().unwrap())
             .build()
             .await?;
-        let conn = db.connect()?;
-        Ok(Self { conn })
+        Ok(Self { conn: db.connect()? })
     }
 
-    pub async fn open_embedded<P: AsRef<Path>>(
-        path: P,
-        url: &str,
-        auth_token: &str,
-    ) -> Result<Self> {
-        let db = Builder::new_local(path.as_ref().to_str().unwrap())
+    pub async fn open_embedded(path: P, url: &str, auth_token: &str) -> Result<Self> {
+        let db = Builder::new_local(path)
             .url(url)
             .auth_token(auth_token)
             .build()
             .await?;
-
         let conn = db.connect()?;
-
-        // Initial sync
-        conn.sync().await?;
-
+        conn.sync().await?;  // Initial sync
         Ok(Self { conn })
     }
 
-    pub async fn execute(&self, sql: &str, params: impl IntoParams) -> Result<usize> {
-        let result = self.conn.execute(sql, params).await?;
-        Ok(result as usize)
-    }
-
-    pub async fn vector_search(
-        &self,
-        table: VectorTable,
-        query_vector: &[f32],
-        filter: Option<VectorFilter>,
-        limit: usize,
-    ) -> Result<Vec<VectorMatch>> {
+    pub async fn vector_search(...) -> Result<Vec<VectorMatch>> {
         // Turso native vector syntax (cleaner than sqlite-vec!)
-        let sql = format!(
-            "SELECT rowid, vector_distance_cos(embedding, vector32(?)) as distance
-             FROM {}
-             ORDER BY distance LIMIT ?",
-            table.table_name()
-        );
-
-        let mut stmt = self.conn.prepare(&sql).await?;
-        let rows = stmt.query([query_vector, &limit]).await?;
-
-        let mut results = Vec::new();
-        while let Some(row) = rows.next().await? {
-            let row_id: i64 = row.get(0)?;
-            let distance: f32 = row.get(1)?;
-            results.push(VectorMatch::new(row_id, distance));
-        }
-
-        Ok(results)
+        let sql = "SELECT rowid, vector_distance_cos(embedding, vector32(?)) as distance
+                   FROM beliefs ORDER BY distance LIMIT ?";
+        // ... async query execution
     }
 
     pub async fn sync(&self) -> Result<()> {
-        self.conn.sync().await?;
-        Ok(())
+        self.conn.sync().await  // Distributed sync!
     }
 }
 ```
@@ -252,13 +247,9 @@ impl TursoDatabase {
 ### SQLite Backend (Fallback, Sync)
 
 ```rust
-//! src/db/sqlite.rs
-//!
-//! SQLite backend - synchronous API
-//! No async, no tokio, pure sync simplicity
+//! src/db/sqlite.rs - Sync API, no async/tokio
 
 use rusqlite::Connection;
-use zerocopy::AsBytes;
 
 pub struct SqliteDatabase {
     conn: Connection,
@@ -271,50 +262,11 @@ impl SqliteDatabase {
         Ok(Self { conn })
     }
 
-    fn load_vec_extension(conn: &Connection) -> Result<()> {
-        unsafe {
-            sqlite_vec::sqlite3_auto_extension(Some(
-                std::mem::transmute(sqlite_vec::sqlite3_vec_init as *const ())
-            ));
-            conn.load_extension_enable()?;
-        }
-        Ok(())
-    }
-
-    pub fn execute(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<usize> {
-        let count = self.conn.execute(sql, params)?;
-        Ok(count)
-    }
-
-    pub fn vector_search(
-        &self,
-        table: VectorTable,
-        query_vector: &[f32],
-        filter: Option<VectorFilter>,
-        limit: usize,
-    ) -> Result<Vec<VectorMatch>> {
+    pub fn vector_search(...) -> Result<Vec<VectorMatch>> {
         // sqlite-vec MATCH syntax
-        let sql = format!(
-            "SELECT rowid, distance FROM {}
-             WHERE embedding MATCH ?
-             ORDER BY distance LIMIT ?",
-            table.table_name()
-        );
-
-        let vector_bytes = query_vector.as_bytes();
-
-        let mut stmt = self.conn.prepare(&sql)?;
-        let results = stmt.query_map(
-            params![vector_bytes, limit],
-            |row| {
-                let row_id: i64 = row.get(0)?;
-                let distance: f32 = row.get(1)?;
-                Ok(VectorMatch::new(row_id, distance))
-            }
-        )?
-        .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(results)
+        let sql = "SELECT rowid, distance FROM beliefs
+                   WHERE embedding MATCH ? ORDER BY distance LIMIT ?";
+        // ... sync query execution
     }
 }
 ```
@@ -323,12 +275,10 @@ impl SqliteDatabase {
 
 ## Domain Layer: Generic Over Backend
 
-### SemanticSearch with Conditional Implementations
+**Pattern**: Generic struct with conditional implementations based on feature flags.
 
 ```rust
 //! src/query/mod.rs
-
-use crate::embeddings::EmbeddingEngine;
 
 pub struct SemanticSearch<DB> {
     db: DB,
@@ -340,56 +290,17 @@ pub struct SemanticSearch<DB> {
 // ============================================================================
 
 #[cfg(feature = "turso")]
-mod turso_impl {
-    use super::*;
-    use crate::db::TursoDatabase;
+impl SemanticSearch<TursoDatabase> {
+    pub async fn search_beliefs(&mut self, query: &str, top_k: usize) -> Result<Vec<...>> {
+        let embedding = self.embedder.embed(query)?;  // sync
+        self.db.vector_search(VectorTable::Beliefs, &embedding, None, top_k).await  // async
+    }
 
-    impl SemanticSearch<TursoDatabase> {
-        pub async fn new(db: TursoDatabase, embedder: Box<dyn EmbeddingEngine>) -> Self {
-            Self { db, embedder }
-        }
-
-        pub async fn open_default() -> Result<Self> {
-            let db = TursoDatabase::open(".patina/db/facts.db").await?;
-            let embedder = crate::embeddings::create_embedder()?;
-            Ok(Self::new(db, embedder).await)
-        }
-
-        pub async fn search_beliefs(
-            &mut self,
-            query: &str,
-            top_k: usize
-        ) -> Result<Vec<(i64, f32)>> {
-            // Generate embedding (sync - CPU bound, fast)
-            let embedding = self.embedder.embed(query)?;
-
-            // Search vectors (async - I/O bound)
-            let matches = self.db.vector_search(
-                VectorTable::Beliefs,
-                &embedding,
-                None,
-                top_k
-            ).await?;
-
-            Ok(matches.into_iter()
-                .map(|m| (m.row_id, m.similarity))
-                .collect())
-        }
-
-        /// Search multiple queries concurrently (scoped, no 'static issues)
-        pub async fn search_many<'a>(
-            &'a mut self,
-            queries: &[&str],
-            top_k: usize
-        ) -> Result<Vec<Vec<(i64, f32)>>> {
-            use futures::future::join_all;
-
-            let searches = queries.iter()
-                .map(|q| self.search_beliefs(q, top_k));
-
-            let results = join_all(searches).await;
-            results.into_iter().collect()
-        }
+    /// Scoped concurrency - no 'static lifetime issues
+    pub async fn search_many(&mut self, queries: &[&str], top_k: usize) -> Result<Vec<...>> {
+        use futures::future::join_all;
+        let searches = queries.iter().map(|q| self.search_beliefs(q, top_k));
+        join_all(searches).await.into_iter().collect()
     }
 }
 
@@ -398,139 +309,46 @@ mod turso_impl {
 // ============================================================================
 
 #[cfg(feature = "sqlite")]
-mod sqlite_impl {
-    use super::*;
-    use crate::db::SqliteDatabase;
-
-    impl SemanticSearch<SqliteDatabase> {
-        pub fn new(db: SqliteDatabase, embedder: Box<dyn EmbeddingEngine>) -> Self {
-            Self { db, embedder }
-        }
-
-        pub fn open_default() -> Result<Self> {
-            let db = SqliteDatabase::open(".patina/db/facts.db")?;
-            let embedder = crate::embeddings::create_embedder()?;
-            Ok(Self::new(db, embedder))
-        }
-
-        pub fn search_beliefs(
-            &mut self,
-            query: &str,
-            top_k: usize
-        ) -> Result<Vec<(i64, f32)>> {
-            // Generate embedding
-            let embedding = self.embedder.embed(query)?;
-
-            // Search vectors (synchronous)
-            let matches = self.db.vector_search(
-                VectorTable::Beliefs,
-                &embedding,
-                None,
-                top_k
-            )?;
-
-            Ok(matches.into_iter()
-                .map(|m| (m.row_id, m.similarity))
-                .collect())
-        }
+impl SemanticSearch<SqliteDatabase> {
+    pub fn search_beliefs(&mut self, query: &str, top_k: usize) -> Result<Vec<...>> {
+        let embedding = self.embedder.embed(query)?;
+        self.db.vector_search(VectorTable::Beliefs, &embedding, None, top_k)  // sync
     }
 }
-
-// Re-export based on enabled features
-#[cfg(feature = "turso")]
-pub use turso_impl::*;
-
-#[cfg(feature = "sqlite")]
-pub use sqlite_impl::*;
 ```
+
+**Key difference**: Only `async` vs sync - same API shape, same domain logic.
 
 ---
 
 ## User Experience
 
-### Default: Turso User (Async, Distributed)
-
-```toml
-# Cargo.toml
-[dependencies]
-patina = "0.1"  # Turso is default
-tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
-```
+### Default: Turso (Async, Distributed)
 
 ```rust
+// Cargo.toml: patina = "0.1"  (turso is default)
 // main.rs
-use patina::query::SemanticSearch;
-use patina::db::TursoDatabase;
-
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Open database (async)
+async fn main() -> Result<()> {
     let db = TursoDatabase::open(".patina/db/facts.db").await?;
-
-    // Create search engine
-    let embedder = patina::embeddings::create_embedder()?;
     let mut search = SemanticSearch::new(db, embedder).await;
-
-    // Search (async - can run concurrently!)
     let results = search.search_beliefs("rust cli tools", 10).await?;
-
-    for (belief_id, similarity) in results {
-        println!("Belief {}: {:.3}", belief_id, similarity);
-    }
-
-    Ok(())
+    // ✅ Concurrent queries, distributed sync, native vectors
 }
 ```
 
-**Benefits**:
-- ✅ True async/await (concurrent queries possible)
-- ✅ Distributed sync (embedded replica mode)
-- ✅ Native vectors (cleaner API)
-- ✅ Rust-native database
-
-**Cost**: User must understand async/await basics
-
-### Fallback: SQLite User (Sync, Simple)
-
-```toml
-# Cargo.toml
-[dependencies]
-patina = { version = "0.1", default-features = false, features = ["sqlite"] }
-```
+### Fallback: SQLite (Sync, Simple)
 
 ```rust
+// Cargo.toml: patina = { version = "0.1", default-features = false, features = ["sqlite"] }
 // main.rs
-use patina::query::SemanticSearch;
-use patina::db::SqliteDatabase;
-
-fn main() -> anyhow::Result<()> {
-    // Open database (sync)
+fn main() -> Result<()> {
     let db = SqliteDatabase::open(".patina/db/facts.db")?;
-
-    // Create search engine
-    let embedder = patina::embeddings::create_embedder()?;
     let mut search = SemanticSearch::new(db, embedder);
-
-    // Search (sync)
     let results = search.search_beliefs("rust cli tools", 10)?;
-
-    for (belief_id, similarity) in results {
-        println!("Belief {}: {:.3}", belief_id, similarity);
-    }
-
-    Ok(())
+    // ✅ Zero async, no tokio, smaller binary, local-only
 }
 ```
-
-**Benefits**:
-- ✅ Zero async complexity
-- ✅ No tokio dependency
-- ✅ Smaller binary
-- ✅ Pure sync simplicity
-
-**Trade-offs**:
-- ⚠️ Local-only (no distributed sync)
-- ⚠️ Sequential operations (no concurrency)
 
 ---
 
@@ -614,108 +432,45 @@ pub async fn search_multiple(&self, queries: &[&str]) -> Result<Vec<...>> {
 
 ---
 
-## Question: Do We Need Both Features Enabled?
+## Feature Flag Strategy
 
-### Current Design
-```toml
-[features]
-default = ["turso"]
-turso = ["dep:turso", "dep:tokio"]
-sqlite = ["dep:rusqlite", "dep:sqlite-vec"]
-```
+**Decision**: Mutually exclusive features (one backend per build)
 
-**Possible to enable both**:
-```bash
-cargo build --features sqlite,turso
-```
-
-### Use Cases for Both
-
-**Potential use case**: Migration tool?
 ```rust
-// Migrate from SQLite to Turso
-async fn migrate() -> Result<()> {
-    let sqlite = SqliteDatabase::open("old.db")?;
-    let turso = TursoDatabase::open("new.db").await?;
-
-    // Copy data...
-}
-```
-
-**Counter-argument**: This is a one-time operation, doesn't justify permanent support.
-
-### Recommendation: Mutually Exclusive (Initially)
-
-**Proposed**:
-```toml
-[features]
-default = ["turso"]
-turso = ["dep:turso", "dep:tokio"]
-sqlite = ["dep:rusqlite", "dep:sqlite-vec"]
-```
-
-**Enforce at compile time**:
-```rust
-// src/lib.rs
+// src/lib.rs - Compile-time enforcement
 #[cfg(all(feature = "turso", feature = "sqlite"))]
 compile_error!("Features 'turso' and 'sqlite' are mutually exclusive. Choose one.");
-
-#[cfg(not(any(feature = "turso", feature = "sqlite")))]
-compile_error!("Must enable either 'turso' or 'sqlite' feature.");
 ```
 
-**Rationale**:
-1. Simpler mental model (one backend at a time)
-2. Smaller binaries (don't bundle both)
-3. Clearer user intent (distributed vs local-only)
-4. Can relax later if use cases emerge
-
-**If we need migration**: Provide separate `patina-migrate` tool.
+**Rationale**: Simpler mental model, smaller binaries, clearer intent. Can relax later if use cases emerge (e.g., migration tool).
 
 ---
 
-## Implementation Progress
+## Implementation Phases
 
-### ✅ Completed - Foundation Work
-- [x] DatabaseBackend enum with SQLite variant
-- [x] All domain wrappers use enum (scrape, embeddings, semantic_search)
-- [x] Config system for backend selection
-- [x] Research into Turso API and vector support
-- [x] Architectural decision: Dual API (no wrapper)
-- [x] 95 tests passing (SQLite only currently)
+### Phase 1: Remove Enum & Add Feature Flags
+- Remove `src/db/backend.rs` entirely
+- Add feature flags: `default = ["turso"]`, `turso`, `sqlite` (mutually exclusive)
+- Make dependencies optional, wrap `SqliteDatabase` in `#[cfg(feature = "sqlite")]`
 
-### 🎯 Current Phase - Dual API Implementation
+### Phase 2: Implement Turso Backend
+- Create `src/db/turso.rs` with async API (`TursoDatabase`)
+- Native vector support using `vector_distance_cos()`
+- Embedded replica mode support
 
-**Next Steps**:
+### Phase 3: Refactor Domain Types to Generic
+- Make domain types generic: `SemanticSearch<DB>`, `EmbeddingsDatabase<DB>`, scrape `Database<DB>`
+- Conditional impls: async for turso, sync for sqlite
+- Remove all `DatabaseBackend` enum usage
 
-1. **Create Feature Flags** ✅ (design complete)
-   - Add `turso` feature to Cargo.toml
-   - Make `sqlite` optional (was default)
-   - Add compile-time checks for mutual exclusivity
+### Phase 4: Update Commands & CLI
+- Conditional compilation in command modules
+- async handlers for turso, sync handlers for sqlite
 
-2. **Implement Turso Backend**
-   - Create `src/db/turso.rs` with async API
-   - Native vector support (`vector_distance_cos`)
-   - Embedded replica support (local + cloud sync)
-
-3. **Refactor Domain Types to Generic**
-   - `SemanticSearch<DB>` with conditional impls
-   - `EmbeddingsDatabase<DB>` with conditional impls
-   - Keep shared types in separate modules
-
-4. **Update Commands**
-   - Conditional compilation for sync/async variants
-   - Keep CLI simple (users choose via features)
-
-5. **Documentation**
-   - Async best practices guide
-   - Migration guide (SQLite → Turso)
-   - Feature selection guide
-
-6. **Testing Strategy**
-   - Test both features in CI (separate jobs)
-   - Integration tests for each backend
-   - No cross-backend tests (mutually exclusive)
+### Phase 5: Testing & Documentation
+- CI matrix for both features
+- Async best practices guide
+- Feature selection documentation
 
 ---
 
@@ -758,98 +513,17 @@ fn test_sqlite_vector_search() {
 
 ---
 
-## Migration Timeline
-
-### Phase 1: Feature Flags & Conditional Compilation (Week 1)
-- [ ] Add turso dependencies (optional)
-- [ ] Add feature flags to Cargo.toml
-- [ ] Add compile-time checks (mutual exclusivity)
-- [ ] Refactor existing code to use `#[cfg(feature = "sqlite")]`
-
-### Phase 2: Turso Backend Implementation (Week 2)
-- [ ] Implement `TursoDatabase` with async API
-- [ ] Native vector search (`vector_distance_cos`)
-- [ ] Embedded replica support
-- [ ] Basic tests passing
-
-### Phase 3: Domain Layer Refactor (Week 3)
-- [ ] Make `SemanticSearch<DB>` generic
-- [ ] Implement async variant for Turso
-- [ ] Make `EmbeddingsDatabase<DB>` generic
-- [ ] Update commands for conditional compilation
-
-### Phase 4: Testing & Documentation (Week 4)
-- [ ] CI matrix for both backends
-- [ ] Integration tests for Turso
-- [ ] Async best practices guide
-- [ ] Migration documentation
-
----
-
 ## Success Criteria
 
-### Turso Backend (Default)
-- [x] Feature flag working
-- [ ] Async API clean and idiomatic
-- [ ] Vector search using native `vector_distance_cos()`
-- [ ] Embedded replica mode functional
-- [ ] Background sync working
-- [ ] All tests passing
+**Implementation complete when:**
 
-### SQLite Backend (Fallback)
-- [x] Feature flag working
-- [x] Sync API clean and simple
-- [x] Vector search using sqlite-vec
-- [x] No tokio dependency when enabled
-- [x] All tests passing
-
-### User Experience
-- [ ] Clear documentation on choosing backend
-- [ ] Async best practices documented
-- [ ] Migration guide (SQLite → Turso)
-- [ ] Example projects for both backends
-
----
-
-## Open Questions
-
-### 1. Should Both Features Be Allowed Together?
-
-**Current stance**: No, mutually exclusive.
-
-**Reasoning**:
-- Simpler (one backend per build)
-- Smaller binaries
-- Clearer intent
-
-**Revisit if**: Migration tool or hybrid use cases emerge.
-
-### 2. How to Handle Vector Syntax Differences?
-
-**sqlite-vec**:
-```sql
-WHERE embedding MATCH ?
-```
-
-**Turso**:
-```sql
-WHERE vector_distance_cos(embedding, vector32(?)) < threshold
-```
-
-**Solution**: Backend-specific SQL generation (already isolated in implementations).
-
-### 3. Should Default Be Configurable?
-
-**Current**: `default = ["turso"]` (hard-coded)
-
-**Alternative**: Let users explicitly choose:
-```toml
-# User must choose
-[dependencies]
-patina = { version = "0.1", default-features = false, features = ["turso"] }
-```
-
-**Decision**: Keep `turso` as default for now (aligns with vision).
+- [ ] **DatabaseBackend enum removed** - No runtime dispatch, feature flags only
+- [ ] **Turso backend functional** - `TursoDatabase` with async API, native `vector_distance_cos()`, embedded replica mode
+- [ ] **SQLite backend preserved** - Wrapped in `#[cfg(feature = "sqlite")]`, no tokio dependency
+- [ ] **Domain types generic** - `SemanticSearch<DB>`, `EmbeddingsDatabase<DB>`, scrape `Database<DB>` with conditional async/sync impls
+- [ ] **Feature flags enforced** - Mutually exclusive, default=turso, both build independently
+- [ ] **Tests pass for both** - CI matrix tests turso and sqlite features separately
+- [ ] **Documentation complete** - Feature selection guide, async best practices, migration examples
 
 ---
 
@@ -859,9 +533,3 @@ patina = { version = "0.1", default-features = false, features = ["turso"] }
 - Our scraped Turso codebase: `layer/dust/repos/turso/`
 - No Boilerplate async critique: Informs our scoped concurrency approach
 - tokio runtime docs: Global runtime pattern for libraries
-
----
-
-**Status**: Architecture finalized, ready for implementation
-**Owner**: @nicabar
-**Next Action**: Begin Phase 1 (Feature flags & conditional compilation)
