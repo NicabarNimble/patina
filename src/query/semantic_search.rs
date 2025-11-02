@@ -2,7 +2,7 @@
 //!
 //! Refactored to follow scrape/code pattern with concrete types
 
-use crate::db::{SqliteDatabase, VectorFilter, VectorTable};
+use crate::db::{DatabaseBackend, VectorFilter, VectorTable};
 use crate::embeddings::EmbeddingEngine;
 use anyhow::{Context, Result};
 
@@ -17,19 +17,19 @@ pub type ObservationSearchResult = (i64, String, f32);
 /// Encapsulates database and embedder for clean API.
 /// Follows the same pattern as scrape/code/database.rs
 pub struct SemanticSearch {
-    db: SqliteDatabase,
+    db: DatabaseBackend,
     embedder: Box<dyn EmbeddingEngine>,
 }
 
 impl SemanticSearch {
     /// Create a new semantic search engine
-    pub fn new(db: SqliteDatabase, embedder: Box<dyn EmbeddingEngine>) -> Self {
+    pub fn new(db: DatabaseBackend, embedder: Box<dyn EmbeddingEngine>) -> Self {
         Self { db, embedder }
     }
 
     /// Open from default database path
     pub fn open_default() -> Result<Self> {
-        let db = SqliteDatabase::open(".patina/db/facts.db")?;
+        let db = DatabaseBackend::open_sqlite(".patina/db/facts.db")?;
         let embedder = crate::embeddings::create_embedder()?;
         Ok(Self::new(db, embedder))
     }
@@ -140,7 +140,7 @@ impl SemanticSearch {
     }
 
     /// Get reference to underlying database (temporary escape hatch)
-    pub fn database(&self) -> &SqliteDatabase {
+    pub fn database(&self) -> &DatabaseBackend {
         &self.db
     }
 }
