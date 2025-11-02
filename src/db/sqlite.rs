@@ -11,6 +11,7 @@ use zerocopy::AsBytes;
 use super::vectors::{VectorFilter, VectorMatch, VectorTable};
 
 /// SQLite database with sqlite-vec extension
+#[derive(Debug)]
 pub struct SqliteDatabase {
     conn: Connection,
 }
