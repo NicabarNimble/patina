@@ -291,20 +291,19 @@ impl BeliefStorage {
     }
 
     pub fn insert(&mut self, belief: &Belief) -> Result<()> {
-        // SQLite (source of truth)
-        self.db.execute(
-            "INSERT OR REPLACE INTO beliefs (id, content, metadata, created_at)
-             VALUES (?1, ?2, ?3, ?4)",
+        // SQLite (source of truth) - atomically insert and retrieve rowid
+        let rowid: i64 = self.db.query_row(
+            "INSERT INTO beliefs (id, content, metadata, created_at)
+             VALUES (?1, ?2, ?3, ?4)
+             RETURNING rowid",
             params![
                 belief.id.to_string(),
                 &belief.content,
                 serde_json::to_string(&belief.metadata)?,
                 belief.metadata.created_at.unwrap_or_else(chrono::Utc::now).to_rfc3339(),
             ],
+            |row| row.get(0),
         )?;
-
-        // Get the rowid that was just inserted
-        let rowid: i64 = self.db.last_insert_rowid();
 
         // USearch (vector index) - use rowid as key
         self.vectors.add(rowid as u64, &belief.embedding)?;
@@ -343,7 +342,9 @@ impl BeliefStorage {
 
 **Key Implementation Details:**
 
-- **rowid as USearch key**: SQLite's `last_insert_rowid()` provides stable i64 keys for USearch (avoids UUID→u64 truncation)
+- **rowid as USearch key**: SQLite's auto-incrementing rowid provides stable i64 keys for USearch (avoids UUID→u64 truncation)
+- **RETURNING clause**: Atomic insert with `RETURNING rowid` retrieves the new rowid in a single statement
+- **Immutable beliefs**: Insert-only (no upsert) maintains consistency between SQLite and USearch indices
 - **Memory-mapped indices**: `index.view()` loads existing indices without copying to RAM
 - **Dual storage pattern**: SQLite is source of truth, USearch provides fast ANN search
 - **Storage separation**: `beliefs.db` for metadata, `beliefs.usearch` for vectors
@@ -456,9 +457,11 @@ usearch = "2.21"
 - ✅ Added 4 comprehensive unit tests (creation, roundtrip, ranking, direct USearch)
 - ✅ Memory-mapped indices working
 
-**Commits:** 2 focused commits, tests passing (39→46 passing)
+**Commits:** 3 focused commits, tests passing (39→46 passing)
 
-**Key Discovery:** Using SQLite's `last_insert_rowid()` as USearch key solves UUID→u64 truncation issue elegantly.
+**Key Discoveries:**
+- Using SQLite's auto-incrementing rowid as USearch key solves UUID→u64 truncation
+- RETURNING clause provides atomic insert with rowid retrieval (cleaner than last_insert_rowid())
 
 ### Phase 3: Migrate Domain Types ⏳ PENDING
 - Update `SemanticSearch` to use BeliefStorage
