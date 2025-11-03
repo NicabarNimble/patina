@@ -7,6 +7,7 @@ pub mod git;
 pub mod layer;
 pub mod query;
 pub mod session;
+pub mod storage;
 pub mod version;
 
 // Re-export commonly used types
