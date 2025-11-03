@@ -22,6 +22,8 @@
 
 pub mod types;
 pub mod beliefs;
+pub mod observations;
 
-pub use types::{Belief, BeliefMetadata};
+pub use types::{Belief, BeliefMetadata, Observation, ObservationMetadata};
 pub use beliefs::BeliefStorage;
+pub use observations::ObservationStorage;
