@@ -1,37 +1,72 @@
-//! Semantic search using embeddings and sqlite-vec
+//! Semantic search using embeddings and USearch
 //!
-//! Refactored to follow scrape/code pattern with concrete types
+//! Uses BeliefStorage for dual SQLite + USearch storage pattern.
 
-use crate::db::{SqliteDatabase, VectorFilter, VectorTable};
 use crate::embeddings::EmbeddingEngine;
+use crate::storage::{Belief, BeliefMetadata, BeliefStorage};
 use anyhow::{Context, Result};
-
-/// Result of a belief search: (belief_id, similarity_score)
-pub type BeliefSearchResult = (i64, f32);
-
-/// Result of an observation search: (observation_id, observation_type, similarity_score)
-pub type ObservationSearchResult = (i64, String, f32);
+use std::path::Path;
+use uuid::Uuid;
 
 /// Semantic search engine
 ///
-/// Encapsulates database and embedder for clean API.
-/// Follows the same pattern as scrape/code/database.rs
+/// Wraps BeliefStorage and EmbeddingEngine to provide high-level search API.
 pub struct SemanticSearch {
-    db: SqliteDatabase,
+    storage: BeliefStorage,
     embedder: Box<dyn EmbeddingEngine>,
 }
 
 impl SemanticSearch {
     /// Create a new semantic search engine
-    pub fn new(db: SqliteDatabase, embedder: Box<dyn EmbeddingEngine>) -> Self {
-        Self { db, embedder }
+    pub fn new<P: AsRef<Path>>(storage_path: P, embedder: Box<dyn EmbeddingEngine>) -> Result<Self> {
+        let storage = BeliefStorage::open(storage_path)
+            .context("Failed to open belief storage")?;
+        Ok(Self { storage, embedder })
     }
 
     /// Open from default database path
     pub fn open_default() -> Result<Self> {
-        let db = SqliteDatabase::open(".patina/db/facts.db")?;
         let embedder = crate::embeddings::create_embedder()?;
-        Ok(Self::new(db, embedder))
+        Self::new(".patina/storage/beliefs", embedder)
+    }
+
+    /// Add a new belief with automatic embedding
+    ///
+    /// # Arguments
+    /// * `content` - The belief text to store
+    ///
+    /// # Example
+    /// ```no_run
+    /// use patina::query::SemanticSearch;
+    ///
+    /// let mut search = SemanticSearch::open_default()?;
+    /// search.add_belief("I prefer Rust for CLI tools")?;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    pub fn add_belief(&mut self, content: &str) -> Result<()> {
+        // Generate embedding
+        let embedding = self
+            .embedder
+            .embed(content)
+            .context("Failed to generate embedding")?;
+
+        // Create belief
+        let belief = Belief {
+            id: Uuid::new_v4(),
+            content: content.to_string(),
+            embedding,
+            metadata: BeliefMetadata::default(),
+        };
+
+        // Store belief
+        self.storage.insert(&belief)
+            .context("Failed to insert belief")?;
+
+        // Persist index
+        self.storage.save_index()
+            .context("Failed to save vector index")?;
+
+        Ok(())
     }
 
     /// Search for beliefs using semantic similarity
@@ -41,7 +76,7 @@ impl SemanticSearch {
     /// * `top_k` - Number of results to return
     ///
     /// # Returns
-    /// Vector of (belief_id, similarity_score) tuples, sorted by similarity (highest first)
+    /// Vector of Belief objects, sorted by similarity (highest first)
     ///
     /// # Example
     /// ```no_run
@@ -50,150 +85,103 @@ impl SemanticSearch {
     /// let mut search = SemanticSearch::open_default()?;
     /// let results = search.search_beliefs("prefer rust for cli tools", 10)?;
     ///
-    /// for (belief_id, similarity) in results {
-    ///     println!("Belief {} - similarity: {:.3}", belief_id, similarity);
+    /// for belief in results {
+    ///     println!("Belief: {}", belief.content);
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
-    pub fn search_beliefs(&mut self, query: &str, top_k: usize) -> Result<Vec<BeliefSearchResult>> {
+    pub fn search_beliefs(&mut self, query: &str, top_k: usize) -> Result<Vec<Belief>> {
         // Generate query embedding
         let query_embedding = self
             .embedder
             .embed(query)
             .context("Failed to generate query embedding")?;
 
-        // Search using database abstraction
-        let matches = self
-            .db
-            .vector_search(VectorTable::Beliefs, &query_embedding, None, top_k)
-            .context("Failed to search belief vectors")?;
-
-        // Convert to result format
-        let results = matches
-            .into_iter()
-            .map(|m| (m.row_id, m.similarity))
-            .collect();
-
-        Ok(results)
+        // Search using storage
+        self.storage.search(&query_embedding, top_k)
+            .context("Failed to search belief vectors")
     }
 
-    /// Search for observations using semantic similarity
-    ///
-    /// # Arguments
-    /// * `query` - Query text to search for
-    /// * `observation_type` - Optional filter by observation type ('pattern', 'technology', 'decision', 'challenge')
-    /// * `top_k` - Number of results to return
-    ///
-    /// # Returns
-    /// Vector of (observation_id, observation_type, similarity_score) tuples, sorted by similarity (highest first)
-    ///
-    /// # Example
-    /// ```no_run
-    /// use patina::query::SemanticSearch;
-    ///
-    /// let mut search = SemanticSearch::open_default()?;
-    ///
-    /// // Search all observations
-    /// let results = search.search_observations("security patterns", None, 10)?;
-    ///
-    /// // Search only patterns
-    /// let patterns = search.search_observations("security patterns", Some("pattern"), 10)?;
-    /// # Ok::<(), anyhow::Error>(())
-    /// ```
-    pub fn search_observations(
-        &mut self,
-        query: &str,
-        observation_type: Option<&str>,
-        top_k: usize,
-    ) -> Result<Vec<ObservationSearchResult>> {
-        // Generate query embedding
-        let query_embedding = self
-            .embedder
-            .embed(query)
-            .context("Failed to generate query embedding")?;
-
-        // Build filter if observation type specified
-        let filter = observation_type.map(|t| VectorFilter {
-            field: "observation_type".to_string(),
-            value: t.to_string(),
-        });
-
-        // Search using database abstraction
-        let matches = self
-            .db
-            .vector_search(VectorTable::Observations, &query_embedding, filter, top_k)
-            .context("Failed to search observation vectors")?;
-
-        // Convert to result format
-        // Note: We need to query the observation_type from metadata
-        // For now, return empty string - will fix when we improve metadata handling
-        let results = matches
-            .into_iter()
-            .map(|m| {
-                // TODO: Get observation_type from metadata
-                let obs_type = observation_type.unwrap_or("unknown").to_string();
-                (m.row_id, obs_type, m.similarity)
-            })
-            .collect();
-
-        Ok(results)
+    /// Get reference to underlying storage (escape hatch)
+    pub fn storage(&self) -> &BeliefStorage {
+        &self.storage
     }
 
-    /// Get reference to underlying database (temporary escape hatch)
-    pub fn database(&self) -> &SqliteDatabase {
-        &self.db
+    /// Get mutable reference to underlying storage (escape hatch)
+    pub fn storage_mut(&mut self) -> &mut BeliefStorage {
+        &mut self.storage
     }
-}
-
-/// Convert f32 vector to bytes for SQLite blob
-pub fn vec_f32_to_bytes(vec: &[f32]) -> Vec<u8> {
-    vec.iter().flat_map(|&f| f.to_le_bytes()).collect()
-}
-
-/// Convert cosine distance to similarity score
-///
-/// sqlite-vec returns cosine distance (lower is better, range [0, 2]).
-/// We convert to similarity where higher is better: similarity = 1.0 - distance
-///
-/// This gives a score in range [-1, 1]:
-/// - distance = 0 → similarity = 1.0 (identical vectors)
-/// - distance = 1 → similarity = 0.0 (orthogonal vectors)
-/// - distance = 2 → similarity = -1.0 (opposite vectors)
-pub fn distance_to_similarity(distance: f32) -> f32 {
-    1.0 - distance
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
+    use crate::embeddings::EmbeddingEngine;
+    use tempfile::TempDir;
 
-    #[test]
-    fn test_distance_to_similarity_cosine() {
-        // Identical vectors (cosine distance = 0)
-        assert_relative_eq!(distance_to_similarity(0.0), 1.0, epsilon = 0.001);
+    /// Mock embedder for testing - generates deterministic embeddings based on text hash
+    struct MockEmbedder;
 
-        // Orthogonal vectors (cosine distance = 1)
-        assert_relative_eq!(distance_to_similarity(1.0), 0.0, epsilon = 0.001);
+    impl MockEmbedder {
+        fn new() -> Self {
+            Self
+        }
+    }
 
-        // Opposite vectors (cosine distance = 2)
-        assert_relative_eq!(distance_to_similarity(2.0), -1.0, epsilon = 0.001);
+    impl EmbeddingEngine for MockEmbedder {
+        fn embed(&mut self, text: &str) -> Result<Vec<f32>> {
+            // Generate deterministic but reasonable embeddings
+            // Hash the text to get a seed, then create 384-dim vector
+            let mut vec = vec![0.0f32; 384];
+            let hash = text.len() as f32;
+
+            // Create simple pattern based on text content
+            for (i, c) in text.chars().enumerate() {
+                if i < 384 {
+                    vec[i] = (c as u32 as f32 / 1000.0).sin();
+                }
+            }
+
+            // Normalize
+            let magnitude: f32 = vec.iter().map(|x| x * x).sum::<f32>().sqrt();
+            if magnitude > 0.0 {
+                vec.iter_mut().for_each(|x| *x /= magnitude);
+            }
+
+            Ok(vec)
+        }
+
+        fn embed_batch(&mut self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+            texts.iter().map(|t| self.embed(t)).collect()
+        }
+
+        fn dimension(&self) -> usize {
+            384
+        }
+
+        fn model_name(&self) -> &str {
+            "mock-embedder"
+        }
     }
 
     #[test]
-    fn test_vec_f32_to_bytes() {
-        let vec = vec![1.0, 2.0, 3.0];
-        let bytes = vec_f32_to_bytes(&vec);
+    fn test_semantic_search_add_and_search() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let embedder = Box::new(MockEmbedder::new());
+        let mut search = SemanticSearch::new(temp_dir.path(), embedder)?;
 
-        // Should be 12 bytes (3 floats × 4 bytes each)
-        assert_eq!(bytes.len(), 12);
+        // Add beliefs
+        search.add_belief("I prefer Rust for systems programming")?;
+        search.add_belief("I avoid global state in my code")?;
+        search.add_belief("I like chocolate ice cream")?;
 
-        // Verify round-trip conversion
-        let mut reconstructed = Vec::new();
-        for chunk in bytes.chunks(4) {
-            let bytes_array: [u8; 4] = chunk.try_into().unwrap();
-            reconstructed.push(f32::from_le_bytes(bytes_array));
-        }
-        assert_eq!(reconstructed, vec);
+        // Search
+        let results = search.search_beliefs("rust programming language", 2)?;
+
+        // Should find results
+        assert!(!results.is_empty(), "Should find at least one result");
+        assert!(results[0].content.contains("Rust"), "First result should be about Rust");
+
+        Ok(())
     }
 }
