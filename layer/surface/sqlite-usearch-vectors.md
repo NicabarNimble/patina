@@ -371,10 +371,6 @@ usearch = "2.21"
 - ✅ All commands are sync
 - ✅ Embedding engines are sync
 
-**No `#[tokio::main]`. No `.await`. No async/await anywhere.**
-
-If network sync is added later, it will be a separate optional daemon/service, not part of core Patina.
-
 ---
 
 ## Implementation Phases
