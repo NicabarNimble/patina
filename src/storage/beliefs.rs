@@ -40,7 +40,7 @@ impl BeliefStorage {
         options.metric = MetricKind::Cos; // Cosine similarity
         options.quantization = ScalarKind::F32;
 
-        let mut index = Index::new(&options)
+        let index = Index::new(&options)
             .context("Failed to create USearch index")?;
 
         // Reserve initial capacity
