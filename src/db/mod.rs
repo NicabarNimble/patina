@@ -1,9 +1,7 @@
 //! Database abstraction for Patina
 //!
-//! Direct SQLite usage with sqlite-vec extension:
-//! - `SqliteDatabase` for SQLite database operations
-//! - Simple wrappers around SQLite connections
-//! - Domain-specific operations in domain modules
+//! Simple SQLite wrapper for basic database operations.
+//! Vector storage uses the dedicated `storage` module with USearch.
 //!
 //! # Example
 //! ```no_run
@@ -15,7 +13,5 @@
 //! ```
 
 pub mod sqlite;
-pub mod vectors;
 
 pub use sqlite::SqliteDatabase;
-pub use vectors::{VectorFilter, VectorMatch, VectorTable};
