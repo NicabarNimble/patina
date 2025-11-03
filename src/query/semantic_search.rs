@@ -1,33 +1,47 @@
 //! Semantic search using embeddings and USearch
 //!
-//! Uses BeliefStorage for dual SQLite + USearch storage pattern.
+//! Uses dual storage pattern: BeliefStorage and ObservationStorage.
 
 use crate::embeddings::EmbeddingEngine;
-use crate::storage::{Belief, BeliefMetadata, BeliefStorage};
+use crate::storage::{
+    Belief, BeliefMetadata, BeliefStorage,
+    Observation, ObservationMetadata, ObservationStorage,
+};
 use anyhow::{Context, Result};
 use std::path::Path;
 use uuid::Uuid;
 
 /// Semantic search engine
 ///
-/// Wraps BeliefStorage and EmbeddingEngine to provide high-level search API.
+/// Wraps BeliefStorage, ObservationStorage, and EmbeddingEngine to provide high-level search API.
 pub struct SemanticSearch {
-    storage: BeliefStorage,
+    belief_storage: BeliefStorage,
+    observation_storage: ObservationStorage,
     embedder: Box<dyn EmbeddingEngine>,
 }
 
 impl SemanticSearch {
     /// Create a new semantic search engine
     pub fn new<P: AsRef<Path>>(storage_path: P, embedder: Box<dyn EmbeddingEngine>) -> Result<Self> {
-        let storage = BeliefStorage::open(storage_path)
+        let base_path = storage_path.as_ref();
+
+        let belief_storage = BeliefStorage::open(base_path.join("beliefs"))
             .context("Failed to open belief storage")?;
-        Ok(Self { storage, embedder })
+
+        let observation_storage = ObservationStorage::open(base_path.join("observations"))
+            .context("Failed to open observation storage")?;
+
+        Ok(Self {
+            belief_storage,
+            observation_storage,
+            embedder
+        })
     }
 
     /// Open from default database path
     pub fn open_default() -> Result<Self> {
         let embedder = crate::embeddings::create_embedder()?;
-        Self::new(".patina/storage/beliefs", embedder)
+        Self::new(".patina/storage", embedder)
     }
 
     /// Add a new belief with automatic embedding
@@ -59,11 +73,43 @@ impl SemanticSearch {
         };
 
         // Store belief
-        self.storage.insert(&belief)
+        self.belief_storage.insert(&belief)
             .context("Failed to insert belief")?;
 
         // Persist index
-        self.storage.save_index()
+        self.belief_storage.save_index()
+            .context("Failed to save vector index")?;
+
+        Ok(())
+    }
+
+    /// Add a new observation with automatic embedding
+    ///
+    /// # Arguments
+    /// * `content` - The observation text to store
+    /// * `observation_type` - Type: "pattern", "technology", "decision", or "challenge"
+    pub fn add_observation(&mut self, content: &str, observation_type: &str) -> Result<()> {
+        // Generate embedding
+        let embedding = self
+            .embedder
+            .embed(content)
+            .context("Failed to generate embedding")?;
+
+        // Create observation
+        let observation = Observation {
+            id: Uuid::new_v4(),
+            observation_type: observation_type.to_string(),
+            content: content.to_string(),
+            embedding,
+            metadata: ObservationMetadata::default(),
+        };
+
+        // Store observation
+        self.observation_storage.insert(&observation)
+            .context("Failed to insert observation")?;
+
+        // Persist index
+        self.observation_storage.save_index()
             .context("Failed to save vector index")?;
 
         Ok(())
@@ -98,18 +144,52 @@ impl SemanticSearch {
             .context("Failed to generate query embedding")?;
 
         // Search using storage
-        self.storage.search(&query_embedding, top_k)
+        self.belief_storage.search(&query_embedding, top_k)
             .context("Failed to search belief vectors")
     }
 
-    /// Get reference to underlying storage (escape hatch)
-    pub fn storage(&self) -> &BeliefStorage {
-        &self.storage
+    /// Search for observations using semantic similarity
+    ///
+    /// # Arguments
+    /// * `query` - Query text to search for
+    /// * `observation_type` - Optional filter by type ("pattern", "technology", "decision", "challenge")
+    /// * `top_k` - Number of results to return
+    ///
+    /// # Returns
+    /// Vector of Observation objects, sorted by similarity (highest first)
+    pub fn search_observations(&mut self, query: &str, observation_type: Option<&str>, top_k: usize) -> Result<Vec<Observation>> {
+        // Generate query embedding
+        let query_embedding = self
+            .embedder
+            .embed(query)
+            .context("Failed to generate query embedding")?;
+
+        // Search using storage (with optional type filter)
+        match observation_type {
+            Some(obs_type) => self.observation_storage.search_by_type(&query_embedding, obs_type, top_k),
+            None => self.observation_storage.search(&query_embedding, top_k),
+        }
+        .context("Failed to search observation vectors")
     }
 
-    /// Get mutable reference to underlying storage (escape hatch)
-    pub fn storage_mut(&mut self) -> &mut BeliefStorage {
-        &mut self.storage
+    /// Get reference to underlying belief storage (escape hatch)
+    pub fn belief_storage(&self) -> &BeliefStorage {
+        &self.belief_storage
+    }
+
+    /// Get mutable reference to underlying belief storage (escape hatch)
+    pub fn belief_storage_mut(&mut self) -> &mut BeliefStorage {
+        &mut self.belief_storage
+    }
+
+    /// Get reference to underlying observation storage (escape hatch)
+    pub fn observation_storage(&self) -> &ObservationStorage {
+        &self.observation_storage
+    }
+
+    /// Get mutable reference to underlying observation storage (escape hatch)
+    pub fn observation_storage_mut(&mut self) -> &mut ObservationStorage {
+        &mut self.observation_storage
     }
 }
 
