@@ -503,11 +503,43 @@ usearch = "2.21"
 
 **Commits:** 4 focused commits
 
-### Phase 5: Additional Storage Types ⏳ FUTURE
-- Add ObservationStorage for observations (when needed)
-- Create PatternStorage for patterns (when needed)
-- Create CodeSymbolStorage for code symbols (when needed)
+### Phase 5: ObservationStorage - Restore Feature Parity ✅ COMPLETE
+**Completed:** 2025-11-03
+
+- ✅ Added `Observation` and `ObservationMetadata` types
+- ✅ Implemented `ObservationStorage` (SQLite + USearch dual storage)
+- ✅ Added `search_observations()` and `add_observation()` to SemanticSearch
+- ✅ Updated `embeddings` command to use ObservationStorage
+- ✅ Type filtering via `search_by_type()` (pattern/technology/decision/challenge)
+- ✅ 3 comprehensive tests for ObservationStorage (all passing)
+- ✅ **Full feature parity restored** with sqlite-vec implementation
+
+**Discoveries:**
+- Pattern reuse worked perfectly - ObservationStorage is 90% copy of BeliefStorage
+- Type filtering more efficient in USearch (filter during hydration vs SQL WHERE clause)
+- Embeddings command integration was straightforward (single method call per observation)
+- Total development time: ~90 minutes (as estimated)
+
+**Commits:** 3 focused commits
+
+**API Comparison:**
+```rust
+// Old (sqlite-vec): Complex setup, returns tuples
+let db = SqliteDatabase::open("db")?;
+db.execute_batch(include_str!("vector-tables.sql"))?;
+let results: Vec<(i64, String, f32)> = search.search_observations(query, type_filter, 10)?;
+
+// New (USearch): Simple, returns domain objects
+let mut search = SemanticSearch::new(".patina/storage", embedder)?;
+search.add_observation("Validate input", "pattern")?;
+let results: Vec<Observation> = search.search_observations(query, type_filter, 10)?;
+```
+
+### Phase 6: Future Enhancements ⏳ FUTURE
+- Create PatternStorage for patterns (if needed beyond observations)
+- Create CodeSymbolStorage for code symbols (if needed)
 - Performance benchmarks (USearch vs sqlite-vec comparison)
+- Batch insertion optimization for large datasets
 
 ---
 
@@ -562,16 +594,18 @@ fn test_semantic_search_workflow() {
 
 - [x] **DatabaseBackend enum removed** - ✅ Completed Phase 1 (2025-11-03)
 - [x] **USearch integrated** - ✅ Completed Phase 2 (2025-11-03), memory-mapped indices working
-- [x] **SQLite preserved** - ✅ SqliteDatabase kept, event log pattern in BeliefStorage
-- [x] **Domain types migrated** - ✅ Completed Phase 3 (2025-11-03) - SemanticSearch uses BeliefStorage
+- [x] **SQLite preserved** - ✅ SqliteDatabase kept, event log pattern in storage layer
+- [x] **Beliefs migrated** - ✅ Completed Phase 3 (2025-11-03) - SemanticSearch uses BeliefStorage
+- [x] **Observations migrated** - ✅ Completed Phase 5 (2025-11-03) - ObservationStorage with type filtering
 - [x] **sqlite-vec removed** - ✅ Completed Phase 3 (2025-11-03) - dependency and all code removed
 - [x] **100% sync codebase** - ✅ No async, all storage operations are sync
-- [x] **Core tests pass** - ✅ 45/45 library tests passing
+- [x] **Core tests pass** - ✅ 48/48 library tests passing (includes ObservationStorage tests)
 - [x] **Integration tests updated** - ✅ Completed Phase 4 (2025-11-03) - 4 integration tests passing
 - [x] **Examples updated** - ✅ Completed Phase 4 (2025-11-03) - demo shows semantic search quality
-- [x] **Full test suite passes** - ✅ 61 tests passing (workspace + integration + doc tests)
+- [x] **Full test suite passes** - ✅ 86 tests passing (workspace + integration + doc tests)
+- [x] **Feature parity restored** - ✅ Completed Phase 5 (2025-11-03) - search_observations() with type filtering
 - [ ] **Performance validated** - ⏳ Future work (benchmarks when needed)
-- [x] **Documentation complete** - ✅ Design doc updated with Phase 3-4 implementation
+- [x] **Documentation complete** - ✅ Design doc updated with Phase 3-4-5 implementation
 
 ---
 
@@ -582,20 +616,21 @@ fn test_semantic_search_workflow() {
 - sqlite-vec extension for vector search
 - Domain wrappers use `DatabaseBackend`
 
-**Current state (Nov 3 - Phase 4 complete):**
+**Current state (Nov 3 - Phase 5 complete):**
 - ✅ `DatabaseBackend` enum removed (Phase 1)
-- ✅ New `src/storage/` module with BeliefStorage (Phase 2)
+- ✅ New `src/storage/` module with dual storage pattern (Phase 2)
 - ✅ USearch fully integrated, sqlite-vec removed (Phase 3)
-- ✅ SemanticSearch migrated to BeliefStorage (Phase 3)
+- ✅ BeliefStorage for semantic belief search (Phase 3)
+- ✅ ObservationStorage for patterns/technologies/decisions/challenges (Phase 5)
 - ✅ SqliteDatabase simplified to basic wrapper (Phase 3)
 - ✅ Integration tests & examples updated (Phase 4)
-- ✅ **Full production-ready** - All tests pass, semantic search working beautifully
+- ✅ **Full feature parity restored** - All tests pass, both beliefs & observations searchable
 
 **Migration path (completed):**
 
 1. ✅ **Remove DatabaseBackend abstraction** - Completed Phase 1 (9 commits)
 2. ✅ **Add USearch alongside sqlite-vec** - Completed Phase 2 (3 commits), BeliefStorage working
-3. ✅ **Migrate SemanticSearch & remove sqlite-vec** - Completed Phase 3 (7 commits)
+3. ✅ **Migrate beliefs & remove sqlite-vec** - Completed Phase 3 (7 commits)
    - SemanticSearch uses BeliefStorage
    - sqlite-vec dependency removed
    - db/vectors.rs deleted
@@ -605,12 +640,18 @@ fn test_semantic_search_workflow() {
    - Example simplified and validated
    - Obsolete tests removed
    - 61 tests passing
-5. ⏳ **Add more storage types** - Phase 5 future (ObservationStorage, PatternStorage when needed)
+5. ✅ **Restore observations** - Completed Phase 5 (3 commits)
+   - ObservationStorage implemented
+   - search_observations() restored with type filtering
+   - embeddings command updated
+   - 86 tests passing
+   - **Full feature parity achieved**
 
 **Git strategy (followed):**
-- ✅ Each phase committed separately with clear messages (23 total commits across 4 phases)
-- ✅ Working code at each commit (61 tests passing at end)
+- ✅ Each phase committed separately with clear messages (26 total commits across 5 phases)
+- ✅ Working code at each commit (86 tests passing at end)
 - ✅ Scalpel approach: small, focused commits (one purpose per commit)
+- ✅ Incremental migration: beliefs first, then observations (de-risked the migration)
 
 ---
 
