@@ -78,26 +78,27 @@ impl BeliefStorage {
     }
 
     /// Insert a belief into both SQLite and USearch
+    ///
+    /// Beliefs are immutable - duplicate UUIDs will result in an error.
     pub fn insert(&mut self, belief: &Belief) -> Result<()> {
-        // Insert into SQLite (source of truth)
+        // Insert into SQLite (source of truth) and get rowid atomically
         let metadata_json = serde_json::to_string(&belief.metadata)?;
         let created_at = belief.metadata.created_at
             .unwrap_or_else(chrono::Utc::now)
             .to_rfc3339();
 
-        self.db.execute(
-            "INSERT OR REPLACE INTO beliefs (id, content, metadata, created_at)
-             VALUES (?1, ?2, ?3, ?4)",
+        let rowid: i64 = self.db.query_row(
+            "INSERT INTO beliefs (id, content, metadata, created_at)
+             VALUES (?1, ?2, ?3, ?4)
+             RETURNING rowid",
             params![
                 belief.id.to_string(),
                 &belief.content,
                 metadata_json,
                 created_at,
             ],
+            |row| row.get(0),
         )?;
-
-        // Get the rowid that was just inserted
-        let rowid: i64 = self.db.last_insert_rowid();
 
         // Insert into USearch (vector index) using rowid as key
         self.vectors.add(rowid as u64, &belief.embedding)
