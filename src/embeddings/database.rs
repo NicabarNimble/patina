@@ -35,6 +35,11 @@ impl EmbeddingsDatabase {
         Ok(Self { db })
     }
 
+    /// Get reference to underlying database
+    pub fn database(&self) -> &SqliteDatabase {
+        &self.db
+    }
+
     /// Check if embeddings already exist
     pub fn has_embeddings(&self) -> Result<bool> {
         let count: i64 = self

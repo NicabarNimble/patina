@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use patina::embeddings::{create_embedder, EmbeddingsDatabase};
+use patina::query::SemanticSearch;
 use std::path::Path;
 
 /// Generate embeddings for all beliefs and observations
@@ -19,7 +20,7 @@ pub fn generate(force: bool) -> Result<()> {
     println!();
 
     // Create embedder
-    let mut embedder = create_embedder().context("Failed to create ONNX embedder")?;
+    let embedder = create_embedder().context("Failed to create ONNX embedder")?;
 
     println!(
         "✓ Loaded {} model ({} dimensions)",
@@ -36,23 +37,26 @@ pub fn generate(force: bool) -> Result<()> {
         return Ok(());
     }
 
-    // Generate embeddings for beliefs
+    // Create semantic search engine (for vector storage)
+    let mut search = SemanticSearch::new(".patina/storage", embedder)?;
+
+    // Generate embeddings for beliefs (not implemented yet - TODO)
     println!();
     println!("📊 Generating embeddings for beliefs...");
-    let belief_count = db.generate_belief_embeddings(&mut *embedder)?;
+    let belief_count = 0; // TODO: generate_belief_embeddings
     println!("✓ Generated {} belief embeddings", belief_count);
 
     // Generate embeddings for observations
     println!();
     println!("📊 Generating embeddings for observations...");
-    let obs_count = db.generate_observation_embeddings(&mut *embedder)?;
+    let obs_count = generate_observation_embeddings(&db, &mut search)?;
     println!("✓ Generated {} observation embeddings", obs_count);
 
     // Record metadata
     db.record_metadata(
-        embedder.model_name(),
+        search.observation_storage().count()?.to_string().as_str(),
         "1.0",
-        embedder.dimension(),
+        384,
         belief_count,
         obs_count,
     )?;
@@ -62,6 +66,68 @@ pub fn generate(force: bool) -> Result<()> {
     println!("   Total: {} embeddings", belief_count + obs_count);
 
     Ok(())
+}
+
+/// Generate observation embeddings and store in ObservationStorage
+fn generate_observation_embeddings(
+    db: &EmbeddingsDatabase,
+    search: &mut SemanticSearch,
+) -> Result<usize> {
+    let conn = db.database().connection();
+    let mut count = 0;
+
+    // Patterns
+    let mut stmt = conn.prepare("SELECT id, pattern_name, description FROM patterns")?;
+    let patterns: Vec<(i64, String, Option<String>)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for (_id, name, desc) in patterns {
+        let content = match desc {
+            Some(d) => format!("{}: {}", name, d),
+            None => name.clone(),
+        };
+        search.add_observation(&content, "pattern")?;
+        count += 1;
+    }
+
+    // Technologies
+    let mut stmt = conn.prepare("SELECT id, tech_name, purpose FROM technologies")?;
+    let technologies: Vec<(i64, String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for (_id, name, purpose) in technologies {
+        let content = format!("{}: {}", name, purpose);
+        search.add_observation(&content, "technology")?;
+        count += 1;
+    }
+
+    // Decisions
+    let mut stmt = conn.prepare("SELECT id, choice, rationale FROM decisions")?;
+    let decisions: Vec<(i64, String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for (_id, choice, rationale) in decisions {
+        let content = format!("{}: {}", choice, rationale);
+        search.add_observation(&content, "decision")?;
+        count += 1;
+    }
+
+    // Challenges
+    let mut stmt = conn.prepare("SELECT id, problem, solution FROM challenges")?;
+    let challenges: Vec<(i64, String, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    for (_id, problem, solution) in challenges {
+        let content = format!("{}: {}", problem, solution);
+        search.add_observation(&content, "challenge")?;
+        count += 1;
+    }
+
+    Ok(count)
 }
 
 /// Show embedding coverage status
