@@ -9,11 +9,11 @@
 //! - Proper type preservation (arrays as JSON, booleans, JSON)
 //! - Transaction support with automatic rollback
 //!
-//! Refactored to use DatabaseBackend wrapper for consistency across codebase.
+//! Uses SqliteDatabase directly for type-safe database operations.
 
 use crate::commands::scrape::code::types::CallGraphEntry;
 use anyhow::{Context, Result};
-use patina::db::DatabaseBackend;
+use patina::db::SqliteDatabase;
 use rusqlite::params;
 use std::path::Path;
 
@@ -77,23 +77,23 @@ pub struct ImportFact {
 /// Database wrapper for code scraping operations
 ///
 /// Follows the same pattern as other modules (embeddings, semantic_search):
-/// - Owns DatabaseBackend wrapper
+/// - Owns SqliteDatabase
 /// - Domain-specific methods for code facts
 pub struct Database {
-    db: DatabaseBackend,
+    db: SqliteDatabase,
 }
 
 impl Database {
     /// Open or create a SQLite database file
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let db = DatabaseBackend::open_sqlite(path).context("Failed to open SQLite database")?;
+        let db = SqliteDatabase::open(path).context("Failed to open SQLite database")?;
         Ok(Self { db })
     }
 
     /// Create an in-memory database for testing
     #[cfg(test)]
     pub fn open_in_memory() -> Result<Self> {
-        let db = DatabaseBackend::open_sqlite_in_memory().context("Failed to create in-memory database")?;
+        let db = SqliteDatabase::open_in_memory().context("Failed to create in-memory database")?;
         Ok(Self { db })
     }
 
