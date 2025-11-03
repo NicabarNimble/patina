@@ -5,7 +5,7 @@
 //! To run: cargo run --example semantic_search_demo
 
 use anyhow::Result;
-use patina::db::{DatabaseBackend, SqliteDatabase};
+use patina::db::SqliteDatabase;
 use patina::embeddings::{create_embedder, EmbeddingEngine};
 use patina::query::SemanticSearch;
 use tempfile::TempDir;
@@ -121,7 +121,7 @@ fn main() -> Result<()> {
     println!();
 
     // Create semantic search engine
-    let mut search = SemanticSearch::new(DatabaseBackend::Sqlite(db), embedder);
+    let mut search = SemanticSearch::new(db, embedder);
 
     // Demo 1: Search beliefs
     println!("📚 Demo 1: Searching beliefs");
