@@ -96,6 +96,12 @@ enum Commands {
         command: EmbeddingsCommands,
     },
 
+    /// Query observations and beliefs using semantic search
+    Query {
+        #[command(subcommand)]
+        command: QueryCommands,
+    },
+
     /// Ask questions about the codebase
     Ask {
         #[command(flatten)]
@@ -178,6 +184,27 @@ enum EmbeddingsCommands {
 
     /// Show embedding coverage status
     Status,
+}
+
+#[derive(Subcommand)]
+enum QueryCommands {
+    /// Search observations using semantic similarity
+    Semantic {
+        /// Query text to search for
+        query: String,
+
+        /// Filter by observation types (comma-separated: pattern,technology,decision,challenge)
+        #[arg(long, value_delimiter = ',')]
+        r#type: Option<Vec<String>>,
+
+        /// Minimum similarity score (0.0-1.0, default: 0.35)
+        #[arg(long, default_value = "0.35")]
+        min_score: f32,
+
+        /// Maximum number of results (default: 10)
+        #[arg(long, default_value = "10")]
+        limit: usize,
+    },
 }
 
 #[cfg(feature = "dev")]
@@ -324,6 +351,16 @@ fn main() -> Result<()> {
             }
             EmbeddingsCommands::Status => {
                 commands::embeddings::status()?;
+            }
+        },
+        Commands::Query { command } => match command {
+            QueryCommands::Semantic {
+                query,
+                r#type,
+                min_score,
+                limit,
+            } => {
+                commands::query::semantic::execute(&query, r#type.clone(), min_score, limit)?;
             }
         },
         Commands::Doctor {

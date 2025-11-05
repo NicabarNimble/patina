@@ -3,6 +3,7 @@ pub mod build;
 pub mod doctor;
 pub mod embeddings;
 pub mod init;
+pub mod query;
 pub mod scrape;
 pub mod test;
 pub mod upgrade;
