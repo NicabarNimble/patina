@@ -73,10 +73,12 @@ fn generate_observation_embeddings(
     db: &EmbeddingsDatabase,
     search: &mut SemanticSearch,
 ) -> Result<usize> {
+    use patina::storage::ObservationMetadata;
+
     let conn = db.database().connection();
     let mut count = 0;
 
-    // Patterns
+    // Patterns - sourced from session distillations (reliability: 0.85)
     let mut stmt = conn.prepare("SELECT id, pattern_name, description FROM patterns")?;
     let patterns: Vec<(i64, String, Option<String>)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
@@ -87,11 +89,18 @@ fn generate_observation_embeddings(
             Some(d) => format!("{}: {}", name, d),
             None => name.clone(),
         };
-        search.add_observation(&content, "pattern")?;
+
+        let metadata = ObservationMetadata {
+            source_type: Some("session_distillation".to_string()),
+            reliability: Some(0.85),
+            ..Default::default()
+        };
+
+        search.add_observation_with_metadata(&content, "pattern", metadata)?;
         count += 1;
     }
 
-    // Technologies
+    // Technologies - sourced from session distillations (reliability: 0.85)
     let mut stmt = conn.prepare("SELECT id, tech_name, purpose FROM technologies")?;
     let technologies: Vec<(i64, String, String)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
@@ -99,11 +108,18 @@ fn generate_observation_embeddings(
 
     for (_id, name, purpose) in technologies {
         let content = format!("{}: {}", name, purpose);
-        search.add_observation(&content, "technology")?;
+
+        let metadata = ObservationMetadata {
+            source_type: Some("session_distillation".to_string()),
+            reliability: Some(0.85),
+            ..Default::default()
+        };
+
+        search.add_observation_with_metadata(&content, "technology", metadata)?;
         count += 1;
     }
 
-    // Decisions
+    // Decisions - sourced from session distillations (reliability: 0.85)
     let mut stmt = conn.prepare("SELECT id, choice, rationale FROM decisions")?;
     let decisions: Vec<(i64, String, String)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
@@ -111,11 +127,18 @@ fn generate_observation_embeddings(
 
     for (_id, choice, rationale) in decisions {
         let content = format!("{}: {}", choice, rationale);
-        search.add_observation(&content, "decision")?;
+
+        let metadata = ObservationMetadata {
+            source_type: Some("session_distillation".to_string()),
+            reliability: Some(0.85),
+            ..Default::default()
+        };
+
+        search.add_observation_with_metadata(&content, "decision", metadata)?;
         count += 1;
     }
 
-    // Challenges
+    // Challenges - sourced from session distillations (reliability: 0.85)
     let mut stmt = conn.prepare("SELECT id, problem, solution FROM challenges")?;
     let challenges: Vec<(i64, String, String)> = stmt
         .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
@@ -123,7 +146,14 @@ fn generate_observation_embeddings(
 
     for (_id, problem, solution) in challenges {
         let content = format!("{}: {}", problem, solution);
-        search.add_observation(&content, "challenge")?;
+
+        let metadata = ObservationMetadata {
+            source_type: Some("session_distillation".to_string()),
+            reliability: Some(0.85),
+            ..Default::default()
+        };
+
+        search.add_observation_with_metadata(&content, "challenge", metadata)?;
         count += 1;
     }
 
@@ -158,7 +188,10 @@ pub fn status() -> Result<()> {
             println!("Coverage:");
             println!("  Beliefs:       {}", meta.belief_count);
             println!("  Observations:  {}", meta.observation_count);
-            println!("  Total:         {}", meta.belief_count + meta.observation_count);
+            println!(
+                "  Total:         {}",
+                meta.belief_count + meta.observation_count
+            );
             println!();
             println!("✅ Embeddings are ready for semantic search");
         }
