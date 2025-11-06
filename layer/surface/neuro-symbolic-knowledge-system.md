@@ -12,13 +12,15 @@ tags: [architecture, neuro-symbolic, integration, sqlite, usearch, prolog, imple
 
 **The Vision**: A hybrid AI system that combines neural (semantic search), symbolic (logical rules), and storage (relational) layers to build a persona belief system through interactive dialogue.
 
-**Current Phase**: Phase 2 - Adding semantic search to existing persona sessions
+**Current Phase**: Phase 2 Complete - Multi-source semantic search with reliability tracking
 
 **Timeline**:
 - ✅ Phase 1: Core persona system (SQLite + Prolog orchestration)
-- 🚧 Phase 2: Semantic evidence discovery (USearch integration) ← **WE ARE HERE**
+- ✅ Phase 2: Semantic evidence discovery (USearch integration, multi-source observations)
 - ⏳ Phase 3: Full dataset extraction (260 sessions)
 - ⏳ Phase 4: Global persona (cross-project beliefs)
+
+**Integration Status**: Adjacent systems orchestrated by LLM. Scryer Prolog (Rust) not yet embedded - called as separate process.
 
 ---
 
@@ -44,30 +46,34 @@ tags: [architecture, neuro-symbolic, integration, sqlite, usearch, prolog, imple
 
 Patina combines knowledge capture (observations) and belief extraction (preferences) through interactive dialogue. LLM orchestrates, humans validate, and the symbolic layer governs.
 
-### System Architecture (Complete)
+### System Architecture (Current Implementation)
 
 ```
 User: /persona-start (kick back, dialogue)
          ↓
-    Claude orchestrates:
+    LLM orchestrates (Claude):
          ↓
 ┌────────┴───────────┐
 │                    │
 │  Evidence Search:  │
 │  ┌──────────────┐  │
-│  │ SQLite       │  │  Keyword search
-│  │ USearch      │  │  Semantic search
-│  │ Prolog       │  │  Rule inference
+│  │ Rust CLI     │  │  patina query semantic
+│  │   ↓          │  │
+│  │ SQLite       │  │  Observation metadata
+│  │ USearch      │  │  Vector similarity search
 │  └──────────────┘  │
-│                    │
+│         ↓          │
+│    JSON output     │
+│         ↓          │
+│  LLM analyzes      │
 │  One question      │
 │  User answers      │
 │                    │
 │  Confidence calc:  │
 │  ┌──────────────┐  │
-│  │ Scryer       │  │  Evidence count → confidence
-│  │ Prolog       │  │  (mandatory rules)
-│  └──────────────┘  │
+│  │ LLM shells   │  │  scryer-prolog (separate process)
+│  │ to Prolog    │  │  Evidence count → confidence
+│  └──────────────┘  │  (mandatory rules)
 │                    │
 │  Belief storage:   │
 │  ┌──────────────┐  │
@@ -81,19 +87,29 @@ User: /persona-start (kick back, dialogue)
     (used by future build sessions)
 ```
 
+**Integration Level**: Currently **adjacent systems** orchestrated by LLM, not deeply integrated. Scryer Prolog is called as external process, cannot query vector DB or reason about search results directly.
+
 ### Division of Labor: Flexible vs Rigid Reasoning
 
 **LLM provides flexible reasoning:**
 - Semantic analysis (find patterns in observations)
 - Strategic synthesis (generate high-value questions)
 - Context-aware orchestration (when to search, when to ask)
+- Contradiction detection (manual - LLM searches and interprets)
+- Evidence weighting (manual - LLM reads reliability scores)
 
 **Symbolic layer provides rigid governance:**
-- Confidence calculation (evidence count → score)
-- Validation rules (prevent invalid states)
-- Deterministic scoring (cannot be hallucinated)
+- Confidence calculation (evidence count → score) ✅ **IMPLEMENTED**
+- Confidence bounds enforcement (max 0.95, min 0.30) ✅ **IMPLEMENTED**
+
+**Symbolic layer NOT YET doing:**
+- Validation rules (no automatic contradiction checking before belief insertion)
+- Evidence weighting (reliability scores stored but not used by Prolog)
+- Consistency checking (LLM does this manually)
 
 **Why both**: LLM is creative but can hallucinate. Prolog is rigid but trustworthy. Together: Creative discovery + trustworthy validation.
+
+**Current limitation**: Scryer Prolog (which is Rust!) is called as separate process. Not embedded, cannot query vector DB, cannot reason about search results. This prevents full neuro-symbolic integration where Prolog validates beliefs against semantic search automatically.
 
 ---
 
@@ -137,11 +153,13 @@ User: /persona-start (kick back, dialogue)
 
 ---
 
-### Phase 2: Semantic Evidence Discovery 🚧 IN PROGRESS
+### Phase 2: Semantic Evidence Discovery ✅ COMPLETE
 
-**Started**: Nov 2025
+**Completed**: Nov 2025
 
 **Goal**: Add semantic search so Claude finds evidence beyond keyword matching
+
+**What was built**: Full semantic search infrastructure with multi-source observations and reliability tracking
 
 **Components built**:
 
@@ -164,9 +182,7 @@ User: /persona-start (kick back, dialogue)
 - **What**: Reads observations from facts.db, generates embeddings, stores in `.patina/storage/observations/`
 - **Status**: Working
 
-**What's missing in Phase 2**:
-
-#### 2.4 Semantic Query Command — ❌ Not Built
+#### 2.4 Semantic Query Command (✅ Complete)
 
 **Goal**: Enable semantic search for observations in persona sessions.
 
@@ -189,7 +205,9 @@ patina query semantic "security practices" \
     "type": "pattern",
     "text": "Always run security audits before production deploys",
     "similarity": 0.78,
-    "evidence_strength": "strong"
+    "evidence_strength": "strong",
+    "source_type": "session_distillation",
+    "reliability": 0.85
   }
 ]
 ```
@@ -367,6 +385,47 @@ Cascading impact:
 - ✅ LLM generates strategic questions (via analysis + synthesis)
 - ✅ One question updates multiple beliefs (workflow documented in persona-start)
 - ✅ No new code needed (follows "tools FOR LLMs" philosophy)
+
+---
+
+## Deeper Neuro-Symbolic Integration
+
+**Current State**: Scryer Prolog is called as separate process (`scryer-prolog confidence-rules.pl`). Cannot query vector DB or reason about search results.
+
+**What's Missing for True Integration**:
+
+Scryer Prolog **is written in Rust** and can be embedded as a library. This enables:
+
+1. **Embed Prolog in Patina** - Use `scryer-prolog` crate as library instead of shelling out
+2. **Register Rust functions as Prolog predicates** - Let Prolog call semantic search directly
+3. **Prolog reasons about neural search results** - Automatic validation, contradiction detection, evidence weighting
+
+**Example of what becomes possible**:
+```prolog
+% Prolog calls Rust semantic search
+validate_belief(BeliefText, Valid, Reason) :-
+    semantic_search_rust(BeliefText, 20, Results),  % Calls Rust!
+    find_contradictions(Results, Contradictions),
+    count_weighted_evidence(Results, Score),
+    (Contradictions = [], Score > 5.0
+     -> Valid = true
+     ; Valid = false).
+```
+
+Then from Rust:
+```rust
+let mut engine = ReasoningEngine::new(search)?;
+let result = engine.validate_belief("Never commit secrets")?;
+// Prolog automatically checks semantic search + applies rules
+```
+
+This would enable:
+- ✅ Automatic contradiction checking (no LLM manual searching)
+- ✅ Symbolic evidence weighting using reliability scores
+- ✅ Consistency validation before belief insertion
+- ✅ True neuro-symbolic reasoning (neural search + symbolic rules in one query)
+
+**Why not built yet**: Phase 2 focused on proving value of multi-source observations. Embedding Scryer can be next phase.
 
 ---
 
