@@ -12,16 +12,16 @@ tags: [architecture, neuro-symbolic, integration, sqlite, usearch, prolog, imple
 
 **The Vision**: A hybrid AI system that combines neural (semantic search), symbolic (logical rules), and storage (relational) layers to build a persona belief system through interactive dialogue.
 
-**Current Phase**: Phase 2.7 Components Complete - Integration in progress
+**Current Phase**: Phase 2.7 Complete - Production integration achieved
 
 **Timeline**:
 - ✅ Phase 1: Core persona system (SQLite + Prolog orchestration)
 - ✅ Phase 2: Semantic evidence discovery (USearch integration, multi-source observations)
-- ✅ Phase 2.7: Embedded Prolog integration (ReasoningEngine with belief validation)
+- ✅ Phase 2.7: Embedded Prolog integration (ReasoningEngine + CLI + persona workflow)
 - ⏳ Phase 3: Full dataset extraction (260 sessions)
 - ⏳ Phase 4: Global persona (cross-project beliefs)
 
-**Integration Status**: **Neuro-symbolic components built, LLM-orchestrated workflow.** Rust embeds Prolog as library, symbolic rules can reason over neural search results through dynamic fact injection. ReasoningEngine exists and tested; persona workflow integration in progress.
+**Integration Status**: **Production neuro-symbolic integration achieved.** Rust embeds Prolog as library, symbolic rules reason over neural search results through dynamic fact injection. ReasoningEngine powers both CLI (`patina belief validate`) and persona workflow (`/persona-start`). Zero shell overhead, LLM-agnostic design.
 
 ---
 
@@ -94,7 +94,7 @@ User: /persona-start (kick back, dialogue)
     (symbolic validation ensures quality)
 ```
 
-**Integration Level**: **LLM-orchestrated neuro-symbolic workflow.** Scryer Prolog embedded as Rust library, symbolic rules can reason over neural search results via dynamic fact injection. ReasoningEngine provides zero-overhead validation; integration into persona workflow in progress.
+**Integration Level**: **Production LLM-orchestrated neuro-symbolic workflow.** Scryer Prolog embedded as Rust library, symbolic rules reason over neural search results via dynamic fact injection. ReasoningEngine integrated into both CLI and persona workflow, achieving zero-overhead validation.
 
 ### Division of Labor: Flexible vs Rigid Reasoning
 
@@ -116,7 +116,7 @@ User: /persona-start (kick back, dialogue)
 
 **Why both**: LLM is creative but can hallucinate. Prolog is rigid but trustworthy. Together: Creative discovery (neural) + trustworthy validation (symbolic).
 
-**Integration components built**: Scryer Prolog embedded as Rust library in `ReasoningEngine`. Symbolic rules can reason over neural search results through dynamic fact injection. Zero shell overhead possible; persona workflow integration in progress.
+**Integration achieved**: Scryer Prolog embedded as Rust library in `ReasoningEngine`. Symbolic rules reason over neural search results through dynamic fact injection. Zero shell overhead achieved - integrated into both CLI and persona workflow.
 
 ---
 
@@ -474,12 +474,12 @@ let result = engine.validate_belief()?;
 ```
 
 **ReasoningEngine capabilities**:
-- ✅ Zero shell overhead possible (embedded Prolog, no external processes)
-- ✅ Symbolic rules can reason over neural search results
+- ✅ Zero shell overhead achieved (embedded Prolog, no external processes)
+- ✅ Symbolic rules reason over neural search results
 - ✅ Automatic validation with quality metrics
 - ✅ Type-safe Rust ↔ Prolog interface
 - ✅ Compile-time rule loading via `include_str!()`
-- ⏳ Persona workflow integration pending
+- ✅ Production integration: CLI + persona workflow
 
 **Why dynamic facts over FFI**:
 - Simpler: No C FFI, no external build artifacts
@@ -495,11 +495,105 @@ let result = engine.validate_belief()?;
 - ✅ Quality metrics extraction (weighted scores, diversity)
 - ✅ Comprehensive tests (7/7 passing)
 
+#### 2.7.3 CLI Integration (src/commands/belief/validate.rs)
+**Command**: `patina belief validate <QUERY>`
+
+Exposes ReasoningEngine via command-line interface for neuro-symbolic validation.
+
+**Usage**:
+```bash
+patina belief validate "I prefer Rust for systems programming" \
+  --min-score 0.50 \
+  --limit 20
+```
+
+**Output** (JSON):
+```json
+{
+  "query": "I prefer Rust for systems programming",
+  "valid": true,
+  "reason": "adequate_evidence",
+  "metrics": {
+    "weighted_score": 3.45,
+    "strong_evidence_count": 4,
+    "has_diverse_sources": true,
+    "avg_reliability": 0.78,
+    "avg_similarity": 0.82
+  },
+  "observations": [
+    {"id": "...", "content": "...", "similarity": 0.85, "reliability": 0.80, ...},
+    ...
+  ]
+}
+```
+
+**Workflow**:
+1. Creates embedder and semantic search engine
+2. Embeds query and searches observations (neural layer)
+3. Filters by min_score and converts to `ScoredObservation`
+4. Initializes `ReasoningEngine` and loads observations
+5. Runs `validate_belief()` (symbolic layer)
+6. Returns structured JSON result
+
+**First production integration** of ReasoningEngine - proves neuro-symbolic pipeline works end-to-end.
+
+#### 2.7.4 Persona Workflow Integration (resources/claude/persona-start.{sh,md})
+**Command**: `/persona-start` (Claude adapter)
+
+Replaced shell-based `scryer-prolog` calls with `patina belief validate` CLI command.
+
+**Before** (shell-based):
+```bash
+# Old: Shell out to external Prolog binary
+CONFIDENCE=$(scryer-prolog .patina/confidence-rules.pl \
+  -g "query_initial_confidence($EVIDENCE_COUNT, C), write(C), halt.")
+```
+
+**After** (embedded):
+```bash
+# New: Use embedded ReasoningEngine via CLI
+RESULT=$(patina belief validate "belief statement" --min-score 0.50 --limit 20)
+VALID=$(echo "$RESULT" | jq -r '.valid')
+WEIGHTED_SCORE=$(echo "$RESULT" | jq -r '.metrics.weighted_score')
+```
+
+**Validation workflow** (Step 7 in persona-start.md):
+1. Run `patina belief validate` → semantic search + Prolog validation
+2. Parse JSON result: `valid`, `reason`, `weighted_score`, `strong_evidence_count`
+3. Use metrics to inform confidence:
+   - `weighted_score >= 5.0` → high confidence (0.85-0.95)
+   - `weighted_score >= 3.0` → moderate confidence (0.70-0.85)
+4. Only codify if `valid == true` (symbolic layer enforces rules, not LLM judgment)
+
+**LLM-agnostic design**: Uses CLI command, enabling future adapters (Gemini, local models) to use same validation workflow.
+
+**Adapter changes**:
+- Added `persona-start.sh` and `persona-start.md` templates to `resources/claude/`
+- Updated `session_scripts.rs` to copy templates during `patina init --llm=claude`
+- Added `/persona-start` command to Claude adapter (6 commands total)
+- Claude adapter version: 0.6.0 → 0.7.0
+
+#### 2.7.5 End-to-End Integration Tests (tests/neuro_symbolic_integration.rs)
+**3 test scenarios** (all passing):
+
+1. **Strong evidence validation**: 6 high-similarity observations → `valid: true`
+   - Proves symbolic layer accepts adequate evidence
+   - Weighted score >= 3.0, multiple strong observations
+
+2. **Weak evidence rejection**: 2 low-quality observations → `valid: false`
+   - Proves symbolic layer rejects insufficient evidence
+   - Demonstrates threshold enforcement
+
+3. **Confidence calculation**: Tests 0, 1, 2, 3, 5 evidence counts
+   - Verifies Prolog rules: 0.50 baseline, 0.15/0.10 increments, 0.85 cap
+
+**Integration proof**: SemanticSearch → ReasoningEngine → ValidationResult pipeline works end-to-end.
+
 ---
 
-## Neuro-Symbolic Integration - What We Built
+## Neuro-Symbolic Integration - Production Ready
 
-**Components Completed**: Neuro-symbolic toolkit with LLM-orchestrated workflow, built on embedded Scryer Prolog with dynamic fact injection.
+**Status**: Production neuro-symbolic integration achieved. Built on embedded Scryer Prolog with dynamic fact injection, integrated into both CLI and persona workflows.
 
 **How it works**:
 
@@ -508,7 +602,9 @@ Scryer Prolog **is written in Rust** and we've embedded it as a library. Compone
 1. **✅ Embed Prolog in Patina** - Using `scryer-prolog` crate as library (enables zero shell overhead)
 2. **✅ Dynamic fact injection** - Rust converts semantic search results to Prolog facts via `consult_module_string()`
 3. **✅ Prolog validates neural search results** - Automatic validation, quality metrics, evidence weighting
-4. **⏳ Workflow integration** - Wire ReasoningEngine into persona-start (in progress)
+4. **✅ CLI integration** - `patina belief validate` command exposes ReasoningEngine
+5. **✅ Persona workflow integration** - `/persona-start` uses CLI command, replacing shell-based Prolog
+6. **✅ End-to-end tests** - 3/3 passing integration tests prove neuro-symbolic pipeline
 
 **What we implemented** (Phase 2.7):
 
@@ -901,4 +997,5 @@ strong_evidence_count(ClaimId, Count) :-
 - `20251026-072236.md` - Three-layer integration
 - `20251103-111458.md` - Vector storage completion
 - `20251105-154337.md` - Phases 2.4-2.6: Semantic query, multi-source observations, strategic questioning
-- `20251106-111208.md` - Phase 2.7: Embedded Prolog integration (8 commits, neuro-symbolic achieved)
+- `20251106-111208.md` - Phase 2.7 components: Embedded Prolog, ReasoningEngine, validation rules (8 commits)
+- `20251106-125659.md` - Phase 2.7 integration: Peer review, CLI command, integration tests, persona workflow (4 commits)
