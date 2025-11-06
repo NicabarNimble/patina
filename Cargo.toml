@@ -1,5 +1,6 @@
 [workspace]
 members = [".", "patina-metal"]
+exclude = ["layer/dust"]
 resolver = "2"
 
 [package]
