@@ -52,18 +52,27 @@ pub fn generate(force: bool) -> Result<()> {
     let obs_count = generate_observation_embeddings(&db, &mut search)?;
     println!("✓ Generated {} observation embeddings", obs_count);
 
+    // Extract observations from commit messages
+    println!();
+    println!("📊 Extracting observations from git commits...");
+    let commit_count = extract_commit_observations(&mut search)?;
+    println!("✓ Generated {} commit observations", commit_count);
+
     // Record metadata
+    let total_obs = obs_count + commit_count;
     db.record_metadata(
         search.observation_storage().count()?.to_string().as_str(),
         "1.0",
         384,
         belief_count,
-        obs_count,
+        total_obs,
     )?;
 
     println!();
     println!("✅ Embeddings generation complete!");
-    println!("   Total: {} embeddings", belief_count + obs_count);
+    println!("   Observations from sessions: {}", obs_count);
+    println!("   Observations from commits:  {}", commit_count);
+    println!("   Total: {} embeddings", belief_count + total_obs);
 
     Ok(())
 }
@@ -155,6 +164,72 @@ fn generate_observation_embeddings(
 
         search.add_observation_with_metadata(&content, "challenge", metadata)?;
         count += 1;
+    }
+
+    Ok(count)
+}
+
+/// Extract observations from git commit messages (proof-of-concept for multi-source)
+fn extract_commit_observations(search: &mut SemanticSearch) -> Result<usize> {
+    use patina::storage::ObservationMetadata;
+    use std::process::Command;
+
+    let mut count = 0;
+
+    // Get commits from last 90 days with meaningful prefixes
+    let output = Command::new("git")
+        .args(&[
+            "log",
+            "--since=90 days ago",
+            "--pretty=format:%s",
+            "--no-merges",
+        ])
+        .output()
+        .context("Failed to run git log")?;
+
+    if !output.status.success() {
+        // Not a git repo or no commits - skip silently
+        return Ok(0);
+    }
+
+    let commits = String::from_utf8_lossy(&output.stdout);
+
+    // Extract commits with conventional commit prefixes
+    let prefixes = ["feat:", "fix:", "refactor:", "perf:", "docs:", "test:", "chore:"];
+
+    for line in commits.lines() {
+        // Check if commit has a meaningful prefix
+        let has_prefix = prefixes.iter().any(|prefix| line.starts_with(prefix));
+        if !has_prefix {
+            continue;
+        }
+
+        // Extract the type and description
+        if let Some((commit_type, description)) = line.split_once(':') {
+            let content = description.trim().to_string();
+
+            // Skip very short commits
+            if content.len() < 10 {
+                continue;
+            }
+
+            // Determine observation type based on commit prefix
+            let obs_type = match commit_type {
+                "feat" | "fix" => "decision", // Features and fixes are decisions
+                "refactor" | "perf" => "pattern", // Refactors show patterns
+                _ => "challenge", // Everything else
+            };
+
+            let metadata = ObservationMetadata {
+                source_type: Some("commit_message".to_string()),
+                reliability: Some(0.70), // Commit messages are moderately reliable
+                source: Some(format!("git-commit:{}", commit_type)),
+                ..Default::default()
+            };
+
+            search.add_observation_with_metadata(&content, obs_type, metadata)?;
+            count += 1;
+        }
     }
 
     Ok(count)
