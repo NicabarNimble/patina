@@ -70,6 +70,9 @@ tree-sitter = "0.24"
 # CRDT support
 automerge = "0.5"
 
+# Symbolic reasoning - embedded Prolog for belief validation
+scryer-prolog = "0.10.0"
+
 # Embeddings and vector search
 ort = { version = "2.0.0-rc.10", features = ["download-binaries"] }  # ONNX Runtime for embeddings
 tokenizers = "0.15"                                                  # HuggingFace tokenizers (Rust)
