@@ -5,4 +5,4 @@
 
 mod engine;
 
-pub use engine::{ReasoningEngine, ScoredObservation};
+pub use engine::{ReasoningEngine, ScoredObservation, ValidationResult};

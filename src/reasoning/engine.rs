@@ -17,6 +17,18 @@ pub struct ScoredObservation {
     pub source_type: String,
 }
 
+/// Result of belief validation
+#[derive(Debug, Clone)]
+pub struct ValidationResult {
+    pub valid: bool,
+    pub reason: String,
+    pub weighted_score: f32,
+    pub strong_evidence_count: usize,
+    pub has_diverse_sources: bool,
+    pub avg_reliability: f32,
+    pub avg_similarity: f32,
+}
+
 /// Embedded Prolog reasoning engine.
 ///
 /// Wraps a Scryer Prolog Machine to provide confidence calculation,
@@ -34,8 +46,12 @@ impl ReasoningEngine {
         let mut machine = MachineBuilder::default().build();
 
         // Load confidence rules from .patina directory
-        let rules = include_str!("../../.patina/confidence-rules.pl");
-        machine.load_module_string("confidence", rules);
+        let confidence_rules = include_str!("../../.patina/confidence-rules.pl");
+        machine.load_module_string("confidence", confidence_rules);
+
+        // Load validation rules for belief validation
+        let validation_rules = include_str!("../../.patina/validation-rules.pl");
+        machine.load_module_string("validation", validation_rules);
 
         Ok(Self { machine })
     }
@@ -124,6 +140,93 @@ impl ReasoningEngine {
             .consult_module_string("observations", &prolog_program);
 
         Ok(())
+    }
+
+    /// Validate a belief based on loaded observations.
+    ///
+    /// After loading observations via `load_observations()`, this method
+    /// runs Prolog validation rules to determine if a belief is supported
+    /// by sufficient high-quality evidence.
+    ///
+    /// # Returns
+    /// ValidationResult with validity flag, reason, and quality metrics
+    pub fn validate_belief(&mut self) -> Result<ValidationResult> {
+        // Query validation rules
+        let query = "query_validate_belief(Valid, Reason, Metrics).";
+        let mut results = self.machine.run_query(query);
+
+        match results.next() {
+            Some(Ok(LeafAnswer::LeafAnswer { bindings, .. })) => {
+                // Extract validity
+                let valid = match bindings.get("Valid") {
+                    Some(Term::Atom(s)) => s == "true",
+                    _ => false,
+                };
+
+                // Extract reason
+                let reason = match bindings.get("Reason") {
+                    Some(Term::Atom(s)) => s.clone(),
+                    _ => "unknown".to_string(),
+                };
+
+                // Extract metrics compound: metrics(Score, StrongCount, Diverse, AvgRel, AvgSim)
+                let (weighted_score, strong_evidence_count, has_diverse_sources, avg_reliability, avg_similarity) =
+                    match bindings.get("Metrics") {
+                        Some(Term::Compound(functor, args)) if functor == "metrics" && args.len() == 5 => {
+                            let score = extract_float(&args[0])?;
+                            let strong_count = extract_int(&args[1])?;
+                            let diverse = match &args[2] {
+                                Term::Atom(s) => s == "true",
+                                _ => false,
+                            };
+                            let avg_rel = extract_float(&args[3])?;
+                            let avg_sim = extract_float(&args[4])?;
+                            (score, strong_count, diverse, avg_rel, avg_sim)
+                        }
+                        _ => return Err(anyhow!("Invalid metrics format")),
+                    };
+
+                Ok(ValidationResult {
+                    valid,
+                    reason,
+                    weighted_score,
+                    strong_evidence_count,
+                    has_diverse_sources,
+                    avg_reliability,
+                    avg_similarity,
+                })
+            }
+            Some(Ok(LeafAnswer::False)) => {
+                Err(anyhow!("Validation query returned false"))
+            }
+            Some(Ok(LeafAnswer::Exception(term))) => {
+                Err(anyhow!("Prolog exception during validation: {:?}", term))
+            }
+            Some(Err(term)) => Err(anyhow!("Prolog error during validation: {:?}", term)),
+            None => Err(anyhow!("No result from validation query")),
+            _ => Err(anyhow!("Unexpected validation result")),
+        }
+    }
+}
+
+/// Extract float from Prolog Term
+fn extract_float(term: &Term) -> Result<f32> {
+    match term {
+        Term::Float(f) => Ok(*f as f32),
+        Term::Rational(r) => Ok(r.to_f64().value() as f32),
+        Term::Integer(i) => Ok(i.to_f64().value() as f32),
+        _ => Err(anyhow!("Expected numeric term, got: {:?}", term)),
+    }
+}
+
+/// Extract integer from Prolog Term
+fn extract_int(term: &Term) -> Result<usize> {
+    match term {
+        Term::Integer(i) => {
+            let val = i.to_f64().value() as i64;
+            Ok(val as usize)
+        }
+        _ => Err(anyhow!("Expected integer term, got: {:?}", term)),
     }
 }
 
@@ -225,5 +328,93 @@ mod tests {
         assert_eq!(escape_prolog_string("hello'world"), "hello\\'world");
         assert_eq!(escape_prolog_string("line1\nline2"), "line1\\nline2");
         assert_eq!(escape_prolog_string("back\\slash"), "back\\\\slash");
+    }
+
+    #[test]
+    fn test_validate_belief_with_strong_evidence() {
+        let mut engine = ReasoningEngine::new().unwrap();
+
+        // Create strong supporting evidence (need enough to reach score >= 3.0)
+        let observations = vec![
+            ScoredObservation {
+                id: "obs_1".to_string(),
+                observation_type: "pattern".to_string(),
+                content: "Always use security scanning".to_string(),
+                similarity: 0.85,
+                reliability: 0.85,
+                source_type: "session".to_string(),
+            },
+            ScoredObservation {
+                id: "obs_2".to_string(),
+                observation_type: "decision".to_string(),
+                content: "Added pre-commit security hooks".to_string(),
+                similarity: 0.78,
+                reliability: 0.70,
+                source_type: "commit".to_string(),
+            },
+            ScoredObservation {
+                id: "obs_3".to_string(),
+                observation_type: "pattern".to_string(),
+                content: "Security audit before deploy".to_string(),
+                similarity: 0.82,
+                reliability: 0.85,
+                source_type: "session".to_string(),
+            },
+            ScoredObservation {
+                id: "obs_4".to_string(),
+                observation_type: "decision".to_string(),
+                content: "Require security review for PRs".to_string(),
+                similarity: 0.80,
+                reliability: 0.75,
+                source_type: "commit".to_string(),
+            },
+            ScoredObservation {
+                id: "obs_5".to_string(),
+                observation_type: "pattern".to_string(),
+                content: "Run vulnerability scans weekly".to_string(),
+                similarity: 0.88,
+                reliability: 0.85,
+                source_type: "session".to_string(),
+            },
+        ];
+
+        engine.load_observations(&observations).unwrap();
+
+        let result = engine.validate_belief().unwrap();
+
+        // Debug output
+        eprintln!("Validation result: valid={}, reason={}", result.valid, result.reason);
+        eprintln!("weighted_score={}, strong_count={}, diverse={}",
+            result.weighted_score, result.strong_evidence_count, result.has_diverse_sources);
+        eprintln!("avg_rel={}, avg_sim={}", result.avg_reliability, result.avg_similarity);
+
+        assert!(result.valid, "Should be valid with strong evidence. Reason: {}", result.reason);
+        assert!(result.weighted_score >= 3.0, "Should have weighted score >= 3.0, got {}", result.weighted_score);
+        assert!(result.strong_evidence_count >= 2, "Should have multiple strong evidence");
+        assert!(result.avg_reliability > 0.7, "Should have good average reliability");
+    }
+
+    #[test]
+    fn test_validate_belief_with_weak_evidence() {
+        let mut engine = ReasoningEngine::new().unwrap();
+
+        // Create weak evidence (low similarity or reliability)
+        let observations = vec![
+            ScoredObservation {
+                id: "obs_1".to_string(),
+                observation_type: "pattern".to_string(),
+                content: "Maybe use security".to_string(),
+                similarity: 0.45,
+                reliability: 0.60,
+                source_type: "comment".to_string(),
+            },
+        ];
+
+        engine.load_observations(&observations).unwrap();
+
+        let result = engine.validate_belief().unwrap();
+
+        assert!(!result.valid, "Should be invalid with weak evidence");
+        assert_eq!(result.reason, "weak_evidence");
     }
 }
