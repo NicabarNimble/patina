@@ -4,7 +4,7 @@
 
 set -e
 
-MODEL_DIR="target/test-models"
+MODEL_DIR="resources/models"
 MODEL_URL="https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model_quantized.onnx"
 TOKENIZER_URL="https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json"
 
