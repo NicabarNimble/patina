@@ -43,7 +43,7 @@ pub struct ObservationMetadata {
     pub updated_at: Option<DateTime<Utc>>,
     pub source: Option<String>,
     pub source_type: Option<String>, // "session", "commit", "code_comment", "documentation"
-    pub reliability: Option<f32>,     // 0.0-1.0 scale (0.95=user declaration, 0.85=session, 0.70=commit, etc)
+    pub reliability: Option<f32>, // 0.0-1.0 scale (0.95=user declaration, 0.85=session, 0.70=commit, etc)
 }
 
 /// Result from vector search

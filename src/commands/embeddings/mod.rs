@@ -178,7 +178,7 @@ fn extract_commit_observations(search: &mut SemanticSearch) -> Result<usize> {
 
     // Get commits from last 90 days with meaningful prefixes
     let output = Command::new("git")
-        .args(&[
+        .args([
             "log",
             "--since=90 days ago",
             "--pretty=format:%s",
@@ -195,7 +195,15 @@ fn extract_commit_observations(search: &mut SemanticSearch) -> Result<usize> {
     let commits = String::from_utf8_lossy(&output.stdout);
 
     // Extract commits with conventional commit prefixes
-    let prefixes = ["feat:", "fix:", "refactor:", "perf:", "docs:", "test:", "chore:"];
+    let prefixes = [
+        "feat:",
+        "fix:",
+        "refactor:",
+        "perf:",
+        "docs:",
+        "test:",
+        "chore:",
+    ];
 
     for line in commits.lines() {
         // Check if commit has a meaningful prefix
@@ -215,9 +223,9 @@ fn extract_commit_observations(search: &mut SemanticSearch) -> Result<usize> {
 
             // Determine observation type based on commit prefix
             let obs_type = match commit_type {
-                "feat" | "fix" => "decision", // Features and fixes are decisions
+                "feat" | "fix" => "decision",     // Features and fixes are decisions
                 "refactor" | "perf" => "pattern", // Refactors show patterns
-                _ => "challenge", // Everything else
+                _ => "challenge",                 // Everything else
             };
 
             let metadata = ObservationMetadata {

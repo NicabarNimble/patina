@@ -97,9 +97,7 @@ impl ReasoningEngine {
             Some(Ok(LeafAnswer::False)) => {
                 Err(anyhow!("Prolog query returned false (no solutions)"))
             }
-            Some(Ok(LeafAnswer::Exception(term))) => {
-                Err(anyhow!("Prolog exception: {:?}", term))
-            }
+            Some(Ok(LeafAnswer::Exception(term))) => Err(anyhow!("Prolog exception: {:?}", term)),
             Some(Err(term)) => Err(anyhow!("Prolog error: {:?}", term)),
             None => Err(anyhow!("No results from Prolog query")),
             _ => Err(anyhow!("Unexpected Prolog result")),
@@ -170,21 +168,28 @@ impl ReasoningEngine {
                 };
 
                 // Extract metrics compound: metrics(Score, StrongCount, Diverse, AvgRel, AvgSim)
-                let (weighted_score, strong_evidence_count, has_diverse_sources, avg_reliability, avg_similarity) =
-                    match bindings.get("Metrics") {
-                        Some(Term::Compound(functor, args)) if functor == "metrics" && args.len() == 5 => {
-                            let score = extract_float(&args[0])?;
-                            let strong_count = extract_int(&args[1])?;
-                            let diverse = match &args[2] {
-                                Term::Atom(s) => s == "true",
-                                _ => false,
-                            };
-                            let avg_rel = extract_float(&args[3])?;
-                            let avg_sim = extract_float(&args[4])?;
-                            (score, strong_count, diverse, avg_rel, avg_sim)
-                        }
-                        _ => return Err(anyhow!("Invalid metrics format")),
-                    };
+                let (
+                    weighted_score,
+                    strong_evidence_count,
+                    has_diverse_sources,
+                    avg_reliability,
+                    avg_similarity,
+                ) = match bindings.get("Metrics") {
+                    Some(Term::Compound(functor, args))
+                        if functor == "metrics" && args.len() == 5 =>
+                    {
+                        let score = extract_float(&args[0])?;
+                        let strong_count = extract_int(&args[1])?;
+                        let diverse = match &args[2] {
+                            Term::Atom(s) => s == "true",
+                            _ => false,
+                        };
+                        let avg_rel = extract_float(&args[3])?;
+                        let avg_sim = extract_float(&args[4])?;
+                        (score, strong_count, diverse, avg_rel, avg_sim)
+                    }
+                    _ => return Err(anyhow!("Invalid metrics format")),
+                };
 
                 Ok(ValidationResult {
                     valid,
@@ -196,9 +201,7 @@ impl ReasoningEngine {
                     avg_similarity,
                 })
             }
-            Some(Ok(LeafAnswer::False)) => {
-                Err(anyhow!("Validation query returned false"))
-            }
+            Some(Ok(LeafAnswer::False)) => Err(anyhow!("Validation query returned false")),
             Some(Ok(LeafAnswer::Exception(term))) => {
                 Err(anyhow!("Prolog exception during validation: {:?}", term))
             }
@@ -253,7 +256,11 @@ mod tests {
     fn test_confidence_calculation_no_evidence() {
         let mut engine = ReasoningEngine::new().unwrap();
         let confidence = engine.calculate_confidence(0).unwrap();
-        assert!((confidence - 0.5).abs() < 0.01, "Expected 0.5, got {}", confidence);
+        assert!(
+            (confidence - 0.5).abs() < 0.01,
+            "Expected 0.5, got {}",
+            confidence
+        );
     }
 
     #[test]
@@ -383,15 +390,37 @@ mod tests {
         let result = engine.validate_belief().unwrap();
 
         // Debug output
-        eprintln!("Validation result: valid={}, reason={}", result.valid, result.reason);
-        eprintln!("weighted_score={}, strong_count={}, diverse={}",
-            result.weighted_score, result.strong_evidence_count, result.has_diverse_sources);
-        eprintln!("avg_rel={}, avg_sim={}", result.avg_reliability, result.avg_similarity);
+        eprintln!(
+            "Validation result: valid={}, reason={}",
+            result.valid, result.reason
+        );
+        eprintln!(
+            "weighted_score={}, strong_count={}, diverse={}",
+            result.weighted_score, result.strong_evidence_count, result.has_diverse_sources
+        );
+        eprintln!(
+            "avg_rel={}, avg_sim={}",
+            result.avg_reliability, result.avg_similarity
+        );
 
-        assert!(result.valid, "Should be valid with strong evidence. Reason: {}", result.reason);
-        assert!(result.weighted_score >= 3.0, "Should have weighted score >= 3.0, got {}", result.weighted_score);
-        assert!(result.strong_evidence_count >= 2, "Should have multiple strong evidence");
-        assert!(result.avg_reliability > 0.7, "Should have good average reliability");
+        assert!(
+            result.valid,
+            "Should be valid with strong evidence. Reason: {}",
+            result.reason
+        );
+        assert!(
+            result.weighted_score >= 3.0,
+            "Should have weighted score >= 3.0, got {}",
+            result.weighted_score
+        );
+        assert!(
+            result.strong_evidence_count >= 2,
+            "Should have multiple strong evidence"
+        );
+        assert!(
+            result.avg_reliability > 0.7,
+            "Should have good average reliability"
+        );
     }
 
     #[test]
@@ -399,16 +428,14 @@ mod tests {
         let mut engine = ReasoningEngine::new().unwrap();
 
         // Create weak evidence (low similarity or reliability)
-        let observations = vec![
-            ScoredObservation {
-                id: "obs_1".to_string(),
-                observation_type: "pattern".to_string(),
-                content: "Maybe use security".to_string(),
-                similarity: 0.45,
-                reliability: 0.60,
-                source_type: "comment".to_string(),
-            },
-        ];
+        let observations = vec![ScoredObservation {
+            id: "obs_1".to_string(),
+            observation_type: "pattern".to_string(),
+            content: "Maybe use security".to_string(),
+            similarity: 0.45,
+            reliability: 0.60,
+            source_type: "comment".to_string(),
+        }];
 
         engine.load_observations(&observations).unwrap();
 
