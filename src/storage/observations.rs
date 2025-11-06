@@ -34,10 +34,12 @@ impl ObservationStorage {
         Self::init_schema(&db)?;
 
         // Configure USearch index
-        let mut options = IndexOptions::default();
-        options.dimensions = 384; // nomic-embed-text dimensionality
-        options.metric = MetricKind::Cos; // Cosine similarity
-        options.quantization = ScalarKind::F32;
+        let options = IndexOptions {
+            dimensions: 384,         // nomic-embed-text dimensionality
+            metric: MetricKind::Cos, // Cosine similarity
+            quantization: ScalarKind::F32,
+            ..Default::default()
+        };
 
         let index = Index::new(&options).context("Failed to create USearch index")?;
 
