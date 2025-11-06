@@ -102,6 +102,12 @@ enum Commands {
         command: QueryCommands,
     },
 
+    /// Validate beliefs using neuro-symbolic reasoning
+    Belief {
+        #[command(subcommand)]
+        command: BeliefCommands,
+    },
+
     /// Ask questions about the codebase
     Ask {
         #[command(flatten)]
@@ -203,6 +209,23 @@ enum QueryCommands {
 
         /// Maximum number of results (default: 10)
         #[arg(long, default_value = "10")]
+        limit: usize,
+    },
+}
+
+#[derive(Subcommand)]
+enum BeliefCommands {
+    /// Validate a belief using semantic evidence and symbolic reasoning
+    Validate {
+        /// Belief statement to validate
+        query: String,
+
+        /// Minimum similarity score for evidence (0.0-1.0, default: 0.50)
+        #[arg(long, default_value = "0.50")]
+        min_score: f32,
+
+        /// Maximum number of observations to consider (default: 20)
+        #[arg(long, default_value = "20")]
         limit: usize,
     },
 }
@@ -361,6 +384,15 @@ fn main() -> Result<()> {
                 limit,
             } => {
                 commands::query::semantic::execute(&query, r#type.clone(), min_score, limit)?;
+            }
+        },
+        Commands::Belief { command } => match command {
+            BeliefCommands::Validate {
+                query,
+                min_score,
+                limit,
+            } => {
+                commands::belief::validate::execute(&query, min_score, limit)?;
             }
         },
         Commands::Doctor {
