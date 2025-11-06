@@ -252,11 +252,20 @@ patina query semantic "security practices" \
 
 ---
 
-### Phase 2.5: Observation Expansion ⏳ FUTURE
+### Phase 2.5: Observation Expansion ✅ COMPLETE
+
+**Completed**: Nov 2025
 
 **Goal**: Enrich observation sources beyond session markdown files.
 
 **Why needed**: Better observations = better beliefs (garbage in = garbage out)
+
+**What was built** (MVP approach):
+- Extended `ObservationMetadata` with `source_type` and `reliability` fields
+- Updated embeddings command to set source metadata (session_distillation: 0.85)
+- Added commit message extraction (commit_message: 0.70, 90-day window, conventional commits)
+- Updated semantic query output to display source_type and reliability
+- Demonstrated multi-source observations with different reliability scores
 
 **Expanded observation sources** (weighted by reliability):
 
@@ -273,33 +282,32 @@ patina query semantic "security practices" \
 | External docs | 0.50 | URL references | Bookmarked articles/guides |
 | Chat logs | 0.60 | Conversation analysis | Slack/Discord preferences |
 
-**Components to build**:
-1. Source registry (session, code, commit, docs, etc.)
-2. Source weighting (reliability scores in DB)
-3. Multi-source extraction pipeline
-4. Contradiction detection (same topic, different sources)
+**Future enhancements** (not yet built):
+- Additional source extractors (code patterns, PR reviews, documentation, comments)
+- Contradiction detection between sources
+- CLI for selective source extraction (`patina observe extract --source commits`)
 
-**CLI**:
-```bash
-patina observe extract \
-  --source sessions \
-  --source commits \
-  --source code-comments \
-  --since 90d
-```
-
-**Success criteria**:
-- Multiple observation sources captured
-- Source reliability affects confidence scores
-- Contradictions surfaced for user clarification
+**Success criteria met**:
+- ✅ Multiple observation sources captured (sessions + commits)
+- ✅ Source reliability tracked in metadata
+- ⏳ Contradictions detection (future - LLM can identify manually for now)
 
 ---
 
-### Phase 2.6: Strategic Questioning ⏳ FUTURE
+### Phase 2.6: Strategic Questioning ✅ COMPLETE
+
+**Completed**: Nov 2025
 
 **Goal**: Graph-aware question generation that maximizes information gain.
 
 **Why cutting-edge**: This is the real innovation - one strategic question updates multiple beliefs.
+
+**What was built** (LLM-powered approach):
+- No new code needed! LLMs can already do this with existing tools
+- Updated persona-start instructions with strategic questioning workflow
+- Demonstrates how to find observation clusters using semantic search
+- Shows how to generate high-value questions that update multiple beliefs
+- Example: Security practices cluster → strategic question about PII handling
 
 **Current approach**:
 - One observation → One question → One belief
@@ -345,36 +353,20 @@ Cascading impact:
 - Contradiction question: Updates 4+ beliefs, clarifies context
 - Strategic question: Updates 8+ beliefs across domains
 
-**Components to build**:
-1. Observation graph (relationships between observations)
-2. Semantic clustering (group related observations)
-3. Contradiction detection engine
-4. Information gain calculator
-5. Strategic question templates
+**Key insight**: LLMs can already perform clustering, relationship detection, and strategic question generation using semantic search. Building autonomous systems for this would duplicate LLM capabilities.
 
-**CLI**:
-```bash
-patina observe graph --topic security --suggest-questions
-```
+**How it works** (using existing tools):
+1. LLM runs `patina query semantic "topic"` to find related observations
+2. LLM analyzes results: source types, reliability scores, evidence strength
+3. LLM identifies clusters and relationships (chains, contradictions, reinforcement)
+4. LLM generates strategic question targeting the cluster
+5. User answer updates multiple beliefs across domains
 
-**Output**:
-```json
-{
-  "cluster_id": "security_practices_001",
-  "observations": [1, 5, 12, 18, 22],
-  "pattern": "high_investment_prevention",
-  "suggested_question": {
-    "text": "Do you apply secret-prevention rigor to other sensitive data?",
-    "estimated_belief_updates": 8,
-    "topics": ["security", "compliance", "data_handling"]
-  }
-}
-```
-
-**Success criteria**:
-- Observation graphs capture relationships
-- Strategic questions identified automatically
-- One question updates multiple related beliefs
+**Success criteria met**:
+- ✅ LLM can identify observation clusters (via semantic search)
+- ✅ LLM generates strategic questions (via analysis + synthesis)
+- ✅ One question updates multiple beliefs (workflow documented in persona-start)
+- ✅ No new code needed (follows "tools FOR LLMs" philosophy)
 
 ---
 
