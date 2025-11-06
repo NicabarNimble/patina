@@ -9,10 +9,21 @@ use std::path::Path;
 use super::paths;
 
 /// Version of the Claude adapter - increment when scripts/commands change
-pub const CLAUDE_ADAPTER_VERSION: &str = "0.6.0";
+pub const CLAUDE_ADAPTER_VERSION: &str = "0.7.0";
 
 /// Changelog for adapter versions
 const VERSION_CHANGES: &[(&str, &[&str])] = &[
+    (
+        "0.7.0",
+        &[
+            "New: /persona-start command for belief extraction with neuro-symbolic validation",
+            "Added: persona-start.sh and persona-start.md templates",
+            "Integrated: ReasoningEngine (embedded Scryer Prolog) into persona workflow",
+            "Changed: Replaced shell-based Prolog calls with `patina belief validate`",
+            "Enhanced: Evidence-based confidence scoring using weighted similarity × reliability",
+            "Updated: Validation thresholds enforced by symbolic reasoning (not LLM judgment)",
+        ],
+    ),
     (
         "0.6.0",
         &[
