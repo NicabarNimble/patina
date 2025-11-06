@@ -3,6 +3,35 @@
 % to validate beliefs before insertion into the knowledge base
 
 % ============================================================================
+% UTILITY PREDICATES
+% ============================================================================
+
+% Member of a list
+member(X, [X|_]).
+member(X, [_|T]) :- member(X, T).
+
+% Sum a list of numbers
+sum_list([], 0).
+sum_list([H|T], Sum) :-
+    sum_list(T, RestSum),
+    Sum is H + RestSum.
+
+% Count elements in a list
+list_length([], 0).
+list_length([_|T], Len) :-
+    list_length(T, RestLen),
+    Len is RestLen + 1.
+
+% Convert list to set (remove duplicates)
+list_to_set([], []).
+list_to_set([H|T], Set) :-
+    member(H, T),
+    !,
+    list_to_set(T, Set).
+list_to_set([H|T], [H|Set]) :-
+    list_to_set(T, Set).
+
+% ============================================================================
 % EVIDENCE COUNTING (Weighted by Similarity and Reliability)
 % ============================================================================
 
@@ -14,7 +43,7 @@ count_strong_evidence(Count) :-
          Rel >= 0.70,
          Weight is Sim * Rel),
         Weights),
-    length(Weights, Count).
+    list_length(Weights, Count).
 
 % Calculate weighted evidence score
 weighted_evidence_score(Score) :-
@@ -43,10 +72,9 @@ find_contradictions(Contradictions) :-
 
 % Heuristic: content might be contradictory if both are high similarity
 % In practice, LLM can detect semantic contradictions
-possibly_contradictory(Content1, Content2) :-
-    % Placeholder - actual contradiction detection would use semantic analysis
-    % For now, just check they're different
-    Content1 \= Content2.
+% For now, we don't automatically detect contradictions - LLM should filter them out
+% before passing observations to the reasoning engine
+possibly_contradictory(_, _) :- false.
 
 % ============================================================================
 % BELIEF VALIDATION
@@ -70,13 +98,13 @@ validate_belief(Valid, Reason) :-
         ;   Valid = false,
             Reason = 'weak_evidence')
     ;   % Contradictions found
-        length(Contradictions, ContraCount),
+        list_length(Contradictions, ContraCount),
         weighted_evidence_score(Score),
         (   Score >= 8.0, ContraCount =< 1
         ->  Valid = true,
             Reason = 'strong_evidence_despite_contradiction'
         ;   Valid = false,
-            format(atom(Reason), 'contradictions_found: ~w', [ContraCount]))
+            Reason = 'contradictions_found')
     ).
 
 % ============================================================================
@@ -87,7 +115,7 @@ validate_belief(Valid, Reason) :-
 has_diverse_sources(Diverse) :-
     findall(Source, observation(_, _, _, _, _, Source), Sources),
     list_to_set(Sources, UniqueSet),
-    length(UniqueSet, Count),
+    list_length(UniqueSet, Count),
     (Count >= 2 -> Diverse = true ; Diverse = false).
 
 % Get source distribution for debugging
@@ -96,7 +124,7 @@ source_distribution(Distribution) :-
         (observation(_, _, _, _, _, Source),
          findall(S, observation(_, _, _, _, _, S), AllSources),
          findall(X, (member(X, AllSources), X = Source), Matches),
-         length(Matches, Count)),
+         list_length(Matches, Count)),
         Distribution).
 
 % ============================================================================
@@ -109,7 +137,7 @@ average_reliability(AvgRel) :-
     (   Reliabilities = []
     ->  AvgRel = 0.0
     ;   sum_list(Reliabilities, Sum),
-        length(Reliabilities, Count),
+        list_length(Reliabilities, Count),
         AvgRel is Sum / Count
     ).
 
@@ -119,7 +147,7 @@ average_similarity(AvgSim) :-
     (   Similarities = []
     ->  AvgSim = 0.0
     ;   sum_list(Similarities, Sum),
-        length(Similarities, Count),
+        list_length(Similarities, Count),
         AvgSim is Sum / Count
     ).
 
