@@ -4,8 +4,7 @@
 
 use crate::embeddings::EmbeddingEngine;
 use crate::storage::{
-    Belief, BeliefMetadata, BeliefStorage,
-    Observation, ObservationMetadata, ObservationStorage,
+    Belief, BeliefMetadata, BeliefStorage, Observation, ObservationMetadata, ObservationStorage,
 };
 use anyhow::{Context, Result};
 use std::path::Path;
@@ -22,7 +21,10 @@ pub struct SemanticSearch {
 
 impl SemanticSearch {
     /// Create a new semantic search engine
-    pub fn new<P: AsRef<Path>>(storage_path: P, embedder: Box<dyn EmbeddingEngine>) -> Result<Self> {
+    pub fn new<P: AsRef<Path>>(
+        storage_path: P,
+        embedder: Box<dyn EmbeddingEngine>,
+    ) -> Result<Self> {
         let base_path = storage_path.as_ref();
 
         let belief_storage = BeliefStorage::open(base_path.join("beliefs"))
@@ -34,7 +36,7 @@ impl SemanticSearch {
         Ok(Self {
             belief_storage,
             observation_storage,
-            embedder
+            embedder,
         })
     }
 
@@ -73,11 +75,13 @@ impl SemanticSearch {
         };
 
         // Store belief
-        self.belief_storage.insert(&belief)
+        self.belief_storage
+            .insert(&belief)
             .context("Failed to insert belief")?;
 
         // Persist index
-        self.belief_storage.save_index()
+        self.belief_storage
+            .save_index()
             .context("Failed to save vector index")?;
 
         Ok(())
@@ -89,6 +93,21 @@ impl SemanticSearch {
     /// * `content` - The observation text to store
     /// * `observation_type` - Type: "pattern", "technology", "decision", or "challenge"
     pub fn add_observation(&mut self, content: &str, observation_type: &str) -> Result<()> {
+        self.add_observation_with_metadata(content, observation_type, ObservationMetadata::default())
+    }
+
+    /// Add a new observation with custom metadata and automatic embedding
+    ///
+    /// # Arguments
+    /// * `content` - The observation text to store
+    /// * `observation_type` - Type: "pattern", "technology", "decision", or "challenge"
+    /// * `metadata` - Custom metadata including source type and reliability
+    pub fn add_observation_with_metadata(
+        &mut self,
+        content: &str,
+        observation_type: &str,
+        metadata: ObservationMetadata,
+    ) -> Result<()> {
         // Generate embedding
         let embedding = self
             .embedder
@@ -101,15 +120,17 @@ impl SemanticSearch {
             observation_type: observation_type.to_string(),
             content: content.to_string(),
             embedding,
-            metadata: ObservationMetadata::default(),
+            metadata,
         };
 
         // Store observation
-        self.observation_storage.insert(&observation)
+        self.observation_storage
+            .insert(&observation)
             .context("Failed to insert observation")?;
 
         // Persist index
-        self.observation_storage.save_index()
+        self.observation_storage
+            .save_index()
             .context("Failed to save vector index")?;
 
         Ok(())
@@ -144,7 +165,8 @@ impl SemanticSearch {
             .context("Failed to generate query embedding")?;
 
         // Search using storage
-        self.belief_storage.search(&query_embedding, top_k)
+        self.belief_storage
+            .search(&query_embedding, top_k)
             .context("Failed to search belief vectors")
     }
 
@@ -157,7 +179,12 @@ impl SemanticSearch {
     ///
     /// # Returns
     /// Vector of Observation objects, sorted by similarity (highest first)
-    pub fn search_observations(&mut self, query: &str, observation_type: Option<&str>, top_k: usize) -> Result<Vec<Observation>> {
+    pub fn search_observations(
+        &mut self,
+        query: &str,
+        observation_type: Option<&str>,
+        top_k: usize,
+    ) -> Result<Vec<Observation>> {
         // Generate query embedding
         let query_embedding = self
             .embedder
@@ -166,7 +193,10 @@ impl SemanticSearch {
 
         // Search using storage (with optional type filter)
         match observation_type {
-            Some(obs_type) => self.observation_storage.search_by_type(&query_embedding, obs_type, top_k),
+            Some(obs_type) => {
+                self.observation_storage
+                    .search_by_type(&query_embedding, obs_type, top_k)
+            }
             None => self.observation_storage.search(&query_embedding, top_k),
         }
         .context("Failed to search observation vectors")
@@ -264,7 +294,10 @@ mod tests {
 
         // All results should have content
         for belief in &results {
-            assert!(!belief.content.is_empty(), "Belief should have non-empty content");
+            assert!(
+                !belief.content.is_empty(),
+                "Belief should have non-empty content"
+            );
         }
 
         Ok(())
