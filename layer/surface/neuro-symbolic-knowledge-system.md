@@ -12,7 +12,7 @@ tags: [architecture, neuro-symbolic, integration, sqlite, usearch, prolog, imple
 
 **The Vision**: A hybrid AI system that combines neural (semantic search), symbolic (logical rules), and storage (relational) layers to build a persona belief system through interactive dialogue.
 
-**Current Phase**: Phase 2.7 Complete - Embedded Prolog with neuro-symbolic validation
+**Current Phase**: Phase 2.7 Components Complete - Integration in progress
 
 **Timeline**:
 - ✅ Phase 1: Core persona system (SQLite + Prolog orchestration)
@@ -21,7 +21,7 @@ tags: [architecture, neuro-symbolic, integration, sqlite, usearch, prolog, imple
 - ⏳ Phase 3: Full dataset extraction (260 sessions)
 - ⏳ Phase 4: Global persona (cross-project beliefs)
 
-**Integration Status**: **Neuro-symbolic integration achieved via embedded Scryer Prolog.** Rust embeds Prolog as library, symbolic rules reason over neural search results through dynamic fact injection. No shell overhead, all in-process.
+**Integration Status**: **Neuro-symbolic components built, LLM-orchestrated workflow.** Rust embeds Prolog as library, symbolic rules can reason over neural search results through dynamic fact injection. ReasoningEngine exists and tested; persona workflow integration in progress.
 
 ---
 
@@ -94,7 +94,7 @@ User: /persona-start (kick back, dialogue)
     (symbolic validation ensures quality)
 ```
 
-**Integration Level**: **True neuro-symbolic integration achieved.** Scryer Prolog embedded as Rust library, symbolic rules reason directly over neural search results. Dynamic fact injection enables Prolog to validate beliefs based on semantic evidence, all in-process with no shell overhead.
+**Integration Level**: **LLM-orchestrated neuro-symbolic workflow.** Scryer Prolog embedded as Rust library, symbolic rules can reason over neural search results via dynamic fact injection. ReasoningEngine provides zero-overhead validation; integration into persona workflow in progress.
 
 ### Division of Labor: Flexible vs Rigid Reasoning
 
@@ -112,11 +112,11 @@ User: /persona-start (kick back, dialogue)
 - ✅ Evidence quality metrics (strong evidence count, diversity)
 - ✅ Automatic belief validation (validates before insertion)
 - ✅ Reliability-weighted aggregation (multi-source evidence)
-- ⚠️ Contradiction detection (placeholder - LLM filters contradictions before passing to Prolog)
+- ⚠️ Contradiction detection (disabled - LLM filters contradictions before passing to Prolog; heuristic detection remains challenging)
 
 **Why both**: LLM is creative but can hallucinate. Prolog is rigid but trustworthy. Together: Creative discovery (neural) + trustworthy validation (symbolic).
 
-**Integration achieved**: Scryer Prolog embedded as Rust library in `ReasoningEngine`. Symbolic rules reason over neural search results through dynamic fact injection. No shell calls, all in-process, full neuro-symbolic validation working.
+**Integration components built**: Scryer Prolog embedded as Rust library in `ReasoningEngine`. Symbolic rules can reason over neural search results through dynamic fact injection. Zero shell overhead possible; persona workflow integration in progress.
 
 ---
 
@@ -419,6 +419,13 @@ Cascading impact:
 - **Validation logic**: Adequate evidence (score≥3.0) vs weak evidence (score<3.0)
 - **Custom utilities**: `member/2`, `sum_list/2`, `list_length/2` (Scryer doesn't auto-load stdlib)
 
+**Validation Threshold Rationale**:
+- **3.0 score** = ~4 medium-strength observations (0.75 × 0.75 = 0.56 each) OR 2-3 strong observations
+- **5.0 score** = Sufficient strong evidence tier, requires multiple high-quality observations
+- Thresholds are tunable via Prolog rules (not hardcoded in Rust)
+- Based on testing with realistic observation data from session extractions
+- Example: 5 observations @ 0.85 sim × 0.80 rel = 3.4 weighted score → valid (adequate_evidence)
+
 **Architecture**: Dynamic fact injection approach (not FFI)
 
 Scryer's FFI is designed for loading external `.dylib`/`.so` C libraries. We use a simpler, safer approach:
@@ -466,12 +473,13 @@ let result = engine.validate_belief()?;
 // - avg_similarity: f32
 ```
 
-**Integration achieved**:
-- ✅ Zero shell overhead (all in-process)
-- ✅ Symbolic rules reason over neural search results
+**ReasoningEngine capabilities**:
+- ✅ Zero shell overhead possible (embedded Prolog, no external processes)
+- ✅ Symbolic rules can reason over neural search results
 - ✅ Automatic validation with quality metrics
 - ✅ Type-safe Rust ↔ Prolog interface
 - ✅ Compile-time rule loading via `include_str!()`
+- ⏳ Persona workflow integration pending
 
 **Why dynamic facts over FFI**:
 - Simpler: No C FFI, no external build artifacts
@@ -491,15 +499,16 @@ let result = engine.validate_belief()?;
 
 ## Neuro-Symbolic Integration - What We Built
 
-**Achievement**: True neuro-symbolic integration via embedded Scryer Prolog with dynamic fact injection.
+**Components Completed**: Neuro-symbolic toolkit with LLM-orchestrated workflow, built on embedded Scryer Prolog with dynamic fact injection.
 
 **How it works**:
 
-Scryer Prolog **is written in Rust** and we've embedded it as a library. We achieved integration through:
+Scryer Prolog **is written in Rust** and we've embedded it as a library. Components built:
 
-1. **✅ Embed Prolog in Patina** - Using `scryer-prolog` crate as library (no shell calls)
+1. **✅ Embed Prolog in Patina** - Using `scryer-prolog` crate as library (enables zero shell overhead)
 2. **✅ Dynamic fact injection** - Rust converts semantic search results to Prolog facts via `consult_module_string()`
-3. **✅ Prolog reasons about neural search results** - Automatic validation, quality metrics, evidence weighting
+3. **✅ Prolog validates neural search results** - Automatic validation, quality metrics, evidence weighting
+4. **⏳ Workflow integration** - Wire ReasoningEngine into persona-start (in progress)
 
 **What we implemented** (Phase 2.7):
 
@@ -533,11 +542,11 @@ observation('obs_1', 'pattern', 'Security audits', 0.85, 0.85, 'session').
 observation('obs_2', 'decision', 'Pre-commit hooks', 0.78, 0.70, 'commit').
 ```
 
-**Integration achieved**:
-- ✅ Automatic validation (no LLM manual checking)
+**ReasoningEngine provides**:
+- ✅ Automatic validation (no LLM manual checking needed)
 - ✅ Symbolic evidence weighting using similarity × reliability
-- ✅ Consistency validation before belief insertion
-- ✅ True neuro-symbolic reasoning (neural search + symbolic rules in one workflow)
+- ✅ Quality metrics extraction (diversity, averages, strong evidence count)
+- ✅ LLM-orchestrated neuro-symbolic workflow (neural search → symbolic validation)
 
 **Why dynamic facts instead of FFI**:
 
