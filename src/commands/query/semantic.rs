@@ -16,6 +16,8 @@ pub struct SemanticQueryResult {
     pub text: String,
     pub similarity: f32,
     pub evidence_strength: String,
+    pub source_type: Option<String>,
+    pub reliability: Option<f32>,
 }
 
 /// Evidence strength based on similarity score
@@ -111,6 +113,8 @@ pub fn execute(
             text: observation.content,
             similarity,
             evidence_strength: map_evidence_strength(similarity).to_string(),
+            source_type: observation.metadata.source_type,
+            reliability: observation.metadata.reliability,
         });
 
         if results.len() >= limit {
