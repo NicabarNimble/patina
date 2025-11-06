@@ -20,10 +20,10 @@
 //! # Ok::<(), anyhow::Error>(())
 //! ```
 
-pub mod types;
 pub mod beliefs;
 pub mod observations;
+pub mod types;
 
-pub use types::{Belief, BeliefMetadata, Observation, ObservationMetadata};
 pub use beliefs::BeliefStorage;
 pub use observations::ObservationStorage;
+pub use types::{Belief, BeliefMetadata, Observation, ObservationMetadata};

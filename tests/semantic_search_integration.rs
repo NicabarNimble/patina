@@ -33,12 +33,16 @@ fn test_search_beliefs_basic() {
     let embedder = get_test_embedder();
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
 
-    let mut search = SemanticSearch::new(temp_dir.path(), embedder)
-        .expect("Failed to create search engine");
+    let mut search =
+        SemanticSearch::new(temp_dir.path(), embedder).expect("Failed to create search engine");
 
     // Add test beliefs
-    search.add_belief("I prefer Rust for systems programming").unwrap();
-    search.add_belief("I avoid global state in my code").unwrap();
+    search
+        .add_belief("I prefer Rust for systems programming")
+        .unwrap();
+    search
+        .add_belief("I avoid global state in my code")
+        .unwrap();
     search.add_belief("I like chocolate ice cream").unwrap();
 
     // Search for Rust-related beliefs
@@ -46,7 +50,10 @@ fn test_search_beliefs_basic() {
         .search_beliefs("prefer rust for cli tools", 5)
         .expect("Search should succeed");
 
-    println!("Results: {:?}", results.iter().map(|b| &b.content).collect::<Vec<_>>());
+    println!(
+        "Results: {:?}",
+        results.iter().map(|b| &b.content).collect::<Vec<_>>()
+    );
 
     // Should find at least one result
     assert!(!results.is_empty(), "Should find at least one result");
@@ -64,13 +71,19 @@ fn test_search_beliefs_ranking() {
     let embedder = get_test_embedder();
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
 
-    let mut search = SemanticSearch::new(temp_dir.path(), embedder)
-        .expect("Failed to create search engine");
+    let mut search =
+        SemanticSearch::new(temp_dir.path(), embedder).expect("Failed to create search engine");
 
     // Add test beliefs with varying relevance
-    search.add_belief("Rust provides memory safety without garbage collection").unwrap();
-    search.add_belief("Type systems prevent runtime errors").unwrap();
-    search.add_belief("I prefer functional programming patterns").unwrap();
+    search
+        .add_belief("Rust provides memory safety without garbage collection")
+        .unwrap();
+    search
+        .add_belief("Type systems prevent runtime errors")
+        .unwrap();
+    search
+        .add_belief("I prefer functional programming patterns")
+        .unwrap();
     search.add_belief("Coffee is essential for coding").unwrap();
 
     // Search for memory safety topics
@@ -78,7 +91,10 @@ fn test_search_beliefs_ranking() {
         .search_beliefs("memory safe programming languages", 4)
         .expect("Search should succeed");
 
-    println!("Ranking results: {:?}", results.iter().map(|b| &b.content).collect::<Vec<_>>());
+    println!(
+        "Ranking results: {:?}",
+        results.iter().map(|b| &b.content).collect::<Vec<_>>()
+    );
 
     // Should find all beliefs
     assert_eq!(results.len(), 4, "Should find all 4 beliefs");
@@ -105,8 +121,8 @@ fn test_semantic_search_persistence() {
 
     // Create search engine and add beliefs
     {
-        let mut search = SemanticSearch::new(temp_dir.path(), embedder)
-            .expect("Failed to create search engine");
+        let mut search =
+            SemanticSearch::new(temp_dir.path(), embedder).expect("Failed to create search engine");
 
         search.add_belief("Rust prevents data races").unwrap();
         search.add_belief("Python is dynamically typed").unwrap();
@@ -114,8 +130,8 @@ fn test_semantic_search_persistence() {
 
     // Reopen and verify beliefs persisted
     let embedder2 = get_test_embedder();
-    let mut search2 = SemanticSearch::new(temp_dir.path(), embedder2)
-        .expect("Failed to reopen search engine");
+    let mut search2 =
+        SemanticSearch::new(temp_dir.path(), embedder2).expect("Failed to reopen search engine");
 
     let results = search2.search_beliefs("memory safety", 2).unwrap();
 
@@ -131,21 +147,27 @@ fn test_add_and_search_workflow() {
     let embedder = get_test_embedder();
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
 
-    let mut search = SemanticSearch::new(temp_dir.path(), embedder)
-        .expect("Failed to create search engine");
+    let mut search =
+        SemanticSearch::new(temp_dir.path(), embedder).expect("Failed to create search engine");
 
     // Add beliefs incrementally
-    search.add_belief("Use RAII pattern for resource management").unwrap();
+    search
+        .add_belief("Use RAII pattern for resource management")
+        .unwrap();
 
     let results1 = search.search_beliefs("resource management", 1).unwrap();
     assert_eq!(results1.len(), 1, "Should find first belief");
 
-    search.add_belief("Rust ownership system prevents memory leaks").unwrap();
+    search
+        .add_belief("Rust ownership system prevents memory leaks")
+        .unwrap();
 
     let results2 = search.search_beliefs("resource management", 2).unwrap();
     assert_eq!(results2.len(), 2, "Should find both beliefs");
 
-    search.add_belief("Learning Rust's borrow checker rules").unwrap();
+    search
+        .add_belief("Learning Rust's borrow checker rules")
+        .unwrap();
 
     let results3 = search.search_beliefs("resource management", 3).unwrap();
     assert_eq!(results3.len(), 3, "Should find all three beliefs");
