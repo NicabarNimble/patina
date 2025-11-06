@@ -29,8 +29,7 @@ impl BeliefStorage {
 
         // Open SQLite database
         let db_path = base.join("beliefs.db");
-        let db = Connection::open(&db_path)
-            .context("Failed to open SQLite database")?;
+        let db = Connection::open(&db_path).context("Failed to open SQLite database")?;
 
         Self::init_schema(&db)?;
 
@@ -40,8 +39,7 @@ impl BeliefStorage {
         options.metric = MetricKind::Cos; // Cosine similarity
         options.quantization = ScalarKind::F32;
 
-        let index = Index::new(&options)
-            .context("Failed to create USearch index")?;
+        let index = Index::new(&options).context("Failed to create USearch index")?;
 
         // Reserve initial capacity
         index.reserve(1000)?;
@@ -50,7 +48,8 @@ impl BeliefStorage {
 
         // Load existing index if present
         if index_path.exists() {
-            index.view(index_path.to_str().unwrap())
+            index
+                .view(index_path.to_str().unwrap())
                 .context("Failed to load existing USearch index")?;
         }
 
@@ -83,7 +82,9 @@ impl BeliefStorage {
     pub fn insert(&mut self, belief: &Belief) -> Result<()> {
         // Insert into SQLite (source of truth) and get rowid atomically
         let metadata_json = serde_json::to_string(&belief.metadata)?;
-        let created_at = belief.metadata.created_at
+        let created_at = belief
+            .metadata
+            .created_at
             .unwrap_or_else(chrono::Utc::now)
             .to_rfc3339();
 
@@ -101,7 +102,8 @@ impl BeliefStorage {
         )?;
 
         // Insert into USearch (vector index) using rowid as key
-        self.vectors.add(rowid as u64, &belief.embedding)
+        self.vectors
+            .add(rowid as u64, &belief.embedding)
             .context("Failed to add vector to USearch index")?;
 
         Ok(())
@@ -112,7 +114,9 @@ impl BeliefStorage {
     /// Returns top-k most similar beliefs based on query embedding.
     pub fn search(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<Belief>> {
         // Vector search in USearch
-        let matches = self.vectors.search(query_embedding, limit)
+        let matches = self
+            .vectors
+            .search(query_embedding, limit)
             .context("Failed to search USearch index")?;
 
         // Hydrate from SQLite
@@ -127,9 +131,15 @@ impl BeliefStorage {
     }
 
     /// Search and return results with similarity scores
-    pub fn search_with_scores(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<(Belief, f32)>> {
+    pub fn search_with_scores(
+        &self,
+        query_embedding: &[f32],
+        limit: usize,
+    ) -> Result<Vec<(Belief, f32)>> {
         // Vector search in USearch
-        let matches = self.vectors.search(query_embedding, limit)
+        let matches = self
+            .vectors
+            .search(query_embedding, limit)
             .context("Failed to search USearch index")?;
 
         // Hydrate from SQLite and pair with distances
@@ -152,8 +162,8 @@ impl BeliefStorage {
             params![rowid],
             |row| {
                 let metadata_str: String = row.get(2)?;
-                let metadata: BeliefMetadata = serde_json::from_str(&metadata_str)
-                    .unwrap_or_default();
+                let metadata: BeliefMetadata =
+                    serde_json::from_str(&metadata_str).unwrap_or_default();
 
                 Ok(Belief {
                     id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap(),
@@ -178,8 +188,8 @@ impl BeliefStorage {
             params![id.to_string()],
             |row| {
                 let metadata_str: String = row.get(2)?;
-                let metadata: BeliefMetadata = serde_json::from_str(&metadata_str)
-                    .unwrap_or_default();
+                let metadata: BeliefMetadata =
+                    serde_json::from_str(&metadata_str).unwrap_or_default();
 
                 Ok(Belief {
                     id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap(),
@@ -199,18 +209,17 @@ impl BeliefStorage {
 
     /// Save USearch index to disk
     pub fn save_index(&self) -> Result<()> {
-        self.vectors.save(self.index_path.to_str().unwrap())
+        self.vectors
+            .save(self.index_path.to_str().unwrap())
             .context("Failed to save USearch index")?;
         Ok(())
     }
 
     /// Get count of beliefs in storage
     pub fn count(&self) -> Result<usize> {
-        let count: i64 = self.db.query_row(
-            "SELECT COUNT(*) FROM beliefs",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 = self
+            .db
+            .query_row("SELECT COUNT(*) FROM beliefs", [], |row| row.get(0))?;
         Ok(count as usize)
     }
 }
@@ -245,7 +254,10 @@ mod tests {
 
         // Search for it
         let results = index.search(&vec, 1)?;
-        eprintln!("Search results: keys={:?}, distances={:?}", results.keys, results.distances);
+        eprintln!(
+            "Search results: keys={:?}, distances={:?}",
+            results.keys, results.distances
+        );
 
         assert_eq!(results.keys.len(), 1);
         assert_eq!(results.keys[0], 1);

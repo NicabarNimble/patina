@@ -418,7 +418,8 @@ impl Database {
         }
 
         let conn = self.db.connection();
-        let mut stmt = conn.prepare("INSERT OR REPLACE INTO constant_facts VALUES (?, ?, ?, ?, ?, ?)")?;
+        let mut stmt =
+            conn.prepare("INSERT OR REPLACE INTO constant_facts VALUES (?, ?, ?, ?, ?, ?)")?;
 
         for constant in constants {
             stmt.execute(params![
@@ -444,7 +445,8 @@ impl Database {
         }
 
         let conn = self.db.connection();
-        let mut stmt = conn.prepare("INSERT OR REPLACE INTO member_facts VALUES (?, ?, ?, ?, ?, ?, ?)")?;
+        let mut stmt =
+            conn.prepare("INSERT OR REPLACE INTO member_facts VALUES (?, ?, ?, ?, ?, ?, ?)")?;
 
         for member in members {
             // Convert Vec<String> modifiers to JSON string

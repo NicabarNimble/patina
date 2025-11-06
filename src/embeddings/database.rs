@@ -103,10 +103,7 @@ impl EmbeddingsDatabase {
     }
 
     /// Generate embeddings for all active beliefs
-    pub fn generate_belief_embeddings(
-        &self,
-        embedder: &mut dyn EmbeddingEngine,
-    ) -> Result<usize> {
+    pub fn generate_belief_embeddings(&self, embedder: &mut dyn EmbeddingEngine) -> Result<usize> {
         let conn = self.db.connection();
 
         // Query all active beliefs

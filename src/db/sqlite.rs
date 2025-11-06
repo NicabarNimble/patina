@@ -81,9 +81,9 @@ mod tests {
         assert_eq!(count, 1);
 
         // Query
-        let name: String = db
-            .connection()
-            .query_row("SELECT name FROM test WHERE id = ?", [1], |row| row.get(0))?;
+        let name: String =
+            db.connection()
+                .query_row("SELECT name FROM test WHERE id = ?", [1], |row| row.get(0))?;
         assert_eq!(name, "test");
 
         Ok(())

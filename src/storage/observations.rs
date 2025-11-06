@@ -29,8 +29,7 @@ impl ObservationStorage {
 
         // Open SQLite database
         let db_path = base.join("observations.db");
-        let db = Connection::open(&db_path)
-            .context("Failed to open SQLite database")?;
+        let db = Connection::open(&db_path).context("Failed to open SQLite database")?;
 
         Self::init_schema(&db)?;
 
@@ -40,8 +39,7 @@ impl ObservationStorage {
         options.metric = MetricKind::Cos; // Cosine similarity
         options.quantization = ScalarKind::F32;
 
-        let index = Index::new(&options)
-            .context("Failed to create USearch index")?;
+        let index = Index::new(&options).context("Failed to create USearch index")?;
 
         // Reserve initial capacity
         index.reserve(1000)?;
@@ -50,7 +48,8 @@ impl ObservationStorage {
 
         // Load existing index if present
         if index_path.exists() {
-            index.view(index_path.to_str().unwrap())
+            index
+                .view(index_path.to_str().unwrap())
                 .context("Failed to load existing USearch index")?;
         }
 
@@ -84,7 +83,9 @@ impl ObservationStorage {
     pub fn insert(&mut self, observation: &Observation) -> Result<()> {
         // Insert into SQLite (source of truth) and get rowid atomically
         let metadata_json = serde_json::to_string(&observation.metadata)?;
-        let created_at = observation.metadata.created_at
+        let created_at = observation
+            .metadata
+            .created_at
             .unwrap_or_else(chrono::Utc::now)
             .to_rfc3339();
 
@@ -103,7 +104,8 @@ impl ObservationStorage {
         )?;
 
         // Insert into USearch (vector index) using rowid as key
-        self.vectors.add(rowid as u64, &observation.embedding)
+        self.vectors
+            .add(rowid as u64, &observation.embedding)
             .context("Failed to add vector to USearch index")?;
 
         Ok(())
@@ -114,7 +116,9 @@ impl ObservationStorage {
     /// Returns top-k most similar observations based on query embedding.
     pub fn search(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<Observation>> {
         // Vector search in USearch
-        let matches = self.vectors.search(query_embedding, limit)
+        let matches = self
+            .vectors
+            .search(query_embedding, limit)
             .context("Failed to search USearch index")?;
 
         // Hydrate from SQLite
@@ -131,10 +135,17 @@ impl ObservationStorage {
     /// Search for observations filtered by type
     ///
     /// Returns top-k most similar observations of the specified type.
-    pub fn search_by_type(&self, query_embedding: &[f32], observation_type: &str, limit: usize) -> Result<Vec<Observation>> {
+    pub fn search_by_type(
+        &self,
+        query_embedding: &[f32],
+        observation_type: &str,
+        limit: usize,
+    ) -> Result<Vec<Observation>> {
         // Search for more results to account for filtering
         let search_limit = limit * 3;
-        let matches = self.vectors.search(query_embedding, search_limit)
+        let matches = self
+            .vectors
+            .search(query_embedding, search_limit)
             .context("Failed to search USearch index")?;
 
         // Hydrate from SQLite and filter by type
@@ -154,9 +165,15 @@ impl ObservationStorage {
     }
 
     /// Search and return results with similarity scores
-    pub fn search_with_scores(&self, query_embedding: &[f32], limit: usize) -> Result<Vec<(Observation, f32)>> {
+    pub fn search_with_scores(
+        &self,
+        query_embedding: &[f32],
+        limit: usize,
+    ) -> Result<Vec<(Observation, f32)>> {
         // Vector search in USearch
-        let matches = self.vectors.search(query_embedding, limit)
+        let matches = self
+            .vectors
+            .search(query_embedding, limit)
             .context("Failed to search USearch index")?;
 
         // Hydrate from SQLite and pair with distances
@@ -201,18 +218,17 @@ impl ObservationStorage {
 
     /// Save USearch index to disk
     pub fn save_index(&self) -> Result<()> {
-        self.vectors.save(self.index_path.to_str().unwrap())
+        self.vectors
+            .save(self.index_path.to_str().unwrap())
             .context("Failed to save USearch index")?;
         Ok(())
     }
 
     /// Get count of observations in storage
     pub fn count(&self) -> Result<usize> {
-        let count: i64 = self.db.query_row(
-            "SELECT COUNT(*) FROM observations",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 = self
+            .db
+            .query_row("SELECT COUNT(*) FROM observations", [], |row| row.get(0))?;
         Ok(count as usize)
     }
 
