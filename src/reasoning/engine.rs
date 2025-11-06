@@ -3,8 +3,19 @@
 //! Provides symbolic reasoning capabilities by embedding Scryer Prolog as a library,
 //! enabling automatic validation and confidence calculation without shell overhead.
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use scryer_prolog::{LeafAnswer, Machine, MachineBuilder, Term};
+
+/// An observation with its semantic similarity score from vector search
+#[derive(Debug, Clone)]
+pub struct ScoredObservation {
+    pub id: String,
+    pub observation_type: String,
+    pub content: String,
+    pub similarity: f32,
+    pub reliability: f32,
+    pub source_type: String,
+}
 
 /// Embedded Prolog reasoning engine.
 ///
@@ -78,6 +89,51 @@ impl ReasoningEngine {
             _ => Err(anyhow!("Unexpected Prolog result")),
         }
     }
+
+    /// Inject semantic search results as Prolog facts for reasoning.
+    ///
+    /// Converts observations to Prolog facts in the format:
+    /// `observation(Id, Type, Content, Similarity, Reliability, SourceType).`
+    ///
+    /// This enables symbolic reasoning over neural search results.
+    ///
+    /// # Arguments
+    /// * `observations` - Slice of observations with similarity scores from vector search
+    pub fn load_observations(&mut self, observations: &[ScoredObservation]) -> Result<()> {
+        // Convert observations to Prolog facts
+        let facts: Vec<String> = observations
+            .iter()
+            .map(|obs| {
+                format!(
+                    "observation('{}', '{}', '{}', {}, {}, '{}').",
+                    escape_prolog_string(&obs.id),
+                    escape_prolog_string(&obs.observation_type),
+                    escape_prolog_string(&obs.content),
+                    obs.similarity,
+                    obs.reliability,
+                    escape_prolog_string(&obs.source_type)
+                )
+            })
+            .collect();
+
+        // Join facts with newlines
+        let prolog_program = facts.join("\n");
+
+        // Load facts into Prolog machine
+        self.machine
+            .consult_module_string("observations", &prolog_program);
+
+        Ok(())
+    }
+}
+
+/// Escape a string for safe use in Prolog fact literals
+fn escape_prolog_string(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('\'', "\\'")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
 }
 
 #[cfg(test)]
@@ -116,5 +172,58 @@ mod tests {
         // 5 evidence: min(0.85, 0.5 + (5 * 0.1)) = 0.85 (capped)
         let conf5 = engine.calculate_confidence(5).unwrap();
         assert!((conf5 - 0.85).abs() < 0.01, "Expected 0.85, got {}", conf5);
+    }
+
+    #[test]
+    fn test_load_observations() {
+        let mut engine = ReasoningEngine::new().unwrap();
+
+        // Create test observations
+        let observations = vec![
+            ScoredObservation {
+                id: "obs_1".to_string(),
+                observation_type: "pattern".to_string(),
+                content: "Always run security audits".to_string(),
+                similarity: 0.85,
+                reliability: 0.85,
+                source_type: "session".to_string(),
+            },
+            ScoredObservation {
+                id: "obs_2".to_string(),
+                observation_type: "decision".to_string(),
+                content: "Use Rust for core logic".to_string(),
+                similarity: 0.72,
+                reliability: 0.70,
+                source_type: "commit".to_string(),
+            },
+        ];
+
+        // Load observations
+        engine.load_observations(&observations).unwrap();
+
+        // Query to verify facts were loaded
+        let query = "observation(Id, Type, Content, Sim, Rel, Source).";
+        let mut results = engine.machine.run_query(query);
+
+        // Should get results
+        let first = results.next();
+        assert!(first.is_some(), "Should have at least one observation");
+
+        match first.unwrap() {
+            Ok(LeafAnswer::LeafAnswer { bindings, .. }) => {
+                // Verify we got an observation
+                assert!(bindings.contains_key("Id"));
+                assert!(bindings.contains_key("Type"));
+            }
+            _ => panic!("Expected successful query result"),
+        }
+    }
+
+    #[test]
+    fn test_escape_prolog_string() {
+        assert_eq!(escape_prolog_string("hello"), "hello");
+        assert_eq!(escape_prolog_string("hello'world"), "hello\\'world");
+        assert_eq!(escape_prolog_string("line1\nline2"), "line1\\nline2");
+        assert_eq!(escape_prolog_string("back\\slash"), "back\\\\slash");
     }
 }
