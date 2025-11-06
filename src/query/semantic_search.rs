@@ -93,7 +93,11 @@ impl SemanticSearch {
     /// * `content` - The observation text to store
     /// * `observation_type` - Type: "pattern", "technology", "decision", or "challenge"
     pub fn add_observation(&mut self, content: &str, observation_type: &str) -> Result<()> {
-        self.add_observation_with_metadata(content, observation_type, ObservationMetadata::default())
+        self.add_observation_with_metadata(
+            content,
+            observation_type,
+            ObservationMetadata::default(),
+        )
     }
 
     /// Add a new observation with custom metadata and automatic embedding

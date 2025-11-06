@@ -43,12 +43,42 @@ fn test_neuro_symbolic_belief_validation_strong_evidence() {
     // Add observations about Rust preference (strong evidence)
     // Using text that matches closely to query "I prefer Rust for systems programming"
     let observations = vec![
-        ("I prefer Rust for systems programming", "pattern", 0.85, "session"),
-        ("Rust is my preferred language for low-level systems work", "pattern", 0.85, "session"),
-        ("I choose Rust for systems-level programming tasks", "decision", 0.85, "session"),
-        ("Prefer using Rust when building systems software", "pattern", 0.85, "session"),
-        ("Rust for systems programming is my go-to choice", "decision", 0.70, "commit"),
-        ("Systems programming: Rust is what I use", "pattern", 0.70, "commit"),
+        (
+            "I prefer Rust for systems programming",
+            "pattern",
+            0.85,
+            "session",
+        ),
+        (
+            "Rust is my preferred language for low-level systems work",
+            "pattern",
+            0.85,
+            "session",
+        ),
+        (
+            "I choose Rust for systems-level programming tasks",
+            "decision",
+            0.85,
+            "session",
+        ),
+        (
+            "Prefer using Rust when building systems software",
+            "pattern",
+            0.85,
+            "session",
+        ),
+        (
+            "Rust for systems programming is my go-to choice",
+            "decision",
+            0.70,
+            "commit",
+        ),
+        (
+            "Systems programming: Rust is what I use",
+            "pattern",
+            0.70,
+            "commit",
+        ),
     ];
 
     for (content, obs_type, reliability, source_type) in observations {
@@ -92,7 +122,10 @@ fn test_neuro_symbolic_belief_validation_strong_evidence() {
             content: obs.content,
             similarity,
             reliability: obs.metadata.reliability.unwrap_or(0.70),
-            source_type: obs.metadata.source_type.unwrap_or_else(|| "unknown".to_string()),
+            source_type: obs
+                .metadata
+                .source_type
+                .unwrap_or_else(|| "unknown".to_string()),
         })
         .collect();
 
@@ -101,15 +134,16 @@ fn test_neuro_symbolic_belief_validation_strong_evidence() {
     engine
         .load_observations(&scored_obs)
         .expect("Failed to load observations");
-    let validation = engine
-        .validate_belief()
-        .expect("Failed to validate belief");
+    let validation = engine.validate_belief().expect("Failed to validate belief");
 
     println!("\n=== Symbolic Layer: Validation Result ===");
     println!("  Valid: {}", validation.valid);
     println!("  Reason: {}", validation.reason);
     println!("  Weighted Score: {:.2}", validation.weighted_score);
-    println!("  Strong Evidence Count: {}", validation.strong_evidence_count);
+    println!(
+        "  Strong Evidence Count: {}",
+        validation.strong_evidence_count
+    );
     println!("  Has Diverse Sources: {}", validation.has_diverse_sources);
     println!("  Avg Reliability: {:.2}", validation.avg_reliability);
     println!("  Avg Similarity: {:.2}", validation.avg_similarity);
@@ -125,7 +159,10 @@ fn test_neuro_symbolic_belief_validation_strong_evidence() {
         validation.strong_evidence_count >= 2,
         "Should have multiple strong evidence"
     );
-    assert!(validation.has_diverse_sources, "Should have diverse sources");
+    assert!(
+        validation.has_diverse_sources,
+        "Should have diverse sources"
+    );
 }
 
 #[test]
@@ -138,8 +175,18 @@ fn test_neuro_symbolic_belief_validation_weak_evidence() {
 
     // Add weak/irrelevant observations
     let observations = vec![
-        ("Maybe Rust is good for some things", "pattern", 0.50, "comment"),
-        ("Heard about Rust from colleague", "pattern", 0.60, "comment"),
+        (
+            "Maybe Rust is good for some things",
+            "pattern",
+            0.50,
+            "comment",
+        ),
+        (
+            "Heard about Rust from colleague",
+            "pattern",
+            0.60,
+            "comment",
+        ),
     ];
 
     for (content, obs_type, reliability, source_type) in observations {
@@ -173,7 +220,10 @@ fn test_neuro_symbolic_belief_validation_weak_evidence() {
             content: obs.content,
             similarity,
             reliability: obs.metadata.reliability.unwrap_or(0.70),
-            source_type: obs.metadata.source_type.unwrap_or_else(|| "unknown".to_string()),
+            source_type: obs
+                .metadata
+                .source_type
+                .unwrap_or_else(|| "unknown".to_string()),
         })
         .collect();
 
@@ -182,9 +232,7 @@ fn test_neuro_symbolic_belief_validation_weak_evidence() {
     engine
         .load_observations(&scored_obs)
         .expect("Failed to load observations");
-    let validation = engine
-        .validate_belief()
-        .expect("Failed to validate belief");
+    let validation = engine.validate_belief().expect("Failed to validate belief");
 
     println!("\n=== Weak Evidence Validation ===");
     println!("  Valid: {}", validation.valid);
