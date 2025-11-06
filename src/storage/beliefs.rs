@@ -34,10 +34,12 @@ impl BeliefStorage {
         Self::init_schema(&db)?;
 
         // Configure USearch index
-        let mut options = IndexOptions::default();
-        options.dimensions = 384; // nomic-embed-text dimensionality
-        options.metric = MetricKind::Cos; // Cosine similarity
-        options.quantization = ScalarKind::F32;
+        let options = IndexOptions {
+            dimensions: 384,         // nomic-embed-text dimensionality
+            metric: MetricKind::Cos, // Cosine similarity
+            quantization: ScalarKind::F32,
+            ..Default::default()
+        };
 
         let index = Index::new(&options).context("Failed to create USearch index")?;
 
@@ -160,32 +162,6 @@ impl BeliefStorage {
         let result = self.db.query_row(
             "SELECT id, content, metadata, created_at FROM beliefs WHERE rowid = ?1",
             params![rowid],
-            |row| {
-                let metadata_str: String = row.get(2)?;
-                let metadata: BeliefMetadata =
-                    serde_json::from_str(&metadata_str).unwrap_or_default();
-
-                Ok(Belief {
-                    id: Uuid::parse_str(&row.get::<_, String>(0)?).unwrap(),
-                    content: row.get(1)?,
-                    embedding: vec![], // Don't load embeddings in results
-                    metadata,
-                })
-            },
-        );
-
-        match result {
-            Ok(belief) => Ok(Some(belief)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
-    }
-
-    /// Load a belief by UUID from SQLite
-    fn load_by_id(&self, id: &Uuid) -> Result<Option<Belief>> {
-        let result = self.db.query_row(
-            "SELECT id, content, metadata, created_at FROM beliefs WHERE id = ?1",
-            params![id.to_string()],
             |row| {
                 let metadata_str: String = row.get(2)?;
                 let metadata: BeliefMetadata =
