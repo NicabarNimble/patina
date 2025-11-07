@@ -35,7 +35,7 @@ impl ObservationStorage {
 
         // Configure USearch index
         let options = IndexOptions {
-            dimensions: 384,         // nomic-embed-text dimensionality
+            dimensions: 384,         // all-MiniLM-L6-v2 embedding dimension
             metric: MetricKind::Cos, // Cosine similarity
             quantization: ScalarKind::F32,
             ..Default::default()
