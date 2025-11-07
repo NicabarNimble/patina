@@ -20,6 +20,10 @@ const SESSION_END_MD: &str = include_str!("../../../../resources/claude/session-
 const LAUNCH_SH: &str = include_str!("../../../../resources/claude/launch.sh");
 const LAUNCH_MD: &str = include_str!("../../../../resources/claude/launch.md");
 
+// Embed persona-start command from resources
+const PERSONA_START_SH: &str = include_str!("../../../../resources/claude/persona-start.sh");
+const PERSONA_START_MD: &str = include_str!("../../../../resources/claude/persona-start.md");
+
 /// Create all session scripts and command definitions
 pub fn create_session_scripts(project_path: &Path) -> Result<()> {
     let commands_path = paths::get_commands_path(project_path);
@@ -48,6 +52,10 @@ pub fn create_session_scripts(project_path: &Path) -> Result<()> {
     // launch command
     write_script(&bin_path.join("launch.sh"), LAUNCH_SH)?;
     fs::write(commands_path.join("launch.md"), LAUNCH_MD)?;
+
+    // persona-start command
+    write_script(&bin_path.join("persona-start.sh"), PERSONA_START_SH)?;
+    fs::write(commands_path.join("persona-start.md"), PERSONA_START_MD)?;
 
     Ok(())
 }
