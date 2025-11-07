@@ -8,10 +8,13 @@
 //! - Bulk inserts via transactions
 //! - Proper type preservation (arrays as JSON, booleans, JSON)
 //! - Transaction support with automatic rollback
+//!
+//! Uses SqliteDatabase directly for type-safe database operations.
 
 use crate::commands::scrape::code::types::CallGraphEntry;
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection};
+use patina::db::SqliteDatabase;
+use rusqlite::params;
 use std::path::Path;
 
 // ============================================================================
@@ -71,30 +74,33 @@ pub struct ImportFact {
 // DATABASE CONNECTION
 // ============================================================================
 
+/// Database wrapper for code scraping operations
+///
+/// Follows the same pattern as other modules (embeddings, semantic_search):
+/// - Owns SqliteDatabase
+/// - Domain-specific methods for code facts
 pub struct Database {
-    conn: Connection,
+    db: SqliteDatabase,
 }
 
 impl Database {
     /// Open or create a SQLite database file
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let conn = Connection::open(path).context("Failed to open SQLite database")?;
-
-        Ok(Self { conn })
+        let db = SqliteDatabase::open(path).context("Failed to open SQLite database")?;
+        Ok(Self { db })
     }
 
     /// Create an in-memory database for testing
     #[cfg(test)]
     pub fn open_in_memory() -> Result<Self> {
-        let conn = Connection::open_in_memory().context("Failed to create in-memory database")?;
-
-        Ok(Self { conn })
+        let db = SqliteDatabase::open_in_memory().context("Failed to create in-memory database")?;
+        Ok(Self { db })
     }
 
     /// Initialize schema with proper types
     pub fn init_schema(&mut self) -> Result<()> {
         // Use a transaction for atomic schema creation
-        let tx = self.conn.transaction()?;
+        let tx = self.db.connection_mut().transaction()?;
 
         // Code search table with full-text indexing
         tx.execute(
@@ -236,7 +242,8 @@ impl Database {
             return Ok(0);
         }
 
-        let tx = self.conn.unchecked_transaction()?;
+        let conn = self.db.connection();
+        let tx = conn.unchecked_transaction()?;
         let mut stmt = tx.prepare(
             "INSERT OR REPLACE INTO code_search (path, name, kind, line, context) VALUES (?, ?, ?, ?, ?)"
         )?;
@@ -263,7 +270,8 @@ impl Database {
         }
 
         // Use prepared statement for better performance with many rows
-        let mut stmt = self.conn.prepare(
+        let conn = self.db.connection();
+        let mut stmt = conn.prepare(
             "INSERT OR REPLACE INTO function_facts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         )?;
 
@@ -297,7 +305,8 @@ impl Database {
             return Ok(0);
         }
 
-        let tx = self.conn.unchecked_transaction()?;
+        let conn = self.db.connection();
+        let tx = conn.unchecked_transaction()?;
         let mut stmt = tx.prepare(
             "INSERT OR REPLACE INTO type_vocabulary (file, name, definition, kind, visibility, usage_count) VALUES (?, ?, ?, ?, ?, ?)"
         )?;
@@ -324,7 +333,8 @@ impl Database {
             return Ok(0);
         }
 
-        let tx = self.conn.unchecked_transaction()?;
+        let conn = self.db.connection();
+        let tx = conn.unchecked_transaction()?;
         let mut stmt = tx.prepare(
             "INSERT OR REPLACE INTO import_facts (file, import_path, imported_names, import_kind, line_number) VALUES (?, ?, ?, ?, ?)"
         )?;
@@ -353,7 +363,8 @@ impl Database {
             return Ok(0);
         }
 
-        let tx = self.conn.unchecked_transaction()?;
+        let conn = self.db.connection();
+        let tx = conn.unchecked_transaction()?;
         let mut stmt = tx.prepare(
             "INSERT OR REPLACE INTO call_graph (caller, callee, file, call_type, line_number) VALUES (?, ?, ?, ?, ?)"
         )?;
@@ -381,7 +392,7 @@ impl Database {
         size: i64,
         hash: Option<&str>,
     ) -> Result<()> {
-        self.conn.execute(
+        self.db.connection().execute(
             "INSERT OR REPLACE INTO index_state (path, mtime, size, hash) VALUES (?, ?, ?, ?)",
             params![path, mtime, size, hash],
         )?;
@@ -390,7 +401,7 @@ impl Database {
 
     /// Mark a file as skipped
     pub fn mark_skipped(&self, path: &str, reason: &str) -> Result<()> {
-        self.conn.execute(
+        self.db.connection().execute(
             "INSERT OR REPLACE INTO skipped_files (path, reason) VALUES (?, ?)",
             params![path, reason],
         )?;
@@ -406,9 +417,9 @@ impl Database {
             return Ok(0);
         }
 
-        let mut stmt = self
-            .conn
-            .prepare("INSERT OR REPLACE INTO constant_facts VALUES (?, ?, ?, ?, ?, ?)")?;
+        let conn = self.db.connection();
+        let mut stmt =
+            conn.prepare("INSERT OR REPLACE INTO constant_facts VALUES (?, ?, ?, ?, ?, ?)")?;
 
         for constant in constants {
             stmt.execute(params![
@@ -433,9 +444,9 @@ impl Database {
             return Ok(0);
         }
 
-        let mut stmt = self
-            .conn
-            .prepare("INSERT OR REPLACE INTO member_facts VALUES (?, ?, ?, ?, ?, ?, ?)")?;
+        let conn = self.db.connection();
+        let mut stmt =
+            conn.prepare("INSERT OR REPLACE INTO member_facts VALUES (?, ?, ?, ?, ?, ?, ?)")?;
 
         for member in members {
             // Convert Vec<String> modifiers to JSON string
