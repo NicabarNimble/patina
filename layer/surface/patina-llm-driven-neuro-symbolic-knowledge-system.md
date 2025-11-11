@@ -8,15 +8,25 @@ oxidizer: nicabar
 tags: [architecture, neuro-symbolic, persona, event-sourcing, llm-integration, input-architecture, emergent-domains]
 ---
 
-# Patina: LLM-Driven Neuro-Symbolic Knowledge System
+# Patina: A Local-First Ontological Knowledge System for Oxidizing Memory Into Identity
+
+ *Where experience meets memory and belief shapes identity.*
 
 ## The Vision
 
-**What We're Building**: A framework where AI observes work, records observations, reasons with the user to validate beliefs, and stores knowledge optimized for AI retrieval. The result: any LLM can load a persona and become indistinguishable from that identity.
+**What We're Building**: **Patina** is a local-first knowledge system where user and AI shape memory through time and interaction. New experiences react on the surface, tempering the core persona, while what no longer serves settles as dust. Through this oxidation, knowledge matures — aging into identity.
 
-**Core Principle**: The persona is permanent, the LLM is ephemeral. Claude today, Gemini tomorrow, GPT-5 next week - all become the persona by loading its beliefs, rules, and facts.
+**Core Principle**: 
 
-**Local-First**: Mac-centric small models (embeddings, neuro-symbolic validation), zero cloud dependency, full privacy.
+\- **Local-First** — Mac-centric small models (embeddings, neuro-symbolic validation), limited cloud dependency, and offline-capable.  
+
+\- **Surface → Core → Dust** — New experiences and patterns emerge on the surface (active development), proven patterns migrate to the core (eternal truths), while obsolete knowledge settles as dust (archived but not lost). This mirrors how `layer/surface/`, `layer/core/`, and `layer/dust/` organize your patterns.  
+
+\- **Persona-Centric** — Each instance of Patina embodies a persistent persona — a structured, evolving reflection of human and AI cognition.  
+
+\- **Neuro-Symbolic** — Semantic embeddings (neural) and deterministic logic (symbolic) combine to balance intuition with proof.  
+
+\- **Temporal Oxidation** — Knowledge gains richness and structure through repeated exposure to dialogue, reasoning, and time.
 
 ---
 
@@ -34,7 +44,7 @@ This document is organized into 10 focused topics for detailed review:
 **Topic 3: Domains as Emergent Tags** (~88 lines)
 - Domain tagging strategy via LLM
 - Schema design (domains, relationships, extraction tracking)
-- Co-occurrence detection during oxidize
+- Co-occurrence detection during oxidation
 
 **Topic 7: Phase 1 Implementation** (~179 lines)
 - 4-week breakdown (1A through 1D)
@@ -94,25 +104,25 @@ This document is organized into 10 focused topics for detailed review:
 
 ### The Four Parts
 
-**1. Input** - Capture observations from explicit trigger points
+**1. Input** - 🚧 Capture observations from explicit trigger points
 - Session notes (`/session-note`, `/session-update`)
 - Git commits (decisions, patterns, challenges)
 - Manual observations (`patina observe`)
 - **Not real-time watching** - git-like batch processing
 
-**2. Storage** - Event-sourced with domains as emergent tags
+**2. Storage** - 📋 Event-sourced with domains as emergent tags
 - Observations are immutable events (JSON files in git)
 - Databases are materialized views (rebuilt from events)
 - Domains are tags, not databases (auto-tagged during scrape)
 - Time travel: replay events to any point
 
-**3. Validation** - Neuro-symbolic reasoning
+**3. Validation** - ✅ Neuro-symbolic reasoning
 - Neural: Semantic search finds patterns (USearch + Mac embeddings)
 - Symbolic: Prolog validates evidence (Scryer embedded in Rust)
 - User: Final validation (AI proposes, user decides)
 - Result: Beliefs with full provenance
 
-**4. Loading** - LLM adapters load persona
+**4. Loading** - ✅ LLM adapters load persona
 - `patina init --llm=claude` or `--llm=gemini`
 - Adapter provides persona context to LLM
 - LLM performs as that identity
