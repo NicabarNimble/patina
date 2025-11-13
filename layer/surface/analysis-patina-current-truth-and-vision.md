@@ -414,12 +414,11 @@ validate_belief(Belief, Evidence) :-
 - ✅ Load validation rules from `.pl` files
 - ✅ Inject observations as Prolog facts
 - ✅ Query Prolog for belief validation
-- ✅ Explain validation (show which rules fired)
-- ✅ Return confidence scores
+- ✅ Explain validation (reason included in validate output)
+- ✅ Return confidence scores and quality metrics
 
 **Commands**:
-- `patina belief validate "statement" --min-score 0.6`
-- `patina belief explain "statement"`
+- `patina belief validate "statement"` (optional: `--min-score <0.0-1.0>` default 0.50, `--limit <N>` default 20)
 
 **Quality**: This is the **crown jewel** of Patina. It works well and should be preserved as-is.
 
@@ -442,8 +441,9 @@ validate_belief(Belief, Evidence) :-
 - ✅ Return top-k results with scores
 
 **Commands**:
-- `patina embeddings generate`
-- `patina query semantic "error handling"`
+- `patina embeddings generate` (optional: `--force`)
+- `patina embeddings status`
+- `patina query semantic "error handling"` (optional: `--type`, `--min-score`, `--limit`)
 
 **Performance** (CPU):
 - Model load: ~500ms
@@ -571,15 +571,38 @@ patina scrape pdf    # Stub only
 
 **Available Commands**:
 ```bash
-patina init <name>              # Initialize new project (works)
-patina scrape code              # Index codebase (works)
-patina scrape docs              # Extract docs (stub)
-patina scrape pdf               # Extract PDFs (stub)
-patina embeddings generate      # Create vectors (works)
-patina query semantic <text>    # Search observations (works with manual data)
-patina belief validate <stmt>   # Neuro-symbolic validation (works)
-patina doctor                   # Health check (works)
-patina yolo                     # YOLO devcontainer generator (works)
+patina init <name> --llm <LLM>              # Initialize project (requires --llm: claude, gemini, or local)
+                                            # Optional: --dev <docker|dagger|native>, --force, --local
+patina upgrade                              # Check for updates (placeholder - uses rust-lang/rust repo, not real Patina releases)
+                                            # Optional: --check (skip instructions), --json
+patina build                                # Build Docker image (requires Dockerfile in current dir)
+                                            # Uses dev env from .patina/config.json, defaults to docker
+patina test                                 # Run tests in Docker (builds image first, runs 'cargo test')
+                                            # Hardcoded for Rust projects only
+patina scrape code                          # Index codebase structure to code.db (works)
+                                            # Optional: --init, --query <SQL>, --repo <name>, --force
+patina scrape docs                          # Extract from markdown/text (stub - "coming soon")
+                                            # Has same flags as code but not implemented
+patina scrape pdf                           # Extract from PDFs (stub - "coming soon")
+                                            # Has same flags as code but not implemented
+patina embeddings generate                  # Generate embeddings for beliefs/observations (works)
+                                            # Optional: --force (regenerate all embeddings)
+patina embeddings status                    # Show embedding coverage status (works)
+patina query semantic <query>               # Search observations using semantic similarity (works with manual data)
+                                            # Optional: --type <pattern,technology,decision,challenge>, --min-score <0.0-1.0> (default 0.35), --limit <N> (default 10)
+patina ask <query>                          # Ask questions about the codebase (works)
+                                            # Analyzes code.db for patterns, conventions, architecture
+                                            # Optional: --db <PATH>, --repo <name>
+patina belief validate <stmt>               # Neuro-symbolic validation (works)
+                                            # Optional: --min-score <0.0-1.0> (default 0.50), --limit <N> (default 20)
+patina doctor                               # Check project health and environment (works)
+                                            # Checks: tool availability, adapter version, patterns, sessions
+                                            # Optional: --json, --repos (check layer/dust/repos), --update (with --repos)
+patina yolo                                 # Generate devcontainer for autonomous AI development (works)
+                                            # Scans repo, detects languages/tools/services, generates .devcontainer/
+                                            # Optional: --interactive, --defaults, --with <tools>, --without <tools>, --json
+patina version                              # Show version information (works)
+                                            # Optional: --json, --components (show component versions)
 ```
 
 **Not Implemented** (described in Topics, but don't exist):
@@ -2339,22 +2362,36 @@ CREATE TABLE domain_relationships (
 
 ```bash
 # Project lifecycle
-patina init <name>              # Initialize new project
-patina doctor                   # Health check
+patina init <name> --llm <LLM>  # Initialize project (required: --llm claude|gemini|local)
+                                # Optional: --dev, --force, --local
+patina upgrade                  # Check for updates (placeholder - checks rust-lang/rust, not real Patina)
+                                # Optional: --check, --json
+patina build                    # Build Docker image (requires Dockerfile)
+patina test                     # Run tests in Docker (builds first, runs 'cargo test')
+patina doctor                   # Check project health and environment
+                                # Optional: --json, --repos, --update
 
 # Code indexing
-patina scrape code              # Index codebase structure
+patina scrape code              # Index codebase structure to code.db
+                                # Optional: --init, --query <SQL>, --repo <name>, --force
+patina scrape docs              # Extract from markdown/text (stub)
+patina scrape pdf               # Extract from PDFs (stub)
 
 # Embeddings
-patina embeddings generate      # Create vectors
+patina embeddings generate      # Generate embeddings for beliefs/observations
+                                # Optional: --force
+patina embeddings status        # Show embedding coverage status
 
 # Querying
-patina query semantic <text>    # Semantic search
+patina query semantic <query>   # Search observations using semantic similarity
+                                # Optional: --type <TYPE>, --min-score <0.0-1.0> (default 0.35), --limit <N> (default 10)
+patina ask <query>              # Ask questions about codebase (analyzes code.db)
+                                # Optional: --db <PATH>, --repo <name>
 patina belief validate <stmt>   # Neuro-symbolic validation
-patina belief explain <stmt>    # Show validation reasoning
+                                # Optional: --min-score <0.0-1.0> (default 0.50), --limit <N> (default 20)
 
-# Session management
-/session-start <name>           # Begin session (Claude adapter)
+# Session management (Claude adapter)
+/session-start <name>           # Begin session
 /session-update                 # Log progress
 /session-note <insight>         # Capture insight
 /session-end                    # Finalize session
