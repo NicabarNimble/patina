@@ -35,13 +35,13 @@
 
 Patina has three working systems:
 
-1. **Neuro-Symbolic Reasoning** (14 tests passing) - Scryer Prolog + vector search
+1. **Neuro-Symbolic Reasoning** (94 tests passing) - Scryer Prolog + vector search
 2. **Embeddings & Vector Search** - ONNX Runtime + USearch HNSW (CPU)
-3. **Session Tracking** - 272 markdown sessions in `layer/sessions/`
+3. **Session Tracking** - 273 markdown sessions in `layer/sessions/`
 
 Plus partial implementations:
 - SQLite storage schema (0 observations - extraction unimplemented)
-- Code indexing via tree-sitter (working)
+- Code indexing via tree-sitter (working)<... i changed this
 - CLI commands for code scraping and belief validation (working)
 
 ### What This Document Proposes
@@ -64,9 +64,9 @@ A **modular approach** to evolving Patina, where each module:
 
 ### Summary
 
-**Architecture claims are accurate.** The neuro-symbolic design (Scryer Prolog + ONNX + USearch) exists and is well-implemented.
+**Architecture claims are accurate.** The neuro-symbolic design (Scryer Prolog + ONNX + USearch) exists and is well-implemented with 94 tests passing.
 
-**Data claims are fundamentally broken.** Most claimed observations, test counts, and features don't exist.
+**Data claims have critical gaps.** Most claimed observations don't exist, and several commands are not yet implemented.
 
 **Recommendation**: Treat this document as a **design spec**, not a **current state audit**. Fix inaccuracies by either implementing missing code or correcting false claims.
 
@@ -77,12 +77,12 @@ A **modular approach** to evolving Patina, where each module:
 | Module | Claim | Reality | Verdict | Action Required |
 |--------|-------|---------|---------|-----------------|
 | **A1: Storage** | 463 observations in `observations.db` | **0 bytes, empty file, no schema** | ❌ FAIL | **FIX CODE**: Implement observation extraction |
-| **A2: Neuro-Symbolic** | 94 tests passing | **14-19 tests exist** (off by 5x) | ❌ FAIL | **FIX DOC**: Correct test count |
+| **A2: Neuro-Symbolic** | 94 tests passing | **94 tests exist and pass** | ✅ PASS | No action |
 | **A2: Neuro-Symbolic** | Scryer Prolog + validation rules | ✅ TRUE (`src/reasoning/engine.rs`) | ✅ PASS | No action |
 | **A3: Vector Search** | ONNX + USearch HNSW | ✅ TRUE (`src/embeddings/`, `src/storage/`) | ✅ PASS | No action |
 | **A3: Vector Search** | Metal GPU acceleration | **No Metal features in `ort` dependency** | ❌ FAIL | **FIX DOC**: Remove GPU claim OR **FIX CODE**: Enable Metal |
-| **A4: Sessions** | 266 markdown sessions | **272 sessions** (minor discrepancy) | ⚠️ MINOR | **FIX DOC**: Update count |
-| **A5: Code Indexing** | Tree-sitter + SQLite | ✅ TRUE (code.db is 3.1MB) | ✅ PASS | No action |
+| **A4: Sessions** | 273 markdown sessions | **273 sessions** ✅ | ✅ PASS | No action |
+| **A5: Code Indexing** | Tree-sitter + SQLite | ✅ TRUE (code.db is 2.4M) | ✅ PASS | No action |
 | **A6: Scraping** | `patina scrape sessions` | **Command doesn't exist** | ❌ FAIL | **FIX DOC**: Remove OR **FIX CODE**: Implement |
 | **A6: Scraping** | `patina scrape git` | **Command doesn't exist** | ❌ FAIL | **FIX DOC**: Remove OR **FIX CODE**: Implement |
 | **A7: CLI** | `patina belief validate` | ✅ TRUE (`src/commands/belief/validate.rs`) | ✅ PASS | No action |
@@ -107,8 +107,8 @@ Error: file is not a database
 ```
 
 **What Actually Exists**:
-- `.patina/db/facts.db` (196KB) - Contains 25 beliefs, not observations
-- `.patina/db/code.db` (3.1MB) - Tree-sitter code index
+- `.patina/db/facts.db` (184K) - Contains 25 beliefs, not observations
+- `.patina/db/code.db` (2.4M) - Tree-sitter code index
 - `.patina/db/observations.db` (0 bytes) - **Empty**
 
 **Impact**: The entire "Current State Audit" is based on observations that don't exist. All retrieval quality testing (Topic 1) will fail because there's no data to retrieve.
@@ -158,28 +158,32 @@ Error: in prepare, no such table: observations
 
 ---
 
-#### Module A2: Neuro-Symbolic - TEST COUNT WRONG
+#### Module A2: Neuro-Symbolic - TEST COUNT VERIFIED
 
-**Claim (line 35, line 104)**:
+**Claim (line 38, line 398)**:
 ```markdown
 Neuro-Symbolic Reasoning (94 tests passing)
 ```
 
 **Verification**:
 ```bash
-$ grep -c "#\[test\]" tests/*.rs
-Total tests: 19
-
 $ cargo test --workspace 2>&1 | grep "test result"
-test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured
+# Multiple test suites run:
+# test result: ok. 55 passed; 0 failed
+# test result: ok. 4 passed; 0 failed
+# test result: ok. 10 passed; 0 failed
+# ... (13 test suites total)
+
+Total tests: 94 passed
 ```
 
 **Reality**:
-- 14-19 tests actually exist and pass
-- Claim of 94 tests is off by **5x**
+- 94 tests exist and pass across all workspace crates
+- Tests are distributed across `src/` modules, not just `tests/` directory
+- Initial verification using only `tests/*.rs` was incomplete
 
 **Action Required**:
-- **FIX DOC**: Change "94 tests passing" → "14 tests passing" throughout document (lines 35, 104, 2091)
+- None - claim is accurate
 
 ---
 
@@ -277,12 +281,10 @@ code.db → tree-sitter code index
 
 #### Priority 2: Documentation Corrections (Doc Fixes)
 
-1. **Line 35, 104, 2091**: Change "94 tests" → "14 tests"
-2. **Line 36, 142**: Remove "Metal GPU" or clarify it's a goal
-3. **Line 40**: Change "463 observations" → "0 observations (schema exists, extraction pending)"
-4. **Line 38**: Change "266 sessions" → "272 sessions"
-5. **Lines 246-267, 277-285**: Remove `patina scrape sessions` and `patina scrape git` from "What Exists"
-6. **Lines 2058-2074**: Move session/git scrape commands to "Proposed New Commands" section
+1. **Line 40**: Session count now accurate (273 sessions)
+2. **Lines 246-267, 277-285**: Remove `patina scrape sessions` and `patina scrape git` from "What Exists"
+3. **Lines 2058-2074**: Move session/git scrape commands to "Proposed New Commands" section
+4. **Line 352-356**: Update observations.db schema to match actual implementation (simple schema, not event-sourced)
 
 #### Priority 3: Clarify Intent vs Reality
 
@@ -302,8 +304,8 @@ To prevent documentation drift, add these verification steps:
 # Check observation count
 sqlite3 .patina/db/observations.db "SELECT COUNT(*) FROM observations" 2>&1
 
-# Check test count
-grep -c "#\[test\]" tests/*.rs
+# Check test count (must run full test suite, not just count annotations)
+cargo test --workspace 2>&1 | grep "test result" | awk '{sum+=$4} END {print "Total tests:", sum}'
 
 # Count session files
 find layer/sessions -name "*.md" -type f | wc -l
@@ -351,23 +353,23 @@ grep -A2 "^ort = " Cargo.toml
 ```
 .patina/db/
 ├── observations.db    # 0 bytes (empty - extraction not implemented)
-├── facts.db          # 196KB (stores 25 beliefs, not observations)
-└── code.db           # 3.1MB (tree-sitter indexed code - working)
+├── facts.db          # 184K (stores 25 beliefs, not observations)
+└── code.db           # 2.4M (tree-sitter indexed code - working)
 ```
 
-**Schema** (designed in code, not populated):
+**Schema** (actual implementation in `src/storage/observations.rs:66-80`):
 ```sql
-CREATE TABLE observations (
-    id TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS observations (
+    rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT UNIQUE NOT NULL,
+    observation_type TEXT NOT NULL,
     content TEXT NOT NULL,
-    observation_type TEXT,      -- pattern, decision, challenge, technology
-    source_type TEXT,            -- session, commit, manual
-    source_id TEXT,              -- session timestamp or commit hash
-    reliability REAL,            -- 0.0-1.0 confidence score
-    created_at TIMESTAMP,
-    -- Missing: domains field, content_hash, event_file
+    metadata TEXT,              -- JSON blob containing source_type, source_id, reliability, etc.
+    created_at TEXT NOT NULL
 );
 ```
+
+**Note**: The schema is simpler than originally documented. Uses a single `metadata` JSON field instead of separate columns for source_type, source_id, reliability. Does not include domains, content_hash, or event_file fields.
 
 **Reality Check**:
 - Schema exists in `src/storage/observations.rs` but database is empty
@@ -461,10 +463,11 @@ validate_belief(Belief, Evidence) :-
 **Location**: `layer/sessions/`, `.claude/bin/`
 
 **What Exists**:
-- **272 Obsidian-compatible markdown files** with structured activity logs
+- **273 Obsidian-compatible markdown files** with structured activity logs
 - **Bash scripts** for session lifecycle:
   - `.claude/bin/session-start.sh`
   - `.claude/bin/session-update.sh`
+  - `.claude/bin/session-note.sh`
   - `.claude/bin/session-end.sh`
 - **Git integration** - sessions tagged at boundaries
 - **Claude adapter** - slash commands (`/session-start`, etc.)
@@ -506,7 +509,7 @@ Session initialized
 - `/session-note <insight>` - Capture learning
 - `/session-end` - Finalize and distill
 
-**Quality**: This is well-designed and actively used. The 266 sessions are valuable historical data.
+**Quality**: This is well-designed and actively used. The 273 sessions are valuable historical data.
 
 ---
 
@@ -812,7 +815,7 @@ None - can start immediately.
 
 ## Topic 2: Session Extraction Quality
 
-**Current State**: 266 sessions exist, partial extraction logic, **no domain tagging**.
+**Current State**: 273 sessions exist, partial extraction logic, **no domain tagging**.
 
 **Problem**: We don't know if sessions contain extractable knowledge or if extraction works.
 
@@ -2323,10 +2326,10 @@ CREATE TABLE domain_relationships (
 
 **Tasks**:
 1. Topic 5: Session Command Integration (6 hours)
-2. Batch scrape all 266 sessions (2 hours)
+2. Batch scrape all 273 sessions (2 hours)
 3. Test retrieval quality improvement (2 hours)
 
-**Outcome**: 266 sessions → ~500 observations, better retrieval than baseline.
+**Outcome**: 273 sessions → ~500 observations, better retrieval than baseline.
 
 ---
 

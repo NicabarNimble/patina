@@ -80,9 +80,7 @@ fn get_git_info() -> Result<serde_json::Value> {
         .map(|s| s.trim().replace("git version ", ""))
         .unwrap_or_else(|| "unknown".to_string());
 
-    let mut info = json!({
-        "version": version
-    });
+    let mut info = json!({ "version": version });
 
     // Try to get current commit and branch if we're in a git repo
     if let Ok(commit) = Command::new("git")

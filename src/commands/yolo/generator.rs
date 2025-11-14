@@ -301,9 +301,7 @@ CMD ["/bin/bash"]
             services.insert(service.name.clone(), service_config);
         }
 
-        let compose = json!({
-            "services": services
-        });
+        let compose = json!({ "services": services });
 
         let yaml_content = serde_yaml::to_string(&compose)?;
         let compose_path = devcontainer_path.join("docker-compose.yml");
