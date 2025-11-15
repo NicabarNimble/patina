@@ -7,11 +7,12 @@ use std::path::Path;
 
 /// Generate embeddings for all beliefs and observations
 pub fn generate(force: bool) -> Result<()> {
-    let db_path = ".patina/db/facts.db";
+    let storage_path = ".patina/storage/observations";
+    let db_path = format!("{}/observations.db", storage_path);
 
-    if !Path::new(db_path).exists() {
+    if !Path::new(&db_path).exists() {
         anyhow::bail!(
-            "Database not found at {}\n\nRun `patina scrape` first to create the knowledge database.",
+            "Database not found at {}\n\nNo observations found. Run Topic 0 manual smoke test or session extraction first.",
             db_path
         );
     }
@@ -28,13 +29,19 @@ pub fn generate(force: bool) -> Result<()> {
         embedder.dimension()
     );
 
-    // Open database wrapper
-    let db = EmbeddingsDatabase::open(db_path).context("Failed to open database")?;
+    // If force flag, delete existing indices to rebuild from scratch
+    if force {
+        let obs_index = format!("{}/observations.usearch", storage_path);
+        let beliefs_index = ".patina/storage/beliefs/beliefs.usearch";
 
-    // Check if we need to generate embeddings
-    if db.has_embeddings()? && !force {
-        println!("⚠️  Embeddings already exist. Use --force to regenerate.");
-        return Ok(());
+        if Path::new(&obs_index).exists() {
+            std::fs::remove_file(&obs_index).context("Failed to remove observations index")?;
+            println!("🗑️  Removed existing observations index");
+        }
+        if Path::new(beliefs_index).exists() {
+            std::fs::remove_file(beliefs_index).context("Failed to remove beliefs index")?;
+            println!("🗑️  Removed existing beliefs index");
+        }
     }
 
     // Create semantic search engine (for vector storage)
@@ -46,198 +53,53 @@ pub fn generate(force: bool) -> Result<()> {
     let belief_count = 0; // TODO: generate_belief_embeddings
     println!("✓ Generated {} belief embeddings", belief_count);
 
-    // Generate embeddings for observations
+    // Generate embeddings for observations from unified observations table
     println!();
     println!("📊 Generating embeddings for observations...");
-    let obs_count = generate_observation_embeddings(&db, &mut search)?;
+    let obs_count = generate_observation_embeddings(&db_path, &mut search)?;
     println!("✓ Generated {} observation embeddings", obs_count);
-
-    // Extract observations from commit messages
-    println!();
-    println!("📊 Extracting observations from git commits...");
-    let commit_count = extract_commit_observations(&mut search)?;
-    println!("✓ Generated {} commit observations", commit_count);
-
-    // Record metadata
-    let total_obs = obs_count + commit_count;
-    db.record_metadata(
-        search.observation_storage().count()?.to_string().as_str(),
-        "1.0",
-        384,
-        belief_count,
-        total_obs,
-    )?;
 
     println!();
     println!("✅ Embeddings generation complete!");
-    println!("   Observations from sessions: {}", obs_count);
-    println!("   Observations from commits:  {}", commit_count);
-    println!("   Total: {} embeddings", belief_count + total_obs);
+    println!("   Total: {} observation embeddings", obs_count);
 
     Ok(())
 }
 
 /// Generate observation embeddings and store in ObservationStorage
 fn generate_observation_embeddings(
-    db: &EmbeddingsDatabase,
+    db_path: &str,
     search: &mut SemanticSearch,
 ) -> Result<usize> {
     use patina::storage::ObservationMetadata;
+    use rusqlite::Connection;
 
-    let conn = db.database().connection();
+    let conn = Connection::open(db_path).context("Failed to open observations database")?;
     let mut count = 0;
 
-    // Patterns - sourced from session distillations (reliability: 0.85)
-    let mut stmt = conn.prepare("SELECT id, pattern_name, description FROM patterns")?;
-    let patterns: Vec<(i64, String, Option<String>)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+    // Query unified observations table
+    let mut stmt = conn.prepare(
+        "SELECT id, observation_type, content, metadata FROM observations"
+    )?;
+
+    let observations: Vec<(String, String, String, String)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get(0)?,  // id
+                row.get(1)?,  // observation_type
+                row.get(2)?,  // content
+                row.get(3)?,  // metadata
+            ))
+        })?
         .collect::<Result<Vec<_>, _>>()?;
 
-    for (_id, name, desc) in patterns {
-        let content = match desc {
-            Some(d) => format!("{}: {}", name, d),
-            None => name.clone(),
-        };
+    for (_id, obs_type, content, metadata_json) in observations {
+        // Parse metadata from JSON
+        let metadata: ObservationMetadata = serde_json::from_str(&metadata_json)
+            .unwrap_or_default();
 
-        let metadata = ObservationMetadata {
-            source_type: Some("session_distillation".to_string()),
-            reliability: Some(0.85),
-            ..Default::default()
-        };
-
-        search.add_observation_with_metadata(&content, "pattern", metadata)?;
+        search.add_observation_with_metadata(&content, &obs_type, metadata)?;
         count += 1;
-    }
-
-    // Technologies - sourced from session distillations (reliability: 0.85)
-    let mut stmt = conn.prepare("SELECT id, tech_name, purpose FROM technologies")?;
-    let technologies: Vec<(i64, String, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    for (_id, name, purpose) in technologies {
-        let content = format!("{}: {}", name, purpose);
-
-        let metadata = ObservationMetadata {
-            source_type: Some("session_distillation".to_string()),
-            reliability: Some(0.85),
-            ..Default::default()
-        };
-
-        search.add_observation_with_metadata(&content, "technology", metadata)?;
-        count += 1;
-    }
-
-    // Decisions - sourced from session distillations (reliability: 0.85)
-    let mut stmt = conn.prepare("SELECT id, choice, rationale FROM decisions")?;
-    let decisions: Vec<(i64, String, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    for (_id, choice, rationale) in decisions {
-        let content = format!("{}: {}", choice, rationale);
-
-        let metadata = ObservationMetadata {
-            source_type: Some("session_distillation".to_string()),
-            reliability: Some(0.85),
-            ..Default::default()
-        };
-
-        search.add_observation_with_metadata(&content, "decision", metadata)?;
-        count += 1;
-    }
-
-    // Challenges - sourced from session distillations (reliability: 0.85)
-    let mut stmt = conn.prepare("SELECT id, problem, solution FROM challenges")?;
-    let challenges: Vec<(i64, String, String)> = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    for (_id, problem, solution) in challenges {
-        let content = format!("{}: {}", problem, solution);
-
-        let metadata = ObservationMetadata {
-            source_type: Some("session_distillation".to_string()),
-            reliability: Some(0.85),
-            ..Default::default()
-        };
-
-        search.add_observation_with_metadata(&content, "challenge", metadata)?;
-        count += 1;
-    }
-
-    Ok(count)
-}
-
-/// Extract observations from git commit messages (proof-of-concept for multi-source)
-fn extract_commit_observations(search: &mut SemanticSearch) -> Result<usize> {
-    use patina::storage::ObservationMetadata;
-    use std::process::Command;
-
-    let mut count = 0;
-
-    // Get commits from last 90 days with meaningful prefixes
-    let output = Command::new("git")
-        .args([
-            "log",
-            "--since=90 days ago",
-            "--pretty=format:%s",
-            "--no-merges",
-        ])
-        .output()
-        .context("Failed to run git log")?;
-
-    if !output.status.success() {
-        // Not a git repo or no commits - skip silently
-        return Ok(0);
-    }
-
-    let commits = String::from_utf8_lossy(&output.stdout);
-
-    // Extract commits with conventional commit prefixes
-    let prefixes = [
-        "feat:",
-        "fix:",
-        "refactor:",
-        "perf:",
-        "docs:",
-        "test:",
-        "chore:",
-    ];
-
-    for line in commits.lines() {
-        // Check if commit has a meaningful prefix
-        let has_prefix = prefixes.iter().any(|prefix| line.starts_with(prefix));
-        if !has_prefix {
-            continue;
-        }
-
-        // Extract the type and description
-        if let Some((commit_type, description)) = line.split_once(':') {
-            let content = description.trim().to_string();
-
-            // Skip very short commits
-            if content.len() < 10 {
-                continue;
-            }
-
-            // Determine observation type based on commit prefix
-            let obs_type = match commit_type {
-                "feat" | "fix" => "decision",     // Features and fixes are decisions
-                "refactor" | "perf" => "pattern", // Refactors show patterns
-                _ => "challenge",                 // Everything else
-            };
-
-            let metadata = ObservationMetadata {
-                source_type: Some("commit_message".to_string()),
-                reliability: Some(0.70), // Commit messages are moderately reliable
-                source: Some(format!("git-commit:{}", commit_type)),
-                ..Default::default()
-            };
-
-            search.add_observation_with_metadata(&content, obs_type, metadata)?;
-            count += 1;
-        }
     }
 
     Ok(count)

@@ -49,9 +49,10 @@ impl BeliefStorage {
         let index_path = base.join("beliefs.usearch");
 
         // Load existing index if present
+        // Note: .view() creates immutable index - cannot add new vectors
         if index_path.exists() {
             index
-                .view(index_path.to_str().unwrap())
+                .load(index_path.to_str().unwrap())
                 .context("Failed to load existing USearch index")?;
         }
 
