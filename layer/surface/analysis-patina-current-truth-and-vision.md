@@ -328,13 +328,14 @@ grep -A2 "^ort = " Cargo.toml
 
 **Data pipeline is missing.** The system can validate beliefs but has no observations to validate against.
 
-**This document remains valuable** as a design spec and roadmap. But Phase 0 (Topic 1: Retrieval Quality Baseline) will fail without first implementing observation extraction.
+**This document remains valuable** as a design spec and roadmap. The path forward is now clear: start with validation, not automation.
 
-**Revised Priority Order**:
-1. ~~Topic 1: Retrieval Baseline~~ → Will fail, no data
-2. **NEW Topic 0**: Implement minimal observation extraction (10-20 observations manually)
-3. Topic 1: Test retrieval with actual data
-4. Topics 2-6: Scale extraction and improve quality
+**Corrected Priority Order**:
+1. **Topic 0: Manual Smoke Test** (2-3 hours) → Prove retrieval works with 10-20 hand-crafted observations
+2. **GO/NO-GO Decision** → If retrieval doesn't help, don't build extraction
+3. **Topic 1-2: Baseline** (1 week) → Systematic metrics and extraction quality
+4. **Topics 5-6: Automate** (1-2 weeks) → Scale to 273 sessions + git history
+5. **Topics 3-4, 7-9: Optional** → Add only if proven valuable
 
 ---
 
@@ -622,56 +623,64 @@ patina materialize              # Does not exist (see Topic 7)
 
 ## Critical Questions First
 
-Before building more infrastructure, answer these:
+**BLOCKED**: We have 0 observations. These questions can't be answered until **Topic 0** (Manual Smoke Test) is complete.
 
-### Question 1: Does Current Retrieval Work?
+Before building more infrastructure, we need to answer these:
 
-**Test**:
+### Question 1: Does Semantic Retrieval Work?
+
+**Current Status**: ❌ BLOCKED - No observations exist to retrieve
+
+**After Topic 0**:
 ```bash
-# Query existing 463 observations
+# Query our 10-20 manual observations
 patina query semantic "how do i handle errors in this project?"
 
 # Expected: Show observations about Result<T,E>, error patterns
-# Actual: ???
+# Score: Does #1 result actually help? Are top 3 relevant?
 ```
 
-**Why This Matters**: If current retrieval doesn't work well, adding event sourcing won't fix it. The problem is elsewhere (embedding quality, observation extraction, query formulation).
+**Why This Matters**: If retrieval doesn't work on 20 observations, it won't work on 800. Don't build extraction until proven.
 
-**Action Required**: Test current system and document what works/doesn't work.
+**Action Required**: Complete Topic 0, then test and document what works/doesn't work.
 
 ---
 
 ### Question 2: Do Sessions Capture Useful Knowledge?
 
-**Test**:
+**Current Status**: ⚠️ PARTIAL - Answered during Topic 0
+
+**During Topic 0**:
 ```bash
-# Read a random session
+# Read sessions manually to extract observations
 cat layer/sessions/20251108-075248.md
 
-# Ask: "Could an LLM answer 'what did I learn?' from this?"
-# Ask: "Are the observations explicit or implicit?"
+# Ask: "Can I extract 5-8 clear, actionable observations from this?"
+# Ask: "Are insights explicit or require interpretation?"
 ```
 
-**Why This Matters**: If sessions don't contain retrievable knowledge, extracting them into events won't help. We need to improve session capture first.
+**Why This Matters**: If sessions don't contain extractable knowledge, no automation will fix it. We need better session capture.
 
-**Action Required**: Manual review of 5-10 sessions to assess extractability.
+**Action Required**: Answered as part of Topic 0 (Step 2). Document extraction challenges.
 
 ---
 
 ### Question 3: Is Cross-Session Retrieval Valuable?
 
-**Test**:
+**Current Status**: ❌ BLOCKED - Need Topic 0 + Topic 1 complete
+
+**After Topic 0 + Topic 1**:
 ```bash
-# Query knowledge from multiple sessions
+# Query knowledge from 10-20 observations across 2-3 sessions
 patina query semantic "when do i extract to a module?"
 
-# Expected: Aggregate patterns from many sessions
-# Desired: "Nicabar extracts to module when: X, Y, Z"
+# Expected: Aggregate patterns from multiple sessions
+# Desired: "Extract when: >100 LOC, >3 responsibilities, complexity threshold"
 ```
 
 **Why This Matters**: This is the core value prop. If aggregating across sessions doesn't produce better answers than reading one session, the whole system might be unnecessary.
 
-**Action Required**: Compare single-session vs. multi-session retrieval quality.
+**Action Required**: Test during Topic 1 with baseline observations.
 
 ---
 
@@ -706,11 +715,191 @@ Each topic can be built, tested, and discussed independently.
 
 ---
 
+## Topic 0: Manual Smoke Test (CRITICAL FIRST STEP)
+
+**Current State**: 0 observations in SQLite. System architecture exists, but no data to test with.
+
+**Problem**: We're about to build a 6-week extraction pipeline without proving semantic search actually helps answer questions.
+
+**Proposed**: Manually create 10-20 observations, test retrieval, validate hypothesis.
+
+### Why This Comes First
+
+**Blocked**: Topic 1 (Retrieval Baseline) can't run without observations.
+**Risk**: Building extraction automation before proving retrieval works is backwards.
+**Goal**: Hand-craft just enough data to test if the core idea works.
+
+### How to Build
+
+**Step 1: Choose High-Value Sessions** (15 minutes)
+
+Pick 2-3 sessions with different knowledge types:
+```bash
+# Session with architectural decision
+layer/sessions/20251111-152022.md  # "mac app build" - daemon premature optimization
+
+# Session with technical challenge
+layer/sessions/20251108-075248.md  # Bug fix or technical problem
+
+# Session with patterns
+layer/sessions/20251107-124740.md  # Refactoring or code patterns
+```
+
+**Step 2: Hand-Write Observations** (1-2 hours)
+
+Read each session and extract 5-8 observations manually:
+
+```sql
+-- File: tests/smoke-test/manual-observations.sql
+
+-- From session 20251111-152022 (mac app build)
+INSERT INTO observations (id, observation_type, content, metadata, created_at)
+VALUES
+('obs_001', 'pattern',
+ 'Building daemon before proving core value is premature optimization',
+ '{"source_type":"session","source_id":"20251111-152022","reliability":0.90}',
+ '2025-11-13T10:00:00Z'),
+
+('obs_002', 'decision',
+ 'Focus on Ingest → Structure → Retrieve pipeline before optimization',
+ '{"source_type":"session","source_id":"20251111-152022","reliability":0.95}',
+ '2025-11-13T10:05:00Z'),
+
+('obs_003', 'pattern',
+ 'Extract to module when complexity >100 LOC or >3 responsibilities',
+ '{"source_type":"session","source_id":"20251111-152022","reliability":0.85}',
+ '2025-11-13T10:10:00Z'),
+
+('obs_004', 'technology',
+ 'Use Rust Result<T,E> for recoverable errors, panic! for programming bugs',
+ '{"source_type":"session","source_id":"20251108-075248","reliability":0.95}',
+ '2025-11-13T10:15:00Z'),
+
+('obs_005', 'challenge',
+ 'SQLite Connection with RefCell cannot be shared across threads with RwLock',
+ '{"source_type":"session","source_id":"20251108-075248","reliability":1.0}',
+ '2025-11-13T10:20:00Z'),
+
+-- Continue for 10-20 total observations...
+;
+```
+
+**Step 3: Load Into Database** (5 minutes)
+
+```bash
+# Create observations storage
+mkdir -p .patina/storage/observations
+
+# Open database and load observations
+sqlite3 .patina/storage/observations/observations.db < tests/smoke-test/manual-observations.sql
+
+# Verify count
+sqlite3 .patina/storage/observations/observations.db "SELECT COUNT(*) FROM observations"
+# Expected: 10-20
+```
+
+**Step 4: Generate Embeddings** (5 minutes)
+
+```bash
+patina embeddings generate --force
+```
+
+**Step 5: Test Retrieval** (30 minutes)
+
+Create test queries and evaluate results:
+
+```bash
+# File: tests/smoke-test/test-queries.sh
+
+echo "=== Query 1: When to extract modules? ==="
+patina query semantic "when should i extract code to a module?"
+
+echo "=== Query 2: Error handling approach? ==="
+patina query semantic "how do i handle errors in this project?"
+
+echo "=== Query 3: Premature optimization? ==="
+patina query semantic "when is optimization premature?"
+
+echo "=== Query 4: Threading challenges? ==="
+patina query semantic "concurrency problems with sqlite"
+
+echo "=== Query 5: Architecture principles? ==="
+patina query semantic "how should i prioritize what to build first?"
+```
+
+**Step 6: Manual Evaluation** (30 minutes)
+
+For each query, score:
+- **Relevance**: Are top 3 results related to the question? (Yes/Partial/No)
+- **Helpfulness**: Do results actually answer the question? (1-5 scale)
+- **Ranking**: Is the best result in top 3? (Yes/No)
+
+```markdown
+# tests/smoke-test/evaluation.md
+
+## Query 1: "when should i extract code to a module?"
+
+### Top 3 Results:
+1. obs_003: "Extract to module when complexity >100 LOC or >3 responsibilities"
+   - Relevance: ✅ Direct match
+   - Helpfulness: 5/5 - Specific, actionable threshold
+
+2. obs_002: "Focus on Ingest → Structure → Retrieve pipeline before optimization"
+   - Relevance: ⚠️ Partial (about architecture, not modularity)
+   - Helpfulness: 2/5 - Not directly relevant
+
+3. obs_001: "Building daemon before proving core value is premature optimization"
+   - Relevance: ❌ Unrelated
+   - Helpfulness: 1/5 - Wrong topic
+
+### Score: 3/5 - Found the right answer at #1, but #2-3 are noise
+### Gap: Need more observations about modularity to improve ranking
+
+## Query 2: "how do i handle errors in this project?"
+...
+```
+
+### Success Criteria
+
+- ✅ 10-20 observations manually created
+- ✅ Embeddings generated successfully
+- ✅ 5 test queries run
+- ✅ At least 3/5 queries return relevant results in top 3
+- ✅ Manual evaluation documents what works/doesn't work
+- ✅ **Decision made**: Does this approach work well enough to automate?
+
+### Decision Point: GO or NO-GO
+
+**If 3+ queries score 3+/5** → Retrieval works! Proceed to automate extraction (Topics 1-7)
+
+**If <3 queries score 3+/5** → Stop and fix:
+- Observation content format (too vague? too specific?)
+- Embedding quality (wrong model? need fine-tuning?)
+- Query formulation (natural language vs keywords?)
+- Similarity thresholds (0.35 too low? too high?)
+
+### Dependencies
+
+None - can start immediately. This is the actual first step.
+
+### Time Estimate
+
+2-3 hours total (not 6 weeks).
+
+### Deliverables
+
+- `tests/smoke-test/manual-observations.sql`
+- `tests/smoke-test/test-queries.sh`
+- `tests/smoke-test/evaluation.md`
+- **GO/NO-GO decision documented**
+
+---
+
 ## Topic 1: Retrieval Quality Baseline
 
-**Current State**: 463 observations in SQLite, vector search works, but **quality unknown**.
+**Current State**: After Topic 0, we have 10-20 observations and know if retrieval works.
 
-**Problem**: We don't know if current retrieval is good or bad.
+**Problem**: If Topic 0 succeeded, we need systematic metrics before scaling to 800 observations.
 
 **Proposed**: Establish baseline retrieval quality metrics.
 
@@ -2283,79 +2472,124 @@ CREATE TABLE domain_relationships (
 
 ## Implementation Sequence
 
-### Phase 0: Validation (Week 1)
+**CRITICAL**: Everything depends on Phase 0 succeeding. Don't proceed to Phase 1 until retrieval works.
 
-**Goal**: Prove current system works and identify gaps.
+---
+
+### Phase 0: Smoke Test (2-3 hours) - START HERE
+
+**Goal**: Prove semantic retrieval helps answer questions.
+
+**Tasks**:
+1. **Topic 0: Manual Smoke Test** (2-3 hours)
+   - Hand-write 10-20 observations from 2-3 sessions
+   - Generate embeddings
+   - Test 5 queries
+   - Score results (3+/5 queries must score 3+/5)
+
+**Outcome**: **GO/NO-GO decision**
+- ✅ GO → Retrieval works, proceed to Phase 1
+- ❌ NO-GO → Fix embedding/query/format, retry Phase 0
+
+**Decision Point**: If NO-GO after 2-3 iterations, stop. The approach doesn't work. Pivot to different architecture.
+
+---
+
+### Phase 1: Establish Baseline (1 week) - ONLY IF PHASE 0 = GO
+
+**Goal**: Systematic metrics before scaling.
 
 **Tasks**:
 1. Topic 1: Retrieval Quality Baseline (3 hours)
 2. Topic 2: Session Extraction Quality (5 hours)
 
-**Outcome**: Know if current retrieval works, understand extraction challenges.
+**Outcome**: Understand what makes good observations, document extraction challenges.
+
+**Prerequisites**: Phase 0 must succeed (retrieval proven to work).
 
 ---
 
-### Phase 1: Event Foundation (Week 2)
+### Phase 2: Automate Extraction (1-2 weeks) - ONLY IF PHASE 1 SHOWS VALUE
 
-**Goal**: Event sourcing proven and working.
-
-**Tasks**:
-1. Topic 4: Event Sourcing Spike (6 hours)
-2. Topic 7: Materialize Command (12 hours)
-
-**Outcome**: Can create events manually, materialize to DB, query.
-
----
-
-### Phase 2: Domain Tagging (Week 3)
-
-**Goal**: Domains work and improve retrieval.
-
-**Tasks**:
-1. Topic 3: Domain Tagging Experiment (4 hours)
-2. Integrate domains into materialize (2 hours)
-3. Test domain filtering: `patina query semantic "error handling" --domain rust` (2 hours)
-
-**Outcome**: Domains add value, LLM tagging is reliable.
-
----
-
-### Phase 3: Session Integration (Week 4)
-
-**Goal**: Sessions automatically become observations.
+**Goal**: Scale from 20 observations → 500+ observations.
 
 **Tasks**:
 1. Topic 5: Session Command Integration (6 hours)
 2. Batch scrape all 273 sessions (2 hours)
-3. Test retrieval quality improvement (2 hours)
+3. Topic 6: Git History Extraction (8 hours)
+4. Test retrieval quality improvement vs baseline (2 hours)
 
-**Outcome**: 273 sessions → ~500 observations, better retrieval than baseline.
+**Outcome**: 273 sessions + git history → ~800 observations
 
----
+**Prerequisites**: Phase 1 shows manual extraction produces quality observations.
 
-### Phase 4: Git Extraction (Week 5)
-
-**Goal**: Git commits add corroboration and coverage.
-
-**Tasks**:
-1. Topic 6: Git History Extraction (8 hours)
-2. Test deduplication vs corroboration (2 hours)
-3. Validate total observations ~800 (1 hour)
-
-**Outcome**: Complete knowledge base with sessions + git.
+**Decision Point**: Does scaling to 800 observations improve retrieval? Or does it add noise?
 
 ---
 
-### Phase 5: Polish & Use (Week 6)
+### Phase 3: Add Domains (Optional - 1 week)
 
-**Goal**: Production-ready system in daily use.
+**Goal**: Domain filtering improves precision.
 
 **Tasks**:
-1. Documentation (README, command help) (4 hours)
-2. Performance tuning (embeddings, queries) (4 hours)
-3. Use system for 1 week in real development (track issues)
+1. Topic 3: Domain Tagging Experiment (4 hours)
+2. LLM-powered auto-tagging (3 hours)
+3. Test domain filtering: `patina query semantic "error handling" --domain rust` (2 hours)
 
-**Outcome**: Patina is useful, gaps documented for next phase.
+**Outcome**: Can filter by domain, reduces noise in results.
+
+**Prerequisites**: Phase 2 complete, retrieval quality measured.
+
+**Skip If**: Retrieval quality already excellent without domains.
+
+---
+
+### Phase 4: Event Sourcing (Optional - 2 weeks)
+
+**Goal**: Auditability and time-travel.
+
+**Tasks**:
+1. Topic 4: Event Sourcing Spike (6 hours)
+2. Topic 7: Materialize Command (12 hours)
+3. Migrate existing observations to events (4 hours)
+
+**Outcome**: Full provenance chain, can rebuild DB from events.
+
+**Prerequisites**: Phase 2-3 complete, system is valuable enough to justify complexity.
+
+**Skip If**: Direct-write SQLite is sufficient. Event sourcing is a nice-to-have, not a must-have.
+
+---
+
+### Phase 5: Cross-Project (Future)
+
+**Goal**: Persona layer aggregates across all projects.
+
+**Tasks**:
+1. Topic 8: Persona (deferred)
+2. Topic 9: Domain Relationships (optional)
+
+**Status**: Not planned for initial rollout.
+
+---
+
+## Revised Timeline
+
+**Optimistic Path** (everything works):
+- Phase 0: 2-3 hours
+- Phase 1: 1 week
+- Phase 2: 1-2 weeks
+- Phase 3: 1 week (optional)
+- Phase 4: 2 weeks (optional)
+
+**Total**: 3-5 weeks (if we skip optional phases, ~2 weeks)
+
+**Realistic Path** (account for NO-GO iterations):
+- Phase 0: 1-3 iterations × 3 hours = 3-9 hours
+- Phase 1-2: 2-3 weeks
+- Phases 3-4: Skip initially
+
+**Total**: 2-4 weeks to working system
 
 ---
 
@@ -2489,9 +2723,16 @@ patina domains stats                           # Domain statistics
 
 ---
 
-**Status**: Ready for Discussion
-**Next Action**: Review Topic 1 (Retrieval Baseline) and decide whether to proceed
+**Status**: Ready to Start
+**Next Action**: Begin with **Topic 0 (Manual Smoke Test)** - 2-3 hours to validate core hypothesis
+
+**Decision Framework**:
+1. **Topic 0 succeeds** (3+/5 queries score 3+/5) → Proceed to Phase 1
+2. **Topic 0 fails** → Iterate on format/embeddings/queries (max 3 tries)
+3. **Still failing after 3 iterations** → Pivot to different architecture
+
+**Don't build extraction automation until retrieval is proven to work.**
 
 ---
 
-*This document captures current state honestly and proposes a modular path forward. Each topic can be built, validated, and discussed independently. The focus is user value (retrieval quality) not architectural purity.*
+*This document captures current state honestly and proposes a validation-first path forward. Start with 2-3 hours of manual testing before committing to 6 weeks of automation. The focus is user value (does retrieval help?) not architectural elegance.*
