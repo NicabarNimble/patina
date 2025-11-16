@@ -17,6 +17,11 @@ Patina accumulates knowledge like the protective layer that forms on metal - you
 - `layer/surface/modular-architecture-plan.md` - Workspace decomposition
 
 ## Development Guidelines
+- **Rust-first**: Pure Rust at runtime, no Python subprocess dependencies
+  - Embeddings: ONNX Runtime via `ort` crate (not Python/CoreML)
+  - Pre-converted models from HuggingFace (no export toolchain)
+  - Cross-platform: Same vector space on Mac/Linux/Windows
+  - Production-proven: Twitter scale (`ort`), Hugging Face (fastembed)
 - Rust for CLI and core logic - let the compiler be your guard rail
 - Docker for containerized builds and tests
 - Patterns evolve from projects → topics → core

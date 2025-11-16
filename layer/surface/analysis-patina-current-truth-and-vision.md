@@ -3301,12 +3301,19 @@ let final_results = rrf_merge(semantic_results, keyword_results, top_k=5);
 3. **Model registry annotate CoreML performance**: Good/Poor/Unknown
 4. **Consider CoreML-native models**: Future work if ONNX+CoreML insufficient
 
-### Updated Model Selection Criteria (Size + Mac + Stability First)
+### Updated Model Selection Criteria (Rust + Size + Mac + Stability First)
 
-**Philosophy**: On-device distribution > bleeding-edge performance. Stability > novelty.
+**Philosophy**: Pure Rust runtime > on-device distribution > bleeding-edge performance. Stability > novelty.
+
+**Core Constraint: Rust-First**
+- Pure Rust at runtime (no Python subprocess)
+- ONNX models with `ort` crate (production-proven: Twitter, Hugging Face)
+- Pre-converted models from HuggingFace (no export toolchain needed)
+- Proven Rust ecosystem support (dedicated crates, fastembed default)
 
 | Priority | Factor | Requirement | Why |
 |----------|--------|-------------|-----|
+| **0** | **Rust Runtime** | **Pure Rust (ort + ONNX)** | No Python, cross-platform, production-proven |
 | **1** | **Model Size** | **<50MB INT8 quantized** | GitHub (no LFS), CI-friendly, fast distribution |
 | **2** | **Stability** | **Released ≤2023** | Production-proven, not bleeding-edge |
 | **3** | **Mac Ecosystem** | **ONNX Runtime compatible** | Apple Silicon target (M1/M2/M3) |
@@ -3315,22 +3322,24 @@ let final_results = rrf_merge(semantic_results, keyword_results, top_k=5);
 
 **Model Comparison:**
 
-| Model | Size (INT8) | Released | Dims | GitHub LFS? | Maturity | Recommendation |
-|-------|-------------|----------|------|-------------|----------|----------------|
-| all-MiniLM-L6-v2 | 23MB | 2021 | 384 | ❌ No | ✅ Proven | ✅ Current baseline |
-| **bge-small-en-v1.5** | **32.4MB** | **Sept 2023** | **384** | **❌ No** | **✅ Proven** | **⭐ Test candidate** |
-| bge-base-en-v1.5 | 105MB | Sept 2023 | 768 | ✅ Yes | ✅ Proven | ❌ Too large (5x size) |
-| e5-base-v2 | ~105MB | 2022 | 768 | ✅ Yes | ✅ Proven | ❌ Too large |
-| gte-base | ~105MB | 2023 | 768 | ✅ Yes | ✅ Proven | ❌ Too large |
+| Model | Size (INT8) | Released | Dims | Rust Support | GitHub LFS? | Recommendation |
+|-------|-------------|----------|------|--------------|-------------|----------------|
+| all-MiniLM-L6-v2 | 23MB | 2021 | 384 | ✅ Excellent (tested) | ❌ No | ✅ Current baseline |
+| **bge-small-en-v1.5** | **32.4MB** | **Sept 2023** | **384** | **✅ Excellent (bge crate, fastembed)** | **❌ No** | **⭐ Test candidate** |
+| bge-base-en-v1.5 | 105MB | Sept 2023 | 768 | ✅ Good (ort) | ✅ Yes | ❌ Too large (5x size) |
+| e5-base-v2 | ~105MB | 2022 | 768 | ✅ Good (ort) | ✅ Yes | ❌ Too large |
+| gte-base | ~105MB | 2023 | 768 | ✅ Good (ort) | ✅ Yes | ❌ Too large |
 
 **Phase 0A Decision: Test bge-small-en-v1.5**
 
 **Why this model:**
+- ✅ **Rust-first**: Dedicated `bge` crate, fastembed default model, excellent `ort` compatibility
 - ✅ **Size**: 32.4MB (40% larger but GitHub-friendly, no LFS)
 - ✅ **Stability**: 14 months old (Sept 2023), production-proven, Langchain integration
 - ✅ **Mac compatibility**: Native ONNX Runtime on Apple Silicon (current setup works)
 - ✅ **Easy test**: Same 384 dims = no USearch rebuild, just re-embed observations
 - ✅ **BGE quality**: Better retrieval than MiniLM family (proven in benchmarks)
+- ✅ **Download ready**: Pre-converted ONNX at Xenova/bge-small-en-v1.5 (no Python export)
 
 **If it fails quality test (<0.65 avg):**
 - Stay with all-MiniLM-L6-v2 (current)
