@@ -1,5 +1,11 @@
 # Embedding Model Registry
 # Defines available models for Patina's semantic search
+#
+# **PLATFORM CONSTRAINT: Mac-First (Apple Silicon)**
+# - Patina targets macOS with Apple Silicon (M1/M2/M3)
+# - Models should leverage Metal GPU + Neural Engine
+# - ONNX Runtime uses CoreML execution provider (NOT CUDA)
+# - Prefer ONNX models with good CoreML performance
 
 [models.all-minilm-l6-v2]
 name = "all-MiniLM-L6-v2"
