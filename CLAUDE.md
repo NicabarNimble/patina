@@ -12,7 +12,7 @@ Patina accumulates knowledge like the protective layer that forms on metal - you
 - **Philosophy**: Decompose systems into tools that LLMs can build
 
 ## Design Documents
-- `PROJECT_DESIGN.toml` - Core architecture and design decisions
+- `ENVIRONMENT.toml` - Auto-generated environment snapshot
 - `layer/surface/pattern-selection-framework.md` - Pattern selection strategy
 - `layer/surface/modular-architecture-plan.md` - Workspace decomposition
 
