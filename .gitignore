@@ -36,3 +36,10 @@ docker-compose.yml.backup/
 # Downloaded via scripts/download-test-models.sh
 resources/models/*.onnx
 resources/models/tokenizer.json
+
+# Added by Patina for safety
+node_modules/
+.env
+.patina/
+*.key
+*.pem
