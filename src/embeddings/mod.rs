@@ -1,16 +1,20 @@
 //! Embeddings module - Generate semantic embeddings for text
 //!
 //! Provides trait-based abstraction for embedding generation with ONNX backend.
+//! Supports multiple embedding models via configuration.
 
 mod database;
+pub mod models;
 mod onnx;
 mod similarity;
 
 pub use database::{EmbeddingMetadata, EmbeddingsDatabase};
+pub use models::{Config, ModelDefinition, ModelRegistry};
 pub use onnx::OnnxEmbedder;
 pub use similarity::{cosine_similarity, euclidean_distance};
 
 use anyhow::Result;
+use std::path::Path;
 
 /// Trait for embedding generation engines
 pub trait EmbeddingEngine {
@@ -27,7 +31,50 @@ pub trait EmbeddingEngine {
     fn model_name(&self) -> &str;
 }
 
-/// Factory function to create the default embedder (ONNX)
+/// Factory function to create embedder from configuration
+///
+/// Reads model selection from .patina/config.toml and creates appropriate embedder.
+/// Falls back to default (all-MiniLM-L6-v2) if config doesn't exist.
 pub fn create_embedder() -> Result<Box<dyn EmbeddingEngine>> {
-    Ok(Box::new(OnnxEmbedder::new()?))
+    create_embedder_from_config()
+}
+
+/// Create embedder from configuration file
+fn create_embedder_from_config() -> Result<Box<dyn EmbeddingEngine>> {
+    // Load user config (creates default if doesn't exist)
+    let config = Config::load()?;
+
+    // Get model definition from registry
+    let model_def = config.get_model_definition()?;
+
+    // Create ONNX embedder with model-specific paths
+    create_onnx_embedder(&model_def)
+}
+
+/// Create ONNX embedder from model definition
+fn create_onnx_embedder(model_def: &ModelDefinition) -> Result<Box<dyn EmbeddingEngine>> {
+    let model_dir = Path::new(&model_def.path);
+
+    // Construct paths based on model directory
+    let model_path = model_dir.join("model.onnx");
+    let tokenizer_path = model_dir.join("tokenizer.json");
+
+    // Try quantized model first (if exists)
+    let model_path_quantized = model_dir.join("model_quantized.onnx");
+    let final_model_path = if model_path_quantized.exists() {
+        &model_path_quantized
+    } else {
+        &model_path
+    };
+
+    Ok(Box::new(OnnxEmbedder::new_from_paths(
+        final_model_path,
+        &tokenizer_path,
+    )?))
+}
+
+/// Get current model name from configuration
+pub fn get_current_model_name() -> Result<String> {
+    let config = Config::load()?;
+    Ok(config.embeddings.model)
 }
