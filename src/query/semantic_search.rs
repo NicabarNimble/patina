@@ -220,6 +220,112 @@ impl SemanticSearch {
         .context("Failed to search observation vectors")
     }
 
+    /// Search observations with quality filtering
+    ///
+    /// Applies metadata-based filtering to improve result quality:
+    /// - Filters by source type (session, session_distillation, documentation only)
+    /// - Filters by reliability (>0.85)
+    /// - Deduplicates by content
+    ///
+    /// # Arguments
+    /// * `query` - Query text to search for
+    /// * `observation_type` - Optional filter by type
+    /// * `top_k` - Number of results to return after filtering
+    ///
+    /// # Returns
+    /// Vector of high-quality Observation objects, deduplicated and filtered
+    pub fn search_observations_filtered(
+        &mut self,
+        query: &str,
+        observation_type: Option<&str>,
+        top_k: usize,
+    ) -> Result<Vec<Observation>> {
+        // Get broader candidate set (4x to account for filtering)
+        let candidates = self.search_observations(query, observation_type, top_k * 4)?;
+
+        // Filter by source type and reliability
+        let mut filtered: Vec<Observation> = candidates
+            .into_iter()
+            .filter(|obs| {
+                // Only keep high-quality sources
+                let source_type = obs.metadata.source_type.as_deref().unwrap_or("unknown");
+                matches!(
+                    source_type,
+                    "session" | "session_distillation" | "documentation"
+                )
+            })
+            .filter(|obs| {
+                // Only keep high reliability observations
+                obs.metadata.reliability.unwrap_or(0.0) > 0.85
+            })
+            .collect();
+
+        // Deduplicate by content (keep first occurrence = highest similarity)
+        let mut seen_content = std::collections::HashSet::new();
+        filtered.retain(|obs| seen_content.insert(obs.content.clone()));
+
+        // Return top K after filtering
+        filtered.truncate(top_k);
+        Ok(filtered)
+    }
+
+    /// Search observations with quality filtering and return similarity scores
+    ///
+    /// Same as search_observations_filtered but returns (Observation, similarity) tuples
+    pub fn search_observations_filtered_with_scores(
+        &mut self,
+        query: &str,
+        observation_type: Option<&str>,
+        top_k: usize,
+    ) -> Result<Vec<(Observation, f32)>> {
+        // Generate query embedding
+        let query_embedding = self
+            .embedder
+            .embed(query)
+            .context("Failed to generate query embedding")?;
+
+        // Get broader candidate set with scores (4x to account for filtering)
+        let candidates = self
+            .observation_storage
+            .search_with_scores(&query_embedding, top_k * 4)
+            .context("Failed to search with scores")?;
+
+        // Apply type filter if specified
+        let candidates: Vec<(Observation, f32)> = if let Some(obs_type) = observation_type {
+            candidates
+                .into_iter()
+                .filter(|(obs, _)| obs.observation_type == obs_type)
+                .collect()
+        } else {
+            candidates
+        };
+
+        // Filter by source type and reliability
+        let mut filtered: Vec<(Observation, f32)> = candidates
+            .into_iter()
+            .filter(|(obs, _)| {
+                // Only keep high-quality sources
+                let source_type = obs.metadata.source_type.as_deref().unwrap_or("unknown");
+                matches!(
+                    source_type,
+                    "session" | "session_distillation" | "documentation"
+                )
+            })
+            .filter(|(obs, _)| {
+                // Only keep high reliability observations
+                obs.metadata.reliability.unwrap_or(0.0) > 0.85
+            })
+            .collect();
+
+        // Deduplicate by content (keep first occurrence = highest similarity)
+        let mut seen_content = std::collections::HashSet::new();
+        filtered.retain(|(obs, _)| seen_content.insert(obs.content.clone()));
+
+        // Return top K after filtering
+        filtered.truncate(top_k);
+        Ok(filtered)
+    }
+
     /// Get reference to underlying belief storage (escape hatch)
     pub fn belief_storage(&self) -> &BeliefStorage {
         &self.belief_storage
