@@ -1,0 +1,55 @@
+# Embedding Model Registry
+# Defines available models for Patina's semantic search
+
+[models.all-minilm-l6-v2]
+name = "all-MiniLM-L6-v2"
+description = "Sentence Transformers model, optimized for sentence similarity (384 dims)"
+path = "resources/models/all-minilm-l6-v2"
+dimensions = 384
+metric = "cosine"
+source = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2"
+use_case = "Fast, general-purpose sentence similarity"
+performance = "Good for short texts, weaker for long-form retrieval"
+
+[models.bge-base-en-v1-5]
+name = "bge-base-en-v1.5"
+description = "BAAI General Embedding, SOTA for retrieval tasks (768 dims)"
+path = "resources/models/bge-base-en-v1.5"
+dimensions = 768
+metric = "cosine"
+source = "https://huggingface.co/BAAI/bge-base-en-v1.5"
+use_case = "Retrieval, semantic search, question answering"
+performance = "State-of-the-art for knowledge retrieval, stronger than all-MiniLM"
+instructions = "Represents query as: 'Represent this sentence for searching relevant passages: {query}'"
+
+[models.e5-base-v2]
+name = "e5-base-v2"
+description = "E5 embeddings, strong for questions and asymmetric retrieval (768 dims)"
+path = "resources/models/e5-base-v2"
+dimensions = 768
+metric = "cosine"
+source = "https://huggingface.co/intfloat/e5-base-v2"
+use_case = "Question-answering, asymmetric search"
+performance = "Strong for question → document retrieval"
+instructions = "Prefix queries with 'query: ' and passages with 'passage: '"
+
+[models.gte-base]
+name = "gte-base"
+description = "General Text Embeddings, balanced performance (768 dims)"
+path = "resources/models/gte-base"
+dimensions = 768
+metric = "cosine"
+source = "https://huggingface.co/thenlper/gte-base"
+use_case = "General-purpose retrieval, good balance of speed and quality"
+performance = "Competitive with bge-base, slightly faster"
+
+# Default model configuration
+[default]
+model = "all-minilm-l6-v2"  # Safe default, already integrated
+benchmark_queries = [
+    "when should i extract code to a module?",
+    "how do i handle errors in this project?",
+    "when is optimization premature?",
+    "concurrency problems with sqlite",
+    "how should i prioritize what to build first?"
+]

@@ -1,0 +1,17 @@
+# Patina User Configuration
+# This file is created automatically and can be modified
+
+[embeddings]
+# Current embedding model (must match a model in resources/models/registry.toml)
+model = "all-minilm-l6-v2"  # Default: fast, general-purpose
+
+# To switch models:
+# 1. Change this value to another model name (e.g., "bge-base-en-v1-5")
+# 2. Run: patina embeddings generate --force
+# 3. Test with: patina query semantic "your query"
+
+# Available models (see resources/models/registry.toml for details):
+# - all-minilm-l6-v2   (384 dims, fast, current default)
+# - bge-base-en-v1-5   (768 dims, SOTA for retrieval)
+# - e5-base-v2         (768 dims, strong for questions)
+# - gte-base           (768 dims, balanced)
