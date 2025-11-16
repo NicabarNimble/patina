@@ -3266,3 +3266,50 @@ let final_results = rrf_merge(semantic_results, keyword_results, top_k=5);
 ---
 
 *This document captures current state honestly and proposes a validation-first path forward. Start with 2-3 hours of manual testing before committing to 6 weeks of automation. The focus is user value (does retrieval help?) not architectural elegance.*
+
+---
+
+## CRITICAL CONSTRAINT: Mac-First Hardware (Apple Silicon)
+
+**Date Added**: 2025-11-16 (Session 20251116-073958)
+**Platform**: macOS with Apple Silicon (M1/M2/M3) - NOT NVIDIA/CUDA
+
+### Why This Matters
+
+**Apple Silicon has 3 compute units:**
+1. CPU (ARM) - What we're currently using ❌ (slow)
+2. GPU (Metal) - Apple's GPU framework
+3. Neural Engine - 16-core ML accelerator ✅ (what we should use)
+
+**Current ONNX Runtime config**: CPU-only execution (not Mac-optimized)
+
+### Implications for Model Selection
+
+**Phase 0A model benchmarking must include:**
+- ✅ Similarity scores (accuracy)
+- ✅ Inference time on Mac (speed)
+- ✅ Memory usage (Apple Silicon efficiency)
+- ✅ CoreML compatibility (Metal/Neural Engine)
+
+**Not just**: "Which model has highest similarity?"
+**But**: "Which model balances similarity + Mac performance?"
+
+### Action Items
+
+1. **Check if ort crate supports CoreML**: `features = ["coreml"]`
+2. **Benchmark must measure inference time**: Mac-specific metric
+3. **Model registry annotate CoreML performance**: Good/Poor/Unknown
+4. **Consider CoreML-native models**: Future work if ONNX+CoreML insufficient
+
+### Updated Model Selection Criteria (Mac-Aware)
+
+| Priority | Metric | Threshold |
+|----------|--------|-----------|
+| 1 | Similarity improvement | >0.65 avg (vs 0.40-0.60 current) |
+| 2 | Mac inference time | <100ms per query (on M1/M2/M3) |
+| 3 | Memory efficiency | <500MB model size |
+| 4 | CoreML support | Documented compatibility |
+
+**Decision**: Proceed with Phase 0A, but add Mac performance metrics to benchmark.
+
+---
