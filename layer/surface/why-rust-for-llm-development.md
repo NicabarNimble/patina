@@ -369,10 +369,11 @@ LLMs are actually BETTER at parsing compiler errors than humans:
 - Type safety **enables** LLM-assisted development
 - Strict compiler **accelerates** development (catches mistakes early)
 
-### From `pattern-selection-framework.md`:
+### From `dependable-rust.md`:
 ```md
-Eternal Tools → dependable-rust pattern
-Clear boundaries, black-box modules
+Keep your public interface small and stable.
+Hide implementation details in internal.rs.
+Not a line count rule - a design principle.
 ```
 
 **Why this works with LLMs:**
@@ -501,9 +502,10 @@ The compiler isn't a burden - it's a co-pilot for your AI co-pilot.
 ---
 
 ## References
-- [Pattern Selection Framework](./pattern-selection-framework.md)
-- [TypeScript Effect Integration](./ts-effect-patina-exploration.md)
 - [Dependable Rust Pattern](../core/dependable-rust.md)
+- [Unix Philosophy](../core/unix-philosophy.md)
+- [Adapter Pattern](../core/adapter-pattern.md)
+- [TypeScript Effect Integration](./ts-effect-patina-exploration.md)
 - Rust Book: Error Handling - https://doc.rust-lang.org/book/ch09-00-error-handling.html
 
 ---

@@ -12,9 +12,9 @@ Patina accumulates knowledge like the protective layer that forms on metal - you
 - **Philosophy**: Decompose systems into tools that LLMs can build
 
 ## Design Documents
-- `PROJECT_DESIGN.toml` - Core architecture and design decisions
-- `layer/surface/pattern-selection-framework.md` - Pattern selection strategy
-- `layer/surface/modular-architecture-plan.md` - Workspace decomposition
+- `layer/core/dependable-rust.md` - Black-box module pattern (small, stable interfaces)
+- `layer/core/unix-philosophy.md` - Decomposition principle (systems → tools)
+- `layer/core/adapter-pattern.md` - Trait-based external system integration
 
 ## Development Guidelines
 - **Rust-first**: Pure Rust at runtime, no Python subprocess dependencies
@@ -124,10 +124,4 @@ patina/
 - Decomposed monolithic workspace into focused modules
 - Each module is a tool with single responsibility
 - Clear input → output transformations
-- environment-registry module follows Eternal Tool pattern
-
-### Pattern Selection Framework
-- Three categories: Eternal Tools, Stable Adapters, Evolution Points
-- Apply different patterns based on code characteristics
-- Tool-based decomposition for LLM-friendly development
-- See `layer/surface/pattern-selection-framework.md`
+- Apply dependable-rust pattern to isolate change and manage complexity
