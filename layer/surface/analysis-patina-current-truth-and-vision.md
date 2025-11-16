@@ -3160,6 +3160,102 @@ let final_results = rrf_merge(semantic_results, keyword_results, top_k=5);
 **Status**: ✅ **Topic 0 COMPLETE** - Manual smoke test passed (3/5 queries successful)
 **Next Action**: **Phase 0A** - Test better embedding model to isolate bottleneck
 
+---
+
+## Session 20251116-073958 Continuation: Quality Filtering + Model Abstraction
+
+**Divergence from Plan**: We skipped Phase 0A (model testing) and did Phase 0B (data quality) + filtering first.
+
+**Rationale**: Quick validation showed filtering + doc observations immediately improved results. Pragmatic over methodical.
+
+### Phase 0B Partial: Documentation Observations (4 hours)
+
+**Added 24 high-quality observations** from documentation:
+- CLAUDE.md (11): CI workflow, git discipline, design philosophy, session management
+- dependable-rust.md (7): module structure, visibility, error handling, testing
+- modular-architecture-plan.md (6): module extraction criteria, tool patterns, refactoring
+
+**Results**:
+- Query 1 (module extraction): ❌ → ✅ (0.60 sim: "Extract when >150 LOC OR >3 responsibilities")
+- Query 2 (error handling): ❌ → ✅ (0.43 sim: "Single Error enum per module")
+- Queries 3, 4, 5: Already good, now clean (no duplicates)
+
+**Key Finding**: 24 observations (2.4% increase) fixed 2/5 broken queries. **Quality > Quantity confirmed.**
+
+### Quality Filtering Implementation (2 hours)
+
+**Added to `src/query/semantic_search.rs`**:
+- `search_observations_filtered()` - metadata-based filtering
+- `search_observations_filtered_with_scores()` - with similarity scores
+- Filters: source_type ∈ {session, session_distillation, documentation}, reliability > 0.85, dedup by content
+- Broader search: 4x candidates before filtering
+
+**Impact**:
+- Removed duplicates (40% of results → 0%)
+- Removed commit message noise (868 low-quality → filtered out)
+- Clean results: 5/5 queries now successful
+
+**Commit**: `607e337` - feat: add quality filtering and documentation observations
+
+### Model Abstraction Layer (2 hours)
+
+**Problem**: Analysis doc says test model (Phase 0A), but we skipped it. Need easy model switching to validate foundation.
+
+**Solution**: Config-driven model selection system
+
+**Components**:
+1. **Model Registry** (`resources/models/registry.toml`)
+   - Defines: all-minilm-l6-v2, bge-base-en-v1-5, e5-base-v2, gte-base
+   - Metadata: dimensions, source, use case, performance
+
+2. **User Config** (`.patina/config.toml`)
+   - `[embeddings] model = "all-minilm-l6-v2"`
+   - Change config + `patina embeddings generate --force` to switch
+
+3. **Registry System** (`src/embeddings/models.rs`)
+   - `Config::load()` - reads user config
+   - `ModelRegistry::load()` - reads model definitions
+   - `create_embedder()` - uses config to select model
+
+4. **Benchmark Tool** (`scripts/benchmark-models.sh`)
+   - Tests multiple models on 5 smoke test queries
+   - Generates comparison report with avg similarity
+   - Usage: `./scripts/benchmark-models.sh`
+
+**File Organization**:
+- Reorganized: `resources/models/all-minilm-l6-v2/{model.onnx, model_quantized.onnx, tokenizer.json}`
+- Ready for: `resources/models/bge-base-en-v1-5/` (download next)
+
+**Commit**: `8c41757` - feat: add model abstraction layer for easy model switching
+
+### Critical Decision Point: Did We Diverge Correctly?
+
+**Analysis doc recommended**: Phase 0A (test model) THEN Phase 0B (add observations)
+
+**We did**: Phase 0B (add observations) + filtering, THEN built Phase 0A infrastructure
+
+**Zoom-out assessment**:
+- ✅ **Results work**: 5/5 queries successful
+- ⚠️ **Scores still low**: 0.40-0.60 range (concerning for production)
+- ❌ **Foundation uncertain**: Haven't validated if model is ceiling
+- ✅ **Can now test easily**: Model abstraction layer ready
+
+**Decision**: **Pause and validate** (correct divergence)
+- Low cost: 2-4 hours to test bge-base-en-v1.5
+- High value: Know if we hit model ceiling
+- Aligns with: "Build core value before optimizing" (Query 3 result)
+
+**Next immediate steps**:
+1. Download bge-base-en-v1.5 model
+2. Run `./scripts/benchmark-models.sh`
+3. Compare scores: If 0.70-0.85 → model was bottleneck, If 0.40-0.60 → data quality issue
+4. Make data-driven decision on path forward
+
+**Status**: Topic 0 COMPLETE (100%), Phase 0A infrastructure ready
+**Next Action**: Execute Phase 0A benchmark, validate foundation before extraction pipeline
+
+---
+
 **Decision Framework**:
 1. **Topic 0 succeeds** (3+/5 queries score 3+/5) → Proceed to Phase 1
 2. **Topic 0 fails** → Iterate on format/embeddings/queries (max 3 tries)
