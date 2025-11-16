@@ -17,6 +17,19 @@ source = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2"
 use_case = "Fast, general-purpose sentence similarity"
 performance = "Good for short texts, weaker for long-form retrieval"
 
+[models.bge-small-en-v1-5]
+name = "bge-small-en-v1.5"
+description = "BAAI General Embedding, small variant optimized for retrieval (384 dims)"
+path = "resources/models/bge-small-en-v1.5"
+dimensions = 384
+metric = "cosine"
+source = "https://huggingface.co/BAAI/bge-small-en-v1.5"
+use_case = "Retrieval, semantic search with size constraints"
+performance = "Better retrieval than MiniLM, 40% larger (32.4MB INT8), production-proven (Sept 2023)"
+size_int8 = "32.4MB"
+maturity = "Proven (14 months, Langchain integration)"
+instructions = "Represents query as: 'Represent this sentence for searching relevant passages: {query}'"
+
 [models.bge-base-en-v1-5]
 name = "bge-base-en-v1.5"
 description = "BAAI General Embedding, SOTA for retrieval tasks (768 dims)"
@@ -24,8 +37,10 @@ path = "resources/models/bge-base-en-v1.5"
 dimensions = 768
 metric = "cosine"
 source = "https://huggingface.co/BAAI/bge-base-en-v1.5"
-use_case = "Retrieval, semantic search, question answering"
-performance = "State-of-the-art for knowledge retrieval, stronger than all-MiniLM"
+use_case = "Retrieval, semantic search, question answering (requires LFS)"
+performance = "State-of-the-art for knowledge retrieval, 5x larger (105MB INT8)"
+size_int8 = "105MB"
+maturity = "Proven (14 months)"
 instructions = "Represents query as: 'Represent this sentence for searching relevant passages: {query}'"
 
 [models.e5-base-v2]
