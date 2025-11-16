@@ -3301,15 +3301,63 @@ let final_results = rrf_merge(semantic_results, keyword_results, top_k=5);
 3. **Model registry annotate CoreML performance**: Good/Poor/Unknown
 4. **Consider CoreML-native models**: Future work if ONNX+CoreML insufficient
 
-### Updated Model Selection Criteria (Mac-Aware)
+### Updated Model Selection Criteria (Size + Mac + Stability First)
 
-| Priority | Metric | Threshold |
-|----------|--------|-----------|
-| 1 | Similarity improvement | >0.65 avg (vs 0.40-0.60 current) |
-| 2 | Mac inference time | <100ms per query (on M1/M2/M3) |
-| 3 | Memory efficiency | <500MB model size |
-| 4 | CoreML support | Documented compatibility |
+**Philosophy**: On-device distribution > bleeding-edge performance. Stability > novelty.
 
-**Decision**: Proceed with Phase 0A, but add Mac performance metrics to benchmark.
+| Priority | Factor | Requirement | Why |
+|----------|--------|-------------|-----|
+| **1** | **Model Size** | **<50MB INT8 quantized** | GitHub (no LFS), CI-friendly, fast distribution |
+| **2** | **Stability** | **Released ≤2023** | Production-proven, not bleeding-edge |
+| **3** | **Mac Ecosystem** | **ONNX Runtime compatible** | Apple Silicon target (M1/M2/M3) |
+| **4** | **Quality** | **Similarity >0.65 avg** | Must improve over current 0.40-0.60 |
+| 5 | Inference Time | <100ms on M1/M2 (CPU) | User experience threshold |
+
+**Model Comparison:**
+
+| Model | Size (INT8) | Released | Dims | GitHub LFS? | Maturity | Recommendation |
+|-------|-------------|----------|------|-------------|----------|----------------|
+| all-MiniLM-L6-v2 | 23MB | 2021 | 384 | ❌ No | ✅ Proven | ✅ Current baseline |
+| **bge-small-en-v1.5** | **32.4MB** | **Sept 2023** | **384** | **❌ No** | **✅ Proven** | **⭐ Test candidate** |
+| bge-base-en-v1.5 | 105MB | Sept 2023 | 768 | ✅ Yes | ✅ Proven | ❌ Too large (5x size) |
+| e5-base-v2 | ~105MB | 2022 | 768 | ✅ Yes | ✅ Proven | ❌ Too large |
+| gte-base | ~105MB | 2023 | 768 | ✅ Yes | ✅ Proven | ❌ Too large |
+
+**Phase 0A Decision: Test bge-small-en-v1.5**
+
+**Why this model:**
+- ✅ **Size**: 32.4MB (40% larger but GitHub-friendly, no LFS)
+- ✅ **Stability**: 14 months old (Sept 2023), production-proven, Langchain integration
+- ✅ **Mac compatibility**: Native ONNX Runtime on Apple Silicon (current setup works)
+- ✅ **Easy test**: Same 384 dims = no USearch rebuild, just re-embed observations
+- ✅ **BGE quality**: Better retrieval than MiniLM family (proven in benchmarks)
+
+**If it fails quality test (<0.65 avg):**
+- Stay with all-MiniLM-L6-v2 (current)
+- Focus on data quality improvement (more hand-written observations)
+- Revisit model selection when newer Mac-optimized models mature (2025+)
+
+**Why NOT bge-base/e5-base/gte-base:**
+- ❌ 105MB requires GitHub LFS (distribution complexity)
+- ❌ 5x size increase for ~5-8% quality improvement
+- ❌ 768 dims requires USearch rebuild (infrastructure change)
+- ❌ Violates on-device first principle
+
+**Meta-Observation: Validation Use Case**
+
+This session raised the question: *"Why did we pick ONNX previously?"*
+
+**Answer** (from session 20251030-151418):
+- **Cross-platform**: Mac + Linux + Windows, same vector space everywhere
+- **Pure Rust**: `ort` crate (production-proven, Twitter uses it for 100M+ users)
+- **No Python dependency**: Pre-converted ONNX models from HuggingFace
+- **Trade-off accepted**: 30-50ms (ONNX) vs 20ms (CoreML) for portability
+- **Rejected**: CoreML (Mac-only), rust-bert (Rosetta 2), Candle (stability issues)
+
+**This is exactly the kind of question Patina should answer!** Future query test:
+```bash
+patina query semantic "why did we choose ONNX for embeddings?"
+# Expected: Session 20251030-151418 decision context with cross-platform rationale
+```
 
 ---
