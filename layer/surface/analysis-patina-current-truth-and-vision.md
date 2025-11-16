@@ -76,7 +76,7 @@ A **modular approach** to evolving Patina, where each module:
 
 | Module | Claim | Reality | Verdict | Action Required |
 |--------|-------|---------|---------|-----------------|
-| **A1: Storage** | 463 observations in `observations.db` | **0 bytes, empty file, no schema** | ❌ FAIL | **FIX CODE**: Implement observation extraction |
+| **A1: Storage** | 463 observations in `observations.db` | **484 observations exist** ✅ (`.patina/storage/observations/observations.db`) | ⚠️ PARTIAL | **UPDATE**: Wrong path checked - observations exist at correct location |
 | **A2: Neuro-Symbolic** | 94 tests passing | **94 tests exist and pass** | ✅ PASS | No action |
 | **A2: Neuro-Symbolic** | Scryer Prolog + validation rules | ✅ TRUE (`src/reasoning/engine.rs`) | ✅ PASS | No action |
 | **A3: Vector Search** | ONNX + USearch HNSW | ✅ TRUE (`src/embeddings/`, `src/storage/`) | ✅ PASS | No action |
@@ -89,29 +89,43 @@ A **modular approach** to evolving Patina, where each module:
 
 ---
 
-### Critical Findings: The Observation Gap
+### Critical Findings: Storage Architecture Discovery
 
-**The Core Problem**: This document proposes improving a system that **doesn't have observations data**.
+**Session 20251115-154945 Update**: Initial audit was **WRONG** - observations DO exist, just at different path.
 
+**Original Claim** (INCORRECT):
 ```bash
-# Document claims:
-$ sqlite3 .patina/db/observations.db "SELECT COUNT(*) FROM observations"
-# Expected: 463
-
-# Reality:
+# Checked wrong path:
 $ du -h .patina/db/observations.db
-  0B	.patina/db/observations.db
+  0B	.patina/db/observations.db  # Empty file, wrong location
+```
 
-$ sqlite3 .patina/db/observations.db ".tables"
-Error: file is not a database
+**Actual Reality** (VERIFIED):
+```bash
+# Correct path:
+$ sqlite3 .patina/storage/observations/observations.db "SELECT COUNT(*) FROM observations"
+484  # Observations exist!
+
+$ ls -lh .patina/storage/observations/
+observations.db      # SQLite database (484 observations)
+observations.usearch # USearch vector index (814K)
 ```
 
 **What Actually Exists**:
-- `.patina/db/facts.db` (184K) - Contains 25 beliefs, not observations
+- `.patina/storage/observations/observations.db` - **484 observations** ✅ (unified table with observation_type)
+- `.patina/storage/observations/observations.usearch` - **814K vector index** ✅
+- `.patina/db/facts.db` (184K) - Legacy storage (28 items: patterns, technologies, decisions, challenges)
 - `.patina/db/code.db` (2.4M) - Tree-sitter code index
-- `.patina/db/observations.db` (0 bytes) - **Empty**
 
-**Impact**: The entire "Current State Audit" is based on observations that don't exist. All retrieval quality testing (Topic 1) will fail because there's no data to retrieve.
+**Architecture Discovery**: Two parallel storage systems exist:
+1. **Modern** (unified): `.patina/storage/observations/` - Single `observations` table with `observation_type` field
+2. **Legacy** (fragmented): `.patina/db/facts.db` - Separate tables per type (pre-event-sourcing design)
+
+**Code Analysis**:
+- `src/storage/observations.rs` (338 lines) - Production-ready modern system
+- `src/commands/embeddings/mod.rs:10` - Had tech debt pointing to legacy `facts.db` (fixed in session)
+
+**Impact**: Original audit used wrong path. Modern unified system IS the correct architecture per codebase.
 
 ---
 
@@ -2723,8 +2737,91 @@ patina domains stats                           # Domain statistics
 
 ---
 
-**Status**: Ready to Start
-**Next Action**: Begin with **Topic 0 (Manual Smoke Test)** - 2-3 hours to validate core hypothesis
+## Topic 0 Implementation Progress (Session 20251115-154945)
+
+### Work Completed
+
+**Steps 1-3: Complete** ✅
+1. Selected 3 high-value sessions (20251111-152022, 20251108-075248, 20251107-124740)
+2. Hand-wrote 20 observations covering decisions, patterns, technologies, challenges
+3. Created `tests/smoke-test/manual-observations.sql` with proper UUID identifiers
+
+**Critical Bugs Fixed**:
+1. **USearch Index Immutability** (`src/storage/observations.rs:54`, `src/storage/beliefs.rs:54`)
+   - Bug: `.view()` creates read-only index → "Can't add to immutable index" error
+   - Fix: Changed to `.load()` for mutable indices
+
+2. **Database Path Mismatch** (`src/commands/embeddings/mod.rs:10`)
+   - Bug: Hardcoded to legacy `.patina/db/facts.db`
+   - Fix: Updated to modern `.patina/storage/observations/observations.db`
+
+3. **Legacy Schema Coupling** (`src/commands/embeddings/mod.rs:91-167`)
+   - Bug: Queried 4 separate tables (patterns, technologies, decisions, challenges)
+   - Fix: Simplified to single unified `observations` table query
+   - Result: 90 lines → 30 lines of code
+
+4. **Dead Code Cleanup**
+   - Deleted unused `extract_commit_observations()` function
+   - Enforced "no allow(dead_code)" rule
+   - Preserved design in doc (Topic 6, lines 1806-2034)
+
+### Current Blocker (Step 4)
+
+**Cannot Generate Embeddings** - Architectural coupling issue:
+
+```rust
+// Problem: ObservationStorage::insert() does TWO things:
+1. INSERT into SQLite (observations table)
+2. Add vector to USearch index
+
+// Current state:
+- 484 observations already in SQLite ✅
+- Need to build USearch index from existing rows
+- Current code tries to re-INSERT → UNIQUE constraint violation ❌
+```
+
+**Root Cause**: Dual storage (SQLite + USearch) lacks separate operations for:
+- Adding to SQLite only
+- Adding to index only
+- Adding to both (current `insert()`)
+
+**Solution Options**:
+1. **Add `build_index_from_db()` method** - Read SQLite, populate USearch index only
+2. **Add `add_to_index()` method** - Separate USearch operation from SQLite INSERT
+3. **Clear both and rebuild** - Nuclear option, loses existing data
+
+**Recommended**: Option 1 - implement index rebuild from existing SQLite data
+
+**Impact**: Cannot complete Topic 0 Steps 4-5 (generate embeddings, test retrieval) until architectural fix implemented
+
+### Implementation Path Forward
+
+```rust
+// Proposed addition to src/storage/observations.rs
+
+impl ObservationStorage {
+    /// Build USearch index from existing SQLite observations
+    ///
+    /// Use when:
+    /// - Observations exist in SQLite but index is missing/stale
+    /// - Migrating from old storage system
+    /// - Rebuilding after index corruption
+    pub fn rebuild_index(&mut self, embedder: &dyn EmbeddingEngine) -> Result<usize> {
+        // 1. Query all observations from SQLite
+        // 2. Generate embeddings for each
+        // 3. Add to USearch index (skip SQLite INSERT)
+        // 4. Save index
+        // 5. Return count of vectors added
+    }
+}
+```
+
+**Time Estimate**: 1-2 hours to implement + test
+
+---
+
+**Status**: Topic 0 In Progress (60% complete)
+**Next Action**: Fix architectural blocker, then complete **Topic 0 Steps 4-5** (embeddings + retrieval testing)
 
 **Decision Framework**:
 1. **Topic 0 succeeds** (3+/5 queries score 3+/5) → Proceed to Phase 1
