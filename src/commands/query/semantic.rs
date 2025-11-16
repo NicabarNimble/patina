@@ -72,27 +72,32 @@ pub fn execute(
         );
     }
 
-    // Get similarity scores by searching with search_with_scores
-    let mut embedder = create_embedder().context("Failed to create embedder")?;
-    let query_embedding = embedder
-        .embed(query)
-        .context("Failed to generate query embedding")?;
+    // Use quality-filtered search with scores
+    // Filters: source_type in (session, session_distillation, documentation),
+    // reliability > 0.85, deduplicated by content
+    let type_filter = observation_types.as_ref().and_then(|types| {
+        if types.len() == 1 {
+            Some(types[0].as_str())
+        } else {
+            None // Multi-type filter not supported in filtered search yet
+        }
+    });
 
     let scored_results = search
-        .observation_storage()
-        .search_with_scores(&query_embedding, limit * 2)
-        .context("Failed to search with scores")?;
+        .search_observations_filtered_with_scores(query, type_filter, limit * 2)
+        .context("Failed to search with quality filtering")?;
 
     // Filter and format results
     let mut results = Vec::new();
     for (observation, similarity) in scored_results {
-        // Apply filters
+        // Apply min score filter
         if similarity < min_score {
             continue;
         }
 
+        // Apply multi-type filter if needed (single-type already handled above)
         if let Some(ref types) = observation_types {
-            if !types.contains(&observation.observation_type) {
+            if types.len() > 1 && !types.contains(&observation.observation_type) {
                 continue;
             }
         }
