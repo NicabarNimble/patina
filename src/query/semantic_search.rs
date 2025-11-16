@@ -112,15 +112,29 @@ impl SemanticSearch {
         observation_type: &str,
         metadata: ObservationMetadata,
     ) -> Result<()> {
+        self.add_observation_with_id(Uuid::new_v4(), content, observation_type, metadata)
+    }
+
+    /// Add observation with specific ID (for loading from database)
+    ///
+    /// Used when rebuilding index from existing observations in database.
+    /// Preserves original IDs instead of generating new UUIDs.
+    pub fn add_observation_with_id(
+        &mut self,
+        id: Uuid,
+        content: &str,
+        observation_type: &str,
+        metadata: ObservationMetadata,
+    ) -> Result<()> {
         // Generate embedding
         let embedding = self
             .embedder
             .embed(content)
             .context("Failed to generate embedding")?;
 
-        // Create observation
+        // Create observation with provided ID
         let observation = Observation {
-            id: Uuid::new_v4(),
+            id,
             observation_type: observation_type.to_string(),
             content: content.to_string(),
             embedding,
