@@ -93,12 +93,22 @@ fn generate_observation_embeddings(
         })?
         .collect::<Result<Vec<_>, _>>()?;
 
-    for (_id, obs_type, content, metadata_json) in observations {
+    for (id_str, obs_type, content, metadata_json) in observations {
+        // Parse ID from database (preserves existing IDs like "obs_001")
+        let id = match uuid::Uuid::parse_str(&id_str) {
+            Ok(uuid) => uuid,
+            Err(_) => {
+                // If ID is not a valid UUID (like "obs_001"), generate one but warn
+                eprintln!("⚠️  Warning: Invalid UUID '{}', generating new ID", id_str);
+                uuid::Uuid::new_v4()
+            }
+        };
+
         // Parse metadata from JSON
         let metadata: ObservationMetadata = serde_json::from_str(&metadata_json)
             .unwrap_or_default();
 
-        search.add_observation_with_metadata(&content, &obs_type, metadata)?;
+        search.add_observation_with_id(id, &content, &obs_type, metadata)?;
         count += 1;
     }
 
