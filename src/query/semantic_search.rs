@@ -239,6 +239,13 @@ impl SemanticSearch {
     pub fn observation_storage_mut(&mut self) -> &mut ObservationStorage {
         &mut self.observation_storage
     }
+
+    /// Generate embedding for text using the underlying embedding engine
+    pub fn embed(&mut self, text: &str) -> Result<Vec<f32>> {
+        self.embedder
+            .embed(text)
+            .context("Failed to generate embedding")
+    }
 }
 
 #[cfg(test)]

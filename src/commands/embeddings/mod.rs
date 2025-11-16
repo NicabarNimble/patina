@@ -67,50 +67,51 @@ pub fn generate(force: bool) -> Result<()> {
 }
 
 /// Generate observation embeddings and store in ObservationStorage
-fn generate_observation_embeddings(
-    db_path: &str,
-    search: &mut SemanticSearch,
-) -> Result<usize> {
-    use patina::storage::ObservationMetadata;
-    use rusqlite::Connection;
+///
+/// Rebuilds USearch index from existing SQLite observations.
+/// Does NOT insert into SQLite - only generates embeddings and builds vector index.
+fn generate_observation_embeddings(_db_path: &str, search: &mut SemanticSearch) -> Result<usize> {
+    // Get mutable access to observation storage
+    let obs_storage = search.observation_storage_mut();
 
-    let conn = Connection::open(db_path).context("Failed to open observations database")?;
+    // Query all observations from SQLite (includes rowid)
+    let observations = obs_storage
+        .query_all()
+        .context("Failed to query observations from SQLite")?;
+
+    let total = observations.len();
+    println!("   Found {} observations in SQLite", total);
+
     let mut count = 0;
 
-    // Query unified observations table
-    let mut stmt = conn.prepare(
-        "SELECT id, observation_type, content, metadata FROM observations"
-    )?;
+    // Drop obs_storage reference so we can use search methods
+    let _ = obs_storage;
 
-    let observations: Vec<(String, String, String, String)> = stmt
-        .query_map([], |row| {
-            Ok((
-                row.get(0)?,  // id
-                row.get(1)?,  // observation_type
-                row.get(2)?,  // content
-                row.get(3)?,  // metadata
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+    // Process each observation: generate embedding and add to index
+    for (rowid, _id, _obs_type, content, _metadata_json) in observations {
+        // Generate embedding
+        let embedding = search
+            .embed(&content)
+            .context("Failed to generate embedding")?;
 
-    for (id_str, obs_type, content, metadata_json) in observations {
-        // Parse ID from database (preserves existing IDs like "obs_001")
-        let id = match uuid::Uuid::parse_str(&id_str) {
-            Ok(uuid) => uuid,
-            Err(_) => {
-                // If ID is not a valid UUID (like "obs_001"), generate one but warn
-                eprintln!("⚠️  Warning: Invalid UUID '{}', generating new ID", id_str);
-                uuid::Uuid::new_v4()
-            }
-        };
+        // Add to USearch index only (not SQLite)
+        search
+            .observation_storage_mut()
+            .add_to_index_only(rowid, &embedding)
+            .context("Failed to add to vector index")?;
 
-        // Parse metadata from JSON
-        let metadata: ObservationMetadata = serde_json::from_str(&metadata_json)
-            .unwrap_or_default();
-
-        search.add_observation_with_id(id, &content, &obs_type, metadata)?;
         count += 1;
+
+        if count % 100 == 0 {
+            println!("   Progress: {}/{} embeddings generated", count, total);
+        }
     }
+
+    // Save the index
+    search
+        .observation_storage_mut()
+        .save_index()
+        .context("Failed to save vector index")?;
 
     Ok(count)
 }

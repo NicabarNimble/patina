@@ -10,6 +10,10 @@ use std::path::{Path, PathBuf};
 use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 use uuid::Uuid;
 
+/// Type alias for observation row data from SQLite
+/// (rowid, id, observation_type, content, metadata)
+type ObservationRow = (i64, String, String, String, String);
+
 /// Dual storage for observations: SQLite + USearch
 pub struct ObservationStorage {
     vectors: Index,
@@ -244,6 +248,40 @@ impl ObservationStorage {
             |row| row.get(0),
         )?;
         Ok(count as usize)
+    }
+
+    /// Add observation to USearch index only (assumes already in SQLite)
+    ///
+    /// Use when rebuilding index from existing SQLite observations.
+    /// Does NOT insert into SQLite - only adds vector to USearch index.
+    pub fn add_to_index_only(&mut self, rowid: i64, embedding: &[f32]) -> Result<()> {
+        self.vectors
+            .add(rowid as u64, embedding)
+            .context("Failed to add vector to USearch index")?;
+        Ok(())
+    }
+
+    /// Query all observations from SQLite (for index rebuilding)
+    ///
+    /// Returns (rowid, id, observation_type, content, metadata) tuples.
+    pub fn query_all(&self) -> Result<Vec<ObservationRow>> {
+        let mut stmt = self
+            .db
+            .prepare("SELECT rowid, id, observation_type, content, metadata FROM observations")?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?, // rowid
+                    row.get(1)?, // id
+                    row.get(2)?, // observation_type
+                    row.get(3)?, // content
+                    row.get(4)?, // metadata
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(rows)
     }
 }
 
