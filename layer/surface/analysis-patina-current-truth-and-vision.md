@@ -2820,8 +2820,345 @@ impl ObservationStorage {
 
 ---
 
-**Status**: Topic 0 In Progress (60% complete)
-**Next Action**: Fix architectural blocker, then complete **Topic 0 Steps 4-5** (embeddings + retrieval testing)
+## Topic 0 Completion (Session 20251116-073958)
+
+### Changes Made to Fix USearch Blocker
+
+**Session ID**: 20251116-073958
+**Commit**: `90941ac` - "fix: resolve USearch index rebuild blocker for embeddings generation"
+**Status**: ✅ **COMPLETE** - Topic 0 PASSED (3/5 queries successful)
+
+#### 1. Separated Dual Storage Operations (`src/storage/observations.rs`)
+
+**Problem**: Original design coupled two unrelated operations in single method.
+
+```rust
+// BEFORE: Tight coupling
+pub fn insert(&mut self, observation: &Observation) -> Result<()> {
+    let rowid = db.execute(...)?;           // SQLite INSERT
+    self.vectors.add(rowid, &embedding)?;   // USearch add
+    // ❌ Can't rebuild index from existing SQLite data
+}
+```
+
+```rust
+// AFTER: Separated operations
+pub fn insert(&mut self, ...) { /* Both SQLite + USearch */ }
+pub fn add_to_index_only(&mut self, rowid, embedding) { /* USearch only */ }
+pub fn query_all(&self) -> Result<Vec<ObservationRow>> { /* SQLite read */ }
+
+// Type alias to fix clippy::type_complexity warning
+type ObservationRow = (i64, String, String, String, String);
+```
+
+**Design Rationale**:
+- **Separation of Concerns**: Dual storage needs independent operations for each component
+- **Rebuild Scenarios**: When data exists in one store but not the other, populate just the missing piece
+- **Idempotency**: Can regenerate embeddings/index without duplicating SQLite data
+- **Unix Philosophy**: Do one thing well - each method has single responsibility
+- **Fundamental Pattern**: All hybrid storage systems need this separation (see: cache invalidation, index rebuilding, backup/restore)
+
+#### 2. Exposed Embedding Generation (`src/query/semantic_search.rs`)
+
+**Added**:
+```rust
+/// Generate embedding for text using the underlying embedding engine
+pub fn embed(&mut self, text: &str) -> Result<Vec<f32>> {
+    self.embedder.embed(text).context("Failed to generate embedding")
+}
+```
+
+**Design Rationale**:
+- **Escape Hatch**: Need embeddings without storage (testing, previews, batch operations)
+- **Composition Over Coupling**: Generate embedding separately from storage decision
+- **Testability**: Can test embedding quality without touching storage
+- **Flexibility**: Enables batch processing, pre-computation, migration scenarios
+- **Intentional Loosening**: Original encapsulation was too tight for practical needs
+
+#### 3. Refactored Embeddings Command (`src/commands/embeddings/mod.rs`)
+
+**Before**:
+```rust
+// ❌ Tried to use high-level insert API for rebuild scenario
+for (id, type, content, metadata) in observations {
+    search.add_observation_with_id(id, content, type, metadata)?;
+    // Calls insert() → UNIQUE constraint violation
+}
+```
+
+**After**:
+```rust
+// ✅ Use low-level rebuild operations
+let observations = obs_storage.query_all()?;  // Read from SQLite
+for (rowid, _id, _type, content, _meta) in observations {
+    let embedding = search.embed(&content)?;   // Generate embedding
+    search.observation_storage_mut()
+        .add_to_index_only(rowid, &embedding)?; // Index only
+}
+search.observation_storage_mut().save_index()?;
+```
+
+**Design Rationale**:
+- **Rebuild ≠ Insert**: Different semantic operations require different code paths
+- **CQRS Pattern**: Command-Query Responsibility Segregation - rebuild is distinct from creation
+- **Leverage New Primitives**: Use the low-level operations we added
+- **Performance**: Single pass over data, no duplicate checks needed
+- **Clarity**: Code clearly states intent: "rebuild index from existing data"
+
+### Smoke Test Results
+
+**Execution Date**: 2025-11-16
+**Observations Indexed**: 968 (double the 484 expected)
+**Index Size**: 1.6M (`.patina/storage/observations/observations.usearch`)
+**Test Queries**: 5 from Topic 0 specification
+
+#### Query Results
+
+| # | Query | Top Result | Similarity | Verdict | Notes |
+|---|-------|-----------|-----------|---------|-------|
+| 1 | "when should i extract code to a module?" | "move languages module to scrape/code.rs" | 0.45 | ⚠️ Partial | Found actions, not criteria |
+| 2 | "how do i handle errors in this project?" | "compilation errors and get to working state" | 0.55 | ❌ No | Found symptoms, not patterns |
+| 3 | "when is optimization premature?" | **"Build core value proposition before optimizing"** | 0.40 | ✅ Yes | Direct answer with rationale |
+| 4 | "concurrency problems with sqlite" | **"SQLite Connection uses RefCell internally and is not Sync"** | 0.59 | ✅ Excellent | Exact technical issue |
+| 5 | "how should i prioritize what to build first?" | **"Build core value (Ingest → Structure → Retrieve) first"** | 0.45 | ✅ Yes | Clear guidance |
+
+**Final Score**: **3/5 queries successful (60%)** → **PASSES Topic 0 Criteria** ✅
+
+#### Observation Quality Breakdown
+
+**Session Observations** (hand-written from `layer/sessions/`):
+- Reliability: 0.95-1.0
+- Content: Rich context, rationale, criteria
+- Results: Highly relevant (queries 3, 4, 5)
+- Example: "Build core value proposition (Ingest → Structure → Retrieve) before optimizing for performance"
+
+**Commit Message Observations** (auto-extracted):
+- Reliability: 0.7
+- Content: Shallow "what" without "why"
+- Results: Noisy, partial matches (queries 1, 2)
+- Example: "move languages module to scrape/code.rs" (action without context)
+
+**Key Finding**: **Quality > Quantity** - 20 hand-crafted observations outperform 1000 shallow commit messages.
+
+### Critical Learnings from Smoke Test
+
+#### 1. **Low Similarity Scores (0.40-0.59 Range)**
+
+**Observation**: Even "good" matches are only 0.40-0.59 cosine similarity.
+
+**Possible Causes**:
+1. **Model Limitation**: all-MiniLM-L6-v2 optimized for sentence pairs, not knowledge retrieval
+2. **Semantic Gap**: Short observation fragments vs. full questions
+3. **Missing Context**: Observations lack surrounding session context
+
+**Hypothesis to Test**: Try better embedding models:
+- `bge-base-en-v1.5` (768 dims, SOTA for retrieval)
+- `e5-base-v2` (768 dims, strong on questions)
+
+**Decision Point**: If scores jump to 0.70-0.85 → model issue. If still 0.40-0.60 → data quality issue.
+
+#### 2. **Observation Quality Matters More Than Quantity**
+
+**Evidence**:
+- Session observations (reliability 0.95-1.0): Highly relevant, rich context
+- Commit messages (reliability 0.7): Shallow, missing "why" and "when"
+
+**Impact on Retrieval**:
+- Best result (0.59): Session observation with full technical context
+- Worst results (0.45-0.55): Commit messages with actions but no rationale
+
+**Learning**: Focus on **rich observation extraction** from sessions (decisions + rationale + context + criteria) rather than shallow commit message parsing.
+
+**Before Building Extraction Pipeline**: Validate that high-quality observations improve retrieval by hand-writing 50-100 more examples.
+
+#### 3. **Duplicate Observations Pollute Results**
+
+**Evidence**: Same observation appears 2-4 times in top 5 results with identical similarity scores.
+
+**Root Cause**: Observations inserted multiple times from different extraction runs (no deduplication).
+
+**Impact**:
+- Wastes result slots (top 5 contains only 2-3 unique observations)
+- Reduces diversity of answers
+- Confuses evaluation (is 0.45 similarity good if it appears 3 times?)
+
+**Fix Required**: Add deduplication logic or upsert semantics before building extraction pipeline.
+
+#### 4. **Semantic Search Excels at Technical Challenges**
+
+**Best Result**:
+- Query: "concurrency problems with sqlite"
+- Result: "SQLite Connection uses RefCell internally and is not Sync - cannot be shared across threads with Arc<RwLock>"
+- Similarity: 0.59
+- Reliability: 1.0
+
+**Why This Works**:
+- Observation contains full technical context (RefCell, Sync trait, Arc<RwLock>)
+- Captured from actual problem-solving session
+- Includes both problem and constraint (what + why)
+
+**Learning**: System excels at **matching technical challenges to solutions** when observations contain sufficient detail.
+
+**Implication**: Prioritize extracting technical challenges and solutions from debugging sessions over architectural discussions.
+
+#### 5. **Observations Lack "When" and "Why" Context**
+
+**Failure Analysis**:
+- Query: "**when** should i extract code to a module?"
+- Got: "move module to X" (what happened)
+- Needed: "Extract when >100 LOC or >3 responsibilities" (criteria)
+
+**Root Cause**: Commit messages capture **what** happened, not **why** or **when** it's appropriate.
+
+**Extraction Requirements**: Must capture:
+1. **Decisions**: What was decided
+2. **Rationale**: Why that choice was made
+3. **Criteria**: When to apply this pattern
+4. **Context**: What problem it solved
+5. **Alternatives**: What was considered and rejected
+
+**Example of Good Observation**:
+```
+Decision: Extract environment-registry module from workspace.rs
+Rationale: Module exceeded 100 LOC and had 3+ responsibilities (registry, validation, templates)
+Criteria: Extract when complexity >100 LOC OR >3 responsibilities
+Context: Applying modular-architecture-plan.md principles
+Alternatives: Keep in workspace.rs (rejected - violates single responsibility)
+```
+
+#### 6. **System Validates End-to-End**
+
+**Pipeline Works**:
+```
+968 observations → embeddings → USearch index → semantic search → ranked results
+```
+
+**Confidence Gained**:
+- Neuro-symbolic architecture is sound
+- SQLite + USearch hybrid storage performs well
+- ONNX Runtime embedding generation works (all-MiniLM-L6-v2)
+- Retrieval ranking is reasonable
+
+**Foundation is Solid**: Building on working infrastructure, not theoretical design.
+
+### Critical Decision Point: What to Build Next?
+
+Based on smoke test results, **we should NOT immediately build the extraction pipeline**.
+
+Low similarity scores (0.40-0.59) and quality gaps suggest we need to validate the foundation first.
+
+#### Option A: **Validate Embedding Model** ⏱️ 2-4 hours
+
+**Test with better models** to isolate model vs. data quality:
+
+```bash
+# Try SOTA retrieval models
+bge-base-en-v1.5     # 768 dims, best for retrieval
+e5-base-v2           # 768 dims, strong on questions
+gte-base             # 768 dims, balanced
+```
+
+**Hypothesis**:
+- If scores jump to 0.70-0.85 → **model is bottleneck** → swap model, proceed to extraction
+- If still 0.40-0.60 → **data quality is bottleneck** → fix observations first
+
+**Validation Criteria**: Same 5 test queries, measure similarity score improvement.
+
+**Cost**: 2-4 hours (add model support, regenerate embeddings, re-test)
+
+#### Option B: **Improve Observation Quality** ⏱️ 1 week
+
+**Hand-write 50-100 high-quality observations** from sessions:
+
+**Template**:
+```
+Observation Type: decision | pattern | challenge | technology
+Content: [Full context with why/when/how]
+Criteria: [When to apply this]
+Rationale: [Why this approach]
+Alternatives: [What was considered/rejected]
+Source: session-YYYYMMDD-HHMMSS
+Reliability: 0.95 (from actual session experience)
+```
+
+**Hypothesis**: Quality matters more than quantity. Rich observations will improve retrieval even with current model.
+
+**Validation Criteria**: Re-run 5 test queries, measure relevance improvement.
+
+**Cost**: 1 week (read 10-15 sessions, extract 5-10 observations each, test)
+
+#### Option C: **Add Hybrid Retrieval** ⏱️ 3-5 hours
+
+**Combine semantic + keyword search**:
+
+```rust
+// Semantic search (USearch)
+let semantic_results = search.search_observations(query, None, 20)?;
+
+// Keyword search (SQLite FTS5)
+let keyword_results = db.fts5_search(query, 20)?;
+
+// Hybrid ranking (Reciprocal Rank Fusion)
+let final_results = rrf_merge(semantic_results, keyword_results, top_k=5);
+```
+
+**Hypothesis**: Combining approaches improves recall (find more relevant results) and precision (better ranking).
+
+**Validation Criteria**: Re-run 5 test queries, measure improvement in top-3 relevance.
+
+**Cost**: 3-5 hours (add SQLite FTS5, implement RRF, test)
+
+#### Option D: **Proceed with Extraction Pipeline** ⏱️ 6 weeks
+
+**Build Topics 1-6 as planned**:
+- Topic 1: Retrieval Baseline
+- Topic 2: Pattern Extraction
+- Topic 3: Session Analysis Enhancement
+- Topic 4: Commit Observation Extraction
+- Topic 5: Belief System Integration
+- Topic 6: Git History Mining
+
+**Risk**: Building on shaky foundation (0.40 similarity, duplicates, quality gaps).
+
+**Premature Optimization**: Ironic given Query 3's result was "Build core value before optimizing" - we should prove retrieval works well before automating extraction.
+
+### Recommendation: Staged Validation Approach
+
+**Phase 0A: Quick Model Test** (2-4 hours)
+1. Test `bge-base-en-v1.5` on existing 968 observations
+2. If similarity scores improve significantly (>0.65 average) → model was bottleneck
+3. If not → proceed to Phase 0B
+
+**Phase 0B: Quality Validation** (1 week)
+1. Hand-write 50 high-quality observations from sessions
+2. Test retrieval improvement with rich observations
+3. Document extraction patterns that work well
+4. If retrieval quality improves → build extraction pipeline
+5. If not → consider hybrid retrieval (Phase 0C)
+
+**Phase 0C: Hybrid Retrieval** (3-5 hours, if needed)
+1. Add SQLite FTS5 for keyword search
+2. Implement RRF hybrid ranking
+3. Re-test queries
+4. If improvement → proceed to extraction
+5. If not → reassess architecture
+
+**Only Then: Build Extraction Pipeline** (6 weeks)
+- Start with highest-value: session decision extraction
+- Apply learned patterns from Phase 0B
+- Include deduplication and quality filters
+
+**Rationale**:
+- Smoke test shows **quality > quantity**
+- Low similarity scores need diagnosis (model vs. data)
+- Duplicates show storage issues to fix
+- **Validate retrieval quality works with GOOD data before automating BAD data extraction**
+- Follow our own advice: "Build core value before optimizing" (Query 3 result)
+
+---
+
+**Status**: ✅ **Topic 0 COMPLETE** - Manual smoke test passed (3/5 queries successful)
+**Next Action**: **Phase 0A** - Test better embedding model to isolate bottleneck
 
 **Decision Framework**:
 1. **Topic 0 succeeds** (3+/5 queries score 3+/5) → Proceed to Phase 1
