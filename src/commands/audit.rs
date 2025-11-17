@@ -9,10 +9,6 @@ use std::time::{Duration, SystemTime};
 pub struct FileInfo {
     pub path: PathBuf,
     pub size: u64,
-    pub modified: SystemTime,
-    pub category: FileCategory,
-    pub git_status: GitStatus,
-    pub safety: SafetyLevel,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,7 +135,6 @@ fn scan_files(project_root: &Path) -> Result<FileAudit> {
             Err(_) => continue, // Skip files we can't read
         };
         let size = metadata.len();
-        let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
 
         // Categorize file
         let category = categorize_file(rel_path);
@@ -148,10 +143,6 @@ fn scan_files(project_root: &Path) -> Result<FileAudit> {
         let file_info = FileInfo {
             path: rel_path.to_path_buf(),
             size,
-            modified,
-            category,
-            git_status,
-            safety: safety.clone(),
         };
 
         // Sort into safety buckets
@@ -787,52 +778,6 @@ fn format_date(time: SystemTime) -> String {
     } else {
         "unknown".to_string()
     }
-}
-
-fn display_category(title: &str, files: &[FileInfo]) -> Result<()> {
-    if files.is_empty() {
-        return Ok(());
-    }
-
-    let total_size: u64 = files.iter().map(|f| f.size).sum();
-    println!(
-        "{} ({} files, {})",
-        title,
-        files.len(),
-        format_size(total_size)
-    );
-
-    // Group by directory or category
-    let mut by_dir: std::collections::BTreeMap<String, Vec<&FileInfo>> =
-        std::collections::BTreeMap::new();
-
-    for file in files {
-        let dir = file
-            .path
-            .parent()
-            .and_then(|p| p.to_str())
-            .unwrap_or(".")
-            .to_string();
-        by_dir.entry(dir).or_default().push(file);
-    }
-
-    // Show top directories
-    for (dir, dir_files) in by_dir.iter().take(10) {
-        let dir_size: u64 = dir_files.iter().map(|f| f.size).sum();
-        println!(
-            "  {:<40} {} files, {}",
-            format!("{}/*", dir),
-            dir_files.len(),
-            format_size(dir_size)
-        );
-    }
-
-    if by_dir.len() > 10 {
-        println!("  ... and {} more directories", by_dir.len() - 10);
-    }
-
-    println!();
-    Ok(())
 }
 
 fn format_size(bytes: u64) -> String {
