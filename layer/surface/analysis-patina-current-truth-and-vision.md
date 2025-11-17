@@ -3,7 +3,7 @@
 **Date**: 2025-11-13 (Updated: 2025-11-17)
 **Reviewer**: Expert in ML Systems & Patina Architecture
 **Purpose**: Document current state and propose modular path forward
-**Status**: Topic 0 & Phase 0A/0B Complete - Topic 1 In Progress
+**Status**: Topic 0, Phase 0A/0B, Topic 1 & Topic 2 Complete
 
 ---
 
@@ -3624,18 +3624,31 @@ patina-metal/tree-sitter-* linguist-vendored
 - Set quality threshold: reliability ≥ 0.85 for production use
 - Results: `tests/retrieval/BASELINE-FINDINGS.md`
 
+**✅ Topic 2: Session Extraction Quality** (COMPLETE - Session 20251117-132649)
+- Fixed filter threshold (> 0.85 → >= 0.85) to include session_distillation
+- Tested expanded dataset: 52 → 124 observations
+- Compared automated (session_distillation) vs manual (session) extraction
+- Finding: session_distillation degrades quality (keywords rank higher than actionable content)
+- Validation: Manual session extraction proven excellent (0.9-1.0 reliability justified)
+- Recommendation: Purge 60 session_distillation observations + 868 commit_message observations
+- Results: `tests/topic-2/FINDINGS.md`
+
 ### Next Steps
 
-**Topic 2: Session Extraction Quality** (READY)
-1. Test automated session extraction vs manual observations
-2. Measure extraction quality and reliability
-3. Validate session_distillation observations (60 at reliability 0.85)
-4. Set automation standards for production extraction
+**Recommended: Database Cleanup** (READY)
+- Purge 928 low-quality observations:
+  - 868 commit_message (reliability 0.7, zero retrieval value)
+  - 60 session_distillation (reliability 0.85, keywords only, degrades retrieval)
+- Keep 64 high-quality observations:
+  - 24 documentation (reliability 0.95-1.0)
+  - 40 manual session (reliability 0.85-1.0)
+- Benefit: Remove noise, improve retrieval quality, reduce index size (3.2 MB → ~200 KB)
 
-**Optional: Database Cleanup**
-- Consider purging 868 commit_message observations (0% retrieval value)
-- Reclaim 93% of database, keep only 124 high-quality observations
-- Benefit: Faster search, smaller index (3.2 MB → ~400 KB)
+**Topic 3: Automated Session Extraction** (IF NEEDED)
+- Design extraction that meets quality standards (full sentences, context, actionable)
+- Test on recent sessions (20251116-*, 20251117-*)
+- Target: reliability 0.90+ for automated extraction
+- Requirement: Must outperform manual curation to justify automation
 
 **Foundation Validated:**
 - ✅ Model proven (E5-base-v2 +68% improvement)
@@ -3646,12 +3659,21 @@ patina-metal/tree-sitter-* linguist-vendored
 
 **Topic 1 Result**: ✅ PASSED - Filtered retrieval delivers consistently high-quality results (avg similarity 0.834)
 
-**Findings**:
+**Topic 1 Findings**:
 - Quality filtering works (5.2% of data delivers 100% of value)
 - E5-base-v2 model performs exceptionally well
 - Documentation + session sources proven excellent
 - Commit message extraction proven ineffective (0% retrieval value)
 
-**Decision**: Proceed to Topic 2 (Session Extraction Quality)
+**Topic 2 Result**: ⚠️ PARTIAL PASS - session_distillation degrades retrieval quality
+
+**Topic 2 Findings**:
+- session_distillation observations are shallow keywords (not actionable)
+- Keywords rank higher than rich content (similarity ≠ value)
+- Manual session extraction validated as excellent quality
+- Automated extraction standards defined (full sentences, context, actionable)
+- Recommendation: Purge 928 low-quality observations (93% of dataset)
+
+**Decision**: Database cleanup recommended before continuing
 
 ---
