@@ -21,6 +21,26 @@ pub trait EmbeddingEngine {
     /// Generate embedding for a single text
     fn embed(&mut self, text: &str) -> Result<Vec<f32>>;
 
+    /// Generate embedding for a query text (with model-specific prefix if needed)
+    ///
+    /// For asymmetric models (e.g., BGE, E5), this applies query-specific formatting.
+    /// For symmetric models (e.g., all-MiniLM), this is identical to embed().
+    ///
+    /// Default implementation calls embed() for backwards compatibility.
+    fn embed_query(&mut self, text: &str) -> Result<Vec<f32>> {
+        self.embed(text)
+    }
+
+    /// Generate embedding for a passage text (with model-specific prefix if needed)
+    ///
+    /// For asymmetric models (e.g., BGE, E5), this applies passage-specific formatting.
+    /// For symmetric models (e.g., all-MiniLM), this is identical to embed().
+    ///
+    /// Default implementation calls embed() for backwards compatibility.
+    fn embed_passage(&mut self, text: &str) -> Result<Vec<f32>> {
+        self.embed(text)
+    }
+
     /// Generate embeddings for multiple texts (batch processing)
     fn embed_batch(&mut self, texts: &[String]) -> Result<Vec<Vec<f32>>>;
 
@@ -70,6 +90,8 @@ fn create_onnx_embedder(model_def: &ModelDefinition) -> Result<Box<dyn Embedding
     Ok(Box::new(OnnxEmbedder::new_from_paths(
         final_model_path,
         &tokenizer_path,
+        model_def.query_prefix.clone(),
+        model_def.passage_prefix.clone(),
     )?))
 }
 

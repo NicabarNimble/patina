@@ -60,10 +60,10 @@ impl SemanticSearch {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn add_belief(&mut self, content: &str) -> Result<()> {
-        // Generate embedding
+        // Generate embedding (passage - belief being stored)
         let embedding = self
             .embedder
-            .embed(content)
+            .embed_passage(content)
             .context("Failed to generate embedding")?;
 
         // Create belief
@@ -126,10 +126,10 @@ impl SemanticSearch {
         observation_type: &str,
         metadata: ObservationMetadata,
     ) -> Result<()> {
-        // Generate embedding
+        // Generate embedding (passage - observation being stored)
         let embedding = self
             .embedder
-            .embed(content)
+            .embed_passage(content)
             .context("Failed to generate embedding")?;
 
         // Create observation with provided ID
@@ -176,10 +176,10 @@ impl SemanticSearch {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn search_beliefs(&mut self, query: &str, top_k: usize) -> Result<Vec<Belief>> {
-        // Generate query embedding
+        // Generate query embedding (query - user search)
         let query_embedding = self
             .embedder
-            .embed(query)
+            .embed_query(query)
             .context("Failed to generate query embedding")?;
 
         // Search using storage
@@ -203,10 +203,10 @@ impl SemanticSearch {
         observation_type: Option<&str>,
         top_k: usize,
     ) -> Result<Vec<Observation>> {
-        // Generate query embedding
+        // Generate query embedding (query - user search)
         let query_embedding = self
             .embedder
-            .embed(query)
+            .embed_query(query)
             .context("Failed to generate query embedding")?;
 
         // Search using storage (with optional type filter)
@@ -278,10 +278,10 @@ impl SemanticSearch {
         observation_type: Option<&str>,
         top_k: usize,
     ) -> Result<Vec<(Observation, f32)>> {
-        // Generate query embedding
+        // Generate query embedding (query - user search)
         let query_embedding = self
             .embedder
-            .embed(query)
+            .embed_query(query)
             .context("Failed to generate query embedding")?;
 
         // Get broader candidate set with scores (4x to account for filtering)
@@ -351,6 +351,20 @@ impl SemanticSearch {
         self.embedder
             .embed(text)
             .context("Failed to generate embedding")
+    }
+
+    /// Generate embedding for a query (applies model-specific query formatting)
+    pub fn embed_query(&mut self, text: &str) -> Result<Vec<f32>> {
+        self.embedder
+            .embed_query(text)
+            .context("Failed to generate query embedding")
+    }
+
+    /// Generate embedding for a passage (applies model-specific passage formatting)
+    pub fn embed_passage(&mut self, text: &str) -> Result<Vec<f32>> {
+        self.embedder
+            .embed_passage(text)
+            .context("Failed to generate passage embedding")
     }
 }
 

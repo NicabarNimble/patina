@@ -38,6 +38,8 @@ download_quantized = "https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/ma
 download_tokenizer = "https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/tokenizer.json"
 download_alt_quantized = "https://huggingface.co/neuralmagic/bge-small-en-v1.5-quant/resolve/main/model.onnx"
 instructions = "Represents query as: 'Represent this sentence for searching relevant passages: {query}'"
+query_prefix = "Represent this sentence for searching relevant passages: "
+passage_prefix = ""
 
 [models.bge-base-en-v1-5]
 name = "bge-base-en-v1.5"
@@ -54,6 +56,8 @@ rust_support = "Good (ort compatible, ONNX available)"
 download_quantized = "https://huggingface.co/neuralmagic/bge-base-en-v1.5-quant/resolve/main/model.onnx"
 download_tokenizer = "https://huggingface.co/Xenova/bge-base-en-v1.5/resolve/main/tokenizer.json"
 instructions = "Represents query as: 'Represent this sentence for searching relevant passages: {query}'"
+query_prefix = "Represent this sentence for searching relevant passages: "
+passage_prefix = ""
 
 [models.e5-base-v2]
 name = "e5-base-v2"
@@ -67,6 +71,8 @@ performance = "Strong for question → document retrieval"
 size_int8 = "~105MB"
 rust_support = "Good (ort compatible, ONNX available)"
 instructions = "Prefix queries with 'query: ' and passages with 'passage: '"
+query_prefix = "query: "
+passage_prefix = "passage: "
 
 [models.gte-base]
 name = "gte-base"
