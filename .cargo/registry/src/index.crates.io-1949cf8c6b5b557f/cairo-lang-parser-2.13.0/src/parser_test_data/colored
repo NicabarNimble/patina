@@ -1,0 +1,43 @@
+//! > Test colored printing of parsed code.
+
+//! > test_runner_name
+test_colored_parsed_code(expect_diagnostics: true)
+
+//! > cairo_code
+>>> file: src/parser_test_data/cairo_test_files/colored.cairo
+
+//! > is_verbose
+false
+
+//! > expected_diagnostics
+
+//! > expected
+;
+#[attr]
+fn foo(var1: int var2: felt252) -> int {
+    let bla = 7 + true + 'abc'; // comment
+    return bar(bla);
+}
+
+//! > ==========================================================================
+
+//! > Test verbose colored printing of parsed code.
+
+//! > test_runner_name
+test_colored_parsed_code(expect_diagnostics: true)
+
+//! > cairo_code
+>>> file: src/parser_test_data/cairo_test_files/colored.cairo
+
+//! > is_verbose
+true
+
+//! > expected_diagnostics
+
+//! > expected
+;
+#[attr]
+fn foo<e>(var1: int <m>var2: felt252) -> int {
+    let bla <e>= 7 + true + 'abc'; // comment
+    return bar(bla);
+}

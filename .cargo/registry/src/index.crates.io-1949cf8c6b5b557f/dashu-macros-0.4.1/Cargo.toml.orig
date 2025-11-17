@@ -1,0 +1,31 @@
+[package]
+name = "dashu-macros"
+version = "0.4.1"
+authors = ["Jacob Zhong <cmpute@gmail.com>"]
+edition = "2021"
+description = "Procedure macros for creating big numbers"
+keywords = ["mathematics", "numerics", "arbitrary-precision"]
+categories = ["mathematics", "no-std"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cmpute/dashu"
+homepage = "https://github.com/cmpute/dashu"
+documentation = "https://docs.rs/dashu-macros"
+readme = "README.md"
+rust-version = "1.61"
+
+[package.metadata.docs.rs]
+all-features = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+dashu-base = { version = "0.4.0", default-features = false, path = "../base" }
+dashu-int = { version = "0.4.1", default-features = false, path = "../integer" }
+dashu-float = { version = "0.4.2", default-features = false, path = "../float" }
+dashu-ratio = { version = "0.4.1", default-features = false, path = "../rational" }
+
+quote = "1"
+proc-macro2 = "1"
+paste = "1.0"
+rustversion = "1.0"

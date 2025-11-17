@@ -1,0 +1,12 @@
+[package]
+name = "divrem"
+version = "1.0.0"
+authors = ["Letheed <letheed@outlook.com>"]
+description = "Division and modulus variants"
+documentation = "https://docs.rs/divrem"
+repository = "https://github.com/letheed/divrem"
+readme = "README.md"
+keywords = ["division", "modulus", "no_std"]
+categories = ["mathematics", "no-std"]
+license = "MIT"
+edition = "2018"

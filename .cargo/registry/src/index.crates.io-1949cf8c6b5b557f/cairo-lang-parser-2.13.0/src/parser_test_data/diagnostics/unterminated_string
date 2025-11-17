@@ -1,0 +1,57 @@
+//! > Test missing closing short string token
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+fn f() {
+   let unterminated_str = 'abc;
+}
+
+//! > expected_diagnostics
+error: Unterminated short string literal.
+ --> dummy_file.cairo:2:27-3:1
+     let unterminated_str = 'abc;
+ ___________________________^
+| }
+|_^
+
+error: Missing token ';'.
+ --> dummy_file.cairo:3:2
+}
+ ^
+
+error: Missing token '}'.
+ --> dummy_file.cairo:3:2
+}
+ ^
+
+//! > ==========================================================================
+
+//! > Test missing closing string token
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+fn f() {
+   let unterminated_str = "abc;
+}
+
+//! > expected_diagnostics
+error: Unterminated string literal.
+ --> dummy_file.cairo:2:27-3:1
+     let unterminated_str = "abc;
+ ___________________________^
+| }
+|_^
+
+error: Missing token ';'.
+ --> dummy_file.cairo:3:2
+}
+ ^
+
+error: Missing token '}'.
+ --> dummy_file.cairo:3:2
+}
+ ^

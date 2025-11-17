@@ -1,0 +1,6 @@
+{
+  "git": {
+    "sha1": "f3c98f7e500fdd320d531187fd02842a0114b99e"
+  },
+  "path_in_vcs": "crates/cairo-lang-primitive-token"
+}

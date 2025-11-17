@@ -1,0 +1,57 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install latest stable
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+        components: rustfmt, clippy
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2.7.3
+    - name: Check Rustfmt
+      run: cargo fmt -- --check
+    - name: Check Clippy
+      run: cargo clippy
+    - name: Check semver
+      uses: obi1kenobi/cargo-semver-checks-action@v2
+
+  build:
+    strategy:
+      matrix:
+        channel: ["stable", "beta", "1.76.0"]
+        include:
+          - { channel: "nightly", components: "miri"}
+    needs: [lint]
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install latest stable
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{matrix.channel}}
+        components: ${{matrix.components}}
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2.7.3
+    - name: Build
+      run: cargo build --verbose
+    - name: Run tests
+      run: cargo test --verbose
+    - name: Run miri
+      if: matrix.channel == 'nightly'
+      run: cargo miri test --verbose

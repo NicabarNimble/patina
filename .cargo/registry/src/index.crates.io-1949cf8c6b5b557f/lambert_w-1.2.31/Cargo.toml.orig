@@ -1,0 +1,57 @@
+[package]
+name = "lambert_w"
+version = "1.2.31"
+edition = "2021"
+authors = ["Johanna Sörngård <jsorngard@gmail.com>"]
+categories = ["mathematics", "no-std", "no-std::no-alloc"]
+keywords = ["lambert-w", "product-log", "omega-function"]
+description = "Fast and accurate evaluation of the Lambert W function by the method of T. Fukushima."
+rust-version = "1.63.0"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/JSorngard/lambert_w"
+documentation = "https://docs.rs/lambert_w"
+exclude = ["tests/", ".github/", "CONTRIBUTING.md", "CHANGELOG.md", "benches", "examples"]
+
+[dependencies]
+num-complex = { version = "0.4.6", default-features = false }
+num-traits = { version = "0.2.19", default-features = false }
+
+[dev-dependencies]
+approx = { version = "0.5.1", default-features = false }
+criterion = { version = "0.7.0", features = ["html_reports"] }
+rand = { version = "0.9.0", default-features = false, features = ["small_rng"] }
+plotters = { version = "0.3.0", default-features = false, features = ["bitmap_encoder", "bitmap_backend", "ttf"] }
+no-panic = "0.1.0"
+
+[features]
+default = ["libm"]
+# Use the [`libm`](https://crates.io/crates/libm) crate
+# to compute square roots and logarithms during function evaluation instead of the standard library. Does nothing if the `std` feature is enabled.
+libm = ["num-traits/libm", "num-complex/libm"]
+# Use the standard library to compute square roots and logarithms for a potential performance gain.
+# When this feature is disabled the crate is `no_std` compatible.
+std = ["num-traits/std", "num-complex/std"]
+
+[package.metadata.docs.rs]
+# Document all features.
+all-features = true
+
+[package.metadata.cargo-all-features]
+always_include_features = ["libm"]
+
+[profile.release-lto]
+inherits = "release"
+lto = "fat"
+codegen-units = 1
+# We do not want panic = "abort", as we want to be able to catch panics in the tests.
+
+[[bench]]
+name = "random"
+harness = false
+
+[[bench]]
+name = "fixed"
+harness = false
+
+[[example]]
+name = "plot"

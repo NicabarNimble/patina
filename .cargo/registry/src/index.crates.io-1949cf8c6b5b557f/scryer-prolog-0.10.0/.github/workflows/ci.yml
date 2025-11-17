@@ -1,0 +1,238 @@
+name: CI
+
+on:
+  push:
+    branches: 
+      - master
+      - rebis-dev
+    tags:
+      - "v**"
+  pull_request:
+  schedule:
+    - cron: '0 0 * * 3' # At 12:00 AM, only on Wednesday
+  workflow_dispatch:
+
+permissions:
+  checks: write
+
+jobs:
+  style:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          rust-version: stable
+          targets: x86_64-unknown-linux-gnu
+          components: clippy, rustfmt
+          cache-context: style
+
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Check clippy
+        run: cargo clippy --no-deps --all-targets
+        if: ${{ !cancelled() }}
+
+  read-msrv:
+    runs-on: ubuntu-22.04
+    outputs: 
+      msrv: ${{ steps.read-declared-msrv.outputs.msrv }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read-declared-msrv
+        name: Read msrv from Cargo.toml rust_version field
+        run: echo "msrv=$(cargo metadata  --no-deps --format-version  1 | jq -r '.packages[] | select(.name = "scryer-prolog") | ."rust_version"')" >>  "$GITHUB_OUTPUT"
+          
+
+  build-test:
+    runs-on: ${{ matrix.os }}
+    needs: [read-msrv]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # operating systems
+          - { os: windows-latest, rust-version: stable,  target: 'x86_64-pc-windows-msvc',   publish: true }
+          - { os: macos-latest,   rust-version: stable,  target: 'x86_64-apple-darwin',      publish: true }
+          # architectures
+          - { os: ubuntu-22.04,   rust-version: stable,  target: 'x86_64-unknown-linux-gnu', publish: true }
+          - { os: ubuntu-22.04,   rust-version: stable,  target: 'i686-unknown-linux-gnu',   publish: true }
+          # FIXME(issue #2138): run wasm tests, failing to run since https://github.com/mthom/scryer-prolog/pull/2137 removed wasm-pack
+          - { os: ubuntu-22.04,   rust-version: nightly, target: 'wasm32-unknown-unknown',   publish: true, args: '--no-default-features' , test-args: '--no-run --no-default-features', use_swap: true }
+          # Cargo.toml rust-version
+          - { os: ubuntu-22.04,   rust-version: "${{ needs.read-msrv.outputs.msrv }}" ,  target: 'x86_64-unknown-linux-gnu'}
+          - { os: ubuntu-22.04,   rust-version: beta,    target: 'x86_64-unknown-linux-gnu'}
+          - { os: ubuntu-22.04,   rust-version: nightly, target: 'x86_64-unknown-linux-gnu', miri: true, components: "miri"} 
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actionhippie/swap-space@v1
+        if: matrix.use_swap
+        with:
+          size: 10G
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          rust-version: ${{ matrix.rust-version }}
+          targets: ${{ matrix.target }}
+          cache-context: ${{ matrix.os }}
+          components: ${{ matrix.components }}
+
+      # Build and test.
+      - name: Build library
+        run: cargo build --all-targets --target ${{ matrix.target }} ${{ matrix.args }} --verbose
+      - name: Test
+        run: cargo test --target ${{ matrix.target }} ${{ matrix.test-args }} --all
+
+      - name: Check miri
+        if: matrix.miri
+        run: cargo miri test
+
+      # On stable rust builds, build a binary and publish as a github actions
+      # artifact. These binaries could be useful for testing the pipeline but
+      # are only retained by github for 90 days.
+      - name: Build release binary
+        if: matrix.publish
+        run: |
+          cargo rustc --target ${{ matrix.target }} ${{ matrix.args }} --verbose --bin scryer-prolog --release
+          echo "$PWD/target/release" >> $GITHUB_PATH
+
+      - name: Install cargo-deb for creating debian packages
+        if: ${{ matrix.publish && contains(matrix.target,  'linux') }}
+        run: cargo install cargo-deb --force --locked
+        
+      - name: Build release debian packages
+        if: ${{ matrix.publish && contains(matrix.target,  'linux') }}
+        run: cargo deb --target ${{ matrix.target }}
+        
+      - name: Publish release binary artifact
+        if: matrix.publish
+        uses: actions/upload-artifact@v4
+        with:
+          path: |
+            target/${{ matrix.target }}/release/scryer-prolog*
+            target/${{ matrix.target }}/debian/scryer-prolog*.deb
+          name: scryer-prolog_${{ matrix.os }}_${{ matrix.target }}
+
+  logtalk-test:
+    # if: false # uncomment to disable job
+    runs-on: ubuntu-22.04
+    needs: [build-test]
+    steps:
+      # Download prebuilt ubuntu binary from build-test job, setup logtalk
+      - uses: actions/download-artifact@v4
+        with:
+          name: scryer-prolog_ubuntu-22.04_x86_64-unknown-linux-gnu
+      - run: |
+          chmod +x release/scryer-prolog
+          echo "$PWD/release" >> "$GITHUB_PATH"
+      - name: Install Logtalk
+        uses: logtalk-actions/setup-logtalk@master
+        with:
+          logtalk-version: "3.70.0"
+          logtalk-tool-dependencies: false
+
+      # Run logtalk  tests.
+      - name: Run Logtalk's prolog compliance test suite
+        working-directory: ${{ env.LOGTALKUSER }}/tests/prolog/
+        run: |
+          pwd
+          scryerlgt -g '{ack(tester)},halt.'
+          logtalk_tester -p scryer -g "set_logtalk_flag(clean,off)" -w -t 360 \
+            -f xunit \
+            -s "$LOGTALKUSER/tests/prolog" \
+            || echo "::warning ::logtalk compliance suite failed"
+            # -u "https://github.com/LogtalkDotOrg/logtalk3/tree/$LOGTALK_GIT_HASH/tests/prolog/" \
+      - name: Publish Logtalk test logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: logtalk-test-logs
+          path: '${{ env.LOGTALKUSER }}/tests/prolog/logtalk_tester_logs'
+      - name: Publish Logtalk test results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: logtalk-test-results
+          path: '${{ env.LOGTALKUSER }}/tests/prolog/**/*.xml'
+      - name: Publish Logtalk test summary
+        uses: EnricoMi/publish-unit-test-result-action/composite@master
+        with:
+          check_name: Logtalk test summary
+          files: '${{ env.LOGTALKUSER }}/tests/prolog/**/*.xml'
+          fail_on: nothing
+          comment_mode: off
+
+  report:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          rust-version: stable
+          targets: x86_64-unknown-linux-gnu
+          cache-context: report
+      - name: Install CLI tools
+        run: |
+          cargo install cargo2junit --force
+          version=`yq -ptoml -oj -r '.package[] | select(.name == "iai-callgrind") | .version' Cargo.lock`
+          echo installing iai-callgrind "$version"
+          cargo install iai-callgrind-runner --force --version "$version"
+          sudo apt install valgrind -y
+
+      - name: Test and report
+        run: |
+          RUSTC_BOOTSTRAP=1 cargo test --all -- -Z unstable-options --format json --report-time | cargo2junit > cargo_test_results.xml
+      - name: Publish cargo test results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-test-results
+          path: cargo_test_results.xml
+      - name: Publish cargo test summary
+        uses: EnricoMi/publish-unit-test-result-action/composite@master
+        with:
+          check_name: Cargo test summary
+          files: cargo_test_results.xml
+          fail_on: nothing
+          comment_mode: off
+
+      - run: cargo build --all-targets --release
+      - run: cargo test --bench setup --release
+      - run: cargo bench --bench run_iai -- --save-summary=json
+      - run: cargo bench --bench run_criterion
+      - run: cargo bench --bench run_criterion -- --profile-time 60
+
+      - name: Publish benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            target/criterion/*
+            target/iai/*
+            target/benchmark_inference_counts.json
+
+  # Publish binaries when building for a tag
+  release:
+    runs-on: ubuntu-20.04
+    needs: [build-test]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Zip binaries for release
+        run: |
+          zip scryer-prolog_macos-latest.zip ./scryer-prolog_macos-latest_x86_64-apple-darwin/scryer-prolog
+          zip scryer-prolog_ubuntu-22.04_i686.zip ./scryer-prolog_ubuntu-22.04_i686-unknown-linux-gnu/release/scryer-prolog ./scryer-prolog_ubuntu-22.04_i686-unknown-linux-gnu/debian/scryer-prolog*.deb
+          zip scryer-prolog_ubuntu-22.04_x86_64.zip ./scryer-prolog_ubuntu-22.04_x86_64-unknown-linux-gnu/release/scryer-prolog ./scryer-prolog_ubuntu-22.04_x86_64-unknown-linux-gnu/debian/scryer-prolog*.deb
+          zip scryer-prolog_windows-latest.zip ./scryer-prolog_windows-latest_x86_64-pc-windows-msvc/scryer-prolog.exe
+          zip scryer-prolog_wasm32.zip ./scryer-prolog_ubuntu-22.04_wasm32-unknown-unknown/scryer-prolog.wasm
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            scryer-prolog_macos-latest.zip
+            scryer-prolog_ubuntu-22.04_i686.zip
+            scryer-prolog_ubuntu-22.04_x86_64.zip
+            scryer-prolog_windows-latest.zip
+            scryer-prolog_wasm32.zip

@@ -1,0 +1,317 @@
+//! > Test lbrace in if condition
+
+//! > test_comments
+// TODO(spapini): Improve diagnostics.
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+fn f() {
+    if MyStruct{a: 0} == MyStruct{a: 1} {
+    }
+}
+
+//! > expected_diagnostics
+error: Skipped tokens. Expected: statement.
+ --> dummy_file.cairo:2:18
+    if MyStruct{a: 0} == MyStruct{a: 1} {
+                 ^
+
+//! > ==========================================================================
+
+//! > Test if inside if condition
+
+//! > test_comments
+// TODO(spapini): Improve diagnostics.
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+fn f() {
+    if 0 == if x {1} else {2} {
+    }
+}
+
+//! > expected_diagnostics
+error: Missing tokens. Expected an expression.
+ --> dummy_file.cairo:2:12
+    if 0 == if x {1} else {2} {
+           ^
+
+error: Skipped tokens. Expected: '{'.
+ --> dummy_file.cairo:2:13
+    if 0 == if x {1} else {2} {
+            ^^^^
+
+//! > ==========================================================================
+
+//! > Test if-let missing pattern
+
+//! > test_comments
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+fn f() {
+    if let = 5 {
+    }
+}
+
+//! > expected_diagnostics
+error: Missing tokens. Expected a pattern.
+ --> dummy_file.cairo:2:11
+    if let = 5 {
+          ^
+
+//! > ==========================================================================
+
+//! > Test if-let no expression
+
+//! > test_comments
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+fn f() {
+    if let x {}
+}
+
+//! > expected_diagnostics
+error: Missing token '|'.
+ --> dummy_file.cairo:2:16
+    if let x {}
+               ^
+
+error: A trailing `|` is not allowed in an or-pattern.
+ --> dummy_file.cairo:3:1
+}
+^
+
+error: Missing token '='.
+ --> dummy_file.cairo:3:2
+}
+ ^
+
+error: Missing tokens. Expected an expression.
+ --> dummy_file.cairo:3:2
+}
+ ^
+
+error: Missing token '{'.
+ --> dummy_file.cairo:3:2
+}
+ ^
+
+error: Missing token '}'.
+ --> dummy_file.cairo:3:2
+}
+ ^
+
+error: Skipped tokens. Expected: pattern.
+ --> dummy_file.cairo:3:1
+}
+^
+
+//! > ==========================================================================
+
+//! > Test if-let equality check
+
+//! > test_comments
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+fn f(a:felt252 b:felt252) {
+    if let x == y {}
+}
+
+//! > expected_diagnostics
+error: Missing token ','.
+ --> dummy_file.cairo:1:15
+fn f(a:felt252 b:felt252) {
+              ^
+
+error: Missing token '|'.
+ --> dummy_file.cairo:2:13
+    if let x == y {}
+            ^
+
+error: Skipped tokens. Expected: pattern.
+ --> dummy_file.cairo:2:14
+    if let x == y {}
+             ^^
+
+error: Missing token '|'.
+ --> dummy_file.cairo:2:21
+    if let x == y {}
+                    ^
+
+error: A trailing `|` is not allowed in an or-pattern.
+ --> dummy_file.cairo:3:1
+}
+^
+
+error: Missing token '='.
+ --> dummy_file.cairo:3:2
+}
+ ^
+
+error: Missing tokens. Expected an expression.
+ --> dummy_file.cairo:3:2
+}
+ ^
+
+error: Missing token '{'.
+ --> dummy_file.cairo:3:2
+}
+ ^
+
+error: Missing token '}'.
+ --> dummy_file.cairo:3:2
+}
+ ^
+
+error: Skipped tokens. Expected: pattern.
+ --> dummy_file.cairo:3:1
+}
+^
+
+//! > ==========================================================================
+
+//! > Test if-let with parenthesis
+
+//! > test_comments
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+fn f() {
+    if (let x = 0) {}
+}
+
+//! > expected_diagnostics
+error: Missing token ')'.
+ --> dummy_file.cairo:2:9
+    if (let x = 0) {}
+        ^
+
+error: Missing token '{'.
+ --> dummy_file.cairo:2:9
+    if (let x = 0) {}
+        ^
+
+error: Missing token ';'.
+ --> dummy_file.cairo:2:18
+    if (let x = 0) {}
+                 ^
+
+error: Skipped tokens. Expected: statement.
+ --> dummy_file.cairo:2:18
+    if (let x = 0) {}
+                 ^
+
+error: Missing token '}'.
+ --> dummy_file.cairo:3:2
+}
+ ^
+
+//! > ==========================================================================
+
+//! > Test if-let with operators of precedence lower than `&&`
+
+//! > test_comments
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+fn f() {
+    // Check that tokens after the operator are skipped without diagnostics, and diagnostics inside
+    // the `if` body are reported.
+    if let x = 10  || false < > { += }
+    if let x = 10 && false || true {}
+    if let x = 0 += 2 {}
+    if let x = 0..2 {}
+}
+
+//! > expected_diagnostics
+error: Operator '||' is not allowed in let chains. Consider wrapping the expression in parentheses.
+ --> dummy_file.cairo:4:20
+    if let x = 10  || false < > { += }
+                   ^
+
+error: Skipped tokens. Expected: statement.
+ --> dummy_file.cairo:4:35
+    if let x = 10  || false < > { += }
+                                  ^^
+
+error: Operator '||' is not allowed in let chains. Consider wrapping the expression in parentheses.
+ --> dummy_file.cairo:5:28
+    if let x = 10 && false || true {}
+                           ^
+
+error: Operator '+=' is not allowed in let chains. Consider wrapping the expression in parentheses.
+ --> dummy_file.cairo:6:18
+    if let x = 0 += 2 {}
+                 ^
+
+error: Operator '..' is not allowed in let chains. Consider wrapping the expression in parentheses.
+ --> dummy_file.cairo:7:17
+    if let x = 0..2 {}
+                ^
+
+//! > ==========================================================================
+
+//! > Test let-chain starting with a boolean expression
+
+//! > test_comments
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+fn f() {
+    // The first line is fine.
+    if x == 5 && y == 3 && let x = 10 {}
+    if x == 5 || y == 333   && let x = 10 || false < > { += }
+    // Ok with parentheses.
+    if (x == 5 || y == 3) && let x = (10 || false) { }
+    if x += 3 && let x = 10 || false < > { += }
+}
+
+//! > expected_diagnostics
+error: Operator '||' is not allowed in let chains. Consider wrapping the expression in parentheses.
+ --> dummy_file.cairo:4:8
+    if x == 5 || y == 333   && let x = 10 || false < > { += }
+       ^^^^^^^^^^^^^^^^^^
+
+error: Operator '||' is not allowed in let chains. Consider wrapping the expression in parentheses.
+ --> dummy_file.cairo:4:43
+    if x == 5 || y == 333   && let x = 10 || false < > { += }
+                                          ^
+
+error: Skipped tokens. Expected: statement.
+ --> dummy_file.cairo:4:58
+    if x == 5 || y == 333   && let x = 10 || false < > { += }
+                                                         ^^
+
+error: Operator '+=' is not allowed in let chains. Consider wrapping the expression in parentheses.
+ --> dummy_file.cairo:7:8
+    if x += 3 && let x = 10 || false < > { += }
+       ^^^^^^
+
+error: Operator '||' is not allowed in let chains. Consider wrapping the expression in parentheses.
+ --> dummy_file.cairo:7:29
+    if x += 3 && let x = 10 || false < > { += }
+                            ^
+
+error: Skipped tokens. Expected: statement.
+ --> dummy_file.cairo:7:44
+    if x += 3 && let x = 10 || false < > { += }
+                                           ^^

@@ -1,0 +1,68 @@
+//! > Missing semicolon.
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+mod my_mod
+fn foo() {}
+
+//! > expected_diagnostics
+error: Expected either ';' or '{' after module name. Use ';' for an external module declaration or '{' for a module with a body.
+ --> dummy_file.cairo:1:11
+mod my_mod
+          ^
+
+//! > ==========================================================================
+
+//! > Missing lbrace.
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+mod my_mod }
+
+//! > expected_diagnostics
+error: Expected either ';' or '{' after module name. Use ';' for an external module declaration or '{' for a module with a body.
+ --> dummy_file.cairo:1:11
+mod my_mod }
+          ^
+
+error: Skipped tokens. Expected: Const/Enum/ExternFunction/ExternType/Function/Impl/InlineMacro/Module/Struct/Trait/TypeAlias/Use or an attribute.
+ --> dummy_file.cairo:1:12
+mod my_mod }
+           ^
+
+//! > ==========================================================================
+
+//! > Missing rbrace.
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+mod my_mod {
+fn foo() {}
+
+//! > expected_diagnostics
+error: Missing token '}'.
+ --> dummy_file.cairo:2:12
+fn foo() {}
+           ^
+
+//! > ==========================================================================
+
+//! > Invalid token after module name.
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+mod my_mod const X: felt252 = 5;
+
+//! > expected_diagnostics
+error: Expected either ';' or '{' after module name. Use ';' for an external module declaration or '{' for a module with a body.
+ --> dummy_file.cairo:1:11
+mod my_mod const X: felt252 = 5;
+          ^

@@ -1,0 +1,32 @@
+[package]
+name = "genco"
+version = "0.18.1"
+authors = ["John-John Tedro <udoprog@tedro.se>"]
+edition = "2018"
+rust-version = "1.88"
+description = "A whitespace-aware quasiquoter for beautiful code generation."
+documentation = "https://docs.rs/genco"
+readme = "README.md"
+homepage = "https://github.com/udoprog/genco"
+repository = "https://github.com/udoprog/genco"
+license = "MIT OR Apache-2.0"
+keywords = ["code-generation", "template"]
+categories = ["template-engine"]
+
+[features]
+default = ["std", "alloc"]
+std = []
+alloc = []
+
+[dependencies]
+genco-macros = { path = "./genco-macros", version = "0.18.1" }
+
+relative-path = "1.2.0"
+smallvec = "1.4.0"
+
+[dev-dependencies]
+anyhow = "1.0.31"
+rand = "0.7.3"
+
+[workspace]
+members = ["genco-macros"]

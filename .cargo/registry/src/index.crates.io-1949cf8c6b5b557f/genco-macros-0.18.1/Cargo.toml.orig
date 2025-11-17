@@ -1,0 +1,27 @@
+[package]
+name = "genco-macros"
+version = "0.18.1"
+authors = ["John-John Tedro <udoprog@tedro.se>"]
+edition = "2018"
+rust-version = "1.88"
+description = """
+A whitespace-aware quasiquoter for beautiful code generation.
+"""
+documentation = "https://docs.rs/genco"
+readme = "README.md"
+homepage = "https://github.com/udoprog/genco"
+repository = "https://github.com/udoprog/genco"
+license = "MIT OR Apache-2.0"
+keywords = ["code-generation", "template"]
+categories = ["template-engine"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(proc_macro_span, has_proc_macro_span)'] }
+
+[dependencies]
+syn = { version = "2.0.38", features = ["full"] }
+q = { package = "quote", version = "1.0.3" }
+proc-macro2 = { version = "1.0.10", features = ["span-locations"] }
+
+[lib]
+proc-macro = true

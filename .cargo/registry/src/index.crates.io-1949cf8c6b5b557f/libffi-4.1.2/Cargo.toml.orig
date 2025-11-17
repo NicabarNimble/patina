@@ -1,0 +1,28 @@
+[package]
+name = "libffi"
+version = "4.1.2"
+authors = ["Jesse A. Tov <jesse.tov@gmail.com>"]
+description = "Rust bindings for libffi"
+repository.workspace = true
+readme = "README.md"
+license.workspace = true
+keywords.workspace = true
+categories = ["development-tools::ffi"]
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+libffi-sys = { path = "../libffi-sys-rs", version = "^3.3" }
+libc = "0.2.65"
+
+[features]
+complex = []
+system = ["libffi-sys/system"]
+# Can be used to accelerate check builds by not building C code
+check_only = ["libffi-sys/check_only"]
+
+[package.metadata.docs.rs]
+features = ["system"]
+
+[lints]
+workspace = true

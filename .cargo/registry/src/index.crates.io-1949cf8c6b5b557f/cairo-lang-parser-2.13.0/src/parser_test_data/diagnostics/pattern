@@ -1,0 +1,52 @@
+//! > Test modifier followed by path.
+
+//! > test_runner_name
+get_diagnostics
+
+//! > cairo_code
+fn f() {
+    let ref abc::def = 5;
+    let A { x
+    let x = 5;
+}
+
+//! > expected_diagnostics
+error: Missing token '='.
+ --> dummy_file.cairo:2:16
+    let ref abc::def = 5;
+               ^
+
+error: Missing tokens. Expected an expression.
+ --> dummy_file.cairo:2:16
+    let ref abc::def = 5;
+               ^
+
+error: Missing token ';'.
+ --> dummy_file.cairo:2:16
+    let ref abc::def = 5;
+               ^
+
+error: Skipped tokens. Expected: statement.
+ --> dummy_file.cairo:2:16
+    let ref abc::def = 5;
+               ^^
+
+error: Missing token '}'.
+ --> dummy_file.cairo:3:14
+    let A { x
+             ^
+
+error: Missing token '='.
+ --> dummy_file.cairo:3:14
+    let A { x
+             ^
+
+error: Missing tokens. Expected an expression.
+ --> dummy_file.cairo:3:14
+    let A { x
+             ^
+
+error: Missing token ';'.
+ --> dummy_file.cairo:3:14
+    let A { x
+             ^
