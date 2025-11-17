@@ -1,0 +1,118 @@
+# Embedding Model Registry
+# Defines available models for Patina's semantic search
+#
+# **PLATFORM CONSTRAINT: Mac-First (Apple Silicon)**
+# - Patina targets macOS with Apple Silicon (M1/M2/M3)
+# - Models should leverage Metal GPU + Neural Engine
+# - ONNX Runtime uses CoreML execution provider (NOT CUDA)
+# - Prefer ONNX models with good CoreML performance
+
+[models.all-minilm-l6-v2]
+name = "all-MiniLM-L6-v2"
+description = "Sentence Transformers model, optimized for sentence similarity (384 dims)"
+path = "resources/models/all-minilm-l6-v2"
+dimensions = 384
+metric = "cosine"
+source = "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2"
+use_case = "Fast, general-purpose sentence similarity"
+performance = "Good for short texts, weaker for long-form retrieval"
+size_int8 = "23MB"
+maturity = "Proven (2021, 4+ years)"
+rust_support = "Excellent (current baseline, tested)"
+download_quantized = "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/onnx/model_quantized.onnx"
+download_tokenizer = "https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main/tokenizer.json"
+
+[models.bge-small-en-v1-5]
+name = "bge-small-en-v1.5"
+description = "BAAI General Embedding, small variant optimized for retrieval (384 dims)"
+path = "resources/models/bge-small-en-v1.5"
+dimensions = 384
+metric = "cosine"
+source = "https://huggingface.co/BAAI/bge-small-en-v1.5"
+use_case = "Retrieval, semantic search with size constraints"
+performance = "Better retrieval than MiniLM, 40% larger (32.4MB INT8), production-proven (Sept 2023)"
+size_int8 = "32.4MB"
+maturity = "Proven (14 months, Langchain integration)"
+rust_support = "Excellent (dedicated 'bge' crate, fastembed default model, ort compatible)"
+download_quantized = "https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/onnx/model_quantized.onnx"
+download_tokenizer = "https://huggingface.co/Xenova/bge-small-en-v1.5/resolve/main/tokenizer.json"
+download_alt_quantized = "https://huggingface.co/neuralmagic/bge-small-en-v1.5-quant/resolve/main/model.onnx"
+instructions = "Represents query as: 'Represent this sentence for searching relevant passages: {query}'"
+query_prefix = "Represent this sentence for searching relevant passages: "
+passage_prefix = ""
+
+[models.bge-base-en-v1-5]
+name = "bge-base-en-v1.5"
+description = "BAAI General Embedding, SOTA for retrieval tasks (768 dims)"
+path = "resources/models/bge-base-en-v1.5"
+dimensions = 768
+metric = "cosine"
+source = "https://huggingface.co/BAAI/bge-base-en-v1.5"
+use_case = "Retrieval, semantic search, question answering (requires LFS)"
+performance = "State-of-the-art for knowledge retrieval, 5x larger (105MB INT8)"
+size_int8 = "105MB"
+maturity = "Proven (14 months)"
+rust_support = "Good (ort compatible, ONNX available)"
+download_quantized = "https://huggingface.co/neuralmagic/bge-base-en-v1.5-quant/resolve/main/model.onnx"
+download_tokenizer = "https://huggingface.co/Xenova/bge-base-en-v1.5/resolve/main/tokenizer.json"
+instructions = "Represents query as: 'Represent this sentence for searching relevant passages: {query}'"
+query_prefix = "Represent this sentence for searching relevant passages: "
+passage_prefix = ""
+
+[models.e5-base-v2]
+name = "e5-base-v2"
+description = "E5 embeddings, strong for questions and asymmetric retrieval (768 dims)"
+path = "resources/models/e5-base-v2"
+dimensions = 768
+metric = "cosine"
+source = "https://huggingface.co/intfloat/e5-base-v2"
+use_case = "Question-answering, asymmetric search"
+performance = "Strong for question → document retrieval"
+size_int8 = "~105MB"
+rust_support = "Good (ort compatible, ONNX available)"
+download_quantized = "https://huggingface.co/intfloat/e5-base-v2/resolve/main/onnx/model_qint8_avx512_vnni.onnx"
+download_tokenizer = "https://huggingface.co/intfloat/e5-base-v2/resolve/main/tokenizer.json"
+instructions = "Prefix queries with 'query: ' and passages with 'passage: '"
+query_prefix = "query: "
+passage_prefix = "passage: "
+
+[models.nomic-embed-text-v1-5]
+name = "nomic-embed-text-v1.5"
+description = "Nomic SOTA embedding with 8192 token context, Matryoshka dimensions (768 dims)"
+path = "resources/models/nomic-embed-text-v1.5"
+dimensions = 768
+metric = "cosine"
+source = "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5"
+use_case = "Long-form retrieval, code documentation, SOTA open-source quality"
+performance = "MTEB ~62.4 (beats E5-base), 8192 context vs 512, Matryoshka flexible dims"
+size_int8 = "137MB"
+maturity = "Cutting-edge (2024, actively maintained by Nomic AI)"
+rust_support = "Excellent (ort compatible, multiple quantized ONNX formats)"
+download_quantized = "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5/resolve/main/onnx/model_quantized.onnx"
+download_tokenizer = "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5/resolve/main/tokenizer.json"
+instructions = "Prefix queries with 'search_query: ' and documents with 'search_document: '"
+query_prefix = "search_query: "
+passage_prefix = "search_document: "
+
+[models.gte-base]
+name = "gte-base"
+description = "General Text Embeddings, balanced performance (768 dims)"
+path = "resources/models/gte-base"
+dimensions = 768
+metric = "cosine"
+source = "https://huggingface.co/thenlper/gte-base"
+use_case = "General-purpose retrieval, good balance of speed and quality"
+performance = "Competitive with bge-base, slightly faster"
+size_int8 = "~105MB"
+rust_support = "Good (ort compatible, ONNX available)"
+
+# Default model configuration
+[default]
+model = "all-minilm-l6-v2"  # Safe default, already integrated
+benchmark_queries = [
+    "when should i extract code to a module?",
+    "how do i handle errors in this project?",
+    "when is optimization premature?",
+    "concurrency problems with sqlite",
+    "how should i prioritize what to build first?"
+]

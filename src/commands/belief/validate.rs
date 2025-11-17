@@ -70,10 +70,10 @@ pub fn execute(query: &str, min_score: f32, limit: usize) -> Result<()> {
         );
     }
 
-    // Generate query embedding and search
+    // Generate query embedding and search (query - user validating belief)
     let mut embedder = create_embedder().context("Failed to create embedder")?;
     let query_embedding = embedder
-        .embed(query)
+        .embed_query(query)
         .context("Failed to generate query embedding")?;
 
     let scored_results = search

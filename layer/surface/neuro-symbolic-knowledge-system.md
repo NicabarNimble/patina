@@ -174,7 +174,7 @@ User: /persona-start (kick back, dialogue)
 - **Location**: `src/storage/` - BeliefStorage, ObservationStorage
 - **What**: Dual storage (SQLite metadata + USearch HNSW indices)
 - **Capabilities**: Fast semantic search, persistent memory-mapped indices
-- **Status**: 86 tests passing
+- **Status**: 94 tests passing (added neuro-symbolic integration tests, removed FP32 model tests)
 
 #### 2.2 ONNX Embeddings (✅ Complete)
 - **Location**: `src/embeddings/` - OnnxEmbedder
@@ -935,11 +935,13 @@ strong_evidence_count(ClaimId, Count) :-
 
 ### Unit Tests
 
-**Vector layer** (✅ 86 tests passing):
+**Vector layer** (✅ 94 tests passing):
 - BeliefStorage roundtrip
 - ObservationStorage search
 - Type filtering
 - Embedding generation
+- Neuro-symbolic integration
+- Reasoning engine validation
 
 **Query command** (⏳ to add):
 - Semantic search returns results
