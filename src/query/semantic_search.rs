@@ -26,12 +26,14 @@ impl SemanticSearch {
         embedder: Box<dyn EmbeddingEngine>,
     ) -> Result<Self> {
         let base_path = storage_path.as_ref();
+        let dimension = embedder.dimension();
 
         let belief_storage = BeliefStorage::open(base_path.join("beliefs"))
             .context("Failed to open belief storage")?;
 
-        let observation_storage = ObservationStorage::open(base_path.join("observations"))
-            .context("Failed to open observation storage")?;
+        let observation_storage =
+            ObservationStorage::open_with_dimension(base_path.join("observations"), dimension)
+                .context("Failed to open observation storage")?;
 
         Ok(Self {
             belief_storage,

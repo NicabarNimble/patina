@@ -27,7 +27,12 @@ impl ObservationStorage {
     /// Creates two files:
     /// - `{path}/observations.db` - SQLite database
     /// - `{path}/observations.usearch` - USearch vector index
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+    /// Open observation storage with specified embedding dimension
+    ///
+    /// # Arguments
+    /// * `path` - Base directory for observation storage
+    /// * `dimension` - Embedding dimension (384 for small models, 768 for base models)
+    pub fn open_with_dimension<P: AsRef<Path>>(path: P, dimension: usize) -> Result<Self> {
         let base = path.as_ref();
         std::fs::create_dir_all(base)?;
 
@@ -37,9 +42,9 @@ impl ObservationStorage {
 
         Self::init_schema(&db)?;
 
-        // Configure USearch index
+        // Configure USearch index with specified dimension
         let options = IndexOptions {
-            dimensions: 384,         // all-MiniLM-L6-v2 embedding dimension
+            dimensions: dimension,
             metric: MetricKind::Cos, // Cosine similarity
             quantization: ScalarKind::F32,
             ..Default::default()
@@ -66,6 +71,11 @@ impl ObservationStorage {
             db,
             index_path,
         })
+    }
+
+    /// Open observation storage (backward compatibility - defaults to 384 dimensions)
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Self::open_with_dimension(path, 384)
     }
 
     /// Initialize SQLite schema

@@ -90,6 +90,8 @@ fn create_onnx_embedder(model_def: &ModelDefinition) -> Result<Box<dyn Embedding
     Ok(Box::new(OnnxEmbedder::new_from_paths(
         final_model_path,
         &tokenizer_path,
+        &model_def.name,
+        model_def.dimensions,
         model_def.query_prefix.clone(),
         model_def.passage_prefix.clone(),
     )?))
