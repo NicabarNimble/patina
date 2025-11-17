@@ -27,10 +27,24 @@ fn compare_int8_vs_fp32_quality() {
         return;
     }
 
-    let mut fp32_embedder =
-        OnnxEmbedder::new_from_paths(fp32_path, tokenizer_fp32).expect("FP32 model should load");
-    let mut int8_embedder =
-        OnnxEmbedder::new_from_paths(int8_path, tokenizer_int8).expect("INT8 model should load");
+    let mut fp32_embedder = OnnxEmbedder::new_from_paths(
+        fp32_path,
+        tokenizer_fp32,
+        "all-MiniLM-L6-v2-FP32",
+        384,
+        None,
+        None,
+    )
+    .expect("FP32 model should load");
+    let mut int8_embedder = OnnxEmbedder::new_from_paths(
+        int8_path,
+        tokenizer_int8,
+        "all-MiniLM-L6-v2-INT8",
+        384,
+        None,
+        None,
+    )
+    .expect("INT8 model should load");
 
     // Test queries from actual use case
     let queries = vec![

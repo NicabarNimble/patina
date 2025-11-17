@@ -1,0 +1,52 @@
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440003",
+    "session_id": null,
+    "type": "pattern",
+    "text": "Ask \"Are we solving the wrong problem?\" when hitting unexpected technical constraints - may indicate invented requirements",
+    "similarity": 0.6674621,
+    "evidence_strength": "medium",
+    "source_type": "session",
+    "reliability": 0.9
+  },
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440001",
+    "session_id": null,
+    "type": "decision",
+    "text": "Build core value proposition (Ingest → Structure → Retrieve) before optimizing for performance",
+    "similarity": 0.6551329,
+    "evidence_strength": "medium",
+    "source_type": "session",
+    "reliability": 0.95
+  },
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440014",
+    "session_id": null,
+    "type": "pattern",
+    "text": "Emergent design over prescriptive - let system discover patterns rather than predefine them",
+    "similarity": 0.61990047,
+    "evidence_strength": "medium",
+    "source_type": "session",
+    "reliability": 0.9
+  },
+  {
+    "id": "8b115b66-fc0b-4f98-ad53-8492c91579d1",
+    "session_id": null,
+    "type": "decision",
+    "text": "Profile before adding daemon infrastructure - 500ms embeddings load may not require optimization",
+    "similarity": 0.5987754,
+    "evidence_strength": "medium",
+    "source_type": "session",
+    "reliability": 0.9
+  },
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440016",
+    "session_id": null,
+    "type": "technology",
+    "text": "Neuro-symbolic architecture - combine Scryer Prolog (logical validation) with vector embeddings (semantic search)",
+    "similarity": 0.5882466,
+    "evidence_strength": "medium",
+    "source_type": "session",
+    "reliability": 1.0
+  }
+]
