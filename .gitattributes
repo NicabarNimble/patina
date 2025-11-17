@@ -1,0 +1,3 @@
+# Exclude vendored dependencies from language statistics
+patina-metal/grammars/** linguist-vendored
+layer/dust/repos/** linguist-vendored
