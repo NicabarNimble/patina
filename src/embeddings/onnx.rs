@@ -12,6 +12,8 @@ pub struct OnnxEmbedder {
     session: Session,
     tokenizer: Tokenizer,
     dimension: usize,
+    query_prefix: Option<String>,
+    passage_prefix: Option<String>,
 }
 
 impl OnnxEmbedder {
@@ -22,13 +24,24 @@ impl OnnxEmbedder {
         let model_path = Path::new("resources/models/all-MiniLM-L6-v2-int8.onnx");
         let tokenizer_path = Path::new("resources/models/tokenizer.json");
 
-        Self::new_from_paths(model_path, tokenizer_path)
+        Self::new_from_paths(model_path, tokenizer_path, None, None)
     }
 
     /// Create a new ONNX embedder from custom paths
     ///
     /// Allows specifying different model/tokenizer locations (useful for testing)
-    pub fn new_from_paths(model_path: &Path, tokenizer_path: &Path) -> Result<Self> {
+    ///
+    /// # Arguments
+    /// * `model_path` - Path to ONNX model file
+    /// * `tokenizer_path` - Path to tokenizer.json file
+    /// * `query_prefix` - Optional prefix for query embeddings (for asymmetric models like BGE)
+    /// * `passage_prefix` - Optional prefix for passage embeddings (for asymmetric models like E5)
+    pub fn new_from_paths(
+        model_path: &Path,
+        tokenizer_path: &Path,
+        query_prefix: Option<String>,
+        passage_prefix: Option<String>,
+    ) -> Result<Self> {
         // Load ONNX model
         if !model_path.exists() {
             bail!(
@@ -67,6 +80,8 @@ impl OnnxEmbedder {
             session,
             tokenizer,
             dimension: 384, // all-MiniLM-L6-v2 dimension
+            query_prefix,
+            passage_prefix,
         })
     }
 
@@ -122,6 +137,24 @@ impl OnnxEmbedder {
 }
 
 impl EmbeddingEngine for OnnxEmbedder {
+    fn embed_query(&mut self, text: &str) -> Result<Vec<f32>> {
+        let input = if let Some(prefix) = &self.query_prefix {
+            format!("{}{}", prefix, text)
+        } else {
+            text.to_string()
+        };
+        self.embed(&input)
+    }
+
+    fn embed_passage(&mut self, text: &str) -> Result<Vec<f32>> {
+        let input = if let Some(prefix) = &self.passage_prefix {
+            format!("{}{}", prefix, text)
+        } else {
+            text.to_string()
+        };
+        self.embed(&input)
+    }
+
     fn embed(&mut self, text: &str) -> Result<Vec<f32>> {
         // Tokenize
         let (input_ids, attention_mask) = self.tokenize(text)?;
@@ -216,7 +249,8 @@ mod tests {
             panic!("Test models missing. Run: ./scripts/download-test-models.sh");
         }
 
-        OnnxEmbedder::new_from_paths(test_model, test_tokenizer).expect("Test model should load")
+        OnnxEmbedder::new_from_paths(test_model, test_tokenizer, None, None)
+            .expect("Test model should load")
     }
 
     #[test]

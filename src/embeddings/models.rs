@@ -20,6 +20,14 @@ pub struct ModelDefinition {
     pub performance: String,
     #[serde(default)]
     pub instructions: Option<String>,
+
+    /// Query prefix for asymmetric models (e.g., "Represent this sentence for searching relevant passages: " for BGE)
+    #[serde(default)]
+    pub query_prefix: Option<String>,
+
+    /// Passage prefix for asymmetric models (e.g., "passage: " for E5)
+    #[serde(default)]
+    pub passage_prefix: Option<String>,
 }
 
 /// Model registry (from resources/models/registry.toml)

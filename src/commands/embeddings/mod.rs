@@ -89,9 +89,9 @@ fn generate_observation_embeddings(_db_path: &str, search: &mut SemanticSearch) 
 
     // Process each observation: generate embedding and add to index
     for (rowid, _id, _obs_type, content, _metadata_json) in observations {
-        // Generate embedding
+        // Generate embedding (passages - observations being stored)
         let embedding = search
-            .embed(&content)
+            .embed_passage(&content)
             .context("Failed to generate embedding")?;
 
         // Add to USearch index only (not SQLite)

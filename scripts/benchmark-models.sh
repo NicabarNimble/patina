@@ -19,9 +19,10 @@ QUERIES=(
 # Models to test (must be in resources/models/registry.toml)
 MODELS=(
     "all-minilm-l6-v2"
-    "bge-base-en-v1-5"
-    # "e5-base-v2"    # Uncomment when downloaded
-    # "gte-base"       # Uncomment when downloaded
+    "bge-small-en-v1-5"
+    # "bge-base-en-v1-5"  # 105MB, requires LFS
+    # "e5-base-v2"        # Uncomment when downloaded
+    # "gte-base"          # Uncomment when downloaded
 )
 
 RESULTS_DIR="$PROJECT_ROOT/tests/model-benchmarks"
