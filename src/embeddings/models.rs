@@ -88,8 +88,8 @@ impl Config {
             return Self::create_default();
         }
 
-        let content = std::fs::read_to_string(&config_path)
-            .context("Failed to read config file")?;
+        let content =
+            std::fs::read_to_string(&config_path).context("Failed to read config file")?;
 
         toml::from_str(&content).context("Failed to parse config TOML")
     }

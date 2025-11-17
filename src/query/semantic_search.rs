@@ -28,8 +28,9 @@ impl SemanticSearch {
         let base_path = storage_path.as_ref();
         let dimension = embedder.dimension();
 
-        let belief_storage = BeliefStorage::open(base_path.join("beliefs"))
-            .context("Failed to open belief storage")?;
+        let belief_storage =
+            BeliefStorage::open_with_dimension(base_path.join("beliefs"), dimension)
+                .context("Failed to open belief storage")?;
 
         let observation_storage =
             ObservationStorage::open_with_dimension(base_path.join("observations"), dimension)

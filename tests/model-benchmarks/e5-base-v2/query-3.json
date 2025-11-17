@@ -1,0 +1,52 @@
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440005",
+    "session_id": null,
+    "type": "decision",
+    "text": "Profile before adding daemon infrastructure - 500ms embeddings load may not require optimization",
+    "similarity": 0.80312055,
+    "evidence_strength": "strong",
+    "source_type": "session",
+    "reliability": 0.9
+  },
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440001",
+    "session_id": null,
+    "type": "decision",
+    "text": "Build core value proposition (Ingest → Structure → Retrieve) before optimizing for performance",
+    "similarity": 0.80023015,
+    "evidence_strength": "strong",
+    "source_type": "session",
+    "reliability": 0.95
+  },
+  {
+    "id": "00232e02-879f-4448-9c87-65934bd05a8a",
+    "session_id": null,
+    "type": "pattern",
+    "text": "Ask \"Are we solving the wrong problem?\" when hitting unexpected technical constraints - may indicate invented requirements",
+    "similarity": 0.7845441,
+    "evidence_strength": "strong",
+    "source_type": "session",
+    "reliability": 0.9
+  },
+  {
+    "id": "a1b2c3d4-0005-4001-8001-000000000003",
+    "session_id": null,
+    "type": "pattern",
+    "text": "When refactoring: start with simplest extractions first (read-only operations), maintain backward compatibility during migration, run both systems in parallel, keep rollback plan ready.",
+    "similarity": 0.76576424,
+    "evidence_strength": "strong",
+    "source_type": "documentation",
+    "reliability": 0.95
+  },
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440012",
+    "session_id": null,
+    "type": "decision",
+    "text": "Domains emerge automatically - LLM tags during scrape, discovers relationships during oxidize, no manual organization",
+    "similarity": 0.7643934,
+    "evidence_strength": "strong",
+    "source_type": "session",
+    "reliability": 0.95
+  }
+]

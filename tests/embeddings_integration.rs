@@ -3,35 +3,51 @@
 use patina::embeddings::{cosine_similarity, create_embedder, euclidean_distance, EmbeddingEngine};
 use std::path::Path;
 
-/// Get embedder for testing - tries production model first, falls back to test model
+/// Get embedder for testing - tries active model first, falls back to baseline
 fn get_test_embedder() -> Box<dyn EmbeddingEngine> {
-    // Try production model first (for local dev with full model)
+    // Try active model first (e.g., e5-base-v2)
     if let Ok(embedder) = create_embedder() {
         return embedder;
     }
 
-    // Fall back to quantized test model
-    let test_model = Path::new("target/test-models/all-MiniLM-L6-v2-int8.onnx");
-    let test_tokenizer = Path::new("target/test-models/tokenizer.json");
+    // Fall back to baseline model (all-minilm-l6-v2)
+    let model_path = Path::new("resources/models/all-minilm-l6-v2/model_quantized.onnx");
+    let tokenizer_path = Path::new("resources/models/all-minilm-l6-v2/tokenizer.json");
 
-    if !test_model.exists() || !test_tokenizer.exists() {
-        eprintln!("\n❌ Test models not found!");
-        eprintln!("\nRun this to download test models:");
-        eprintln!("  ./scripts/download-test-models.sh\n");
-        panic!("Test models missing. See instructions above.");
+    if !model_path.exists() || !tokenizer_path.exists() {
+        eprintln!("\n❌ Baseline model not found!");
+        eprintln!("\nRun this to download models:");
+        eprintln!("  ./scripts/download-active-model.sh\n");
+        panic!("Models missing. See instructions above.");
     }
 
     use patina::embeddings::OnnxEmbedder;
     Box::new(
-        OnnxEmbedder::new_from_paths(test_model, test_tokenizer).expect("Test model should load"),
+        OnnxEmbedder::new_from_paths(
+            model_path,
+            tokenizer_path,
+            "all-MiniLM-L6-v2",
+            384,
+            None,
+            None,
+        )
+        .expect("Baseline model should load"),
     )
 }
 
 #[test]
 fn test_embedder_creation() {
     let embedder = get_test_embedder();
-    assert_eq!(embedder.dimension(), 384, "Expected 384 dimensions");
-    assert_eq!(embedder.model_name(), "all-MiniLM-L6-v2 (ONNX)");
+    let dim = embedder.dimension();
+    assert!(
+        dim == 384 || dim == 768,
+        "Expected 384 or 768 dimensions, got {}",
+        dim
+    );
+    assert!(
+        !embedder.model_name().is_empty(),
+        "Model name should not be empty"
+    );
 }
 
 #[test]
@@ -41,7 +57,12 @@ fn test_single_embedding_generation() {
     let text = "This is a test sentence for semantic embedding";
     let embedding = embedder.embed(text).expect("Failed to generate embedding");
 
-    assert_eq!(embedding.len(), 384, "Embedding should have 384 dimensions");
+    let expected_dim = embedder.dimension();
+    assert_eq!(
+        embedding.len(),
+        expected_dim,
+        "Embedding should match embedder dimension"
+    );
     assert!(
         embedding.iter().any(|&x| x != 0.0),
         "Embedding should not be all zeros"
@@ -196,9 +217,16 @@ fn test_batch_embedding_generation() {
         .embed_batch(&texts)
         .expect("Failed to generate batch embeddings");
 
+    let expected_dim = embedder.dimension();
     assert_eq!(embeddings.len(), 3, "Should generate 3 embeddings");
     for (i, emb) in embeddings.iter().enumerate() {
-        assert_eq!(emb.len(), 384, "Embedding {} should have 384 dimensions", i);
+        assert_eq!(
+            emb.len(),
+            expected_dim,
+            "Embedding {} should have {} dimensions",
+            i,
+            expected_dim
+        );
         assert!(
             emb.iter().any(|&x| x != 0.0),
             "Embedding {} should not be all zeros",
