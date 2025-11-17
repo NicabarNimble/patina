@@ -3,7 +3,7 @@
 **Date**: 2025-11-13 (Updated: 2025-11-17)
 **Reviewer**: Expert in ML Systems & Patina Architecture
 **Purpose**: Document current state and propose modular path forward
-**Status**: Topic 0 & Phase 0A/0B Complete - Ready for Topic 1
+**Status**: Topic 0 & Phase 0A/0B Complete - Topic 1 In Progress
 
 ---
 
@@ -36,13 +36,13 @@
 Patina has three working systems:
 
 1. **Neuro-Symbolic Reasoning** (94 tests passing) - Scryer Prolog + vector search
-2. **Embeddings & Vector Search** - ONNX Runtime + USearch HNSW (CPU)
-3. **Session Tracking** - 273 markdown sessions in `layer/sessions/`
+2. **Embeddings & Vector Search** - E5-base-v2 model (768-dim) + USearch HNSW (CPU)
+3. **Session Tracking** - 277 markdown sessions in `layer/sessions/`
 
-Plus partial implementations:
-- SQLite storage schema (0 observations - extraction unimplemented)
-- Code indexing via tree-sitter (working)<... i changed this
-- CLI commands for code scraping and belief validation (working)
+Plus operational features:
+- **992 observations** in SQLite with quality filtering (64 high-quality, 928 experimental)
+- Code indexing via tree-sitter (working)
+- CLI commands for semantic search and belief validation (working)
 
 ### What This Document Proposes
 
@@ -3566,7 +3566,8 @@ patina-metal/tree-sitter-* linguist-vendored
 ### Completed Work
 
 **✅ Topic 0: Manual Smoke Test** (COMPLETE)
-- 20 hand-written observations from sessions
+- 40 hand-written observations from 3 sessions (reliability: 0.85-1.0)
+- 24 documentation observations from core patterns (reliability: 0.95-1.0)
 - Embeddings bugs fixed (USearch immutability, database paths)
 - 5/5 queries successful after quality filtering
 - Smoke test: PASSED
@@ -3574,37 +3575,83 @@ patina-metal/tree-sitter-* linguist-vendored
 **✅ Phase 0A: Model Validation** (COMPLETE)
 - 5 models benchmarked (all-MiniLM, BGE-small, BGE-base, E5-base-v2, Nomic v1.5)
 - **E5-base-v2 selected** as production model (+68% vs baseline)
-- Model abstraction infrastructure built
+- Model abstraction infrastructure built (dynamic dimensions, asymmetric prefixes)
 - CI-driven active model testing implemented
 - Platform variance resolved (Mac ARM vs Linux x86)
 
 **✅ Phase 0B: Data Quality** (COMPLETE)
-- 24 documentation observations added
-- Quality filtering implemented
+- Quality filtering implemented (source_type + reliability thresholds)
 - Duplicate removal (40% → 0%)
-- Low-quality commit messages filtered out
+- Source tracking: session (0.85-1.0), documentation (0.95-1.0), commit_message (0.7)
+- Low-quality commit messages filtered out by default
+
+**✅ Experimental Extraction** (DATA EXISTS, CODE REMOVED)
+- 868 commit message observations (reliability: 0.7, experimental)
+- 60 session distillation observations (reliability: 0.85, legacy migration)
+- Extraction code was experimental and removed after testing
+- Data persists in database for testing filtering effectiveness
 
 **✅ Infrastructure** (COMPLETE)
 - Multi-dimension support (384/768)
-- Model registry system
-- Benchmark tooling
-- Linux validation scripts
+- Model registry system with ONNX Runtime
+- Benchmark tooling (5-model comparison suite)
+- Linux validation scripts (Docker-based CI simulation)
 - File audit tool (`patina doctor --audit`)
+
+### Current State
+
+**Database:**
+- **992 total observations** in `.patina/storage/observations/observations.db`
+  - 64 high-quality (session + documentation, reliability ≥0.85)
+  - 928 experimental (commit messages + legacy, reliability 0.7-0.85)
+- **3.2 MB vector index** (E5-base-v2, 768 dimensions)
+
+**Model:**
+- **E5-base-v2** (768-dim, asymmetric query/passage prefixes)
+- Proven +68% similarity improvement vs all-MiniLM baseline
+- Cross-platform compatible (Mac ARM + Linux x86 tests passing)
+
+**Quality Filtering:**
+- Active by default in `patina query semantic`
+- Filters: source_type (session|documentation) + reliability ≥0.85
+- Effectively suppresses 928 low-quality observations (93% of dataset)
+
+**✅ Topic 1: Retrieval Quality Baseline** (COMPLETE - Session 20251117-132649)
+- Created 10 systematic test queries covering all knowledge types
+- Established baseline: avg similarity 0.834 (range 0.779-0.893)
+- All queries returned relevant results (100% success rate)
+- Validated extraction sources: documentation (excellent), session (excellent), commit_message (poor)
+- Set quality threshold: reliability ≥ 0.85 for production use
+- Results: `tests/retrieval/BASELINE-FINDINGS.md`
 
 ### Next Steps
 
-**Ready for Topic 1: Retrieval Quality Baseline**
-- Establish systematic metrics with E5-base-v2
-- Create test query suite
-- Document baseline performance
-- Set quality thresholds for Topic 2
+**Topic 2: Session Extraction Quality** (READY)
+1. Test automated session extraction vs manual observations
+2. Measure extraction quality and reliability
+3. Validate session_distillation observations (60 at reliability 0.85)
+4. Set automation standards for production extraction
+
+**Optional: Database Cleanup**
+- Consider purging 868 commit_message observations (0% retrieval value)
+- Reclaim 93% of database, keep only 124 high-quality observations
+- Benefit: Faster search, smaller index (3.2 MB → ~400 KB)
 
 **Foundation Validated:**
 - ✅ Model proven (E5-base-v2 +68% improvement)
-- ✅ Quality filtering working
+- ✅ Quality filtering working (93% noise suppression)
 - ✅ Platform compatibility (Mac + Linux)
 - ✅ 93 tests passing in CI
+- ✅ 992 observations for testing retrieval quality
 
-**Decision**: Proceed to Topic 1 (Retrieval Quality Baseline)
+**Topic 1 Result**: ✅ PASSED - Filtered retrieval delivers consistently high-quality results (avg similarity 0.834)
+
+**Findings**:
+- Quality filtering works (5.2% of data delivers 100% of value)
+- E5-base-v2 model performs exceptionally well
+- Documentation + session sources proven excellent
+- Commit message extraction proven ineffective (0% retrieval value)
+
+**Decision**: Proceed to Topic 2 (Session Extraction Quality)
 
 ---
