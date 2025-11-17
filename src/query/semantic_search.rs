@@ -259,7 +259,7 @@ impl SemanticSearch {
             })
             .filter(|obs| {
                 // Only keep high reliability observations
-                obs.metadata.reliability.unwrap_or(0.0) > 0.85
+                obs.metadata.reliability.unwrap_or(0.0) >= 0.85
             })
             .collect();
 
@@ -316,7 +316,7 @@ impl SemanticSearch {
             })
             .filter(|(obs, _)| {
                 // Only keep high reliability observations
-                obs.metadata.reliability.unwrap_or(0.0) > 0.85
+                obs.metadata.reliability.unwrap_or(0.0) >= 0.85
             })
             .collect();
 
