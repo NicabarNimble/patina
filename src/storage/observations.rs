@@ -22,12 +22,11 @@ pub struct ObservationStorage {
 }
 
 impl ObservationStorage {
-    /// Open or create observation storage at the given path
+    /// Open or create observation storage with specified embedding dimension
     ///
     /// Creates two files:
     /// - `{path}/observations.db` - SQLite database
     /// - `{path}/observations.usearch` - USearch vector index
-    /// Open observation storage with specified embedding dimension
     ///
     /// # Arguments
     /// * `path` - Base directory for observation storage

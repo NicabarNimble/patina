@@ -23,7 +23,19 @@ impl BeliefStorage {
     /// Creates two files:
     /// - `{path}/beliefs.db` - SQLite database
     /// - `{path}/beliefs.usearch` - USearch vector index
+    ///
+    /// Uses 384 dimensions by default (all-MiniLM-L6-v2).
+    /// Use `open_with_dimension()` for other models.
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Self::open_with_dimension(path, 384)
+    }
+
+    /// Open or create belief storage with specified embedding dimension
+    ///
+    /// Creates two files:
+    /// - `{path}/beliefs.db` - SQLite database
+    /// - `{path}/beliefs.usearch` - USearch vector index
+    pub fn open_with_dimension<P: AsRef<Path>>(path: P, dimension: usize) -> Result<Self> {
         let base = path.as_ref();
         std::fs::create_dir_all(base)?;
 
@@ -33,9 +45,9 @@ impl BeliefStorage {
 
         Self::init_schema(&db)?;
 
-        // Configure USearch index
+        // Configure USearch index with specified dimension
         let options = IndexOptions {
-            dimensions: 384,         // all-MiniLM-L6-v2 embedding dimension
+            dimensions: dimension,
             metric: MetricKind::Cos, // Cosine similarity
             quantization: ScalarKind::F32,
             ..Default::default()

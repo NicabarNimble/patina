@@ -20,9 +20,9 @@ QUERIES=(
 MODELS=(
     "all-minilm-l6-v2"
     "bge-small-en-v1-5"
-    # "bge-base-en-v1-5"  # 105MB, requires LFS
-    # "e5-base-v2"        # Uncomment when downloaded
-    # "gte-base"          # Uncomment when downloaded
+    "bge-base-en-v1-5"
+    "e5-base-v2"
+    "nomic-embed-text-v1-5"
 )
 
 RESULTS_DIR="$PROJECT_ROOT/tests/model-benchmarks"
