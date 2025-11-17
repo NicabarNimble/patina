@@ -109,9 +109,7 @@ fn test_search_beliefs_ranking() {
 
     // Memory safety should be in top results (platform-agnostic)
     // Note: Platform variance (Mac ARM vs Linux x86) affects ONNX Runtime ranking
-    let memory_safety_in_top_results = results
-        .iter()
-        .any(|b| b.content.contains("memory safety"));
+    let memory_safety_in_top_results = results.iter().any(|b| b.content.contains("memory safety"));
     assert!(
         memory_safety_in_top_results,
         "Memory safety should be in results, got: {:?}",
