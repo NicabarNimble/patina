@@ -71,6 +71,10 @@ enum Commands {
         /// Update stale repositories (requires --repos)
         #[arg(long, requires = "repos")]
         update: bool,
+
+        /// Audit project files and directories for cleanup
+        #[arg(long)]
+        audit: bool,
     },
 
     /// Show version information
@@ -399,8 +403,9 @@ fn main() -> Result<()> {
             json,
             repos,
             update,
+            audit,
         } => {
-            let exit_code = commands::doctor::execute(json, repos, update)?;
+            let exit_code = commands::doctor::execute(json, repos, update, audit)?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }

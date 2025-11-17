@@ -37,14 +37,26 @@ struct ProjectStatus {
     sessions: usize,
 }
 
-pub fn execute(json_output: bool, check_repos: bool, update_repos: bool) -> Result<i32> {
+pub fn execute(
+    json_output: bool,
+    check_repos: bool,
+    update_repos: bool,
+    audit_files: bool,
+) -> Result<i32> {
+    // Find project root first (needed for all subcommands)
+    let project_root = SessionManager::find_project_root()
+        .context("Not in a Patina project directory. Run 'patina init' first.")?;
+
+    // If --audit flag is set, run file audit instead
+    if audit_files {
+        crate::commands::audit::execute(&project_root)?;
+        return Ok(0);
+    }
+
     // If --repos flag is set, handle repo management instead
     if check_repos {
         return handle_repos(update_repos);
     }
-    // Find project root
-    let project_root = SessionManager::find_project_root()
-        .context("Not in a Patina project directory. Run 'patina init' first.")?;
 
     let _non_interactive = json_output || std::env::var("PATINA_NONINTERACTIVE").is_ok();
 

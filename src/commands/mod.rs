@@ -1,4 +1,5 @@
 pub mod ask;
+pub mod audit;
 pub mod belief;
 pub mod build;
 pub mod doctor;
