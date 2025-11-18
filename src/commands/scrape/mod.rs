@@ -14,7 +14,7 @@ pub struct ScrapeConfig {
 impl ScrapeConfig {
     pub fn new(force: bool) -> Self {
         Self {
-            db_path: ".patina/db/code.db".to_string(),
+            db_path: ".patina/data/code.db".to_string(),
             force,
         }
     }

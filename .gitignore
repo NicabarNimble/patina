@@ -32,8 +32,7 @@ docker-compose.yml.backup/
 *.db-wal
 
 # Patina databases (regeneratable)
-.patina/db/
-.patina/storage/
+.patina/data/
 
 # ONNX models (large binary files, download on-demand)
 # Downloaded via scripts/download-active-model.sh

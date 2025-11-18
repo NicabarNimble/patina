@@ -76,7 +76,7 @@ fn main() -> Result<()> {
 
     println!("\n✅ Demo complete!");
     println!("\n💡 The demo uses temporary storage. In a real application,");
-    println!("   you'd persist beliefs to a permanent location like .patina/storage/beliefs");
+    println!("   you'd persist beliefs to a permanent location like .patina/data/beliefs");
 
     Ok(())
 }

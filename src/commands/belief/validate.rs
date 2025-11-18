@@ -43,7 +43,7 @@ pub struct ObservationSummary {
 /// * `limit` - Maximum number of observations to consider
 pub fn execute(query: &str, min_score: f32, limit: usize) -> Result<()> {
     // Check storage exists
-    let storage_path = ".patina/storage/observations";
+    let storage_path = ".patina/data/observations";
     if !Path::new(storage_path).exists() {
         anyhow::bail!(
             "Observation storage not found at {}\n\nRun `patina embeddings generate` first.",
@@ -55,7 +55,7 @@ pub fn execute(query: &str, min_score: f32, limit: usize) -> Result<()> {
     let embedder = create_embedder().context("Failed to create embedder")?;
 
     // Open semantic search engine
-    let search = SemanticSearch::new(".patina/storage", embedder)
+    let search = SemanticSearch::new(".patina/data", embedder)
         .context("Failed to open semantic search engine")?;
 
     // Verify storage has observations

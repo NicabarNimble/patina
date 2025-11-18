@@ -15,7 +15,7 @@
 //! ```no_run
 //! use patina::storage::BeliefStorage;
 //!
-//! let mut storage = BeliefStorage::open(".patina/storage")?;
+//! let mut storage = BeliefStorage::open(".patina/data")?;
 //! // SQLite handles metadata, USearch handles vector search
 //! # Ok::<(), anyhow::Error>(())
 //! ```
