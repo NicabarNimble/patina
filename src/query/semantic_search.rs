@@ -46,7 +46,7 @@ impl SemanticSearch {
     /// Open from default database path
     pub fn open_default() -> Result<Self> {
         let embedder = crate::embeddings::create_embedder()?;
-        Self::new(".patina/storage", embedder)
+        Self::new(".patina/data", embedder)
     }
 
     /// Add a new belief with automatic embedding
@@ -259,7 +259,7 @@ impl SemanticSearch {
             })
             .filter(|obs| {
                 // Only keep high reliability observations
-                obs.metadata.reliability.unwrap_or(0.0) > 0.85
+                obs.metadata.reliability.unwrap_or(0.0) >= 0.85
             })
             .collect();
 
@@ -316,7 +316,7 @@ impl SemanticSearch {
             })
             .filter(|(obs, _)| {
                 // Only keep high reliability observations
-                obs.metadata.reliability.unwrap_or(0.0) > 0.85
+                obs.metadata.reliability.unwrap_or(0.0) >= 0.85
             })
             .collect();
 

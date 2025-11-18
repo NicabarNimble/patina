@@ -7,7 +7,7 @@ use std::path::Path;
 
 /// Generate embeddings for all beliefs and observations
 pub fn generate(force: bool) -> Result<()> {
-    let storage_path = ".patina/storage/observations";
+    let storage_path = ".patina/data/observations";
     let db_path = format!("{}/observations.db", storage_path);
 
     if !Path::new(&db_path).exists() {
@@ -32,7 +32,7 @@ pub fn generate(force: bool) -> Result<()> {
     // If force flag, delete existing indices to rebuild from scratch
     if force {
         let obs_index = format!("{}/observations.usearch", storage_path);
-        let beliefs_index = ".patina/storage/beliefs/beliefs.usearch";
+        let beliefs_index = ".patina/data/beliefs/beliefs.usearch";
 
         if Path::new(&obs_index).exists() {
             std::fs::remove_file(&obs_index).context("Failed to remove observations index")?;
@@ -45,7 +45,7 @@ pub fn generate(force: bool) -> Result<()> {
     }
 
     // Create semantic search engine (for vector storage)
-    let mut search = SemanticSearch::new(".patina/storage", embedder)?;
+    let mut search = SemanticSearch::new(".patina/data", embedder)?;
 
     // Generate embeddings for beliefs (not implemented yet - TODO)
     println!();
@@ -118,7 +118,7 @@ fn generate_observation_embeddings(_db_path: &str, search: &mut SemanticSearch) 
 
 /// Show embedding coverage status
 pub fn status() -> Result<()> {
-    let db_path = ".patina/db/facts.db";
+    let db_path = ".patina/data/facts.db";
 
     if !Path::new(db_path).exists() {
         anyhow::bail!(

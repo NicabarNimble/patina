@@ -40,17 +40,17 @@ pub struct ReasoningEngine {
 impl ReasoningEngine {
     /// Create a new reasoning engine with confidence rules loaded.
     ///
-    /// Loads the confidence-rules.pl file from .patina/ directory and
-    /// initializes the Prolog machine for queries.
+    /// Loads the confidence-rules.pl and validation-rules.pl files
+    /// and initializes the Prolog machine for queries.
     pub fn new() -> Result<Self> {
         let mut machine = MachineBuilder::default().build();
 
-        // Load confidence rules from .patina directory
-        let confidence_rules = include_str!("../../.patina/confidence-rules.pl");
+        // Load confidence rules (compiled into binary at build time)
+        let confidence_rules = include_str!("confidence-rules.pl");
         machine.load_module_string("confidence", confidence_rules);
 
         // Load validation rules for belief validation
-        let validation_rules = include_str!("../../.patina/validation-rules.pl");
+        let validation_rules = include_str!("validation-rules.pl");
         machine.load_module_string("validation", validation_rules);
 
         Ok(Self { machine })
