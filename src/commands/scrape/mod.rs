@@ -148,7 +148,6 @@ mod tests {
     }
 }
 
-
 /// Execute code scraper (modular architecture)
 pub fn execute_code(
     init: bool,
