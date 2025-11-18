@@ -169,18 +169,6 @@ enum ScrapeCommands {
         #[command(flatten)]
         args: ScrapeArgs,
     },
-
-    /// Extract knowledge from markdown/text files (coming soon)
-    Docs {
-        #[command(flatten)]
-        args: ScrapeArgs,
-    },
-
-    /// Extract content from PDF documents (coming soon)
-    Pdf {
-        #[command(flatten)]
-        args: ScrapeArgs,
-    },
 }
 
 #[derive(Subcommand)]
@@ -363,12 +351,6 @@ fn main() -> Result<()> {
             match subcommand {
                 ScrapeCommands::Code { args } => {
                     commands::scrape::execute_code(args.init, args.query, args.repo, args.force)?;
-                }
-                ScrapeCommands::Docs { args } => {
-                    commands::scrape::execute_docs(args.init, args.query, args.repo, args.force)?;
-                }
-                ScrapeCommands::Pdf { args } => {
-                    commands::scrape::execute_pdf(args.init, args.query, args.repo, args.force)?;
                 }
             }
         }
