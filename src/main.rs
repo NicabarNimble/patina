@@ -169,6 +169,18 @@ enum ScrapeCommands {
         #[command(flatten)]
         args: ScrapeArgs,
     },
+    /// Extract git commit history and co-change relationships
+    Git {
+        /// Full rebuild (ignore incremental)
+        #[arg(long)]
+        full: bool,
+    },
+    /// Extract sessions, goals, and observations from session files
+    Sessions {
+        /// Full rebuild (ignore incremental)
+        #[arg(long)]
+        full: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -339,18 +351,40 @@ fn main() -> Result<()> {
             commands::test::execute()?;
         }
         Commands::Scrape { command } => {
-            // Default to Code subcommand with default args for backward compatibility
-            let subcommand = command.unwrap_or(ScrapeCommands::Code {
-                args: ScrapeArgs {
-                    init: false,
-                    query: None,
-                    repo: None,
-                    force: false,
-                },
-            });
-            match subcommand {
-                ScrapeCommands::Code { args } => {
+            match command {
+                None => {
+                    // Run all scrapers
+                    println!("🔄 Running all scrapers...\n");
+
+                    println!("📊 [1/3] Scraping code...");
+                    commands::scrape::execute_code(false, None, None, false)?;
+
+                    println!("\n📊 [2/3] Scraping git...");
+                    let git_stats = commands::scrape::git::run(false)?;
+                    println!("  • {} commits", git_stats.items_processed);
+
+                    println!("\n📚 [3/3] Scraping sessions...");
+                    let session_stats = commands::scrape::sessions::run(false)?;
+                    println!("  • {} sessions", session_stats.items_processed);
+
+                    println!("\n✅ All scrapers complete!");
+                }
+                Some(ScrapeCommands::Code { args }) => {
                     commands::scrape::execute_code(args.init, args.query, args.repo, args.force)?;
+                }
+                Some(ScrapeCommands::Git { full }) => {
+                    let stats = commands::scrape::git::run(full)?;
+                    println!("\n📊 Git Scrape Summary:");
+                    println!("  • Commits processed: {}", stats.items_processed);
+                    println!("  • Time elapsed: {:?}", stats.time_elapsed);
+                    println!("  • Database size: {} KB", stats.database_size_kb);
+                }
+                Some(ScrapeCommands::Sessions { full }) => {
+                    let stats = commands::scrape::sessions::run(full)?;
+                    println!("\n📊 Sessions Scrape Summary:");
+                    println!("  • Sessions processed: {}", stats.items_processed);
+                    println!("  • Time elapsed: {:?}", stats.time_elapsed);
+                    println!("  • Database size: {} KB", stats.database_size_kb);
                 }
             }
         }

@@ -81,6 +81,7 @@ tokenizers = "0.15"                                                  # HuggingFa
 ndarray = "0.16"                                                     # Array operations for embeddings
 usearch = "2.21"                                                     # Fast vector similarity search (HNSW index)
 zerocopy = "0.7"                                                     # Efficient vector byte conversion
+regex = "1.12.2"
 
 [dev-dependencies]
 # Testing utilities

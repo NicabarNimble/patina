@@ -21,7 +21,7 @@ Patina uses a **progressive adapter architecture** that transforms general-purpo
 **Key Concepts:**
 - **Base Model**: E5-base-v2 (768-dim, frozen, never changes)
 - **Dimension Adapters**: 6 small MLPs (1-2M params each) trained on specific relationships
-- **Output**: 2,304-dimensional multidimensional embedding
+- **Output**: ~2,000-dimensional multidimensional embedding
 - **Patina Thickness**: Training data richness determines adapter quality, not architecture changes
 
 ---
@@ -83,7 +83,7 @@ Each adapter transforms the 768-dim E5 embedding to highlight specific relations
 | **Architectural** | 256 | Directory structure | Position in system hierarchy |
 | **Social** | 256 | GitHub metadata | Contributor/issue/PR relationships |
 
-**Total output: 2,304 dimensions** (768 + 256×5)
+**Total output: ~2,000 dimensions** (semantic + 5 specialized adapters)
 
 ### Analogy: Photographic Filters
 
@@ -302,44 +302,44 @@ The mothership trains a cross-project semantic adapter from all primary projects
 
 ### Three-Tier Project Model
 
-```toml
+```yaml
 # ~/.patina/projects.registry
+projects:
+  patina:
+    type: primary                      # You own it
+    path: /Users/nicabar/Projects/patina
+    sessions: 277
+    observations: 992
+    adapters:
+      semantic: local                  # Trained on 992 observations
+      syntactic: local
+      dependency: local
+      temporal: local
+      architectural: local
 
-[projects.patina]
-type = "primary"                      # You own it
-sessions = 277
-observations = 992
-adapters = {
-  semantic = "local",                 # Trained on 992 observations
-  syntactic = "local",
-  dependency = "local",
-  temporal = "local",
-  architectural = "local"
-}
+  new-starknet-game:
+    type: primary                      # You own it, but just started
+    path: /Users/nicabar/Projects/new-starknet-game
+    sessions: 0
+    observations: 0
+    adapters:
+      semantic: global                 # Uses mothership global adapter
+      syntactic: local                 # Trained from code immediately
+      dependency: local
+      temporal: local
+      architectural: local
 
-[projects.new-starknet-game]
-type = "primary"                      # You own it, but just started
-sessions = 0
-observations = 0
-adapters = {
-  semantic = "global",                # Uses mothership global adapter
-  syntactic = "local",                # Trained from code immediately
-  dependency = "local",
-  temporal = "local",
-  architectural = "local"
-}
-
-[projects.dojo]
-type = "reference"                    # External repo
-sessions = 0
-observations = 0
-adapters = {
-  semantic = "none",                  # Reference repos don't need semantic
-  syntactic = "local",
-  dependency = "local",
-  temporal = "local",
-  architectural = "local"
-}
+  dojo:
+    type: reference                    # External repo
+    path: /Users/nicabar/Projects/dojo
+    sessions: 0
+    observations: 0
+    adapters:
+      semantic: none                   # Reference repos don't need semantic
+      syntactic: local
+      dependency: local
+      temporal: local
+      architectural: local
 ```
 
 ### Adapter Fallback Strategy
