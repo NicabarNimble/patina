@@ -8,21 +8,21 @@ Persistent task tracking across sessions. Check items as completed, add notes in
 
 ## Active
 
-- [ ] `patina scrape git` - parse git log into events
-- [ ] `patina scrape sessions` - parse session files into events
+- [ ] Unified eventlog - refactor scrapers to populate single patina.db
 
 ## Queued
 
-### Phase 1: Scrape Pipeline
-**Spec:** [layer/surface/spec-scrape-pipeline.md](../surface/spec-scrape-pipeline.md)
+### Phase 1: Scrape Pipeline ✓
+**Specs:**
+- [spec-eventlog-architecture.md](../surface/spec-eventlog-architecture.md) - LiveStore pattern, multi-user alignment
+- [spec-scrape-pipeline.md](../surface/spec-scrape-pipeline.md) - Implementation details
 
-Extract structure from existing sources → events.
+Materialize SQLite views from event sources (git history, session files, code).
 
-- [ ] `patina scrape git` - commits, co-changes → events
-- [ ] `patina scrape sessions` - observations, decisions → events
-- [ ] `patina scrape code` - already exists, verify event output
-- [ ] `patina scrape` - run all three
-- [ ] `patina materialize` - events → SQLite (patina.db)
+- [x] `patina scrape git` - commits, co-changes → git.db (2025-11-21)
+- [x] `patina scrape sessions` - observations, decisions → sessions.db (2025-11-21)
+- [x] `patina scrape code` - AST, call_graph → code.db
+- [x] `patina scrape` - run all three (2025-11-21)
 
 ### Phase 2: Oxidize (Embeddings + Projections)
 **Spec:** [layer/surface/spec-oxidize.md](../surface/spec-oxidize.md)
@@ -96,19 +96,38 @@ Multi-user workflows, recipe sharing.
 
 ## Architecture Summary
 
+**Key Insight:** Git commits and session files ARE the event sources. Scrape materializes them into a unified event log.
+
 **Pipeline:**
 ```
-Raw Sources → scrape → Events → materialize → SQLite → oxidize → Vectors
-(git,sessions,code)    (.patina/events/)      (patina.db)    (*.usearch)
+Event Sources (git-synced)     →  scrape  →  Unified DB    →  oxidize  →  Vectors
+.git/ (commits)                              patina.db                    *.usearch
+layer/sessions/*.md                          ├── eventlog (source of truth)
+src/**/* (AST)                               └── materialized views
 ```
 
-**What's Shared (git):**
-- `.patina/events/` - source of truth
+**Database Structure (following LiveStore pattern):**
+```
+patina.db
+├── eventlog                    ← Source of truth: ALL events unified
+│   ├── git.commit events
+│   ├── session.* events
+│   └── code.* events
+│
+└── Materialized Views          ← Derived from eventlog
+    ├── commits, co_changes     (from git events)
+    ├── sessions, observations  (from session events)
+    └── functions, call_graph   (from code events)
+```
+
+**What's Shared (git-tracked):**
+- `.git/` - commit history = temporal events
+- `layer/sessions/*.md` - session events (decisions, observations)
 - `.patina/oxidize.yaml` - recipe for building adapters
 
-**What's Local (rebuild):**
-- `.patina/data/patina.db` - materialized from events
-- `.patina/data/embeddings/` - built from recipe
+**What's Local (rebuilt via scrape):**
+- `.patina/data/patina.db` - unified eventlog + materialized views
+- `.patina/data/embeddings/` - vectors built from recipe
 
 **What's Personal:**
 - `~/.patina/persona/` - cross-project beliefs
