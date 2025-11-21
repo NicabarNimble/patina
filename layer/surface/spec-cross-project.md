@@ -1,11 +1,15 @@
 # Spec: Cross-Project & Multi-User
 
+**Architecture Foundation:** [spec-eventlog-architecture.md](./spec-eventlog-architecture.md)
+
 ## Overview
 This spec covers two related concerns:
 1. **Cross-project queries** - querying persona knowledge alongside project knowledge
 2. **Multi-user workflows** - how multiple users share knowledge via git
 
 Both are unified through `patina scry` and the recipe model.
+
+**Key:** Multi-user determinism relies on unified eventlog (see architecture spec) - same git SHA = identical eventlog.
 
 ## Query Flow (via Scry)
 ```
