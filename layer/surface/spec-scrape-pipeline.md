@@ -47,19 +47,24 @@ patina.db
 ## Status: Implementing Unified Database
 
 **Current state:**
-- ✓ Individual scrapers work (git, sessions, code)
-- ✓ Separate databases (git.db, sessions.db, code.db)
+- ✓ Unified `patina.db` schema created (eventlog + scrape_meta tables)
+- ✓ Git scraper refactored to use unified eventlog
+- ⚠ Sessions and code scrapers still use separate databases
 
-**Next: Unified patina.db**
-- [ ] Create unified `eventlog` table
-- [ ] Update scrapers to populate eventlog
-- [ ] Create materialized views from eventlog
-- [ ] Validate cross-cutting queries work
+**Completed:**
+- [x] Create unified `eventlog` table (2025-11-21)
+- [x] Git scraper populates eventlog with git.commit events (2025-11-21)
+- [x] Materialized views for git (commits, commit_files, co_changes)
 
-**Stats from current implementation:**
-- Git: 689 commits, 112K co-change relationships
-- Sessions: 294 sessions, 1,393 observations
-- Code: AST, call_graph
+**In Progress:**
+- [ ] Refactor sessions scraper to populate eventlog
+- [ ] Refactor code scraper to populate eventlog
+- [ ] Validate cross-cutting queries across all event types
+
+**Stats from unified implementation:**
+- Git: 702 commits → 702 git.commit events, 112K co-change relationships
+- Sessions: 294 sessions (still in sessions.db, needs refactor)
+- Code: AST, call_graph (still in code.db, needs refactor)
 
 ## Components
 

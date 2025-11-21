@@ -8,27 +8,30 @@ Persistent task tracking across sessions. Check items as completed, add notes in
 
 ## Active
 
-- [ ] Unified eventlog - refactor scrapers to populate single patina.db
+- [ ] Unified eventlog - refactor remaining scrapers (sessions, code) to patina.db
 
 ## Queued
 
-### Phase 1: Scrape Pipeline (functional, needs unification)
+### Phase 1: Scrape Pipeline (in progress - unifying to eventlog)
 **Specs:**
 - [spec-eventlog-architecture.md](../surface/spec-eventlog-architecture.md) - LiveStore pattern, multi-user alignment
 - [spec-scrape-pipeline.md](../surface/spec-scrape-pipeline.md) - Implementation details
 
 Materialize SQLite views from event sources (git history, session files, code).
 
-**Completed (separate DBs):**
-- [x] `patina scrape git` - commits, co-changes → git.db (2025-11-21)
+**Completed (unified eventlog):**
+- [x] Unified `patina.db` schema - eventlog table + scrape_meta (2025-11-21)
+- [x] `patina scrape git` - git.commit events → eventlog, materialized views (commits, commit_files, co_changes) (2025-11-21)
+
+**In Progress (separate DBs, need refactor):**
 - [x] `patina scrape sessions` - observations, decisions → sessions.db (2025-11-21)
 - [x] `patina scrape code` - AST, call_graph → code.db
 - [x] `patina scrape` - run all three (2025-11-21)
 
-**Next (unified eventlog):**
-- [ ] Refactor to populate unified `patina.db` with eventlog table
-- [ ] Create materialized views from eventlog
-- [ ] Validate cross-cutting queries
+**Next:**
+- [ ] Refactor sessions scraper to populate unified eventlog
+- [ ] Refactor code scraper to populate unified eventlog
+- [ ] Validate cross-cutting queries across all event types
 
 ### Phase 2: Oxidize (Embeddings + Projections)
 **Spec:** [layer/surface/spec-oxidize.md](../surface/spec-oxidize.md)
