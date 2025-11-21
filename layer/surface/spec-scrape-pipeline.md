@@ -1,40 +1,88 @@
 # Spec: Scrape Pipeline
 
+**Architecture Foundation:** [spec-eventlog-architecture.md](./spec-eventlog-architecture.md)
+
 ## Overview
 
-Scrape extracts structure from existing sources of truth. No event emission needed - git, sessions, and code are already logs. We parse them into queryable SQLite tables.
+**Key Insight:** Git commits and session files ARE event sources. No separate event layer needed.
+
+Following event-sourcing principles (like LiveStore, see architecture spec), we treat existing artifacts as the append-only event log:
+- **Git commits** = temporal events (who changed what, when, why)
+- **Session files** = development events (decisions, observations, goals)
+- **Code files** = current state (not events, but git tracks changes as events)
+
+Scrape materializes these event sources into a unified event log + derived views:
 
 ```
-Raw Sources              Scrape                   Structured Data
-─────────────────────    ─────────────────────    ─────────────────────
-.git/                 →  patina scrape git     →  git.db
-layer/sessions/*.md   →  patina scrape sessions → sessions.db
-src/**/*              →  patina scrape code    →  code.db (exists)
+Event Sources (git-synced)       Scrape (materialize)      Unified Database (local)
+─────────────────────────────    ────────────────────      ────────────────────────
+.git/ (commits)               →                         →  patina.db
+layer/sessions/*.md           →  patina scrape         →  ├── eventlog (unified)
+src/**/*                      →                         →  └── materialized views
 ```
 
-## Current State
+**Database structure (LiveStore pattern):**
+```
+patina.db
+│
+├── eventlog                         ← Source of truth (ALL events)
+│   ├── seq (global order)
+│   ├── event_type (git.commit, session.decision, etc)
+│   ├── timestamp
+│   ├── source_id (sha, session_id, etc)
+│   └── data (JSON payload)
+│
+└── Materialized Views               ← Derived from eventlog
+    ├── commits, commit_files, co_changes
+    ├── sessions, observations, goals
+    └── functions, classes, imports, call_graph
+```
 
-- `patina scrape code` exists - parses AST, builds call_graph
-- `code.db` has: functions, classes, imports, call_graph tables
-- ~290 session files in `layer/sessions/`
-- Full git history available
+**Why this works:**
+- Events sync via `git pull/push` (no custom sync needed)
+- Single database rebuilt locally from event sources (not shared)
+- Unified eventlog enables cross-cutting queries
+- Can re-scrape with different schemas anytime
+
+## Status: Implementing Unified Database
+
+**Current state:**
+- ✓ Individual scrapers work (git, sessions, code)
+- ✓ Separate databases (git.db, sessions.db, code.db)
+
+**Next: Unified patina.db**
+- [ ] Create unified `eventlog` table
+- [ ] Update scrapers to populate eventlog
+- [ ] Create materialized views from eventlog
+- [ ] Validate cross-cutting queries work
+
+**Stats from current implementation:**
+- Git: 689 commits, 112K co-change relationships
+- Sessions: 294 sessions, 1,393 observations
+- Code: AST, call_graph
 
 ## Components
 
-### 1. Scrape Code (exists)
+### 1. Scrape Code
 **Command:** `patina scrape code`
 
 **Location:** `src/commands/scrape/code/`
 
-**Output:** `.patina/data/code.db`
+**Output:** `.patina/data/patina.db`
+
+**Populates eventlog with:**
+```sql
+event_type: 'code.function', 'code.class', 'code.import'
+data: {name, signature, path, line, ...}
+```
+
+**Creates materialized views:**
 - `functions` - extracted functions with signatures
 - `classes` - class definitions
 - `imports` - dependency relationships
 - `call_graph` - caller/callee edges
 
-**Already working** - no changes needed.
-
-### 2. Scrape Git (new)
+### 2. Scrape Git ✓
 **Command:** `patina scrape git`
 
 **Location:** `src/commands/scrape/git/mod.rs`
@@ -45,11 +93,19 @@ src/**/*              →  patina scrape code    →  code.db (exists)
 3. Build co-change relationships (files changed together)
 4. Store in SQLite
 
-**Output:** `.patina/data/git.db`
+**Output:** `.patina/data/patina.db`
 
-**Tables:**
+**Populates eventlog with:**
 ```sql
--- Commits
+event_type: 'git.commit'
+timestamp: commit timestamp
+source_id: commit sha
+data: {message, author, email, files: [...]}
+```
+
+**Creates materialized views:**
+```sql
+-- Commits view
 CREATE TABLE commits (
     sha TEXT PRIMARY KEY,
     message TEXT,
@@ -117,7 +173,7 @@ patina scrape git --full       # Full history rebuild
 patina scrape git --since 2025-01-01  # Since date
 ```
 
-### 3. Scrape Sessions (new)
+### 3. Scrape Sessions ✓
 **Command:** `patina scrape sessions`
 
 **Location:** `src/commands/scrape/sessions/mod.rs`
@@ -129,11 +185,20 @@ patina scrape git --since 2025-01-01  # Since date
 4. Parse observations from activity log
 5. Store in SQLite
 
-**Output:** `.patina/data/sessions.db`
+**Output:** `.patina/data/patina.db`
 
-**Tables:**
+**Populates eventlog with:**
 ```sql
--- Sessions
+event_type: 'session.started', 'session.decision', 'session.observation', 'session.goal'
+timestamp: session/observation timestamp
+source_id: session_id
+source_file: path to .md file
+data: {content, type, session_id, ...}
+```
+
+**Creates materialized views:**
+```sql
+-- Sessions view
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY,           -- 20251121-065812
     title TEXT,
@@ -210,7 +275,38 @@ patina scrape sessions --since 2025-11-01  # Recent only
 patina scrape sessions --file layer/sessions/20251121-065812.md  # Single file
 ```
 
-### 4. Unified Scrape Command
+### 4. Unified Eventlog Table
+
+**Core Schema:**
+```sql
+CREATE TABLE eventlog (
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,  -- Global ordering
+    event_type TEXT NOT NULL,                -- e.g. 'git.commit', 'session.decision'
+    timestamp TEXT NOT NULL,                 -- ISO8601 when event occurred
+    source_id TEXT NOT NULL,                 -- sha, session_id, function_name, etc
+    source_file TEXT,                        -- Original file path
+    data JSON NOT NULL,                      -- Event-specific payload
+    CHECK(json_valid(data))
+);
+
+-- Indexes for common queries
+CREATE INDEX idx_eventlog_type ON eventlog(event_type);
+CREATE INDEX idx_eventlog_timestamp ON eventlog(timestamp);
+CREATE INDEX idx_eventlog_source ON eventlog(source_id);
+CREATE INDEX idx_eventlog_type_time ON eventlog(event_type, timestamp);
+```
+
+**Event Types:**
+- `git.commit` - A commit was made
+- `session.started` - Development session began
+- `session.decision` - Architectural decision made
+- `session.observation` - Pattern or insight observed
+- `session.goal` - Goal defined or completed
+- `code.function` - Function discovered in codebase
+- `code.class` - Class discovered
+- `code.import` - Import relationship found
+
+### 5. Unified Scrape Command
 **Command:** `patina scrape`
 
 **Runs all three in sequence:**
@@ -224,6 +320,7 @@ patina scrape                     # Equivalent to:
 **With options:**
 ```bash
 patina scrape --full              # Full rebuild all
+patina scrape --until 2025-03-15  # Time travel: only events before date
 patina scrape --only code,git     # Subset
 ```
 
@@ -232,33 +329,47 @@ patina scrape --only code,git     # Subset
 ```
 .patina/
 └── data/
-    ├── code.db           # AST, call_graph (exists)
-    ├── git.db            # commits, co-changes (new)
-    └── sessions.db       # sessions, observations (new)
+    └── patina.db         # Unified database
+        ├── eventlog      # Source of truth (all events)
+        └── views         # Materialized views (commits, sessions, functions, etc)
 ```
 
 ## Integration with Oxidize
 
-Scrape produces SQLite tables. Oxidize consumes them:
+Scrape produces unified eventlog. Oxidize consumes it:
 
 ```
-scrape → SQLite → oxidize → USearch
+scrape → eventlog + views → oxidize → USearch
 
-Adapter         | Source Table
+Adapter         | Source
 ----------------|------------------
-semantic        | sessions.observations
-temporal        | git.co_changes
-dependency      | code.call_graph
-syntactic       | code.functions (AST)
-architectural   | code.functions (paths)
-social          | git.commits (authors)
+semantic        | eventlog WHERE event_type LIKE 'session.%'
+temporal        | eventlog WHERE event_type = 'git.commit' (derive co_changes)
+dependency      | eventlog WHERE event_type LIKE 'code.%' (derive call_graph)
+syntactic       | functions view (derived from code.* events)
+architectural   | eventlog (file paths + timestamps)
+social          | commits view (derived from git.commit events)
 ```
+
+**Benefits of unified eventlog:**
+- Cross-cutting queries (e.g., "decisions near this commit")
+- Time travel (filter by timestamp)
+- Consistent ordering (global seq number)
+- Single source for embeddings
 
 ## Acceptance Criteria
 
-- [ ] `patina scrape git` parses git history into git.db
-- [ ] `patina scrape sessions` parses all 290 sessions into sessions.db
-- [ ] `patina scrape` runs all three scrapers
-- [ ] Incremental scrape only processes new data
-- [ ] `--full` flag rebuilds from scratch
-- [ ] Scrape metadata tracks last processed item for incremental
+**Phase 1: Individual Scrapers (Complete)**
+- [x] `patina scrape git` parses git history (689 commits)
+- [x] `patina scrape sessions` parses sessions (294 sessions, 1,393 observations)
+- [x] `patina scrape code` parses AST (functions, classes, call_graph)
+- [x] `patina scrape` runs all three scrapers
+- [x] Incremental scrape only processes new data
+
+**Phase 2: Unified Database (Next)**
+- [ ] Create unified `patina.db` with `eventlog` table
+- [ ] All scrapers populate eventlog with typed events
+- [ ] Materialized views derived from eventlog
+- [ ] Cross-cutting queries work (e.g., decisions near commits)
+- [ ] Time travel: `--until` flag filters by timestamp
+- [ ] Same scrape results regardless of order (deterministic)
