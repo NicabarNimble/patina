@@ -1,6 +1,8 @@
 // Shared utilities for all scrape subcommands
 
 pub mod code;
+pub mod git;
+pub mod sessions;
 
 use anyhow::{bail, Result};
 use std::path::Path;
