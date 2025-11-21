@@ -1,7 +1,18 @@
 # Spec: Mothership Service
 
 ## Overview
-Mothership is an Ollama-style daemon that provides embedding generation and persona queries. It runs locally, manages the project registry, and serves as the cross-project knowledge hub.
+Mothership is an Ollama-style daemon that provides embedding generation, unified queries (scry), and project registry. It runs locally on each Mac, manages persona beliefs, and enables cross-project knowledge queries.
+
+**What mothership does:**
+- Generates embeddings (shared model, loaded once)
+- Unified scry queries (project + persona)
+- Manages project registry
+- Tracks recipe versions
+
+**What mothership does NOT do:**
+- Watch for file changes (scrape does that)
+- Sync events (git does that)
+- Aggregate across users (each user has own mothership)
 
 ## Architecture
 ```
@@ -10,14 +21,15 @@ Mothership is an Ollama-style daemon that provides embedding generation and pers
 │                                                          │
 │  • Runs as background daemon (like ollama serve)        │
 │  • ~/.patina/ is data directory                         │
-│  • REST API + optional WebSocket                        │
+│  • REST API (axum)                                      │
 │                                                          │
 │  Endpoints:                                              │
 │  • POST /embed         - generate embeddings            │
-│  • POST /persona/query - search persona beliefs         │
+│  • POST /scry          - unified query (project+persona)│
 │  • GET  /projects      - list registered projects       │
 │  • POST /projects      - register project               │
 │  • GET  /health        - health check                   │
+│  • GET  /status        - recipe versions, build state   │
 │                                                          │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -103,8 +115,103 @@ patina serve --background       # Daemonize
 - Model loaded once at startup, reused
 - Batch processing for efficiency
 
-### 3. Persona Query Endpoint
+### 3. Scry Endpoint (Unified Query)
+**Endpoint:** `POST /scry`
+
+**Request:**
+```json
+{
+  "query": "error handling patterns",
+  "project": "livestore",        // optional, defaults to cwd project
+  "include_persona": true,       // optional, default true
+  "limit": 10,
+  "threshold": 0.7
+}
+```
+
+**Response:**
+```json
+{
+  "results": [
+    {
+      "content": "TypeScript prefers Result types here",
+      "source": "project",
+      "tag": "[PROJECT]",
+      "similarity": 0.92,
+      "metadata": {
+        "session_id": "20251121-065812",
+        "domains": ["typescript", "error-handling"]
+      }
+    },
+    {
+      "content": "Always use Result<T, E> over panics",
+      "source": "persona",
+      "tag": "[PERSONA]",
+      "similarity": 0.89,
+      "metadata": {
+        "domains": ["rust", "error-handling"]
+      }
+    }
+  ],
+  "sources": {
+    "project_count": 3,
+    "persona_count": 2
+  }
+}
+```
+
+**Implementation:**
+```rust
+pub async fn scry(request: ScryRequest) -> Result<ScryResponse> {
+    let mut results = Vec::new();
+
+    // 1. Query project
+    if let Some(project) = get_project(&request.project)? {
+        let project_results = query_project_vectors(
+            &project.path,
+            &request.query,
+            request.limit,
+        )?;
+        for r in project_results {
+            results.push(TaggedResult {
+                content: r.content,
+                source: "project",
+                tag: "[PROJECT]",
+                similarity: r.similarity,
+                metadata: r.metadata,
+            });
+        }
+    }
+
+    // 2. Query persona
+    if request.include_persona {
+        let persona_results = query_persona_vectors(
+            &request.query,
+            request.limit,
+        )?;
+        for r in persona_results {
+            results.push(TaggedResult {
+                content: r.content,
+                source: "persona",
+                tag: "[PERSONA]",
+                similarity: r.similarity * 0.95,  // slight penalty for non-local
+                metadata: r.metadata,
+            });
+        }
+    }
+
+    // 3. Sort by similarity
+    results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap());
+    results.truncate(request.limit);
+
+    Ok(ScryResponse { results, sources })
+}
+```
+
+### 4. Persona Query Endpoint (Direct)
 **Endpoint:** `POST /persona/query`
+
+For querying persona only (without project context).
 
 **Request:**
 ```json
@@ -121,10 +228,8 @@ patina serve --background       # Daemonize
   "results": [
     {
       "content": "Always use Result<T, E> over panics",
-      "source": "persona",
       "domains": ["rust", "error-handling"],
-      "similarity": 0.89,
-      "event_id": "evt_20251120_042"
+      "similarity": 0.89
     }
   ]
 }
@@ -133,9 +238,8 @@ patina serve --background       # Daemonize
 **Implementation:**
 - Query `~/.patina/persona/beliefs.usearch`
 - Join with `beliefs.db` for metadata
-- Return with source tagging
 
-### 4. Projects Registry
+### 5. Projects Registry
 **Location:** `~/.patina/projects.registry`
 
 **Format (YAML):**
@@ -163,7 +267,7 @@ projects:
 - `patina init` registers project with mothership
 - Updates `last_indexed` on `patina materialize`
 
-### 5. Configuration
+### 6. Configuration
 **Location:** `~/.patina/config.toml`
 
 ```toml
@@ -202,6 +306,10 @@ Commands::Serve { port, background } => {
 ## Acceptance Criteria
 - [ ] `patina serve` starts daemon on :50051
 - [ ] `curl localhost:50051/health` returns OK
-- [ ] `curl -X POST localhost:50051/embed -d '{"texts":["test"]}'` returns embeddings
+- [ ] `POST /embed` returns embeddings for given texts
+- [ ] `POST /scry` returns combined project + persona results
+- [ ] Results correctly tagged as [PROJECT] or [PERSONA]
 - [ ] `patina init` registers project in registry
-- [ ] Projects can query mothership from containers via `host.docker.internal:50051`
+- [ ] `GET /projects` lists all registered projects
+- [ ] `GET /status` shows recipe versions and build state
+- [ ] Containers can query via `host.docker.internal:50051`

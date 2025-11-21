@@ -1,16 +1,20 @@
 # Spec: Persona Capture
 
 ## Overview
-Persona capture records cross-project beliefs and patterns that belong to YOU, not to any specific project. These live in `~/.patina/persona/` and are queryable by all projects.
+Persona captures YOUR cross-project beliefs and patterns - knowledge that belongs to you, not to any specific project. Lives in `~/.patina/persona/` and is **never git-tracked**.
 
-## Persona vs Session
-| Aspect | Session | Persona |
-|--------|---------|---------|
+**Key principle:** Personas are personal. Different developers have different beliefs, preferences, and mental models. These shouldn't be shared via git.
+
+## Persona vs Project Knowledge
+
+| Aspect | Project Knowledge | Persona |
+|--------|-------------------|---------|
 | Location | `<project>/.patina/events/` | `~/.patina/persona/events/` |
 | Scope | Project-specific | Cross-project |
 | Example | "This project uses ECS" | "I prefer ECS for game engines" |
-| Ownership | Git-tracked, portable | Personal, machine-local |
-| Triggers | `/session-note`, `/session-end` | `patina persona note` |
+| Shared | Yes (git-tracked) | **No (personal, machine-local)** |
+| Queried via | `patina scry` (project) | `patina scry` ([PERSONA] tag) |
+| Triggers | `/session-note`, `scrape` | `patina persona note` |
 
 ## Components
 
@@ -42,7 +46,7 @@ pub fn persona_note(content: &str, domains: Vec<String>, reliability: f32) -> Re
     let next_seq = manifest.last_sequence.global + 1;
 
     let event = Event {
-        event_id: format!("persona_{}_{:03}", date_str(), next_seq),
+        event_id: format!("evt_{}_{:03}", date_str(), next_seq),
         event_type: EventType::BeliefCaptured,
         sequence: Sequence { global: next_seq, client: 0, rebase_generation: 0 },
         source: Source {
@@ -83,7 +87,7 @@ pub enum PersonaEventType {
 ```json
 {
   "schema_version": "1.0.0",
-  "event_id": "persona_20251121_001",
+  "event_id": "evt_20251121_001",
   "event_type": "belief_captured",
   "timestamp": "2025-11-21T06:32:00Z",
   "sequence": { "global": 1, "client": 0, "rebase_generation": 0 },
@@ -153,24 +157,31 @@ patina persona list --recent 10        # Most recent
 ├── persona/
 │   ├── events/
 │   │   ├── manifest.json
-│   │   ├── persona_20251121_001-belief-captured.json
+│   │   ├── 2025-11-21-001-belief-captured.json
 │   │   └── ...
 │   ├── beliefs.db              # Materialized state
 │   └── beliefs.usearch         # Vector index
 └── ...
 ```
 
-## Integration with Projects
+## Integration with Scry
 
-Projects can query persona when local knowledge is insufficient:
+Persona is queried via `patina scry` which combines project + persona results:
 
-```rust
-// In project query flow
-let local_results = query_local(&query)?;
-if local_results.is_empty() || local_results[0].score < 0.7 {
-    let persona_results = query_persona_service(&query)?;
-    // Tag results as [PERSONA]
-}
+```bash
+patina scry "error handling patterns"
+# Returns:
+# [PROJECT] TypeScript prefers Result types here
+# [PERSONA] Always use Result<T,E> over panics in Rust
+# [PERSONA] Prefer explicit error types over String
+```
+
+Persona results are tagged `[PERSONA]` and ranked slightly lower than project-specific knowledge (0.95x similarity penalty) since project context is more relevant.
+
+**Via mothership API:**
+```bash
+curl -X POST localhost:50051/scry \
+  -d '{"query": "error handling", "include_persona": true}'
 ```
 
 ## CLI Subcommands
@@ -189,4 +200,6 @@ pub enum PersonaCommand {
 - [ ] `patina persona materialize` processes events into SQLite + USearch
 - [ ] `patina persona query "term"` returns matching beliefs
 - [ ] `patina persona list` shows all captured beliefs
-- [ ] Beliefs are queryable via mothership `/persona/query` endpoint
+- [ ] `patina scry` includes persona results tagged `[PERSONA]`
+- [ ] Beliefs queryable via mothership `/scry` and `/persona/query` endpoints
+- [ ] Persona data never appears in git (all under ~/.patina/)

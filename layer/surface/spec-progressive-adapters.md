@@ -44,7 +44,7 @@ Progressive adapters extend frozen E5-base-v2 embeddings with trainable dimensio
 | Architectural | 768 | 256 | Where code lives | File paths, module structure |
 | Social | 768 | 256 | Who wrote/reviewed | Git blame, PR authors |
 
-**Total output:** 768 + 256×5 = **2,048 dimensions** (or 2,304 with 768-dim semantic)
+**Total output:** ~2,000 dimensions (concatenated adapter outputs)
 
 ## Components
 
@@ -119,18 +119,27 @@ impl TrainingPairGenerator for SemanticGenerator {
 // src/adapters/model/adapter.rs
 pub struct DimensionAdapter {
     pub name: String,
-    pub input_dim: usize,   // 768 (E5 output)
-    pub output_dim: usize,  // 768 or 256
-    pub weights: Array2<f32>,
-    pub bias: Array1<f32>,
+    pub input_dim: usize,    // 768 (E5 output)
+    pub hidden_dim: usize,   // 1024 (expansion layer)
+    pub output_dim: usize,   // 768 or 256
+    pub weights1: Array2<f32>,  // input → hidden
+    pub bias1: Array1<f32>,
+    pub weights2: Array2<f32>,  // hidden → output
+    pub bias2: Array1<f32>,
 }
 
 impl DimensionAdapter {
     pub fn forward(&self, embedding: &[f32]) -> Vec<f32> {
-        // Simple linear projection + ReLU
+        // 2-layer MLP: expand then compress
         let input = Array1::from_vec(embedding.to_vec());
-        let output = self.weights.dot(&input) + &self.bias;
-        output.mapv(|x| x.max(0.0)).to_vec()
+
+        // Layer 1: expand to hidden (768 → 1024) + ReLU
+        let hidden = self.weights1.dot(&input) + &self.bias1;
+        let hidden = hidden.mapv(|x| x.max(0.0));
+
+        // Layer 2: compress to output (1024 → 256)
+        let output = self.weights2.dot(&hidden) + &self.bias2;
+        output.to_vec()
     }
 
     pub fn train(&mut self, pairs: &[TrainingPair], epochs: usize) -> Result<()> {
