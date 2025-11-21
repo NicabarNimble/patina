@@ -1,7 +1,11 @@
 # Spec: Mothership Service
 
+**Architecture Foundation:** [spec-eventlog-architecture.md](./spec-eventlog-architecture.md)
+
 ## Overview
 Mothership is an Ollama-style daemon that provides embedding generation, unified queries (scry), and project registry. It runs locally on each Mac, manages persona beliefs, and enables cross-project knowledge queries.
+
+**Key:** Mothership queries the unified eventlog (see architecture spec) for all project knowledge.
 
 **What mothership does:**
 - Generates embeddings (shared model, loaded once)
