@@ -1,43 +1,72 @@
-# Spec: Cross-Project Queries
+# Spec: Cross-Project & Multi-User
 
 ## Overview
-Projects can query the mothership for cross-project knowledge when local results are insufficient. Results are tagged with their source and adoptability status.
+This spec covers two related concerns:
+1. **Cross-project queries** - querying persona knowledge alongside project knowledge
+2. **Multi-user workflows** - how multiple users share knowledge via git
 
-## Query Flow
+Both are unified through `patina scry` and the recipe model.
+
+## Query Flow (via Scry)
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  User Query: "error handling patterns"                       │
+│  patina scry "error handling patterns"                       │
 └─────────────────────────┬───────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  1. Query Local Project (.patina/)                          │
-│     - Search observations.usearch                            │
-│     - Join with observations.db for metadata                 │
+│  1. Query Local Project (.patina/data/)                     │
+│     - Search project vectors (*.usearch)                    │
+│     - Join with patina.db for metadata                      │
+│     - Tag results as [PROJECT]                              │
 └─────────────────────────┬───────────────────────────────────┘
                           │
-            ┌─────────────┴─────────────┐
-            │                           │
-     Results found?              No results / low score
-            │                           │
-            ▼                           ▼
-┌───────────────────┐    ┌────────────────────────────────────┐
-│ Return [PROJECT]  │    │  2. Query Mothership (:50051)      │
-│ tagged results    │    │     POST /persona/query            │
-└───────────────────┘    └─────────────────────┬──────────────┘
-                                               │
-                                               ▼
-                         ┌────────────────────────────────────┐
-                         │  3. Evaluate Adoptability          │
-                         │     - Check for contradictions     │
-                         │     - Tag as [ADOPTABLE] or [REF]  │
-                         └─────────────────────┬──────────────┘
-                                               │
-                                               ▼
-                         ┌────────────────────────────────────┐
-                         │  4. Return merged results          │
-                         │     [PROJECT] + [PERSONA-*]        │
-                         └────────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  2. Query Persona (~/.patina/persona/)                      │
+│     - Search persona vectors (beliefs.usearch)              │
+│     - Join with beliefs.db for metadata                     │
+│     - Tag results as [PERSONA]                              │
+│     - Apply 0.95x similarity penalty (local > personal)     │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  3. Merge & Sort                                            │
+│     - Combine [PROJECT] + [PERSONA] results                 │
+│     - Sort by similarity                                    │
+│     - Return unified results                                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Multi-User Architecture
+
+```
+USER A's Mac                              USER B's Mac
+─────────────────────────────────────     ─────────────────────────────────────
+
+~/.patina/ (PERSONAL)                     ~/.patina/ (PERSONAL)
+├── persona/events/   ← A's beliefs       ├── persona/events/   ← B's beliefs
+└── projects.registry                     └── projects.registry
+
+project/.patina/ (SHARED via git)         project/.patina/ (SHARED via git)
+├── events/           ← same events       ├── events/           ← same events
+├── oxidize.yaml      ← same recipe       ├── oxidize.yaml      ← same recipe
+└── data/             ← LOCAL rebuild     └── data/             ← LOCAL rebuild
+```
+
+**Workflow:**
+```bash
+# User A adds knowledge
+/session-note "TypeScript prefers Result types"
+git commit && git push
+
+# User B pulls
+git pull
+patina materialize    # events → SQLite
+patina oxidize        # recipe → vectors
+
+# Both have same project knowledge, different personas
 ```
 
 ## Result Tags
@@ -248,20 +277,17 @@ services:
 ```
 
 ### 5. CLI Interface
-**Location:** `src/commands/query/mod.rs`
+**Location:** `src/commands/scry/mod.rs`
 
 ```bash
-# Query local only (default)
-patina query "error handling"
+# Query project + persona (default)
+patina scry "error handling"
 
-# Query with persona fallback
-patina query --persona "error handling"
+# Query project only
+patina scry --no-persona "error handling"
 
 # Query persona only
-patina query --persona-only "design patterns"
-
-# Show adoptability status
-patina query --persona --show-adoptability "error handling"
+patina scry --persona-only "design patterns"
 ```
 
 **Output:**
@@ -269,12 +295,11 @@ patina query --persona --show-adoptability "error handling"
 [PROJECT] 0.92  Use Result<T, AppError> with thiserror
           src/error.rs:15 | domains: rust, error-handling
 
-[PERSONA-RUST] [ADOPTABLE] 0.87  Always use Result over panics
+[PERSONA] 0.87  Always use Result over panics
           domains: rust, error-handling | captured: 2025-11-20
 
-[PERSONA] [REFERENCE] 0.71  Exceptions are fine for truly exceptional cases
-          domains: general, error-handling | captured: 2025-11-15
-          ⚠️  May conflict with project's no-panic approach
+[PERSONA] 0.71  Prefer explicit error types
+          domains: rust, error-handling | captured: 2025-11-15
 ```
 
 ## Configuration
@@ -295,9 +320,11 @@ cache_ttl_seconds = 3600
 ```
 
 ## Acceptance Criteria
-- [ ] `patina query` searches local index first
-- [ ] `patina query --persona` falls back to mothership when local results poor
-- [ ] Results tagged correctly with source
-- [ ] Adoptability check identifies potential contradictions
+- [ ] `patina scry` searches project + persona by default
+- [ ] Results tagged correctly as [PROJECT] or [PERSONA]
+- [ ] Project results prioritized over persona (0.95x penalty)
+- [ ] `--no-persona` flag queries project only
+- [ ] `--persona-only` flag queries persona only
+- [ ] Multi-user: git pull + materialize + oxidize rebuilds knowledge
+- [ ] Recipe (oxidize.yaml) shared via git, artifacts built locally
 - [ ] Containers can query mothership via `host.docker.internal`
-- [ ] Results sorted by score with local priority
