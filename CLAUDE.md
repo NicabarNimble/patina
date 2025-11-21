@@ -16,6 +16,9 @@ Patina accumulates knowledge like the protective layer that forms on metal - you
 - `layer/core/unix-philosophy.md` - Decomposition principle (systems → tools)
 - `layer/core/adapter-pattern.md` - Trait-based external system integration
 
+## Build Recipe
+- `layer/core/build.md` - Persistent roadmap and task tracking across sessions. Start here when picking up development work. Contains phased tasks with links to detailed specs.
+
 ## Development Guidelines
 - **Rust-first**: Pure Rust at runtime, no Python subprocess dependencies
   - Embeddings: ONNX Runtime via `ort` crate (not Python/CoreML)
