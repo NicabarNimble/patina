@@ -49,22 +49,30 @@ patina.db
 **Current state:**
 - ✓ Unified `patina.db` schema created (eventlog + scrape_meta tables)
 - ✓ Git scraper refactored to use unified eventlog
-- ⚠ Sessions and code scrapers still use separate databases
+- ✓ Sessions scraper refactored to use unified eventlog
+- ⚠ Code scraper still uses separate database (complex, needs careful refactor)
 
 **Completed:**
 - [x] Create unified `eventlog` table (2025-11-21)
 - [x] Git scraper populates eventlog with git.commit events (2025-11-21)
 - [x] Materialized views for git (commits, commit_files, co_changes)
+- [x] Sessions scraper populates eventlog with session.* events (2025-11-21)
+- [x] Materialized views for sessions (sessions, observations, goals)
+- [x] Cross-cutting queries validated (time-based, event correlation)
 
-**In Progress:**
-- [ ] Refactor sessions scraper to populate eventlog
-- [ ] Refactor code scraper to populate eventlog
-- [ ] Validate cross-cutting queries across all event types
+**Next: Code Scraper Refactor**
+- [ ] Minimal integration approach (preserve existing functionality)
+- [ ] Switch from code.db to patina.db
+- [ ] Add eventlog inserts for key code events
+- [ ] Preserve all existing materialized views
+- [ ] Full testing with multi-language codebase
 
 **Stats from unified implementation:**
 - Git: 702 commits → 702 git.commit events, 112K co-change relationships
-- Sessions: 294 sessions (still in sessions.db, needs refactor)
-- Code: AST, call_graph (still in code.db, needs refactor)
+- Sessions: 295 sessions → 2,159 session.* events (started, goal, decision, pattern, work, context)
+- Total eventlog: 2,861 events across 8 event types
+- Database: 31MB patina.db (was 30MB git.db + 455KB sessions.db + 3.1MB code.db)
+- Cross-cutting queries working (decisions near commits, events in time windows)
 
 ## Components
 
@@ -339,6 +347,175 @@ patina scrape --only code,git     # Subset
         └── views         # Materialized views (commits, sessions, functions, etc)
 ```
 
+## Code Scraper Refactor Plan (Next Session)
+
+**Complexity:** High - 881 lines across extract_v2.rs + database.rs with sophisticated multi-language extraction pipeline
+
+**Approach:** Minimal integration (Option A) - preserve all existing functionality while adding eventlog support
+
+### Current Architecture
+```
+src/commands/scrape/code/
+├── mod.rs              - Main entry point, initialization
+├── database.rs         - Custom Database struct with 7 insert methods
+├── extract_v2.rs       - Language-agnostic extraction pipeline
+├── extracted_data.rs   - Domain types (ExtractedData)
+├── types.rs            - CallGraphEntry, etc.
+└── languages/          - Modular language processors
+    ├── rust.rs
+    ├── go.rs
+    ├── python.rs
+    └── ... (11 languages total)
+```
+
+### Refactor Steps (Conservative)
+
+**Step 1: Update Database Path**
+- File: `src/commands/scrape/code/mod.rs`
+- Change: `initialize_database()` to use `database::PATINA_DB` instead of code.db
+- Risk: Low - simple path change
+
+**Step 2: Initialize Unified DB + Code Views**
+- File: `src/commands/scrape/code/mod.rs`
+- Add: Call `super::database::initialize()` to create eventlog table
+- Add: Call `create_code_materialized_views()` to create existing tables
+- Risk: Low - additive only
+
+**Step 3: Add Light Eventlog Inserts**
+- File: `src/commands/scrape/code/database.rs`
+- Modify: Each `insert_*` method to dual-write:
+  - Insert code.function/code.class/code.import event into eventlog
+  - Keep all existing table inserts unchanged
+- Pattern: Same as git/sessions scrapers (eventlog + materialized views)
+- Risk: Medium - touches 7 insert methods
+
+**Step 4: Event Type Mapping**
+```rust
+// Map existing insert methods to event types:
+insert_symbols()    → code.symbol events
+insert_functions()  → code.function events
+insert_types()      → code.class events (structs, enums, etc)
+insert_imports()    → code.import events
+insert_call_edges() → code.call events
+insert_constants()  → code.constant events
+insert_members()    → code.member events
+```
+
+**Step 5: Preserve All Existing Views**
+- Keep all tables from database.rs:init_schema():
+  - code_search (symbols with FTS)
+  - function_facts (rich metadata)
+  - type_vocabulary (types)
+  - imports (dependencies)
+  - call_graph (edges)
+  - constants (extracted values)
+  - members (struct fields, methods)
+- These become "materialized views" semantically (derived from eventlog)
+- No schema changes needed - just dual-write
+
+**Step 6: Testing Strategy**
+```bash
+# Test with current patina codebase (multi-language)
+rm -f .patina/data/patina.db
+patina scrape code --full
+
+# Verify eventlog
+sqlite3 .patina/data/patina.db "SELECT event_type, COUNT(*) FROM eventlog WHERE event_type LIKE 'code.%' GROUP BY event_type"
+
+# Verify materialized views (should match previous counts)
+sqlite3 .patina/data/patina.db "SELECT COUNT(*) FROM code_search"
+sqlite3 .patina/data/patina.db "SELECT COUNT(*) FROM function_facts"
+sqlite3 .patina/data/patina.db "SELECT COUNT(*) FROM call_graph"
+
+# Test cross-cutting query: functions defined near recent commits
+sqlite3 .patina/data/patina.db "
+  SELECT c.message, f.file, f.name
+  FROM eventlog c
+  JOIN eventlog f ON f.source_file = c.data->>'$.files[0].path'
+  WHERE c.event_type = 'git.commit'
+    AND f.event_type = 'code.function'
+  LIMIT 5"
+```
+
+### Detailed Code Changes
+
+**File: src/commands/scrape/code/mod.rs**
+```rust
+// Change this:
+const DB_PATH: &str = ".patina/data/code.db";  // OLD
+
+// To this:
+use super::database;  // Import unified database module
+
+// In initialize_database():
+fn initialize_database(db_path: &str) -> Result<()> {
+    // Initialize unified eventlog
+    let conn = super::database::initialize(Path::new(database::PATINA_DB))?;
+
+    // Create code-specific materialized views
+    create_code_materialized_views(&conn)?;
+
+    Ok(())
+}
+```
+
+**File: src/commands/scrape/code/database.rs**
+```rust
+// Add at top:
+use crate::commands::scrape::database as unified_db;
+
+// Modify each insert method (example for functions):
+pub fn insert_functions(&self, functions: &[FunctionFact]) -> Result<usize> {
+    let conn = self.db.connection_mut();
+    let tx = conn.transaction()?;
+
+    for func in functions {
+        // 1. Insert into eventlog (source of truth)
+        let event_data = json!({
+            "file": &func.file,
+            "name": &func.name,
+            "is_async": func.is_async,
+            "is_public": func.is_public,
+            "parameters": &func.parameters,
+            "return_type": &func.return_type,
+            // ... all fields
+        });
+
+        unified_db::insert_event(
+            &tx,
+            "code.function",
+            &chrono::Utc::now().to_rfc3339(),  // timestamp
+            &format!("{}::{}", func.file, func.name),  // source_id
+            Some(&func.file),  // source_file
+            &event_data.to_string(),
+        )?;
+
+        // 2. Insert into materialized view (UNCHANGED - all existing logic preserved)
+        tx.execute(
+            "INSERT OR REPLACE INTO function_facts (...) VALUES (...)",
+            params![/* all params */],
+        )?;
+    }
+
+    tx.commit()?;
+    Ok(functions.len())
+}
+```
+
+### Success Criteria
+- [ ] All existing code scraper tests pass
+- [ ] Same number of functions/types/imports extracted as before
+- [ ] code.* events appear in unified eventlog
+- [ ] Cross-cutting queries work (code near commits, code + sessions)
+- [ ] No performance degradation (<10% slowdown acceptable)
+- [ ] Database size comparable (eventlog adds ~10-20% overhead)
+
+### Rollback Plan
+If refactor has issues:
+1. Revert changes to mod.rs and database.rs
+2. Keep using code.db separately
+3. Document as "Phase 1.5" - complete later when needed
+
 ## Integration with Oxidize
 
 Scrape produces unified eventlog. Oxidize consumes it:
@@ -365,16 +542,19 @@ social          | commits view (derived from git.commit events)
 ## Acceptance Criteria
 
 **Phase 1: Individual Scrapers (Complete)**
-- [x] `patina scrape git` parses git history (689 commits)
-- [x] `patina scrape sessions` parses sessions (294 sessions, 1,393 observations)
+- [x] `patina scrape git` parses git history (702 commits)
+- [x] `patina scrape sessions` parses sessions (295 sessions, 1,424 observations)
 - [x] `patina scrape code` parses AST (functions, classes, call_graph)
 - [x] `patina scrape` runs all three scrapers
 - [x] Incremental scrape only processes new data
 
-**Phase 2: Unified Database (Next)**
-- [ ] Create unified `patina.db` with `eventlog` table
-- [ ] All scrapers populate eventlog with typed events
-- [ ] Materialized views derived from eventlog
-- [ ] Cross-cutting queries work (e.g., decisions near commits)
-- [ ] Time travel: `--until` flag filters by timestamp
+**Phase 2: Unified Database (In Progress - 2/3 Complete)**
+- [x] Create unified `patina.db` with `eventlog` table (2025-11-21)
+- [x] Git scraper populates eventlog with git.commit events (2025-11-21)
+- [x] Sessions scraper populates eventlog with session.* events (2025-11-21)
+- [x] Materialized views for git (commits, commit_files, co_changes)
+- [x] Materialized views for sessions (sessions, observations, goals)
+- [x] Cross-cutting queries work (decisions near commits, time windows)
+- [ ] **Code scraper** populates eventlog with code.* events (next session)
+- [ ] Time travel: `--until` flag filters by timestamp (after code scraper)
 - [ ] Same scrape results regardless of order (deterministic)
