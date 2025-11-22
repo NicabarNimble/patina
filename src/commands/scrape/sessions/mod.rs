@@ -1,14 +1,19 @@
 //! Session file scraper - extracts sessions, goals, and observations from markdown
+//!
+//! Uses unified eventlog pattern:
+//! - Inserts session.* events into eventlog table
+//! - Creates materialized views (sessions, observations, goals) from eventlog
 
 use anyhow::Result;
 use regex::Regex;
 use rusqlite::Connection;
+use serde_json::json;
 use std::path::Path;
 use std::time::Instant;
 
+use super::database;
 use super::ScrapeStats;
 
-const DB_PATH: &str = ".patina/data/sessions.db";
 const SESSIONS_DIR: &str = "layer/sessions";
 
 /// Parsed session from markdown file
@@ -39,17 +44,13 @@ struct Observation {
     timestamp: Option<String>,
 }
 
-/// Initialize the sessions database schema
-pub fn initialize(db_path: &Path) -> Result<Connection> {
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let conn = Connection::open(db_path)?;
-
+/// Create materialized views for session events
+///
+/// Views are derived from eventlog WHERE event_type LIKE 'session.%'
+fn create_materialized_views(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
-        -- Sessions table
+        -- Sessions view (materialized from session.started events)
         CREATE TABLE IF NOT EXISTS sessions (
             id TEXT PRIMARY KEY,
             title TEXT,
@@ -62,7 +63,7 @@ pub fn initialize(db_path: &Path) -> Result<Connection> {
             file_path TEXT
         );
 
-        -- Observations extracted from sessions
+        -- Observations extracted from sessions (from session.observation events)
         CREATE TABLE IF NOT EXISTS observations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT,
@@ -72,19 +73,13 @@ pub fn initialize(db_path: &Path) -> Result<Connection> {
             FOREIGN KEY (session_id) REFERENCES sessions(id)
         );
 
-        -- Goals per session
+        -- Goals per session (from session.goal events)
         CREATE TABLE IF NOT EXISTS goals (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT,
             content TEXT,
             completed INTEGER,
             FOREIGN KEY (session_id) REFERENCES sessions(id)
-        );
-
-        -- Scrape metadata
-        CREATE TABLE IF NOT EXISTS scrape_meta (
-            key TEXT PRIMARY KEY,
-            value TEXT
         );
 
         -- Indexes
@@ -95,7 +90,7 @@ pub fn initialize(db_path: &Path) -> Result<Connection> {
         "#,
     )?;
 
-    Ok(conn)
+    Ok(())
 }
 
 /// Parse a session markdown file
@@ -295,7 +290,11 @@ fn extract_section(content: &str, header: &str) -> Option<String> {
     None
 }
 
-/// Insert a parsed session into the database
+/// Insert a parsed session into eventlog and materialized views
+///
+/// Dual-write pattern:
+/// 1. Insert session.started, session.goal, session.observation events into eventlog
+/// 2. Update materialized views (sessions, goals, observations) for fast queries
 fn insert_session(conn: &Connection, session: &ParsedSession, file_path: &str) -> Result<()> {
     // Delete existing data for this session (for re-scrapes)
     conn.execute(
@@ -305,7 +304,31 @@ fn insert_session(conn: &Connection, session: &ParsedSession, file_path: &str) -
     conn.execute("DELETE FROM goals WHERE session_id = ?1", [&session.id])?;
     conn.execute("DELETE FROM sessions WHERE id = ?1", [&session.id])?;
 
-    // Insert session
+    // Determine timestamp (use started_at if available, otherwise use ID-based timestamp)
+    let timestamp = session.started_at.as_deref().unwrap_or(&session.id);
+
+    // 1. Insert session.started event into eventlog
+    let session_event = json!({
+        "title": &session.title,
+        "started_at": &session.started_at,
+        "ended_at": &session.ended_at,
+        "branch": &session.branch,
+        "classification": &session.classification,
+        "files_changed": session.files_changed,
+        "commits_made": session.commits_made,
+        "file_path": file_path,
+    });
+
+    database::insert_event(
+        conn,
+        "session.started",
+        timestamp,
+        &session.id,
+        Some(file_path),
+        &session_event.to_string(),
+    )?;
+
+    // 2. Insert materialized session view
     conn.execute(
         "INSERT INTO sessions (id, title, started_at, ended_at, branch, classification, files_changed, commits_made, file_path) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         rusqlite::params![
@@ -321,10 +344,28 @@ fn insert_session(conn: &Connection, session: &ParsedSession, file_path: &str) -
         ],
     )?;
 
-    // Insert goals
+    // 3. Insert goal events and materialized views
     let mut goal_stmt =
         conn.prepare("INSERT INTO goals (session_id, content, completed) VALUES (?1, ?2, ?3)")?;
+
     for goal in &session.goals {
+        // Insert session.goal event
+        let goal_event = json!({
+            "session_id": &session.id,
+            "content": &goal.content,
+            "completed": goal.completed,
+        });
+
+        database::insert_event(
+            conn,
+            "session.goal",
+            timestamp,
+            &session.id,
+            Some(file_path),
+            &goal_event.to_string(),
+        )?;
+
+        // Insert materialized view
         goal_stmt.execute(rusqlite::params![
             &session.id,
             &goal.content,
@@ -332,11 +373,37 @@ fn insert_session(conn: &Connection, session: &ParsedSession, file_path: &str) -
         ])?;
     }
 
-    // Insert observations
+    // 4. Insert observation events and materialized views
     let mut obs_stmt = conn.prepare(
         "INSERT INTO observations (session_id, content, observation_type, timestamp) VALUES (?1, ?2, ?3, ?4)",
     )?;
+
     for obs in &session.observations {
+        // Insert session.observation event (or more specific types)
+        let event_type = match obs.observation_type.as_str() {
+            "decision" => "session.decision",
+            "pattern" => "session.pattern",
+            "work" => "session.work",
+            "context" => "session.context",
+            _ => "session.observation",
+        };
+
+        let obs_event = json!({
+            "session_id": &session.id,
+            "content": &obs.content,
+            "observation_type": &obs.observation_type,
+        });
+
+        database::insert_event(
+            conn,
+            event_type,
+            obs.timestamp.as_deref().unwrap_or(timestamp),
+            &session.id,
+            Some(file_path),
+            &obs_event.to_string(),
+        )?;
+
+        // Insert materialized view
         obs_stmt.execute(rusqlite::params![
             &session.id,
             &obs.content,
@@ -351,14 +418,18 @@ fn insert_session(conn: &Connection, session: &ParsedSession, file_path: &str) -
 /// Main entry point for sessions scraping
 pub fn run(full: bool) -> Result<ScrapeStats> {
     let start = Instant::now();
-    let db_path = Path::new(DB_PATH);
+    let db_path = Path::new(database::PATINA_DB);
     let sessions_dir = Path::new(SESSIONS_DIR);
 
     if !sessions_dir.exists() {
         anyhow::bail!("Sessions directory not found: {}", SESSIONS_DIR);
     }
 
-    let conn = initialize(db_path)?;
+    // Initialize unified database with eventlog
+    let conn = database::initialize(db_path)?;
+
+    // Create materialized views for session events
+    create_materialized_views(&conn)?;
 
     // Get list of already processed sessions for incremental
     let processed: std::collections::HashSet<String> = if full {
