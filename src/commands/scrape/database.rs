@@ -169,11 +169,17 @@ mod tests {
 
         // Set value
         set_last_processed(&conn, "git", "abc123")?;
-        assert_eq!(get_last_processed(&conn, "git")?, Some("abc123".to_string()));
+        assert_eq!(
+            get_last_processed(&conn, "git")?,
+            Some("abc123".to_string())
+        );
 
         // Update value
         set_last_processed(&conn, "git", "def456")?;
-        assert_eq!(get_last_processed(&conn, "git")?, Some("def456".to_string()));
+        assert_eq!(
+            get_last_processed(&conn, "git")?,
+            Some("def456".to_string())
+        );
 
         Ok(())
     }
