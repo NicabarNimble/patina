@@ -8,30 +8,33 @@ Persistent task tracking across sessions. Check items as completed, add notes in
 
 ## Active
 
-- [ ] Unified eventlog - refactor remaining scrapers (sessions, code) to patina.db
+- [ ] Phase 2: Oxidize - Embeddings and projections
 
 ## Queued
 
-### Phase 1: Scrape Pipeline (in progress - unifying to eventlog)
+### Phase 1: Scrape Pipeline ✅ COMPLETE (2025-11-22)
 **Specs:**
 - [spec-eventlog-architecture.md](../surface/spec-eventlog-architecture.md) - LiveStore pattern, multi-user alignment
 - [spec-scrape-pipeline.md](../surface/spec-scrape-pipeline.md) - Implementation details
 
 Materialize SQLite views from event sources (git history, session files, code).
 
-**Completed (unified eventlog):**
+**Completed:**
 - [x] Unified `patina.db` schema - eventlog table + scrape_meta (2025-11-21)
 - [x] `patina scrape git` - git.commit events → eventlog, materialized views (commits, commit_files, co_changes) (2025-11-21)
+- [x] `patina scrape sessions` - session.* events → eventlog, materialized views (sessions, observations, goals) (2025-11-21)
+- [x] `patina scrape code` - code.* events → eventlog, materialized views (all 7 types) (2025-11-22)
+- [x] `patina scrape` - runs all three scrapers (2025-11-21)
+- [x] Dual-write pattern: eventlog (source of truth) + materialized views (query performance)
+- [x] Cross-cutting queries validated across all event types (2025-11-22)
 
-**In Progress (separate DBs, need refactor):**
-- [x] `patina scrape sessions` - observations, decisions → sessions.db (2025-11-21)
-- [x] `patina scrape code` - AST, call_graph → code.db
-- [x] `patina scrape` - run all three (2025-11-21)
-
-**Next:**
-- [ ] Refactor sessions scraper to populate unified eventlog
-- [ ] Refactor code scraper to populate unified eventlog
-- [ ] Validate cross-cutting queries across all event types
+**Stats (patina codebase):**
+- Total events: 16,027 across 17 event types
+- Code events: 13,146 (symbols, functions, types, imports, calls, constants, members)
+- Git events: 707 commits
+- Session events: 2,174 (started, goals, decisions, patterns, work, context)
+- Database: 41MB unified patina.db
+- All 11 language processors preserved, zero functionality lost
 
 ### Phase 2: Oxidize (Embeddings + Projections)
 **Spec:** [layer/surface/spec-oxidize.md](../surface/spec-oxidize.md)
