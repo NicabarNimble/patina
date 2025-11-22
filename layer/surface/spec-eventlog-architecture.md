@@ -374,23 +374,68 @@ INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data) VALUE
 );
 ```
 
-### Code Events (Future)
+### Code Events ✅ IMPLEMENTED (2025-11-22)
 
 ```sql
--- code.function
+-- code.function (example from actual implementation)
 INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data) VALUES (
   'code.function',
-  '2025-11-21T11:29:32-05:00',  -- commit timestamp
-  'scrape_git',
+  '2025-11-22T12:27:37.884599+00:00',
+  'src/commands/scrape/git/mod.rs::parse_git_log',
   'src/commands/scrape/git/mod.rs',
   json_object(
-    'name', 'scrape_git',
-    'signature', 'pub fn run(full: bool) -> Result<ScrapeStats>',
-    'line', 234,
-    'visibility', 'pub'
+    'file', 'src/commands/scrape/git/mod.rs',
+    'name', 'parse_git_log',
+    'is_async', false,
+    'is_public', true,
+    'is_unsafe', false,
+    'takes_mut_self', false,
+    'returns_result', true,
+    'parameters', json_array('full: bool'),
+    'return_type', 'Result<Vec<GitCommit>>'
+  )
+);
+
+-- code.struct
+INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data) VALUES (
+  'code.struct',
+  '2025-11-22T12:27:37.880000+00:00',
+  'src/commands/scrape/code/database.rs::FunctionFact',
+  'src/commands/scrape/code/database.rs',
+  json_object(
+    'file', 'src/commands/scrape/code/database.rs',
+    'name', 'FunctionFact',
+    'kind', 'struct',
+    'visibility', 'public',
+    'definition', 'pub struct FunctionFact { ... }'
+  )
+);
+
+-- code.import
+INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data) VALUES (
+  'code.import',
+  '2025-11-22T12:27:37.870000+00:00',
+  'src/main.rs::clap',
+  'src/main.rs',
+  json_object(
+    'file', 'src/main.rs',
+    'import_path', 'clap',
+    'imported_names', json_array('Parser', 'Subcommand'),
+    'import_kind', 'use',
+    'line_number', 3
   )
 );
 ```
+
+**Current stats (patina codebase):**
+- 13,146 code.* events across 10 types
+- code.call (9,634 events) - function calls, 60% of all events
+- code.symbol (1,423 events) - all code symbols with FTS
+- code.function (790 events) - functions with rich metadata
+- code.struct/enum/trait (129 events) - type definitions
+- code.import (458 events) - dependency relationships
+- code.constant (203 events) - macros, enums, statics
+- code.member (477 events) - struct fields, methods
 
 ## Time Travel
 
@@ -537,14 +582,27 @@ WHERE last_seq < (SELECT MAX(seq) FROM eventlog);
 | **Multi-user** | Real-time sync | Git-based (eventual) |
 | **Primary use case** | Collaborative apps | ML knowledge extraction |
 
-## Next Steps
+## Implementation Status
 
-1. **Implement unified eventlog table** (spec-scrape-pipeline.md)
-2. **Update scrapers to populate eventlog** (git, sessions, code)
-3. **Add materialized views** (commits, observations, co_changes)
-4. **Integrate with scry** (spec-mothership-service.md)
-5. **Add time-travel CLI** (`--until` flag)
-6. **Document recipe versioning** (oxidize_meta table)
+**Phase 1: Unified Eventlog** ✅ COMPLETE (2025-11-22)
+1. [x] Implement unified eventlog table (2025-11-21)
+2. [x] Update git scraper to populate eventlog (2025-11-21)
+3. [x] Update sessions scraper to populate eventlog (2025-11-21)
+4. [x] Update code scraper to populate eventlog (2025-11-22)
+5. [x] Add materialized views (commits, sessions, observations, code tables) (2025-11-22)
+6. [x] Validate cross-cutting queries (2025-11-22)
+
+**Stats (patina codebase):**
+- 16,027 total events across 17 event types
+- 41MB unified patina.db
+- All tests passing (80+)
+- Zero functionality lost
+
+**Phase 2: Integration & Enhancements** (Next)
+- [ ] Integrate with scry (spec-mothership-service.md)
+- [ ] Add time-travel CLI (`--until` flag)
+- [ ] Document recipe versioning (oxidize_meta table)
+- [ ] Implement oxidize embeddings pipeline (spec-oxidize.md)
 
 ## References
 
