@@ -1,15 +1,19 @@
 //! Git history scraper - extracts commits, files changed, and co-change relationships
+//!
+//! Uses unified eventlog pattern:
+//! - Inserts git.commit events into eventlog table
+//! - Creates materialized views (commits, commit_files, co_changes) from eventlog
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use serde_json::json;
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 use std::time::Instant;
 
+use super::database;
 use super::ScrapeStats;
-
-const DB_PATH: &str = ".patina/data/git.db";
 
 /// Parsed commit from git log
 #[derive(Debug)]
@@ -31,18 +35,13 @@ struct FileChange {
     lines_removed: i32,
 }
 
-/// Initialize the git database schema
-pub fn initialize(db_path: &Path) -> Result<Connection> {
-    // Ensure parent directory exists
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let conn = Connection::open(db_path)?;
-
+/// Create materialized views for git events
+///
+/// Views are derived from eventlog WHERE event_type = 'git.commit'
+fn create_materialized_views(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
-        -- Commits table
+        -- Commits view (materialized from git.commit events)
         CREATE TABLE IF NOT EXISTS commits (
             sha TEXT PRIMARY KEY,
             message TEXT,
@@ -52,7 +51,7 @@ pub fn initialize(db_path: &Path) -> Result<Connection> {
             branch TEXT
         );
 
-        -- Files changed per commit
+        -- Files changed per commit (from git.commit event data)
         CREATE TABLE IF NOT EXISTS commit_files (
             sha TEXT,
             file_path TEXT,
@@ -62,18 +61,12 @@ pub fn initialize(db_path: &Path) -> Result<Connection> {
             PRIMARY KEY (sha, file_path)
         );
 
-        -- Co-change relationships (derived)
+        -- Co-change relationships (derived from commit_files)
         CREATE TABLE IF NOT EXISTS co_changes (
             file_a TEXT,
             file_b TEXT,
             count INTEGER,
             PRIMARY KEY (file_a, file_b)
-        );
-
-        -- Scrape metadata
-        CREATE TABLE IF NOT EXISTS scrape_meta (
-            key TEXT PRIMARY KEY,
-            value TEXT
         );
 
         -- Indexes for common queries
@@ -84,7 +77,7 @@ pub fn initialize(db_path: &Path) -> Result<Connection> {
         "#,
     )?;
 
-    Ok(conn)
+    Ok(())
 }
 
 /// Parse git log output into commits
@@ -180,7 +173,11 @@ fn parse_git_log_output(output: &str) -> Result<Vec<GitCommit>> {
     Ok(commits)
 }
 
-/// Insert commits into the database
+/// Insert commits into eventlog and materialized views
+///
+/// Dual-write pattern:
+/// 1. Insert git.commit event into eventlog (source of truth)
+/// 2. Update materialized views (commits, commit_files) for fast queries
 fn insert_commits(conn: &Connection, commits: &[GitCommit]) -> Result<usize> {
     let mut count = 0;
 
@@ -193,6 +190,30 @@ fn insert_commits(conn: &Connection, commits: &[GitCommit]) -> Result<usize> {
     )?;
 
     for commit in commits {
+        // 1. Insert into eventlog (source of truth)
+        let event_data = json!({
+            "sha": &commit.sha,
+            "message": &commit.message,
+            "author_name": &commit.author_name,
+            "author_email": &commit.author_email,
+            "files": commit.files.iter().map(|f| json!({
+                "path": &f.path,
+                "change_type": &f.change_type,
+                "lines_added": f.lines_added,
+                "lines_removed": f.lines_removed,
+            })).collect::<Vec<_>>(),
+        });
+
+        database::insert_event(
+            conn,
+            "git.commit",
+            &commit.timestamp,
+            &commit.sha,
+            None, // source_file not applicable for commits
+            &event_data.to_string(),
+        )?;
+
+        // 2. Update materialized view (for fast queries)
         commit_stmt.execute([
             &commit.sha,
             &commit.message,
@@ -283,33 +304,26 @@ fn rebuild_co_changes(conn: &Connection) -> Result<usize> {
     Ok(count)
 }
 
-/// Get the last scraped SHA from metadata
+/// Get the last scraped SHA from metadata (uses unified database module)
 fn get_last_sha(conn: &Connection) -> Result<Option<String>> {
-    let result: Option<String> = conn
-        .query_row(
-            "SELECT value FROM scrape_meta WHERE key = 'last_sha'",
-            [],
-            |row| row.get(0),
-        )
-        .ok();
-    Ok(result)
+    database::get_last_processed(conn, "git")
 }
 
-/// Update the last scraped SHA
+/// Update the last scraped SHA (uses unified database module)
 fn update_last_sha(conn: &Connection, sha: &str) -> Result<()> {
-    conn.execute(
-        "INSERT OR REPLACE INTO scrape_meta (key, value) VALUES ('last_sha', ?1)",
-        [sha],
-    )?;
-    Ok(())
+    database::set_last_processed(conn, "git", sha)
 }
 
 /// Main entry point for git scraping
 pub fn run(full: bool) -> Result<ScrapeStats> {
     let start = Instant::now();
-    let db_path = Path::new(DB_PATH);
+    let db_path = Path::new(database::PATINA_DB);
 
-    let conn = initialize(db_path)?;
+    // Initialize unified database with eventlog
+    let conn = database::initialize(db_path)?;
+
+    // Create materialized views for git events
+    create_materialized_views(&conn)?;
 
     // Get last SHA for incremental scraping
     let since_sha = if full { None } else { get_last_sha(&conn)? };

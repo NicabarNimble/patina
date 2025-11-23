@@ -1,6 +1,7 @@
 // Shared utilities for all scrape subcommands
 
 pub mod code;
+pub mod database;
 pub mod git;
 pub mod sessions;
 
@@ -16,7 +17,7 @@ pub struct ScrapeConfig {
 impl ScrapeConfig {
     pub fn new(force: bool) -> Self {
         Self {
-            db_path: ".patina/data/code.db".to_string(),
+            db_path: database::PATINA_DB.to_string(),
             force,
         }
     }
