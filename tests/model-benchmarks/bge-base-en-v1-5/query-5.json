@@ -1,0 +1,42 @@
+[
+  {
+    "id": "799b16a5-7c66-4810-9635-8def602e77cb",
+    "session_id": null,
+    "type": "decision",
+    "text": "Build core value proposition (Ingest → Structure → Retrieve) before optimizing for performance",
+    "similarity": 0.6576053,
+    "evidence_strength": "medium",
+    "source_type": "session",
+    "reliability": 0.95
+  },
+  {
+    "id": "a1b2c3d4-0005-4001-8001-000000000003",
+    "session_id": null,
+    "type": "pattern",
+    "text": "When refactoring: start with simplest extractions first (read-only operations), maintain backward compatibility during migration, run both systems in parallel, keep rollback plan ready.",
+    "similarity": 0.5934793,
+    "evidence_strength": "medium",
+    "source_type": "documentation",
+    "reliability": 0.95
+  },
+  {
+    "id": "a1b2c3d4-0001-4001-8001-000000000003",
+    "session_id": null,
+    "type": "pattern",
+    "text": "Commit often using a scalpel not a shotgun. One commit = one purpose (fix one bug, add one feature, refactor one function). Use git add -p for surgical staging when files have multiple changes.",
+    "similarity": 0.5778623,
+    "evidence_strength": "medium",
+    "source_type": "documentation",
+    "reliability": 1.0
+  },
+  {
+    "id": "a1b2c3d4-0001-4001-8001-000000000005",
+    "session_id": null,
+    "type": "pattern",
+    "text": "Patina design philosophy: Knowledge First (patterns are core value), LLM Agnostic (work where AI lives), Container Native (reproducible everywhere), Escape Hatches (never lock users in).",
+    "similarity": 0.57278574,
+    "evidence_strength": "medium",
+    "source_type": "documentation",
+    "reliability": 1.0
+  }
+]

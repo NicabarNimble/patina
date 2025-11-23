@@ -1,0 +1,52 @@
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440001",
+    "session_id": null,
+    "type": "decision",
+    "text": "Build core value proposition (Ingest → Structure → Retrieve) before optimizing for performance",
+    "similarity": 0.68156415,
+    "evidence_strength": "medium",
+    "source_type": "session",
+    "reliability": 0.95
+  },
+  {
+    "id": "a1b2c3d4-0005-4001-8001-000000000003",
+    "session_id": null,
+    "type": "pattern",
+    "text": "When refactoring: start with simplest extractions first (read-only operations), maintain backward compatibility during migration, run both systems in parallel, keep rollback plan ready.",
+    "similarity": 0.6377212,
+    "evidence_strength": "medium",
+    "source_type": "documentation",
+    "reliability": 0.95
+  },
+  {
+    "id": "a1b2c3d4-0006-4001-8001-000000000001",
+    "session_id": null,
+    "type": "technology",
+    "text": "Use Docker for containerized builds and tests. Never require specific tools beyond Docker. Provides reproducible builds across different development environments.",
+    "similarity": 0.6315781,
+    "evidence_strength": "medium",
+    "source_type": "documentation",
+    "reliability": 1.0
+  },
+  {
+    "id": "a1b2c3d4-0001-4001-8001-000000000004",
+    "session_id": null,
+    "type": "pattern",
+    "text": "Keep commit messages clean and professional. Focus on what changed and why, not who or what tool wrote it. Never add AI attribution like Generated with Claude Code or Co-Authored-By.",
+    "similarity": 0.61499846,
+    "evidence_strength": "medium",
+    "source_type": "documentation",
+    "reliability": 1.0
+  },
+  {
+    "id": "a1b2c3d4-0005-4001-8001-000000000004",
+    "session_id": null,
+    "type": "pattern",
+    "text": "Avoid circular dependencies between modules. If two modules need each other, extract shared interface to third module, or reconsider module boundaries - may indicate wrong decomposition.",
+    "similarity": 0.6105225,
+    "evidence_strength": "medium",
+    "source_type": "documentation",
+    "reliability": 0.95
+  }
+]

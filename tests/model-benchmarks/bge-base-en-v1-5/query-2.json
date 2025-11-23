@@ -1,0 +1,32 @@
+[
+  {
+    "id": "a1b2c3d4-0003-4001-8001-000000000002",
+    "session_id": null,
+    "type": "technology",
+    "text": "Provide single Error enum per module, mark as non_exhaustive if variants may grow. Export from mod.rs, implement in internal.rs. Makes error handling predictable and documentation clear.",
+    "similarity": 0.68160474,
+    "evidence_strength": "medium",
+    "source_type": "documentation",
+    "reliability": 1.0
+  },
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440003",
+    "session_id": null,
+    "type": "pattern",
+    "text": "Ask \"Are we solving the wrong problem?\" when hitting unexpected technical constraints - may indicate invented requirements",
+    "similarity": 0.66994643,
+    "evidence_strength": "medium",
+    "source_type": "session",
+    "reliability": 0.9
+  },
+  {
+    "id": "a1b2c3d4-0006-4001-8001-000000000002",
+    "session_id": null,
+    "type": "technology",
+    "text": "Use Rust for CLI and core logic - let the compiler be your guard rail. Rust type system catches errors at compile time that would be runtime bugs in other languages.",
+    "similarity": 0.657573,
+    "evidence_strength": "medium",
+    "source_type": "documentation",
+    "reliability": 1.0
+  }
+]

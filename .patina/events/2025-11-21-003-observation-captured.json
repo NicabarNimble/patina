@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "evt_20251121_003",
+  "event_type": "observation_captured",
+  "timestamp": "2025-11-21T05:30:00Z",
+
+  "sequence": {
+    "global": 3,
+    "client": 0,
+    "rebase_generation": 0
+  },
+
+  "source": {
+    "session_id": "20251121-042111",
+    "git_commit": "bf22318e",
+    "git_branch": "neuro-symbolic-knowledge-system"
+  },
+
+  "payload": {
+    "content": "Event sourcing pattern from LiveStore: Write model (events) is source of truth, Read model (SQLite/USearch) is derived and rebuildable. Events are append-only, materialization reconstructs state. Git serves as sync backend - pull/push events like any other sync provider.",
+    "observation_type": "pattern",
+    "domains": ["architecture", "event-sourcing", "data-pipeline", "sync"],
+    "code_refs": [
+      {"file": "layer/dust/repos/livestore/packages/@livestore/common/src/sync/sync-backend.ts", "context": "SyncBackend interface"}
+    ],
+    "reliability": 0.95
+  }
+}

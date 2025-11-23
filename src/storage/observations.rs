@@ -10,6 +10,10 @@ use std::path::{Path, PathBuf};
 use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 use uuid::Uuid;
 
+/// Type alias for observation row data from SQLite
+/// (rowid, id, observation_type, content, metadata)
+type ObservationRow = (i64, String, String, String, String);
+
 /// Dual storage for observations: SQLite + USearch
 pub struct ObservationStorage {
     vectors: Index,
@@ -18,12 +22,16 @@ pub struct ObservationStorage {
 }
 
 impl ObservationStorage {
-    /// Open or create observation storage at the given path
+    /// Open or create observation storage with specified embedding dimension
     ///
     /// Creates two files:
     /// - `{path}/observations.db` - SQLite database
     /// - `{path}/observations.usearch` - USearch vector index
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+    ///
+    /// # Arguments
+    /// * `path` - Base directory for observation storage
+    /// * `dimension` - Embedding dimension (384 for small models, 768 for base models)
+    pub fn open_with_dimension<P: AsRef<Path>>(path: P, dimension: usize) -> Result<Self> {
         let base = path.as_ref();
         std::fs::create_dir_all(base)?;
 
@@ -33,9 +41,9 @@ impl ObservationStorage {
 
         Self::init_schema(&db)?;
 
-        // Configure USearch index
+        // Configure USearch index with specified dimension
         let options = IndexOptions {
-            dimensions: 384,         // all-MiniLM-L6-v2 embedding dimension
+            dimensions: dimension,
             metric: MetricKind::Cos, // Cosine similarity
             quantization: ScalarKind::F32,
             ..Default::default()
@@ -49,9 +57,11 @@ impl ObservationStorage {
         let index_path = base.join("observations.usearch");
 
         // Load existing index if present
+        // Note: .view() creates immutable index - cannot add new vectors
+        // TODO: Use mutable loading or rebuild strategy
         if index_path.exists() {
             index
-                .view(index_path.to_str().unwrap())
+                .load(index_path.to_str().unwrap())
                 .context("Failed to load existing USearch index")?;
         }
 
@@ -60,6 +70,11 @@ impl ObservationStorage {
             db,
             index_path,
         })
+    }
+
+    /// Open observation storage (backward compatibility - defaults to 384 dimensions)
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Self::open_with_dimension(path, 384)
     }
 
     /// Initialize SQLite schema
@@ -242,6 +257,40 @@ impl ObservationStorage {
             |row| row.get(0),
         )?;
         Ok(count as usize)
+    }
+
+    /// Add observation to USearch index only (assumes already in SQLite)
+    ///
+    /// Use when rebuilding index from existing SQLite observations.
+    /// Does NOT insert into SQLite - only adds vector to USearch index.
+    pub fn add_to_index_only(&mut self, rowid: i64, embedding: &[f32]) -> Result<()> {
+        self.vectors
+            .add(rowid as u64, embedding)
+            .context("Failed to add vector to USearch index")?;
+        Ok(())
+    }
+
+    /// Query all observations from SQLite (for index rebuilding)
+    ///
+    /// Returns (rowid, id, observation_type, content, metadata) tuples.
+    pub fn query_all(&self) -> Result<Vec<ObservationRow>> {
+        let mut stmt = self
+            .db
+            .prepare("SELECT rowid, id, observation_type, content, metadata FROM observations")?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?, // rowid
+                    row.get(1)?, // id
+                    row.get(2)?, // observation_type
+                    row.get(3)?, // content
+                    row.get(4)?, // metadata
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(rows)
     }
 }
 

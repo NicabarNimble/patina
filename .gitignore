@@ -1,4 +1,7 @@
 /target/
+.cargo/
+libduckdb/
+libduckdb-*.zip
 **/*.rs.bk
 Cargo.lock
 .DS_Store
@@ -29,17 +32,12 @@ docker-compose.yml.backup/
 *.db-wal
 
 # Patina databases (regeneratable)
-.patina/db/
-.patina/storage/
+.patina/data/
 
 # ONNX models (large binary files, download on-demand)
-# Downloaded via scripts/download-test-models.sh
+# Downloaded via scripts/download-active-model.sh
+resources/models/*/
 resources/models/*.onnx
 resources/models/tokenizer.json
-
-# Added by Patina for safety
-node_modules/
-.env
-.patina/
-*.key
-*.pem
+!resources/models/registry.toml
+!resources/models/README.md
