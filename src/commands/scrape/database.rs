@@ -94,25 +94,25 @@ pub fn set_last_processed(conn: &Connection, scraper: &str, value: &str) -> Resu
     Ok(())
 }
 
-/// Count events by type
-pub fn count_events_by_type(conn: &Connection, event_type: &str) -> Result<i64> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM eventlog WHERE event_type = ?1",
-        [event_type],
-        |row| row.get(0),
-    )?;
-    Ok(count)
-}
-
-/// Get total event count
-pub fn count_total_events(conn: &Connection) -> Result<i64> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM eventlog", [], |row| row.get(0))?;
-    Ok(count)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Count events by type (test helper)
+    fn count_events_by_type(conn: &Connection, event_type: &str) -> Result<i64> {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM eventlog WHERE event_type = ?1",
+            [event_type],
+            |row| row.get(0),
+        )?;
+        Ok(count)
+    }
+
+    /// Get total event count (test helper)
+    fn count_total_events(conn: &Connection) -> Result<i64> {
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM eventlog", [], |row| row.get(0))?;
+        Ok(count)
+    }
     use tempfile::tempdir;
 
     #[test]
