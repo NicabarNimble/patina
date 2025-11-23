@@ -1,0 +1,52 @@
+[
+  {
+    "id": "a1b2c3d4-0003-4001-8001-000000000002",
+    "session_id": null,
+    "type": "technology",
+    "text": "Provide single Error enum per module, mark as non_exhaustive if variants may grow. Export from mod.rs, implement in internal.rs. Makes error handling predictable and documentation clear.",
+    "similarity": 0.70327586,
+    "evidence_strength": "strong",
+    "source_type": "documentation",
+    "reliability": 1.0
+  },
+  {
+    "id": "a1b2c3d4-0001-4001-8001-000000000004",
+    "session_id": null,
+    "type": "pattern",
+    "text": "Keep commit messages clean and professional. Focus on what changed and why, not who or what tool wrote it. Never add AI attribution like Generated with Claude Code or Co-Authored-By.",
+    "similarity": 0.6926362,
+    "evidence_strength": "medium",
+    "source_type": "documentation",
+    "reliability": 1.0
+  },
+  {
+    "id": "a1b2c3d4-0005-4001-8001-000000000003",
+    "session_id": null,
+    "type": "pattern",
+    "text": "When refactoring: start with simplest extractions first (read-only operations), maintain backward compatibility during migration, run both systems in parallel, keep rollback plan ready.",
+    "similarity": 0.65587175,
+    "evidence_strength": "medium",
+    "source_type": "documentation",
+    "reliability": 0.95
+  },
+  {
+    "id": "a1b2c3d4-0006-4001-8001-000000000002",
+    "session_id": null,
+    "type": "technology",
+    "text": "Use Rust for CLI and core logic - let the compiler be your guard rail. Rust type system catches errors at compile time that would be runtime bugs in other languages.",
+    "similarity": 0.6516636,
+    "evidence_strength": "medium",
+    "source_type": "documentation",
+    "reliability": 1.0
+  },
+  {
+    "id": "a1b2c3d4-0007-4001-8001-000000000002",
+    "session_id": null,
+    "type": "pattern",
+    "text": "Always provide escape hatches. Never lock users into a specific workflow, tool, or pattern. Users should be able to drop down to lower abstraction levels when needed.",
+    "similarity": 0.6487992,
+    "evidence_strength": "medium",
+    "source_type": "documentation",
+    "reliability": 1.0
+  }
+]

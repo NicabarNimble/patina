@@ -12,6 +12,9 @@ pub struct OnnxEmbedder {
     session: Session,
     tokenizer: Tokenizer,
     dimension: usize,
+    model_name: String,
+    query_prefix: Option<String>,
+    passage_prefix: Option<String>,
 }
 
 impl OnnxEmbedder {
@@ -22,13 +25,35 @@ impl OnnxEmbedder {
         let model_path = Path::new("resources/models/all-MiniLM-L6-v2-int8.onnx");
         let tokenizer_path = Path::new("resources/models/tokenizer.json");
 
-        Self::new_from_paths(model_path, tokenizer_path)
+        Self::new_from_paths(
+            model_path,
+            tokenizer_path,
+            "all-MiniLM-L6-v2",
+            384,
+            None,
+            None,
+        )
     }
 
     /// Create a new ONNX embedder from custom paths
     ///
     /// Allows specifying different model/tokenizer locations (useful for testing)
-    pub fn new_from_paths(model_path: &Path, tokenizer_path: &Path) -> Result<Self> {
+    ///
+    /// # Arguments
+    /// * `model_path` - Path to ONNX model file
+    /// * `tokenizer_path` - Path to tokenizer.json file
+    /// * `model_name` - Human-readable model name (e.g., "bge-base-en-v1.5")
+    /// * `dimension` - Embedding dimension (384 for small models, 768 for base models)
+    /// * `query_prefix` - Optional prefix for query embeddings (for asymmetric models like BGE)
+    /// * `passage_prefix` - Optional prefix for passage embeddings (for asymmetric models like E5)
+    pub fn new_from_paths(
+        model_path: &Path,
+        tokenizer_path: &Path,
+        model_name: &str,
+        dimension: usize,
+        query_prefix: Option<String>,
+        passage_prefix: Option<String>,
+    ) -> Result<Self> {
         // Load ONNX model
         if !model_path.exists() {
             bail!(
@@ -66,7 +91,10 @@ impl OnnxEmbedder {
         Ok(Self {
             session,
             tokenizer,
-            dimension: 384, // all-MiniLM-L6-v2 dimension
+            dimension,
+            model_name: model_name.to_string(),
+            query_prefix,
+            passage_prefix,
         })
     }
 
@@ -122,6 +150,24 @@ impl OnnxEmbedder {
 }
 
 impl EmbeddingEngine for OnnxEmbedder {
+    fn embed_query(&mut self, text: &str) -> Result<Vec<f32>> {
+        let input = if let Some(prefix) = &self.query_prefix {
+            format!("{}{}", prefix, text)
+        } else {
+            text.to_string()
+        };
+        self.embed(&input)
+    }
+
+    fn embed_passage(&mut self, text: &str) -> Result<Vec<f32>> {
+        let input = if let Some(prefix) = &self.passage_prefix {
+            format!("{}{}", prefix, text)
+        } else {
+            text.to_string()
+        };
+        self.embed(&input)
+    }
+
     fn embed(&mut self, text: &str) -> Result<Vec<f32>> {
         // Tokenize
         let (input_ids, attention_mask) = self.tokenize(text)?;
@@ -192,7 +238,7 @@ impl EmbeddingEngine for OnnxEmbedder {
     }
 
     fn model_name(&self) -> &str {
-        "all-MiniLM-L6-v2 (ONNX)"
+        &self.model_name
     }
 }
 
@@ -203,20 +249,23 @@ mod tests {
     use std::path::Path;
 
     fn get_test_embedder() -> OnnxEmbedder {
-        // Try production model first
-        if let Ok(embedder) = OnnxEmbedder::new() {
-            return embedder;
+        // Use all-minilm baseline model for consistent unit tests (384 dims)
+        let model_path = Path::new("resources/models/all-minilm-l6-v2/model_quantized.onnx");
+        let tokenizer_path = Path::new("resources/models/all-minilm-l6-v2/tokenizer.json");
+
+        if !model_path.exists() || !tokenizer_path.exists() {
+            panic!("Test model not found. Run: ./scripts/download-model.sh all-minilm-l6-v2");
         }
 
-        // Fall back to test model
-        let test_model = Path::new("target/test-models/all-MiniLM-L6-v2-int8.onnx");
-        let test_tokenizer = Path::new("target/test-models/tokenizer.json");
-
-        if !test_model.exists() || !test_tokenizer.exists() {
-            panic!("Test models missing. Run: ./scripts/download-test-models.sh");
-        }
-
-        OnnxEmbedder::new_from_paths(test_model, test_tokenizer).expect("Test model should load")
+        OnnxEmbedder::new_from_paths(
+            model_path,
+            tokenizer_path,
+            "all-MiniLM-L6-v2",
+            384,
+            None,
+            None,
+        )
+        .expect("Test model should load")
     }
 
     #[test]

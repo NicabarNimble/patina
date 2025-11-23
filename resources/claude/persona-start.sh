@@ -21,7 +21,7 @@ fi
 PERSONA_SESSION_ID="persona-$(date +%Y%m%d-%H%M%S)"
 
 # Check databases exist
-FACTS_DB=".patina/db/facts.db"
+FACTS_DB=".patina/data/facts.db"
 if [ ! -f "$FACTS_DB" ]; then
     echo "❌ Error: facts.db not found at $FACTS_DB"
     echo "   Run: patina session extract --all"
@@ -35,7 +35,7 @@ cat > "$ACTIVE_PERSONA" << 'EOF'
 # Persona Session
 **ID**: PERSONA_SESSION_ID_PLACEHOLDER
 **Started**: TIMESTAMP_PLACEHOLDER
-**Database**: .patina/db/facts.db
+**Database**: .patina/data/facts.db
 
 ## Goal
 Discover and codify your beliefs through interactive dialogue.
@@ -53,8 +53,8 @@ patina query semantic "security practices" --type pattern,decision --limit 10
 
 ### Query Observations (SQLite - Fallback)
 ```bash
-sqlite3 .patina/db/facts.db "SELECT * FROM patterns WHERE category = 'architecture'"
-sqlite3 .patina/db/facts.db "SELECT * FROM sessions ORDER BY started_at DESC LIMIT 5"
+sqlite3 .patina/data/facts.db "SELECT * FROM patterns WHERE category = 'architecture'"
+sqlite3 .patina/data/facts.db "SELECT * FROM sessions ORDER BY started_at DESC LIMIT 5"
 ```
 
 ### Validate Beliefs (Neuro-Symbolic - MANDATORY)
@@ -124,7 +124,7 @@ STRONG_COUNT=$(echo "$RESULT" | jq -r '.metrics.strong_evidence_count')
 if [ "$VALID" = "true" ]; then
   # Belief is supported by adequate evidence - safe to codify
   # Use weighted_score and metrics to set confidence
-  sqlite3 .patina/db/facts.db "INSERT INTO beliefs (...) VALUES (..., $CONFIDENCE)"
+  sqlite3 .patina/data/facts.db "INSERT INTO beliefs (...) VALUES (..., $CONFIDENCE)"
 else
   # Insufficient evidence - ask clarifying question or skip
   echo "⚠️ Weak evidence: $REASON"
@@ -182,19 +182,19 @@ VALUES
 ### Example: Complete Belief Codification
 ```bash
 # Find supporting evidence first
-sqlite3 .patina/db/facts.db "SELECT id, pattern_name, session_id FROM patterns WHERE category = 'security'"
+sqlite3 .patina/data/facts.db "SELECT id, pattern_name, session_id FROM patterns WHERE category = 'security'"
 
 # Insert belief
-sqlite3 .patina/db/facts.db "INSERT INTO beliefs (statement, value, confidence, observation_count) VALUES ('never_commit_secrets', 1, 0.95, 2)"
+sqlite3 .patina/data/facts.db "INSERT INTO beliefs (statement, value, confidence, observation_count) VALUES ('never_commit_secrets', 1, 0.95, 2)"
 
 # Get the belief_id (last inserted)
-BELIEF_ID=$(sqlite3 .patina/db/facts.db "SELECT last_insert_rowid()")
+BELIEF_ID=$(sqlite3 .patina/data/facts.db "SELECT last_insert_rowid()")
 
 # Link evidence (pattern id=5, session 20251008-061520)
-sqlite3 .patina/db/facts.db "INSERT INTO belief_observations (belief_id, session_id, observation_type, observation_id, validates) VALUES ($BELIEF_ID, '20251008-061520', 'pattern', 5, 1)"
+sqlite3 .patina/data/facts.db "INSERT INTO belief_observations (belief_id, session_id, observation_type, observation_id, validates) VALUES ($BELIEF_ID, '20251008-061520', 'pattern', 5, 1)"
 
 # Link evidence (pattern id=8, session 20251007-185647)
-sqlite3 .patina/db/facts.db "INSERT INTO belief_observations (belief_id, session_id, observation_type, observation_id, validates) VALUES ($BELIEF_ID, '20251007-185647', 'pattern', 8, 1)"
+sqlite3 .patina/data/facts.db "INSERT INTO belief_observations (belief_id, session_id, observation_type, observation_id, validates) VALUES ($BELIEF_ID, '20251007-185647', 'pattern', 8, 1)"
 ```
 
 ## Remember
@@ -226,7 +226,7 @@ echo ""
 echo "🧠 This session will help you discover and codify your beliefs."
 echo ""
 echo "I can query:"
-echo "  - .patina/db/facts.db (observations: sessions, patterns, decisions)"
+echo "  - .patina/data/facts.db (observations: sessions, patterns, decisions)"
 echo "  - patina belief validate (neuro-symbolic reasoning with ReasoningEngine)"
 echo ""
 echo "Ready to begin."

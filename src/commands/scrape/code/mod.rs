@@ -139,6 +139,10 @@ fn initialize_database(db_path: &str) -> Result<()> {
         std::fs::remove_file(db_path)?;
     }
 
+    // Initialize unified eventlog (git, sessions, code events)
+    super::database::initialize(Path::new(db_path))?;
+
+    // Create code-specific materialized views
     let mut db = database::Database::open(db_path)?;
     db.init_schema()?;
     Ok(())

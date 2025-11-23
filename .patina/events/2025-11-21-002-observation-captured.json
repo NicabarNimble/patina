@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "evt_20251121_002",
+  "event_type": "observation_captured",
+  "timestamp": "2025-11-21T05:15:00Z",
+
+  "sequence": {
+    "global": 2,
+    "client": 0,
+    "rebase_generation": 0
+  },
+
+  "source": {
+    "session_id": "20251121-042111",
+    "git_commit": "bf22318e",
+    "git_branch": "neuro-symbolic-knowledge-system"
+  },
+
+  "payload": {
+    "content": "Current observations.db contains 992 observations from git commits only (parsed by commit type). The 290 session files in layer/sessions/ are NOT being ingested - significant untapped data source for training embeddings.",
+    "observation_type": "challenge",
+    "domains": ["data-pipeline", "embeddings", "training-data"],
+    "code_refs": [
+      {"file": ".patina/data/observations/observations.db", "context": "current storage"},
+      {"file": "layer/sessions/", "context": "untapped source"}
+    ],
+    "reliability": 0.90
+  }
+}

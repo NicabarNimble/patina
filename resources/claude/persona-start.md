@@ -13,7 +13,7 @@ Start a new Patina persona session for belief discovery and codification:
    **Step 1: Domain Selection**
    - Query SQLite to find most active domain:
      ```bash
-     sqlite3 .patina/db/facts.db "SELECT category, COUNT(*) as count FROM patterns GROUP BY category ORDER BY count DESC LIMIT 1"
+     sqlite3 .patina/data/facts.db "SELECT category, COUNT(*) as count FROM patterns GROUP BY category ORDER BY count DESC LIMIT 1"
      ```
    - Announce: "I'm analyzing your sessions... Found 'X' domain with Y patterns."
 
@@ -30,7 +30,7 @@ Start a new Patina persona session for belief discovery and codification:
      ```
    - Fall back to SQL for exact matches if needed:
      ```bash
-     sqlite3 .patina/db/facts.db "SELECT s.id, s.started_at FROM sessions s JOIN patterns p ON s.id = p.session_id WHERE p.pattern_name = 'X'"
+     sqlite3 .patina/data/facts.db "SELECT s.id, s.started_at FROM sessions s JOIN patterns p ON s.id = p.session_id WHERE p.pattern_name = 'X'"
      ```
    - Semantic search finds evidence beyond keyword matching (e.g., "code audit" → "security review")
    - Results include similarity scores and evidence strength (strong/medium/weak)
@@ -67,7 +67,7 @@ Start a new Patina persona session for belief discovery and codification:
      - Strong evidence count and source diversity boost confidence
    - Insert into beliefs table with evidence-based confidence:
      ```bash
-     sqlite3 .patina/db/facts.db "INSERT INTO beliefs (statement, value, confidence, created_at) VALUES ('uses_pattern_X', 1, 0.85, datetime('now'))"
+     sqlite3 .patina/data/facts.db "INSERT INTO beliefs (statement, value, confidence, created_at) VALUES ('uses_pattern_X', 1, 0.85, datetime('now'))"
      ```
    - Show: "✓ Codified: [statement] (confidence: X.XX, weighted_score: Y.YY)"
 

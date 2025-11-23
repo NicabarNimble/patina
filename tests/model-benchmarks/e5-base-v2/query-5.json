@@ -1,0 +1,52 @@
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440001",
+    "session_id": null,
+    "type": "decision",
+    "text": "Build core value proposition (Ingest → Structure → Retrieve) before optimizing for performance",
+    "similarity": 0.83202153,
+    "evidence_strength": "strong",
+    "source_type": "session",
+    "reliability": 0.95
+  },
+  {
+    "id": "a1b2c3d4-0005-4001-8001-000000000003",
+    "session_id": null,
+    "type": "pattern",
+    "text": "When refactoring: start with simplest extractions first (read-only operations), maintain backward compatibility during migration, run both systems in parallel, keep rollback plan ready.",
+    "similarity": 0.80175316,
+    "evidence_strength": "strong",
+    "source_type": "documentation",
+    "reliability": 0.95
+  },
+  {
+    "id": "a1b2c3d4-0006-4001-8001-000000000001",
+    "session_id": null,
+    "type": "technology",
+    "text": "Use Docker for containerized builds and tests. Never require specific tools beyond Docker. Provides reproducible builds across different development environments.",
+    "similarity": 0.79357576,
+    "evidence_strength": "strong",
+    "source_type": "documentation",
+    "reliability": 1.0
+  },
+  {
+    "id": "a1b2c3d4-0006-4001-8001-000000000002",
+    "session_id": null,
+    "type": "technology",
+    "text": "Use Rust for CLI and core logic - let the compiler be your guard rail. Rust type system catches errors at compile time that would be runtime bugs in other languages.",
+    "similarity": 0.78669393,
+    "evidence_strength": "strong",
+    "source_type": "documentation",
+    "reliability": 1.0
+  },
+  {
+    "id": "a1b2c3d4-0001-4001-8001-000000000001",
+    "session_id": null,
+    "type": "pattern",
+    "text": "Run cargo fmt --all, cargo clippy --workspace, and cargo test --workspace before every push. CI enforces these checks - running locally prevents push failures and saves time.",
+    "similarity": 0.78187656,
+    "evidence_strength": "strong",
+    "source_type": "documentation",
+    "reliability": 1.0
+  }
+]

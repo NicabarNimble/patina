@@ -1,0 +1,22 @@
+[
+  {
+    "id": "799b16a5-7c66-4810-9635-8def602e77cb",
+    "session_id": null,
+    "type": "decision",
+    "text": "Build core value proposition (Ingest → Structure → Retrieve) before optimizing for performance",
+    "similarity": 0.40212518,
+    "evidence_strength": "weak",
+    "source_type": "session",
+    "reliability": 0.95
+  },
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440005",
+    "session_id": null,
+    "type": "decision",
+    "text": "Profile before adding daemon infrastructure - 500ms embeddings load may not require optimization",
+    "similarity": 0.36850238,
+    "evidence_strength": "weak",
+    "source_type": "session",
+    "reliability": 0.9
+  }
+]

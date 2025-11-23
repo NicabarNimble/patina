@@ -50,8 +50,20 @@ jobs:
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
         df -h
 
-    - name: Download test models
-      run: ./scripts/download-test-models.sh
+    - name: Get active model name
+      id: active-model
+      run: echo "model=$(./scripts/get-active-model.sh)" >> $GITHUB_OUTPUT
+
+    - name: Cache embedding models
+      id: cache-models
+      uses: actions/cache@v4
+      with:
+        path: resources/models
+        key: models-${{ steps.active-model.outputs.model }}-${{ hashFiles('resources/models/registry.toml') }}
+
+    - name: Download active model
+      if: steps.cache-models.outputs.cache-hit != 'true'
+      run: ./scripts/download-active-model.sh
 
     - name: Check Rust formatting
       run: cargo fmt --all -- --check

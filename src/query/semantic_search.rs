@@ -26,12 +26,15 @@ impl SemanticSearch {
         embedder: Box<dyn EmbeddingEngine>,
     ) -> Result<Self> {
         let base_path = storage_path.as_ref();
+        let dimension = embedder.dimension();
 
-        let belief_storage = BeliefStorage::open(base_path.join("beliefs"))
-            .context("Failed to open belief storage")?;
+        let belief_storage =
+            BeliefStorage::open_with_dimension(base_path.join("beliefs"), dimension)
+                .context("Failed to open belief storage")?;
 
-        let observation_storage = ObservationStorage::open(base_path.join("observations"))
-            .context("Failed to open observation storage")?;
+        let observation_storage =
+            ObservationStorage::open_with_dimension(base_path.join("observations"), dimension)
+                .context("Failed to open observation storage")?;
 
         Ok(Self {
             belief_storage,
@@ -43,7 +46,7 @@ impl SemanticSearch {
     /// Open from default database path
     pub fn open_default() -> Result<Self> {
         let embedder = crate::embeddings::create_embedder()?;
-        Self::new(".patina/storage", embedder)
+        Self::new(".patina/data", embedder)
     }
 
     /// Add a new belief with automatic embedding
@@ -60,10 +63,10 @@ impl SemanticSearch {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn add_belief(&mut self, content: &str) -> Result<()> {
-        // Generate embedding
+        // Generate embedding (passage - belief being stored)
         let embedding = self
             .embedder
-            .embed(content)
+            .embed_passage(content)
             .context("Failed to generate embedding")?;
 
         // Create belief
@@ -112,15 +115,29 @@ impl SemanticSearch {
         observation_type: &str,
         metadata: ObservationMetadata,
     ) -> Result<()> {
-        // Generate embedding
+        self.add_observation_with_id(Uuid::new_v4(), content, observation_type, metadata)
+    }
+
+    /// Add observation with specific ID (for loading from database)
+    ///
+    /// Used when rebuilding index from existing observations in database.
+    /// Preserves original IDs instead of generating new UUIDs.
+    pub fn add_observation_with_id(
+        &mut self,
+        id: Uuid,
+        content: &str,
+        observation_type: &str,
+        metadata: ObservationMetadata,
+    ) -> Result<()> {
+        // Generate embedding (passage - observation being stored)
         let embedding = self
             .embedder
-            .embed(content)
+            .embed_passage(content)
             .context("Failed to generate embedding")?;
 
-        // Create observation
+        // Create observation with provided ID
         let observation = Observation {
-            id: Uuid::new_v4(),
+            id,
             observation_type: observation_type.to_string(),
             content: content.to_string(),
             embedding,
@@ -162,10 +179,10 @@ impl SemanticSearch {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     pub fn search_beliefs(&mut self, query: &str, top_k: usize) -> Result<Vec<Belief>> {
-        // Generate query embedding
+        // Generate query embedding (query - user search)
         let query_embedding = self
             .embedder
-            .embed(query)
+            .embed_query(query)
             .context("Failed to generate query embedding")?;
 
         // Search using storage
@@ -189,10 +206,10 @@ impl SemanticSearch {
         observation_type: Option<&str>,
         top_k: usize,
     ) -> Result<Vec<Observation>> {
-        // Generate query embedding
+        // Generate query embedding (query - user search)
         let query_embedding = self
             .embedder
-            .embed(query)
+            .embed_query(query)
             .context("Failed to generate query embedding")?;
 
         // Search using storage (with optional type filter)
@@ -204,6 +221,112 @@ impl SemanticSearch {
             None => self.observation_storage.search(&query_embedding, top_k),
         }
         .context("Failed to search observation vectors")
+    }
+
+    /// Search observations with quality filtering
+    ///
+    /// Applies metadata-based filtering to improve result quality:
+    /// - Filters by source type (session, session_distillation, documentation only)
+    /// - Filters by reliability (>0.85)
+    /// - Deduplicates by content
+    ///
+    /// # Arguments
+    /// * `query` - Query text to search for
+    /// * `observation_type` - Optional filter by type
+    /// * `top_k` - Number of results to return after filtering
+    ///
+    /// # Returns
+    /// Vector of high-quality Observation objects, deduplicated and filtered
+    pub fn search_observations_filtered(
+        &mut self,
+        query: &str,
+        observation_type: Option<&str>,
+        top_k: usize,
+    ) -> Result<Vec<Observation>> {
+        // Get broader candidate set (4x to account for filtering)
+        let candidates = self.search_observations(query, observation_type, top_k * 4)?;
+
+        // Filter by source type and reliability
+        let mut filtered: Vec<Observation> = candidates
+            .into_iter()
+            .filter(|obs| {
+                // Only keep high-quality sources
+                let source_type = obs.metadata.source_type.as_deref().unwrap_or("unknown");
+                matches!(
+                    source_type,
+                    "session" | "session_distillation" | "documentation"
+                )
+            })
+            .filter(|obs| {
+                // Only keep high reliability observations
+                obs.metadata.reliability.unwrap_or(0.0) >= 0.85
+            })
+            .collect();
+
+        // Deduplicate by content (keep first occurrence = highest similarity)
+        let mut seen_content = std::collections::HashSet::new();
+        filtered.retain(|obs| seen_content.insert(obs.content.clone()));
+
+        // Return top K after filtering
+        filtered.truncate(top_k);
+        Ok(filtered)
+    }
+
+    /// Search observations with quality filtering and return similarity scores
+    ///
+    /// Same as search_observations_filtered but returns (Observation, similarity) tuples
+    pub fn search_observations_filtered_with_scores(
+        &mut self,
+        query: &str,
+        observation_type: Option<&str>,
+        top_k: usize,
+    ) -> Result<Vec<(Observation, f32)>> {
+        // Generate query embedding (query - user search)
+        let query_embedding = self
+            .embedder
+            .embed_query(query)
+            .context("Failed to generate query embedding")?;
+
+        // Get broader candidate set with scores (4x to account for filtering)
+        let candidates = self
+            .observation_storage
+            .search_with_scores(&query_embedding, top_k * 4)
+            .context("Failed to search with scores")?;
+
+        // Apply type filter if specified
+        let candidates: Vec<(Observation, f32)> = if let Some(obs_type) = observation_type {
+            candidates
+                .into_iter()
+                .filter(|(obs, _)| obs.observation_type == obs_type)
+                .collect()
+        } else {
+            candidates
+        };
+
+        // Filter by source type and reliability
+        let mut filtered: Vec<(Observation, f32)> = candidates
+            .into_iter()
+            .filter(|(obs, _)| {
+                // Only keep high-quality sources
+                let source_type = obs.metadata.source_type.as_deref().unwrap_or("unknown");
+                matches!(
+                    source_type,
+                    "session" | "session_distillation" | "documentation"
+                )
+            })
+            .filter(|(obs, _)| {
+                // Only keep high reliability observations
+                obs.metadata.reliability.unwrap_or(0.0) >= 0.85
+            })
+            .collect();
+
+        // Deduplicate by content (keep first occurrence = highest similarity)
+        let mut seen_content = std::collections::HashSet::new();
+        filtered.retain(|(obs, _)| seen_content.insert(obs.content.clone()));
+
+        // Return top K after filtering
+        filtered.truncate(top_k);
+        Ok(filtered)
     }
 
     /// Get reference to underlying belief storage (escape hatch)
@@ -224,6 +347,27 @@ impl SemanticSearch {
     /// Get mutable reference to underlying observation storage (escape hatch)
     pub fn observation_storage_mut(&mut self) -> &mut ObservationStorage {
         &mut self.observation_storage
+    }
+
+    /// Generate embedding for text using the underlying embedding engine
+    pub fn embed(&mut self, text: &str) -> Result<Vec<f32>> {
+        self.embedder
+            .embed(text)
+            .context("Failed to generate embedding")
+    }
+
+    /// Generate embedding for a query (applies model-specific query formatting)
+    pub fn embed_query(&mut self, text: &str) -> Result<Vec<f32>> {
+        self.embedder
+            .embed_query(text)
+            .context("Failed to generate query embedding")
+    }
+
+    /// Generate embedding for a passage (applies model-specific passage formatting)
+    pub fn embed_passage(&mut self, text: &str) -> Result<Vec<f32>> {
+        self.embedder
+            .embed_passage(text)
+            .context("Failed to generate passage embedding")
     }
 }
 
