@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0.0",
+  "project": "patina",
+  "last_sequence": {
+    "global": 3,
+    "client": 0,
+    "rebase_generation": 0
+  },
+  "last_materialized_sequence": null,
+  "event_count": 3,
+  "created_at": "2025-11-21T04:48:00Z",
+  "updated_at": "2025-11-21T05:30:00Z"
+}
