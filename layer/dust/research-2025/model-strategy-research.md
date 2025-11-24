@@ -1,8 +1,18 @@
-# Spec: Model Strategy - Open Source Embeddings
+# Research: Model Strategy - Open Source Embeddings
 
-**Status:** Research Complete (2025-11-23)
-**Session:** [20251123-222456](../sessions/20251123-222456.md)
+**Status:** Research/Archive (moved from spec to research 2025-11-24)
+**Session:** [20251123-222456](../../sessions/20251123-222456.md)
 **Context:** Open model ecosystem exploration for Apple Silicon integration
+
+**Why archived:** This 882-line document is valuable research but not an implementation plan.
+Contains good ideas (multi-runtime, Qwen3 models, MLX support) but got ahead of working code.
+Phase 2 needs to finish exports first (ONNX + USearch). Model swapping comes after Phase 2 complete.
+
+---
+
+**Original spec below:**
+
+---
 
 ## Executive Summary
 
