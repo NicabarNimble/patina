@@ -52,6 +52,9 @@ rayon = "1.10"
 # Simple synchronization
 parking_lot = "0.12"  # Faster mutexes
 
+# Random number generation (lightweight, no dependencies)
+fastrand = "2.0"
+
 # Navigation command dependencies
 colored = "2"
 
