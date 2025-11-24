@@ -2,9 +2,11 @@
 //!
 //! Phase 2 MVP: Semantic projection only, in-memory training
 
+pub mod pairs;
 pub mod recipe;
 
 use anyhow::Result;
+use pairs::generate_same_session_pairs;
 use recipe::OxidizeRecipe;
 
 /// Run oxidize command
@@ -28,7 +30,21 @@ pub fn oxidize() -> Result<()> {
         );
     }
 
-    println!("\n⚠️  Training not implemented yet (Phase 2 in progress)");
+    // Generate training pairs for semantic projection
+    if recipe.projections.contains_key("semantic") {
+        println!("\n📊 Generating training pairs for semantic projection...");
+        let db_path = ".patina/data/patina.db";
+        let num_pairs = 100; // Start with 100 pairs for MVP
+
+        let pairs = generate_same_session_pairs(db_path, num_pairs)?;
+        println!("   Generated {} training pairs", pairs.len());
+        println!(
+            "   Sample: anchor=\"{}...\"",
+            &pairs[0].anchor.chars().take(50).collect::<String>()
+        );
+    }
+
+    println!("\n⚠️  Training not yet implemented (next step)");
 
     Ok(())
 }
