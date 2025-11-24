@@ -5,6 +5,7 @@ pub mod build;
 pub mod doctor;
 pub mod embeddings;
 pub mod init;
+pub mod oxidize;
 pub mod query;
 pub mod scrape;
 pub mod test;
