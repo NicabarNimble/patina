@@ -8,7 +8,7 @@ Persistent task tracking across sessions. Check items as completed, add notes in
 
 ## Active
 
-- [ ] Phase 2: Oxidize - Embeddings and projections (MVP complete 2025-11-23, ONNX export pending)
+- [ ] Phase 2: Oxidize - Complete exports (training works, need ONNX export + USearch index for Phase 3)
 
 ## Queued
 
@@ -41,20 +41,24 @@ Materialize SQLite views from event sources (git history, session files, code).
 
 Recipe-driven embedding and projection training.
 
-**MVP Complete (2025-11-23):**
+**Current Status:** Training works end-to-end. Need to export results for use in queries.
+
+**Completed (2025-11-23):**
 - [x] `oxidize.yaml` recipe format (version, embedding_model, projections)
 - [x] `patina oxidize` command - loads recipe, generates pairs, trains projection
 - [x] E5-base-v2 integration (768-dim embeddings from session observations)
 - [x] SameSessionPairs generator (queries eventlog for training triplets)
 - [x] 2-layer MLP trainer (768→1024→256, triplet loss, gradient descent)
-- [x] End-to-end pipeline tested (100 pairs, 10 epochs)
+- [x] End-to-end pipeline tested (100 pairs, 10 epochs, ~10 seconds)
 
-**Pending:**
-- [ ] ONNX export for trained projections
-- [ ] USearch index builder
-- [ ] Additional projection types (temporal, dependency, etc.)
-- [ ] Proper backpropagation (current: simplified gradient approximation)
-- [ ] Multiple embedding model support (BGE, nomic)
+**To Complete Phase 2:**
+- [ ] ONNX export for trained projection weights
+- [ ] USearch index builder (build searchable vector index from projections)
+
+**Phase 2 Extensions (Future - Not Blocking):**
+- [ ] Additional projection types (temporal from git, dependency from call_graph, etc.)
+- [ ] Proper backpropagation (current: simplified gradient approximation - works but not optimal)
+- [ ] Model swapping (BGE, Nomic, Qwen3) - deferred until Phase 2 exports complete
 
 ### Phase 3: Scry (Query Interface)
 **Spec:** [layer/surface/spec-scry.md](../surface/spec-scry.md)
