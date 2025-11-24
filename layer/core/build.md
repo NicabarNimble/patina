@@ -8,7 +8,7 @@ Persistent task tracking across sessions. Check items as completed, add notes in
 
 ## Active
 
-- [ ] Phase 2: Oxidize - Embeddings and projections
+- [ ] Phase 2: Oxidize - Embeddings and projections (MVP complete 2025-11-23, ONNX export pending)
 
 ## Queued
 
@@ -41,11 +41,20 @@ Materialize SQLite views from event sources (git history, session files, code).
 
 Recipe-driven embedding and projection training.
 
-- [ ] `oxidize.yaml` recipe format
-- [ ] `patina oxidize` - recipe + SQLite → vectors
-- [ ] Embedding model plugins (E5, BGE, nomic)
-- [ ] Dimension projections (semantic, temporal, dependency, etc.)
-- [ ] World-model projections (state-encoder, action-encoder, transition-predictor)
+**MVP Complete (2025-11-23):**
+- [x] `oxidize.yaml` recipe format (version, embedding_model, projections)
+- [x] `patina oxidize` command - loads recipe, generates pairs, trains projection
+- [x] E5-base-v2 integration (768-dim embeddings from session observations)
+- [x] SameSessionPairs generator (queries eventlog for training triplets)
+- [x] 2-layer MLP trainer (768→1024→256, triplet loss, gradient descent)
+- [x] End-to-end pipeline tested (100 pairs, 10 epochs)
+
+**Pending:**
+- [ ] ONNX export for trained projections
+- [ ] USearch index builder
+- [ ] Additional projection types (temporal, dependency, etc.)
+- [ ] Proper backpropagation (current: simplified gradient approximation)
+- [ ] Multiple embedding model support (BGE, nomic)
 
 ### Phase 3: Scry (Query Interface)
 **Spec:** [layer/surface/spec-scry.md](../surface/spec-scry.md)
@@ -103,6 +112,7 @@ Multi-user workflows, recipe sharing.
 - [x] MIT license added (2025-11-21, bf22318e)
 - [x] Multi-user architecture designed (2025-11-21, session 20251121-065812)
 - [x] Recipe model for adapter sharing (2025-11-21, session 20251121-065812)
+- [x] Phase 2 MVP - Recipe parser + pair generator + MLP trainer (2025-11-23)
 
 ---
 

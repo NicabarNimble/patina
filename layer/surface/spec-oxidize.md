@@ -1,5 +1,7 @@
 # Spec: Oxidize
 
+**Status:** Phase 2 MVP Complete (2025-11-23) ✅
+
 ## Overview
 
 Oxidize transforms materialized SQLite data into searchable vectors using a recipe-driven approach. Recipes are git-tracked; artifacts are built locally.
@@ -9,6 +11,15 @@ Oxidize transforms materialized SQLite data into searchable vectors using a reci
 Events → materialize → SQLite → oxidize → Vectors
                        (input)   (this)   (output)
 ```
+
+**MVP Implementation:**
+- ✅ Recipe parser (`.patina/oxidize.yaml`)
+- ✅ Training pair generator (SameSessionPairs from eventlog)
+- ✅ 2-layer MLP trainer (triplet loss, gradient descent)
+- ✅ E5-base-v2 embedding integration
+- ✅ End-to-end pipeline working
+- ⏳ ONNX export (pending)
+- ⏳ USearch index builder (pending)
 
 ## Recipe Format
 
@@ -334,13 +345,49 @@ projections:
 - **Inference:** <10ms per embedding (all projections)
 - **Storage:** ~4MB per projection (ONNX weights)
 
-## Acceptance Criteria
+## Implementation Status
 
-- [ ] `oxidize.yaml` parsed correctly
-- [ ] `patina oxidize` trains all configured projections
-- [ ] Training pairs generated from SQLite tables
-- [ ] ONNX weights saved and loadable
+### Phase 2 MVP ✅ COMPLETE (2025-11-23)
+
+**Implemented:**
+- [x] `oxidize.yaml` parser with validation (version, embedding_model, projections)
+- [x] `ProjectionConfig` parsing (layers, epochs, batch_size)
+- [x] `patina oxidize` command with full pipeline
+- [x] SameSessionPairs generator (queries eventlog for session observations)
+- [x] 2-layer MLP trainer with triplet loss
+- [x] E5-base-v2 embedding integration
+- [x] End-to-end training tested (100 pairs from 108 sessions, 10 epochs)
+
+**Tested Configuration:**
+```yaml
+version: 1
+embedding_model: e5-base-v2
+
+projections:
+  semantic:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
+```
+
+**Test Results:**
+- 108 sessions with 1,015 observations scraped from eventlog
+- 100 training triplets generated successfully
+- E5 embeddings: 768 dimensions
+- Projection trained: 768→1024→256
+- Training time: ~10 seconds for 10 epochs
+
+### Pending (Full Phase 2)
+
+- [ ] ONNX export for trained projections
 - [ ] USearch indices built for each projection
-- [ ] `--only` flag trains subset
+- [ ] Proper backpropagation (current: simplified gradient approximation)
+- [ ] Lock file tracks build state (oxidize.lock)
+- [ ] `--only` flag trains subset of projections
 - [ ] `--dry-run` shows plan without training
-- [ ] Lock file tracks build state
+- [ ] Additional pair generators:
+  - [ ] CoChangedPairs (temporal projection)
+  - [ ] CallGraphPairs (dependency projection)
+  - [ ] ASTSimilarPairs (syntactic projection)
+- [ ] Multiple embedding models (BGE, nomic)
+- [ ] World-model projections (state-encoder, action-encoder)
