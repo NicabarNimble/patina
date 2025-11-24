@@ -94,6 +94,9 @@ enum Commands {
         command: Option<ScrapeCommands>,
     },
 
+    /// Build embeddings and projections from recipe
+    Oxidize,
+
     /// Generate and manage semantic embeddings
     Embeddings {
         #[command(subcommand)]
@@ -387,6 +390,9 @@ fn main() -> Result<()> {
                     println!("  • Database size: {} KB", stats.database_size_kb);
                 }
             }
+        }
+        Commands::Oxidize => {
+            commands::oxidize::oxidize()?;
         }
         Commands::Embeddings { command } => match command {
             EmbeddingsCommands::Generate { force } => {
