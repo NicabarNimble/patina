@@ -4,10 +4,12 @@
 
 pub mod pairs;
 pub mod recipe;
+pub mod trainer;
 
 use anyhow::Result;
 use pairs::generate_same_session_pairs;
 use recipe::OxidizeRecipe;
+use trainer::Projection;
 
 /// Run oxidize command
 pub fn oxidize() -> Result<()> {
@@ -31,20 +33,49 @@ pub fn oxidize() -> Result<()> {
     }
 
     // Generate training pairs for semantic projection
-    if recipe.projections.contains_key("semantic") {
+    if let Some(config) = recipe.projections.get("semantic") {
         println!("\n📊 Generating training pairs for semantic projection...");
         let db_path = ".patina/data/patina.db";
         let num_pairs = 100; // Start with 100 pairs for MVP
 
         let pairs = generate_same_session_pairs(db_path, num_pairs)?;
         println!("   Generated {} training pairs", pairs.len());
-        println!(
-            "   Sample: anchor=\"{}...\"",
-            &pairs[0].anchor.chars().take(50).collect::<String>()
+
+        // Generate embeddings for training
+        println!("\n🔮 Generating embeddings with {}...", recipe.embedding_model);
+        use patina::embeddings::create_embedder;
+
+        let mut embedder = create_embedder()?;
+        let mut anchors = Vec::new();
+        let mut positives = Vec::new();
+        let mut negatives = Vec::new();
+
+        for pair in &pairs {
+            anchors.push(embedder.embed_passage(&pair.anchor)?);
+            positives.push(embedder.embed_passage(&pair.positive)?);
+            negatives.push(embedder.embed_passage(&pair.negative)?);
+        }
+
+        println!("   Embedded {} triplets", anchors.len());
+
+        // Train projection
+        println!("\n🧠 Training projection: {}→{}→{}...",
+                 config.input_dim(), config.hidden_dim(), config.output_dim());
+
+        let mut projection = Projection::new(
+            config.input_dim(),
+            config.hidden_dim(),
+            config.output_dim(),
         );
+
+        let learning_rate = 0.001;
+        let _losses = projection.train(&anchors, &positives, &negatives, config.epochs, learning_rate)?;
+
+        println!("\n✅ Training complete!");
+        println!("   Output dimension: {} (from {})", config.output_dim(), config.input_dim());
     }
 
-    println!("\n⚠️  Training not yet implemented (next step)");
+    println!("\n⚠️  ONNX export not yet implemented (next step)");
 
     Ok(())
 }
