@@ -4,6 +4,7 @@
 
 pub mod pairs;
 pub mod recipe;
+pub mod temporal;
 pub mod trainer;
 
 use anyhow::{Context, Result};
