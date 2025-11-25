@@ -19,7 +19,7 @@ Events → materialize → SQLite → oxidize → Vectors
 - ✅ E5-base-v2 embedding integration
 - ✅ End-to-end pipeline working
 - ✅ Safetensors export (v0.7, MLX-compatible)
-- ⏳ USearch index builder (pending)
+- ✅ USearch index builder (HNSW with projected vectors)
 
 ## Recipe Format
 
@@ -389,13 +389,29 @@ projections:
   - Why shape-based: More reliable than metadata parsing, self-validating
   - Why not ONNX: Phase 3 runs in Rust, doesn't need ONNX Runtime. Defer until external tools need it.
 
-### Pending (Full Phase 2)
+### Completed (2025-11-24) - Continued
 
 **Index Building:**
-- [ ] USearch indices built for each projection
-  - Query observations from patina.db
-  - Embed → project → add to HNSW index
-  - Save as `.usearch` alongside `.safetensors`
+- [x] USearch index builder implementation
+  - Queries session events from eventlog (decision, pattern, goal, work, context)
+  - Embeds → projects → adds to HNSW index
+  - Saves as `.usearch` alongside `.safetensors`
+  - Output: 2.1MB index with 1807 vectors (256-dim projected space)
+  - Cosine similarity metric for semantic search
+
+**Full Pipeline Working:**
+```bash
+$ patina oxidize
+# 1. Loads recipe (.patina/oxidize.yaml)
+# 2. Generates 100 training pairs from eventlog
+# 3. Embeds triplets with e5-base-v2
+# 4. Trains 2-layer MLP (768→1024→256)
+# 5. Saves weights to semantic.safetensors (4.2MB)
+# 6. Builds USearch index from 1807 events (2.1MB)
+# ✅ Ready for semantic search!
+```
+
+### Pending (Future Extensions)
 
 **Future Extensions:**
 - [ ] Proper backpropagation (current: simplified gradient approximation)

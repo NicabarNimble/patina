@@ -41,9 +41,9 @@ Materialize SQLite views from event sources (git history, session files, code).
 
 Recipe-driven embedding and projection training.
 
-**Current Status:** Training + export complete. Need to build USearch index for queries.
+**Current Status:** Phase 2 Complete! ✅ Training, export, and indexing all working.
 
-**Completed (2025-11-23):**
+**Completed (2025-11-24):**
 - [x] `oxidize.yaml` recipe format (version, embedding_model, projections)
 - [x] `patina oxidize` command - loads recipe, generates pairs, trains projection
 - [x] E5-base-v2 integration (768-dim embeddings from session observations)
@@ -51,9 +51,12 @@ Recipe-driven embedding and projection training.
 - [x] 2-layer MLP trainer (768→1024→256, triplet loss, gradient descent)
 - [x] End-to-end pipeline tested (100 pairs, 10 epochs, ~10 seconds)
 - [x] Safetensors export (v0.7, MLX-compatible, shape-based loading)
+- [x] USearch index builder (HNSW index from projected vectors)
 
-**To Complete Phase 2:**
-- [ ] USearch index builder (build searchable vector index from projections)
+**Phase 2 Complete! ✅**
+Output files:
+- `.patina/data/embeddings/e5-base-v2/projections/semantic.safetensors` (4.2MB)
+- `.patina/data/embeddings/e5-base-v2/projections/semantic.usearch` (2.1MB, 1807 vectors)
 
 **Phase 2 Extensions (Future - Not Blocking):**
 - [ ] Additional projection types (temporal from git, dependency from call_graph, etc.)
