@@ -4,6 +4,7 @@ pub mod belief;
 pub mod build;
 pub mod doctor;
 pub mod embeddings;
+pub mod eval;
 pub mod init;
 pub mod oxidize;
 pub mod query;
