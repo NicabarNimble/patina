@@ -99,8 +99,12 @@ enum Commands {
 
     /// Search knowledge base using vector similarity
     Scry {
-        /// Query text to search for
-        query: String,
+        /// Query text to search for (optional if --file is provided)
+        query: Option<String>,
+
+        /// File path for temporal/dependency queries (e.g., src/auth.rs)
+        #[arg(long)]
+        file: Option<String>,
 
         /// Maximum number of results (default: 10)
         #[arg(long, default_value = "10")]
@@ -110,7 +114,7 @@ enum Commands {
         #[arg(long, default_value = "0.0")]
         min_score: f32,
 
-        /// Dimension to search (semantic, temporal)
+        /// Dimension to search (semantic, temporal, dependency)
         #[arg(long)]
         dimension: Option<String>,
     },
@@ -421,6 +425,7 @@ fn main() -> Result<()> {
         }
         Commands::Scry {
             query,
+            file,
             limit,
             min_score,
             dimension,
@@ -429,8 +434,9 @@ fn main() -> Result<()> {
                 limit,
                 min_score,
                 dimension,
+                file,
             };
-            commands::scry::execute(&query, options)?;
+            commands::scry::execute(query.as_deref(), options)?;
         }
         Commands::Eval { dimension } => {
             commands::eval::execute(dimension)?;
