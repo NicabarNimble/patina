@@ -279,11 +279,16 @@ src/commands/scry/
 
 ## Acceptance Criteria
 
-- [ ] `patina scry "query"` returns relevant results
+### MVP (Phase 2.5b) ✅
+- [x] `patina scry "query"` returns relevant results
+- [x] Vector search uses correct projection (semantic/temporal)
+- [x] SQLite metadata enriches results (event_type, source_id, content)
+- [x] Results sorted by relevance score
+- [x] `--limit` and `--min-score` options work
+- [x] `--dimension` selects semantic or temporal index
+
+### Future (Phase 4+)
 - [ ] Results tagged as [PROJECT] or [PERSONA]
-- [ ] Vector search uses correct projection
-- [ ] SQLite metadata enriches results
 - [ ] `--json` outputs structured data
 - [ ] `--project` / `--persona` filters work
-- [ ] Results sorted by relevance score
 - [ ] Integrates with mothership `/scry` endpoint
