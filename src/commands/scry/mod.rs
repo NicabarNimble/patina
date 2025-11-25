@@ -27,6 +27,7 @@ pub struct ScryOptions {
     pub limit: usize,
     pub min_score: f32,
     pub dimension: Option<String>,
+    pub file: Option<String>,
 }
 
 impl Default for ScryOptions {
@@ -35,16 +36,29 @@ impl Default for ScryOptions {
             limit: 10,
             min_score: 0.0,
             dimension: None, // Use semantic by default
+            file: None,
         }
     }
 }
 
 /// Execute scry command
-pub fn execute(query: &str, options: ScryOptions) -> Result<()> {
+pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     println!("🔮 Scry - Searching knowledge base\n");
-    println!("Query: \"{}\"\n", query);
 
-    let results = scry(query, &options)?;
+    // Determine query mode
+    let results = match (&options.file, query) {
+        (Some(file), _) => {
+            println!("File: {}\n", file);
+            scry_file(file, &options)?
+        }
+        (None, Some(q)) => {
+            println!("Query: \"{}\"\n", q);
+            scry_text(q, &options)?
+        }
+        (None, None) => {
+            anyhow::bail!("Either a query text or --file must be provided");
+        }
+    };
 
     if results.is_empty() {
         println!("No results found.");
@@ -70,8 +84,8 @@ pub fn execute(query: &str, options: ScryOptions) -> Result<()> {
     Ok(())
 }
 
-/// Main scry function - search and return results
-pub fn scry(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
+/// Text-based scry - embed query and search (for semantic dimension)
+pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
     let db_path = ".patina/data/patina.db";
     let embeddings_dir = ".patina/data/embeddings/e5-base-v2/projections";
 
@@ -136,6 +150,122 @@ pub fn scry(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
     let enriched = enrich_results(&conn, &results, dimension, options.min_score)?;
 
     Ok(enriched)
+}
+
+/// File-based scry - look up file's vector and find neighbors (for temporal/dependency)
+pub fn scry_file(file_path: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
+    let db_path = ".patina/data/patina.db";
+    let embeddings_dir = ".patina/data/embeddings/e5-base-v2/projections";
+
+    // Default to temporal for file-based queries
+    let dimension = options.dimension.as_deref().unwrap_or("temporal");
+    let index_path = format!("{}/{}.usearch", embeddings_dir, dimension);
+
+    if !Path::new(&index_path).exists() {
+        anyhow::bail!(
+            "Index not found: {}. Run 'patina oxidize' first.",
+            index_path
+        );
+    }
+
+    // Open database to find file index
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("Failed to open database: {}", db_path))?;
+
+    // Get list of files in the temporal index
+    let files: Vec<String> = {
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT file_a FROM co_changes
+             UNION
+             SELECT DISTINCT file_b FROM co_changes
+             ORDER BY 1",
+        )?;
+        let mut rows = stmt.query([])?;
+        let mut files = Vec::new();
+        while let Some(row) = rows.next()? {
+            files.push(row.get(0)?);
+        }
+        files
+    };
+
+    // Find the file's index position
+    let file_index = files
+        .iter()
+        .position(|f| f == file_path || f.ends_with(file_path) || file_path.ends_with(f))
+        .ok_or_else(|| anyhow::anyhow!("File '{}' not found in {} index", file_path, dimension))?;
+
+    println!("Found file at index {} in {} index", file_index, dimension);
+
+    // Load index
+    let index_options = IndexOptions {
+        dimensions: 256,
+        metric: MetricKind::Cos,
+        quantization: ScalarKind::F32,
+        ..Default::default()
+    };
+
+    let index = Index::new(&index_options)
+        .with_context(|| "Failed to create index")?;
+
+    index
+        .load(&index_path)
+        .with_context(|| format!("Failed to load index: {}", index_path))?;
+
+    // Get the file's existing vector from the index
+    let mut file_vector = vec![0.0_f32; 256];
+    index
+        .get(file_index as u64, &mut file_vector)
+        .with_context(|| format!("Failed to get vector for file index {}", file_index))?;
+
+    println!("Searching for neighbors...");
+
+    // Search for neighbors (request extra to filter out self)
+    let matches = index
+        .search(&file_vector, options.limit + 1)
+        .with_context(|| "Vector search failed")?;
+
+    // Build results, filtering out the query file itself
+    let mut results = Vec::new();
+    for i in 0..matches.keys.len() {
+        let key = matches.keys[i] as usize;
+        let distance = matches.distances[i];
+        let score = 1.0 - distance;
+
+        // Skip self
+        if key == file_index {
+            continue;
+        }
+
+        if score < options.min_score {
+            continue;
+        }
+
+        if key < files.len() {
+            let related_file = &files[key];
+            results.push(ScryResult {
+                id: key as i64,
+                event_type: "file.cochange".to_string(),
+                source_id: related_file.clone(),
+                timestamp: String::new(),
+                content: format!("Co-changes with: {}", file_path),
+                score,
+            });
+        }
+
+        if results.len() >= options.limit {
+            break;
+        }
+    }
+
+    // Sort by score descending
+    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+    Ok(results)
+}
+
+/// Legacy alias for text-based scry
+pub fn scry(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
+    scry_text(query, options)
 }
 
 /// Search results from USearch
