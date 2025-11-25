@@ -8,6 +8,7 @@ pub mod init;
 pub mod oxidize;
 pub mod query;
 pub mod scrape;
+pub mod scry;
 pub mod test;
 pub mod upgrade;
 pub mod version;

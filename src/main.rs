@@ -97,6 +97,24 @@ enum Commands {
     /// Build embeddings and projections from recipe
     Oxidize,
 
+    /// Search knowledge base using vector similarity
+    Scry {
+        /// Query text to search for
+        query: String,
+
+        /// Maximum number of results (default: 10)
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Minimum similarity score (0.0-1.0, default: 0.0)
+        #[arg(long, default_value = "0.0")]
+        min_score: f32,
+
+        /// Dimension to search (semantic, temporal)
+        #[arg(long)]
+        dimension: Option<String>,
+    },
+
     /// Generate and manage semantic embeddings
     Embeddings {
         #[command(subcommand)]
@@ -393,6 +411,19 @@ fn main() -> Result<()> {
         }
         Commands::Oxidize => {
             commands::oxidize::oxidize()?;
+        }
+        Commands::Scry {
+            query,
+            limit,
+            min_score,
+            dimension,
+        } => {
+            let options = commands::scry::ScryOptions {
+                limit,
+                min_score,
+                dimension,
+            };
+            commands::scry::execute(&query, options)?;
         }
         Commands::Embeddings { command } => match command {
             EmbeddingsCommands::Generate { force } => {
