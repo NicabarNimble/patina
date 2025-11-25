@@ -6,87 +6,109 @@ Persistent roadmap across sessions. **Start here when picking up work.**
 
 ## Current Direction (2025-11-25)
 
-**Principle:** "Don't optimize what you can't measure."
+**Goal:** 10x productivity for OnlyDust contributions and Ethereum/Starknet hackathons.
 
-~~Patina has strong architectural foundations but is stuck at "semantic only"~~
+**Key Insight:** Phase 2.5 complete. Each dimension needs its own query interface:
+- **Semantic** (text→text): Working (8.6x over random)
+- **Temporal** (file→files): Working (3.2x over random), needs `--file` flag in scry
 
-**Progress:** Temporal dimension and Scry MVP complete. Key insight discovered:
-- **Semantic** (text→text): Working well, query interface matches training signal
-- **Temporal** (text→files): Query interface mismatch - trained on file co-change relationships but queried with arbitrary text. Needs file-to-file query interface.
+**Target Workflow:**
+```
+Mac (Mothership)              YOLO Container (Linux)
+├── Persona knowledge         ├── Claude CLI
+├── Cross-project indices     ├── Project code
+├── Reference repo scrapes    └── Queries Mac via gRPC
+└── Model hosting (MLX)
+```
 
-**Immediate Path:**
-1. ~~Build temporal dimension~~ ✅ Done
-2. ~~Build Scry MVP~~ ✅ Done
-3. Build evaluation framework (discover which query interfaces work for which dimensions)
-4. THEN decide on remaining dimensions and query interface designs
+**Immediate Path (Phase 3):**
+1. File-based scry queries (`patina scry --file src/foo.rs`)
+2. FTS5 lexical search for exact matches
+3. Mothership service for multi-project coordination
+4. Dependency dimension (call graph)
 
 **Explicitly Deferred:**
-- MLX runtime (nice-to-have, not blocking)
-- Qwen3/model upgrades (invalidates all projections, premature optimization)
-- Dependency/syntactic/architectural/social dimensions (until eval clarifies query patterns)
-- Mothership service (needs Scry working first)
+- MLX runtime (nice-to-have, E5 ONNX works everywhere)
+- Qwen3/model upgrades (invalidates projections, premature)
+- Syntactic/architectural dimensions (dependency first)
 
 ---
 
 ## Active Work
 
-### Phase 2.5: Validate Multi-Dimension RAG
+### Phase 3: Hackathon MVP
 
-**Goal:** Prove the architecture works end-to-end before investing in all 6 dimensions.
+**Goal:** Enable 10x productivity for OnlyDust bounties and Starknet/Ethereum hackathons.
 
-#### 2.5a: Temporal Dimension ✅
-**Status:** Complete (2025-11-25)
-**Effort:** 1-2 days
-**Why first:** `co_changes` table already materialized, simplest pairing logic
+#### 3a: File-Based Scry Queries
+**Status:** Not Started
+**Spec:** [spec-scry.md](../surface/build/spec-scry.md)
+**Why:** Temporal dimension validated (3.2x) but needs proper query interface
 
-- [x] Create `src/commands/oxidize/temporal.rs`
-- [x] Pairing logic: files changed in same commit = related
-- [x] Training signal: 590 files with 17,685 co-change relationships
-- [x] Output: `temporal.safetensors` (4.2MB) + `temporal.usearch` (2.1MB, 1807 vectors)
+- [ ] Add `--file` flag to scry command
+- [ ] Direct file vector lookup (no re-embedding needed)
+- [ ] Return co-changing files with scores
+- [ ] Works for temporal and future dependency dimensions
 
-**⚠️ Insight:** Pipeline works but query interface mismatch discovered:
-- Training: file paths ↔ file paths (co-change relationships)
-- Current query: arbitrary text → file paths (doesn't make sense)
-- Needed: file-to-file queries (`--file src/foo.rs` → related files)
+```bash
+patina scry --file src/auth/login.rs    # What files change with this?
+patina scry --file contracts/Game.cairo --dimension temporal
+```
 
-#### 2.5b: Scry MVP ✅
-**Status:** Complete (2025-11-25)
-**Effort:** 3-5 days
-**Why:** Can't validate retrieval quality without query interface
+#### 3b: FTS5 Lexical Search
+**Status:** Not Started
+**Spec:** [spec-lexical-search.md](../surface/build/spec-lexical-search.md) (to create)
+**Why:** Claude needs exact matches ("find COMPONENT_ID", "where is X defined")
 
-- [x] `patina scry "query"` - basic vector search
-- [x] Load semantic.usearch and temporal.usearch via `--dimension` flag
-- [x] SQLite metadata enrichment (event_type, source_id, content)
-- [x] Result formatting with scores
-- [x] Options: `--limit`, `--min-score`, `--dimension`
+- [ ] Add FTS5 virtual table to patina.db schema
+- [ ] Index code content, symbols, file paths
+- [ ] Auto-detect exact match queries in scry
+- [ ] Return highlighted snippets
 
-#### 2.5c: Evaluation Framework ✅
-**Status:** Complete (2025-11-25)
-**Effort:** 2-3 days
-**Why:** Without metrics, dimension value is speculation
+```bash
+patina scry "find spawn_entity"         # Exact match via FTS5
+patina scry "error handling patterns"   # Semantic via vectors
+```
 
-**Expanded scope:** Eval isn't just "does retrieval work?" but "which query interfaces make sense for which dimensions?"
+#### 3c: Mothership Service
+**Status:** Not Started
+**Spec:** [spec-mothership-service.md](../surface/build/spec-mothership-service.md)
+**Why:** YOLO containers need to query Mac for cross-project knowledge
 
-- [x] Semantic eval: text→text queries against session observations
-- [x] Temporal eval: file→file queries against co-change relationships
-- [x] Baseline comparison: vector retrieval vs random
-- [x] Query interface discovery: what input types work for each dimension?
+- [ ] gRPC server on Mac (`~/.patina/mothership.sock` or `:50051`)
+- [ ] Project registry (primary/contributor/reference types)
+- [ ] Cross-project scry queries
+- [ ] Reference repo scraping on demand (`patina scrape --repo dojo`)
+- [ ] Container config points to mothership
 
-**Actual Results (2025-11-25):**
-| Dimension | Query Type | P@10 | vs Random | Verdict |
-|-----------|------------|------|-----------|---------|
-| Semantic | text → text | 7.8% | **8.6x** | ✅ Works |
-| Temporal | text → files | N/A | N/A | ❌ No ground truth |
-| Temporal | file → files | 24.4% | **3.2x** | ✅ Works |
+```
+# In YOLO container
+patina scry "spawn patterns" --projects dojo,bevy  # Query multiple projects
+```
 
-**Conclusions:**
-1. Semantic retrieval validated - significantly better than random
-2. Temporal file→file validated - co-change relationships are learned
-3. Temporal needs file-based query interface (not text queries)
+#### 3d: Dependency Dimension
+**Status:** Not Started
+**Spec:** [spec-oxidize.md](../surface/build/spec-oxidize.md)
+**Why:** Claude needs call graph understanding for code changes
+
+- [ ] Create `src/commands/oxidize/dependency.rs`
+- [ ] Training pairs from `code.call` events (9,634 available)
+- [ ] Caller/callee = related signal
+- [ ] File-based queries: "what calls this function?"
 
 ---
 
 ## Completed Phases
+
+### Phase 2.5: Validate Multi-Dimension RAG ✅ (2025-11-25)
+
+**Results:**
+| Dimension | Query Type | P@10 | vs Random | Status |
+|-----------|------------|------|-----------|--------|
+| Semantic | text → text | 7.8% | **8.6x** | ✅ Works |
+| Temporal | file → files | 24.4% | **3.2x** | ✅ Works |
+
+**Key Insight:** Each dimension needs its own query interface. Text queries work for semantic, file queries work for temporal.
 
 ### Phase 1: Scrape Pipeline ✅ (2025-11-22)
 **Specs:** [spec-eventlog-architecture.md](../surface/build/spec-eventlog-architecture.md), [spec-scrape-pipeline.md](../surface/build/spec-scrape-pipeline.md)
@@ -112,36 +134,40 @@ Working pipeline for single dimension:
 
 ---
 
-## Future Phases (Blocked on 2.5)
+## Future Phases
 
-### Phase 3: Additional Dimensions
-**Blocked until:** Scry + eval prove 2-dimension retrieval valuable
+### Phase 4: Persona & Cross-Project Learning
+**Spec:** [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
+**Blocked until:** Mothership working
+
+- Your beliefs persist across projects
+- Projects can query persona for patterns
+- Non-contradictory adoption from persona to project
+
+### Phase 5: Model Worlds
+**Spec:** [spec-model-runtime.md](../surface/build/spec-model-runtime.md)
+**Blocked until:** Hackathon MVP proves value
+
+**Design Direction:** Different models for different purposes
+- E5-base-v2: Portable router/semantic (ONNX, runs everywhere)
+- Code-specific models: Dependency/syntactic dimensions
+- MLX: Mac-only acceleration for larger models
+
+**Why deferred:**
+- E5-base-v2 validated (+68% vs baseline)
+- Model swap invalidates all trained projections
+- Prove multi-project coordination first
+
+### Dimensions Roadmap
 
 | Dimension | Training Signal | Data Available | Status |
 |-----------|-----------------|----------------|--------|
 | Semantic | Same session = related | 2,174 session events | ✅ Done |
 | Temporal | Same commit = related | 590 files, 17,685 co-changes | ✅ Done |
-| Dependency | Caller/callee = related | 9,634 code.call events | After eval |
-| Syntactic | Similar AST = related | 790 code.function events | After eval |
-| Architectural | Same module = related | 13,146 code.* events | After eval |
-| Social | Same author = related | 707 commits | Likely skip (single-user noise) |
-
-### Phase 4: Mothership Service
-**Spec:** [spec-mothership-service.md](../surface/build/spec-mothership-service.md)
-**Blocked until:** Scry MVP working
-
-### Phase 5: Persona
-**Spec:** [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
-**Blocked until:** Mothership working
-
-### Phase 6: Model Upgrades (MLX/Qwen3)
-**Spec:** [spec-model-runtime.md](../surface/build/spec-model-runtime.md)
-**Blocked until:** Evaluation proves current architecture valuable
-
-**Why deferred:**
-- E5-base-v2 validated on real data (+68% vs baseline)
-- Model swap invalidates ALL trained projections
-- "Don't optimize what you can't measure"
+| Dependency | Caller/callee = related | 9,634 code.call events | Phase 3d |
+| Syntactic | Similar AST = related | 790 code.function events | Future |
+| Architectural | Same module = related | 13,146 code.* events | Future |
+| Social | Same author = related | 707 commits | Skip (single-user) |
 
 ---
 
@@ -177,22 +203,25 @@ When context is lost, read these sessions for architectural decisions:
 
 | Session | Topic | Key Insight |
 |---------|-------|-------------|
+| 20251125-130143 | Phase 2 Review | Hackathon 10x focus, E5 router, model worlds design |
 | 20251125-095019 | Build Continue | Temporal + Scry + Eval complete. Query interface per dimension. |
 | 20251125-065729 | RAG design review | "Don't optimize what you can't measure" |
+| 20251119-061119 | Patina Cohesion | Mothership as librarian, three-tier projects, cross-project queries |
+| 20251118-155141 | Review & Alignment | Hackathon MVP pivot, YOLO verified, Mac+container architecture |
 | 20251124-220659 | Direction deep dive | Path C: 2-3 dims → Scry → validate |
 | 20251120-110914 | Progressive adapters | Adapter pattern at every layer |
-| 20251116-194408 | E5 benchmark | +68% vs baseline, domain > benchmarks |
-| 20251123-222456 | MLX research | Hybrid runtime strategy (future) |
 
 ---
 
 ## Validation Criteria
 
-**Phase 2.5 is complete when:**
-1. ✅ Semantic dimension trained and indexed
-2. ✅ Temporal dimension trained and indexed (2025-11-25)
-3. ✅ `patina scry "query"` returns ranked results (2025-11-25)
-4. ⚠️ 2-dim vs 1-dim: Not directly comparable (different query interfaces needed)
-5. ✅ Vector retrieval > random baseline (semantic 8.6x, temporal 3.2x)
+**Phase 2.5 Complete!** ✅ (2025-11-25)
 
-**Phase 2.5 Complete!** Proceed to Phase 3 with insight: each dimension may need its own query interface.
+**Phase 3 is complete when:**
+1. [ ] `patina scry --file src/foo.rs` returns co-changing files
+2. [ ] `patina scry "find X"` uses FTS5 for exact matches
+3. [ ] Mothership runs on Mac, containers can query via gRPC
+4. [ ] `patina scry --projects proj1,proj2` works for cross-project queries
+5. [ ] Dependency dimension trained and queryable
+
+**Hackathon-ready when:** Claude in YOLO container can query Dojo patterns while building Starknet game.
