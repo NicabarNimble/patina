@@ -1,9 +1,12 @@
 //! Simple 2-layer MLP trainer with triplet loss
 //!
-//! Phase 2 MVP: In-memory training, no ONNX export yet
+//! Phase 2: Training + safetensors export (MLX-compatible)
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use fastrand::Rng;
+use safetensors::SafeTensors;
+use std::collections::HashMap;
+use std::path::Path;
 
 /// A simple 2-layer MLP: input → hidden (ReLU) → output
 pub struct Projection {
@@ -198,6 +201,138 @@ impl Projection {
             }
         }
     }
+
+    /// Save projection weights to safetensors format (MLX-compatible)
+    pub fn save_safetensors(&self, path: &Path) -> Result<()> {
+        use safetensors::tensor::{Dtype, TensorView};
+
+        let hidden_dim = self.w1.len();
+        let input_dim = self.w1[0].len();
+        let output_dim = self.w2.len();
+
+        // Flatten matrices to 1D vectors
+        let w1_flat: Vec<f32> = self.w1.iter().flat_map(|row| row.iter().copied()).collect();
+        let w2_flat: Vec<f32> = self.w2.iter().flat_map(|row| row.iter().copied()).collect();
+
+        // Convert Vec<f32> to &[u8] for safetensors
+        let w1_bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(
+                w1_flat.as_ptr() as *const u8,
+                w1_flat.len() * std::mem::size_of::<f32>(),
+            )
+        };
+        let b1_bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(
+                self.b1.as_ptr() as *const u8,
+                self.b1.len() * std::mem::size_of::<f32>(),
+            )
+        };
+        let w2_bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(
+                w2_flat.as_ptr() as *const u8,
+                w2_flat.len() * std::mem::size_of::<f32>(),
+            )
+        };
+        let b2_bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(
+                self.b2.as_ptr() as *const u8,
+                self.b2.len() * std::mem::size_of::<f32>(),
+            )
+        };
+
+        // Create TensorViews
+        let tensors = vec![
+            (
+                "w1.weight",
+                TensorView::new(Dtype::F32, vec![hidden_dim, input_dim], w1_bytes)?,
+            ),
+            (
+                "w1.bias",
+                TensorView::new(Dtype::F32, vec![hidden_dim], b1_bytes)?,
+            ),
+            (
+                "w2.weight",
+                TensorView::new(Dtype::F32, vec![output_dim, hidden_dim], w2_bytes)?,
+            ),
+            (
+                "w2.bias",
+                TensorView::new(Dtype::F32, vec![output_dim], b2_bytes)?,
+            ),
+        ];
+
+        // Metadata
+        let metadata: HashMap<String, String> = [
+            ("architecture", "mlp-2layer"),
+            ("input_dim", &input_dim.to_string()),
+            ("hidden_dim", &hidden_dim.to_string()),
+            ("output_dim", &output_dim.to_string()),
+            ("created_by", "patina-oxidize"),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+
+        // Serialize and write
+        let serialized = safetensors::tensor::serialize(tensors, Some(metadata))
+            .context("Failed to serialize tensors")?;
+
+        std::fs::write(path, serialized)
+            .context(format!("Failed to write file: {}", path.display()))?;
+
+        Ok(())
+    }
+
+    /// Load projection weights from safetensors format
+    pub fn load_safetensors(path: &Path) -> Result<Self> {
+        use std::fs;
+
+        let buffer = fs::read(path)
+            .context(format!("Failed to read file: {}", path.display()))?;
+
+        let tensors = SafeTensors::deserialize(&buffer)
+            .context("Failed to deserialize safetensors")?;
+
+        // Load tensors and extract dimensions from shapes
+        let w1_view = tensors.tensor("w1.weight")?;
+        let b1_view = tensors.tensor("w1.bias")?;
+        let w2_view = tensors.tensor("w2.weight")?;
+        let b2_view = tensors.tensor("w2.bias")?;
+
+        let shape_w1 = w1_view.shape();  // [hidden_dim, input_dim]
+        let shape_w2 = w2_view.shape();  // [output_dim, hidden_dim]
+
+        let hidden_dim = shape_w1[0];
+        let input_dim = shape_w1[1];
+        let _output_dim = shape_w2[0];  // Validated by shape consistency
+
+        // Convert to Vec<f32>
+        let w1_flat: Vec<f32> = w1_view.data().chunks_exact(4)
+            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect();
+        let b1: Vec<f32> = b1_view.data().chunks_exact(4)
+            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect();
+        let w2_flat: Vec<f32> = w2_view.data().chunks_exact(4)
+            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect();
+        let b2: Vec<f32> = b2_view.data().chunks_exact(4)
+            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+            .collect();
+
+        // Reshape w1: flat array → Vec<Vec<f32>>
+        let w1: Vec<Vec<f32>> = w1_flat
+            .chunks_exact(input_dim)
+            .map(|chunk| chunk.to_vec())
+            .collect();
+
+        // Reshape w2: flat array → Vec<Vec<f32>>
+        let w2: Vec<Vec<f32>> = w2_flat
+            .chunks_exact(hidden_dim)
+            .map(|chunk| chunk.to_vec())
+            .collect();
+
+        Ok(Self { w1, b1, w2, b2 })
+    }
 }
 
 /// Dot product of two vectors
@@ -267,5 +402,69 @@ mod tests {
         let normalized = l2_normalize(&v);
         assert!((normalized[0] - 0.6).abs() < 0.01);
         assert!((normalized[1] - 0.8).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_save_load_safetensors() -> Result<()> {
+        use std::path::PathBuf;
+        use tempfile::tempdir;
+
+        // Create projection
+        let original = Projection::new(10, 20, 5);
+
+        // Save to temp file
+        let dir = tempdir()?;
+        let path = dir.path().join("test.safetensors");
+        original.save_safetensors(&path)?;
+
+        // Load back
+        let loaded = Projection::load_safetensors(&path)?;
+
+        // Verify dimensions
+        assert_eq!(loaded.w1.len(), 20);
+        assert_eq!(loaded.w1[0].len(), 10);
+        assert_eq!(loaded.b1.len(), 20);
+        assert_eq!(loaded.w2.len(), 5);
+        assert_eq!(loaded.w2[0].len(), 20);
+        assert_eq!(loaded.b2.len(), 5);
+
+        // Verify weights match
+        for i in 0..original.w1.len() {
+            for j in 0..original.w1[i].len() {
+                assert!((original.w1[i][j] - loaded.w1[i][j]).abs() < 0.0001);
+            }
+        }
+
+        for i in 0..original.b1.len() {
+            assert!((original.b1[i] - loaded.b1[i]).abs() < 0.0001);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_forward_pass_after_load() -> Result<()> {
+        use tempfile::tempdir;
+
+        // Create and save projection
+        let original = Projection::new(10, 20, 5);
+        let input = vec![1.0; 10];
+        let original_output = original.forward(&input);
+
+        let dir = tempdir()?;
+        let path = dir.path().join("test.safetensors");
+        original.save_safetensors(&path)?;
+
+        // Load and test forward pass
+        let loaded = Projection::load_safetensors(&path)?;
+        let loaded_output = loaded.forward(&input);
+
+        // Outputs should match
+        assert_eq!(original_output.len(), loaded_output.len());
+        for i in 0..original_output.len() {
+            assert!((original_output[i] - loaded_output[i]).abs() < 0.0001);
+        }
+
+        Ok(())
     }
 }

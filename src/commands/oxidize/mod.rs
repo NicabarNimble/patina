@@ -73,9 +73,19 @@ pub fn oxidize() -> Result<()> {
 
         println!("\n✅ Training complete!");
         println!("   Output dimension: {} (from {})", config.output_dim(), config.input_dim());
-    }
 
-    println!("\n⚠️  ONNX export not yet implemented (next step)");
+        // Save trained weights
+        println!("\n💾 Saving projection weights...");
+        let output_dir = format!(".patina/data/embeddings/{}/projections", recipe.embedding_model);
+        std::fs::create_dir_all(&output_dir)?;
+
+        let weights_path = format!("{}/semantic.safetensors", output_dir);
+        projection.save_safetensors(std::path::Path::new(&weights_path))?;
+        println!("   Saved to: {}", weights_path);
+
+        println!("\n✅ Phase 2 MVP complete!");
+        println!("   Next: Build USearch index from projected vectors");
+    }
 
     Ok(())
 }
