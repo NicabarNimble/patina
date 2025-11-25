@@ -83,6 +83,7 @@ ort = { version = "2.0.0-rc.10", features = ["download-binaries"] }  # ONNX Runt
 tokenizers = "0.15"                                                  # HuggingFace tokenizers (Rust)
 ndarray = "0.16"                                                     # Array operations for embeddings
 usearch = "2.21"                                                     # Fast vector similarity search (HNSW index)
+safetensors = "0.7"                                                  # Standard weight format (MLX-compatible, HuggingFace)
 zerocopy = "0.7"                                                     # Efficient vector byte conversion
 regex = "1.12.2"
 
