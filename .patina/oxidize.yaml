@@ -10,3 +10,9 @@ projections:
     layers: [768, 1024, 256]
     epochs: 10
     batch_size: 32
+
+  # Temporal projection - files that co-change are related
+  temporal:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
