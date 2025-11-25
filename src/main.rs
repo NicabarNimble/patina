@@ -115,6 +115,13 @@ enum Commands {
         dimension: Option<String>,
     },
 
+    /// Evaluate retrieval quality across dimensions
+    Eval {
+        /// Specific dimension to evaluate (semantic, temporal)
+        #[arg(long)]
+        dimension: Option<String>,
+    },
+
     /// Generate and manage semantic embeddings
     Embeddings {
         #[command(subcommand)]
@@ -424,6 +431,9 @@ fn main() -> Result<()> {
                 dimension,
             };
             commands::scry::execute(&query, options)?;
+        }
+        Commands::Eval { dimension } => {
+            commands::eval::execute(dimension)?;
         }
         Commands::Embeddings { command } => match command {
             EmbeddingsCommands::Generate { force } => {
