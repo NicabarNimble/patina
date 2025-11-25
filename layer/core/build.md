@@ -41,7 +41,7 @@ Patina has strong architectural foundations but is stuck at "semantic only" - on
 - [ ] Output: `temporal.safetensors` + `temporal.usearch`
 
 #### 2.5b: Scry MVP
-**Status:** Spec only ([spec-scry.md](../surface/spec-scry.md))
+**Status:** Spec only ([spec-scry.md](../surface/build/spec-scry.md))
 **Effort:** 3-5 days
 **Why:** Can't validate retrieval quality without query interface
 
@@ -65,7 +65,7 @@ Patina has strong architectural foundations but is stuck at "semantic only" - on
 ## Completed Phases
 
 ### Phase 1: Scrape Pipeline ✅ (2025-11-22)
-**Specs:** [spec-eventlog-architecture.md](../surface/spec-eventlog-architecture.md), [spec-scrape-pipeline.md](../surface/spec-scrape-pipeline.md)
+**Specs:** [spec-eventlog-architecture.md](../surface/build/spec-eventlog-architecture.md), [spec-scrape-pipeline.md](../surface/build/spec-scrape-pipeline.md)
 
 Unified eventlog with 16,027 events across 17 types:
 - Git: 707 commits → commits, commit_files, co_changes views
@@ -73,7 +73,7 @@ Unified eventlog with 16,027 events across 17 types:
 - Code: 13,146 events → functions, call_graph, symbols views
 
 ### Phase 2: Oxidize (Semantic Only) ✅ (2025-11-24)
-**Spec:** [spec-oxidize.md](../surface/spec-oxidize.md)
+**Spec:** [spec-oxidize.md](../surface/build/spec-oxidize.md)
 
 Working pipeline for single dimension:
 - Recipe format: `oxidize.yaml`
@@ -103,11 +103,11 @@ Working pipeline for single dimension:
 | Social | Same author = related | 707 commits | Likely skip (single-user noise) |
 
 ### Phase 4: Mothership Service
-**Spec:** [spec-mothership-service.md](../surface/spec-mothership-service.md)
+**Spec:** [spec-mothership-service.md](../surface/build/spec-mothership-service.md)
 **Blocked until:** Scry MVP working
 
 ### Phase 5: Persona
-**Spec:** [spec-persona-capture.md](../surface/spec-persona-capture.md)
+**Spec:** [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
 **Blocked until:** Mothership working
 
 ### Phase 6: Model Upgrades (MLX/Qwen3)
