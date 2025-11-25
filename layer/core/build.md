@@ -30,15 +30,15 @@ Patina has strong architectural foundations but is stuck at "semantic only" - on
 
 **Goal:** Prove the architecture works end-to-end before investing in all 6 dimensions.
 
-#### 2.5a: Temporal Dimension
-**Status:** Not started
+#### 2.5a: Temporal Dimension ✅
+**Status:** Complete (2025-11-25)
 **Effort:** 1-2 days
 **Why first:** `co_changes` table already materialized, simplest pairing logic
 
-- [ ] Create `src/commands/oxidize/pairs/temporal.rs`
-- [ ] Pairing logic: files changed in same commit = related
-- [ ] Training signal: 707 commits in eventlog
-- [ ] Output: `temporal.safetensors` + `temporal.usearch`
+- [x] Create `src/commands/oxidize/temporal.rs`
+- [x] Pairing logic: files changed in same commit = related
+- [x] Training signal: 590 files with 17,685 co-change relationships
+- [x] Output: `temporal.safetensors` (4.2MB) + `temporal.usearch` (2.1MB, 1807 vectors)
 
 #### 2.5b: Scry MVP
 **Status:** Spec only ([spec-scry.md](../surface/build/spec-scry.md))
@@ -96,7 +96,7 @@ Working pipeline for single dimension:
 | Dimension | Training Signal | Data Available | Status |
 |-----------|-----------------|----------------|--------|
 | Semantic | Same session = related | 2,174 session events | ✅ Done |
-| Temporal | Same commit = related | 707 commits | 🎯 Next |
+| Temporal | Same commit = related | 590 files, 17,685 co-changes | ✅ Done |
 | Dependency | Caller/callee = related | 9,634 code.call events | After eval |
 | Syntactic | Similar AST = related | 790 code.function events | After eval |
 | Architectural | Same module = related | 13,146 code.* events | After eval |
@@ -165,7 +165,7 @@ When context is lost, read these sessions for architectural decisions:
 
 **Phase 2.5 is complete when:**
 1. ✅ Semantic dimension trained and indexed
-2. [ ] Temporal dimension trained and indexed
+2. ✅ Temporal dimension trained and indexed (2025-11-25)
 3. [ ] `patina scry "query"` returns ranked results
 4. [ ] Evaluation shows 2-dim retrieval > 1-dim retrieval
 5. [ ] Evaluation shows vector retrieval > random baseline
