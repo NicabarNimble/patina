@@ -1,186 +1,173 @@
 # Build Recipe
 
-Persistent task tracking across sessions. Check items as completed, add notes inline.
-
-**Specs:** Detailed implementation specs live in `layer/surface/spec-*.md`. Each phase below links to its spec.
+Persistent roadmap across sessions. **Start here when picking up work.**
 
 ---
 
-## Active
+## Current Direction (2025-11-25)
 
-- [ ] Phase 2: Oxidize - Complete exports (training works, need ONNX export + USearch index for Phase 3)
+**Principle:** "Don't optimize what you can't measure."
 
-## Queued
+Patina has strong architectural foundations but is stuck at "semantic only" - one dimension trained, no query interface, no way to validate if the multi-dimension hypothesis works.
 
-### Phase 1: Scrape Pipeline ✅ COMPLETE (2025-11-22)
-**Specs:**
-- [spec-eventlog-architecture.md](../surface/spec-eventlog-architecture.md) - LiveStore pattern, multi-user alignment
-- [spec-scrape-pipeline.md](../surface/spec-scrape-pipeline.md) - Implementation details
+**Immediate Path:**
+1. Build temporal dimension (validates multi-dimension pipeline)
+2. Build Scry MVP (validates end-to-end retrieval)
+3. Build evaluation framework (measures dimension value)
+4. THEN decide on remaining dimensions and model upgrades
 
-Materialize SQLite views from event sources (git history, session files, code).
+**Explicitly Deferred:**
+- MLX runtime (nice-to-have, not blocking)
+- Qwen3/model upgrades (invalidates all projections, premature optimization)
+- Dependency/syntactic/architectural/social dimensions (until 2-dimension retrieval validated)
+- Mothership service (needs Scry working first)
 
-**Completed:**
-- [x] Unified `patina.db` schema - eventlog table + scrape_meta (2025-11-21)
-- [x] `patina scrape git` - git.commit events → eventlog, materialized views (commits, commit_files, co_changes) (2025-11-21)
-- [x] `patina scrape sessions` - session.* events → eventlog, materialized views (sessions, observations, goals) (2025-11-21)
-- [x] `patina scrape code` - code.* events → eventlog, materialized views (all 7 types) (2025-11-22)
-- [x] `patina scrape` - runs all three scrapers (2025-11-21)
-- [x] Dual-write pattern: eventlog (source of truth) + materialized views (query performance)
-- [x] Cross-cutting queries validated across all event types (2025-11-22)
+---
 
-**Stats (patina codebase):**
-- Total events: 16,027 across 17 event types
-- Code events: 13,146 (symbols, functions, types, imports, calls, constants, members)
-- Git events: 707 commits
-- Session events: 2,174 (started, goals, decisions, patterns, work, context)
-- Database: 41MB unified patina.db
-- All 11 language processors preserved, zero functionality lost
+## Active Work
 
-### Phase 2: Oxidize (Embeddings + Projections)
-**Spec:** [layer/surface/spec-oxidize.md](../surface/spec-oxidize.md)
+### Phase 2.5: Validate Multi-Dimension RAG
 
-Recipe-driven embedding and projection training.
+**Goal:** Prove the architecture works end-to-end before investing in all 6 dimensions.
 
-**Current Status:** Phase 2 Complete! ✅ Training, export, and indexing all working.
+#### 2.5a: Temporal Dimension
+**Status:** Not started
+**Effort:** 1-2 days
+**Why first:** `co_changes` table already materialized, simplest pairing logic
 
-**Completed (2025-11-24):**
-- [x] `oxidize.yaml` recipe format (version, embedding_model, projections)
-- [x] `patina oxidize` command - loads recipe, generates pairs, trains projection
-- [x] E5-base-v2 integration (768-dim embeddings from session observations)
-- [x] SameSessionPairs generator (queries eventlog for training triplets)
-- [x] 2-layer MLP trainer (768→1024→256, triplet loss, gradient descent)
-- [x] End-to-end pipeline tested (100 pairs, 10 epochs, ~10 seconds)
-- [x] Safetensors export (v0.7, MLX-compatible, shape-based loading)
-- [x] USearch index builder (HNSW index from projected vectors)
+- [ ] Create `src/commands/oxidize/pairs/temporal.rs`
+- [ ] Pairing logic: files changed in same commit = related
+- [ ] Training signal: 707 commits in eventlog
+- [ ] Output: `temporal.safetensors` + `temporal.usearch`
 
-**Phase 2 Complete! ✅**
-Output files:
+#### 2.5b: Scry MVP
+**Status:** Spec only ([spec-scry.md](../surface/spec-scry.md))
+**Effort:** 3-5 days
+**Why:** Can't validate retrieval quality without query interface
+
+- [ ] `patina scry "query"` - basic vector search
+- [ ] Load semantic.usearch (and temporal.usearch when ready)
+- [ ] SQLite metadata enrichment (file paths, commit info)
+- [ ] Result formatting with scores
+
+#### 2.5c: Evaluation Framework
+**Status:** Not started
+**Effort:** 2-3 days
+**Why:** Without metrics, dimension value is speculation
+
+- [ ] Hold-out test queries from sessions
+- [ ] Precision/recall measurement
+- [ ] A/B: 1-dimension vs 2-dimension retrieval
+- [ ] Baseline: random retrieval comparison
+
+---
+
+## Completed Phases
+
+### Phase 1: Scrape Pipeline ✅ (2025-11-22)
+**Specs:** [spec-eventlog-architecture.md](../surface/spec-eventlog-architecture.md), [spec-scrape-pipeline.md](../surface/spec-scrape-pipeline.md)
+
+Unified eventlog with 16,027 events across 17 types:
+- Git: 707 commits → commits, commit_files, co_changes views
+- Sessions: 2,174 events → sessions, observations, goals views
+- Code: 13,146 events → functions, call_graph, symbols views
+
+### Phase 2: Oxidize (Semantic Only) ✅ (2025-11-24)
+**Spec:** [spec-oxidize.md](../surface/spec-oxidize.md)
+
+Working pipeline for single dimension:
+- Recipe format: `oxidize.yaml`
+- E5-base-v2 embeddings (768-dim)
+- 2-layer MLP projection (768→1024→256)
+- Safetensors export (v0.7, MLX-compatible)
+- USearch HNSW index (1,807 vectors)
+
+**Output:**
 - `.patina/data/embeddings/e5-base-v2/projections/semantic.safetensors` (4.2MB)
-- `.patina/data/embeddings/e5-base-v2/projections/semantic.usearch` (2.1MB, 1807 vectors)
+- `.patina/data/embeddings/e5-base-v2/projections/semantic.usearch` (2.1MB)
 
-**Phase 2 Extensions (Future - Not Blocking):**
-- [ ] Additional projection types (temporal from git, dependency from call_graph, etc.)
-- [ ] Proper backpropagation (current: simplified gradient approximation - works but not optimal)
-- [ ] Model swapping (BGE, Nomic, Qwen3) - deferred until Phase 2 exports complete
-- [ ] MLX runtime integration (Phase 2.1 - Apple Silicon optimization)
-- [ ] ONNX export (only if external tools need it)
+---
 
-### Phase 3: Scry (Query Interface)
-**Spec:** [layer/surface/spec-scry.md](../surface/spec-scry.md)
+## Future Phases (Blocked on 2.5)
 
-LLM ↔ database query interface.
+### Phase 3: Additional Dimensions
+**Blocked until:** Scry + eval prove 2-dimension retrieval valuable
 
-- [ ] `patina scry "query"` - unified search
-- [ ] Vector search + SQLite metadata
-- [ ] Project + persona result merging
-- [ ] Result tagging ([PROJECT], [PERSONA])
-- [ ] Prolog reasoning integration (optional)
+| Dimension | Training Signal | Data Available | Status |
+|-----------|-----------------|----------------|--------|
+| Semantic | Same session = related | 2,174 session events | ✅ Done |
+| Temporal | Same commit = related | 707 commits | 🎯 Next |
+| Dependency | Caller/callee = related | 9,634 code.call events | After eval |
+| Syntactic | Similar AST = related | 790 code.function events | After eval |
+| Architectural | Same module = related | 13,146 code.* events | After eval |
+| Social | Same author = related | 707 commits | Likely skip (single-user noise) |
 
 ### Phase 4: Mothership Service
-**Spec:** [layer/surface/spec-mothership-service.md](../surface/spec-mothership-service.md)
-
-Local daemon for embeddings and cross-project queries.
-
-- [ ] `patina serve` daemon (axum REST on :50051)
-- [ ] `POST /embed` - generate embeddings
-- [ ] `POST /scry` - unified query endpoint
-- [ ] `GET /projects` - list registered projects
-- [ ] `projects.registry` (YAML)
-- [ ] Recipe version tracking
+**Spec:** [spec-mothership-service.md](../surface/spec-mothership-service.md)
+**Blocked until:** Scry MVP working
 
 ### Phase 5: Persona
-**Spec:** [layer/surface/spec-persona-capture.md](../surface/spec-persona-capture.md)
+**Spec:** [spec-persona-capture.md](../surface/spec-persona-capture.md)
+**Blocked until:** Mothership working
 
-Personal cross-project beliefs (not git-tracked).
+### Phase 6: Model Upgrades (MLX/Qwen3)
+**Research:** [model-strategy-research.md](../dust/research-2025/model-strategy-research.md)
+**Blocked until:** Evaluation proves current architecture valuable
 
-- [ ] `patina persona note "belief"` - capture to ~/.patina/persona/
-- [ ] `patina persona query "term"` - search personal beliefs
-- [ ] Persona materialize (events → beliefs.db)
-- [ ] Integration with scry (tagged results)
-
-### Phase 6: Multi-User & Sharing
-**Spec:** [layer/surface/spec-cross-project.md](../surface/spec-cross-project.md)
-
-Multi-user workflows, recipe sharing.
-
-- [ ] Recipe-based adapter rebuilding
-- [ ] Version tracking (recipe version + events hash)
-- [ ] Peer discovery (Bonjour/mDNS) - future
-- [ ] P2P adapter sharing - future
-
----
-
-## Done
-
-- [x] E5-base-v2 model working (2025-11)
-- [x] USearch HNSW indices working (2025-11)
-- [x] SQLite + call_graph data available (2025-11)
-- [x] `patina scrape code` working (2025-11)
-- [x] Mothership architecture clarified - Ollama-style daemon (2025-11-21)
-- [x] README rewritten with accurate commands (2025-11-21, bf22318e)
-- [x] MIT license added (2025-11-21, bf22318e)
-- [x] Multi-user architecture designed (2025-11-21, session 20251121-065812)
-- [x] Recipe model for adapter sharing (2025-11-21, session 20251121-065812)
-- [x] Phase 2 MVP - Recipe parser + pair generator + MLP trainer (2025-11-23)
+**Why deferred:**
+- E5-base-v2 validated on real data (+68% vs baseline)
+- Model swap invalidates ALL trained projections
+- "Don't optimize what you can't measure"
 
 ---
 
 ## Architecture Summary
 
-**Key Insight:** Git commits and session files ARE the event sources. Scrape materializes them into a unified event log.
-
-**Pipeline:**
 ```
-Event Sources (git-synced)     →  scrape  →  Unified DB    →  oxidize  →  Vectors
-.git/ (commits)                              patina.db                    *.usearch
-layer/sessions/*.md                          ├── eventlog (source of truth)
-src/**/* (AST)                               └── materialized views
+Event Sources          →  scrape  →  Unified DB    →  oxidize  →  Vectors    →  scry
+.git/ (commits)                      patina.db                    *.usearch       ↓
+layer/sessions/*.md                  ├── eventlog                               Results
+src/**/* (AST)                       └── views
 ```
 
-**Database Structure (following LiveStore pattern):**
-```
-patina.db
-├── eventlog                    ← Source of truth: ALL events unified
-│   ├── git.commit events
-│   ├── session.* events
-│   └── code.* events
-│
-└── Materialized Views          ← Derived from eventlog
-    ├── commits, co_changes     (from git events)
-    ├── sessions, observations  (from session events)
-    └── functions, call_graph   (from code events)
-```
-
-**What's Shared (git-tracked):**
-- `.git/` - commit history = temporal events
+**What's Git-Tracked:**
 - `layer/sessions/*.md` - session events (decisions, observations)
-- `.patina/oxidize.yaml` - recipe for building adapters
+- `.patina/oxidize.yaml` - recipe for building projections
 
-**What's Local (rebuilt via scrape):**
-- `.patina/data/patina.db` - unified eventlog + materialized views
-- `.patina/data/embeddings/` - vectors built from recipe
+**What's Local (rebuilt via scrape/oxidize):**
+- `.patina/data/patina.db` - unified eventlog
+- `.patina/data/embeddings/` - projection weights + indices
 
-**What's Personal:**
-- `~/.patina/persona/` - cross-project beliefs
-- `~/.patina/projects.registry` - registered projects
-
-**Adapter Structure:**
+**6-Dimension Model:**
 ```
-src/adapters/
-├── foundational/       ← LLM chat (Claude, Gemini)
-├── embeddings/         ← frozen models (E5, BGE)
-└── projections/        ← learned layers
-    ├── dimensions/     ← semantic, temporal, etc.
-    └── world-model/    ← state-encoder, etc.
+Query → E5-base-v2 (768-dim) → [Semantic MLP] → 256-dim ─┐
+                              → [Temporal MLP] → 256-dim ─┼→ Concatenated → USearch
+                              → [Dependency MLP] → 256-dim─┘   (768-dim with 3)
 ```
 
 ---
 
-## Notes
+## Key Sessions (Context Recovery)
 
-- Transport: REST + optional WebSocket (not gRPC), port 50051
-- Registry format: YAML in `projects.registry`
-- Personas: personal beliefs, never shared via git
-- Adapters: ~4MB each, share recipes not weights
-- North star: CRDT persona network (far future)
-- Design docs: `layer/surface/patina-embedding-architecture.md`
+When context is lost, read these sessions for architectural decisions:
+
+| Session | Topic | Key Insight |
+|---------|-------|-------------|
+| 20251125-065729 | RAG design review | "Don't optimize what you can't measure" |
+| 20251124-220659 | Direction deep dive | Path C: 2-3 dims → Scry → validate |
+| 20251120-110914 | Progressive adapters | Adapter pattern at every layer |
+| 20251116-194408 | E5 benchmark | +68% vs baseline, domain > benchmarks |
+| 20251123-222456 | MLX research | Hybrid runtime strategy (future) |
+
+---
+
+## Validation Criteria
+
+**Phase 2.5 is complete when:**
+1. ✅ Semantic dimension trained and indexed
+2. [ ] Temporal dimension trained and indexed
+3. [ ] `patina scry "query"` returns ranked results
+4. [ ] Evaluation shows 2-dim retrieval > 1-dim retrieval
+5. [ ] Evaluation shows vector retrieval > random baseline
+
+**Only then proceed to Phase 3+ investments.**
