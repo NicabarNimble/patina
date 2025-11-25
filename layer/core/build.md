@@ -111,7 +111,7 @@ Working pipeline for single dimension:
 **Blocked until:** Mothership working
 
 ### Phase 6: Model Upgrades (MLX/Qwen3)
-**Research:** [model-strategy-research.md](../surface/build/model-strategy-research.md)
+**Spec:** [spec-model-runtime.md](../surface/build/spec-model-runtime.md)
 **Blocked until:** Evaluation proves current architecture valuable
 
 **Why deferred:**
