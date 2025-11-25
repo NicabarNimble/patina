@@ -8,18 +8,22 @@ Persistent roadmap across sessions. **Start here when picking up work.**
 
 **Principle:** "Don't optimize what you can't measure."
 
-Patina has strong architectural foundations but is stuck at "semantic only" - one dimension trained, no query interface, no way to validate if the multi-dimension hypothesis works.
+~~Patina has strong architectural foundations but is stuck at "semantic only"~~
+
+**Progress:** Temporal dimension and Scry MVP complete. Key insight discovered:
+- **Semantic** (text→text): Working well, query interface matches training signal
+- **Temporal** (text→files): Query interface mismatch - trained on file co-change relationships but queried with arbitrary text. Needs file-to-file query interface.
 
 **Immediate Path:**
-1. Build temporal dimension (validates multi-dimension pipeline)
-2. Build Scry MVP (validates end-to-end retrieval)
-3. Build evaluation framework (measures dimension value)
-4. THEN decide on remaining dimensions and model upgrades
+1. ~~Build temporal dimension~~ ✅ Done
+2. ~~Build Scry MVP~~ ✅ Done
+3. Build evaluation framework (discover which query interfaces work for which dimensions)
+4. THEN decide on remaining dimensions and query interface designs
 
 **Explicitly Deferred:**
 - MLX runtime (nice-to-have, not blocking)
 - Qwen3/model upgrades (invalidates all projections, premature optimization)
-- Dependency/syntactic/architectural/social dimensions (until 2-dimension retrieval validated)
+- Dependency/syntactic/architectural/social dimensions (until eval clarifies query patterns)
 - Mothership service (needs Scry working first)
 
 ---
@@ -40,6 +44,11 @@ Patina has strong architectural foundations but is stuck at "semantic only" - on
 - [x] Training signal: 590 files with 17,685 co-change relationships
 - [x] Output: `temporal.safetensors` (4.2MB) + `temporal.usearch` (2.1MB, 1807 vectors)
 
+**⚠️ Insight:** Pipeline works but query interface mismatch discovered:
+- Training: file paths ↔ file paths (co-change relationships)
+- Current query: arbitrary text → file paths (doesn't make sense)
+- Needed: file-to-file queries (`--file src/foo.rs` → related files)
+
 #### 2.5b: Scry MVP ✅
 **Status:** Complete (2025-11-25)
 **Effort:** 3-5 days
@@ -52,14 +61,23 @@ Patina has strong architectural foundations but is stuck at "semantic only" - on
 - [x] Options: `--limit`, `--min-score`, `--dimension`
 
 #### 2.5c: Evaluation Framework
-**Status:** Not started
+**Status:** In progress (2025-11-25)
 **Effort:** 2-3 days
 **Why:** Without metrics, dimension value is speculation
 
-- [ ] Hold-out test queries from sessions
-- [ ] Precision/recall measurement
-- [ ] A/B: 1-dimension vs 2-dimension retrieval
-- [ ] Baseline: random retrieval comparison
+**Expanded scope:** Eval isn't just "does retrieval work?" but "which query interfaces make sense for which dimensions?"
+
+- [ ] Semantic eval: text→text queries against session observations
+- [ ] Temporal eval: file→file queries against co-change relationships
+- [ ] Baseline comparison: vector retrieval vs random
+- [ ] Query interface discovery: what input types work for each dimension?
+
+**Expected findings:**
+| Dimension | Query Type | Expected Result |
+|-----------|------------|-----------------|
+| Semantic | text → text | Good (training matches query) |
+| Temporal | text → files | Poor (mismatch) |
+| Temporal | file → files | Good (training matches query) |
 
 ---
 
