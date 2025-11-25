@@ -411,16 +411,84 @@ $ patina oxidize
 # ✅ Ready for semantic search!
 ```
 
-### Pending (Future Extensions)
+### Phase 3: Dependency Dimension
 
-**Future Extensions:**
+**Status:** Not Started
+
+**Training Signal:** Functions that call each other are related (caller ↔ callee)
+
+**Data Available:** 9,634 `code.call` events in eventlog
+
+**Implementation:**
+
+```rust
+// src/commands/oxidize/dependency.rs
+
+pub fn generate_dependency_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<TrainingPair>> {
+    let conn = Connection::open(db_path)?;
+
+    // Get caller/callee relationships from code.call events
+    let mut stmt = conn.prepare(
+        "SELECT
+            json_extract(data, '$.caller') as caller,
+            json_extract(data, '$.callee') as callee,
+            json_extract(data, '$.caller_file') as caller_file,
+            json_extract(data, '$.callee_file') as callee_file
+         FROM eventlog
+         WHERE event_type = 'code.call'
+         LIMIT ?"
+    )?;
+
+    let mut pairs = Vec::new();
+    let mut rows = stmt.query([num_pairs * 2])?;
+
+    while let Some(row) = rows.next()? {
+        let caller: String = row.get(0)?;
+        let callee: String = row.get(1)?;
+        let caller_file: String = row.get(2)?;
+        let callee_file: String = row.get(3)?;
+
+        // Anchor: caller function
+        // Positive: callee function (they interact)
+        // Negative: random unrelated function
+        let negative = get_random_unrelated_function(&conn, &caller, &callee)?;
+
+        pairs.push(TrainingPair {
+            anchor: format!("{} in {}", caller, caller_file),
+            positive: format!("{} in {}", callee, callee_file),
+            negative,
+        });
+    }
+
+    Ok(pairs)
+}
+```
+
+**Query Interface:** File-based (same as temporal)
+```bash
+patina scry --file src/auth.rs --dimension dependency
+# Returns: functions that call/are called by functions in auth.rs
+```
+
+**Recipe Addition:**
+```yaml
+projections:
+  dependency:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
+```
+
+### Future Extensions
+
 - [ ] Proper backpropagation (current: simplified gradient approximation)
 - [ ] Lock file tracks build state (oxidize.lock)
 - [ ] `--only` flag trains subset of projections
 - [ ] `--dry-run` shows plan without training
 - [ ] Additional pair generators:
-  - [ ] CoChangedPairs (temporal projection)
-  - [ ] CallGraphPairs (dependency projection)
-  - [ ] ASTSimilarPairs (syntactic projection)
+  - [x] SameSessionPairs (semantic projection) ✅
+  - [x] CoChangedPairs (temporal projection) ✅
+  - [ ] CallGraphPairs (dependency projection) - Phase 3
+  - [ ] ASTSimilarPairs (syntactic projection) - Future
 - [ ] Multiple embedding models (BGE, nomic)
-- [ ] World-model projections (state-encoder, action-encoder)
+- [ ] Model worlds: different models per dimension

@@ -113,6 +113,54 @@ pub fn vector_search(
 }
 ```
 
+### 2b. File-Based Search (Phase 3)
+**Location:** `src/commands/scry/file_search.rs`
+
+File-based queries skip embedding - the file's vector already exists in the index.
+
+```rust
+pub fn file_search(
+    file_path: &str,
+    index_path: &Path,
+    db: &Connection,
+    limit: usize,
+) -> Result<Vec<(usize, f32)>> {
+    // Look up file's index position
+    let file_index = find_file_index(db, file_path)?;
+
+    // Load index and get the file's existing vector
+    let index = usearch::Index::open(index_path)?;
+    let file_vector = index.get(file_index)?;
+
+    // Search for neighbors (excluding self)
+    let results = index.search(&file_vector, limit + 1)?;
+    let filtered: Vec<_> = results.into_iter()
+        .filter(|(idx, _)| *idx != file_index)
+        .take(limit)
+        .collect();
+
+    Ok(filtered)
+}
+
+fn find_file_index(db: &Connection, file_path: &str) -> Result<u64> {
+    // For temporal: files are indexed sequentially from co_changes
+    let mut stmt = db.prepare(
+        "WITH files AS (
+            SELECT DISTINCT file_a as f FROM co_changes
+            UNION SELECT DISTINCT file_b FROM co_changes
+            ORDER BY 1
+        )
+        SELECT rowid - 1 FROM files WHERE f = ?"
+    )?;
+    stmt.query_row([file_path], |row| row.get(0))
+}
+```
+
+**Why no embedding for file queries:**
+- Temporal index: files indexed by path, vectors already computed
+- Dependency index: functions indexed by name, vectors already computed
+- Query = neighbor lookup, not new embedding
+
 ### 3. SQLite Metadata Lookup
 **Location:** `src/commands/scry/metadata.rs`
 
@@ -186,12 +234,27 @@ pub fn format_for_llm(results: &[ScryResult]) -> String {
 ## CLI
 
 ```bash
+# Text queries (semantic dimension)
 patina scry "error handling"              # Search project + persona
-patina scry "error handling" --project    # Project only
-patina scry "error handling" --persona    # Persona only
 patina scry "error handling" --limit 20   # More results (default 10)
 patina scry "error handling" --json       # JSON output for tooling
-patina scry "error handling" --dimension semantic  # Specific projection
+
+# File queries (temporal/dependency dimensions) - Phase 3
+patina scry --file src/auth/login.rs      # What files co-change with this?
+patina scry --file Game.cairo --dimension temporal
+patina scry --file spawn.rs --dimension dependency  # What calls/is called by?
+
+# Exact match (FTS5 lexical) - Phase 3
+patina scry "find COMPONENT_ID"           # Auto-detects exact match pattern
+patina scry "where is spawn_entity"       # Routes to FTS5
+
+# Cross-project (via Mothership) - Phase 3
+patina scry "spawn patterns" --projects dojo,bevy
+
+# Filters
+patina scry "error handling" --project    # Project only
+patina scry "error handling" --persona    # Persona only
+patina scry "error handling" --dimension semantic
 ```
 
 ## Options
@@ -201,9 +264,11 @@ pub struct ScryOptions {
     pub include_persona: bool,       // default: true
     pub include_project: bool,       // default: true
     pub limit: usize,                // default: 10
-    pub dimension: Option<String>,   // e.g., "semantic", "temporal"
+    pub dimension: Option<String>,   // e.g., "semantic", "temporal", "dependency"
     pub output_format: OutputFormat, // Text, Json, LlmContext
     pub min_score: f32,              // default: 0.5
+    pub file: Option<String>,        // Phase 3: file-based queries
+    pub projects: Option<Vec<String>>, // Phase 3: cross-project via mothership
 }
 ```
 
@@ -287,7 +352,14 @@ src/commands/scry/
 - [x] `--limit` and `--min-score` options work
 - [x] `--dimension` selects semantic or temporal index
 
-### Future (Phase 4+)
+### Phase 3: Hackathon MVP
+- [ ] `--file` flag for file-based queries (temporal, dependency)
+- [ ] File lookup without re-embedding (direct neighbor search)
+- [ ] FTS5 integration for exact match queries
+- [ ] Auto-detect query type (text vs file vs exact match)
+- [ ] `--projects` flag for cross-project queries via mothership
+
+### Phase 4+
 - [ ] Results tagged as [PROJECT] or [PERSONA]
 - [ ] `--json` outputs structured data
 - [ ] `--project` / `--persona` filters work
