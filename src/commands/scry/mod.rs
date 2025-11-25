@@ -53,7 +53,15 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
         }
         (None, Some(q)) => {
             println!("Query: \"{}\"\n", q);
-            scry_text(q, &options)?
+
+            // Auto-detect query type
+            if is_lexical_query(q) {
+                println!("Mode: Lexical (FTS5)\n");
+                scry_lexical(q, &options)?
+            } else {
+                println!("Mode: Semantic (vector)\n");
+                scry_text(q, &options)?
+            }
         }
         (None, None) => {
             anyhow::bail!("Either a query text or --file must be provided");
@@ -266,6 +274,99 @@ pub fn scry_file(file_path: &str, options: &ScryOptions) -> Result<Vec<ScryResul
 /// Legacy alias for text-based scry
 pub fn scry(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
     scry_text(query, options)
+}
+
+/// Check if query looks like a lexical/exact-match query
+pub fn is_lexical_query(query: &str) -> bool {
+    let lower = query.to_lowercase();
+
+    // Explicit lexical patterns
+    lower.starts_with("find ")
+        || lower.starts_with("where is ")
+        || lower.starts_with("show me the ")
+        || lower.starts_with("show me ")
+        || lower.contains(" defined")
+        // Code symbol patterns
+        || query.contains("::")
+        || query.contains("()")
+        || query.contains("fn ")
+        || query.contains("struct ")
+        || query.contains("const ")
+        || query.contains("impl ")
+}
+
+/// Lexical search using FTS5 for exact matches
+pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
+    let db_path = ".patina/data/patina.db";
+
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("Failed to open database: {}", db_path))?;
+
+    // Prepare the FTS5 query
+    let fts_query = prepare_fts_query(query);
+
+    println!("FTS5 query: {}", fts_query);
+
+    // Search using FTS5 with BM25 scoring
+    let mut stmt = conn.prepare(
+        "SELECT
+            symbol_name,
+            file_path,
+            snippet(code_fts, 2, '>>>', '<<<', '...', 64) as snippet,
+            event_type,
+            bm25(code_fts) as score
+         FROM code_fts
+         WHERE code_fts MATCH ?
+         ORDER BY score
+         LIMIT ?",
+    )?;
+
+    let results = stmt.query_map(
+        rusqlite::params![&fts_query, options.limit as i64],
+        |row| {
+            let symbol: String = row.get(0)?;
+            let file_path: String = row.get(1)?;
+            let snippet: String = row.get(2)?;
+            let event_type: String = row.get(3)?;
+            let bm25_score: f64 = row.get(4)?;
+
+            Ok(ScryResult {
+                id: 0,
+                content: snippet,
+                // BM25 is negative (lower = better), convert to positive score
+                score: (-bm25_score as f32).min(1.0),
+                event_type,
+                source_id: format!("{}:{}", file_path, symbol),
+                timestamp: String::new(),
+            })
+        },
+    )?;
+
+    let mut collected: Vec<ScryResult> = results.filter_map(|r| r.ok()).collect();
+
+    // Filter by min_score
+    collected.retain(|r| r.score >= options.min_score);
+
+    Ok(collected)
+}
+
+/// Prepare query for FTS5 (strip prefixes, quote if needed)
+fn prepare_fts_query(query: &str) -> String {
+    // Strip common prefixes
+    let cleaned = query
+        .trim()
+        .trim_start_matches("find ")
+        .trim_start_matches("where is ")
+        .trim_start_matches("show me the ")
+        .trim_start_matches("show me ")
+        .trim();
+
+    // If it contains special characters, use phrase search
+    if cleaned.contains("::") || cleaned.contains("()") || cleaned.contains(' ') {
+        format!("\"{}\"", cleaned)
+    } else {
+        cleaned.to_string()
+    }
 }
 
 /// Search results from USearch
