@@ -41,7 +41,7 @@ Materialize SQLite views from event sources (git history, session files, code).
 
 Recipe-driven embedding and projection training.
 
-**Current Status:** Training works end-to-end. Need to export results for use in queries.
+**Current Status:** Training + export complete. Need to build USearch index for queries.
 
 **Completed (2025-11-23):**
 - [x] `oxidize.yaml` recipe format (version, embedding_model, projections)
@@ -50,15 +50,17 @@ Recipe-driven embedding and projection training.
 - [x] SameSessionPairs generator (queries eventlog for training triplets)
 - [x] 2-layer MLP trainer (768→1024→256, triplet loss, gradient descent)
 - [x] End-to-end pipeline tested (100 pairs, 10 epochs, ~10 seconds)
+- [x] Safetensors export (v0.7, MLX-compatible, shape-based loading)
 
 **To Complete Phase 2:**
-- [ ] ONNX export for trained projection weights
 - [ ] USearch index builder (build searchable vector index from projections)
 
 **Phase 2 Extensions (Future - Not Blocking):**
 - [ ] Additional projection types (temporal from git, dependency from call_graph, etc.)
 - [ ] Proper backpropagation (current: simplified gradient approximation - works but not optimal)
 - [ ] Model swapping (BGE, Nomic, Qwen3) - deferred until Phase 2 exports complete
+- [ ] MLX runtime integration (Phase 2.1 - Apple Silicon optimization)
+- [ ] ONNX export (only if external tools need it)
 
 ### Phase 3: Scry (Query Interface)
 **Spec:** [layer/surface/spec-scry.md](../surface/spec-scry.md)

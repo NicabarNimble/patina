@@ -18,7 +18,7 @@ Events → materialize → SQLite → oxidize → Vectors
 - ✅ 2-layer MLP trainer (triplet loss, gradient descent)
 - ✅ E5-base-v2 embedding integration
 - ✅ End-to-end pipeline working
-- ⏳ ONNX export (pending)
+- ✅ Safetensors export (v0.7, MLX-compatible)
 - ⏳ USearch index builder (pending)
 
 ## Recipe Format
@@ -267,8 +267,8 @@ pub fn oxidize(full: bool, only: Option<Vec<String>>) -> Result<()> {
         let trainer = ProjectionTrainer::new(embedding_model.clone());
         let projection = trainer.train(config, &pairs)?;
 
-        // Save weights
-        projection.save_onnx(&format!("{}/{}.onnx", output_dir, name))?;
+        // Save weights (safetensors format - MLX-compatible)
+        projection.save_safetensors(&format!("{}/{}.safetensors", output_dir, name))?;
 
         // Build vector index
         build_index(&db, &embedding_model, &projection, &format!("{}/{}.usearch", output_dir, name))?;
@@ -299,9 +299,9 @@ patina oxidize --dry-run          # Show what would be trained
         └── e5-base-v2/
             ├── base.usearch      ← raw embeddings index
             └── projections/
-                ├── semantic.onnx
-                ├── semantic.usearch
-                ├── temporal.onnx
+                ├── semantic.safetensors    ← MLX-compatible weights
+                ├── semantic.usearch         ← HNSW index
+                ├── temporal.safetensors
                 ├── temporal.usearch
                 └── ...
 ```
@@ -377,10 +377,27 @@ projections:
 - Projection trained: 768→1024→256
 - Training time: ~10 seconds for 10 epochs
 
+### Completed (2025-11-24)
+
+**Weight Export:**
+- [x] Safetensors export for trained projections
+  - Format: HuggingFace safetensors v0.7 (MLX-compatible, standard format)
+  - Implementation: Shape-based loading (infers dimensions from tensor shapes, not metadata)
+  - Output: `.patina/data/embeddings/{model}/projections/{name}.safetensors`
+  - File size: ~4.2MB per projection (768→1024→256 MLP)
+  - Why safetensors: MLX-native (Phase 2.1 ready), cross-platform, same as Qwen3/Llama
+  - Why shape-based: More reliable than metadata parsing, self-validating
+  - Why not ONNX: Phase 3 runs in Rust, doesn't need ONNX Runtime. Defer until external tools need it.
+
 ### Pending (Full Phase 2)
 
-- [ ] ONNX export for trained projections
+**Index Building:**
 - [ ] USearch indices built for each projection
+  - Query observations from patina.db
+  - Embed → project → add to HNSW index
+  - Save as `.usearch` alongside `.safetensors`
+
+**Future Extensions:**
 - [ ] Proper backpropagation (current: simplified gradient approximation)
 - [ ] Lock file tracks build state (oxidize.lock)
 - [ ] `--only` flag trains subset of projections
