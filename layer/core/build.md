@@ -40,15 +40,16 @@ Patina has strong architectural foundations but is stuck at "semantic only" - on
 - [x] Training signal: 590 files with 17,685 co-change relationships
 - [x] Output: `temporal.safetensors` (4.2MB) + `temporal.usearch` (2.1MB, 1807 vectors)
 
-#### 2.5b: Scry MVP
-**Status:** Spec only ([spec-scry.md](../surface/build/spec-scry.md))
+#### 2.5b: Scry MVP ✅
+**Status:** Complete (2025-11-25)
 **Effort:** 3-5 days
 **Why:** Can't validate retrieval quality without query interface
 
-- [ ] `patina scry "query"` - basic vector search
-- [ ] Load semantic.usearch (and temporal.usearch when ready)
-- [ ] SQLite metadata enrichment (file paths, commit info)
-- [ ] Result formatting with scores
+- [x] `patina scry "query"` - basic vector search
+- [x] Load semantic.usearch and temporal.usearch via `--dimension` flag
+- [x] SQLite metadata enrichment (event_type, source_id, content)
+- [x] Result formatting with scores
+- [x] Options: `--limit`, `--min-score`, `--dimension`
 
 #### 2.5c: Evaluation Framework
 **Status:** Not started
@@ -166,7 +167,7 @@ When context is lost, read these sessions for architectural decisions:
 **Phase 2.5 is complete when:**
 1. ✅ Semantic dimension trained and indexed
 2. ✅ Temporal dimension trained and indexed (2025-11-25)
-3. [ ] `patina scry "query"` returns ranked results
+3. ✅ `patina scry "query"` returns ranked results (2025-11-25)
 4. [ ] Evaluation shows 2-dim retrieval > 1-dim retrieval
 5. [ ] Evaluation shows vector retrieval > random baseline
 
