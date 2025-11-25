@@ -109,7 +109,7 @@ pub fn generate_temporal_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<Tr
 ///
 /// Creates a description that E5 can meaningfully embed:
 /// "src/commands/oxidize/mod.rs" -> "File: src/commands/oxidize/mod.rs (Rust module)"
-fn file_to_text(path: &str) -> String {
+pub fn file_to_text(path: &str) -> String {
     let extension = path.rsplit('.').next().unwrap_or("");
     let file_type = match extension {
         "rs" => "Rust source",
