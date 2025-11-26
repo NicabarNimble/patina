@@ -19,8 +19,8 @@ const MIN_COCHANGE_COUNT: i64 = 2;
 /// - Positive: file that frequently changes with anchor
 /// - Negative: file that rarely/never changes with anchor
 pub fn generate_temporal_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<TrainingPair>> {
-    let conn =
-        Connection::open(db_path).with_context(|| format!("Failed to open database: {}", db_path))?;
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("Failed to open database: {}", db_path))?;
 
     // Load co-change relationships (file_a -> set of related files)
     let mut cochanges: HashMap<String, HashSet<String>> = HashMap::new();
@@ -43,8 +43,14 @@ pub fn generate_temporal_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<Tr
         all_files.insert(file_b.clone());
 
         // Bidirectional relationship
-        cochanges.entry(file_a.clone()).or_default().insert(file_b.clone());
-        cochanges.entry(file_b.clone()).or_default().insert(file_a.clone());
+        cochanges
+            .entry(file_a.clone())
+            .or_default()
+            .insert(file_b.clone());
+        cochanges
+            .entry(file_b.clone())
+            .or_default()
+            .insert(file_a.clone());
     }
 
     // Filter to files with at least one co-change partner

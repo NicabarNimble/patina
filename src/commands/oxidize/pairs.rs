@@ -21,8 +21,8 @@ pub struct TrainingPair {
 /// - Positive: different observation from same session
 /// - Negative: random observation from different session
 pub fn generate_same_session_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<TrainingPair>> {
-    let conn =
-        Connection::open(db_path).with_context(|| format!("Failed to open database: {}", db_path))?;
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("Failed to open database: {}", db_path))?;
 
     // Load all observations grouped by session
     let mut sessions: HashMap<String, Vec<String>> = HashMap::new();
@@ -44,10 +44,7 @@ pub fn generate_same_session_pairs(db_path: &str, num_pairs: usize) -> Result<Ve
     }
 
     // Filter to sessions with at least 2 observations
-    let valid_sessions: Vec<_> = sessions
-        .iter()
-        .filter(|(_, obs)| obs.len() >= 2)
-        .collect();
+    let valid_sessions: Vec<_> = sessions.iter().filter(|(_, obs)| obs.len() >= 2).collect();
 
     if valid_sessions.is_empty() {
         anyhow::bail!("No sessions with multiple observations found");

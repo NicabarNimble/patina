@@ -286,11 +286,10 @@ impl Projection {
     pub fn load_safetensors(path: &Path) -> Result<Self> {
         use std::fs;
 
-        let buffer = fs::read(path)
-            .context(format!("Failed to read file: {}", path.display()))?;
+        let buffer = fs::read(path).context(format!("Failed to read file: {}", path.display()))?;
 
-        let tensors = SafeTensors::deserialize(&buffer)
-            .context("Failed to deserialize safetensors")?;
+        let tensors =
+            SafeTensors::deserialize(&buffer).context("Failed to deserialize safetensors")?;
 
         // Load tensors and extract dimensions from shapes
         let w1_view = tensors.tensor("w1.weight")?;
@@ -298,24 +297,32 @@ impl Projection {
         let w2_view = tensors.tensor("w2.weight")?;
         let b2_view = tensors.tensor("w2.bias")?;
 
-        let shape_w1 = w1_view.shape();  // [hidden_dim, input_dim]
-        let shape_w2 = w2_view.shape();  // [output_dim, hidden_dim]
+        let shape_w1 = w1_view.shape(); // [hidden_dim, input_dim]
+        let shape_w2 = w2_view.shape(); // [output_dim, hidden_dim]
 
         let hidden_dim = shape_w1[0];
         let input_dim = shape_w1[1];
-        let _output_dim = shape_w2[0];  // Validated by shape consistency
+        let _output_dim = shape_w2[0]; // Validated by shape consistency
 
         // Convert to Vec<f32>
-        let w1_flat: Vec<f32> = w1_view.data().chunks_exact(4)
+        let w1_flat: Vec<f32> = w1_view
+            .data()
+            .chunks_exact(4)
             .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
             .collect();
-        let b1: Vec<f32> = b1_view.data().chunks_exact(4)
+        let b1: Vec<f32> = b1_view
+            .data()
+            .chunks_exact(4)
             .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
             .collect();
-        let w2_flat: Vec<f32> = w2_view.data().chunks_exact(4)
+        let w2_flat: Vec<f32> = w2_view
+            .data()
+            .chunks_exact(4)
             .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
             .collect();
-        let b2: Vec<f32> = b2_view.data().chunks_exact(4)
+        let b2: Vec<f32> = b2_view
+            .data()
+            .chunks_exact(4)
             .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
             .collect();
 
@@ -389,7 +396,9 @@ mod tests {
         let positives = vec![vec![1.1; 10], vec![0.6; 10]]; // Similar to anchors
         let negatives = vec![vec![0.0; 10], vec![1.0; 10]]; // Different from anchors
 
-        let losses = proj.train(&anchors, &positives, &negatives, 5, 0.01).unwrap();
+        let losses = proj
+            .train(&anchors, &positives, &negatives, 5, 0.01)
+            .unwrap();
 
         // Loss should decrease (or at least not increase significantly)
         assert!(losses.len() == 5);
