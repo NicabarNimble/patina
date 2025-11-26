@@ -40,30 +40,28 @@ Mac (Mothership)              YOLO Container (Linux)
 
 **Goal:** Enable 10x productivity for OnlyDust bounties and Starknet/Ethereum hackathons.
 
-#### 3a: File-Based Scry Queries
-**Status:** Not Started
+#### 3a: File-Based Scry Queries ✅
+**Status:** Complete (2025-11-25)
 **Spec:** [spec-scry.md](../surface/build/spec-scry.md)
-**Why:** Temporal dimension validated (3.2x) but needs proper query interface
 
-- [ ] Add `--file` flag to scry command
-- [ ] Direct file vector lookup (no re-embedding needed)
-- [ ] Return co-changing files with scores
-- [ ] Works for temporal and future dependency dimensions
+- [x] Add `--file` flag to scry command
+- [x] Direct file vector lookup (no re-embedding needed)
+- [x] Return co-changing files with scores
+- [x] Works for temporal and future dependency dimensions
 
 ```bash
 patina scry --file src/auth/login.rs    # What files change with this?
 patina scry --file contracts/Game.cairo --dimension temporal
 ```
 
-#### 3b: FTS5 Lexical Search
-**Status:** Not Started
-**Spec:** [spec-lexical-search.md](../surface/build/spec-lexical-search.md) (to create)
-**Why:** Claude needs exact matches ("find COMPONENT_ID", "where is X defined")
+#### 3b: FTS5 Lexical Search ✅
+**Status:** Complete (2025-11-25)
+**Spec:** [spec-lexical-search.md](../surface/build/spec-lexical-search.md)
 
-- [ ] Add FTS5 virtual table to patina.db schema
-- [ ] Index code content, symbols, file paths
-- [ ] Auto-detect exact match queries in scry
-- [ ] Return highlighted snippets
+- [x] Add FTS5 virtual table to patina.db schema
+- [x] Index code content, symbols, file paths
+- [x] Auto-detect exact match queries in scry
+- [ ] Return highlighted snippets (deferred - basic results work)
 
 ```bash
 patina scry "find spawn_entity"         # Exact match via FTS5
@@ -218,8 +216,8 @@ When context is lost, read these sessions for architectural decisions:
 **Phase 2.5 Complete!** ✅ (2025-11-25)
 
 **Phase 3 is complete when:**
-1. [ ] `patina scry --file src/foo.rs` returns co-changing files
-2. [ ] `patina scry "find X"` uses FTS5 for exact matches
+1. [x] `patina scry --file src/foo.rs` returns co-changing files
+2. [x] `patina scry "find X"` uses FTS5 for exact matches
 3. [ ] Mothership runs on Mac, containers can query via gRPC
 4. [ ] `patina scry --projects proj1,proj2` works for cross-project queries
 5. [ ] Dependency dimension trained and queryable
