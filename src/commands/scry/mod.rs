@@ -28,6 +28,7 @@ pub struct ScryOptions {
     pub min_score: f32,
     pub dimension: Option<String>,
     pub file: Option<String>,
+    pub repo: Option<String>,
 }
 
 impl Default for ScryOptions {
@@ -37,6 +38,7 @@ impl Default for ScryOptions {
             min_score: 0.0,
             dimension: None, // Use semantic by default
             file: None,
+            repo: None,
         }
     }
 }
@@ -44,6 +46,11 @@ impl Default for ScryOptions {
 /// Execute scry command
 pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     println!("🔮 Scry - Searching knowledge base\n");
+
+    // Show repo context if specified
+    if let Some(ref repo) = options.repo {
+        println!("Repo: {}\n", repo);
+    }
 
     // Determine query mode
     let results = match (&options.file, query) {
@@ -92,10 +99,23 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     Ok(())
 }
 
+/// Get database and embeddings paths (handles --repo flag)
+fn get_paths(options: &ScryOptions) -> Result<(String, String)> {
+    if let Some(ref repo_name) = options.repo {
+        let db_path = crate::commands::repo::get_db_path(repo_name)?;
+        let embeddings_dir = db_path.replace("patina.db", "embeddings/e5-base-v2/projections");
+        Ok((db_path, embeddings_dir))
+    } else {
+        Ok((
+            ".patina/data/patina.db".to_string(),
+            ".patina/data/embeddings/e5-base-v2/projections".to_string(),
+        ))
+    }
+}
+
 /// Text-based scry - embed query and search (for semantic dimension)
 pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
-    let db_path = ".patina/data/patina.db";
-    let embeddings_dir = ".patina/data/embeddings/e5-base-v2/projections";
+    let (db_path, embeddings_dir) = get_paths(options)?;
 
     // Determine which dimension to search
     let dimension = options.dimension.as_deref().unwrap_or("semantic");
@@ -134,8 +154,7 @@ pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> 
         ..Default::default()
     };
 
-    let index = Index::new(&index_options)
-        .with_context(|| "Failed to create index")?;
+    let index = Index::new(&index_options).with_context(|| "Failed to create index")?;
 
     index
         .load(&index_path)
@@ -152,7 +171,7 @@ pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> 
     };
 
     // Enrich with metadata from SQLite
-    let conn = Connection::open(db_path)
+    let conn = Connection::open(&db_path)
         .with_context(|| format!("Failed to open database: {}", db_path))?;
 
     let enriched = enrich_results(&conn, &results, dimension, options.min_score)?;
@@ -162,8 +181,7 @@ pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> 
 
 /// File-based scry - look up file's vector and find neighbors (for temporal/dependency)
 pub fn scry_file(file_path: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
-    let db_path = ".patina/data/patina.db";
-    let embeddings_dir = ".patina/data/embeddings/e5-base-v2/projections";
+    let (db_path, embeddings_dir) = get_paths(options)?;
 
     // Default to temporal for file-based queries
     let dimension = options.dimension.as_deref().unwrap_or("temporal");
@@ -177,7 +195,7 @@ pub fn scry_file(file_path: &str, options: &ScryOptions) -> Result<Vec<ScryResul
     }
 
     // Open database to find file index
-    let conn = Connection::open(db_path)
+    let conn = Connection::open(&db_path)
         .with_context(|| format!("Failed to open database: {}", db_path))?;
 
     // Get list of files in the temporal index
@@ -212,8 +230,7 @@ pub fn scry_file(file_path: &str, options: &ScryOptions) -> Result<Vec<ScryResul
         ..Default::default()
     };
 
-    let index = Index::new(&index_options)
-        .with_context(|| "Failed to create index")?;
+    let index = Index::new(&index_options).with_context(|| "Failed to create index")?;
 
     index
         .load(&index_path)
@@ -266,7 +283,11 @@ pub fn scry_file(file_path: &str, options: &ScryOptions) -> Result<Vec<ScryResul
     }
 
     // Sort by score descending
-    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     Ok(results)
 }
@@ -297,9 +318,9 @@ pub fn is_lexical_query(query: &str) -> bool {
 
 /// Lexical search using FTS5 for exact matches
 pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
-    let db_path = ".patina/data/patina.db";
+    let (db_path, _) = get_paths(options)?;
 
-    let conn = Connection::open(db_path)
+    let conn = Connection::open(&db_path)
         .with_context(|| format!("Failed to open database: {}", db_path))?;
 
     // Prepare the FTS5 query
@@ -321,26 +342,23 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
          LIMIT ?",
     )?;
 
-    let results = stmt.query_map(
-        rusqlite::params![&fts_query, options.limit as i64],
-        |row| {
-            let symbol: String = row.get(0)?;
-            let file_path: String = row.get(1)?;
-            let snippet: String = row.get(2)?;
-            let event_type: String = row.get(3)?;
-            let bm25_score: f64 = row.get(4)?;
+    let results = stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
+        let symbol: String = row.get(0)?;
+        let file_path: String = row.get(1)?;
+        let snippet: String = row.get(2)?;
+        let event_type: String = row.get(3)?;
+        let bm25_score: f64 = row.get(4)?;
 
-            Ok(ScryResult {
-                id: 0,
-                content: snippet,
-                // BM25 is negative (lower = better), convert to positive score
-                score: (-bm25_score as f32).min(1.0),
-                event_type,
-                source_id: format!("{}:{}", file_path, symbol),
-                timestamp: String::new(),
-            })
-        },
-    )?;
+        Ok(ScryResult {
+            id: 0,
+            content: snippet,
+            // BM25 is negative (lower = better), convert to positive score
+            score: (-bm25_score as f32).min(1.0),
+            event_type,
+            source_id: format!("{}:{}", file_path, symbol),
+            timestamp: String::new(),
+        })
+    })?;
 
     let mut collected: Vec<ScryResult> = results.filter_map(|r| r.ok()).collect();
 
@@ -466,7 +484,11 @@ fn enrich_results(
     }
 
     // Sort by score descending
-    enriched.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    enriched.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     Ok(enriched)
 }

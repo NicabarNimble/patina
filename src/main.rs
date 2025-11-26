@@ -117,6 +117,10 @@ enum Commands {
         /// Dimension to search (semantic, temporal, dependency)
         #[arg(long)]
         dimension: Option<String>,
+
+        /// Query a specific external repo (registered via 'patina repo')
+        #[arg(long)]
+        repo: Option<String>,
     },
 
     /// Evaluate retrieval quality across dimensions
@@ -148,6 +152,20 @@ enum Commands {
     Ask {
         #[command(flatten)]
         args: commands::ask::AskCommand,
+    },
+
+    /// Manage external repositories for cross-project knowledge
+    Repo {
+        #[command(subcommand)]
+        command: Option<RepoCommands>,
+
+        /// Repository URL (shorthand for 'patina repo add <url>')
+        #[arg(conflicts_with = "command")]
+        url: Option<String>,
+
+        /// Enable contribution mode (create fork for PRs)
+        #[arg(long, requires = "url")]
+        contrib: bool,
     },
 
     /// Generate YOLO devcontainer for autonomous AI development
@@ -263,6 +281,45 @@ enum BeliefCommands {
         /// Maximum number of observations to consider (default: 20)
         #[arg(long, default_value = "20")]
         limit: usize,
+    },
+}
+
+#[derive(Subcommand)]
+enum RepoCommands {
+    /// Add an external repository
+    Add {
+        /// GitHub URL (e.g., https://github.com/owner/repo or owner/repo)
+        url: String,
+
+        /// Enable contribution mode (create fork for PRs)
+        #[arg(long)]
+        contrib: bool,
+    },
+
+    /// List registered repositories
+    List,
+
+    /// Update a repository (git pull + rescrape)
+    Update {
+        /// Repository name (or --all for all repos)
+        name: Option<String>,
+
+        /// Update all repositories
+        #[arg(long)]
+        all: bool,
+    },
+
+    /// Remove a repository
+    #[command(alias = "rm")]
+    Remove {
+        /// Repository name
+        name: String,
+    },
+
+    /// Show details about a repository
+    Show {
+        /// Repository name
+        name: String,
     },
 }
 
@@ -429,12 +486,14 @@ fn main() -> Result<()> {
             limit,
             min_score,
             dimension,
+            repo,
         } => {
             let options = commands::scry::ScryOptions {
                 limit,
                 min_score,
                 dimension,
                 file,
+                repo,
             };
             commands::scry::execute(query.as_deref(), options)?;
         }
@@ -481,6 +540,36 @@ fn main() -> Result<()> {
         }
         Commands::Ask { args } => {
             commands::ask::run(args)?;
+        }
+        Commands::Repo {
+            command,
+            url,
+            contrib,
+        } => {
+            use commands::repo::RepoCommand;
+
+            let cmd = match (command, url) {
+                // Subcommand form: patina repo add/list/update/etc
+                (Some(RepoCommands::Add { url, contrib }), _) => RepoCommand::Add { url, contrib },
+                (Some(RepoCommands::List), _) => RepoCommand::List,
+                (Some(RepoCommands::Update { name, all }), _) => {
+                    if all {
+                        RepoCommand::Update { name: None }
+                    } else {
+                        RepoCommand::Update { name }
+                    }
+                }
+                (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },
+                (Some(RepoCommands::Show { name }), _) => RepoCommand::Show { name },
+
+                // Shorthand form: patina repo <url> [--contrib]
+                (None, Some(url)) => RepoCommand::Add { url, contrib },
+
+                // No args: show list
+                (None, None) => RepoCommand::List,
+            };
+
+            commands::repo::execute(cmd)?;
         }
         Commands::Yolo {
             interactive,

@@ -8,6 +8,7 @@ pub mod eval;
 pub mod init;
 pub mod oxidize;
 pub mod query;
+pub mod repo;
 pub mod scrape;
 pub mod scry;
 pub mod test;

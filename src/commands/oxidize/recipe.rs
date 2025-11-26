@@ -91,7 +91,7 @@ impl ProjectionConfig {
             );
         }
 
-        if self.layers.iter().any(|&dim| dim == 0) {
+        if self.layers.contains(&0) {
             anyhow::bail!("Projection '{}': layer dimensions must be > 0", name);
         }
 

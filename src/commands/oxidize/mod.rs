@@ -35,7 +35,10 @@ pub fn oxidize() -> Result<()> {
     }
 
     let db_path = ".patina/data/patina.db";
-    let output_dir = format!(".patina/data/embeddings/{}/projections", recipe.embedding_model);
+    let output_dir = format!(
+        ".patina/data/embeddings/{}/projections",
+        recipe.embedding_model
+    );
     std::fs::create_dir_all(&output_dir)?;
 
     // Create embedder once, reuse for all projections
@@ -97,7 +100,10 @@ fn train_projection(
             generate_temporal_pairs(db_path, num_pairs)?
         }
         _ => {
-            anyhow::bail!("Unknown projection type: {}. Supported: semantic, temporal", name);
+            anyhow::bail!(
+                "Unknown projection type: {}. Supported: semantic, temporal",
+                name
+            );
         }
     };
 
@@ -125,14 +131,17 @@ fn train_projection(
         config.output_dim()
     );
 
-    let mut projection = Projection::new(
-        config.input_dim(),
-        config.hidden_dim(),
-        config.output_dim(),
-    );
+    let mut projection =
+        Projection::new(config.input_dim(), config.hidden_dim(), config.output_dim());
 
     let learning_rate = 0.001;
-    let _losses = projection.train(&anchors, &positives, &negatives, config.epochs, learning_rate)?;
+    let _losses = projection.train(
+        &anchors,
+        &positives,
+        &negatives,
+        config.epochs,
+        learning_rate,
+    )?;
 
     println!("   Training complete!");
 

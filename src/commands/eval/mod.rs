@@ -54,7 +54,10 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
 
     // Summary
     println!("\n━━━ Summary ━━━\n");
-    println!("{:<30} {:>12} {:>12} {:>12}", "Dimension/Query", "P@5", "P@10", "vs Random");
+    println!(
+        "{:<30} {:>12} {:>12} {:>12}",
+        "Dimension/Query", "P@5", "P@10", "vs Random"
+    );
     println!("{}", "─".repeat(70));
     for r in &all_results {
         let vs_random = if r.random_baseline > 0.0 {
@@ -87,7 +90,7 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
          FROM eventlog
          WHERE event_type IN ('session.decision', 'session.observation', 'session.pattern')
            AND content IS NOT NULL AND length(content) > 50
-         ORDER BY source_id, seq"
+         ORDER BY source_id, seq",
     )?;
 
     let mut rows = stmt.query([])?;
@@ -99,12 +102,12 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
     }
 
     // Filter to sessions with 3+ observations (need query + expected results)
-    let valid_sessions: Vec<_> = sessions
-        .iter()
-        .filter(|(_, obs)| obs.len() >= 3)
-        .collect();
+    let valid_sessions: Vec<_> = sessions.iter().filter(|(_, obs)| obs.len() >= 3).collect();
 
-    println!("Found {} sessions with 3+ observations", valid_sessions.len());
+    println!(
+        "Found {} sessions with 3+ observations",
+        valid_sessions.len()
+    );
 
     let mut total_precision_5 = 0.0;
     let mut total_precision_10 = 0.0;
@@ -125,7 +128,8 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
 
         // Use first observation as query
         let query = &observations[0].1;
-        let expected_seqs: HashSet<i64> = observations.iter().skip(1).map(|(seq, _)| *seq).collect();
+        let expected_seqs: HashSet<i64> =
+            observations.iter().skip(1).map(|(seq, _)| *seq).collect();
 
         // Run scry
         let options = ScryOptions {
@@ -133,14 +137,23 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
             min_score: 0.0,
             dimension: Some("semantic".to_string()),
             file: None,
+            repo: None,
         };
 
         if let Ok(results) = scry(query, &options) {
             let retrieved_seqs: Vec<i64> = results.iter().map(|r| r.id).collect();
 
             // Calculate precision@5 and precision@10
-            let hits_5 = retrieved_seqs.iter().take(5).filter(|id| expected_seqs.contains(id)).count();
-            let hits_10 = retrieved_seqs.iter().take(10).filter(|id| expected_seqs.contains(id)).count();
+            let hits_5 = retrieved_seqs
+                .iter()
+                .take(5)
+                .filter(|id| expected_seqs.contains(id))
+                .count();
+            let hits_10 = retrieved_seqs
+                .iter()
+                .take(10)
+                .filter(|id| expected_seqs.contains(id))
+                .count();
 
             let p5 = hits_5 as f32 / 5.0_f32.min(expected_seqs.len() as f32);
             let p10 = hits_10 as f32 / 10.0_f32.min(expected_seqs.len() as f32);
@@ -150,8 +163,12 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
             num_queries += 1;
 
             if num_queries <= 3 {
-                println!("  Query from {}: P@5={:.0}%, P@10={:.0}%",
-                    session_id, p5 * 100.0, p10 * 100.0);
+                println!(
+                    "  Query from {}: P@5={:.0}%, P@10={:.0}%",
+                    session_id,
+                    p5 * 100.0,
+                    p10 * 100.0
+                );
             }
         }
     }
@@ -169,8 +186,16 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
         dimension: "semantic".to_string(),
         query_type: "text→text".to_string(),
         num_queries,
-        precision_at_5: if num_queries > 0 { total_precision_5 / num_queries as f32 } else { 0.0 },
-        precision_at_10: if num_queries > 0 { total_precision_10 / num_queries as f32 } else { 0.0 },
+        precision_at_5: if num_queries > 0 {
+            total_precision_5 / num_queries as f32
+        } else {
+            0.0
+        },
+        precision_at_10: if num_queries > 0 {
+            total_precision_10 / num_queries as f32
+        } else {
+            0.0
+        },
         random_baseline,
     })
 }
@@ -185,7 +210,7 @@ fn eval_temporal_text(conn: &Connection) -> Result<EvalResults> {
          FROM eventlog
          WHERE event_type = 'session.observation'
            AND content IS NOT NULL AND length(content) > 50
-         LIMIT 20"
+         LIMIT 20",
     )?;
 
     let mut queries: Vec<String> = Vec::new();
@@ -194,7 +219,10 @@ fn eval_temporal_text(conn: &Connection) -> Result<EvalResults> {
         queries.push(row.get(0)?);
     }
 
-    println!("Testing {} text queries against temporal index", queries.len());
+    println!(
+        "Testing {} text queries against temporal index",
+        queries.len()
+    );
 
     // For temporal with text queries, there's no "correct" answer
     // We measure if results are even meaningful by checking score distribution
@@ -208,6 +236,7 @@ fn eval_temporal_text(conn: &Connection) -> Result<EvalResults> {
             min_score: 0.0,
             dimension: Some("temporal".to_string()),
             file: None,
+            repo: None,
         };
 
         if let Ok(results) = scry(query, &options) {
@@ -215,7 +244,8 @@ fn eval_temporal_text(conn: &Connection) -> Result<EvalResults> {
                 let scores: Vec<f32> = results.iter().map(|r| r.score).collect();
                 let top = scores[0];
                 let mean = scores.iter().sum::<f32>() / scores.len() as f32;
-                let variance = scores.iter().map(|s| (s - mean).powi(2)).sum::<f32>() / scores.len() as f32;
+                let variance =
+                    scores.iter().map(|s| (s - mean).powi(2)).sum::<f32>() / scores.len() as f32;
 
                 avg_top_score += top;
                 avg_score_variance += variance;
@@ -230,7 +260,10 @@ fn eval_temporal_text(conn: &Connection) -> Result<EvalResults> {
     }
 
     println!("  Avg top score: {:.3}", avg_top_score);
-    println!("  Avg score variance: {:.4} (low = results are random-ish)", avg_score_variance);
+    println!(
+        "  Avg score variance: {:.4} (low = results are random-ish)",
+        avg_score_variance
+    );
 
     // Without ground truth for text→file, precision is undefined
     // Report 0 to indicate "not applicable"
@@ -254,7 +287,7 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
          FROM co_changes
          WHERE count >= 3
          ORDER BY count DESC
-         LIMIT 100"
+         LIMIT 100",
     )?;
 
     let mut cochanges: HashMap<String, HashSet<String>> = HashMap::new();
@@ -262,7 +295,10 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
     while let Some(row) = rows.next()? {
         let file_a: String = row.get(0)?;
         let file_b: String = row.get(1)?;
-        cochanges.entry(file_a.clone()).or_default().insert(file_b.clone());
+        cochanges
+            .entry(file_a.clone())
+            .or_default()
+            .insert(file_b.clone());
         cochanges.entry(file_b).or_default().insert(file_a);
     }
 
@@ -273,7 +309,10 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
         .take(20)
         .collect();
 
-    println!("Testing {} files with known co-change partners", test_files.len());
+    println!(
+        "Testing {} files with known co-change partners",
+        test_files.len()
+    );
 
     let mut total_precision_5 = 0.0;
     let mut total_precision_10 = 0.0;
@@ -288,17 +327,24 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
             min_score: 0.0,
             dimension: Some("temporal".to_string()),
             file: None,
+            repo: None,
         };
 
         if let Ok(results) = scry(&query, &options) {
             // Extract file paths from results
-            let retrieved_files: Vec<String> = results
-                .iter()
-                .map(|r| r.source_id.clone())
-                .collect();
+            let retrieved_files: Vec<String> =
+                results.iter().map(|r| r.source_id.clone()).collect();
 
-            let hits_5 = retrieved_files.iter().take(5).filter(|f| expected_partners.contains(f.as_str())).count();
-            let hits_10 = retrieved_files.iter().take(10).filter(|f| expected_partners.contains(f.as_str())).count();
+            let hits_5 = retrieved_files
+                .iter()
+                .take(5)
+                .filter(|f| expected_partners.contains(f.as_str()))
+                .count();
+            let hits_10 = retrieved_files
+                .iter()
+                .take(10)
+                .filter(|f| expected_partners.contains(f.as_str()))
+                .count();
 
             let max_possible = expected_partners.len().min(10);
             let p5 = hits_5 as f32 / 5.0_f32.min(max_possible as f32);
@@ -309,8 +355,12 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
             num_queries += 1;
 
             if num_queries <= 3 {
-                println!("  {}: found {}/{} partners in top 10",
-                    file_path, hits_10, expected_partners.len().min(10));
+                println!(
+                    "  {}: found {}/{} partners in top 10",
+                    file_path,
+                    hits_10,
+                    expected_partners.len().min(10)
+                );
             }
         }
     }
@@ -321,15 +371,24 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
 
     // Random baseline
     let total_files = cochanges.len();
-    let avg_partners = cochanges.values().map(|v| v.len()).sum::<usize>() as f32 / total_files as f32;
+    let avg_partners =
+        cochanges.values().map(|v| v.len()).sum::<usize>() as f32 / total_files as f32;
     let random_baseline = avg_partners / total_files as f32;
 
     Ok(EvalResults {
         dimension: "temporal".to_string(),
         query_type: "file→files".to_string(),
         num_queries,
-        precision_at_5: if num_queries > 0 { total_precision_5 / num_queries as f32 } else { 0.0 },
-        precision_at_10: if num_queries > 0 { total_precision_10 / num_queries as f32 } else { 0.0 },
+        precision_at_5: if num_queries > 0 {
+            total_precision_5 / num_queries as f32
+        } else {
+            0.0
+        },
+        precision_at_10: if num_queries > 0 {
+            total_precision_10 / num_queries as f32
+        } else {
+            0.0
+        },
         random_baseline,
     })
 }
@@ -352,6 +411,9 @@ fn print_results(results: &EvalResults) {
     println!("  Precision@10: {:.1}%", results.precision_at_10 * 100.0);
     println!("  Random baseline: {:.2}%", results.random_baseline * 100.0);
     if results.random_baseline > 0.0 && results.precision_at_10 > 0.0 {
-        println!("  Improvement: {:.1}x over random", results.precision_at_10 / results.random_baseline);
+        println!(
+            "  Improvement: {:.1}x over random",
+            results.precision_at_10 / results.random_baseline
+        );
     }
 }
