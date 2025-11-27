@@ -68,21 +68,25 @@ patina scry "find spawn_entity"         # Exact match via FTS5
 patina scry "error handling patterns"   # Semantic via vectors
 ```
 
-#### 3c: Mothership Service
-**Status:** Not Started
+#### 3c: Repo Command (Cross-Project Knowledge)
+**Status:** ✅ MVP Complete (2025-11-26)
 **Spec:** [spec-mothership-service.md](../surface/build/spec-mothership-service.md)
-**Why:** YOLO containers need to query Mac for cross-project knowledge
+**Why:** Query external repos for patterns and code understanding
 
-- [ ] gRPC server on Mac (`~/.patina/mothership.sock` or `:50051`)
-- [ ] Project registry (primary/contributor/reference types)
-- [ ] Cross-project scry queries
-- [ ] Reference repo scraping on demand (`patina scrape --repo dojo`)
-- [ ] Container config points to mothership
+- [x] `patina repo <url>` - clone, scaffold, scrape to `~/.patina/repos/`
+- [x] `patina repo list` - show registered repos
+- [x] `patina repo update <name>` - pull + rescrape
+- [x] `patina scry "query" --repo <name>` - query external repo
+- [x] Registry persistence (`~/.patina/registry.yaml`)
+- [ ] `--contrib` fork mode (partial, gh cli dependency)
 
+```bash
+patina repo dojoengine/dojo              # Add repo
+patina scry "spawn patterns" --repo dojo # Query it
+patina repo update dojo                  # Refresh later
 ```
-# In YOLO container
-patina scry "spawn patterns" --projects dojo,bevy  # Query multiple projects
-```
+
+**Future (Phase 2+):** gRPC daemon for container queries, persona beliefs
 
 #### 3d: Dependency Dimension
 **Status:** Not Started
@@ -218,8 +222,9 @@ When context is lost, read these sessions for architectural decisions:
 **Phase 3 is complete when:**
 1. [x] `patina scry --file src/foo.rs` returns co-changing files
 2. [x] `patina scry "find X"` uses FTS5 for exact matches
-3. [ ] Mothership runs on Mac, containers can query via gRPC
-4. [ ] `patina scry --projects proj1,proj2` works for cross-project queries
+3. [x] `patina repo <url>` adds external repos to `~/.patina/repos/`
+4. [x] `patina scry "query" --repo <name>` queries external repos
 5. [ ] Dependency dimension trained and queryable
+6. [ ] (Future) gRPC daemon for container queries
 
-**Hackathon-ready when:** Claude in YOLO container can query Dojo patterns while building Starknet game.
+**Hackathon-ready when:** Can query Dojo patterns while building Starknet game via `scry --repo dojo`.
