@@ -435,17 +435,16 @@ patina persona domains
 
 ## Implementation Phases
 
-### Phase 1: MVP (Hackathon Ready)
+### Phase 1: MVP (Hackathon Ready) — ✅ Mostly Complete (2025-11-26)
 
-| Feature | Why | Effort |
+| Feature | Why | Status |
 |---------|-----|--------|
-| `patina repo <url>` | Clone + scaffold + scrape | 2 days |
-| `patina repo <url> --contrib` | Add fork capability | 1 day |
-| `patina repo list` | See what's available | 0.5 day |
-| `--repo` flag on scry | Query specific repo | 1 day |
-| Registry file | Track projects + repos | 0.5 day |
-
-**Total: ~5 days**
+| `patina repo <url>` | Clone + scaffold + scrape | ✅ Done |
+| `patina repo <url> --contrib` | Add fork capability | ⚠️ Partial (gh cli) |
+| `patina repo list` | See what's available | ✅ Done |
+| `patina repo update` | Pull + rescrape | ✅ Done |
+| `--repo` flag on scry | Query specific repo | ✅ Done |
+| Registry file | Track projects + repos | ✅ Done |
 
 **Note:** Phase 1 works WITHOUT daemon. Direct DB access.
 
@@ -490,13 +489,13 @@ patina migrate-repos
 ## Acceptance Criteria
 
 ### Phase 1 (MVP)
-- [ ] `patina repo https://github.com/dojoengine/dojo` clones, scaffolds, scrapes
-- [ ] `patina repo <url> --contrib` also forks and sets up remote
-- [ ] `patina repo list` shows registered repos
-- [ ] `patina repo update dojo` pulls and rescrapes
-- [ ] `patina scry "query" --repo dojo` queries repo's database
-- [ ] Registry persists (`~/.patina/registry.yaml`)
-- [ ] Migration from `layer/dust/repos/`
+- [x] `patina repo https://github.com/dojoengine/dojo` clones, scaffolds, scrapes
+- [ ] `patina repo <url> --contrib` also forks and sets up remote (partial: gh cli dependency)
+- [x] `patina repo list` shows registered repos
+- [x] `patina repo update dojo` pulls and rescrapes
+- [x] `patina scry "query" --repo dojo` queries repo's database
+- [x] Registry persists (`~/.patina/registry.yaml`)
+- [ ] Migration from `layer/dust/repos/` (deferred: legacy data still useful)
 
 ### Phase 2 (Daemon + Persona)
 - [ ] `patina serve` starts daemon with hot E5 model
