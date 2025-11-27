@@ -199,14 +199,6 @@ struct ScrapeArgs {
     #[arg(long)]
     init: bool,
 
-    /// Run a custom SQL query against the database
-    #[arg(long)]
-    query: Option<String>,
-
-    /// Scrape a reference repo from layer/dust/repos/<name>
-    #[arg(long)]
-    repo: Option<String>,
-
     /// Force full re-index (ignore incremental updates)
     #[arg(long)]
     force: bool,
@@ -446,7 +438,7 @@ fn main() -> Result<()> {
                     println!("🔄 Running all scrapers...\n");
 
                     println!("📊 [1/3] Scraping code...");
-                    commands::scrape::execute_code(false, None, None, false)?;
+                    commands::scrape::execute_code(false, false)?;
 
                     println!("\n📊 [2/3] Scraping git...");
                     let git_stats = commands::scrape::git::run(false)?;
@@ -459,7 +451,7 @@ fn main() -> Result<()> {
                     println!("\n✅ All scrapers complete!");
                 }
                 Some(ScrapeCommands::Code { args }) => {
-                    commands::scrape::execute_code(args.init, args.query, args.repo, args.force)?;
+                    commands::scrape::execute_code(args.init, args.force)?;
                 }
                 Some(ScrapeCommands::Git { full }) => {
                     let stats = commands::scrape::git::run(full)?;
