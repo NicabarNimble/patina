@@ -45,10 +45,55 @@ pub fn initialize(db_path: &Path) -> Result<Connection> {
             key TEXT PRIMARY KEY,
             value TEXT
         );
+
+        -- FTS5 virtual table for exact-match lexical search
+        CREATE VIRTUAL TABLE IF NOT EXISTS code_fts USING fts5(
+            symbol_name,
+            file_path,
+            content,
+            event_type,
+            tokenize='porter unicode61'
+        );
         "#,
     )?;
 
     Ok(conn)
+}
+
+/// Populate FTS5 index from eventlog code events
+pub fn populate_fts5(conn: &Connection) -> Result<usize> {
+    // Create FTS5 table if it doesn't exist (migration for existing databases)
+    conn.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS code_fts USING fts5(
+            symbol_name,
+            file_path,
+            content,
+            event_type,
+            tokenize='porter unicode61'
+        )",
+        [],
+    )?;
+
+    // Clear existing FTS5 data
+    conn.execute("DELETE FROM code_fts", [])?;
+
+    // Populate from code events in eventlog
+    let count = conn.execute(
+        r#"
+        INSERT INTO code_fts (symbol_name, file_path, content, event_type)
+        SELECT
+            json_extract(data, '$.name') as symbol_name,
+            source_id as file_path,
+            COALESCE(json_extract(data, '$.content'), json_extract(data, '$.signature'), '') as content,
+            event_type
+        FROM eventlog
+        WHERE event_type LIKE 'code.%'
+          AND json_extract(data, '$.name') IS NOT NULL
+        "#,
+        [],
+    )?;
+
+    Ok(count)
 }
 
 /// Insert an event into the unified eventlog

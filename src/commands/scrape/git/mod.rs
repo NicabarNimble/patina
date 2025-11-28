@@ -238,6 +238,10 @@ fn insert_commits(conn: &Connection, commits: &[GitCommit]) -> Result<usize> {
     Ok(count)
 }
 
+/// Maximum files per commit to consider for co-change analysis
+/// Commits with more files are skipped (likely bulk operations, not meaningful co-changes)
+const MAX_FILES_PER_COMMIT: usize = 50;
+
 /// Rebuild co-change relationships from commit_files
 fn rebuild_co_changes(conn: &Connection) -> Result<usize> {
     // Clear existing co-changes
@@ -251,14 +255,15 @@ fn rebuild_co_changes(conn: &Connection) -> Result<usize> {
 
     let mut current_sha: Option<String> = None;
     let mut current_files: Vec<String> = Vec::new();
+    let mut skipped_commits = 0;
 
     while let Some(row) = rows.next()? {
         let sha: String = row.get(0)?;
         let file_path: String = row.get(1)?;
 
         if Some(&sha) != current_sha.as_ref() {
-            // Process previous commit's files
-            if current_files.len() > 1 {
+            // Process previous commit's files (skip if too many files)
+            if current_files.len() > 1 && current_files.len() <= MAX_FILES_PER_COMMIT {
                 for i in 0..current_files.len() {
                     for j in (i + 1)..current_files.len() {
                         let (a, b) = if current_files[i] < current_files[j] {
@@ -269,6 +274,8 @@ fn rebuild_co_changes(conn: &Connection) -> Result<usize> {
                         *co_change_counts.entry((a, b)).or_insert(0) += 1;
                     }
                 }
+            } else if current_files.len() > MAX_FILES_PER_COMMIT {
+                skipped_commits += 1;
             }
 
             current_sha = Some(sha);
@@ -278,8 +285,8 @@ fn rebuild_co_changes(conn: &Connection) -> Result<usize> {
         current_files.push(file_path);
     }
 
-    // Process last commit
-    if current_files.len() > 1 {
+    // Process last commit (with same size limit)
+    if current_files.len() > 1 && current_files.len() <= MAX_FILES_PER_COMMIT {
         for i in 0..current_files.len() {
             for j in (i + 1)..current_files.len() {
                 let (a, b) = if current_files[i] < current_files[j] {
@@ -290,6 +297,15 @@ fn rebuild_co_changes(conn: &Connection) -> Result<usize> {
                 *co_change_counts.entry((a, b)).or_insert(0) += 1;
             }
         }
+    } else if current_files.len() > MAX_FILES_PER_COMMIT {
+        skipped_commits += 1;
+    }
+
+    if skipped_commits > 0 {
+        println!(
+            "  Skipped {} commits with >{} files",
+            skipped_commits, MAX_FILES_PER_COMMIT
+        );
     }
 
     // Insert co-changes
@@ -314,10 +330,28 @@ fn update_last_sha(conn: &Connection, sha: &str) -> Result<()> {
     database::set_last_processed(conn, "git", sha)
 }
 
+/// Check if this is a shallow clone (has .git/shallow file)
+fn is_shallow_clone() -> bool {
+    Path::new(".git/shallow").exists()
+}
+
 /// Main entry point for git scraping
 pub fn run(full: bool) -> Result<ScrapeStats> {
     let start = Instant::now();
     let db_path = Path::new(database::PATINA_DB);
+
+    // Check for shallow clone - skip co-change analysis
+    if is_shallow_clone() {
+        println!("⚠️  Shallow clone detected - skipping git history analysis");
+        println!("   (Co-change analysis requires full git history)");
+        return Ok(ScrapeStats {
+            items_processed: 0,
+            time_elapsed: start.elapsed(),
+            database_size_kb: std::fs::metadata(db_path)
+                .map(|m| m.len() / 1024)
+                .unwrap_or(0),
+        });
+    }
 
     // Initialize unified database with eventlog
     let conn = database::initialize(db_path)?;
