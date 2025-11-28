@@ -1,167 +1,230 @@
 # Build Recipe
 
-Persistent task tracking across sessions. Check items as completed, add notes inline.
-
-**Specs:** Detailed implementation specs live in `layer/surface/spec-*.md`. Each phase below links to its spec.
+Persistent roadmap across sessions. **Start here when picking up work.**
 
 ---
 
-## Active
+## Current Direction (2025-11-25)
 
-- [ ] Phase 2: Oxidize - Embeddings and projections
+**Goal:** 10x productivity for OnlyDust contributions and Ethereum/Starknet hackathons.
 
-## Queued
+**Key Insight:** Phase 2.5 complete. Each dimension needs its own query interface:
+- **Semantic** (text→text): Working (8.6x over random)
+- **Temporal** (file→files): Working (3.2x over random), needs `--file` flag in scry
 
-### Phase 1: Scrape Pipeline ✅ COMPLETE (2025-11-22)
-**Specs:**
-- [spec-eventlog-architecture.md](../surface/spec-eventlog-architecture.md) - LiveStore pattern, multi-user alignment
-- [spec-scrape-pipeline.md](../surface/spec-scrape-pipeline.md) - Implementation details
+**Target Workflow:**
+```
+Mac (Mothership)              YOLO Container (Linux)
+├── Persona knowledge         ├── Claude CLI
+├── Cross-project indices     ├── Project code
+├── Reference repo scrapes    └── Queries Mac via gRPC
+└── Model hosting (MLX)
+```
 
-Materialize SQLite views from event sources (git history, session files, code).
+**Immediate Path (Phase 3):**
+1. File-based scry queries (`patina scry --file src/foo.rs`)
+2. FTS5 lexical search for exact matches
+3. Mothership service for multi-project coordination
+4. Dependency dimension (call graph)
 
-**Completed:**
-- [x] Unified `patina.db` schema - eventlog table + scrape_meta (2025-11-21)
-- [x] `patina scrape git` - git.commit events → eventlog, materialized views (commits, commit_files, co_changes) (2025-11-21)
-- [x] `patina scrape sessions` - session.* events → eventlog, materialized views (sessions, observations, goals) (2025-11-21)
-- [x] `patina scrape code` - code.* events → eventlog, materialized views (all 7 types) (2025-11-22)
-- [x] `patina scrape` - runs all three scrapers (2025-11-21)
-- [x] Dual-write pattern: eventlog (source of truth) + materialized views (query performance)
-- [x] Cross-cutting queries validated across all event types (2025-11-22)
-
-**Stats (patina codebase):**
-- Total events: 16,027 across 17 event types
-- Code events: 13,146 (symbols, functions, types, imports, calls, constants, members)
-- Git events: 707 commits
-- Session events: 2,174 (started, goals, decisions, patterns, work, context)
-- Database: 41MB unified patina.db
-- All 11 language processors preserved, zero functionality lost
-
-### Phase 2: Oxidize (Embeddings + Projections)
-**Spec:** [layer/surface/spec-oxidize.md](../surface/spec-oxidize.md)
-
-Recipe-driven embedding and projection training.
-
-- [ ] `oxidize.yaml` recipe format
-- [ ] `patina oxidize` - recipe + SQLite → vectors
-- [ ] Embedding model plugins (E5, BGE, nomic)
-- [ ] Dimension projections (semantic, temporal, dependency, etc.)
-- [ ] World-model projections (state-encoder, action-encoder, transition-predictor)
-
-### Phase 3: Scry (Query Interface)
-**Spec:** [layer/surface/spec-scry.md](../surface/spec-scry.md)
-
-LLM ↔ database query interface.
-
-- [ ] `patina scry "query"` - unified search
-- [ ] Vector search + SQLite metadata
-- [ ] Project + persona result merging
-- [ ] Result tagging ([PROJECT], [PERSONA])
-- [ ] Prolog reasoning integration (optional)
-
-### Phase 4: Mothership Service
-**Spec:** [layer/surface/spec-mothership-service.md](../surface/spec-mothership-service.md)
-
-Local daemon for embeddings and cross-project queries.
-
-- [ ] `patina serve` daemon (axum REST on :50051)
-- [ ] `POST /embed` - generate embeddings
-- [ ] `POST /scry` - unified query endpoint
-- [ ] `GET /projects` - list registered projects
-- [ ] `projects.registry` (YAML)
-- [ ] Recipe version tracking
-
-### Phase 5: Persona
-**Spec:** [layer/surface/spec-persona-capture.md](../surface/spec-persona-capture.md)
-
-Personal cross-project beliefs (not git-tracked).
-
-- [ ] `patina persona note "belief"` - capture to ~/.patina/persona/
-- [ ] `patina persona query "term"` - search personal beliefs
-- [ ] Persona materialize (events → beliefs.db)
-- [ ] Integration with scry (tagged results)
-
-### Phase 6: Multi-User & Sharing
-**Spec:** [layer/surface/spec-cross-project.md](../surface/spec-cross-project.md)
-
-Multi-user workflows, recipe sharing.
-
-- [ ] Recipe-based adapter rebuilding
-- [ ] Version tracking (recipe version + events hash)
-- [ ] Peer discovery (Bonjour/mDNS) - future
-- [ ] P2P adapter sharing - future
+**Explicitly Deferred:**
+- MLX runtime (nice-to-have, E5 ONNX works everywhere)
+- Qwen3/model upgrades (invalidates projections, premature)
+- Syntactic/architectural dimensions (dependency first)
 
 ---
 
-## Done
+## Active Work
 
-- [x] E5-base-v2 model working (2025-11)
-- [x] USearch HNSW indices working (2025-11)
-- [x] SQLite + call_graph data available (2025-11)
-- [x] `patina scrape code` working (2025-11)
-- [x] Mothership architecture clarified - Ollama-style daemon (2025-11-21)
-- [x] README rewritten with accurate commands (2025-11-21, bf22318e)
-- [x] MIT license added (2025-11-21, bf22318e)
-- [x] Multi-user architecture designed (2025-11-21, session 20251121-065812)
-- [x] Recipe model for adapter sharing (2025-11-21, session 20251121-065812)
+### Phase 3: Hackathon MVP
+
+**Goal:** Enable 10x productivity for OnlyDust bounties and Starknet/Ethereum hackathons.
+
+#### 3a: File-Based Scry Queries ✅
+**Status:** Complete (2025-11-25)
+**Spec:** [spec-scry.md](../surface/build/spec-scry.md)
+
+- [x] Add `--file` flag to scry command
+- [x] Direct file vector lookup (no re-embedding needed)
+- [x] Return co-changing files with scores
+- [x] Works for temporal and future dependency dimensions
+
+```bash
+patina scry --file src/auth/login.rs    # What files change with this?
+patina scry --file contracts/Game.cairo --dimension temporal
+```
+
+#### 3b: FTS5 Lexical Search ✅
+**Status:** Complete (2025-11-25)
+**Spec:** [spec-lexical-search.md](../surface/build/spec-lexical-search.md)
+
+- [x] Add FTS5 virtual table to patina.db schema
+- [x] Index code content, symbols, file paths
+- [x] Auto-detect exact match queries in scry
+- [ ] Return highlighted snippets (deferred - basic results work)
+
+```bash
+patina scry "find spawn_entity"         # Exact match via FTS5
+patina scry "error handling patterns"   # Semantic via vectors
+```
+
+#### 3c: Repo Command (Cross-Project Knowledge)
+**Status:** ✅ MVP Complete (2025-11-26)
+**Spec:** [spec-mothership-service.md](../surface/build/spec-mothership-service.md)
+**Why:** Query external repos for patterns and code understanding
+
+- [x] `patina repo <url>` - clone, scaffold, scrape to `~/.patina/repos/`
+- [x] `patina repo list` - show registered repos
+- [x] `patina repo update <name>` - pull + rescrape
+- [x] `patina scry "query" --repo <name>` - query external repo
+- [x] Registry persistence (`~/.patina/registry.yaml`)
+- [ ] `--contrib` fork mode (partial, gh cli dependency)
+
+```bash
+patina repo dojoengine/dojo              # Add repo
+patina scry "spawn patterns" --repo dojo # Query it
+patina repo update dojo                  # Refresh later
+```
+
+**Future (Phase 2+):** gRPC daemon for container queries, persona beliefs
+
+#### 3d: Dependency Dimension
+**Status:** Not Started
+**Spec:** [spec-oxidize.md](../surface/build/spec-oxidize.md)
+**Why:** Claude needs call graph understanding for code changes
+
+- [ ] Create `src/commands/oxidize/dependency.rs`
+- [ ] Training pairs from `code.call` events (9,634 available)
+- [ ] Caller/callee = related signal
+- [ ] File-based queries: "what calls this function?"
+
+---
+
+## Completed Phases
+
+### Phase 2.5: Validate Multi-Dimension RAG ✅ (2025-11-25)
+
+**Results:**
+| Dimension | Query Type | P@10 | vs Random | Status |
+|-----------|------------|------|-----------|--------|
+| Semantic | text → text | 7.8% | **8.6x** | ✅ Works |
+| Temporal | file → files | 24.4% | **3.2x** | ✅ Works |
+
+**Key Insight:** Each dimension needs its own query interface. Text queries work for semantic, file queries work for temporal.
+
+### Phase 1: Scrape Pipeline ✅ (2025-11-22)
+**Specs:** [spec-eventlog-architecture.md](../surface/build/spec-eventlog-architecture.md), [spec-scrape-pipeline.md](../surface/build/spec-scrape-pipeline.md)
+
+Unified eventlog with 16,027 events across 17 types:
+- Git: 707 commits → commits, commit_files, co_changes views
+- Sessions: 2,174 events → sessions, observations, goals views
+- Code: 13,146 events → functions, call_graph, symbols views
+
+### Phase 2: Oxidize (Semantic Only) ✅ (2025-11-24)
+**Spec:** [spec-oxidize.md](../surface/build/spec-oxidize.md)
+
+Working pipeline for single dimension:
+- Recipe format: `oxidize.yaml`
+- E5-base-v2 embeddings (768-dim)
+- 2-layer MLP projection (768→1024→256)
+- Safetensors export (v0.7, MLX-compatible)
+- USearch HNSW index (1,807 vectors)
+
+**Output:**
+- `.patina/data/embeddings/e5-base-v2/projections/semantic.safetensors` (4.2MB)
+- `.patina/data/embeddings/e5-base-v2/projections/semantic.usearch` (2.1MB)
+
+---
+
+## Future Phases
+
+### Phase 4: Persona & Cross-Project Learning
+**Spec:** [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
+**Blocked until:** Mothership working
+
+- Your beliefs persist across projects
+- Projects can query persona for patterns
+- Non-contradictory adoption from persona to project
+
+### Phase 5: Model Worlds
+**Spec:** [spec-model-runtime.md](../surface/build/spec-model-runtime.md)
+**Blocked until:** Hackathon MVP proves value
+
+**Design Direction:** Different models for different purposes
+- E5-base-v2: Portable router/semantic (ONNX, runs everywhere)
+- Code-specific models: Dependency/syntactic dimensions
+- MLX: Mac-only acceleration for larger models
+
+**Why deferred:**
+- E5-base-v2 validated (+68% vs baseline)
+- Model swap invalidates all trained projections
+- Prove multi-project coordination first
+
+### Dimensions Roadmap
+
+| Dimension | Training Signal | Data Available | Status |
+|-----------|-----------------|----------------|--------|
+| Semantic | Same session = related | 2,174 session events | ✅ Done |
+| Temporal | Same commit = related | 590 files, 17,685 co-changes | ✅ Done |
+| Dependency | Caller/callee = related | 9,634 code.call events | Phase 3d |
+| Syntactic | Similar AST = related | 790 code.function events | Future |
+| Architectural | Same module = related | 13,146 code.* events | Future |
+| Social | Same author = related | 707 commits | Skip (single-user) |
 
 ---
 
 ## Architecture Summary
 
-**Key Insight:** Git commits and session files ARE the event sources. Scrape materializes them into a unified event log.
-
-**Pipeline:**
 ```
-Event Sources (git-synced)     →  scrape  →  Unified DB    →  oxidize  →  Vectors
-.git/ (commits)                              patina.db                    *.usearch
-layer/sessions/*.md                          ├── eventlog (source of truth)
-src/**/* (AST)                               └── materialized views
+Event Sources          →  scrape  →  Unified DB    →  oxidize  →  Vectors    →  scry
+.git/ (commits)                      patina.db                    *.usearch       ↓
+layer/sessions/*.md                  ├── eventlog                               Results
+src/**/* (AST)                       └── views
 ```
 
-**Database Structure (following LiveStore pattern):**
-```
-patina.db
-├── eventlog                    ← Source of truth: ALL events unified
-│   ├── git.commit events
-│   ├── session.* events
-│   └── code.* events
-│
-└── Materialized Views          ← Derived from eventlog
-    ├── commits, co_changes     (from git events)
-    ├── sessions, observations  (from session events)
-    └── functions, call_graph   (from code events)
-```
-
-**What's Shared (git-tracked):**
-- `.git/` - commit history = temporal events
+**What's Git-Tracked:**
 - `layer/sessions/*.md` - session events (decisions, observations)
-- `.patina/oxidize.yaml` - recipe for building adapters
+- `.patina/oxidize.yaml` - recipe for building projections
 
-**What's Local (rebuilt via scrape):**
-- `.patina/data/patina.db` - unified eventlog + materialized views
-- `.patina/data/embeddings/` - vectors built from recipe
+**What's Local (rebuilt via scrape/oxidize):**
+- `.patina/data/patina.db` - unified eventlog
+- `.patina/data/embeddings/` - projection weights + indices
 
-**What's Personal:**
-- `~/.patina/persona/` - cross-project beliefs
-- `~/.patina/projects.registry` - registered projects
-
-**Adapter Structure:**
+**6-Dimension Model:**
 ```
-src/adapters/
-├── foundational/       ← LLM chat (Claude, Gemini)
-├── embeddings/         ← frozen models (E5, BGE)
-└── projections/        ← learned layers
-    ├── dimensions/     ← semantic, temporal, etc.
-    └── world-model/    ← state-encoder, etc.
+Query → E5-base-v2 (768-dim) → [Semantic MLP] → 256-dim ─┐
+                              → [Temporal MLP] → 256-dim ─┼→ Concatenated → USearch
+                              → [Dependency MLP] → 256-dim─┘   (768-dim with 3)
 ```
 
 ---
 
-## Notes
+## Key Sessions (Context Recovery)
 
-- Transport: REST + optional WebSocket (not gRPC), port 50051
-- Registry format: YAML in `projects.registry`
-- Personas: personal beliefs, never shared via git
-- Adapters: ~4MB each, share recipes not weights
-- North star: CRDT persona network (far future)
-- Design docs: `layer/surface/patina-embedding-architecture.md`
+When context is lost, read these sessions for architectural decisions:
+
+| Session | Topic | Key Insight |
+|---------|-------|-------------|
+| 20251125-130143 | Phase 2 Review | Hackathon 10x focus, E5 router, model worlds design |
+| 20251125-095019 | Build Continue | Temporal + Scry + Eval complete. Query interface per dimension. |
+| 20251125-065729 | RAG design review | "Don't optimize what you can't measure" |
+| 20251119-061119 | Patina Cohesion | Mothership as librarian, three-tier projects, cross-project queries |
+| 20251118-155141 | Review & Alignment | Hackathon MVP pivot, YOLO verified, Mac+container architecture |
+| 20251124-220659 | Direction deep dive | Path C: 2-3 dims → Scry → validate |
+| 20251120-110914 | Progressive adapters | Adapter pattern at every layer |
+
+---
+
+## Validation Criteria
+
+**Phase 2.5 Complete!** ✅ (2025-11-25)
+
+**Phase 3 is complete when:**
+1. [x] `patina scry --file src/foo.rs` returns co-changing files
+2. [x] `patina scry "find X"` uses FTS5 for exact matches
+3. [x] `patina repo <url>` adds external repos to `~/.patina/repos/`
+4. [x] `patina scry "query" --repo <name>` queries external repos
+5. [ ] Dependency dimension trained and queryable
+6. [ ] (Future) gRPC daemon for container queries
+
+**Hackathon-ready when:** Can query Dojo patterns while building Starknet game via `scry --repo dojo`.

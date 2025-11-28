@@ -88,6 +88,12 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
     let items_processed =
         extract_v2::extract_code_metadata_v2(&config.db_path, &work_dir, config.force)?;
 
+    // Populate FTS5 index for lexical search
+    println!("📝 Building FTS5 lexical index...");
+    let conn = rusqlite::Connection::open(&config.db_path)?;
+    let fts_count = super::database::populate_fts5(&conn)?;
+    println!("   Indexed {} symbols", fts_count);
+
     // Get database size
     let metadata = std::fs::metadata(&config.db_path)?;
     let database_size_kb = metadata.len() / 1024;

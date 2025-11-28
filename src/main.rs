@@ -94,6 +94,42 @@ enum Commands {
         command: Option<ScrapeCommands>,
     },
 
+    /// Build embeddings and projections from recipe
+    Oxidize,
+
+    /// Search knowledge base using vector similarity
+    Scry {
+        /// Query text to search for (optional if --file is provided)
+        query: Option<String>,
+
+        /// File path for temporal/dependency queries (e.g., src/auth.rs)
+        #[arg(long)]
+        file: Option<String>,
+
+        /// Maximum number of results (default: 10)
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Minimum similarity score (0.0-1.0, default: 0.0)
+        #[arg(long, default_value = "0.0")]
+        min_score: f32,
+
+        /// Dimension to search (semantic, temporal, dependency)
+        #[arg(long)]
+        dimension: Option<String>,
+
+        /// Query a specific external repo (registered via 'patina repo')
+        #[arg(long)]
+        repo: Option<String>,
+    },
+
+    /// Evaluate retrieval quality across dimensions
+    Eval {
+        /// Specific dimension to evaluate (semantic, temporal)
+        #[arg(long)]
+        dimension: Option<String>,
+    },
+
     /// Generate and manage semantic embeddings
     Embeddings {
         #[command(subcommand)]
@@ -116,6 +152,20 @@ enum Commands {
     Ask {
         #[command(flatten)]
         args: commands::ask::AskCommand,
+    },
+
+    /// Manage external repositories for cross-project knowledge
+    Repo {
+        #[command(subcommand)]
+        command: Option<RepoCommands>,
+
+        /// Repository URL (shorthand for 'patina repo add <url>')
+        #[arg(conflicts_with = "command")]
+        url: Option<String>,
+
+        /// Enable contribution mode (create fork for PRs)
+        #[arg(long, requires = "url")]
+        contrib: bool,
     },
 
     /// Generate YOLO devcontainer for autonomous AI development
@@ -148,14 +198,6 @@ struct ScrapeArgs {
     /// Initialize the knowledge database
     #[arg(long)]
     init: bool,
-
-    /// Run a custom SQL query against the database
-    #[arg(long)]
-    query: Option<String>,
-
-    /// Scrape a reference repo from layer/dust/repos/<name>
-    #[arg(long)]
-    repo: Option<String>,
 
     /// Force full re-index (ignore incremental updates)
     #[arg(long)]
@@ -231,6 +273,45 @@ enum BeliefCommands {
         /// Maximum number of observations to consider (default: 20)
         #[arg(long, default_value = "20")]
         limit: usize,
+    },
+}
+
+#[derive(Subcommand)]
+enum RepoCommands {
+    /// Add an external repository
+    Add {
+        /// GitHub URL (e.g., https://github.com/owner/repo or owner/repo)
+        url: String,
+
+        /// Enable contribution mode (create fork for PRs)
+        #[arg(long)]
+        contrib: bool,
+    },
+
+    /// List registered repositories
+    List,
+
+    /// Update a repository (git pull + rescrape)
+    Update {
+        /// Repository name (or --all for all repos)
+        name: Option<String>,
+
+        /// Update all repositories
+        #[arg(long)]
+        all: bool,
+    },
+
+    /// Remove a repository
+    #[command(alias = "rm")]
+    Remove {
+        /// Repository name
+        name: String,
+    },
+
+    /// Show details about a repository
+    Show {
+        /// Repository name
+        name: String,
     },
 }
 
@@ -357,7 +438,7 @@ fn main() -> Result<()> {
                     println!("🔄 Running all scrapers...\n");
 
                     println!("📊 [1/3] Scraping code...");
-                    commands::scrape::execute_code(false, None, None, false)?;
+                    commands::scrape::execute_code(false, false)?;
 
                     println!("\n📊 [2/3] Scraping git...");
                     let git_stats = commands::scrape::git::run(false)?;
@@ -370,7 +451,7 @@ fn main() -> Result<()> {
                     println!("\n✅ All scrapers complete!");
                 }
                 Some(ScrapeCommands::Code { args }) => {
-                    commands::scrape::execute_code(args.init, args.query, args.repo, args.force)?;
+                    commands::scrape::execute_code(args.init, args.force)?;
                 }
                 Some(ScrapeCommands::Git { full }) => {
                     let stats = commands::scrape::git::run(full)?;
@@ -387,6 +468,29 @@ fn main() -> Result<()> {
                     println!("  • Database size: {} KB", stats.database_size_kb);
                 }
             }
+        }
+        Commands::Oxidize => {
+            commands::oxidize::oxidize()?;
+        }
+        Commands::Scry {
+            query,
+            file,
+            limit,
+            min_score,
+            dimension,
+            repo,
+        } => {
+            let options = commands::scry::ScryOptions {
+                limit,
+                min_score,
+                dimension,
+                file,
+                repo,
+            };
+            commands::scry::execute(query.as_deref(), options)?;
+        }
+        Commands::Eval { dimension } => {
+            commands::eval::execute(dimension)?;
         }
         Commands::Embeddings { command } => match command {
             EmbeddingsCommands::Generate { force } => {
@@ -428,6 +532,36 @@ fn main() -> Result<()> {
         }
         Commands::Ask { args } => {
             commands::ask::run(args)?;
+        }
+        Commands::Repo {
+            command,
+            url,
+            contrib,
+        } => {
+            use commands::repo::RepoCommand;
+
+            let cmd = match (command, url) {
+                // Subcommand form: patina repo add/list/update/etc
+                (Some(RepoCommands::Add { url, contrib }), _) => RepoCommand::Add { url, contrib },
+                (Some(RepoCommands::List), _) => RepoCommand::List,
+                (Some(RepoCommands::Update { name, all }), _) => {
+                    if all {
+                        RepoCommand::Update { name: None }
+                    } else {
+                        RepoCommand::Update { name }
+                    }
+                }
+                (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },
+                (Some(RepoCommands::Show { name }), _) => RepoCommand::Show { name },
+
+                // Shorthand form: patina repo <url> [--contrib]
+                (None, Some(url)) => RepoCommand::Add { url, contrib },
+
+                // No args: show list
+                (None, None) => RepoCommand::List,
+            };
+
+            commands::repo::execute(cmd)?;
         }
         Commands::Yolo {
             interactive,

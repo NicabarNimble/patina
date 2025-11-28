@@ -1,5 +1,5 @@
 {
-  "created": "2025-08-21T01:06:46.231194+00:00",
+  "created": "2025-11-16T18:48:14.445043+00:00",
   "dev": "docker",
   "dev_manifest": {
     "available": true,
@@ -9,18 +9,19 @@
   "environment_snapshot": {
     "arch": "aarch64",
     "detected_tools": [
-      "nvim",
-      "cargo",
-      "claude",
-      "cargo-fmt",
-      "git",
-      "jq",
       "vim",
-      "brew",
       "gh",
+      "go",
+      "cargo",
+      "jq",
       "docker",
+      "brew",
+      "claude",
+      "nvim",
       "cargo-clippy",
-      "go"
+      "wasm-pack",
+      "git",
+      "cargo-fmt"
     ],
     "os": "macos"
   },
