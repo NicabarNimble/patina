@@ -652,14 +652,12 @@ fn detect_domains(repo_path: &Path) -> Vec<String> {
     }
 
     // Check for specific frameworks/tools
-    if repo_path.join("Scarb.toml").exists()
-        && !domains.contains(&"starknet".to_string()) {
-            domains.push("starknet".to_string());
-        }
-    if repo_path.join("foundry.toml").exists()
-        && !domains.contains(&"ethereum".to_string()) {
-            domains.push("ethereum".to_string());
-        }
+    if repo_path.join("Scarb.toml").exists() && !domains.contains(&"starknet".to_string()) {
+        domains.push("starknet".to_string());
+    }
+    if repo_path.join("foundry.toml").exists() && !domains.contains(&"ethereum".to_string()) {
+        domains.push("ethereum".to_string());
+    }
     if repo_path.join("Cargo.toml").exists() && !domains.contains(&"rust".to_string()) {
         domains.push("rust".to_string());
     }

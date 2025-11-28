@@ -22,7 +22,6 @@ impl ScrapeConfig {
     }
 }
 
-
 /// Common stats that all scrapers return
 #[derive(Debug)]
 pub struct ScrapeStats {
