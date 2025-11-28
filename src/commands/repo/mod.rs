@@ -78,10 +78,7 @@ pub fn execute(command: RepoCommand) -> Result<()> {
             }
 
             println!("📚 Registered Repositories\n");
-            println!(
-                "{:<20} {:<35} {:<8} DOMAINS",
-                "NAME", "GITHUB", "CONTRIB"
-            );
+            println!("{:<20} {:<35} {:<8} DOMAINS", "NAME", "GITHUB", "CONTRIB");
             println!("{}", "─".repeat(80));
 
             for repo in repos {
