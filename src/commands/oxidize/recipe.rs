@@ -72,11 +72,6 @@ impl OxidizeRecipe {
 
         Ok(())
     }
-
-    /// Get projection by name
-    pub fn get_projection(&self, name: &str) -> Option<&ProjectionConfig> {
-        self.projections.get(name)
-    }
 }
 
 impl ProjectionConfig {
@@ -153,7 +148,7 @@ projections:
         assert_eq!(recipe.embedding_model, "e5-base-v2");
         assert_eq!(recipe.projections.len(), 1);
 
-        let semantic = recipe.get_projection("semantic").unwrap();
+        let semantic = recipe.projections.get("semantic").unwrap();
         assert_eq!(semantic.layers, vec![768, 1024, 256]);
         assert_eq!(semantic.epochs, 10);
         assert_eq!(semantic.batch_size, 32);
