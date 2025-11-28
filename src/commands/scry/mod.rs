@@ -84,12 +84,18 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     println!("{}", "─".repeat(60));
 
     for (i, result) in results.iter().enumerate() {
+        let timestamp_display = if result.timestamp.is_empty() {
+            String::new()
+        } else {
+            format!(" | {}", result.timestamp)
+        };
         println!(
-            "\n[{}] Score: {:.3} | {} | {}",
+            "\n[{}] Score: {:.3} | {} | {}{}",
             i + 1,
             result.score,
             result.event_type,
-            result.source_id
+            result.source_id,
+            timestamp_display
         );
         println!("    {}", truncate_content(&result.content, 200));
     }

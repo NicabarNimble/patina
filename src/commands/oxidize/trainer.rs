@@ -8,6 +8,27 @@ use safetensors::SafeTensors;
 use std::collections::HashMap;
 use std::path::Path;
 
+/// Cache of intermediate values from forward pass (for backprop)
+struct ForwardCache {
+    /// Pre-activation at hidden layer
+    z1: Vec<f32>,
+    /// Hidden layer activations (post-ReLU)
+    h1: Vec<f32>,
+    /// Output layer (pre-normalization)
+    out: Vec<f32>,
+}
+
+/// Triplet of forward caches for anchor, positive, and negative samples
+struct TripletCache {
+    anchor: ForwardCache,
+    positive: ForwardCache,
+    negative: ForwardCache,
+    /// Normalized outputs
+    out_a_norm: Vec<f32>,
+    out_p_norm: Vec<f32>,
+    out_n_norm: Vec<f32>,
+}
+
 /// A simple 2-layer MLP: input → hidden (ReLU) → output
 pub struct Projection {
     /// Weight matrix: hidden_dim × input_dim
@@ -74,7 +95,7 @@ impl Projection {
     }
 
     /// Forward pass with intermediate values for backprop
-    fn forward_with_cache(&self, input: &[f32]) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+    fn forward_with_cache(&self, input: &[f32]) -> ForwardCache {
         // Layer 1
         let z1: Vec<f32> = self
             .w1
@@ -83,17 +104,17 @@ impl Projection {
             .map(|(w_row, b)| dot(w_row, input) + b)
             .collect();
 
-        let hidden: Vec<f32> = z1.iter().map(|&z| z.max(0.0)).collect();
+        let h1: Vec<f32> = z1.iter().map(|&z| z.max(0.0)).collect();
 
         // Layer 2
-        let output: Vec<f32> = self
+        let out: Vec<f32> = self
             .w2
             .iter()
             .zip(self.b2.iter())
-            .map(|(w_row, b)| dot(w_row, &hidden) + b)
+            .map(|(w_row, b)| dot(w_row, &h1) + b)
             .collect();
 
-        (z1, hidden, output)
+        ForwardCache { z1, h1, out }
     }
 
     /// Train projection with triplet loss using gradient descent
@@ -116,14 +137,14 @@ impl Projection {
                 let negative = &negatives[i];
 
                 // Forward pass
-                let (z1_a, h1_a, out_a) = self.forward_with_cache(anchor);
-                let (z1_p, h1_p, out_p) = self.forward_with_cache(positive);
-                let (z1_n, h1_n, out_n) = self.forward_with_cache(negative);
+                let cache_a = self.forward_with_cache(anchor);
+                let cache_p = self.forward_with_cache(positive);
+                let cache_n = self.forward_with_cache(negative);
 
                 // L2 normalize outputs
-                let out_a_norm = l2_normalize(&out_a);
-                let out_p_norm = l2_normalize(&out_p);
-                let out_n_norm = l2_normalize(&out_n);
+                let out_a_norm = l2_normalize(&cache_a.out);
+                let out_p_norm = l2_normalize(&cache_p.out);
+                let out_n_norm = l2_normalize(&cache_n.out);
 
                 // Triplet loss with margin
                 let margin = 0.2;
@@ -135,22 +156,15 @@ impl Projection {
 
                 // Simple gradient descent (skip if loss is zero)
                 if loss > 0.0 {
-                    // Compute gradients (simplified - just update toward reducing loss)
-                    self.update_weights(
-                        anchor,
-                        positive,
-                        negative,
-                        &h1_a,
-                        &h1_p,
-                        &h1_n,
-                        &z1_a,
-                        &z1_p,
-                        &z1_n,
-                        &out_a_norm,
-                        &out_p_norm,
-                        &out_n_norm,
-                        learning_rate,
-                    );
+                    let cache = TripletCache {
+                        anchor: cache_a,
+                        positive: cache_p,
+                        negative: cache_n,
+                        out_a_norm,
+                        out_p_norm,
+                        out_n_norm,
+                    };
+                    self.update_weights(&cache, learning_rate);
                 }
             }
 
@@ -166,27 +180,13 @@ impl Projection {
     }
 
     /// Simplified weight update (gradient approximation)
-    fn update_weights(
-        &mut self,
-        _anchor: &[f32],
-        _positive: &[f32],
-        _negative: &[f32],
-        _h1_a: &[f32],
-        h1_p: &[f32],
-        h1_n: &[f32],
-        z1_a: &[f32],
-        z1_p: &[f32],
-        _z1_n: &[f32],
-        out_a: &[f32],
-        out_p: &[f32],
-        out_n: &[f32],
-        lr: f32,
-    ) {
+    fn update_weights(&mut self, cache: &TripletCache, lr: f32) {
         // Simplified gradient: push anchor closer to positive, away from negative
         for i in 0..self.w2.len() {
             for j in 0..self.w2[i].len() {
                 // Gradient approximation for layer 2
-                let grad = (out_a[i] - out_p[i]) * h1_p[j] - (out_a[i] - out_n[i]) * h1_n[j];
+                let grad = (cache.out_a_norm[i] - cache.out_p_norm[i]) * cache.positive.h1[j]
+                    - (cache.out_a_norm[i] - cache.out_n_norm[i]) * cache.negative.h1[j];
                 self.w2[i][j] -= lr * grad * 0.01; // Small step
             }
         }
@@ -194,7 +194,7 @@ impl Projection {
         // Update layer 1 (even simpler)
         for i in 0..self.w1.len() {
             for j in 0..self.w1[i].len() {
-                if z1_a[i] > 0.0 && z1_p[i] > 0.0 {
+                if cache.anchor.z1[i] > 0.0 && cache.positive.z1[i] > 0.0 {
                     // Only update if ReLU is active
                     self.w1[i][j] -= lr * 0.001; // Very small step
                 }
