@@ -246,7 +246,9 @@ mod tests {
 
         // Should have unique functions: main, init::execute, run::start, config::load, fs::read
         assert_eq!(events.len(), 5);
-        assert!(events.iter().all(|(_, text)| text.starts_with("Function: ")));
+        assert!(events
+            .iter()
+            .all(|(_, text)| text.starts_with("Function: ")));
     }
 
     #[test]
