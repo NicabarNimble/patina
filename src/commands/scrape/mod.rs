@@ -3,6 +3,7 @@
 pub mod code;
 pub mod database;
 pub mod git;
+pub mod github;
 pub mod sessions;
 
 use anyhow::Result;

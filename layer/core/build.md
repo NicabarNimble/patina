@@ -22,10 +22,11 @@ Mac (Mothership)              YOLO Container (Linux)
 ```
 
 **Immediate Path (Phase 3):**
-1. File-based scry queries (`patina scry --file src/foo.rs`)
-2. FTS5 lexical search for exact matches
-3. Mothership service for multi-project coordination
+1. File-based scry queries (`patina scry --file src/foo.rs`) ✅
+2. FTS5 lexical search for exact matches ✅
+3. Mothership service for multi-project coordination ✅
 4. Dependency dimension (call graph)
+5. **GitHub integration (bounty discovery)** ← Current focus
 
 **Explicitly Deferred:**
 - MLX runtime (nice-to-have, E5 ONNX works everywhere)
@@ -97,6 +98,44 @@ patina repo update dojo                  # Refresh later
 - [ ] Training pairs from `code.call` events (9,634 available)
 - [ ] Caller/callee = related signal
 - [ ] File-based queries: "what calls this function?"
+
+#### 3e: GitHub Integration (Issues MVP)
+**Status:** In Progress (2025-12-03)
+**Spec:** [spec-github-integration.md](../surface/build/spec-github-integration.md)
+**Architecture:** [github-integration-architecture.md](../surface/build/github-integration-architecture.md)
+**Why:** OnlyDust bounty discovery + hackathon context from issues/discussions
+
+**Key Insight:** GitHub issues use SAME semantic space as code (E5 → MLP → 256-dim). Query "entity spawning" returns both code AND related issues.
+
+**Phase 1: Issues MVP (Current)**
+- [x] Create `src/commands/scrape/github/mod.rs`
+- [x] Add `github_issues` materialized view schema
+- [x] Implement `gh issue list --json` integration
+- [x] Bounty detection (labels + body parsing)
+- [x] Add `--with-issues` flag to `patina repo add`
+- [x] Add `github.issue` events to FTS5 index
+- [x] Add `--include-issues` flag to `patina scry`
+- [ ] Test with dojoengine/dojo
+
+```bash
+patina repo add dojoengine/dojo --with-issues
+patina scry "bounty cairo" --repo dojo --include-issues --label bounty
+```
+
+**Phase 2: Semantic Search (Future)**
+- [ ] Generate E5 embeddings for issue title + body
+- [ ] Store in embeddings table (same space as code)
+- [ ] Cross-type ranking in scry results
+
+**Phase 3: PRs + Discussions (Future)**
+- [ ] Add `github_prs`, `github_discussions` tables
+- [ ] `gh pr list` and `gh api graphql` integration
+- [ ] Extend scry with `--include-prs`, `--include-discussions`
+
+**Phase 4: Cross-Project Bounty Discovery (Future)**
+- [ ] `patina scry "bounty" --all-repos --label bounty`
+- [ ] Aggregate bounties from all registered repos
+- [ ] Persona-aware bounty matching
 
 ---
 
@@ -205,6 +244,7 @@ When context is lost, read these sessions for architectural decisions:
 
 | Session | Topic | Key Insight |
 |---------|-------|-------------|
+| 20251128-140600 | GitHub Design | Unified semantic space for code + issues. 4 design docs created. |
 | 20251125-130143 | Phase 2 Review | Hackathon 10x focus, E5 router, model worlds design |
 | 20251125-095019 | Build Continue | Temporal + Scry + Eval complete. Query interface per dimension. |
 | 20251125-065729 | RAG design review | "Don't optimize what you can't measure" |
@@ -225,6 +265,13 @@ When context is lost, read these sessions for architectural decisions:
 3. [x] `patina repo <url>` adds external repos to `~/.patina/repos/`
 4. [x] `patina scry "query" --repo <name>` queries external repos
 5. [ ] Dependency dimension trained and queryable
-6. [ ] (Future) gRPC daemon for container queries
+6. [ ] GitHub issues searchable via `scry --include-issues`
+7. [ ] (Future) gRPC daemon for container queries
 
-**Hackathon-ready when:** Can query Dojo patterns while building Starknet game via `scry --repo dojo`.
+**GitHub MVP complete when:**
+- `patina repo add <url> --with-issues` fetches and indexes issues
+- `patina scry "bounty" --include-issues --label bounty` finds bounties
+- Bounty detection works (labels + body parsing)
+- FTS5 search covers issue title + body
+
+**Hackathon-ready when:** Can query Dojo patterns AND bounties while building Starknet game via `scry --repo dojo --include-issues`.

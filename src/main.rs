@@ -121,6 +121,10 @@ enum Commands {
         /// Query a specific external repo (registered via 'patina repo')
         #[arg(long)]
         repo: Option<String>,
+
+        /// Include GitHub issues in search results
+        #[arg(long)]
+        include_issues: bool,
     },
 
     /// Evaluate retrieval quality across dimensions
@@ -166,6 +170,10 @@ enum Commands {
         /// Enable contribution mode (create fork for PRs)
         #[arg(long, requires = "url")]
         contrib: bool,
+
+        /// Also fetch and index GitHub issues
+        #[arg(long, requires = "url")]
+        with_issues: bool,
     },
 
     /// Generate YOLO devcontainer for autonomous AI development
@@ -286,6 +294,10 @@ enum RepoCommands {
         /// Enable contribution mode (create fork for PRs)
         #[arg(long)]
         contrib: bool,
+
+        /// Also fetch and index GitHub issues
+        #[arg(long)]
+        with_issues: bool,
     },
 
     /// List registered repositories
@@ -479,6 +491,7 @@ fn main() -> Result<()> {
             min_score,
             dimension,
             repo,
+            include_issues,
         } => {
             let options = commands::scry::ScryOptions {
                 limit,
@@ -486,6 +499,7 @@ fn main() -> Result<()> {
                 dimension,
                 file,
                 repo,
+                include_issues,
             };
             commands::scry::execute(query.as_deref(), options)?;
         }
@@ -537,12 +551,24 @@ fn main() -> Result<()> {
             command,
             url,
             contrib,
+            with_issues,
         } => {
             use commands::repo::RepoCommand;
 
             let cmd = match (command, url) {
                 // Subcommand form: patina repo add/list/update/etc
-                (Some(RepoCommands::Add { url, contrib }), _) => RepoCommand::Add { url, contrib },
+                (
+                    Some(RepoCommands::Add {
+                        url,
+                        contrib,
+                        with_issues,
+                    }),
+                    _,
+                ) => RepoCommand::Add {
+                    url,
+                    contrib,
+                    with_issues,
+                },
                 (Some(RepoCommands::List), _) => RepoCommand::List,
                 (Some(RepoCommands::Update { name, all }), _) => {
                     if all {
@@ -554,8 +580,12 @@ fn main() -> Result<()> {
                 (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },
                 (Some(RepoCommands::Show { name }), _) => RepoCommand::Show { name },
 
-                // Shorthand form: patina repo <url> [--contrib]
-                (None, Some(url)) => RepoCommand::Add { url, contrib },
+                // Shorthand form: patina repo <url> [--contrib] [--with-issues]
+                (None, Some(url)) => RepoCommand::Add {
+                    url,
+                    contrib,
+                    with_issues,
+                },
 
                 // No args: show list
                 (None, None) => RepoCommand::List,
