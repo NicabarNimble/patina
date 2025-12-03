@@ -71,7 +71,10 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
 
             // If dimension explicitly specified, use vector search (skip lexical auto-detect)
             if options.dimension.is_some() {
-                println!("Mode: Vector ({} dimension)\n", options.dimension.as_deref().unwrap());
+                println!(
+                    "Mode: Vector ({} dimension)\n",
+                    options.dimension.as_deref().unwrap()
+                );
                 scry_text(q, &options)?
             } else if is_lexical_query(q) {
                 // Auto-detect lexical patterns only when no dimension specified
@@ -141,9 +144,7 @@ pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> 
 
     if !Path::new(&index_path).exists() {
         // Graceful fallback: semantic index missing, use FTS5 instead
-        eprintln!(
-            "⚠️  Semantic index not found, falling back to lexical search (FTS5)"
-        );
+        eprintln!("⚠️  Semantic index not found, falling back to lexical search (FTS5)");
         eprintln!("   Run 'patina oxidize' for semantic similarity search\n");
         println!("Mode: Lexical (FTS5) [fallback]\n");
         return scry_lexical(query, options);
