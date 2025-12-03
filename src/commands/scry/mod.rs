@@ -69,8 +69,12 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
         (None, Some(q)) => {
             println!("Query: \"{}\"\n", q);
 
-            // Auto-detect query type
-            if is_lexical_query(q) {
+            // If dimension explicitly specified, use vector search (skip lexical auto-detect)
+            if options.dimension.is_some() {
+                println!("Mode: Vector ({} dimension)\n", options.dimension.as_deref().unwrap());
+                scry_text(q, &options)?
+            } else if is_lexical_query(q) {
+                // Auto-detect lexical patterns only when no dimension specified
                 println!("Mode: Lexical (FTS5)\n");
                 scry_lexical(q, &options)?
             } else {
@@ -510,6 +514,46 @@ fn enrich_results(
                         source_id: file_path.clone(),
                         timestamp: String::new(),
                         content: format!("File: {} (temporal co-change relationship)", file_path),
+                        score,
+                    });
+                }
+            }
+        }
+        "dependency" => {
+            // Dependency index uses sequential function index as key
+            // Need to look up function name from call_graph
+            let functions: Vec<String> = {
+                let mut stmt = conn.prepare(
+                    "SELECT DISTINCT caller FROM call_graph
+                     UNION
+                     SELECT DISTINCT callee FROM call_graph
+                     ORDER BY 1",
+                )?;
+                let mut rows = stmt.query([])?;
+                let mut funcs = Vec::new();
+                while let Some(row) = rows.next()? {
+                    funcs.push(row.get(0)?);
+                }
+                funcs
+            };
+
+            for i in 0..results.keys.len() {
+                let key = results.keys[i] as usize;
+                let distance = results.distances[i];
+                let score = 1.0 - distance;
+
+                if score < min_score {
+                    continue;
+                }
+
+                if key < functions.len() {
+                    let func_name = &functions[key];
+                    enriched.push(ScryResult {
+                        id: key as i64,
+                        event_type: "function.dependency".to_string(),
+                        source_id: func_name.clone(),
+                        timestamp: String::new(),
+                        content: format!("Function: {} (dependency relationship)", func_name),
                         score,
                     });
                 }
