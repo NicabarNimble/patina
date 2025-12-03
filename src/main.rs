@@ -198,6 +198,17 @@ enum Commands {
         #[arg(short, long)]
         json: bool,
     },
+
+    /// Start the Mothership daemon (Ollama-style HTTP server)
+    Serve {
+        /// Host to bind to (default: 127.0.0.1, use 0.0.0.0 for container access)
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+
+        /// Port to bind to
+        #[arg(long, default_value = "50051")]
+        port: u16,
+    },
 }
 
 /// Common arguments for all scrape subcommands
@@ -604,6 +615,10 @@ fn main() -> Result<()> {
         }
         Commands::Version { json, components } => {
             commands::version::execute(json, components)?;
+        }
+        Commands::Serve { host, port } => {
+            let options = commands::serve::ServeOptions { host, port };
+            commands::serve::execute(options)?;
         }
     }
 
