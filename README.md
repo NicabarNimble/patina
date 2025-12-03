@@ -14,10 +14,11 @@ Patina solves the fundamental problem of AI-assisted development: constantly re-
 
 | Feature | Description |
 |---------|-------------|
-| **Semantic Code Indexing** | Tree-sitter AST extraction for 9 languages |
-| **Vector Search** | E5-base-v2 embeddings + USearch HNSW indices |
-| **Neuro-symbolic Reasoning** | Embedded Prolog for belief validation |
-| **Session Tracking** | Git-integrated session management |
+| **Unified Eventlog** | Code AST, git history, sessions → single patina.db |
+| **Multi-Dimension Search** | Semantic, temporal, dependency projections |
+| **Cross-Project Knowledge** | Query external repos via `~/.patina/repos/` |
+| **GitHub Integration** | Index issues with bounty detection |
+| **Mothership Daemon** | `patina serve` for container queries |
 | **YOLO Devcontainers** | AI-ready development environments |
 | **LLM Adapters** | Claude and Gemini integration |
 
@@ -30,17 +31,20 @@ cargo install --path .
 # Initialize project with Claude adapter
 patina init . --llm=claude
 
-# Build knowledge database
-patina scrape code
+# Build knowledge database (code + git + sessions)
+patina scrape
 
-# Generate embeddings
-patina embeddings generate
+# Train embedding projections
+patina oxidize
 
-# Search semantically
-patina query semantic "error handling patterns"
+# Search your codebase
+patina scry "error handling patterns"    # Semantic search
+patina scry "find spawn_entity"          # Exact match (FTS5)
+patina scry --file src/main.rs           # Temporal: co-changing files
 
-# Validate a belief against evidence
-patina belief validate "this project prefers Result over panic"
+# Query external repos
+patina repo dojoengine/dojo              # Clone + index
+patina scry "spawn" --repo dojo          # Search it
 
 # Check project health
 patina doctor
@@ -48,32 +52,49 @@ patina doctor
 
 ## Commands
 
-### Project Setup
-```bash
-patina init <name> --llm=claude    # Initialize with LLM adapter
-patina init . --llm=gemini         # Reinitialize current project
-patina doctor                       # Check project health
-patina upgrade                      # Check for CLI updates
-patina version                      # Show version info
-```
-
 ### Knowledge Pipeline
 ```bash
-patina scrape code                  # Extract AST facts → facts.db
-patina scrape code --repo dojo      # Scrape reference repo
-patina embeddings generate          # Build vector indices
-patina embeddings generate --force  # Rebuild from scratch
-patina embeddings status            # Show coverage
+patina scrape                       # Run all scrapers (code + git + sessions)
+patina scrape code                  # Extract AST, call graph, symbols
+patina scrape git                   # Extract commits, file co-changes
+patina scrape sessions              # Extract session observations
+
+patina oxidize                      # Train projections from .patina/oxidize.yaml
 ```
 
 Supported languages: Rust, TypeScript, JavaScript, Python, Go, C, C++, Solidity, Cairo
 
-### Semantic Search & Reasoning
+### Search (scry)
 ```bash
-patina query semantic "gas optimization"           # Vector search
-patina query semantic "ECS" --type pattern         # Filter by type
-patina belief validate "prefer composition"        # Prolog validation
-patina ask "how does error handling work?"         # Ask about codebase
+patina scry "error handling"                       # Semantic search
+patina scry "find MyClass::new"                    # FTS5 exact match (auto-detected)
+patina scry --file src/auth.rs                     # Temporal: what files co-change?
+patina scry --dimension dependency "execute"       # Call graph relationships
+patina scry --repo dojo "spawn"                    # Query external repo
+patina scry --include-issues "bounty"              # Include GitHub issues
+```
+
+### Cross-Project Knowledge
+```bash
+patina repo dojoengine/dojo              # Clone + scrape to ~/.patina/repos/
+patina repo add <url> --with-issues      # Also fetch GitHub issues
+patina repo list                         # Show registered repos
+patina repo update dojo                  # Git pull + rescrape
+patina repo rm dojo                      # Remove repo
+```
+
+### Mothership Daemon
+```bash
+patina serve                             # Start on localhost:50051
+patina serve --host 0.0.0.0              # Bind all interfaces (for containers)
+curl http://localhost:50051/health       # Health check
+```
+
+### Project Setup
+```bash
+patina init . --llm=claude         # Initialize with Claude adapter
+patina doctor                      # Check project health
+patina version                     # Show version info
 ```
 
 ### Development Environment
@@ -97,41 +118,47 @@ Within Claude, use these slash commands:
 ```
 patina/
 ├── src/
-│   ├── adapters/          # LLM adapters (Claude, Gemini)
-│   ├── commands/          # CLI commands
-│   ├── embeddings/        # ONNX embeddings + model registry
-│   ├── storage/           # SQLite + USearch hybrid storage
-│   ├── reasoning/         # Embedded Prolog engine
-│   └── query/             # Semantic search
-├── layer/                 # Pattern storage
-│   ├── core/              # Eternal principles
-│   ├── surface/           # Active development
-│   └── sessions/          # Session archives
-├── .patina/               # Project data
-│   ├── data/              # facts.db, code.db, observations/
-│   └── config.toml        # Embedding model configuration
-└── resources/
-    └── models/            # ONNX embedding models
+│   ├── commands/
+│   │   ├── scrape/        # Code, git, sessions, GitHub extraction
+│   │   ├── oxidize/       # MLP training (semantic, temporal, dependency)
+│   │   ├── scry/          # Unified query interface
+│   │   ├── repo/          # Cross-project knowledge
+│   │   └── serve/         # Mothership HTTP daemon
+│   ├── embeddings/        # ONNX E5-base-v2 embeddings
+│   └── reasoning/         # Embedded Prolog for belief validation
+├── layer/
+│   ├── core/              # Eternal principles, build.md roadmap
+│   ├── surface/           # Specs, design docs
+│   └── sessions/          # Session archives (Git-tracked)
+├── .patina/
+│   ├── data/
+│   │   ├── patina.db      # Unified eventlog + materialized views
+│   │   └── embeddings/e5-base-v2/projections/
+│   │       ├── semantic.safetensors   # Trained MLP weights
+│   │       ├── semantic.usearch       # HNSW vector index
+│   │       ├── temporal.*
+│   │       └── dependency.*
+│   └── oxidize.yaml       # Projection training recipe
+└── ~/.patina/
+    ├── repos/             # External repos (cross-project knowledge)
+    └── registry.yaml      # Repo registry
 ```
 
 ### Data Flow
 
 ```
-Code → patina scrape → facts.db (AST facts, call graph)
-                           ↓
-Sessions → observations.db → patina embeddings → USearch indices
-                           ↓
-Query → E5 embedding → vector search → Prolog validation → results
+Sources                    Scrape              Oxidize              Query
+───────                    ──────              ───────              ─────
+.git/commits          →    patina.db     →    Training pairs   →   scry
+src/**/* (AST)        →    ├── eventlog  →    E5 embedding     →   ├── semantic
+layer/sessions/*.md   →    ├── call_graph →   MLP projection   →   ├── temporal
+GitHub issues         →    ├── co_changes→    USearch HNSW     →   └── dependency
+                           └── code_fts       (.usearch files)
 ```
 
-### Embedding Models
+### Embedding Model
 
-| Model | Dimensions | Use Case |
-|-------|------------|----------|
-| all-MiniLM-L6-v2 | 384 | Fast, general-purpose (default) |
-| bge-base-en-v1.5 | 768 | SOTA retrieval |
-| e5-base-v2 | 768 | Question-answering |
-| nomic-embed-text-v1.5 | 768 | Long-form (8K context) |
+Patina uses **E5-base-v2** (768-dim) with trained MLP projections per dimension.
 
 Configure in `.patina/config.toml`:
 ```toml
@@ -141,28 +168,30 @@ model = "e5-base-v2"
 
 ## Design Principles
 
-- **Rust-first**: Pure Rust at runtime, no Python dependencies
+- **Pure Rust**: No Python subprocess dependencies (ONNX Runtime via `ort` crate)
+- **No async**: Blocking I/O with rayon for parallelism, rouille for HTTP server
 - **Local-first**: SQLite + USearch, no cloud services required
 - **LLM-agnostic**: Adapter pattern for Claude, Gemini, etc.
-- **Git as memory**: Sessions and events committed to repo
-- **Vectors are ephemeral**: Rebuildable from source data
+- **Git as memory**: Sessions committed to repo, vectors rebuildable from source
 
-## Roadmap: Progressive Adapters (v0.2)
+## Multidimensional Embeddings
+
+Patina uses **separate dimension projections** rather than a single embedding space. Each dimension is an independent 256-dim projection trained on different relationship signals:
+
+| Dimension | Training Signal | Status | Query Interface |
+|-----------|-----------------|--------|-----------------|
+| Semantic | Same session = related | ✅ Done | `scry "query"` (text→concepts) |
+| Temporal | Same commit = related | ✅ Done | `scry --file src/foo.rs` (file→co-changers) |
+| Dependency | Caller/callee = related | ✅ Done | `scry --dimension dependency` (func→call graph) |
+| Syntactic | AST similarity | Future | Similar code structure |
+| Architectural | Same module = related | Future | Position in system |
+| Social | Same author = related | Skipped | Single-user, not valuable |
+
+**Architecture:** E5-base-v2 (768-dim) → trained MLP (768→1024→256) → USearch HNSW index per dimension.
+
+### Roadmap: Progressive Adapters
 
 The vision: **One engine, variable patina thickness**.
-
-### Multidimensional Embeddings
-
-Instead of single 768-dim vectors, Patina will produce 2,304-dim multidimensional embeddings via 6 dimension adapters:
-
-| Dimension | Training Data | What It Highlights |
-|-----------|---------------|-------------------|
-| Semantic | Session observations | Meaning, domain concepts |
-| Temporal | Git co-change history | Files that change together |
-| Dependency | Call graph | Functions that call each other |
-| Syntactic | AST similarity | Similar code structure |
-| Architectural | Directory structure | Position in system |
-| Social | GitHub metadata | Contributor relationships |
 
 ### Patina Thickness Model
 
@@ -178,7 +207,8 @@ See `layer/surface/patina-embedding-architecture.md` for full design.
 
 - Rust 1.70+
 - Git
-- Docker (for `patina yolo`, `patina build`, `patina test`)
+- Docker (optional, for `patina yolo`, `patina build`, `patina test`)
+- `gh` CLI (optional, for `--with-issues` GitHub integration)
 
 ## Development
 
