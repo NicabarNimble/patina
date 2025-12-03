@@ -17,8 +17,8 @@ Persistent roadmap across sessions. **Start here when picking up work.**
 Mac (Mothership)              YOLO Container (Linux)
 ├── Persona knowledge         ├── Claude CLI
 ├── Cross-project indices     ├── Project code
-├── Reference repo scrapes    └── Queries Mac via gRPC
-└── Model hosting (MLX)
+├── Reference repo scrapes    └── Queries Mac via HTTP (rouille)
+└── Model hosting (ONNX)
 ```
 
 **Immediate Path (Phase 3):**
@@ -27,7 +27,7 @@ Mac (Mothership)              YOLO Container (Linux)
 3. Mothership service for multi-project coordination ✅
 4. Dependency dimension (call graph) ✅
 5. GitHub integration (bounty discovery) ✅
-6. **(Future) gRPC daemon for container queries**
+6. **Mothership daemon (`patina serve`) ← IN PROGRESS**
 
 **Explicitly Deferred:**
 - MLX runtime (nice-to-have, E5 ONNX works everywhere)
@@ -138,6 +138,83 @@ patina scry "bounty cairo" --repo dojo --include-issues --label bounty
 - [ ] `patina scry "bounty" --all-repos --label bounty`
 - [ ] Aggregate bounties from all registered repos
 - [ ] Persona-aware bounty matching
+
+#### 3f: Mothership Daemon (`patina serve`)
+**Status:** In Progress (2025-12-03)
+**Spec:** [spec-mothership-service.md](../surface/build/spec-mothership-service.md)
+**Why:** Container queries to Mac, hot model caching, Ollama-style daemon
+
+**Architecture:**
+```
+Mac (Mothership)                    Container
+┌─────────────────────┐            ┌─────────────────────┐
+│ patina serve        │            │ patina scry "query" │
+│ localhost:50051     │◄───────────│ PATINA_MOTHERSHIP   │
+│                     │   HTTP     │ =host.docker.internal│
+│ ┌─────────────────┐ │            └─────────────────────┘
+│ │ E5 Model (hot)  │ │
+│ │ Projections     │ │
+│ │ ~/.patina/repos │ │
+│ └─────────────────┘ │
+└─────────────────────┘
+```
+
+**Key Design Decisions:**
+- **rouille** (blocking HTTP, no async/tokio) - thread-per-request
+- **Ollama pattern** - `patina serve` subcommand, single binary
+- **HTTP REST** on port 50051 (not gRPC) - simpler, curl-friendly
+- **Lazy model loading** - load E5 on first request, keep hot
+
+**Implementation Phases:**
+
+**Phase 1: Basic Daemon** ✅ (2025-12-03)
+- [x] Add `rouille = "3.6"` dependency
+- [x] Create `src/commands/serve/` module
+- [x] Implement `/health` endpoint
+- [x] Add `Serve` command to CLI
+
+**Phase 2: Model Caching + Embed API**
+- [ ] ServerState with parking_lot::RwLock
+- [ ] `/api/embed` and `/api/embed/batch` endpoints
+- [ ] Thread-safe embedder access
+
+**Phase 3: Scry API + Client Detection**
+- [ ] `/api/scry` endpoint (semantic/lexical/file)
+- [ ] Mothership client module
+- [ ] Auto-detection: `PATINA_MOTHERSHIP` env var or localhost check
+- [ ] Update scry command to route to daemon
+
+**Phase 4: Container Integration**
+- [ ] `--host 0.0.0.0` option for container access
+- [ ] Update YOLO devcontainer with `PATINA_MOTHERSHIP` env var
+- [ ] Test container → Mac queries
+
+**Phase 5: Repo + Model APIs**
+- [ ] `/api/repos` endpoints
+- [ ] `/api/model` status endpoint
+- [ ] Graceful shutdown (SIGTERM)
+
+**API Endpoints:**
+```
+GET  /health              # Health check
+POST /api/scry            # Query (semantic/lexical/file)
+POST /api/embed           # Generate embedding
+POST /api/embed/batch     # Batch embeddings
+GET  /api/repos           # List repos
+GET  /api/repos/{name}    # Repo details
+GET  /api/model           # Model status
+```
+
+**Files to Create:**
+```
+src/commands/serve/
+├── mod.rs              # Public interface
+└── internal.rs         # Server implementation
+
+src/mothership/
+├── mod.rs              # Client interface
+└── internal.rs         # HTTP client for daemon
+```
 
 ---
 
@@ -268,7 +345,7 @@ When context is lost, read these sessions for architectural decisions:
 4. [x] `patina scry "query" --repo <name>` queries external repos
 5. [x] Dependency dimension trained and queryable
 6. [x] GitHub issues searchable via `scry --include-issues`
-7. [ ] (Future) gRPC daemon for container queries
+7. [ ] Mothership daemon (`patina serve`) for container queries
 
 **GitHub MVP complete when:**
 - `patina repo add <url> --with-issues` fetches and indexes issues
