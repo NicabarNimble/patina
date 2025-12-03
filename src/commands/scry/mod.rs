@@ -136,10 +136,13 @@ pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> 
     let index_path = format!("{}/{}.usearch", embeddings_dir, dimension);
 
     if !Path::new(&index_path).exists() {
-        anyhow::bail!(
-            "Index not found: {}. Run 'patina oxidize' first.",
-            index_path
+        // Graceful fallback: semantic index missing, use FTS5 instead
+        eprintln!(
+            "⚠️  Semantic index not found, falling back to lexical search (FTS5)"
         );
+        eprintln!("   Run 'patina oxidize' for semantic similarity search\n");
+        println!("Mode: Lexical (FTS5) [fallback]\n");
+        return scry_lexical(query, options);
     }
 
     // Create embedder and embed query
