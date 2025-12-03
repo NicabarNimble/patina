@@ -16,3 +16,9 @@ projections:
     layers: [768, 1024, 256]
     epochs: 10
     batch_size: 32
+
+  # Dependency projection - functions that call each other are related
+  dependency:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
