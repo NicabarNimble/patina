@@ -25,8 +25,9 @@ Mac (Mothership)              YOLO Container (Linux)
 1. File-based scry queries (`patina scry --file src/foo.rs`) ✅
 2. FTS5 lexical search for exact matches ✅
 3. Mothership service for multi-project coordination ✅
-4. Dependency dimension (call graph)
-5. **GitHub integration (bounty discovery)** ← Current focus
+4. Dependency dimension (call graph) ✅
+5. GitHub integration (bounty discovery) ✅
+6. **(Future) gRPC daemon for container queries**
 
 **Explicitly Deferred:**
 - MLX runtime (nice-to-have, E5 ONNX works everywhere)
@@ -90,24 +91,24 @@ patina repo update dojo                  # Refresh later
 **Future (Phase 2+):** gRPC daemon for container queries, persona beliefs
 
 #### 3d: Dependency Dimension
-**Status:** Not Started
+**Status:** ✅ Complete (2025-12-03)
 **Spec:** [spec-oxidize.md](../surface/build/spec-oxidize.md)
 **Why:** Claude needs call graph understanding for code changes
 
-- [ ] Create `src/commands/oxidize/dependency.rs`
-- [ ] Training pairs from `code.call` events (9,634 available)
-- [ ] Caller/callee = related signal
-- [ ] File-based queries: "what calls this function?"
+- [x] Create `src/commands/oxidize/dependency.rs`
+- [x] Training pairs from call_graph (7,151 relationships, 4,004 functions)
+- [x] Caller/callee = related signal
+- [x] Query via `patina scry "function name" --dimension dependency`
 
 #### 3e: GitHub Integration (Issues MVP)
-**Status:** In Progress (2025-12-03)
+**Status:** ✅ Complete (2025-12-03)
 **Spec:** [spec-github-integration.md](../surface/build/spec-github-integration.md)
 **Architecture:** [github-integration-architecture.md](../surface/build/github-integration-architecture.md)
 **Why:** OnlyDust bounty discovery + hackathon context from issues/discussions
 
 **Key Insight:** GitHub issues use SAME semantic space as code (E5 → MLP → 256-dim). Query "entity spawning" returns both code AND related issues.
 
-**Phase 1: Issues MVP (Current)**
+**Phase 1: Issues MVP (Complete)**
 - [x] Create `src/commands/scrape/github/mod.rs`
 - [x] Add `github_issues` materialized view schema
 - [x] Implement `gh issue list --json` integration
@@ -115,7 +116,8 @@ patina repo update dojo                  # Refresh later
 - [x] Add `--with-issues` flag to `patina repo add`
 - [x] Add `github.issue` events to FTS5 index
 - [x] Add `--include-issues` flag to `patina scry`
-- [ ] Test with dojoengine/dojo
+- [x] Test with dojoengine/dojo (500 issues indexed)
+- [x] Graceful fallback to FTS5 when semantic index missing
 
 ```bash
 patina repo add dojoengine/dojo --with-issues
@@ -264,8 +266,8 @@ When context is lost, read these sessions for architectural decisions:
 2. [x] `patina scry "find X"` uses FTS5 for exact matches
 3. [x] `patina repo <url>` adds external repos to `~/.patina/repos/`
 4. [x] `patina scry "query" --repo <name>` queries external repos
-5. [ ] Dependency dimension trained and queryable
-6. [ ] GitHub issues searchable via `scry --include-issues`
+5. [x] Dependency dimension trained and queryable
+6. [x] GitHub issues searchable via `scry --include-issues`
 7. [ ] (Future) gRPC daemon for container queries
 
 **GitHub MVP complete when:**
