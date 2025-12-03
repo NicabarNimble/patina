@@ -29,6 +29,7 @@ pub struct ScryOptions {
     pub dimension: Option<String>,
     pub file: Option<String>,
     pub repo: Option<String>,
+    pub include_issues: bool,
 }
 
 impl Default for ScryOptions {
@@ -39,6 +40,7 @@ impl Default for ScryOptions {
             dimension: None, // Use semantic by default
             file: None,
             repo: None,
+            include_issues: false,
         }
     }
 }
@@ -49,8 +51,14 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
 
     // Show repo context if specified
     if let Some(ref repo) = options.repo {
-        println!("Repo: {}\n", repo);
+        println!("Repo: {}", repo);
     }
+
+    // Show if including issues
+    if options.include_issues {
+        println!("Including: GitHub issues");
+    }
+    println!();
 
     // Determine query mode
     let results = match (&options.file, query) {
@@ -334,8 +342,17 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
 
     println!("FTS5 query: {}", fts_query);
 
+    // Build event type filter based on include_issues flag
+    let event_type_filter = if options.include_issues {
+        // Include both code and github events
+        "event_type LIKE 'code.%' OR event_type = 'github.issue'"
+    } else {
+        // Code events only (default)
+        "event_type LIKE 'code.%'"
+    };
+
     // Search using FTS5 with BM25 scoring
-    let mut stmt = conn.prepare(
+    let sql = format!(
         "SELECT
             symbol_name,
             file_path,
@@ -344,9 +361,13 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
             bm25(code_fts) as score
          FROM code_fts
          WHERE code_fts MATCH ?
+           AND ({})
          ORDER BY score
          LIMIT ?",
-    )?;
+        event_type_filter
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
 
     let results = stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
         let symbol: String = row.get(0)?;
@@ -355,13 +376,20 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
         let event_type: String = row.get(3)?;
         let bm25_score: f64 = row.get(4)?;
 
+        // Format source_id based on event type
+        let source_id = if event_type == "github.issue" {
+            format!("[ISSUE] {}", symbol) // symbol contains issue title for github events
+        } else {
+            format!("{}:{}", file_path, symbol)
+        };
+
         Ok(ScryResult {
             id: 0,
             content: snippet,
             // BM25 is negative (lower = better), convert to positive score
             score: (-bm25_score as f32).min(1.0),
             event_type,
-            source_id: format!("{}:{}", file_path, symbol),
+            source_id,
             timestamp: String::new(),
         })
     })?;

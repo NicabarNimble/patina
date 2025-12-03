@@ -138,6 +138,7 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
             dimension: Some("semantic".to_string()),
             file: None,
             repo: None,
+            include_issues: false,
         };
 
         if let Ok(results) = scry(query, &options) {
@@ -237,6 +238,7 @@ fn eval_temporal_text(conn: &Connection) -> Result<EvalResults> {
             dimension: Some("temporal".to_string()),
             file: None,
             repo: None,
+            include_issues: false,
         };
 
         if let Ok(results) = scry(query, &options) {
@@ -328,6 +330,7 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
             dimension: Some("temporal".to_string()),
             file: None,
             repo: None,
+            include_issues: false,
         };
 
         if let Ok(results) = scry(&query, &options) {

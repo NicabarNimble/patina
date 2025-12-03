@@ -31,8 +31,9 @@ pub use internal::RepoEntry;
 /// scaffolds `.patina/` structure, and runs scrape.
 ///
 /// With `--contrib`, also creates a GitHub fork and sets up push remote.
-pub fn add(url: &str, contrib: bool) -> Result<()> {
-    internal::add_repo(url, contrib)
+/// With `--with-issues`, also fetches and indexes GitHub issues.
+pub fn add(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
+    internal::add_repo(url, contrib, with_issues)
 }
 
 /// List all registered repositories
@@ -68,7 +69,11 @@ pub fn get_db_path(name: &str) -> Result<String> {
 /// Execute the repo command (main entry point from CLI)
 pub fn execute(command: RepoCommand) -> Result<()> {
     match command {
-        RepoCommand::Add { url, contrib } => add(&url, contrib),
+        RepoCommand::Add {
+            url,
+            contrib,
+            with_issues,
+        } => add(&url, contrib, with_issues),
         RepoCommand::List => {
             let repos = list()?;
             if repos.is_empty() {
@@ -106,11 +111,21 @@ pub fn execute(command: RepoCommand) -> Result<()> {
 /// Repo subcommands
 #[derive(Debug, Clone)]
 pub enum RepoCommand {
-    Add { url: String, contrib: bool },
+    Add {
+        url: String,
+        contrib: bool,
+        with_issues: bool,
+    },
     List,
-    Update { name: Option<String> },
-    Remove { name: String },
-    Show { name: String },
+    Update {
+        name: Option<String>,
+    },
+    Remove {
+        name: String,
+    },
+    Show {
+        name: String,
+    },
 }
 
 #[cfg(test)]
@@ -122,6 +137,7 @@ mod tests {
         let add = RepoCommand::Add {
             url: "https://github.com/test/repo".to_string(),
             contrib: false,
+            with_issues: true,
         };
         assert!(matches!(add, RepoCommand::Add { .. }));
 
