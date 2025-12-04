@@ -98,7 +98,7 @@ pub fn registry_path() -> PathBuf {
 }
 
 /// Add a repository
-pub fn add_repo(url: &str, contrib: bool) -> Result<()> {
+pub fn add_repo(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
     // Parse GitHub URL
     let (owner, repo_name) = parse_github_url(url)?;
     let github = format!("{}/{}", owner, repo_name);
@@ -143,6 +143,26 @@ pub fn add_repo(url: &str, contrib: bool) -> Result<()> {
     println!("🔍 Scraping codebase...");
     let event_count = scrape_repo(&repo_path)?;
 
+    // Scrape GitHub issues if requested
+    let issue_count = if with_issues {
+        println!("🐙 Fetching GitHub issues...");
+        match scrape_github_issues(&repo_path, &github) {
+            Ok(count) => {
+                println!("  💰 Indexed {} issues", count);
+                count
+            }
+            Err(e) => {
+                println!(
+                    "  ⚠️  GitHub scrape failed: {}. Continuing without issues.",
+                    e
+                );
+                0
+            }
+        }
+    } else {
+        0
+    };
+
     // Handle fork if contrib mode
     let fork = if contrib {
         println!("🍴 Creating fork...");
@@ -178,11 +198,19 @@ pub fn add_repo(url: &str, contrib: bool) -> Result<()> {
 
     println!("\n✅ Repository added successfully!");
     println!("   Path: {}", repo_path.display());
-    println!("   Events: {}", event_count);
-    println!(
-        "\n   Query with: patina scry \"your query\" --repo {}",
-        repo_name
-    );
+    println!("   Code events: {}", event_count);
+    if issue_count > 0 {
+        println!("   GitHub issues: {}", issue_count);
+        println!(
+            "\n   Query with: patina scry \"your query\" --repo {} --include-issues",
+            repo_name
+        );
+    } else {
+        println!(
+            "\n   Query with: patina scry \"your query\" --repo {}",
+            repo_name
+        );
+    }
 
     Ok(())
 }
@@ -526,6 +554,23 @@ fn scrape_repo(repo_path: &Path) -> Result<usize> {
     // Restore directory
     std::env::set_current_dir(original_dir)?;
 
+    Ok(stats.items_processed)
+}
+
+/// Scrape GitHub issues for a repo
+fn scrape_github_issues(repo_path: &Path, github: &str) -> Result<usize> {
+    use crate::commands::scrape::github::{run as github_run, GitHubScrapeConfig};
+
+    let db_path = repo_path.join(".patina/data/patina.db");
+
+    let config = GitHubScrapeConfig {
+        repo: github.to_string(),
+        limit: 500,
+        force: true,
+        db_path: db_path.to_string_lossy().to_string(),
+    };
+
+    let stats = github_run(config)?;
     Ok(stats.items_processed)
 }
 

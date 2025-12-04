@@ -29,6 +29,7 @@ pub struct ScryOptions {
     pub dimension: Option<String>,
     pub file: Option<String>,
     pub repo: Option<String>,
+    pub include_issues: bool,
 }
 
 impl Default for ScryOptions {
@@ -39,6 +40,7 @@ impl Default for ScryOptions {
             dimension: None, // Use semantic by default
             file: None,
             repo: None,
+            include_issues: false,
         }
     }
 }
@@ -49,8 +51,14 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
 
     // Show repo context if specified
     if let Some(ref repo) = options.repo {
-        println!("Repo: {}\n", repo);
+        println!("Repo: {}", repo);
     }
+
+    // Show if including issues
+    if options.include_issues {
+        println!("Including: GitHub issues");
+    }
+    println!();
 
     // Determine query mode
     let results = match (&options.file, query) {
@@ -61,8 +69,15 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
         (None, Some(q)) => {
             println!("Query: \"{}\"\n", q);
 
-            // Auto-detect query type
-            if is_lexical_query(q) {
+            // If dimension explicitly specified, use vector search (skip lexical auto-detect)
+            if options.dimension.is_some() {
+                println!(
+                    "Mode: Vector ({} dimension)\n",
+                    options.dimension.as_deref().unwrap()
+                );
+                scry_text(q, &options)?
+            } else if is_lexical_query(q) {
+                // Auto-detect lexical patterns only when no dimension specified
                 println!("Mode: Lexical (FTS5)\n");
                 scry_lexical(q, &options)?
             } else {
@@ -128,10 +143,11 @@ pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> 
     let index_path = format!("{}/{}.usearch", embeddings_dir, dimension);
 
     if !Path::new(&index_path).exists() {
-        anyhow::bail!(
-            "Index not found: {}. Run 'patina oxidize' first.",
-            index_path
-        );
+        // Graceful fallback: semantic index missing, use FTS5 instead
+        eprintln!("⚠️  Semantic index not found, falling back to lexical search (FTS5)");
+        eprintln!("   Run 'patina oxidize' for semantic similarity search\n");
+        println!("Mode: Lexical (FTS5) [fallback]\n");
+        return scry_lexical(query, options);
     }
 
     // Create embedder and embed query
@@ -334,8 +350,17 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
 
     println!("FTS5 query: {}", fts_query);
 
+    // Build event type filter based on include_issues flag
+    let event_type_filter = if options.include_issues {
+        // Include both code and github events
+        "event_type LIKE 'code.%' OR event_type = 'github.issue'"
+    } else {
+        // Code events only (default)
+        "event_type LIKE 'code.%'"
+    };
+
     // Search using FTS5 with BM25 scoring
-    let mut stmt = conn.prepare(
+    let sql = format!(
         "SELECT
             symbol_name,
             file_path,
@@ -344,9 +369,13 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
             bm25(code_fts) as score
          FROM code_fts
          WHERE code_fts MATCH ?
+           AND ({})
          ORDER BY score
          LIMIT ?",
-    )?;
+        event_type_filter
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
 
     let results = stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
         let symbol: String = row.get(0)?;
@@ -355,13 +384,20 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
         let event_type: String = row.get(3)?;
         let bm25_score: f64 = row.get(4)?;
 
+        // Format source_id based on event type
+        let source_id = if event_type == "github.issue" {
+            format!("[ISSUE] {}", symbol) // symbol contains issue title for github events
+        } else {
+            format!("{}:{}", file_path, symbol)
+        };
+
         Ok(ScryResult {
             id: 0,
             content: snippet,
             // BM25 is negative (lower = better), convert to positive score
             score: (-bm25_score as f32).min(1.0),
             event_type,
-            source_id: format!("{}:{}", file_path, symbol),
+            source_id,
             timestamp: String::new(),
         })
     })?;
@@ -479,6 +515,46 @@ fn enrich_results(
                         source_id: file_path.clone(),
                         timestamp: String::new(),
                         content: format!("File: {} (temporal co-change relationship)", file_path),
+                        score,
+                    });
+                }
+            }
+        }
+        "dependency" => {
+            // Dependency index uses sequential function index as key
+            // Need to look up function name from call_graph
+            let functions: Vec<String> = {
+                let mut stmt = conn.prepare(
+                    "SELECT DISTINCT caller FROM call_graph
+                     UNION
+                     SELECT DISTINCT callee FROM call_graph
+                     ORDER BY 1",
+                )?;
+                let mut rows = stmt.query([])?;
+                let mut funcs = Vec::new();
+                while let Some(row) = rows.next()? {
+                    funcs.push(row.get(0)?);
+                }
+                funcs
+            };
+
+            for i in 0..results.keys.len() {
+                let key = results.keys[i] as usize;
+                let distance = results.distances[i];
+                let score = 1.0 - distance;
+
+                if score < min_score {
+                    continue;
+                }
+
+                if key < functions.len() {
+                    let func_name = &functions[key];
+                    enriched.push(ScryResult {
+                        id: key as i64,
+                        event_type: "function.dependency".to_string(),
+                        source_id: func_name.clone(),
+                        timestamp: String::new(),
+                        content: format!("Function: {} (dependency relationship)", func_name),
                         score,
                     });
                 }
