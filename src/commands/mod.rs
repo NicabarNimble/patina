@@ -11,6 +11,7 @@ pub mod query;
 pub mod repo;
 pub mod scrape;
 pub mod scry;
+pub mod serve;
 pub mod test;
 pub mod upgrade;
 pub mod version;

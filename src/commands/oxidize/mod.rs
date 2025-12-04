@@ -2,12 +2,14 @@
 //!
 //! Phase 2: Training + safetensors export + USearch index building
 
+pub mod dependency;
 pub mod pairs;
 pub mod recipe;
 pub mod temporal;
 pub mod trainer;
 
 use anyhow::{Context, Result};
+use dependency::generate_dependency_pairs;
 use pairs::{generate_same_session_pairs, TrainingPair};
 use recipe::{OxidizeRecipe, ProjectionConfig};
 use temporal::generate_temporal_pairs;
@@ -99,9 +101,13 @@ fn train_projection(
             println!("   Strategy: files that co-change are related");
             generate_temporal_pairs(db_path, num_pairs)?
         }
+        "dependency" => {
+            println!("   Strategy: functions that call each other are related");
+            generate_dependency_pairs(db_path, num_pairs)?
+        }
         _ => {
             anyhow::bail!(
-                "Unknown projection type: {}. Supported: semantic, temporal",
+                "Unknown projection type: {}. Supported: semantic, temporal, dependency",
                 name
             );
         }
@@ -168,6 +174,7 @@ fn build_projection_index(
     let events: Vec<(i64, String)> = match projection_name {
         "semantic" => query_session_events(&conn)?,
         "temporal" => query_file_events(&conn)?,
+        "dependency" => dependency::query_function_events(&conn)?,
         _ => {
             println!("   ⚠️  No index builder for {} - skipping", projection_name);
             return Ok(());

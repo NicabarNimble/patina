@@ -17,15 +17,17 @@ Persistent roadmap across sessions. **Start here when picking up work.**
 Mac (Mothership)              YOLO Container (Linux)
 ├── Persona knowledge         ├── Claude CLI
 ├── Cross-project indices     ├── Project code
-├── Reference repo scrapes    └── Queries Mac via gRPC
-└── Model hosting (MLX)
+├── Reference repo scrapes    └── Queries Mac via HTTP (rouille)
+└── Model hosting (ONNX)
 ```
 
 **Immediate Path (Phase 3):**
-1. File-based scry queries (`patina scry --file src/foo.rs`)
-2. FTS5 lexical search for exact matches
-3. Mothership service for multi-project coordination
-4. Dependency dimension (call graph)
+1. File-based scry queries (`patina scry --file src/foo.rs`) ✅
+2. FTS5 lexical search for exact matches ✅
+3. Mothership service for multi-project coordination ✅
+4. Dependency dimension (call graph) ✅
+5. GitHub integration (bounty discovery) ✅
+6. **Mothership daemon (`patina serve`) ← IN PROGRESS**
 
 **Explicitly Deferred:**
 - MLX runtime (nice-to-have, E5 ONNX works everywhere)
@@ -89,14 +91,130 @@ patina repo update dojo                  # Refresh later
 **Future (Phase 2+):** gRPC daemon for container queries, persona beliefs
 
 #### 3d: Dependency Dimension
-**Status:** Not Started
+**Status:** ✅ Complete (2025-12-03)
 **Spec:** [spec-oxidize.md](../surface/build/spec-oxidize.md)
 **Why:** Claude needs call graph understanding for code changes
 
-- [ ] Create `src/commands/oxidize/dependency.rs`
-- [ ] Training pairs from `code.call` events (9,634 available)
-- [ ] Caller/callee = related signal
-- [ ] File-based queries: "what calls this function?"
+- [x] Create `src/commands/oxidize/dependency.rs`
+- [x] Training pairs from call_graph (7,151 relationships, 4,004 functions)
+- [x] Caller/callee = related signal
+- [x] Query via `patina scry "function name" --dimension dependency`
+
+#### 3e: GitHub Integration (Issues MVP)
+**Status:** ✅ Complete (2025-12-03)
+**Spec:** [spec-github-integration.md](../surface/build/spec-github-integration.md)
+**Architecture:** [github-integration-architecture.md](../surface/build/github-integration-architecture.md)
+**Why:** OnlyDust bounty discovery + hackathon context from issues/discussions
+
+**Key Insight:** GitHub issues use SAME semantic space as code (E5 → MLP → 256-dim). Query "entity spawning" returns both code AND related issues.
+
+**Phase 1: Issues MVP (Complete)**
+- [x] Create `src/commands/scrape/github/mod.rs`
+- [x] Add `github_issues` materialized view schema
+- [x] Implement `gh issue list --json` integration
+- [x] Bounty detection (labels + body parsing)
+- [x] Add `--with-issues` flag to `patina repo add`
+- [x] Add `github.issue` events to FTS5 index
+- [x] Add `--include-issues` flag to `patina scry`
+- [x] Test with dojoengine/dojo (500 issues indexed)
+- [x] Graceful fallback to FTS5 when semantic index missing
+
+```bash
+patina repo add dojoengine/dojo --with-issues
+patina scry "bounty cairo" --repo dojo --include-issues --label bounty
+```
+
+**Phase 2: Semantic Search (Future)**
+- [ ] Generate E5 embeddings for issue title + body
+- [ ] Store in embeddings table (same space as code)
+- [ ] Cross-type ranking in scry results
+
+**Phase 3: PRs + Discussions (Future)**
+- [ ] Add `github_prs`, `github_discussions` tables
+- [ ] `gh pr list` and `gh api graphql` integration
+- [ ] Extend scry with `--include-prs`, `--include-discussions`
+
+**Phase 4: Cross-Project Bounty Discovery (Future)**
+- [ ] `patina scry "bounty" --all-repos --label bounty`
+- [ ] Aggregate bounties from all registered repos
+- [ ] Persona-aware bounty matching
+
+#### 3f: Mothership Daemon (`patina serve`)
+**Status:** In Progress (2025-12-03)
+**Spec:** [spec-mothership-service.md](../surface/build/spec-mothership-service.md)
+**Why:** Container queries to Mac, hot model caching, Ollama-style daemon
+
+**Architecture:**
+```
+Mac (Mothership)                    Container
+┌─────────────────────┐            ┌─────────────────────┐
+│ patina serve        │            │ patina scry "query" │
+│ localhost:50051     │◄───────────│ PATINA_MOTHERSHIP   │
+│                     │   HTTP     │ =host.docker.internal│
+│ ┌─────────────────┐ │            └─────────────────────┘
+│ │ E5 Model (hot)  │ │
+│ │ Projections     │ │
+│ │ ~/.patina/repos │ │
+│ └─────────────────┘ │
+└─────────────────────┘
+```
+
+**Key Design Decisions:**
+- **rouille** (blocking HTTP, no async/tokio) - thread-per-request
+- **Ollama pattern** - `patina serve` subcommand, single binary
+- **HTTP REST** on port 50051 (not gRPC) - simpler, curl-friendly
+- **Lazy model loading** - load E5 on first request, keep hot
+
+**Implementation Phases:**
+
+**Phase 1: Basic Daemon** ✅ (2025-12-03)
+- [x] Add `rouille = "3.6"` dependency
+- [x] Create `src/commands/serve/` module
+- [x] Implement `/health` endpoint
+- [x] Add `Serve` command to CLI
+
+**Phase 2: Model Caching + Embed API**
+- [ ] ServerState with parking_lot::RwLock
+- [ ] `/api/embed` and `/api/embed/batch` endpoints
+- [ ] Thread-safe embedder access
+
+**Phase 3: Scry API + Client Detection**
+- [ ] `/api/scry` endpoint (semantic/lexical/file)
+- [ ] Mothership client module
+- [ ] Auto-detection: `PATINA_MOTHERSHIP` env var or localhost check
+- [ ] Update scry command to route to daemon
+
+**Phase 4: Container Integration**
+- [ ] `--host 0.0.0.0` option for container access
+- [ ] Update YOLO devcontainer with `PATINA_MOTHERSHIP` env var
+- [ ] Test container → Mac queries
+
+**Phase 5: Repo + Model APIs**
+- [ ] `/api/repos` endpoints
+- [ ] `/api/model` status endpoint
+- [ ] Graceful shutdown (SIGTERM)
+
+**API Endpoints:**
+```
+GET  /health              # Health check
+POST /api/scry            # Query (semantic/lexical/file)
+POST /api/embed           # Generate embedding
+POST /api/embed/batch     # Batch embeddings
+GET  /api/repos           # List repos
+GET  /api/repos/{name}    # Repo details
+GET  /api/model           # Model status
+```
+
+**Files to Create:**
+```
+src/commands/serve/
+├── mod.rs              # Public interface
+└── internal.rs         # Server implementation
+
+src/mothership/
+├── mod.rs              # Client interface
+└── internal.rs         # HTTP client for daemon
+```
 
 ---
 
@@ -205,6 +323,7 @@ When context is lost, read these sessions for architectural decisions:
 
 | Session | Topic | Key Insight |
 |---------|-------|-------------|
+| 20251128-140600 | GitHub Design | Unified semantic space for code + issues. 4 design docs created. |
 | 20251125-130143 | Phase 2 Review | Hackathon 10x focus, E5 router, model worlds design |
 | 20251125-095019 | Build Continue | Temporal + Scry + Eval complete. Query interface per dimension. |
 | 20251125-065729 | RAG design review | "Don't optimize what you can't measure" |
@@ -224,7 +343,14 @@ When context is lost, read these sessions for architectural decisions:
 2. [x] `patina scry "find X"` uses FTS5 for exact matches
 3. [x] `patina repo <url>` adds external repos to `~/.patina/repos/`
 4. [x] `patina scry "query" --repo <name>` queries external repos
-5. [ ] Dependency dimension trained and queryable
-6. [ ] (Future) gRPC daemon for container queries
+5. [x] Dependency dimension trained and queryable
+6. [x] GitHub issues searchable via `scry --include-issues`
+7. [ ] Mothership daemon (`patina serve`) for container queries
 
-**Hackathon-ready when:** Can query Dojo patterns while building Starknet game via `scry --repo dojo`.
+**GitHub MVP complete when:**
+- `patina repo add <url> --with-issues` fetches and indexes issues
+- `patina scry "bounty" --include-issues --label bounty` finds bounties
+- Bounty detection works (labels + body parsing)
+- FTS5 search covers issue title + body
+
+**Hackathon-ready when:** Can query Dojo patterns AND bounties while building Starknet game via `scry --repo dojo --include-issues`.
