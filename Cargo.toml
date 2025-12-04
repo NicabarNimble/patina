@@ -72,11 +72,8 @@ patina-metal = { path = "patina-metal" }
 walkdir = "2"
 ignore = "0.4"
 
-# Tree-sitter dependencies (kept for legacy semantic module - to be removed)
+# Tree-sitter - AST parsing for code scraper (11 languages)
 tree-sitter = "0.24"
-
-# CRDT support
-automerge = "0.5"
 
 # Symbolic reasoning - embedded Prolog for belief validation
 scryer-prolog = "0.10.0"

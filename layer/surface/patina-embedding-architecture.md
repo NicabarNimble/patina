@@ -307,7 +307,7 @@ The mothership trains a cross-project semantic adapter from all primary projects
 projects:
   patina:
     type: primary                      # You own it
-    path: /Users/nicabar/Projects/patina
+    path: ~/projects/patina
     sessions: 277
     observations: 992
     adapters:
@@ -319,7 +319,7 @@ projects:
 
   new-starknet-game:
     type: primary                      # You own it, but just started
-    path: /Users/nicabar/Projects/new-starknet-game
+    path: ~/projects/new-starknet-game
     sessions: 0
     observations: 0
     adapters:
@@ -331,7 +331,7 @@ projects:
 
   dojo:
     type: reference                    # External repo
-    path: /Users/nicabar/Projects/dojo
+    path: ~/projects/dojo
     sessions: 0
     observations: 0
     adapters:
