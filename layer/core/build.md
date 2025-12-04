@@ -4,30 +4,40 @@ Persistent roadmap across sessions. **Start here when picking up work.**
 
 ---
 
-## Current Direction (2025-11-25)
+## Current Direction (2025-12-04)
 
 **Goal:** 10x productivity for OnlyDust contributions and Ethereum/Starknet hackathons.
 
-**Key Insight:** Phase 2.5 complete. Each dimension needs its own query interface:
-- **Semantic** (text→text): Working (8.6x over random)
-- **Temporal** (file→files): Working (3.2x over random), needs `--file` flag in scry
+**Key Insight (Code Review 2025-12-04):** Architecture is solid (8.6x measured improvement), but bounty data goes into database and doesn't come out where users need it. The gap isn't architecture - it's the last mile.
+
+**Current State:** 3-4x productivity improvement
+**Achievable:** 10x with targeted fixes
+
+**Two Tracks to 10x:**
+- **Track A (P0):** Bounty workflow - expose bounty data in ScryResult
+- **Track B (P1):** Mothership daemon - enable multi-project coordination
 
 **Target Workflow:**
 ```
 Mac (Mothership)              YOLO Container (Linux)
-├── Persona knowledge         ├── Claude CLI
-├── Cross-project indices     ├── Project code
-├── Reference repo scrapes    └── Queries Mac via HTTP (rouille)
-└── Model hosting (ONNX)
+├── patina serve              ├── Claude CLI
+├── All project indices       ├── Project code
+├── /api/scry endpoint        └── PATINA_MOTHERSHIP=host.docker.internal
+└── E5 model (hot)
+
+# Query all repos for bounties in one call:
+curl localhost:50051/api/scry -d '{"query": "bounty", "all_repos": true, "label": "bounty"}'
+# → 💰 $500 USDC | dojo#1234 | "Implement spawn batching"
 ```
 
-**Immediate Path (Phase 3):**
+**Immediate Path (Phase 3 completion):**
 1. File-based scry queries (`patina scry --file src/foo.rs`) ✅
 2. FTS5 lexical search for exact matches ✅
 3. Mothership service for multi-project coordination ✅
 4. Dependency dimension (call graph) ✅
 5. GitHub integration (bounty discovery) ✅
-6. **Mothership daemon (`patina serve`) ← IN PROGRESS**
+6. **Mothership daemon Phases 2-4 ← IN PROGRESS**
+7. **Bounty workflow completion (3g) ← IN PROGRESS**
 
 **Explicitly Deferred:**
 - MLX runtime (nice-to-have, E5 ONNX works everywhere)
@@ -216,6 +226,27 @@ src/mothership/
 └── internal.rs         # HTTP client for daemon
 ```
 
+#### 3g: Bounty Workflow Completion
+**Status:** Not Started (2025-12-04)
+**Spec:** Code review findings - bounty data goes in but doesn't come out
+**Why:** 10x productivity for OnlyDust requires surfacing bounty data in results
+
+**Key Insight (Code Review):** Bounty detection works (labels + regex), data stored in `github_issues` table, but `ScryResult` doesn't expose `is_bounty`, `bounty_amount`, or `labels`. Dead code from user value perspective.
+
+- [ ] Expose `is_bounty`, `bounty_amount`, `labels` in ScryResult struct
+- [ ] Add `--label` filter to scry command (documented but not implemented)
+- [ ] Fix `update_repo` to call `scrape_github_issues` (currently skipped)
+- [ ] Add `--sort bounty` option for bounty-amount ranking
+- [ ] Add `--all-repos` flag for cross-repo aggregation
+
+**Target workflow:**
+```bash
+patina repo add dojoengine/dojo --with-issues
+patina repo add starkware-libs/cairo --with-issues
+patina scry "bounty" --all-repos --label bounty
+# 💰 $500 USDC | dojo#1234 | "Implement spawn batching"
+```
+
 ---
 
 ## Completed Phases
@@ -345,12 +376,16 @@ When context is lost, read these sessions for architectural decisions:
 4. [x] `patina scry "query" --repo <name>` queries external repos
 5. [x] Dependency dimension trained and queryable
 6. [x] GitHub issues searchable via `scry --include-issues`
-7. [ ] Mothership daemon (`patina serve`) for container queries
+7. [ ] Mothership daemon (`patina serve`) with `/api/scry` endpoint
+8. [ ] `patina scry "bounty" --include-issues` shows bounty amounts (3g)
+9. [ ] `patina scry --all-repos` queries all registered repos (3g)
+10. [ ] `patina serve` + API query returns same results as CLI (3f)
 
 **GitHub MVP complete when:**
-- `patina repo add <url> --with-issues` fetches and indexes issues
-- `patina scry "bounty" --include-issues --label bounty` finds bounties
-- Bounty detection works (labels + body parsing)
-- FTS5 search covers issue title + body
+- [x] `patina repo add <url> --with-issues` fetches and indexes issues
+- [ ] `patina scry "bounty" --include-issues --label bounty` finds bounties ← `--label` not implemented
+- [x] Bounty detection works (labels + body parsing)
+- [x] FTS5 search covers issue title + body
+- [ ] Bounty amounts visible in scry results ← ScryResult missing fields
 
-**Hackathon-ready when:** Can query Dojo patterns AND bounties while building Starknet game via `scry --repo dojo --include-issues`.
+**Hackathon-ready when:** Can query ALL repos for bounties via `scry --all-repos --label bounty` and see `💰 $500 USDC` in results.
