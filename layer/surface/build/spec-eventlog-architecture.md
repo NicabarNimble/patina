@@ -322,8 +322,8 @@ INSERT INTO eventlog (event_type, timestamp, source_id, source_file, data) VALUE
   json_object(
     'sha', '1e541ac87009536128438063656c79ddde288678',
     'message', 'docs: archive sessions',
-    'author', 'NicabarNimble',
-    'email', 'nicabar@gmail.com',
+    'author', 'your-username',
+    'email', 'user@example.com',
     'files', json_array(
       json_object('path', 'layer/sessions/20251121-042111.md', 'lines_added', 290, 'lines_removed', 0)
     )
