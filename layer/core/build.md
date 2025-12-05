@@ -4,53 +4,41 @@ Persistent roadmap across sessions. **Start here when picking up work.**
 
 ---
 
-## Current Direction (2025-12-04)
+## What Patina IS
 
-**Goal:** 10x productivity for OnlyDust contributions and Ethereum/Starknet hackathons.
+A local-first RAG network: **portable project knowledge + personal mothership**.
 
-**Key Insight (Code Review 2025-12-04):** Architecture is solid (8.6x measured improvement), but bounty data goes into database and doesn't come out where users need it. The gap isn't architecture - it's the last mile.
+- `layer/` = git-tracked knowledge (sessions, patterns) → syncs via GitHub
+- `.patina/` = local indices (db, embeddings) → rebuilt, never committed
+- `~/.patina/` = personal mothership (persona, registry) → never syncs
 
-**Current State:** 3-4x productivity improvement
-**Achievable:** 10x with targeted fixes
-
-**Two Tracks to 10x:**
-- **Track A (P0):** Bounty workflow - expose bounty data in ScryResult
-- **Track B (P1):** Mothership daemon - enable multi-project coordination
-
-**Target Workflow:**
-```
-Mac (Mothership)              YOLO Container (Linux)
-├── patina serve              ├── Claude CLI
-├── All project indices       ├── Project code
-├── /api/scry endpoint        └── PATINA_MOTHERSHIP=host.docker.internal
-└── E5 model (hot)
-
-# Query all repos for bounties in one call:
-curl localhost:50051/api/scry -d '{"query": "bounty", "all_repos": true, "label": "bounty"}'
-# → 💰 $500 USDC | dojo#1234 | "Implement spawn batching"
-```
-
-**Immediate Path (Phase 3 completion):**
-1. File-based scry queries (`patina scry --file src/foo.rs`) ✅
-2. FTS5 lexical search for exact matches ✅
-3. Mothership service for multi-project coordination ✅
-4. Dependency dimension (call graph) ✅
-5. GitHub integration (bounty discovery) ✅
-6. **Mothership daemon Phases 2-4 ← IN PROGRESS**
-7. **Bounty workflow completion (3g) ← IN PROGRESS**
-
-**Explicitly Deferred:**
-- MLX runtime (nice-to-have, E5 ONNX works everywhere)
-- Qwen3/model upgrades (invalidates projections, premature)
-- Syntactic/architectural dimensions (dependency first)
+See: [rag-network.md](../surface/rag-network.md)
 
 ---
 
-## Active Work
+## Current Direction (2025-12-05)
 
-### Phase 3: Hackathon MVP
+**Goal:** Complete core platform before use-case features.
 
-**Goal:** Enable 10x productivity for OnlyDust bounties and Starknet/Ethereum hackathons.
+**Phase 3 (Query Infrastructure):** ✅ Complete
+- Scrape, oxidize, scry, repo, dependency dimension all working
+- 8.6x improvement over random (measured)
+
+**Phase 4 (Core Infrastructure):** ← Current focus
+1. **`patina rebuild`** - Regenerate .patina/ from layer/ (portability)
+2. **`patina serve` complete** - /api/scry, --all-repos, containers
+3. **Persona** - Cross-project belief extraction + query
+
+**Deferred (use-case features, not core):**
+- Bounty/opportunity module (code exists in `src/commands/scrape/github/opportunity/`)
+- GitHub semantic embeddings
+- MLX runtime, model upgrades
+
+---
+
+## Phase 3: Query Infrastructure ✅
+
+**Goal:** Semantic + lexical search across code, sessions, and external repos.
 
 #### 3a: File-Based Scry Queries ✅
 **Status:** Complete (2025-11-25)
@@ -367,25 +355,14 @@ When context is lost, read these sessions for architectural decisions:
 
 ## Validation Criteria
 
-**Phase 2.5 Complete!** ✅ (2025-11-25)
+**Phase 3 Complete!** ✅ (2025-12-03) - Query infrastructure working.
+- [x] Scry: semantic, FTS5, file-based, dimension selection
+- [x] Repo: external repos, registry, --repo flag
+- [x] GitHub adapter: issues MVP, FTS5 search
 
-**Phase 3 is complete when:**
-1. [x] `patina scry --file src/foo.rs` returns co-changing files
-2. [x] `patina scry "find X"` uses FTS5 for exact matches
-3. [x] `patina repo <url>` adds external repos to `~/.patina/repos/`
-4. [x] `patina scry "query" --repo <name>` queries external repos
-5. [x] Dependency dimension trained and queryable
-6. [x] GitHub issues searchable via `scry --include-issues`
-7. [ ] Mothership daemon (`patina serve`) with `/api/scry` endpoint
-8. [ ] `patina scry "bounty" --include-issues` shows bounty amounts (3g)
-9. [ ] `patina scry --all-repos` queries all registered repos (3g)
-10. [ ] `patina serve` + API query returns same results as CLI (3f)
-
-**GitHub MVP complete when:**
-- [x] `patina repo add <url> --with-issues` fetches and indexes issues
-- [ ] `patina scry "bounty" --include-issues --label bounty` finds bounties ← `--label` not implemented
-- [x] Bounty detection works (labels + body parsing)
-- [x] FTS5 search covers issue title + body
-- [ ] Bounty amounts visible in scry results ← ScryResult missing fields
-
-**Hackathon-ready when:** Can query ALL repos for bounties via `scry --all-repos --label bounty` and see `💰 $500 USDC` in results.
+**Phase 4 is complete when:**
+1. [ ] `git clone <repo>` + `patina rebuild` produces working local RAG
+2. [ ] `patina serve` exposes `/api/scry` endpoint
+3. [ ] `patina scry --all-repos` queries across registry
+4. [ ] `patina scry` can return `[PERSONA]` cross-project beliefs
+5. [ ] Container can query Mac via `PATINA_MOTHERSHIP` env var

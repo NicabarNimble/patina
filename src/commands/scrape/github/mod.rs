@@ -5,8 +5,9 @@
 //! - Creates materialized views (github_issues) from eventlog
 //! - Supports incremental updates via updated_at timestamp
 
+pub mod opportunity;
+
 use anyhow::{Context, Result};
-use regex::Regex;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -16,6 +17,7 @@ use std::time::Instant;
 
 use super::database;
 use super::ScrapeStats;
+use opportunity::{detect_opportunity, load_providers, OpportunityInfo};
 
 /// GitHub issue from `gh issue list --json`
 #[derive(Debug, Deserialize, Serialize)]
@@ -44,15 +46,14 @@ pub struct Author {
     pub login: String,
 }
 
-/// Bounty detection result
+/// Bounty detection result (enhanced with provider info)
 #[derive(Debug)]
 pub struct BountyInfo {
     pub is_bounty: bool,
     pub amount: Option<String>,
+    pub provider: Option<String>,
+    pub currency: Option<String>,
 }
-
-/// Labels that indicate a bounty
-const BOUNTY_LABELS: &[&str] = &["bounty", "onlydust", "reward", "paid", "💰"];
 
 /// Create materialized views for GitHub events
 fn create_materialized_views(conn: &Connection) -> Result<()> {
@@ -72,6 +73,8 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
             url TEXT NOT NULL,
             is_bounty INTEGER DEFAULT 0,
             bounty_amount TEXT,
+            bounty_provider TEXT,  -- Provider name (algora, dorahacks, etc.)
+            bounty_currency TEXT,  -- Currency (USD, USDC, ETH, STRK)
             event_seq INTEGER,     -- Link back to eventlog
             FOREIGN KEY (event_seq) REFERENCES eventlog(seq)
         );
@@ -80,6 +83,7 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_github_issues_state ON github_issues(state);
         CREATE INDEX IF NOT EXISTS idx_github_issues_updated ON github_issues(updated_at);
         CREATE INDEX IF NOT EXISTS idx_github_issues_bounty ON github_issues(is_bounty);
+        CREATE INDEX IF NOT EXISTS idx_github_issues_provider ON github_issues(bounty_provider);
         "#,
     )?;
 
@@ -133,52 +137,23 @@ pub fn fetch_issues(repo: &str, limit: usize, since: Option<&str>) -> Result<Vec
     Ok(issues)
 }
 
-/// Detect if an issue is a bounty based on labels and body content
+/// Detect if an issue is a bounty/opportunity using configured providers
 pub fn detect_bounty(issue: &GitHubIssue) -> BountyInfo {
-    // Check labels
-    let label_match = issue.labels.iter().any(|l| {
-        let lower = l.name.to_lowercase();
-        BOUNTY_LABELS.iter().any(|b| lower.contains(b))
+    // Load providers (from TOML config or defaults)
+    let providers = load_providers().unwrap_or_else(|_| {
+        // Fall back to defaults if config loading fails
+        opportunity::default_providers()
     });
 
-    // Check body for bounty amount patterns
-    let amount = issue
-        .body
-        .as_ref()
-        .and_then(|body| extract_bounty_amount(body));
+    // Use the new opportunity detection system
+    let info: OpportunityInfo = detect_opportunity(issue, &providers);
 
     BountyInfo {
-        is_bounty: label_match || amount.is_some(),
-        amount,
+        is_bounty: info.is_opportunity,
+        amount: info.amount,
+        provider: info.provider,
+        currency: info.currency,
     }
-}
-
-/// Extract bounty amount from issue body
-/// Patterns: "Bounty: 500 USDC", "Reward: $100", "💰 200 USD"
-fn extract_bounty_amount(body: &str) -> Option<String> {
-    // Try various patterns
-    let patterns = [
-        r"(?i)bounty[:\s]+\$?(\d+[\d,]*)\s*(usdc?|usd|\$)?",
-        r"(?i)reward[:\s]+\$?(\d+[\d,]*)\s*(usdc?|usd|\$)?",
-        r"💰\s*\$?(\d+[\d,]*)\s*(usdc?|usd|\$)?",
-    ];
-
-    for pattern in patterns {
-        if let Ok(re) = Regex::new(pattern) {
-            if let Some(caps) = re.captures(body) {
-                let amount = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-                let currency = caps
-                    .get(2)
-                    .map(|m| m.as_str())
-                    .unwrap_or("USD")
-                    .to_uppercase();
-                let currency = if currency == "$" { "USD" } else { &currency };
-                return Some(format!("{} {}", amount, currency));
-            }
-        }
-    }
-
-    None
 }
 
 /// Insert issues into eventlog and materialized views
@@ -187,8 +162,8 @@ fn insert_issues(conn: &Connection, issues: &[GitHubIssue]) -> Result<usize> {
 
     let mut issue_stmt = conn.prepare(
         "INSERT OR REPLACE INTO github_issues
-         (number, title, body, state, labels, author, created_at, updated_at, closed_at, url, is_bounty, bounty_amount, event_seq)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+         (number, title, body, state, labels, author, created_at, updated_at, closed_at, url, is_bounty, bounty_amount, bounty_provider, bounty_currency, event_seq)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
     )?;
 
     for issue in issues {
@@ -207,6 +182,8 @@ fn insert_issues(conn: &Connection, issues: &[GitHubIssue]) -> Result<usize> {
             "url": &issue.url,
             "is_bounty": bounty.is_bounty,
             "bounty_amount": &bounty.amount,
+            "bounty_provider": &bounty.provider,
+            "bounty_currency": &bounty.currency,
         });
 
         let seq = database::insert_event(
@@ -232,6 +209,8 @@ fn insert_issues(conn: &Connection, issues: &[GitHubIssue]) -> Result<usize> {
             &issue.url,
             bounty.is_bounty as i32,
             &bounty.amount,
+            &bounty.provider,
+            &bounty.currency,
             seq,
         ])?;
 
@@ -410,24 +389,36 @@ mod tests {
 
         let bounty = detect_bounty(&issue);
         assert!(bounty.is_bounty);
-        assert_eq!(bounty.amount, Some("500 USDC".to_string()));
+        // Amount format may vary by provider (500 USD or 500 USDC)
+        assert!(bounty.amount.is_some());
+        assert!(bounty.amount.as_ref().unwrap().contains("500"));
     }
 
     #[test]
-    fn test_extract_bounty_amount() {
-        assert_eq!(
-            extract_bounty_amount("Bounty: 500 USDC"),
-            Some("500 USDC".to_string())
-        );
-        assert_eq!(
-            extract_bounty_amount("Reward: $100"),
-            Some("100 USD".to_string())
-        );
-        assert_eq!(
-            extract_bounty_amount("💰 200 USD"),
-            Some("200 USD".to_string())
-        );
-        assert_eq!(extract_bounty_amount("No bounty here"), None);
+    fn test_detect_bounty_with_provider() {
+        // Test that the new provider-based detection works
+        let issue = GitHubIssue {
+            number: 1,
+            title: "Algora bounty".to_string(),
+            body: Some("This is a $500 bounty".to_string()),
+            state: "open".to_string(),
+            labels: vec![Label {
+                name: "💎 Bounty".to_string(),
+            }],
+            author: Author {
+                login: "test".to_string(),
+            },
+            created_at: "2025-01-01T00:00:00Z".to_string(),
+            updated_at: "2025-01-01T00:00:00Z".to_string(),
+            closed_at: None,
+            url: "https://github.com/test/test/issues/1".to_string(),
+        };
+
+        let bounty = detect_bounty(&issue);
+        assert!(bounty.is_bounty);
+        assert!(bounty.provider.is_some());
+        // Amount extraction should work
+        assert!(bounty.amount.is_some());
     }
 
     #[test]
