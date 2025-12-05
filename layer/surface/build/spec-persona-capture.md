@@ -1,5 +1,11 @@
 # Spec: Persona Capture
 
+**Status:** NOT IMPLEMENTED
+**Phase:** 4 (Core Infrastructure)
+**Blocked until:** `patina serve` complete
+
+---
+
 ## Overview
 Persona captures YOUR cross-project beliefs and patterns - knowledge that belongs to you, not to any specific project. Lives in `~/.patina/persona/` and is **never git-tracked**.
 
