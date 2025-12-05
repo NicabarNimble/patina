@@ -44,13 +44,20 @@ pub fn execute_init(
     // Ensure proper .gitignore exists
     ensure_gitignore(Path::new("."))?;
 
-    // Ensure fork if needed (always fork external repos)
-    patina::git::ensure_fork(local)?;
-    println!();
+    // Check if this is a re-init (already has .patina/)
+    let is_reinit_early = name == "." && Path::new(".patina").exists();
 
-    // Ensure we're on patina branch
-    patina::git::ensure_patina_branch(force)?;
-    println!("✓ On branch 'patina'\n");
+    if is_reinit_early {
+        // Re-init: skip branch management, just refresh files in place
+        println!("🔄 Re-initializing existing Patina project...\n");
+    } else {
+        // First-time init: full git setup (fork detection, branch management)
+        patina::git::ensure_fork(local)?;
+        println!();
+
+        patina::git::ensure_patina_branch(force)?;
+        println!("✓ On branch 'patina'\n");
+    }
 
     // === STEP 2: SAFE TO PROCEED WITH DESTRUCTIVE CHANGES ===
 
@@ -80,18 +87,21 @@ pub fn execute_init(
         }
     }
 
-    // Check if re-initializing
+    // Check if re-initializing (for non-current-dir case)
     let is_reinit = if name == "." {
-        Path::new(".patina").exists()
+        is_reinit_early
     } else {
         let path = PathBuf::from(&name);
         path.exists() && path.join(".patina").exists()
     };
 
-    if is_reinit {
-        println!("🔄 Re-initializing Patina project...");
-    } else {
-        println!("🎨 Initializing Patina project: {name}");
+    // Only print init message if we didn't already print re-init message
+    if !is_reinit_early {
+        if is_reinit {
+            println!("🔄 Re-initializing Patina project...");
+        } else {
+            println!("🎨 Initializing Patina project: {name}");
+        }
     }
 
     // Detect environment
