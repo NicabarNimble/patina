@@ -1,11 +1,12 @@
-//! GitHub issues scraper - extracts issues for bounty discovery and context
+//! GitHub issues scraper - extracts issues for project context
 //!
 //! Uses unified eventlog pattern:
 //! - Inserts github.issue events into eventlog table
 //! - Creates materialized views (github_issues) from eventlog
 //! - Supports incremental updates via updated_at timestamp
-
-pub mod opportunity;
+//!
+//! Note: Bounty detection was removed from core (2025-12-06).
+//! Will be re-added as a plugin when module system is designed.
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
@@ -17,7 +18,6 @@ use std::time::Instant;
 
 use super::database;
 use super::ScrapeStats;
-use opportunity::{detect_opportunity, load_providers, OpportunityInfo};
 
 /// GitHub issue from `gh issue list --json`
 #[derive(Debug, Deserialize, Serialize)]
@@ -137,22 +137,17 @@ pub fn fetch_issues(repo: &str, limit: usize, since: Option<&str>) -> Result<Vec
     Ok(issues)
 }
 
-/// Detect if an issue is a bounty/opportunity using configured providers
-pub fn detect_bounty(issue: &GitHubIssue) -> BountyInfo {
-    // Load providers (from TOML config or defaults)
-    let providers = load_providers().unwrap_or_else(|_| {
-        // Fall back to defaults if config loading fails
-        opportunity::default_providers()
-    });
-
-    // Use the new opportunity detection system
-    let info: OpportunityInfo = detect_opportunity(issue, &providers);
-
+/// Stub for bounty detection - always returns false
+///
+/// Bounty detection was removed from core (2025-12-06) as it's use-case specific.
+/// Will be re-added as a plugin when module system is designed.
+/// Schema columns preserved for future compatibility.
+fn detect_bounty(_issue: &GitHubIssue) -> BountyInfo {
     BountyInfo {
-        is_bounty: info.is_opportunity,
-        amount: info.amount,
-        provider: info.provider,
-        currency: info.currency,
+        is_bounty: false,
+        amount: None,
+        provider: None,
+        currency: None,
     }
 }
 
@@ -343,105 +338,5 @@ pub fn run(config: GitHubScrapeConfig) -> Result<ScrapeStats> {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_detect_bounty_from_labels() {
-        let issue = GitHubIssue {
-            number: 1,
-            title: "Test issue".to_string(),
-            body: None,
-            state: "open".to_string(),
-            labels: vec![Label {
-                name: "bounty".to_string(),
-            }],
-            author: Author {
-                login: "test".to_string(),
-            },
-            created_at: "2025-01-01T00:00:00Z".to_string(),
-            updated_at: "2025-01-01T00:00:00Z".to_string(),
-            closed_at: None,
-            url: "https://github.com/test/test/issues/1".to_string(),
-        };
-
-        let bounty = detect_bounty(&issue);
-        assert!(bounty.is_bounty);
-    }
-
-    #[test]
-    fn test_detect_bounty_from_body() {
-        let issue = GitHubIssue {
-            number: 1,
-            title: "Test issue".to_string(),
-            body: Some("This is a Bounty: 500 USDC for completing this task.".to_string()),
-            state: "open".to_string(),
-            labels: vec![],
-            author: Author {
-                login: "test".to_string(),
-            },
-            created_at: "2025-01-01T00:00:00Z".to_string(),
-            updated_at: "2025-01-01T00:00:00Z".to_string(),
-            closed_at: None,
-            url: "https://github.com/test/test/issues/1".to_string(),
-        };
-
-        let bounty = detect_bounty(&issue);
-        assert!(bounty.is_bounty);
-        // Amount format may vary by provider (500 USD or 500 USDC)
-        assert!(bounty.amount.is_some());
-        assert!(bounty.amount.as_ref().unwrap().contains("500"));
-    }
-
-    #[test]
-    fn test_detect_bounty_with_provider() {
-        // Test that the new provider-based detection works
-        let issue = GitHubIssue {
-            number: 1,
-            title: "Algora bounty".to_string(),
-            body: Some("This is a $500 bounty".to_string()),
-            state: "open".to_string(),
-            labels: vec![Label {
-                name: "💎 Bounty".to_string(),
-            }],
-            author: Author {
-                login: "test".to_string(),
-            },
-            created_at: "2025-01-01T00:00:00Z".to_string(),
-            updated_at: "2025-01-01T00:00:00Z".to_string(),
-            closed_at: None,
-            url: "https://github.com/test/test/issues/1".to_string(),
-        };
-
-        let bounty = detect_bounty(&issue);
-        assert!(bounty.is_bounty);
-        assert!(bounty.provider.is_some());
-        // Amount extraction should work
-        assert!(bounty.amount.is_some());
-    }
-
-    #[test]
-    fn test_no_bounty() {
-        let issue = GitHubIssue {
-            number: 1,
-            title: "Regular issue".to_string(),
-            body: Some("Just a normal bug report.".to_string()),
-            state: "open".to_string(),
-            labels: vec![Label {
-                name: "bug".to_string(),
-            }],
-            author: Author {
-                login: "test".to_string(),
-            },
-            created_at: "2025-01-01T00:00:00Z".to_string(),
-            updated_at: "2025-01-01T00:00:00Z".to_string(),
-            closed_at: None,
-            url: "https://github.com/test/test/issues/1".to_string(),
-        };
-
-        let bounty = detect_bounty(&issue);
-        assert!(!bounty.is_bounty);
-        assert!(bounty.amount.is_none());
-    }
-}
+// Note: Bounty detection tests removed (2025-12-06)
+// Feature moved out of core - will return as plugin when module system designed
