@@ -11,6 +11,7 @@ use anyhow::{Context, Result};
 use std::path::Path;
 
 /// Options for the rebuild command
+#[derive(Default)]
 pub struct RebuildOptions {
     /// Only run scrape step (skip oxidize)
     pub scrape_only: bool,
@@ -22,21 +23,9 @@ pub struct RebuildOptions {
     pub dry_run: bool,
 }
 
-impl Default for RebuildOptions {
-    fn default() -> Self {
-        Self {
-            scrape_only: false,
-            oxidize_only: false,
-            force: false,
-            dry_run: false,
-        }
-    }
-}
 
 /// Validation result for rebuild prerequisites
 struct ValidationResult {
-    has_layer: bool,
-    has_oxidize_yaml: bool,
     has_git: bool,
     session_count: usize,
     projection_count: usize,
@@ -58,10 +47,7 @@ pub fn execute(options: RebuildOptions) -> Result<()> {
             println!("   • scrape code");
         }
         if !options.scrape_only {
-            println!(
-                "   • oxidize ({} projections)",
-                validation.projection_count
-            );
+            println!("   • oxidize ({} projections)", validation.projection_count);
         }
         println!("\n✅ Dry run complete - no changes made");
         return Ok(());
@@ -93,30 +79,25 @@ pub fn execute(options: RebuildOptions) -> Result<()> {
 
 /// Validate that rebuild prerequisites exist
 fn validate() -> Result<ValidationResult> {
-    // Check layer/
-    let has_layer = Path::new("layer").exists();
-    if has_layer {
-        let session_count = count_sessions()?;
-        println!("   ✓ layer/ found ({} sessions)", session_count);
-    } else {
+    // Check layer/ (required)
+    if !Path::new("layer").exists() {
         anyhow::bail!(
             "❌ Not a Patina project (no layer/ found)\n\n\
              Run 'patina init .' to initialize this project."
         );
     }
+    let session_count = count_sessions()?;
+    println!("   ✓ layer/ found ({} sessions)", session_count);
 
-    // Check oxidize.yaml
-    let has_oxidize_yaml = Path::new(".patina/oxidize.yaml").exists();
-    let projection_count = if has_oxidize_yaml {
-        let count = count_projections()?;
-        println!("   ✓ oxidize.yaml found ({} projections)", count);
-        count
-    } else {
+    // Check oxidize.yaml (required)
+    if !Path::new(".patina/oxidize.yaml").exists() {
         anyhow::bail!(
             "❌ No recipe found (.patina/oxidize.yaml)\n\n\
              Run 'patina init .' to create the recipe file."
         );
-    };
+    }
+    let projection_count = count_projections()?;
+    println!("   ✓ oxidize.yaml found ({} projections)", projection_count);
 
     // Check .git/ (optional)
     let has_git = Path::new(".git").exists();
@@ -128,8 +109,6 @@ fn validate() -> Result<ValidationResult> {
     }
 
     Ok(ValidationResult {
-        has_layer,
-        has_oxidize_yaml,
         has_git,
         session_count: count_sessions()?,
         projection_count,
@@ -145,12 +124,7 @@ fn count_sessions() -> Result<usize> {
 
     let count = std::fs::read_dir(sessions_dir)?
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .map(|ext| ext == "md")
-                .unwrap_or(false)
-        })
+        .filter(|e| e.path().extension().map(|ext| ext == "md").unwrap_or(false))
         .count();
 
     Ok(count)
