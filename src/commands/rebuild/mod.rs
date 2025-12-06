@@ -23,7 +23,6 @@ pub struct RebuildOptions {
     pub dry_run: bool,
 }
 
-
 /// Validation result for rebuild prerequisites
 struct ValidationResult {
     has_git: bool,
