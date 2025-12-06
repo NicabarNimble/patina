@@ -55,7 +55,10 @@ pub fn detect_opportunity(
 }
 
 /// Extract bounty amount from issue body using provider's patterns
-fn extract_amount(issue: &GitHubIssue, provider: &OpportunityProvider) -> (Option<String>, Option<String>) {
+fn extract_amount(
+    issue: &GitHubIssue,
+    provider: &OpportunityProvider,
+) -> (Option<String>, Option<String>) {
     let body = match &issue.body {
         Some(b) => b,
         None => return (None, None),
@@ -95,7 +98,11 @@ fn extract_url(issue: &GitHubIssue, provider: &OpportunityProvider) -> Option<St
     // Simple URL extraction - look for provider's URL patterns
     for pattern in &provider.url_patterns {
         // Find URLs containing the pattern
-        let url_re = Regex::new(&format!(r"https?://[^\s<>\[\]]*{}[^\s<>\[\]]*", regex::escape(pattern))).ok()?;
+        let url_re = Regex::new(&format!(
+            r"https?://[^\s<>\[\]]*{}[^\s<>\[\]]*",
+            regex::escape(pattern)
+        ))
+        .ok()?;
         if let Some(m) = url_re.find(body) {
             return Some(m.as_str().to_string());
         }

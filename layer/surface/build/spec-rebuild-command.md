@@ -1,6 +1,6 @@
 # Spec: patina rebuild
 
-**Status:** Not Implemented
+**Status:** ✅ Complete (2025-12-06)
 **Phase:** 4 (Core Infrastructure)
 **Priority:** High - enables portability story
 
@@ -184,11 +184,11 @@ pub fn run(args: RebuildArgs) -> anyhow::Result<()> {
 ## Validation Criteria
 
 **rebuild is complete when:**
-1. [ ] `git clone <repo-with-layer>` + `patina rebuild` produces working `.patina/`
-2. [ ] `patina scry "query"` works after rebuild
-3. [ ] `--force` clears existing data before rebuild
-4. [ ] `--dry-run` shows plan without executing
-5. [ ] Appropriate errors for missing layer/, oxidize.yaml
+1. [x] `git clone <repo-with-layer>` + `patina rebuild` produces working `.patina/`
+2. [x] `patina scry "query"` works after rebuild
+3. [x] `--force` clears existing data before rebuild
+4. [x] `--dry-run` shows plan without executing
+5. [x] Appropriate errors for missing layer/, oxidize.yaml
 
 ---
 

@@ -286,9 +286,9 @@ Working pipeline for single dimension:
 
 **Goal:** Every node is a complete RAG. Cross-project knowledge that helps win hackathons.
 
-### 4a: `patina rebuild`
+### 4a: `patina rebuild` ✅
 **Spec:** [spec-rebuild-command.md](../surface/build/spec-rebuild-command.md)
-**Status:** Not Started
+**Status:** Complete (2025-12-06)
 
 Regenerate `.patina/` from `layer/` and local sources.
 
@@ -440,7 +440,7 @@ When context is lost, read these sessions for architectural decisions:
 
 | Phase | Validation | Status |
 |-------|------------|--------|
-| 4a | `git clone <repo> && patina rebuild && patina scry` works | [ ] |
+| 4a | `git clone <repo> && patina rebuild && patina scry` works | [x] |
 | 4b | `patina scry --repo dojo` returns semantic (no FTS5 fallback) | [ ] |
 | 4c | `patina scry --all-repos` returns results from multiple repos | [ ] |
 | 4d | `/session-note` in project A → `[PERSONA]` result in project B | [ ] |
