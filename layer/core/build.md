@@ -4,43 +4,51 @@ Persistent roadmap across sessions. **Start here when picking up work.**
 
 ---
 
-## Current Direction (2025-11-25)
+## What Patina IS
 
-**Goal:** 10x productivity for OnlyDust contributions and Ethereum/Starknet hackathons.
+A local-first RAG network: **portable project knowledge + personal mothership**.
 
-**Key Insight:** Phase 2.5 complete. Each dimension needs its own query interface:
-- **Semantic** (text→text): Working (8.6x over random)
-- **Temporal** (file→files): Working (3.2x over random), needs `--file` flag in scry
+- `layer/` = git-tracked knowledge (sessions, patterns) → syncs via GitHub
+- `.patina/` = local indices (db, embeddings) → rebuilt, never committed
+- `~/.patina/` = personal mothership (persona, registry) → never syncs
 
-**Target Workflow:**
-```
-Mac (Mothership)              YOLO Container (Linux)
-├── Persona knowledge         ├── Claude CLI
-├── Cross-project indices     ├── Project code
-├── Reference repo scrapes    └── Queries Mac via HTTP (rouille)
-└── Model hosting (ONNX)
-```
-
-**Immediate Path (Phase 3):**
-1. File-based scry queries (`patina scry --file src/foo.rs`) ✅
-2. FTS5 lexical search for exact matches ✅
-3. Mothership service for multi-project coordination ✅
-4. Dependency dimension (call graph) ✅
-5. GitHub integration (bounty discovery) ✅
-6. **Mothership daemon (`patina serve`) ← IN PROGRESS**
-
-**Explicitly Deferred:**
-- MLX runtime (nice-to-have, E5 ONNX works everywhere)
-- Qwen3/model upgrades (invalidates projections, premature)
-- Syntactic/architectural dimensions (dependency first)
+See: [rag-network.md](../surface/rag-network.md)
 
 ---
 
-## Active Work
+## Current Direction (2025-12-05)
 
-### Phase 3: Hackathon MVP
+**Goal:** Every node is a complete RAG. Cross-project knowledge that helps win hackathons.
 
-**Goal:** Enable 10x productivity for OnlyDust bounties and Starknet/Ethereum hackathons.
+**Phase 3 (Query Infrastructure):** ✅ Complete
+- Scrape, oxidize, scry, repo, dependency dimension all working
+- 8.6x improvement over random (measured)
+
+**Phase 4 (Solid Foundation):** ← Current focus
+
+| Phase | Deliverable | Validation |
+|-------|-------------|------------|
+| **4a** | `patina rebuild` | `git clone <repo> && patina rebuild && patina scry` works |
+| **4b** | External repo oxidize | All repos have semantic indices (no FTS5 fallback) |
+| **4c** | `--all-repos` query | Single query searches all nodes |
+| **4d** | Persona capture + query | Beliefs flow up, inform queries |
+| **4e** | `patina serve` complete | Containers query Mac mothership |
+
+**Specs:**
+- [spec-rebuild-command.md](../surface/build/spec-rebuild-command.md)
+- [spec-serve-command.md](../surface/build/spec-serve-command.md)
+- [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
+
+**Deferred (use-case features, not core):**
+- Bounty/opportunity display (data exists, surface later)
+- GitHub semantic embeddings
+- MLX runtime, model upgrades
+
+---
+
+## Phase 3: Query Infrastructure ✅
+
+**Goal:** Semantic + lexical search across code, sessions, and external repos.
 
 #### 3a: File-Based Scry Queries ✅
 **Status:** Complete (2025-11-25)
@@ -72,7 +80,7 @@ patina scry "error handling patterns"   # Semantic via vectors
 
 #### 3c: Repo Command (Cross-Project Knowledge)
 **Status:** ✅ MVP Complete (2025-11-26)
-**Spec:** [spec-mothership-service.md](../surface/build/spec-mothership-service.md)
+**Spec:** [spec-repo-command.md](../surface/build/spec-repo-command.md)
 **Why:** Query external repos for patterns and code understanding
 
 - [x] `patina repo <url>` - clone, scaffold, scrape to `~/.patina/repos/`
@@ -102,8 +110,7 @@ patina repo update dojo                  # Refresh later
 
 #### 3e: GitHub Integration (Issues MVP)
 **Status:** ✅ Complete (2025-12-03)
-**Spec:** [spec-github-integration.md](../surface/build/spec-github-integration.md)
-**Architecture:** [github-integration-architecture.md](../surface/build/github-integration-architecture.md)
+**Spec:** [spec-github-adapter.md](../surface/build/spec-github-adapter.md)
 **Why:** OnlyDust bounty discovery + hackathon context from issues/discussions
 
 **Key Insight:** GitHub issues use SAME semantic space as code (E5 → MLP → 256-dim). Query "entity spawning" returns both code AND related issues.
@@ -141,7 +148,7 @@ patina scry "bounty cairo" --repo dojo --include-issues --label bounty
 
 #### 3f: Mothership Daemon (`patina serve`)
 **Status:** In Progress (2025-12-03)
-**Spec:** [spec-mothership-service.md](../surface/build/spec-mothership-service.md)
+**Spec:** [spec-serve-command.md](../surface/build/spec-serve-command.md)
 **Why:** Container queries to Mac, hot model caching, Ollama-style daemon
 
 **Architecture:**
@@ -216,6 +223,27 @@ src/mothership/
 └── internal.rs         # HTTP client for daemon
 ```
 
+#### 3g: Bounty Workflow Completion
+**Status:** Not Started (2025-12-04)
+**Spec:** Code review findings - bounty data goes in but doesn't come out
+**Why:** 10x productivity for OnlyDust requires surfacing bounty data in results
+
+**Key Insight (Code Review):** Bounty detection works (labels + regex), data stored in `github_issues` table, but `ScryResult` doesn't expose `is_bounty`, `bounty_amount`, or `labels`. Dead code from user value perspective.
+
+- [ ] Expose `is_bounty`, `bounty_amount`, `labels` in ScryResult struct
+- [ ] Add `--label` filter to scry command (documented but not implemented)
+- [ ] Fix `update_repo` to call `scrape_github_issues` (currently skipped)
+- [ ] Add `--sort bounty` option for bounty-amount ranking
+- [ ] Add `--all-repos` flag for cross-repo aggregation
+
+**Target workflow:**
+```bash
+patina repo add dojoengine/dojo --with-issues
+patina repo add starkware-libs/cairo --with-issues
+patina scry "bounty" --all-repos --label bounty
+# 💰 $500 USDC | dojo#1234 | "Implement spawn batching"
+```
+
 ---
 
 ## Completed Phases
@@ -254,19 +282,86 @@ Working pipeline for single dimension:
 
 ---
 
-## Future Phases
+## Phase 4: Solid Foundation (Current)
 
-### Phase 4: Persona & Cross-Project Learning
+**Goal:** Every node is a complete RAG. Cross-project knowledge that helps win hackathons.
+
+### 4a: `patina rebuild` ✅
+**Spec:** [spec-rebuild-command.md](../surface/build/spec-rebuild-command.md)
+**Status:** Complete (2025-12-06)
+
+Regenerate `.patina/` from `layer/` and local sources.
+
+```bash
+git clone <repo-with-layer>
+patina rebuild
+patina scry "test"  # Works with semantic search
+```
+
+**Validation:** Clone any Patina-enabled repo → rebuild → semantic scry works.
+
+### 4b: External Repo Oxidize
+**Status:** Not Started
+
+All 9 external repos should have semantic indices, not just FTS5.
+
+```bash
+patina repo update --oxidize <name>  # Or automatic during add
+patina scry "spawn" --repo dojo      # Semantic, not FTS5 fallback
+```
+
+**Validation:** `patina scry --repo dojo` returns semantic results (no "falling back to FTS5" message).
+
+### 4c: `--all-repos` Query
+**Status:** Not Started
+
+Single query searches all nodes in unified semantic space.
+
+```bash
+patina scry "entity component patterns" --all-repos
+# Returns ranked results from: patina, dojo, bevy, all 9 repos
+```
+
+**Validation:** Query returns results from multiple repos, ranked by semantic similarity.
+
+### 4d: Persona Capture + Query
 **Spec:** [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
-**Blocked until:** Mothership working
+**Status:** Not Started
 
-- Your beliefs persist across projects
-- Projects can query persona for patterns
-- Non-contradictory adoption from persona to project
+Beliefs flow UP from projects to persona, inform future queries.
 
-### Phase 5: Model Worlds
+```bash
+# In dojo project
+/session-note "ECS systems should be stateless"
+
+# Later, in different project
+patina scry "system design"
+# [PERSONA] ECS systems should be stateless (learned from dojo)
+```
+
+**Validation:** Note captured in one project → appears as `[PERSONA]` result in another.
+
+### 4e: `patina serve` Complete
+**Spec:** [spec-serve-command.md](../surface/build/spec-serve-command.md)
+**Status:** Phase 1 done (/health endpoint)
+
+Full daemon with `/api/scry`, container support, hot model caching.
+
+```bash
+# Mac
+patina serve
+
+# Container (YOLO dev)
+PATINA_MOTHERSHIP=host.docker.internal:50051 patina scry "test"
+```
+
+**Validation:** YOLO container can query Mac mothership.
+
+---
+
+## Phase 5: Model Worlds (Future)
 **Spec:** [spec-model-runtime.md](../surface/build/spec-model-runtime.md)
-**Blocked until:** Hackathon MVP proves value
+**Blocked until:** Phase 4 complete, multi-project coordination proven
 
 **Design Direction:** Different models for different purposes
 - E5-base-v2: Portable router/semantic (ONNX, runs everywhere)
@@ -336,21 +431,19 @@ When context is lost, read these sessions for architectural decisions:
 
 ## Validation Criteria
 
-**Phase 2.5 Complete!** ✅ (2025-11-25)
+**Phase 3 Complete!** ✅ (2025-12-03) - Query infrastructure working.
+- [x] Scry: semantic, FTS5, file-based, dimension selection
+- [x] Repo: external repos, registry, --repo flag
+- [x] GitHub adapter: issues MVP, FTS5 search
 
-**Phase 3 is complete when:**
-1. [x] `patina scry --file src/foo.rs` returns co-changing files
-2. [x] `patina scry "find X"` uses FTS5 for exact matches
-3. [x] `patina repo <url>` adds external repos to `~/.patina/repos/`
-4. [x] `patina scry "query" --repo <name>` queries external repos
-5. [x] Dependency dimension trained and queryable
-6. [x] GitHub issues searchable via `scry --include-issues`
-7. [ ] Mothership daemon (`patina serve`) for container queries
+**Phase 4 Checklist:**
 
-**GitHub MVP complete when:**
-- `patina repo add <url> --with-issues` fetches and indexes issues
-- `patina scry "bounty" --include-issues --label bounty` finds bounties
-- Bounty detection works (labels + body parsing)
-- FTS5 search covers issue title + body
+| Phase | Validation | Status |
+|-------|------------|--------|
+| 4a | `git clone <repo> && patina rebuild && patina scry` works | [x] |
+| 4b | `patina scry --repo dojo` returns semantic (no FTS5 fallback) | [ ] |
+| 4c | `patina scry --all-repos` returns results from multiple repos | [ ] |
+| 4d | `/session-note` in project A → `[PERSONA]` result in project B | [ ] |
+| 4e | YOLO container queries Mac via `PATINA_MOTHERSHIP` | [ ] |
 
-**Hackathon-ready when:** Can query Dojo patterns AND bounties while building Starknet game via `scry --repo dojo --include-issues`.
+**Phase 4 Complete = Ready for hackathons with cross-project knowledge.**

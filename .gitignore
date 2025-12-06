@@ -47,3 +47,10 @@ resources/models/*.onnx
 resources/models/tokenizer.json
 !resources/models/registry.toml
 !resources/models/README.md
+
+# Added by Patina for safety
+node_modules/
+.env
+.patina/
+*.key
+*.pem

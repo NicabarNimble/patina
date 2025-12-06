@@ -97,6 +97,25 @@ enum Commands {
     /// Build embeddings and projections from recipe
     Oxidize,
 
+    /// Rebuild .patina/ from layer/ and local sources (portability)
+    Rebuild {
+        /// Only run scrape step (skip oxidize)
+        #[arg(long)]
+        scrape: bool,
+
+        /// Only run oxidize step (assume db exists)
+        #[arg(long)]
+        oxidize: bool,
+
+        /// Delete existing data before rebuild
+        #[arg(long)]
+        force: bool,
+
+        /// Show what would be rebuilt without doing it
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Search knowledge base using vector similarity
     Scry {
         /// Query text to search for (optional if --file is provided)
@@ -494,6 +513,20 @@ fn main() -> Result<()> {
         }
         Commands::Oxidize => {
             commands::oxidize::oxidize()?;
+        }
+        Commands::Rebuild {
+            scrape,
+            oxidize,
+            force,
+            dry_run,
+        } => {
+            let options = commands::rebuild::RebuildOptions {
+                scrape_only: scrape,
+                oxidize_only: oxidize,
+                force,
+                dry_run,
+            };
+            commands::rebuild::execute(options)?;
         }
         Commands::Scry {
             query,
