@@ -80,6 +80,26 @@ Reference repos don't get: sessions, temporal, semantic dimensions.
 - **DOWN:** Knowledge flows only through explicit queries
 - Reference repos don't contribute to persona (read-only)
 
+### 7. Data Availability Principle
+
+**Core insight (session 20251206-221156):** What data is available determines which dimensions work.
+
+| Data Source | Dimension Enabled | Who Has It |
+|-------------|-------------------|------------|
+| `layer/sessions/` | Semantic | Patina projects only |
+| Full git history | Temporal | Patina projects only |
+| Call graph (AST) | Dependency | Both projects and reference repos |
+| Code symbols | FTS5 lexical | Both projects and reference repos |
+
+**Why this matters:**
+- Reference repos are shallow clones with no sessions → they can't have semantic or temporal dimensions
+- This isn't a limitation to fix; it's the design. Reference repos are for learning patterns, not capturing your work
+- Trying to make reference repos "full RAG" was architectural drift - the two-tier model exists because the data sources are fundamentally different
+
+**Implication for queries:**
+- `patina scry` on a project: semantic + temporal + dependency + FTS5
+- `patina scry --repo` on reference: dependency + FTS5 only
+
 ---
 
 ## Source Architecture (Bundles + Modules)

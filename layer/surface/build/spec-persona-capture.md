@@ -1,8 +1,7 @@
 # Spec: Persona Capture
 
 **Status:** NOT IMPLEMENTED
-**Phase:** 4 (Core Infrastructure)
-**Blocked until:** `patina serve` complete
+**Phase:** 4d (Core Infrastructure)
 
 ---
 
