@@ -1,212 +1,192 @@
-# Spec: Persona Capture
+# Spec: Persona
 
 **Status:** NOT IMPLEMENTED
 **Phase:** 4d (Core Infrastructure)
 
 ---
 
-## Overview
-Persona captures YOUR cross-project beliefs and patterns - knowledge that belongs to you, not to any specific project. Lives in `~/.patina/persona/` and is **never git-tracked**.
+## What Persona IS
 
-**Key principle:** Personas are personal. Different developers have different beliefs, preferences, and mental models. These shouldn't be shared via git.
+A learned model of the user that enables LLMs to respond as the user would want.
 
-**Source:** Beliefs flow from **Patina projects** (code you work on). Reference repos are for learning patterns, not capturing beliefs.
+**Goal:** When user says "build me a website", LLM already knows their stack, style, and approach—starts informed, asks about unknowns.
+
+**Includes:**
+- Beliefs (preferences, principles)
+- Knowledge (facts about user, their history)
+- Style (how they code, communicate, think)
+- Context (what they're working on, what they've done)
+
+**Key principle:** Persona is personal. Lives in `~/.patina/personas/` and is **never git-tracked**. Designed for multi-persona future (one user, multiple contexts).
+
+**Key principle:** Persona is continuously refined, not captured once. Every session potentially adds knowledge.
 
 ## Persona vs Project Knowledge
 
 | Aspect | Project Knowledge | Persona |
 |--------|-------------------|---------|
-| Location | `<project>/.patina/events/` | `~/.patina/persona/events/` |
+| Location | `<project>/.patina/` | `~/.patina/personas/default/` |
 | Scope | Project-specific | Cross-project |
 | Example | "This project uses ECS" | "I prefer ECS for game engines" |
-| Shared | Yes (git-tracked) | **No (personal, machine-local)** |
-| Queried via | `patina scry` (project) | `patina scry` ([PERSONA] tag) |
-| Triggers | `/session-note`, `scrape` | `patina persona note` |
+| Shared | Yes (via layer/) | **No (personal, machine-local)** |
+| Queried via | `patina scry` | `patina scry` ([PERSONA] tag) |
 
-## Components
+---
 
-### 1. Persona Note Command
-**Command:** `patina persona note "insight"`
+## Capture Paths
 
-**Location:** `src/commands/persona/note.rs`
+Persona is continuously refined via multiple capture mechanisms. All paths feed the same store, tagged by source.
 
-**Usage:**
+### 1. Reflection Flow (`/persona-start`)
+Dedicated Q&A distillation session. LLM reviews observations, asks strategic questions, codifies validated knowledge.
+- Highest signal, highest friction
+- **WHY separate:** Work flow is chaotic pair-programming—don't interrupt it. Reflection is a different mental mode.
+- Uses existing Prolog validation infrastructure (`src/reasoning/engine.rs`)
+
+### 2. Session Observation
+Patterns captured during `/session-*` work flow.
+- Raw observations during work (decisions, challenges, patterns)
+- Tagged for later distillation
+- Low friction, doesn't break flow
+
+### 3. Session Distillation
+Post-session processing: scrape sessions → extract persona-worthy knowledge.
+- Automated extraction from session history
+- Can run batch (nightly, on-demand)
+- Bridges session observations → persona
+
+### 4. Direct Capture
+Explicit user statements via CLI.
 ```bash
-# Capture cross-project belief
-patina persona note "Always use Result<T,E> over panics in Rust"
-
-# With domain tags
-patina persona note --domains rust,error-handling "Prefer explicit error types"
-
-# With reliability score
-patina persona note --reliability 0.95 "ECS is better than OOP for games"
+patina persona note "prefer Result<T,E> over panics" --domains rust
+patina persona note "worked at Company X on distributed systems"
 ```
+- Lowest friction for explicit knowledge
+- No validation required
 
-**Implementation:**
-```rust
-// src/commands/persona/note.rs
-pub fn persona_note(content: &str, domains: Vec<String>, reliability: f32) -> Result<()> {
-    let persona_dir = dirs::home_dir()?.join(".patina/persona/events");
-    fs::create_dir_all(&persona_dir)?;
+---
 
-    let manifest = read_persona_manifest(&persona_dir)?;
-    let next_seq = manifest.last_sequence.global + 1;
+## Storage
 
-    let event = Event {
-        event_id: format!("evt_{}_{:03}", date_str(), next_seq),
-        event_type: EventType::BeliefCaptured,
-        sequence: Sequence { global: next_seq, client: 0, rebase_generation: 0 },
-        source: Source {
-            session_id: None,  // Not from a session
-            git_commit: None,
-            git_branch: None,
-            capture_context: "cli".to_string(),
-        },
-        payload: BeliefPayload {
-            content: content.to_string(),
-            domains,
-            reliability,
-            supersedes: None,  // For belief updates
-        },
-        ..
-    };
-
-    write_event(&persona_dir, &event)?;
-    update_manifest(&persona_dir, next_seq)?;
-
-    println!("Captured persona belief: {}", event.event_id);
-    Ok(())
-}
 ```
-
-### 2. Persona Event Types
-```rust
-pub enum PersonaEventType {
-    BeliefCaptured,      // New belief/pattern
-    BeliefSuperseded,    // Belief updated/refined
-    BeliefRetracted,     // Belief no longer held
-    ProjectRegistered,   // New project added
-    ProjectUnregistered, // Project removed
-}
+~/.patina/
+├── personas/
+│   └── default/                    # Default persona (multi-persona future)
+│       ├── events/                 # Append-only capture
+│       │   ├── manifest.json
+│       │   └── *.json              # Tagged by source
+│       │
+│       ├── materialized/           # Processed views
+│       │   ├── persona.db          # SQLite
+│       │   └── persona.usearch     # Vector index
+│       │
+│       └── config.yaml             # Persona settings
+│
+├── registry.yaml
+└── repos/
 ```
 
 **Event Schema:**
 ```json
 {
-  "schema_version": "1.0.0",
-  "event_id": "evt_20251121_001",
-  "event_type": "belief_captured",
-  "timestamp": "2025-11-21T06:32:00Z",
-  "sequence": { "global": 1, "client": 0, "rebase_generation": 0 },
+  "event_id": "evt_20251208_001",
+  "event_type": "knowledge_captured",
+  "timestamp": "2025-12-08T13:30:00Z",
   "source": {
-    "capture_context": "cli",
-    "working_project": "patina"  // Optional: where you were when captured
+    "capture_path": "direct",
+    "working_project": "patina"
   },
   "payload": {
-    "content": "Always use Result<T,E> over panics in Rust",
+    "content": "prefer Result<T,E> over panics",
     "domains": ["rust", "error-handling"],
-    "reliability": 0.95,
     "supersedes": null
   }
 }
 ```
 
-### 3. Persona Materializer
-**Command:** `patina persona materialize`
+**Source tags:** `reflection`, `session`, `distillation`, `direct`
 
-**Location:** `src/commands/persona/materialize.rs`
+---
 
-**What it does:**
-1. Read `~/.patina/persona/events/manifest.json`
-2. Process events since last materialization
-3. Insert into `~/.patina/persona/beliefs.db`
-4. Generate embeddings, insert into `~/.patina/persona/beliefs.usearch`
+## Commands
 
-**Handles supersession:**
-- When `belief_superseded` event arrives, mark old belief inactive
-- When `belief_retracted` event arrives, mark belief retracted
-- Query only active beliefs by default
-
-### 4. Persona Query (CLI)
-**Command:** `patina persona query "search term"`
-
-**Usage:**
+### Capture
 ```bash
-patina persona query "error handling"
+patina persona note "content" [--domains X,Y] [--supersedes ID]
+```
+
+### Query
+```bash
+patina persona query "search term"
 patina persona query --domains rust "patterns"
-patina persona query --limit 5 "architecture"
+patina persona list
+patina persona list --domains rust --recent 10
 ```
 
-**Output:**
-```
-[0.89] Always use Result<T,E> over panics in Rust
-       domains: rust, error-handling
-       captured: 2025-11-21
-
-[0.82] Prefer explicit error types over String errors
-       domains: rust, error-handling
-       captured: 2025-11-20
-```
-
-### 5. Persona List
-**Command:** `patina persona list`
-
-**Usage:**
+### Processing
 ```bash
-patina persona list                    # All beliefs
-patina persona list --domains rust     # Filter by domain
-patina persona list --recent 10        # Most recent
+patina persona materialize          # Process events → db + vectors
+patina persona distill              # Extract from recent sessions
 ```
 
-## Directory Structure
-```
-~/.patina/
-├── persona/
-│   ├── events/
-│   │   ├── manifest.json
-│   │   ├── 2025-11-21-001-belief-captured.json
-│   │   └── ...
-│   ├── beliefs.db              # Materialized state
-│   └── beliefs.usearch         # Vector index
-└── ...
-```
+---
 
-## Integration with Scry
+## Integration
 
-Persona is queried via `patina scry` which combines project + persona results:
-
+### Scry Integration
 ```bash
-patina scry "error handling patterns"
-# Returns:
-# [PROJECT] TypeScript prefers Result types here
-# [PERSONA] Always use Result<T,E> over panics in Rust
-# [PERSONA] Prefer explicit error types over String
+patina scry "error handling"
+# [PROJECT] src/error.rs - custom Result type
+# [PERSONA] prefer Result<T,E> over panics (rust)
 ```
 
-Persona results are tagged `[PERSONA]` and ranked slightly lower than project-specific knowledge (0.95x similarity penalty) since project context is more relevant.
+Persona results tagged `[PERSONA]`, can be filtered with `--no-persona`.
 
-**Via mothership API:**
+### Mothership Integration
 ```bash
-curl -X POST localhost:50051/scry \
+curl -X POST localhost:50051/api/scry \
   -d '{"query": "error handling", "include_persona": true}'
 ```
 
-## CLI Subcommands
-```rust
-// src/commands/persona/mod.rs
-pub enum PersonaCommand {
-    Note { content: String, domains: Vec<String>, reliability: Option<f32> },
-    Query { query: String, domains: Vec<String>, limit: Option<usize> },
-    List { domains: Vec<String>, recent: Option<usize> },
-    Materialize { full: bool },
-}
-```
+### LLM Integration
+**Layer 1 (current):** Adapters (CLAUDE.md, etc.) tell the LLM about persona tools:
+- "Use `patina persona query` for user preferences on this domain"
+- "Query persona before making architectural decisions"
+
+**Layer 2 (future):** Orchestration agent that knows patina system, makes intelligent routing decisions about what to query.
+
+---
+
+## Existing Infrastructure
+
+**Working code to reuse/adapt:**
+- `src/storage/beliefs.rs` - SQLite + USearch storage, works but lives in project-local `.patina/`. Relocate to `~/.patina/personas/`.
+- `src/commands/belief/validate.rs` - Prolog validation, works. Use for reflection flow.
+- `src/reasoning/engine.rs` - Scryer Prolog integration, works.
+- `/persona-start` command - reflection flow trigger, works. Update to write to new location.
+
+---
 
 ## Acceptance Criteria
-- [ ] `patina persona note "belief"` creates event in `~/.patina/persona/events/`
-- [ ] `patina persona materialize` processes events into SQLite + USearch
-- [ ] `patina persona query "term"` returns matching beliefs
-- [ ] `patina persona list` shows all captured beliefs
+
+- [ ] `~/.patina/personas/default/` structure created
+- [ ] `patina persona note` captures events (tagged `direct`)
+- [ ] `patina persona materialize` processes events → SQLite + USearch
+- [ ] `patina persona query` returns semantic search results
+- [ ] `patina persona list` shows captured knowledge
 - [ ] `patina scry` includes persona results tagged `[PERSONA]`
-- [ ] Beliefs queryable via mothership `/scry` and `/persona/query` endpoints
-- [ ] Persona data never appears in git (all under ~/.patina/)
+- [ ] `/api/scry` supports `include_persona` option
+- [ ] Persona data never appears in git
+
+---
+
+## Future: Multi-Persona
+
+Design supports future multi-persona capability:
+```bash
+patina persona create work-gamedev
+patina persona switch work-gamedev
+# Project config can specify persona
+```
+
+Not implemented now, but storage structure accommodates it.
