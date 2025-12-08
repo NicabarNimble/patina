@@ -175,6 +175,12 @@ enum Commands {
         command: BeliefCommands,
     },
 
+    /// Cross-project user knowledge (preferences, style, history)
+    Persona {
+        #[command(subcommand)]
+        command: PersonaCommands,
+    },
+
     /// Ask questions about the codebase
     Ask {
         #[command(flatten)]
@@ -316,6 +322,47 @@ enum BeliefCommands {
         #[arg(long, default_value = "20")]
         limit: usize,
     },
+}
+
+#[derive(Subcommand)]
+enum PersonaCommands {
+    /// Capture knowledge directly
+    Note {
+        /// Content to capture
+        content: String,
+
+        /// Domains this applies to (comma-separated, e.g., rust,error-handling)
+        #[arg(long, value_delimiter = ',')]
+        domains: Option<Vec<String>>,
+    },
+
+    /// Search persona knowledge
+    Query {
+        /// Search query
+        query: String,
+
+        /// Maximum results (default: 10)
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Minimum similarity score (0.0-1.0, default: 0.0)
+        #[arg(long, default_value = "0.0")]
+        min_score: f32,
+    },
+
+    /// List captured knowledge
+    List {
+        /// Maximum entries to show (default: 10)
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Filter by domains (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        domains: Option<Vec<String>>,
+    },
+
+    /// Process events into searchable index
+    Materialize,
 }
 
 #[derive(Subcommand)]
@@ -585,6 +632,24 @@ fn main() -> Result<()> {
                 limit,
             } => {
                 commands::belief::validate::execute(&query, min_score, limit)?;
+            }
+        },
+        Commands::Persona { command } => match command {
+            PersonaCommands::Note { content, domains } => {
+                commands::persona::execute_note(&content, domains)?;
+            }
+            PersonaCommands::Query {
+                query,
+                limit,
+                min_score,
+            } => {
+                commands::persona::execute_query(&query, limit, min_score)?;
+            }
+            PersonaCommands::List { limit, domains } => {
+                commands::persona::execute_list(limit, domains)?;
+            }
+            PersonaCommands::Materialize => {
+                commands::persona::execute_materialize()?;
             }
         },
         Commands::Doctor {
