@@ -53,7 +53,7 @@ See: [rag-network.md](../surface/rag-network.md)
 | **4b** | Reference repo indexing | ✅ Complete - dependency dimension + auto-detect |
 | **4c** | `--all-repos` query | ✅ Complete - cross-project search |
 | **4d** | Persona | ⬜ Not started |
-| **4e** | `patina serve` complete | 🟡 `/api/scry` done, client routing pending |
+| **4e** | `patina serve` complete | ✅ Complete |
 
 **Specs:**
 - [spec-rebuild-command.md](../surface/build/spec-rebuild-command.md) - for projects
@@ -359,25 +359,31 @@ patina scry "error handling"  # includes [PERSONA] results
 
 **Validation:** Query in project B returns knowledge captured in project A.
 
-### 4e: `patina serve` Complete
+### 4e: `patina serve` Complete ✅
 **Spec:** [spec-serve-command.md](../surface/build/spec-serve-command.md)
-**Status:** `/api/scry` complete (2025-12-08), container integration pending
+**Status:** Complete (2025-12-08)
 
 HTTP daemon with `/api/scry` for container and remote queries.
 
 ```bash
-# Mac
+# Mac - start daemon
 patina serve
 
-# Query via API
+# Query via API directly
 curl -X POST localhost:50051/api/scry \
   -d '{"query": "session", "limit": 3}'
 
-# Container (YOLO dev) - pending validation
+# Container or remote - auto-routes to mothership
 PATINA_MOTHERSHIP=host.docker.internal:50051 patina scry "test"
 ```
 
-**Validation:** ✅ `/api/scry` returns JSON results. Container auto-routing pending.
+**What's implemented:**
+- Mothership client module (`src/mothership/`)
+- `PATINA_MOTHERSHIP` env var detection
+- Automatic scry routing to daemon when configured
+- All query modes supported (`--all-repos`, `--dimension`, `--repo`)
+
+**Validation:** ✅ Scry auto-routes to daemon when `PATINA_MOTHERSHIP` is set.
 
 ---
 
@@ -470,6 +476,6 @@ When context is lost, read these sessions for architectural decisions:
 | 4b | `patina repo add` + `--oxidize` creates dependency index for reference repos | [x] |
 | 4c | `patina scry --all-repos` returns results from projects + reference repos | [x] |
 | 4d | `patina persona query` in project B returns knowledge from project A | [ ] |
-| 4e | YOLO container queries Mac via `PATINA_MOTHERSHIP` | [ ] |
+| 4e | `PATINA_MOTHERSHIP=... patina scry` routes to daemon | [x] |
 
 **Phase 4 Complete = Ready for hackathons with cross-project knowledge.**
