@@ -7,6 +7,7 @@ pub mod embeddings;
 pub mod eval;
 pub mod init;
 pub mod oxidize;
+pub mod persona;
 pub mod query;
 pub mod rebuild;
 pub mod repo;
