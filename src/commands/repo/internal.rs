@@ -593,26 +593,19 @@ fn oxidize_repo(repo_path: &Path) -> Result<()> {
     }
 
     // Create oxidize.yaml if it doesn't exist
+    // Reference repos only get dependency dimension (no sessions → no semantic, shallow clone → no temporal)
     let recipe_path = repo_path.join(".patina/oxidize.yaml");
     if !recipe_path.exists() {
-        println!("   Creating oxidize.yaml recipe...");
-        let recipe_content = r#"# Oxidize Recipe for external repo
+        println!("   Creating oxidize.yaml recipe (dependency only)...");
+        let recipe_content = r#"# Oxidize Recipe for reference repo
+# Reference repos only support dependency dimension:
+# - No layer/sessions/ → no semantic (no session pairs)
+# - Shallow clone → no temporal (no co-change history)
+# - Call graph from AST → dependency works
 version: 1
 embedding_model: e5-base-v2
 
 projections:
-  # Semantic projection - observations from same session are similar
-  semantic:
-    layers: [768, 1024, 256]
-    epochs: 10
-    batch_size: 32
-
-  # Temporal projection - files that co-change are related
-  temporal:
-    layers: [768, 1024, 256]
-    epochs: 10
-    batch_size: 32
-
   # Dependency projection - functions that call each other are related
   dependency:
     layers: [768, 1024, 256]
@@ -626,8 +619,7 @@ projections:
     let repo_resources = repo_path.join("resources");
     if !repo_resources.exists() && resources_path.exists() {
         println!("   Linking model resources...");
-        symlink(&resources_path, &repo_resources)
-            .context("Failed to create resources symlink")?;
+        symlink(&resources_path, &repo_resources).context("Failed to create resources symlink")?;
     }
 
     // Run oxidize
