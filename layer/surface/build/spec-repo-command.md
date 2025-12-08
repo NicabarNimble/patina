@@ -157,3 +157,29 @@ repos:
 - [x] Registry persists in `~/.patina/registry.yaml`
 - [ ] `patina repo update --oxidize` builds dependency index
 - [ ] `--with-issues` scrapes GitHub issues
+
+---
+
+## Known Challenges (Phase 4b)
+
+Identified in session 20251206-221156:
+
+### 1. Hardcoded Embedding Paths
+**Problem:** Embedding code assumes running from a patina project directory with `.patina/data/embeddings/`.
+
+**Current workaround:** Symlink from reference repo to shared model cache.
+
+**Proper fix:** Make embedding paths configurable, default to `~/.patina/cache/models/` for reference repos.
+
+### 2. Reference Repos Lack Training Data
+**Problem:** Oxidize needs training pairs, but reference repos don't have the data sources:
+- No `layer/sessions/` → no semantic dimension (no session pairs)
+- Shallow clone → no temporal dimension (no co-change history)
+- Only call graph available → dependency dimension only
+
+**Implication:** Reference repos can only support dependency dimension, not semantic or temporal. This is by design (the "Data Availability Principle").
+
+### 3. Config Schema Evolution
+**Problem:** `config.toml` schema has evolved without a migration path. Old reference repos may have stale configs.
+
+**Fix needed:** Version field in config + migration logic in `patina repo update`.
