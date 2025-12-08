@@ -24,7 +24,7 @@ Each project is a knowledge node:
 ### 2. Mothership as Hub
 
 `~/.patina/` contains:
-- `persona/` - Cross-project beliefs and facts
+- `personas/` - Cross-project knowledge (see spec-persona-capture.md)
 - `registry.yaml` - All known projects and reference repos
 - `cache/models/` - Shared model cache
 - `repos/` - Reference repos (read-only knowledge bases)
@@ -76,9 +76,9 @@ Reference repos don't get: sessions, temporal, semantic dimensions.
 
 ### 6. Data Flow
 
-- **UP:** Learnings flow from projects → Mothership persona
-- **DOWN:** Knowledge flows only through explicit queries
-- Reference repos don't contribute to persona (read-only)
+- **UP:** Knowledge flows from projects → Mothership personas
+- **DOWN:** Knowledge flows only through explicit queries (scry)
+- Reference repos don't contribute to persona (read-only knowledge sources)
 
 ### 7. Data Availability Principle
 
@@ -149,6 +149,6 @@ This is the adapter pattern applied to models.
 
 > "Patina is an organic agentic RAG that captures knowledge across projects and domains"
 
-> "Projects are islands, personas are gods. Knowledge flows UP (project → persona). Knowledge flows DOWN only through explicit requests."
+> "Projects are islands, personas are the user. Knowledge flows UP (project → persona). Knowledge flows DOWN only through explicit queries."
 
 > "Mothership is a librarian, not a library. It tracks where knowledge lives, doesn't duplicate it."

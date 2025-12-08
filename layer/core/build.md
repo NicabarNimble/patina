@@ -30,14 +30,14 @@ patina repo add <url>            # Code you learn from, not work on
 
 **Mothership** (`~/.patina/`):
 - `registry.yaml` = all known projects and reference repos
-- `persona/` = beliefs that flow UP from projects
+- `personas/` = user knowledge that informs LLM responses (see 4d)
 - `patina serve` = daemon for cross-project queries
 
 See: [rag-network.md](../surface/rag-network.md)
 
 ---
 
-## Current Direction (2025-12-07)
+## Current Direction (2025-12-08)
 
 **Goal:** Cross-project knowledge that helps win hackathons.
 
@@ -52,8 +52,8 @@ See: [rag-network.md](../surface/rag-network.md)
 | **4a** | `patina rebuild` | ✅ Complete |
 | **4b** | Reference repo indexing | ✅ Complete - dependency dimension + auto-detect |
 | **4c** | `--all-repos` query | ✅ Complete - cross-project search |
-| **4d** | Persona capture + query | ⬜ Not started |
-| **4e** | `patina serve` complete | 🟡 API done, container routing pending |
+| **4d** | Persona | ⬜ Not started |
+| **4e** | `patina serve` complete | 🟡 `/api/scry` done, client routing pending |
 
 **Specs:**
 - [spec-rebuild-command.md](../surface/build/spec-rebuild-command.md) - for projects
@@ -196,10 +196,11 @@ Mac (Mothership)                    Container
 - [ ] Thread-safe embedder access
 
 **Phase 3: Scry API + Client Detection**
-- [ ] `/api/scry` endpoint (semantic/lexical/file)
+- [x] `/api/scry` endpoint (semantic/lexical/file) ✅ (2025-12-08)
 - [ ] Mothership client module
 - [ ] Auto-detection: `PATINA_MOTHERSHIP` env var or localhost check
 - [ ] Update scry command to route to daemon
+- [ ] Persona integration (`include_persona` option)
 
 **Phase 4: Container Integration**
 - [ ] `--host 0.0.0.0` option for container access
@@ -326,22 +327,37 @@ patina scry "entity component patterns" --all-repos
 
 **Validation:** ✅ Query returns combined results from project + all reference repos.
 
-### 4d: Persona Capture + Query
+### 4d: Persona
 **Spec:** [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
 **Status:** Not Started
 
-Beliefs flow UP from projects to persona, inform future queries.
+**What persona IS:** A learned model of the user that enables LLMs to respond as the user would want. Includes beliefs, knowledge, style, history, preferences.
 
-```bash
-# In dojo project
-/session-note "ECS systems should be stateless"
-
-# Later, in different project
-patina scry "system design"
-# [PERSONA] ECS systems should be stateless (learned from dojo)
+**Storage:** `~/.patina/personas/default/` (designed for multi-persona future)
+```
+~/.patina/personas/default/
+├── events/           # Append-only capture (tagged by source)
+├── materialized/     # persona.db + persona.usearch
+└── config.yaml
 ```
 
-**Validation:** Note captured in one project → appears as `[PERSONA]` result in another.
+**Capture paths (all continuous, all feed same store):**
+1. Reflection flow (`/persona-start`) - dedicated Q&A distillation
+2. Session observation - patterns from `/session-*` work
+3. Session distillation - scrape sessions → persona knowledge
+4. Direct capture - `patina persona note "..."`
+
+**Query:**
+```bash
+patina persona query "error handling"
+patina scry "error handling"  # includes [PERSONA] results
+```
+
+**LLM integration:** Adapters (CLAUDE.md, etc.) tell LLM about persona tools. LLM queries persona for context.
+
+**Build sequence:** Storage structure → materialize command → query command → capture paths → scry integration → adapter rules.
+
+**Validation:** Query in project B returns knowledge captured in project A.
 
 ### 4e: `patina serve` Complete
 **Spec:** [spec-serve-command.md](../surface/build/spec-serve-command.md)
@@ -424,6 +440,7 @@ When context is lost, read these sessions for architectural decisions:
 
 | Session | Topic | Key Insight |
 |---------|-------|-------------|
+| 20251208-083033 | Persona Deep Dive | Persona = learned model of user, multi-capture paths, design for multi-persona |
 | 20251206-101304 | Continue | Phase 4a complete, bounty removed from core, pre-push script fix |
 | 20251205-062457 | Planning Pitfalls | Vendor workflow friction, layer/ must be source of truth |
 | 20251204-173633 | What is Patina | "LLM-agnostic agentic RAG network", bounty = drift |
@@ -450,9 +467,9 @@ When context is lost, read these sessions for architectural decisions:
 | Phase | Validation | Status |
 |-------|------------|--------|
 | 4a | `git clone <project> && patina rebuild && patina scry` works | [x] |
-| 4b | `patina repo add` + `--oxidize` creates dependency index for reference repos | [ ] |
-| 4c | `patina scry --all-repos` returns results from projects + reference repos | [ ] |
-| 4d | `/session-note` in project A → `[PERSONA]` result in project B | [ ] |
+| 4b | `patina repo add` + `--oxidize` creates dependency index for reference repos | [x] |
+| 4c | `patina scry --all-repos` returns results from projects + reference repos | [x] |
+| 4d | `patina persona query` in project B returns knowledge from project A | [ ] |
 | 4e | YOLO container queries Mac via `PATINA_MOTHERSHIP` | [ ] |
 
 **Phase 4 Complete = Ready for hackathons with cross-project knowledge.**
