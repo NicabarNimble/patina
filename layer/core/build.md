@@ -157,7 +157,7 @@ patina scry "spawn entity" --repo dojo --include-issues
 - PRs + Discussions integration
 
 #### 3f: Mothership Daemon (`patina serve`)
-**Status:** In Progress (2025-12-03)
+**Status:** Core Complete (2025-12-08), future APIs deferred
 **Spec:** [spec-serve-command.md](../surface/build/spec-serve-command.md)
 **Why:** Container queries to Mac, hot model caching, Ollama-style daemon
 
@@ -190,48 +190,52 @@ Mac (Mothership)                    Container
 - [x] Implement `/health` endpoint
 - [x] Add `Serve` command to CLI
 
-**Phase 2: Model Caching + Embed API**
+**Phase 2: Model Caching + Embed API** (Future - no use case yet)
 - [ ] ServerState with parking_lot::RwLock
 - [ ] `/api/embed` and `/api/embed/batch` endpoints
 - [ ] Thread-safe embedder access
+- *Why deferred: /api/scry handles embedding internally, no external tool needs raw embeddings yet*
 
-**Phase 3: Scry API + Client Detection**
-- [x] `/api/scry` endpoint (semantic/lexical/file) ✅ (2025-12-08)
-- [ ] Mothership client module
-- [ ] Auto-detection: `PATINA_MOTHERSHIP` env var or localhost check
-- [ ] Update scry command to route to daemon
-- [ ] Persona integration (`include_persona` option)
+**Phase 3: Scry API + Client Detection** ✅ (2025-12-08)
+- [x] `/api/scry` endpoint (semantic/lexical/file)
+- [x] Mothership client module
+- [x] Auto-detection: `PATINA_MOTHERSHIP` env var or localhost check
+- [x] Update scry command to route to daemon
+- [ ] Persona integration (`include_persona` option) - after 4d complete
 
-**Phase 4: Container Integration**
-- [ ] `--host 0.0.0.0` option for container access
+**Phase 4: Container Integration** ✅
+- [x] `--host 0.0.0.0` option for container access
 - [ ] Update YOLO devcontainer with `PATINA_MOTHERSHIP` env var
 - [ ] Test container → Mac queries
+- *Partial: flag exists, container testing not validated*
 
-**Phase 5: Repo + Model APIs**
+**Phase 5: Repo + Model APIs** (Future - CLI works for now)
 - [ ] `/api/repos` endpoints
 - [ ] `/api/model` status endpoint
 - [ ] Graceful shutdown (SIGTERM)
+- *Why deferred: CLI works for repo management, no monitoring dashboard yet*
 
 **API Endpoints:**
 ```
-GET  /health              # Health check
-POST /api/scry            # Query (semantic/lexical/file)
-POST /api/embed           # Generate embedding
-POST /api/embed/batch     # Batch embeddings
-GET  /api/repos           # List repos
-GET  /api/repos/{name}    # Repo details
-GET  /api/model           # Model status
+GET  /health              # Health check                    ✅ Done
+GET  /version             # Version info                    ✅ Done
+POST /api/scry            # Query (semantic/lexical/file)   ✅ Done
+POST /api/embed           # Generate embedding              Future
+POST /api/embed/batch     # Batch embeddings                Future
+GET  /api/repos           # List repos                      Future
+GET  /api/repos/{name}    # Repo details                    Future
+GET  /api/model           # Model status                    Future
 ```
 
-**Files to Create:**
+**Files Created:**
 ```
 src/commands/serve/
-├── mod.rs              # Public interface
-└── internal.rs         # Server implementation
+├── mod.rs              # Public interface         ✅
+└── internal.rs         # Server implementation    ✅
 
 src/mothership/
-├── mod.rs              # Client interface
-└── internal.rs         # HTTP client for daemon
+├── mod.rs              # Client interface         ✅
+└── internal.rs         # HTTP client for daemon   ✅
 ```
 
 ---
