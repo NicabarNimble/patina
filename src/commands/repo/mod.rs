@@ -41,14 +41,14 @@ pub fn list() -> Result<Vec<RepoEntry>> {
     internal::list_repos()
 }
 
-/// Update a repository (git pull + rescrape)
-pub fn update(name: &str) -> Result<()> {
-    internal::update_repo(name)
+/// Update a repository (git pull + rescrape + optional oxidize)
+pub fn update(name: &str, oxidize: bool) -> Result<()> {
+    internal::update_repo(name, oxidize)
 }
 
 /// Update all repositories
-pub fn update_all() -> Result<()> {
-    internal::update_all_repos()
+pub fn update_all(oxidize: bool) -> Result<()> {
+    internal::update_all_repos(oxidize)
 }
 
 /// Remove a repository
@@ -96,11 +96,11 @@ pub fn execute(command: RepoCommand) -> Result<()> {
             }
             Ok(())
         }
-        RepoCommand::Update { name } => {
+        RepoCommand::Update { name, oxidize } => {
             if let Some(n) = name {
-                update(&n)
+                update(&n, oxidize)
             } else {
-                update_all()
+                update_all(oxidize)
             }
         }
         RepoCommand::Remove { name } => remove(&name),
@@ -119,6 +119,7 @@ pub enum RepoCommand {
     List,
     Update {
         name: Option<String>,
+        oxidize: bool,
     },
     Remove {
         name: String,

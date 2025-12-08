@@ -341,6 +341,10 @@ enum RepoCommands {
         /// Update all repositories
         #[arg(long)]
         all: bool,
+
+        /// Also run oxidize to build semantic indices
+        #[arg(long)]
+        oxidize: bool,
     },
 
     /// Remove a repository
@@ -614,11 +618,11 @@ fn main() -> Result<()> {
                     with_issues,
                 },
                 (Some(RepoCommands::List), _) => RepoCommand::List,
-                (Some(RepoCommands::Update { name, all }), _) => {
+                (Some(RepoCommands::Update { name, all, oxidize }), _) => {
                     if all {
-                        RepoCommand::Update { name: None }
+                        RepoCommand::Update { name: None, oxidize }
                     } else {
-                        RepoCommand::Update { name }
+                        RepoCommand::Update { name, oxidize }
                     }
                 }
                 (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },
