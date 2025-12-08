@@ -156,13 +156,13 @@ curl -X POST localhost:50051/api/scry \
 
 ---
 
-## Existing Infrastructure
+## Implementation
 
-**Working code to reuse/adapt:**
-- `src/storage/beliefs.rs` - SQLite + USearch storage, works but lives in project-local `.patina/`. Relocate to `~/.patina/personas/`.
-- `src/commands/belief/validate.rs` - Prolog validation, works. Use for reflection flow.
-- `src/reasoning/engine.rs` - Scryer Prolog integration, works.
-- `/persona-start` command - reflection flow trigger, works. Update to write to new location.
+**Core:** `src/commands/persona/mod.rs` - follows scrape/sessions pattern (single file, private internals, public results).
+
+**Available for reflection flow (future):**
+- `src/reasoning/engine.rs` - Scryer Prolog integration
+- `src/storage/beliefs.rs` - structured belief storage
 
 ---
 
