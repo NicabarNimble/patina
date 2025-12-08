@@ -47,13 +47,13 @@ See: [rag-network.md](../surface/rag-network.md)
 
 **Phase 4 (Solid Foundation):** ← Current focus
 
-| Phase | Deliverable | Validation |
-|-------|-------------|------------|
-| **4a** | `patina rebuild` | `git clone <project> && patina rebuild && patina scry` works |
-| **4b** | Reference repo indexing | `patina repo add` creates dependency index, `--repo` queries work |
-| **4c** | `--all-repos` query | Single query searches projects + reference repos |
-| **4d** | Persona capture + query | Beliefs flow up from projects, inform queries |
-| **4e** | `patina serve` complete | Containers query Mac mothership |
+| Phase | Deliverable | Status |
+|-------|-------------|--------|
+| **4a** | `patina rebuild` | ✅ Complete |
+| **4b** | Reference repo indexing | ✅ Complete - dependency dimension + auto-detect |
+| **4c** | `--all-repos` query | ✅ Complete - cross-project search |
+| **4d** | Persona capture + query | ⬜ Not started |
+| **4e** | `patina serve` complete | 🟡 API done, container routing pending |
 
 **Specs:**
 - [spec-rebuild-command.md](../surface/build/spec-rebuild-command.md) - for projects
@@ -289,28 +289,30 @@ patina scry "test"  # Full semantic search
 
 **Validation:** Clone any patina project → rebuild → semantic scry works.
 
-### 4b: Reference Repo Indexing
+### 4b: Reference Repo Indexing ✅
 **Spec:** [spec-repo-command.md](../surface/build/spec-repo-command.md)
-**Status:** In Progress
+**Status:** Complete (2025-12-08)
 
 Reference repos get lightweight indexing: code AST, call graph, FTS5, dependency dimension.
 
 ```bash
 patina repo add dojoengine/dojo       # Clone, scrape, index
 patina repo update --oxidize dojo     # Add dependency dimension
-patina scry "spawn" --repo dojo       # Query via FTS5 or dependency
+patina scry "spawn" --repo dojo       # Query via dependency index
 ```
 
 **What reference repos get:**
 - Code AST and symbols (FTS5 lexical search)
-- Call graph (dependency dimension)
+- Call graph (dependency dimension only)
 - Shallow clone (no temporal dimension)
 - No sessions (no semantic dimension)
 
-**Validation:** `patina repo add` + `--oxidize` creates queryable index.
+**Key design:** Recipe creates dependency-only projection (no semantic/temporal since data not available).
 
-### 4c: `--all-repos` Query
-**Status:** Not Started
+**Validation:** ✅ `patina repo update --oxidize` creates queryable index, scry auto-detects available dimensions.
+
+### 4c: `--all-repos` Query ✅
+**Status:** Complete (2025-12-08)
 
 Single query searches projects (full RAG) + reference repos (lightweight).
 
@@ -320,7 +322,9 @@ patina scry "entity component patterns" --all-repos
 # Reference: FTS5 + dependency
 ```
 
-**Validation:** Query returns results from both projects and reference repos.
+**Key design:** Results tagged with source (`[PROJECT]`, `[DOJO]`, etc.), sorted by score.
+
+**Validation:** ✅ Query returns combined results from project + all reference repos.
 
 ### 4d: Persona Capture + Query
 **Spec:** [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
@@ -341,19 +345,23 @@ patina scry "system design"
 
 ### 4e: `patina serve` Complete
 **Spec:** [spec-serve-command.md](../surface/build/spec-serve-command.md)
-**Status:** Phase 1 done (/health endpoint)
+**Status:** `/api/scry` complete (2025-12-08), container integration pending
 
-Full daemon with `/api/scry`, container support, hot model caching.
+HTTP daemon with `/api/scry` for container and remote queries.
 
 ```bash
 # Mac
 patina serve
 
-# Container (YOLO dev)
+# Query via API
+curl -X POST localhost:50051/api/scry \
+  -d '{"query": "session", "limit": 3}'
+
+# Container (YOLO dev) - pending validation
 PATINA_MOTHERSHIP=host.docker.internal:50051 patina scry "test"
 ```
 
-**Validation:** YOLO container can query Mac mothership.
+**Validation:** ✅ `/api/scry` returns JSON results. Container auto-routing pending.
 
 ---
 
