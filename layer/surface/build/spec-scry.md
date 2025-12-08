@@ -21,7 +21,7 @@ User: patina scry "error handling patterns"
    └── Results: [PROJECT] "TypeScript prefers Result types"
                 [PROJECT] "Effect library handles this"
 
-2. Query persona (~/.patina/persona/)
+2. Query persona (~/.patina/personas/default/)
    └── Results: [PERSONA] "I prefer Rust Result<T,E>"
                 [PERSONA] "Always use explicit error types"
 

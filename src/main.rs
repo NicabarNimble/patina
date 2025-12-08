@@ -141,6 +141,10 @@ enum Commands {
         #[arg(long)]
         repo: Option<String>,
 
+        /// Query all registered repos (current project + reference repos)
+        #[arg(long)]
+        all_repos: bool,
+
         /// Include GitHub issues in search results
         #[arg(long)]
         include_issues: bool,
@@ -341,6 +345,10 @@ enum RepoCommands {
         /// Update all repositories
         #[arg(long)]
         all: bool,
+
+        /// Also run oxidize to build semantic indices
+        #[arg(long)]
+        oxidize: bool,
     },
 
     /// Remove a repository
@@ -535,6 +543,7 @@ fn main() -> Result<()> {
             min_score,
             dimension,
             repo,
+            all_repos,
             include_issues,
         } => {
             let options = commands::scry::ScryOptions {
@@ -543,6 +552,7 @@ fn main() -> Result<()> {
                 dimension,
                 file,
                 repo,
+                all_repos,
                 include_issues,
             };
             commands::scry::execute(query.as_deref(), options)?;
@@ -614,11 +624,14 @@ fn main() -> Result<()> {
                     with_issues,
                 },
                 (Some(RepoCommands::List), _) => RepoCommand::List,
-                (Some(RepoCommands::Update { name, all }), _) => {
+                (Some(RepoCommands::Update { name, all, oxidize }), _) => {
                     if all {
-                        RepoCommand::Update { name: None }
+                        RepoCommand::Update {
+                            name: None,
+                            oxidize,
+                        }
                     } else {
-                        RepoCommand::Update { name }
+                        RepoCommand::Update { name, oxidize }
                     }
                 }
                 (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },

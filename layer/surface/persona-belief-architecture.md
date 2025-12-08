@@ -1,7 +1,7 @@
 ---
 id: persona-belief-architecture
 version: 1
-status: draft
+status: historical
 created_date: 2025-10-25
 updated_date: 2025-10-25
 oxidizer: nicabar
@@ -9,6 +9,8 @@ tags: [architecture, persona, beliefs, ontology, neuro-symbolic, domains]
 ---
 
 # Persona-Belief Architecture
+
+> **Note (2025-12-08):** This is the original detailed design from October 2025. The current implementation direction is captured in `build/spec-persona-capture.md`. This doc remains as reference for the neuro-symbolic concepts (Prolog validation, structured beliefs) which may be used in the reflection flow.
 
 **Core Concept**: Patina hosts a single persona per installation—a belief system that interprets and structures all knowledge. Data only exists through the lens of this persona.
 

@@ -24,10 +24,10 @@ Each project is a knowledge node:
 ### 2. Mothership as Hub
 
 `~/.patina/` contains:
-- `persona/` - Cross-project beliefs and facts
-- `registry.yaml` - All known nodes
+- `personas/` - Cross-project knowledge (see spec-persona-capture.md)
+- `registry.yaml` - All known projects and reference repos
 - `cache/models/` - Shared model cache
-- `repos/` - External repos (learning + contributing)
+- `repos/` - Reference repos (read-only knowledge bases)
 
 ### 3. Domains as Tags
 
@@ -36,43 +36,69 @@ Nodes tagged with domains for cross-project queries:
 - cairo: [dojo, starknet]
 - ecs: [dojo, bevy]
 
-### 4. Branch Strategy (Owner vs Contributor)
+### 4. Patina Projects
 
-**Owner repos (your code):**
+All code you work on (owner or contributor) is a Patina project:
+
 ```
-main/master:
+<project>/
 ├── src/
 ├── layer/           # Patina content lives here
 │   ├── core/        # Eternal patterns
 │   ├── surface/     # Active work
 │   ├── dust/        # Archived
 │   └── sessions/    # Learnings
-├── .patina/         # Config + local indices
+├── .patina/         # Config + local indices (gitignored)
 └── CLAUDE.md        # LLM adapter
 ```
 
-**Contributor repos (others' code):**
+**Owner vs Contributor** is a git remote configuration, not a Patina concern:
+- Owner: push to origin/main
+- Contributor: push to fork, PR to upstream
+
+Patina treats both the same - full RAG, sessions, all dimensions.
+
+### 5. Reference Repos
+
+Read-only knowledge bases (code you learn from, not work on):
+
 ```
-upstream/main:       # Clean, their code, for PRs
-├── src/
-└── (no layer/)
-
-patina branch:       # YOUR overlay
-├── src/             # Their code
-├── layer/           # YOUR learnings about their code
-│   └── sessions/    # Your study sessions
-└── .patina/         # YOUR config for this repo
-
-Workflow:
-- Work on feature-branch from main
-- PR to upstream (clean, no layer/)
-- Merge learnings to patina branch
+~/.patina/repos/<name>/
+├── src/             # Their code (shallow clone)
+├── .patina/         # Lightweight index
+│   ├── data/patina.db
+│   └── config.toml
+└── (no layer/)      # No sessions, no learnings
 ```
 
-### 5. Data Flow
+Reference repos get: code AST, call graph, FTS5, dependency dimension.
+Reference repos don't get: sessions, temporal, semantic dimensions.
 
-- **UP:** Learnings flow from project → Mothership persona
-- **DOWN:** Knowledge flows only through explicit queries
+### 6. Data Flow
+
+- **UP:** Knowledge flows from projects → Mothership personas
+- **DOWN:** Knowledge flows only through explicit queries (scry)
+- Reference repos don't contribute to persona (read-only knowledge sources)
+
+### 7. Data Availability Principle
+
+**Core insight (session 20251206-221156):** What data is available determines which dimensions work.
+
+| Data Source | Dimension Enabled | Who Has It |
+|-------------|-------------------|------------|
+| `layer/sessions/` | Semantic | Patina projects only |
+| Full git history | Temporal | Patina projects only |
+| Call graph (AST) | Dependency | Both projects and reference repos |
+| Code symbols | FTS5 lexical | Both projects and reference repos |
+
+**Why this matters:**
+- Reference repos are shallow clones with no sessions → they can't have semantic or temporal dimensions
+- This isn't a limitation to fix; it's the design. Reference repos are for learning patterns, not capturing your work
+- Trying to make reference repos "full RAG" was architectural drift - the two-tier model exists because the data sources are fundamentally different
+
+**Implication for queries:**
+- `patina scry` on a project: semantic + temporal + dependency + FTS5
+- `patina scry --repo` on reference: dependency + FTS5 only
 
 ---
 
@@ -123,6 +149,6 @@ This is the adapter pattern applied to models.
 
 > "Patina is an organic agentic RAG that captures knowledge across projects and domains"
 
-> "Projects are islands, personas are gods. Knowledge flows UP (project → persona). Knowledge flows DOWN only through explicit requests."
+> "Projects are islands, personas are the user. Knowledge flows UP (project → persona). Knowledge flows DOWN only through explicit queries."
 
 > "Mothership is a librarian, not a library. It tracks where knowledge lives, doesn't duplicate it."

@@ -2,11 +2,12 @@
 
 use anyhow::Result;
 use rouille::{router, Request, Response};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
 use super::ServeOptions;
+use crate::commands::scry::{self, ScryOptions};
 
 /// Server state shared across request handlers
 pub struct ServerState {
@@ -33,6 +34,51 @@ struct HealthResponse {
     status: String,
     version: String,
     uptime_secs: u64,
+}
+
+/// Scry API request
+#[derive(Deserialize)]
+struct ScryRequest {
+    /// Query text
+    query: String,
+    /// Optional dimension (semantic, temporal, dependency)
+    dimension: Option<String>,
+    /// Optional repo name
+    repo: Option<String>,
+    /// Query all repos
+    #[serde(default)]
+    all_repos: bool,
+    /// Include GitHub issues
+    #[serde(default)]
+    include_issues: bool,
+    /// Maximum results (default: 10)
+    #[serde(default = "default_limit")]
+    limit: usize,
+    /// Minimum score (default: 0.0)
+    #[serde(default)]
+    min_score: f32,
+}
+
+fn default_limit() -> usize {
+    10
+}
+
+/// Scry API response
+#[derive(Serialize)]
+struct ScryResponse {
+    results: Vec<ScryResultJson>,
+    count: usize,
+}
+
+/// Single result in JSON format
+#[derive(Serialize)]
+struct ScryResultJson {
+    id: i64,
+    content: String,
+    score: f32,
+    event_type: String,
+    source_id: String,
+    timestamp: String,
 }
 
 /// Run the Mothership HTTP server
@@ -63,8 +109,10 @@ fn handle_request(request: &Request, state: &ServerState) -> Response {
             handle_version(state)
         },
 
-        // Future: /api/scry, /api/embed, /api/repos
-        // These will be added in subsequent phases
+        // Scry API - semantic/lexical search
+        (POST) ["/api/scry"] => {
+            handle_scry(request)
+        },
 
         // 404 for unknown routes
         _ => {
@@ -90,4 +138,60 @@ fn handle_version(state: &ServerState) -> Response {
         "version": state.version,
         "name": "patina-mothership"
     }))
+}
+
+/// Handle POST /api/scry
+fn handle_scry(request: &Request) -> Response {
+    // Parse JSON body
+    let body = match rouille::input::json_input::<ScryRequest>(request) {
+        Ok(req) => req,
+        Err(e) => {
+            return Response::json(&serde_json::json!({
+                "error": format!("Invalid JSON: {}", e)
+            }))
+            .with_status_code(400);
+        }
+    };
+
+    // Build ScryOptions
+    let options = ScryOptions {
+        limit: body.limit,
+        min_score: body.min_score,
+        dimension: body.dimension,
+        file: None, // File-based queries not supported via API yet
+        repo: body.repo,
+        all_repos: body.all_repos,
+        include_issues: body.include_issues,
+    };
+
+    // Run scry - use scry_text for text queries
+    let results = match scry::scry_text(&body.query, &options) {
+        Ok(results) => results,
+        Err(e) => {
+            return Response::json(&serde_json::json!({
+                "error": format!("Scry failed: {}", e)
+            }))
+            .with_status_code(500);
+        }
+    };
+
+    // Convert to JSON response
+    let json_results: Vec<ScryResultJson> = results
+        .into_iter()
+        .map(|r| ScryResultJson {
+            id: r.id,
+            content: r.content,
+            score: r.score,
+            event_type: r.event_type,
+            source_id: r.source_id,
+            timestamp: r.timestamp,
+        })
+        .collect();
+
+    let response = ScryResponse {
+        count: json_results.len(),
+        results: json_results,
+    };
+
+    Response::json(&response)
 }

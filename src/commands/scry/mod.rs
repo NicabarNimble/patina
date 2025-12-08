@@ -29,6 +29,7 @@ pub struct ScryOptions {
     pub dimension: Option<String>,
     pub file: Option<String>,
     pub repo: Option<String>,
+    pub all_repos: bool,
     pub include_issues: bool,
 }
 
@@ -40,6 +41,7 @@ impl Default for ScryOptions {
             dimension: None, // Use semantic by default
             file: None,
             repo: None,
+            all_repos: false,
             include_issues: false,
         }
     }
@@ -48,6 +50,11 @@ impl Default for ScryOptions {
 /// Execute scry command
 pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     println!("🔮 Scry - Searching knowledge base\n");
+
+    // Handle --all-repos mode
+    if options.all_repos {
+        return execute_all_repos(query, &options);
+    }
 
     // Show repo context if specified
     if let Some(ref repo) = options.repo {
@@ -139,13 +146,22 @@ pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> 
     let (db_path, embeddings_dir) = get_paths(options)?;
 
     // Determine which dimension to search
-    let dimension = options.dimension.as_deref().unwrap_or("semantic");
+    // For reference repos, only dependency is available; for projects, prefer semantic
+    let dimension = if let Some(ref dim) = options.dimension {
+        dim.as_str()
+    } else {
+        // Auto-detect best available dimension
+        detect_best_dimension(&embeddings_dir)
+    };
     let index_path = format!("{}/{}.usearch", embeddings_dir, dimension);
 
     if !Path::new(&index_path).exists() {
-        // Graceful fallback: semantic index missing, use FTS5 instead
-        eprintln!("⚠️  Semantic index not found, falling back to lexical search (FTS5)");
-        eprintln!("   Run 'patina oxidize' for semantic similarity search\n");
+        // Graceful fallback: index missing, use FTS5 instead
+        eprintln!(
+            "⚠️  {} index not found, falling back to lexical search (FTS5)",
+            dimension
+        );
+        eprintln!("   Run 'patina oxidize' for vector search\n");
         println!("Mode: Lexical (FTS5) [fallback]\n");
         return scry_lexical(query, options);
     }
@@ -573,6 +589,124 @@ fn enrich_results(
     });
 
     Ok(enriched)
+}
+
+/// Execute query across all repos (current project + all reference repos)
+fn execute_all_repos(query: Option<&str>, options: &ScryOptions) -> Result<()> {
+    let query = query.ok_or_else(|| anyhow::anyhow!("Query required for --all-repos"))?;
+
+    println!("Mode: All Repos (cross-project search)\n");
+    println!("Query: \"{}\"\n", query);
+
+    let mut all_results: Vec<(String, ScryResult)> = Vec::new();
+
+    // 1. Query current project if we're in one
+    let in_project = Path::new(".patina/data/patina.db").exists();
+    if in_project {
+        println!("📂 Searching current project...");
+        let project_options = ScryOptions {
+            repo: None,
+            all_repos: false,
+            ..options.clone()
+        };
+        match scry_text(query, &project_options) {
+            Ok(results) => {
+                println!("   Found {} results", results.len());
+                for r in results {
+                    all_results.push(("[PROJECT]".to_string(), r));
+                }
+            }
+            Err(e) => {
+                eprintln!("   ⚠️  Project search failed: {}", e);
+            }
+        }
+    }
+
+    // 2. Query all registered reference repos
+    let repos = crate::commands::repo::list()?;
+    for repo in repos {
+        println!("📚 Searching {}...", repo.name);
+        let repo_options = ScryOptions {
+            repo: Some(repo.name.clone()),
+            all_repos: false,
+            ..options.clone()
+        };
+        match scry_text(query, &repo_options) {
+            Ok(results) => {
+                println!("   Found {} results", results.len());
+                for r in results {
+                    all_results.push((format!("[{}]", repo.name.to_uppercase()), r));
+                }
+            }
+            Err(e) => {
+                eprintln!("   ⚠️  {} search failed: {}", repo.name, e);
+            }
+        }
+    }
+
+    // 3. Sort by score and take top limit
+    all_results.sort_by(|a, b| {
+        b.1.score
+            .partial_cmp(&a.1.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    all_results.truncate(options.limit);
+
+    println!();
+
+    if all_results.is_empty() {
+        println!("No results found across any repos.");
+        return Ok(());
+    }
+
+    println!("Found {} results (combined):\n", all_results.len());
+    println!("{}", "─".repeat(60));
+
+    for (i, (source, result)) in all_results.iter().enumerate() {
+        let timestamp_display = if result.timestamp.is_empty() {
+            String::new()
+        } else {
+            format!(" | {}", result.timestamp)
+        };
+        println!(
+            "\n[{}] {} Score: {:.3} | {} | {}{}",
+            i + 1,
+            source,
+            result.score,
+            result.event_type,
+            result.source_id,
+            timestamp_display
+        );
+        println!("    {}", truncate_content(&result.content, 200));
+    }
+
+    println!("\n{}", "─".repeat(60));
+
+    Ok(())
+}
+
+/// Detect the best available dimension for vector search
+/// Priority: semantic > dependency > temporal
+/// Reference repos typically only have dependency
+fn detect_best_dimension(embeddings_dir: &str) -> &'static str {
+    // Check for available indices in priority order
+    let semantic_path = format!("{}/semantic.usearch", embeddings_dir);
+    if Path::new(&semantic_path).exists() {
+        return "semantic";
+    }
+
+    let dependency_path = format!("{}/dependency.usearch", embeddings_dir);
+    if Path::new(&dependency_path).exists() {
+        return "dependency";
+    }
+
+    let temporal_path = format!("{}/temporal.usearch", embeddings_dir);
+    if Path::new(&temporal_path).exists() {
+        return "temporal";
+    }
+
+    // Default to semantic (will trigger fallback to FTS5)
+    "semantic"
 }
 
 /// Truncate content for display
