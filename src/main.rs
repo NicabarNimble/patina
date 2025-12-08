@@ -334,6 +334,10 @@ enum PersonaCommands {
         /// Domains this applies to (comma-separated, e.g., rust,error-handling)
         #[arg(long, value_delimiter = ',')]
         domains: Option<Vec<String>>,
+
+        /// Event ID this supersedes (replaces old knowledge)
+        #[arg(long)]
+        supersedes: Option<String>,
     },
 
     /// Search persona knowledge
@@ -348,6 +352,10 @@ enum PersonaCommands {
         /// Minimum similarity score (0.0-1.0, default: 0.0)
         #[arg(long, default_value = "0.0")]
         min_score: f32,
+
+        /// Filter by domains (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        domains: Option<Vec<String>>,
     },
 
     /// List captured knowledge
@@ -635,15 +643,20 @@ fn main() -> Result<()> {
             }
         },
         Commands::Persona { command } => match command {
-            PersonaCommands::Note { content, domains } => {
-                commands::persona::execute_note(&content, domains)?;
+            PersonaCommands::Note {
+                content,
+                domains,
+                supersedes,
+            } => {
+                commands::persona::execute_note(&content, domains, supersedes)?;
             }
             PersonaCommands::Query {
                 query,
                 limit,
                 min_score,
+                domains,
             } => {
-                commands::persona::execute_query(&query, limit, min_score)?;
+                commands::persona::execute_query(&query, limit, min_score, domains)?;
             }
             PersonaCommands::List { limit, domains } => {
                 commands::persona::execute_list(limit, domains)?;

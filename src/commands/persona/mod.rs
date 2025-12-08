@@ -33,6 +33,7 @@ fn persona_dir() -> std::path::PathBuf {
 #[derive(Debug, Serialize, Deserialize)]
 struct PersonaEvent {
     id: String,
+    event_type: String,
     #[serde(with = "chrono::serde::ts_seconds")]
     timestamp: DateTime<Utc>,
     source: String,
@@ -40,6 +41,8 @@ struct PersonaEvent {
     #[serde(default)]
     domains: Vec<String>,
     working_project: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    supersedes: Option<String>,
 }
 
 /// Query result (public - returned to callers)
@@ -53,13 +56,19 @@ pub struct PersonaResult {
 }
 
 /// Capture knowledge directly
-pub fn note(content: &str, domains: Option<Vec<String>>) -> Result<()> {
+pub fn note(
+    content: &str,
+    domains: Option<Vec<String>>,
+    supersedes: Option<String>,
+) -> Result<String> {
     let dir = persona_dir();
     let events_dir = dir.join("events");
     fs::create_dir_all(&events_dir).context("Failed to create events directory")?;
 
+    let event_id = format!("evt_{}", Uuid::new_v4().simple());
     let event = PersonaEvent {
-        id: format!("evt_{}", Uuid::new_v4().simple()),
+        id: event_id.clone(),
+        event_type: "knowledge_captured".to_string(),
         timestamp: Utc::now(),
         source: "direct".to_string(),
         content: content.to_string(),
@@ -67,6 +76,7 @@ pub fn note(content: &str, domains: Option<Vec<String>>) -> Result<()> {
         working_project: std::env::current_dir()
             .ok()
             .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string())),
+        supersedes,
     };
 
     // Append to daily events file
@@ -80,7 +90,7 @@ pub fn note(content: &str, domains: Option<Vec<String>>) -> Result<()> {
         .open(&events_file)?;
     writeln!(file, "{}", line)?;
 
-    Ok(())
+    Ok(event_id)
 }
 
 /// Build searchable index from events
@@ -99,16 +109,23 @@ pub fn materialize() -> Result<()> {
         "CREATE TABLE IF NOT EXISTS knowledge (
             rowid INTEGER PRIMARY KEY AUTOINCREMENT,
             id TEXT UNIQUE NOT NULL,
+            event_type TEXT NOT NULL,
             content TEXT NOT NULL,
             source TEXT NOT NULL,
             domains TEXT,
             timestamp TEXT NOT NULL,
-            working_project TEXT
+            working_project TEXT,
+            supersedes TEXT,
+            superseded_by TEXT
         )",
         [],
     )?;
     conn.execute(
         "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_superseded ON knowledge(superseded_by)",
         [],
     )?;
 
@@ -160,20 +177,30 @@ pub fn materialize() -> Result<()> {
                         continue;
                     }
 
+                    // If this supersedes another event, mark the old one
+                    if let Some(ref old_id) = event.supersedes {
+                        conn.execute(
+                            "UPDATE knowledge SET superseded_by = ?1 WHERE id = ?2",
+                            params![&event.id, old_id],
+                        )?;
+                    }
+
                     // Embed and store
                     let embedding = embedder.embed_query(&event.content)?;
 
                     let rowid: i64 = conn.query_row(
-                        "INSERT OR REPLACE INTO knowledge (id, content, source, domains, timestamp, working_project)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                        "INSERT OR REPLACE INTO knowledge (id, event_type, content, source, domains, timestamp, working_project, supersedes, superseded_by)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL)
                          RETURNING rowid",
                         params![
                             &event.id,
+                            &event.event_type,
                             &event.content,
                             &event.source,
                             serde_json::to_string(&event.domains)?,
                             event.timestamp.to_rfc3339(),
                             &event.working_project,
+                            &event.supersedes,
                         ],
                         |row| row.get(0),
                     )?;
@@ -208,7 +235,12 @@ pub fn materialize() -> Result<()> {
 }
 
 /// Semantic search of persona knowledge
-pub fn query(query_text: &str, limit: usize, min_score: f32) -> Result<Vec<PersonaResult>> {
+pub fn query(
+    query_text: &str,
+    limit: usize,
+    min_score: f32,
+    domains: Option<Vec<String>>,
+) -> Result<Vec<PersonaResult>> {
     let dir = persona_dir();
     let db_path = dir.join("materialized/persona.db");
     let index_path = dir.join("materialized/persona.usearch");
@@ -231,8 +263,9 @@ pub fn query(query_text: &str, limit: usize, min_score: f32) -> Result<Vec<Perso
     let mut embedder = create_embedder()?;
     let query_embedding = embedder.embed_query(query_text)?;
 
-    // Search
-    let matches = index.search(&query_embedding, limit)?;
+    // Search more than limit to allow for filtering
+    let search_limit = if domains.is_some() { limit * 3 } else { limit };
+    let matches = index.search(&query_embedding, search_limit)?;
 
     // Hydrate from database
     let conn = Connection::open(&db_path)?;
@@ -244,24 +277,38 @@ pub fn query(query_text: &str, limit: usize, min_score: f32) -> Result<Vec<Perso
             continue;
         }
 
+        // Query excludes superseded entries
         let result = conn.query_row(
-            "SELECT content, source, domains, timestamp FROM knowledge WHERE rowid = ?1",
+            "SELECT content, source, domains, timestamp FROM knowledge
+             WHERE rowid = ?1 AND superseded_by IS NULL",
             params![*rowid as i64],
             |row| {
                 let domains_json: String = row.get(2)?;
                 let domains: Vec<String> = serde_json::from_str(&domains_json).unwrap_or_default();
-                Ok(PersonaResult {
-                    content: row.get(0)?,
-                    source: row.get(1)?,
+                Ok((
+                    PersonaResult {
+                        content: row.get(0)?,
+                        source: row.get(1)?,
+                        domains: domains.clone(),
+                        timestamp: row.get(3)?,
+                        score,
+                    },
                     domains,
-                    timestamp: row.get(3)?,
-                    score,
-                })
+                ))
             },
         );
 
-        if let Ok(r) = result {
+        if let Ok((r, result_domains)) = result {
+            // Filter by domains if specified
+            if let Some(ref filter) = domains {
+                if !filter.iter().any(|d| result_domains.contains(d)) {
+                    continue;
+                }
+            }
             results.push(r);
+            if results.len() >= limit {
+                break;
+            }
         }
     }
 
@@ -317,16 +364,23 @@ pub fn list(limit: usize, domains: Option<Vec<String>>) -> Result<Vec<PersonaRes
 // === CLI execute functions ===
 
 /// Execute persona note command
-pub fn execute_note(content: &str, domains: Option<Vec<String>>) -> Result<()> {
+pub fn execute_note(
+    content: &str,
+    domains: Option<Vec<String>>,
+    supersedes: Option<String>,
+) -> Result<()> {
     println!("🧠 Persona - Capturing knowledge\n");
 
-    note(content, domains.clone())?;
+    let event_id = note(content, domains.clone(), supersedes.clone())?;
 
     if let Some(ref d) = domains {
         println!("   Domains: {}", d.join(", "));
     }
+    if let Some(ref s) = supersedes {
+        println!("   Supersedes: {}", s);
+    }
     println!("   Content: {}", content);
-    println!("\n✅ Captured to persona");
+    println!("\n✅ Captured: {}", event_id);
 
     Ok(())
 }
@@ -339,11 +393,19 @@ pub fn execute_materialize() -> Result<()> {
 }
 
 /// Execute persona query command
-pub fn execute_query(query_text: &str, limit: usize, min_score: f32) -> Result<()> {
+pub fn execute_query(
+    query_text: &str,
+    limit: usize,
+    min_score: f32,
+    domains: Option<Vec<String>>,
+) -> Result<()> {
     println!("🧠 Persona - Searching knowledge\n");
+    if let Some(ref d) = domains {
+        println!("Domains: {}", d.join(", "));
+    }
     println!("Query: \"{}\"\n", query_text);
 
-    let results = query(query_text, limit, min_score)?;
+    let results = query(query_text, limit, min_score, domains)?;
 
     if results.is_empty() {
         println!("No results found.");
@@ -438,11 +500,13 @@ mod tests {
         // Create event manually (can't override persona_dir in test easily)
         let event = PersonaEvent {
             id: "test_001".to_string(),
+            event_type: "knowledge_captured".to_string(),
             timestamp: Utc::now(),
             source: "direct".to_string(),
             content: "prefer Result<T,E> over panics".to_string(),
             domains: vec!["rust".to_string()],
             working_project: Some("test".to_string()),
+            supersedes: None,
         };
 
         let date = event.timestamp.format("%Y%m%d").to_string();
@@ -454,6 +518,7 @@ mod tests {
         let content = fs::read_to_string(&events_file)?;
         assert!(content.contains("prefer Result<T,E> over panics"));
         assert!(content.contains("rust"));
+        assert!(content.contains("knowledge_captured"));
 
         Ok(())
     }

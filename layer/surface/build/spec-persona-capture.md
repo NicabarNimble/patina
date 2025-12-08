@@ -1,7 +1,8 @@
 # Spec: Persona
 
-**Status:** NOT IMPLEMENTED
+**Status:** Core implemented (2025-12-08), scry integration pending
 **Phase:** 4d (Core Infrastructure)
+**Location:** `src/commands/persona/mod.rs`
 
 ---
 
