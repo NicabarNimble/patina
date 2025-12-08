@@ -52,7 +52,7 @@ See: [rag-network.md](../surface/rag-network.md)
 | **4a** | `patina rebuild` | ✅ Complete |
 | **4b** | Reference repo indexing | ✅ Complete - dependency dimension + auto-detect |
 | **4c** | `--all-repos` query | ✅ Complete - cross-project search |
-| **4d** | Persona | ⬜ Not started |
+| **4d** | Persona | 🔶 Core done, scry integration pending |
 | **4e** | `patina serve` complete | ✅ Complete |
 
 **Specs:**
@@ -329,7 +329,7 @@ patina scry "entity component patterns" --all-repos
 
 ### 4d: Persona
 **Spec:** [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
-**Status:** Not Started
+**Status:** Core implemented (2025-12-08), scry integration pending
 
 **What persona IS:** A learned model of the user that enables LLMs to respond as the user would want. Includes beliefs, knowledge, style, history, preferences.
 
@@ -475,7 +475,7 @@ When context is lost, read these sessions for architectural decisions:
 | 4a | `git clone <project> && patina rebuild && patina scry` works | [x] |
 | 4b | `patina repo add` + `--oxidize` creates dependency index for reference repos | [x] |
 | 4c | `patina scry --all-repos` returns results from projects + reference repos | [x] |
-| 4d | `patina persona query` in project B returns knowledge from project A | [ ] |
+| 4d | `patina persona query` in project B returns knowledge from project A | [~] core works, scry integration pending |
 | 4e | `PATINA_MOTHERSHIP=... patina scry` routes to daemon | [x] |
 
 **Phase 4 Complete = Ready for hackathons with cross-project knowledge.**

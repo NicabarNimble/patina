@@ -22,6 +22,8 @@ A learned model of the user that enables LLMs to respond as the user would want.
 
 **Key principle:** Persona is continuously refined, not captured once. Every session potentially adds knowledge.
 
+**Key principle:** Supersedes enables evolution. Without it, old wrong knowledge pollutes forever; with it, refined understanding replaces the old.
+
 ## Persona vs Project Knowledge
 
 | Aspect | Project Knowledge | Persona |
@@ -90,18 +92,14 @@ patina persona note "worked at Company X on distributed systems"
 **Event Schema:**
 ```json
 {
-  "event_id": "evt_20251208_001",
+  "id": "evt_a1b2c3d4e5f6",
   "event_type": "knowledge_captured",
-  "timestamp": "2025-12-08T13:30:00Z",
-  "source": {
-    "capture_path": "direct",
-    "working_project": "patina"
-  },
-  "payload": {
-    "content": "prefer Result<T,E> over panics",
-    "domains": ["rust", "error-handling"],
-    "supersedes": null
-  }
+  "timestamp": 1733676600,
+  "source": "direct",
+  "content": "prefer Result<T,E> over panics",
+  "domains": ["rust", "error-handling"],
+  "working_project": "patina",
+  "supersedes": null
 }
 ```
 
@@ -170,14 +168,14 @@ curl -X POST localhost:50051/api/scry \
 
 ## Acceptance Criteria
 
-- [ ] `~/.patina/personas/default/` structure created
-- [ ] `patina persona note` captures events (tagged `direct`)
-- [ ] `patina persona materialize` processes events → SQLite + USearch
-- [ ] `patina persona query` returns semantic search results
-- [ ] `patina persona list` shows captured knowledge
+- [x] `~/.patina/personas/default/` structure created
+- [x] `patina persona note` captures events (tagged `direct`)
+- [x] `patina persona materialize` processes events → SQLite + USearch
+- [x] `patina persona query` returns semantic search results
+- [x] `patina persona list` shows captured knowledge
 - [ ] `patina scry` includes persona results tagged `[PERSONA]`
 - [ ] `/api/scry` supports `include_persona` option
-- [ ] Persona data never appears in git
+- [x] Persona data never appears in git
 
 ---
 
