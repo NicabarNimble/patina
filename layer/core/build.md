@@ -444,6 +444,25 @@ Query → E5-base-v2 (768-dim) → [Semantic MLP] → 256-dim ─┐
 
 ---
 
+## Developer Experience (Future)
+
+**Examples** (`examples/`):
+- Currently: 2 demo files (semantic_search_demo.rs, test_e5_model.rs)
+- Explore adding more examples for common workflows
+- Cargo auto-discovers `examples/*.rs` → `cargo run --example <name>`
+
+**Benchmarks** (`benches/`):
+- Currently: None
+- Add benchmarks for performance-critical paths (embedding, search, scrape)
+- Track regressions over time
+- Cargo auto-discovers `benches/*.rs` → `cargo bench`
+
+**Integration Tests** (`tests/`):
+- Currently: 11 integration test files, good coverage
+- Consider property-based testing for embeddings
+
+---
+
 ## Key Sessions (Context Recovery)
 
 When context is lost, read these sessions for architectural decisions:
