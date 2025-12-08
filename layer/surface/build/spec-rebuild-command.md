@@ -8,10 +8,13 @@
 
 ## Purpose
 
-Regenerate `.patina/` from `layer/` and local sources. This is the "clone and go" command that makes Patina projects portable.
+Regenerate `.patina/` from `layer/` and local sources for **Patina projects**. This is the "clone and go" command that makes projects portable.
+
+**Applies to:** Patina projects (code you work on, created via `patina init`)
+**Not for:** Reference repos (use `patina repo update --oxidize` instead)
 
 **Use cases:**
-1. Clone a repo with `layer/` → `patina rebuild` → working local RAG
+1. Clone a project with `layer/` → `patina rebuild` → working local RAG
 2. Corrupted `.patina/data/` → `patina rebuild` → fresh indices
 3. Upgrade embedding model → `patina rebuild` → new projections
 
@@ -202,6 +205,5 @@ pub fn run(args: RebuildArgs) -> anyhow::Result<()> {
 
 ## Future Considerations
 
-- `patina rebuild --repo <name>` - rebuild external repo from `~/.patina/repos/`
 - `patina rebuild --parallel` - parallelize scrape steps
 - Incremental rebuild (only changed files) - deferred, full rebuild is fine for now
