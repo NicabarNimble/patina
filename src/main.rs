@@ -141,6 +141,10 @@ enum Commands {
         #[arg(long)]
         repo: Option<String>,
 
+        /// Query all registered repos (current project + reference repos)
+        #[arg(long)]
+        all_repos: bool,
+
         /// Include GitHub issues in search results
         #[arg(long)]
         include_issues: bool,
@@ -539,6 +543,7 @@ fn main() -> Result<()> {
             min_score,
             dimension,
             repo,
+            all_repos,
             include_issues,
         } => {
             let options = commands::scry::ScryOptions {
@@ -547,6 +552,7 @@ fn main() -> Result<()> {
                 dimension,
                 file,
                 repo,
+                all_repos,
                 include_issues,
             };
             commands::scry::execute(query.as_deref(), options)?;
@@ -620,7 +626,10 @@ fn main() -> Result<()> {
                 (Some(RepoCommands::List), _) => RepoCommand::List,
                 (Some(RepoCommands::Update { name, all, oxidize }), _) => {
                     if all {
-                        RepoCommand::Update { name: None, oxidize }
+                        RepoCommand::Update {
+                            name: None,
+                            oxidize,
+                        }
                     } else {
                         RepoCommand::Update { name, oxidize }
                     }
