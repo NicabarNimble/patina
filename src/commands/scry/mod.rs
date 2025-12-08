@@ -2,6 +2,10 @@
 //!
 //! Unified query interface for searching project knowledge.
 //! Phase 2.5b: MVP implementation for validating retrieval quality.
+//!
+//! # Remote Execution
+//! If `PATINA_MOTHERSHIP` is set, queries are routed to a remote daemon.
+//! This enables containers to query the Mac mothership.
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
@@ -9,6 +13,7 @@ use std::path::Path;
 use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
 use patina::embeddings::create_embedder;
+use patina::mothership;
 
 /// Result from a scry query
 #[derive(Debug)]
@@ -49,6 +54,11 @@ impl Default for ScryOptions {
 
 /// Execute scry command
 pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
+    // Check if we should route to mothership
+    if mothership::is_configured() {
+        return execute_via_mothership(query, &options);
+    }
+
     println!("🔮 Scry - Searching knowledge base\n");
 
     // Handle --all-repos mode
@@ -717,6 +727,63 @@ fn truncate_content(content: &str, max_len: usize) -> String {
     } else {
         format!("{}...", &content[..max_len])
     }
+}
+
+/// Execute scry via mothership daemon
+fn execute_via_mothership(query: Option<&str>, options: &ScryOptions) -> Result<()> {
+    let address = mothership::get_address().unwrap_or_else(|| "unknown".to_string());
+    println!("🔮 Scry - Querying mothership at {}\n", address);
+
+    // File-based queries not supported via mothership yet
+    if options.file.is_some() {
+        anyhow::bail!("File-based queries (--file) not supported via mothership. Run locally.");
+    }
+
+    let query = query.ok_or_else(|| anyhow::anyhow!("Query text required"))?;
+    println!("Query: \"{}\"\n", query);
+
+    // Build request
+    let request = mothership::ScryRequest {
+        query: query.to_string(),
+        dimension: options.dimension.clone(),
+        repo: options.repo.clone(),
+        all_repos: options.all_repos,
+        include_issues: options.include_issues,
+        limit: options.limit,
+        min_score: options.min_score,
+    };
+
+    // Execute query
+    let response = mothership::scry(request)?;
+
+    if response.results.is_empty() {
+        println!("No results found.");
+        return Ok(());
+    }
+
+    println!("Found {} results:\n", response.count);
+    println!("{}", "─".repeat(60));
+
+    for (i, result) in response.results.iter().enumerate() {
+        let timestamp_display = if result.timestamp.is_empty() {
+            String::new()
+        } else {
+            format!(" | {}", result.timestamp)
+        };
+        println!(
+            "\n[{}] Score: {:.3} | {} | {}{}",
+            i + 1,
+            result.score,
+            result.event_type,
+            result.source_id,
+            timestamp_display
+        );
+        println!("    {}", truncate_content(&result.content, 200));
+    }
+
+    println!("\n{}", "─".repeat(60));
+
+    Ok(())
 }
 
 #[cfg(test)]

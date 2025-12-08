@@ -128,8 +128,8 @@ patina session end
 ### Learn More
 
 - [Patina Documentation](https://github.com/ai-1st/patina)
-- [Session Workflow](https://github.com/ai-1st/patina/blob/main/docs/sessions.md)
-- [Pattern System](https://github.com/ai-1st/patina/blob/main/docs/patterns.md)
+- [Session Capture](https://github.com/ai-1st/patina/blob/main/layer/core/session-capture.md)
+- [Design Patterns](https://github.com/ai-1st/patina/blob/main/layer/core/)
 
 ---
 *Built with Patina - Context orchestration for AI development*
