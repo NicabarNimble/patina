@@ -11,6 +11,8 @@ Persona captures YOUR cross-project beliefs and patterns - knowledge that belong
 
 **Key principle:** Personas are personal. Different developers have different beliefs, preferences, and mental models. These shouldn't be shared via git.
 
+**Source:** Beliefs flow from **Patina projects** (code you work on). Reference repos are for learning patterns, not capturing beliefs.
+
 ## Persona vs Project Knowledge
 
 | Aspect | Project Knowledge | Persona |

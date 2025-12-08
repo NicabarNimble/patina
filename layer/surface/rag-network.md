@@ -25,9 +25,9 @@ Each project is a knowledge node:
 
 `~/.patina/` contains:
 - `persona/` - Cross-project beliefs and facts
-- `registry.yaml` - All known nodes
+- `registry.yaml` - All known projects and reference repos
 - `cache/models/` - Shared model cache
-- `repos/` - External repos (learning + contributing)
+- `repos/` - Reference repos (read-only knowledge bases)
 
 ### 3. Domains as Tags
 
@@ -36,43 +36,49 @@ Nodes tagged with domains for cross-project queries:
 - cairo: [dojo, starknet]
 - ecs: [dojo, bevy]
 
-### 4. Branch Strategy (Owner vs Contributor)
+### 4. Patina Projects
 
-**Owner repos (your code):**
+All code you work on (owner or contributor) is a Patina project:
+
 ```
-main/master:
+<project>/
 ├── src/
 ├── layer/           # Patina content lives here
 │   ├── core/        # Eternal patterns
 │   ├── surface/     # Active work
 │   ├── dust/        # Archived
 │   └── sessions/    # Learnings
-├── .patina/         # Config + local indices
+├── .patina/         # Config + local indices (gitignored)
 └── CLAUDE.md        # LLM adapter
 ```
 
-**Contributor repos (others' code):**
+**Owner vs Contributor** is a git remote configuration, not a Patina concern:
+- Owner: push to origin/main
+- Contributor: push to fork, PR to upstream
+
+Patina treats both the same - full RAG, sessions, all dimensions.
+
+### 5. Reference Repos
+
+Read-only knowledge bases (code you learn from, not work on):
+
 ```
-upstream/main:       # Clean, their code, for PRs
-├── src/
-└── (no layer/)
-
-patina branch:       # YOUR overlay
-├── src/             # Their code
-├── layer/           # YOUR learnings about their code
-│   └── sessions/    # Your study sessions
-└── .patina/         # YOUR config for this repo
-
-Workflow:
-- Work on feature-branch from main
-- PR to upstream (clean, no layer/)
-- Merge learnings to patina branch
+~/.patina/repos/<name>/
+├── src/             # Their code (shallow clone)
+├── .patina/         # Lightweight index
+│   ├── data/patina.db
+│   └── config.toml
+└── (no layer/)      # No sessions, no learnings
 ```
 
-### 5. Data Flow
+Reference repos get: code AST, call graph, FTS5, dependency dimension.
+Reference repos don't get: sessions, temporal, semantic dimensions.
 
-- **UP:** Learnings flow from project → Mothership persona
+### 6. Data Flow
+
+- **UP:** Learnings flow from projects → Mothership persona
 - **DOWN:** Knowledge flows only through explicit queries
+- Reference repos don't contribute to persona (read-only)
 
 ---
 

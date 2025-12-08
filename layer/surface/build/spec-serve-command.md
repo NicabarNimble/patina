@@ -10,6 +10,8 @@
 
 HTTP daemon for container queries, hot model caching, and cross-project search. Follows Ollama pattern - single binary, lazy loading, REST API.
 
+**Aggregates:** Patina projects (full RAG) + reference repos (lightweight indices)
+
 ---
 
 ## Architecture
