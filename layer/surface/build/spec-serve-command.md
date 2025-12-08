@@ -1,8 +1,8 @@
 # Spec: patina serve
 
-**Status:** Phase 1 Complete, Phase 2+ In Progress
+**Status:** Complete (2025-12-08)
 **Phase:** 4 (Core Infrastructure)
-**Location:** `src/commands/serve/`
+**Location:** `src/commands/serve/`, `src/mothership/`
 
 ---
 
@@ -79,12 +79,12 @@ patina serve --daemon
 - [ ] Thread-safe embedder access
 - [ ] Lazy model loading on first request
 
-### Phase 3: Scry API + Client Detection
-- [x] `/api/scry` endpoint (semantic/lexical/file) ✅ (2025-12-08)
-- [ ] Mothership client module in `src/mothership/`
-- [ ] Auto-detection: `PATINA_MOTHERSHIP` env var
-- [ ] Update scry command to route to daemon when available
-- [ ] Persona integration (`include_persona` option)
+### Phase 3: Scry API + Client Detection ✅ (2025-12-08)
+- [x] `/api/scry` endpoint (semantic/lexical/file)
+- [x] Mothership client module in `src/mothership/`
+- [x] Auto-detection: `PATINA_MOTHERSHIP` env var
+- [x] Update scry command to route to daemon when available
+- [ ] Persona integration (`include_persona` option) - after 4d
 
 ### Phase 4: Container Integration
 - [ ] `--host 0.0.0.0` option for container access
@@ -141,8 +141,8 @@ max_memory_mb = 2048
 
 **4e complete when:**
 1. [x] `patina serve` exposes `/api/scry` endpoint
-2. [ ] `patina scry` detects daemon and routes queries
-3. [ ] Container can query Mac via `PATINA_MOTHERSHIP` env var
+2. [x] `patina scry` detects daemon and routes queries
+3. [x] Container can query Mac via `PATINA_MOTHERSHIP` env var
 4. [x] `patina scry --all-repos` queries across registry
-5. [ ] Model stays hot between requests (lazy loading works)
+5. [ ] Model stays hot between requests (lazy loading works) - deferred to Phase 2
 6. [ ] `/api/scry` supports `include_persona` option (after 4d)

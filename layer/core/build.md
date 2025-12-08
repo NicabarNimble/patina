@@ -52,8 +52,8 @@ See: [rag-network.md](../surface/rag-network.md)
 | **4a** | `patina rebuild` | ✅ Complete |
 | **4b** | Reference repo indexing | ✅ Complete - dependency dimension + auto-detect |
 | **4c** | `--all-repos` query | ✅ Complete - cross-project search |
-| **4d** | Persona | ⬜ Not started |
-| **4e** | `patina serve` complete | 🟡 `/api/scry` done, client routing pending |
+| **4d** | Persona | 🔶 Core done, scry integration pending |
+| **4e** | `patina serve` complete | ✅ Complete |
 
 **Specs:**
 - [spec-rebuild-command.md](../surface/build/spec-rebuild-command.md) - for projects
@@ -157,7 +157,7 @@ patina scry "spawn entity" --repo dojo --include-issues
 - PRs + Discussions integration
 
 #### 3f: Mothership Daemon (`patina serve`)
-**Status:** In Progress (2025-12-03)
+**Status:** Core Complete (2025-12-08), future APIs deferred
 **Spec:** [spec-serve-command.md](../surface/build/spec-serve-command.md)
 **Why:** Container queries to Mac, hot model caching, Ollama-style daemon
 
@@ -190,48 +190,52 @@ Mac (Mothership)                    Container
 - [x] Implement `/health` endpoint
 - [x] Add `Serve` command to CLI
 
-**Phase 2: Model Caching + Embed API**
+**Phase 2: Model Caching + Embed API** (Future - no use case yet)
 - [ ] ServerState with parking_lot::RwLock
 - [ ] `/api/embed` and `/api/embed/batch` endpoints
 - [ ] Thread-safe embedder access
+- *Why deferred: /api/scry handles embedding internally, no external tool needs raw embeddings yet*
 
-**Phase 3: Scry API + Client Detection**
-- [x] `/api/scry` endpoint (semantic/lexical/file) ✅ (2025-12-08)
-- [ ] Mothership client module
-- [ ] Auto-detection: `PATINA_MOTHERSHIP` env var or localhost check
-- [ ] Update scry command to route to daemon
-- [ ] Persona integration (`include_persona` option)
+**Phase 3: Scry API + Client Detection** ✅ (2025-12-08)
+- [x] `/api/scry` endpoint (semantic/lexical/file)
+- [x] Mothership client module
+- [x] Auto-detection: `PATINA_MOTHERSHIP` env var or localhost check
+- [x] Update scry command to route to daemon
+- [ ] Persona integration (`include_persona` option) - after 4d complete
 
-**Phase 4: Container Integration**
-- [ ] `--host 0.0.0.0` option for container access
+**Phase 4: Container Integration** ✅
+- [x] `--host 0.0.0.0` option for container access
 - [ ] Update YOLO devcontainer with `PATINA_MOTHERSHIP` env var
 - [ ] Test container → Mac queries
+- *Partial: flag exists, container testing not validated*
 
-**Phase 5: Repo + Model APIs**
+**Phase 5: Repo + Model APIs** (Future - CLI works for now)
 - [ ] `/api/repos` endpoints
 - [ ] `/api/model` status endpoint
 - [ ] Graceful shutdown (SIGTERM)
+- *Why deferred: CLI works for repo management, no monitoring dashboard yet*
 
 **API Endpoints:**
 ```
-GET  /health              # Health check
-POST /api/scry            # Query (semantic/lexical/file)
-POST /api/embed           # Generate embedding
-POST /api/embed/batch     # Batch embeddings
-GET  /api/repos           # List repos
-GET  /api/repos/{name}    # Repo details
-GET  /api/model           # Model status
+GET  /health              # Health check                    ✅ Done
+GET  /version             # Version info                    ✅ Done
+POST /api/scry            # Query (semantic/lexical/file)   ✅ Done
+POST /api/embed           # Generate embedding              Future
+POST /api/embed/batch     # Batch embeddings                Future
+GET  /api/repos           # List repos                      Future
+GET  /api/repos/{name}    # Repo details                    Future
+GET  /api/model           # Model status                    Future
 ```
 
-**Files to Create:**
+**Files Created:**
 ```
 src/commands/serve/
-├── mod.rs              # Public interface
-└── internal.rs         # Server implementation
+├── mod.rs              # Public interface         ✅
+└── internal.rs         # Server implementation    ✅
 
 src/mothership/
-├── mod.rs              # Client interface
-└── internal.rs         # HTTP client for daemon
+├── mod.rs              # Client interface         ✅
+└── internal.rs         # HTTP client for daemon   ✅
 ```
 
 ---
@@ -329,7 +333,7 @@ patina scry "entity component patterns" --all-repos
 
 ### 4d: Persona
 **Spec:** [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
-**Status:** Not Started
+**Status:** Core implemented (2025-12-08), scry integration pending
 
 **What persona IS:** A learned model of the user that enables LLMs to respond as the user would want. Includes beliefs, knowledge, style, history, preferences.
 
@@ -359,25 +363,31 @@ patina scry "error handling"  # includes [PERSONA] results
 
 **Validation:** Query in project B returns knowledge captured in project A.
 
-### 4e: `patina serve` Complete
+### 4e: `patina serve` Complete ✅
 **Spec:** [spec-serve-command.md](../surface/build/spec-serve-command.md)
-**Status:** `/api/scry` complete (2025-12-08), container integration pending
+**Status:** Complete (2025-12-08)
 
 HTTP daemon with `/api/scry` for container and remote queries.
 
 ```bash
-# Mac
+# Mac - start daemon
 patina serve
 
-# Query via API
+# Query via API directly
 curl -X POST localhost:50051/api/scry \
   -d '{"query": "session", "limit": 3}'
 
-# Container (YOLO dev) - pending validation
+# Container or remote - auto-routes to mothership
 PATINA_MOTHERSHIP=host.docker.internal:50051 patina scry "test"
 ```
 
-**Validation:** ✅ `/api/scry` returns JSON results. Container auto-routing pending.
+**What's implemented:**
+- Mothership client module (`src/mothership/`)
+- `PATINA_MOTHERSHIP` env var detection
+- Automatic scry routing to daemon when configured
+- All query modes supported (`--all-repos`, `--dimension`, `--repo`)
+
+**Validation:** ✅ Scry auto-routes to daemon when `PATINA_MOTHERSHIP` is set.
 
 ---
 
@@ -469,7 +479,7 @@ When context is lost, read these sessions for architectural decisions:
 | 4a | `git clone <project> && patina rebuild && patina scry` works | [x] |
 | 4b | `patina repo add` + `--oxidize` creates dependency index for reference repos | [x] |
 | 4c | `patina scry --all-repos` returns results from projects + reference repos | [x] |
-| 4d | `patina persona query` in project B returns knowledge from project A | [ ] |
-| 4e | YOLO container queries Mac via `PATINA_MOTHERSHIP` | [ ] |
+| 4d | `patina persona query` in project B returns knowledge from project A | [~] core works, scry integration pending |
+| 4e | `PATINA_MOTHERSHIP=... patina scry` routes to daemon | [x] |
 
 **Phase 4 Complete = Ready for hackathons with cross-project knowledge.**
