@@ -231,7 +231,7 @@ pub fn list_repos() -> Result<Vec<RepoEntry>> {
 }
 
 /// Update a specific repository
-pub fn update_repo(name: &str) -> Result<()> {
+pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
     let registry = Registry::load()?;
     let entry = registry
         .repos
@@ -250,13 +250,22 @@ pub fn update_repo(name: &str) -> Result<()> {
     println!("🔍 Re-scraping codebase...");
     let event_count = scrape_repo(repo_path)?;
 
+    // Oxidize if requested
+    if oxidize {
+        println!("\n🧪 Building semantic indices...");
+        oxidize_repo(repo_path)?;
+    }
+
     println!("\n✅ Updated {} ({} events)", name, event_count);
+    if oxidize {
+        println!("   Semantic indices built - scry will use vector search");
+    }
 
     Ok(())
 }
 
 /// Update all repositories
-pub fn update_all_repos() -> Result<()> {
+pub fn update_all_repos(oxidize: bool) -> Result<()> {
     let repos = list_repos()?;
 
     if repos.is_empty() {
@@ -269,7 +278,7 @@ pub fn update_all_repos() -> Result<()> {
     let mut success = 0;
     for repo in &repos {
         print!("  {} ... ", repo.name);
-        match update_repo(&repo.name) {
+        match update_repo(&repo.name, oxidize) {
             Ok(_) => {
                 println!("✓");
                 success += 1;
@@ -507,6 +516,9 @@ type = "external"
 [scrape]
 include = ["**/*.rs", "**/*.cairo", "**/*.sol", "**/*.ts", "**/*.js", "**/*.py", "**/*.go"]
 exclude = ["target/", "node_modules/", ".git/"]
+
+[embeddings]
+model = "e5-base-v2"
 "#,
         )?;
     }
@@ -555,6 +567,73 @@ fn scrape_repo(repo_path: &Path) -> Result<usize> {
     std::env::set_current_dir(original_dir)?;
 
     Ok(stats.items_processed)
+}
+
+/// Run oxidize on a repo to build semantic indices
+fn oxidize_repo(repo_path: &Path) -> Result<()> {
+    use crate::commands::oxidize;
+    use std::os::unix::fs::symlink;
+
+    // Save current directory (where patina project with models lives)
+    let original_dir = std::env::current_dir()?;
+    let resources_path = original_dir.join("resources");
+
+    // Change to repo directory
+    std::env::set_current_dir(repo_path)?;
+
+    // Ensure config.toml has embeddings section (fix for older scaffolds)
+    let config_path = repo_path.join(".patina/config.toml");
+    if config_path.exists() {
+        let config_content = fs::read_to_string(&config_path)?;
+        if !config_content.contains("[embeddings]") {
+            println!("   Adding embeddings config...");
+            let updated = format!("{}\n[embeddings]\nmodel = \"e5-base-v2\"\n", config_content);
+            fs::write(&config_path, updated)?;
+        }
+    }
+
+    // Create oxidize.yaml if it doesn't exist
+    // Reference repos only get dependency dimension (no sessions → no semantic, shallow clone → no temporal)
+    let recipe_path = repo_path.join(".patina/oxidize.yaml");
+    if !recipe_path.exists() {
+        println!("   Creating oxidize.yaml recipe (dependency only)...");
+        let recipe_content = r#"# Oxidize Recipe for reference repo
+# Reference repos only support dependency dimension:
+# - No layer/sessions/ → no semantic (no session pairs)
+# - Shallow clone → no temporal (no co-change history)
+# - Call graph from AST → dependency works
+version: 1
+embedding_model: e5-base-v2
+
+projections:
+  # Dependency projection - functions that call each other are related
+  dependency:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
+"#;
+        fs::write(&recipe_path, recipe_content)?;
+    }
+
+    // Symlink resources directory if it doesn't exist (for embedding models)
+    let repo_resources = repo_path.join("resources");
+    if !repo_resources.exists() && resources_path.exists() {
+        println!("   Linking model resources...");
+        symlink(&resources_path, &repo_resources).context("Failed to create resources symlink")?;
+    }
+
+    // Run oxidize
+    let result = oxidize::oxidize();
+
+    // Remove symlink after oxidize (clean up)
+    if repo_resources.is_symlink() {
+        let _ = fs::remove_file(&repo_resources);
+    }
+
+    // Restore directory
+    std::env::set_current_dir(original_dir)?;
+
+    result
 }
 
 /// Scrape GitHub issues for a repo

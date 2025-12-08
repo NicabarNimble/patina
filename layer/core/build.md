@@ -8,17 +8,38 @@ Persistent roadmap across sessions. **Start here when picking up work.**
 
 A local-first RAG network: **portable project knowledge + personal mothership**.
 
-- `layer/` = git-tracked knowledge (sessions, patterns) → syncs via GitHub
-- `.patina/` = local indices (db, embeddings) → rebuilt, never committed
-- `~/.patina/` = personal mothership (persona, registry) → never syncs
+### Two-Tier Architecture
+
+**Patina Projects** (code you work on):
+```bash
+patina init .                    # Any repo you work on (owner or contributor)
+```
+- `layer/` = git-tracked knowledge (sessions, patterns)
+- `.patina/` = local indices (db, embeddings) → rebuilt via `patina rebuild`
+- Full RAG: semantic, temporal, dependency dimensions
+- Owner vs contributor = git remote config, not patina concern
+
+**Reference Repos** (read-only knowledge):
+```bash
+patina repo add <url>            # Code you learn from, not work on
+```
+- Lives in `~/.patina/repos/`
+- Lightweight index: code AST, call graph, FTS5
+- No `layer/`, no sessions
+- Dependency dimension only (no temporal without full git history)
+
+**Mothership** (`~/.patina/`):
+- `registry.yaml` = all known projects and reference repos
+- `personas/` = user knowledge that informs LLM responses (see 4d)
+- `patina serve` = daemon for cross-project queries
 
 See: [rag-network.md](../surface/rag-network.md)
 
 ---
 
-## Current Direction (2025-12-05)
+## Current Direction (2025-12-08)
 
-**Goal:** Every node is a complete RAG. Cross-project knowledge that helps win hackathons.
+**Goal:** Cross-project knowledge that helps win hackathons.
 
 **Phase 3 (Query Infrastructure):** ✅ Complete
 - Scrape, oxidize, scry, repo, dependency dimension all working
@@ -26,21 +47,22 @@ See: [rag-network.md](../surface/rag-network.md)
 
 **Phase 4 (Solid Foundation):** ← Current focus
 
-| Phase | Deliverable | Validation |
-|-------|-------------|------------|
-| **4a** | `patina rebuild` | `git clone <repo> && patina rebuild && patina scry` works |
-| **4b** | External repo oxidize | All repos have semantic indices (no FTS5 fallback) |
-| **4c** | `--all-repos` query | Single query searches all nodes |
-| **4d** | Persona capture + query | Beliefs flow up, inform queries |
-| **4e** | `patina serve` complete | Containers query Mac mothership |
+| Phase | Deliverable | Status |
+|-------|-------------|--------|
+| **4a** | `patina rebuild` | ✅ Complete |
+| **4b** | Reference repo indexing | ✅ Complete - dependency dimension + auto-detect |
+| **4c** | `--all-repos` query | ✅ Complete - cross-project search |
+| **4d** | Persona | ⬜ Not started |
+| **4e** | `patina serve` complete | 🟡 `/api/scry` done, client routing pending |
 
 **Specs:**
-- [spec-rebuild-command.md](../surface/build/spec-rebuild-command.md)
+- [spec-rebuild-command.md](../surface/build/spec-rebuild-command.md) - for projects
+- [spec-repo-command.md](../surface/build/spec-repo-command.md) - for reference repos
 - [spec-serve-command.md](../surface/build/spec-serve-command.md)
 - [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
 
 **Deferred (use-case features, not core):**
-- Bounty/opportunity display (data exists, surface later)
+- Bounty detection (future plugin system)
 - GitHub semantic embeddings
 - MLX runtime, model upgrades
 
@@ -111,40 +133,28 @@ patina repo update dojo                  # Refresh later
 #### 3e: GitHub Integration (Issues MVP)
 **Status:** ✅ Complete (2025-12-03)
 **Spec:** [spec-github-adapter.md](../surface/build/spec-github-adapter.md)
-**Why:** OnlyDust bounty discovery + hackathon context from issues/discussions
+**Why:** Hackathon context from issues/discussions
 
 **Key Insight:** GitHub issues use SAME semantic space as code (E5 → MLP → 256-dim). Query "entity spawning" returns both code AND related issues.
 
-**Phase 1: Issues MVP (Complete)**
+**What's Working:**
 - [x] Create `src/commands/scrape/github/mod.rs`
 - [x] Add `github_issues` materialized view schema
 - [x] Implement `gh issue list --json` integration
-- [x] Bounty detection (labels + body parsing)
 - [x] Add `--with-issues` flag to `patina repo add`
 - [x] Add `github.issue` events to FTS5 index
 - [x] Add `--include-issues` flag to `patina scry`
-- [x] Test with dojoengine/dojo (500 issues indexed)
 - [x] Graceful fallback to FTS5 when semantic index missing
 
 ```bash
 patina repo add dojoengine/dojo --with-issues
-patina scry "bounty cairo" --repo dojo --include-issues --label bounty
+patina scry "spawn entity" --repo dojo --include-issues
 ```
 
-**Phase 2: Semantic Search (Future)**
-- [ ] Generate E5 embeddings for issue title + body
-- [ ] Store in embeddings table (same space as code)
-- [ ] Cross-type ranking in scry results
-
-**Phase 3: PRs + Discussions (Future)**
-- [ ] Add `github_prs`, `github_discussions` tables
-- [ ] `gh pr list` and `gh api graphql` integration
-- [ ] Extend scry with `--include-prs`, `--include-discussions`
-
-**Phase 4: Cross-Project Bounty Discovery (Future)**
-- [ ] `patina scry "bounty" --all-repos --label bounty`
-- [ ] Aggregate bounties from all registered repos
-- [ ] Persona-aware bounty matching
+**Deferred (use-case features, not core):**
+- Bounty detection removed from core (2025-12-06) - future plugin
+- Semantic embeddings for issues (depends on external repo oxidize)
+- PRs + Discussions integration
 
 #### 3f: Mothership Daemon (`patina serve`)
 **Status:** In Progress (2025-12-03)
@@ -186,10 +196,11 @@ Mac (Mothership)                    Container
 - [ ] Thread-safe embedder access
 
 **Phase 3: Scry API + Client Detection**
-- [ ] `/api/scry` endpoint (semantic/lexical/file)
+- [x] `/api/scry` endpoint (semantic/lexical/file) ✅ (2025-12-08)
 - [ ] Mothership client module
 - [ ] Auto-detection: `PATINA_MOTHERSHIP` env var or localhost check
 - [ ] Update scry command to route to daemon
+- [ ] Persona integration (`include_persona` option)
 
 **Phase 4: Container Integration**
 - [ ] `--host 0.0.0.0` option for container access
@@ -221,27 +232,6 @@ src/commands/serve/
 src/mothership/
 ├── mod.rs              # Client interface
 └── internal.rs         # HTTP client for daemon
-```
-
-#### 3g: Bounty Workflow Completion
-**Status:** Not Started (2025-12-04)
-**Spec:** Code review findings - bounty data goes in but doesn't come out
-**Why:** 10x productivity for OnlyDust requires surfacing bounty data in results
-
-**Key Insight (Code Review):** Bounty detection works (labels + regex), data stored in `github_issues` table, but `ScryResult` doesn't expose `is_bounty`, `bounty_amount`, or `labels`. Dead code from user value perspective.
-
-- [ ] Expose `is_bounty`, `bounty_amount`, `labels` in ScryResult struct
-- [ ] Add `--label` filter to scry command (documented but not implemented)
-- [ ] Fix `update_repo` to call `scrape_github_issues` (currently skipped)
-- [ ] Add `--sort bounty` option for bounty-amount ranking
-- [ ] Add `--all-repos` flag for cross-repo aggregation
-
-**Target workflow:**
-```bash
-patina repo add dojoengine/dojo --with-issues
-patina repo add starkware-libs/cairo --with-issues
-patina scry "bounty" --all-repos --label bounty
-# 💰 $500 USDC | dojo#1234 | "Implement spawn batching"
 ```
 
 ---
@@ -284,78 +274,110 @@ Working pipeline for single dimension:
 
 ## Phase 4: Solid Foundation (Current)
 
-**Goal:** Every node is a complete RAG. Cross-project knowledge that helps win hackathons.
+**Goal:** Cross-project knowledge. Projects have full RAG, reference repos have lightweight indices.
 
 ### 4a: `patina rebuild` ✅
 **Spec:** [spec-rebuild-command.md](../surface/build/spec-rebuild-command.md)
 **Status:** Complete (2025-12-06)
 
-Regenerate `.patina/` from `layer/` and local sources.
+Regenerate `.patina/` from `layer/` for patina projects.
 
 ```bash
-git clone <repo-with-layer>
+git clone <patina-project>
 patina rebuild
-patina scry "test"  # Works with semantic search
+patina scry "test"  # Full semantic search
 ```
 
-**Validation:** Clone any Patina-enabled repo → rebuild → semantic scry works.
+**Validation:** Clone any patina project → rebuild → semantic scry works.
 
-### 4b: External Repo Oxidize
-**Status:** Not Started
+### 4b: Reference Repo Indexing ✅
+**Spec:** [spec-repo-command.md](../surface/build/spec-repo-command.md)
+**Status:** Complete (2025-12-08)
 
-All 9 external repos should have semantic indices, not just FTS5.
+Reference repos get lightweight indexing: code AST, call graph, FTS5, dependency dimension.
 
 ```bash
-patina repo update --oxidize <name>  # Or automatic during add
-patina scry "spawn" --repo dojo      # Semantic, not FTS5 fallback
+patina repo add dojoengine/dojo       # Clone, scrape, index
+patina repo update --oxidize dojo     # Add dependency dimension
+patina scry "spawn" --repo dojo       # Query via dependency index
 ```
 
-**Validation:** `patina scry --repo dojo` returns semantic results (no "falling back to FTS5" message).
+**What reference repos get:**
+- Code AST and symbols (FTS5 lexical search)
+- Call graph (dependency dimension only)
+- Shallow clone (no temporal dimension)
+- No sessions (no semantic dimension)
 
-### 4c: `--all-repos` Query
-**Status:** Not Started
+**Key design:** Recipe creates dependency-only projection (no semantic/temporal since data not available).
 
-Single query searches all nodes in unified semantic space.
+**Validation:** ✅ `patina repo update --oxidize` creates queryable index, scry auto-detects available dimensions.
+
+### 4c: `--all-repos` Query ✅
+**Status:** Complete (2025-12-08)
+
+Single query searches projects (full RAG) + reference repos (lightweight).
 
 ```bash
 patina scry "entity component patterns" --all-repos
-# Returns ranked results from: patina, dojo, bevy, all 9 repos
+# Projects: semantic + temporal + dependency
+# Reference: FTS5 + dependency
 ```
 
-**Validation:** Query returns results from multiple repos, ranked by semantic similarity.
+**Key design:** Results tagged with source (`[PROJECT]`, `[DOJO]`, etc.), sorted by score.
 
-### 4d: Persona Capture + Query
+**Validation:** ✅ Query returns combined results from project + all reference repos.
+
+### 4d: Persona
 **Spec:** [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
 **Status:** Not Started
 
-Beliefs flow UP from projects to persona, inform future queries.
+**What persona IS:** A learned model of the user that enables LLMs to respond as the user would want. Includes beliefs, knowledge, style, history, preferences.
 
-```bash
-# In dojo project
-/session-note "ECS systems should be stateless"
-
-# Later, in different project
-patina scry "system design"
-# [PERSONA] ECS systems should be stateless (learned from dojo)
+**Storage:** `~/.patina/personas/default/` (designed for multi-persona future)
+```
+~/.patina/personas/default/
+├── events/           # Append-only capture (tagged by source)
+├── materialized/     # persona.db + persona.usearch
+└── config.yaml
 ```
 
-**Validation:** Note captured in one project → appears as `[PERSONA]` result in another.
+**Capture paths (all continuous, all feed same store):**
+1. Reflection flow (`/persona-start`) - dedicated Q&A distillation
+2. Session observation - patterns from `/session-*` work
+3. Session distillation - scrape sessions → persona knowledge
+4. Direct capture - `patina persona note "..."`
+
+**Query:**
+```bash
+patina persona query "error handling"
+patina scry "error handling"  # includes [PERSONA] results
+```
+
+**LLM integration:** Adapters (CLAUDE.md, etc.) tell LLM about persona tools. LLM queries persona for context.
+
+**Build sequence:** Storage structure → materialize command → query command → capture paths → scry integration → adapter rules.
+
+**Validation:** Query in project B returns knowledge captured in project A.
 
 ### 4e: `patina serve` Complete
 **Spec:** [spec-serve-command.md](../surface/build/spec-serve-command.md)
-**Status:** Phase 1 done (/health endpoint)
+**Status:** `/api/scry` complete (2025-12-08), container integration pending
 
-Full daemon with `/api/scry`, container support, hot model caching.
+HTTP daemon with `/api/scry` for container and remote queries.
 
 ```bash
 # Mac
 patina serve
 
-# Container (YOLO dev)
+# Query via API
+curl -X POST localhost:50051/api/scry \
+  -d '{"query": "session", "limit": 3}'
+
+# Container (YOLO dev) - pending validation
 PATINA_MOTHERSHIP=host.docker.internal:50051 patina scry "test"
 ```
 
-**Validation:** YOLO container can query Mac mothership.
+**Validation:** ✅ `/api/scry` returns JSON results. Container auto-routing pending.
 
 ---
 
@@ -418,6 +440,10 @@ When context is lost, read these sessions for architectural decisions:
 
 | Session | Topic | Key Insight |
 |---------|-------|-------------|
+| 20251208-083033 | Persona Deep Dive | Persona = learned model of user, multi-capture paths, design for multi-persona |
+| 20251206-101304 | Continue | Phase 4a complete, bounty removed from core, pre-push script fix |
+| 20251205-062457 | Planning Pitfalls | Vendor workflow friction, layer/ must be source of truth |
+| 20251204-173633 | What is Patina | "LLM-agnostic agentic RAG network", bounty = drift |
 | 20251128-140600 | GitHub Design | Unified semantic space for code + issues. 4 design docs created. |
 | 20251125-130143 | Phase 2 Review | Hackathon 10x focus, E5 router, model worlds design |
 | 20251125-095019 | Build Continue | Temporal + Scry + Eval complete. Query interface per dimension. |
@@ -440,10 +466,10 @@ When context is lost, read these sessions for architectural decisions:
 
 | Phase | Validation | Status |
 |-------|------------|--------|
-| 4a | `git clone <repo> && patina rebuild && patina scry` works | [x] |
-| 4b | `patina scry --repo dojo` returns semantic (no FTS5 fallback) | [ ] |
-| 4c | `patina scry --all-repos` returns results from multiple repos | [ ] |
-| 4d | `/session-note` in project A → `[PERSONA]` result in project B | [ ] |
+| 4a | `git clone <project> && patina rebuild && patina scry` works | [x] |
+| 4b | `patina repo add` + `--oxidize` creates dependency index for reference repos | [x] |
+| 4c | `patina scry --all-repos` returns results from projects + reference repos | [x] |
+| 4d | `patina persona query` in project B returns knowledge from project A | [ ] |
 | 4e | YOLO container queries Mac via `PATINA_MOTHERSHIP` | [ ] |
 
 **Phase 4 Complete = Ready for hackathons with cross-project knowledge.**

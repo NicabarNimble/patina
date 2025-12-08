@@ -10,6 +10,8 @@
 
 HTTP daemon for container queries, hot model caching, and cross-project search. Follows Ollama pattern - single binary, lazy loading, REST API.
 
+**Aggregates:** Patina projects (full RAG) + reference repos (lightweight indices) + persona (cross-project knowledge)
+
 ---
 
 ## Architecture
@@ -35,12 +37,13 @@ Mac (Mothership)                    Container
 | Method | Endpoint | Purpose | Status |
 |--------|----------|---------|--------|
 | GET | `/health` | Health check | ✅ Done |
-| POST | `/api/scry` | Query (semantic/lexical/file) | Planned |
+| POST | `/api/scry` | Query (semantic/lexical/file) | ✅ Done |
 | POST | `/api/embed` | Generate embedding | Planned |
 | POST | `/api/embed/batch` | Batch embeddings | Planned |
 | GET | `/api/repos` | List repos | Planned |
 | GET | `/api/repos/{name}` | Repo details | Planned |
 | GET | `/api/model` | Model status | Planned |
+| GET | `/api/persona` | Query persona | Planned (4d) |
 
 ---
 
@@ -77,10 +80,11 @@ patina serve --daemon
 - [ ] Lazy model loading on first request
 
 ### Phase 3: Scry API + Client Detection
-- [ ] `/api/scry` endpoint (semantic/lexical/file)
+- [x] `/api/scry` endpoint (semantic/lexical/file) ✅ (2025-12-08)
 - [ ] Mothership client module in `src/mothership/`
 - [ ] Auto-detection: `PATINA_MOTHERSHIP` env var
 - [ ] Update scry command to route to daemon when available
+- [ ] Persona integration (`include_persona` option)
 
 ### Phase 4: Container Integration
 - [ ] `--host 0.0.0.0` option for container access
@@ -135,9 +139,10 @@ max_memory_mb = 2048
 
 ## Validation Criteria
 
-**Phase 4 complete when:**
-1. [ ] `patina serve` exposes `/api/scry` endpoint
+**4e complete when:**
+1. [x] `patina serve` exposes `/api/scry` endpoint
 2. [ ] `patina scry` detects daemon and routes queries
 3. [ ] Container can query Mac via `PATINA_MOTHERSHIP` env var
-4. [ ] `patina scry --all-repos` queries across registry
+4. [x] `patina scry --all-repos` queries across registry
 5. [ ] Model stays hot between requests (lazy loading works)
+6. [ ] `/api/scry` supports `include_persona` option (after 4d)
