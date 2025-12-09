@@ -394,7 +394,10 @@ PATINA_MOTHERSHIP=host.docker.internal:50051 patina scry "test"
 ## Phase 5: Launcher & Adapters (Next)
 
 **Goal:** `patina` becomes the launcher for AI-assisted development. Like `code .` for VS Code.
-**Spec:** [spec-launcher-architecture.md](../surface/build/spec-launcher-architecture.md)
+
+**Specs:**
+- [spec-launcher-architecture.md](../surface/build/spec-launcher-architecture.md) - Overall launcher design
+- [spec-template-centralization.md](../surface/build/spec-template-centralization.md) - Template extraction and LLM parity
 
 **Key Insight:** Source vs Presentation. `.patina/context.md` is committed (source of truth), `CLAUDE.md` is generated and gitignored (presentation).
 
@@ -405,34 +408,52 @@ patina gemini       # Open in Gemini CLI
 patina --yolo gemini  # Launch in YOLO container
 ```
 
-### 5a: First-Run Setup
+### 5a: Template Centralization
+**Spec:** [spec-template-centralization.md](../surface/build/spec-template-centralization.md)
+**Why:** Gemini parity, centralized templates, shared source for init and launch.
+
+- [ ] Create `resources/gemini/.gemini/` templates (parity with claude)
+- [ ] Create `src/adapters/templates.rs` extraction module
+- [ ] Extract templates to `~/.patina/adapters/{frontend}/templates/` on first run
+- [ ] Refactor claude adapter to copy from central templates
+- [ ] Implement gemini adapter with full template support
+- [ ] Update init to use `templates::copy_to_project()`
+
+### 5b: First-Run Setup
 - [ ] Detect first run → create `~/.patina/`
 - [ ] Create workspace folder `~/Projects/Patina`
-- [ ] Install adapter templates to `~/.patina/adapters/`
+- [ ] Call `templates::install_all()` to extract embedded templates
 - [ ] Detect installed LLM CLIs (enum-based, not manifest files)
 - [ ] Set default frontend
 
-### 5b: Launcher Command
-- [ ] `patina [path] [frontend]` as **default behavior** (not a subcommand)
+### 5c: Launcher Command
+- [ ] Remove `Commands::Launch` subcommand
+- [ ] `patina [path] [frontend]` as **implicit default behavior**
 - [ ] Parse: frontend names vs subcommands (serve, init, adapter, etc.)
 - [ ] Auto-start mothership if not running
 - [ ] Prompt `patina init` if not a patina project
+- [ ] Ensure adapter templates exist via `templates::copy_to_project()`
 - [ ] Launch frontend CLI via `exec`
 
-### 5c: Source/Presentation Model
+### 5d: Source/Presentation Model
 - [ ] `.patina/context.md` as source of truth (committed)
-- [ ] Generate `CLAUDE.md`/`GEMINI.md` on launch (gitignored)
-- [ ] Copy `.claude/`/`.gemini/` templates on launch (gitignored)
-- [ ] Combine global persona + project context in generated files
+- [ ] Generate `CLAUDE.md`/`GEMINI.md` on launch from context + persona
+- [ ] Combine global persona (`~/.patina/personas/`) + project context
 - [ ] Update `.gitignore` for presentation files
 
-### 5d: Branch Model
-- [ ] Always work on `patina` branch
+### 5e: Branch Model & Safety
+**Philosophy:** Do and inform, not warn and block.
+
+- [ ] Refactor `ensure_patina_branch()` to assisted mode (auto-stash, auto-switch)
+- [ ] Add `ensure_patina_for_launch()` for launcher branch safety
+- [ ] Auto-stash dirty working tree before switch
+- [ ] Auto-rebase patina if behind main
+- [ ] Show restore hints after stash ("git checkout main && git stash pop")
+- [ ] Keep `--force` for nuclear reset only (backup → recreate)
 - [ ] `.patina/config.toml` with `mode = "owner"` or `"contrib"`
 - [ ] Document CI stripping for contrib repos
-- [ ] PR workflow: patina → main
 
-### 5e: Adapter Commands
+### 5f: Adapter Commands
 - [ ] `patina adapter list` - show available frontends (detected status)
 - [ ] `patina adapter default X` - set default frontend
 - [ ] Frontend detection via enum (simple, type-safe)
@@ -614,13 +635,20 @@ When context is lost, read these sessions for architectural decisions:
 ### Phase 5 (Next)
 | Validation | Status |
 |------------|--------|
-| First-run creates `~/.patina/` and workspace | [ ] |
+| Gemini templates exist with full parity to Claude | [ ] |
+| First-run extracts templates to `~/.patina/adapters/` | [ ] |
+| `patina init --llm=claude` copies from central templates | [ ] |
+| `patina init --llm=gemini` copies from central templates | [ ] |
 | `patina` (no args) opens default frontend | [ ] |
 | `patina claude` opens Claude Code | [ ] |
 | `patina gemini` opens Gemini CLI | [ ] |
 | `.patina/context.md` generates `CLAUDE.md` on launch | [ ] |
 | Presentation files (`CLAUDE.md`, `.claude/`) are gitignored | [ ] |
 | Switching frontends < 2 seconds (regenerate from same source) | [ ] |
+| `patina init` on dirty main auto-stashes and switches to patina | [ ] |
+| `patina claude` on main auto-stashes, switches, generates, launches | [ ] |
+| `patina init --force` backs up existing patina and recreates | [ ] |
+| Stash restore hint shown after auto-stash | [ ] |
 | Owner mode: patina artifacts included in PR | [ ] |
 | Contrib mode: CI strips patina artifacts | [ ] |
 
