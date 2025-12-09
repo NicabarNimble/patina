@@ -1,0 +1,22 @@
+description = "Update current session with Git-aware progress"
+prompt = """
+Update the current Patina session with Git context:
+
+1. Execute the session update script:
+   `.gemini/bin/session-git-update.sh`
+
+2. Read the updated `.gemini/context/active-session.md` file
+
+3. Review the Git status output and fill in the update section with:
+   - Work completed since last update
+   - Key decisions and reasoning
+   - Challenges faced and solutions
+   - Patterns observed
+
+4. If there are uncommitted changes for a long time, consider:
+   - Making a checkpoint commit
+   - Breaking large changes into smaller commits
+   - Using `git add -p` for surgical staging
+
+The session update has been recorded with Git context.
+"""

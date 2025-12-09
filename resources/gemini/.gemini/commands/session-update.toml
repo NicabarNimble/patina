@@ -1,0 +1,22 @@
+description = "Update current session with progress"
+prompt = """
+Update the current Patina session:
+
+1. Execute the session update script:
+   `.gemini/bin/session-update.sh`
+
+2. Read the updated `.gemini/context/active-session.md` file
+
+3. Fill in the update section with:
+   - Work completed since last update
+   - Key decisions and reasoning
+   - Challenges faced and solutions
+   - Patterns observed
+
+4. If there are uncommitted changes, remind the user about git best practices:
+   - Make small, focused commits
+   - Each commit should have ONE clear purpose
+   - Use `git add -p` for surgical staging
+
+The session update has been recorded.
+"""

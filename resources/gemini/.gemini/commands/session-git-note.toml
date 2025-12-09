@@ -1,0 +1,11 @@
+description = "Add a note to the current session with Git context"
+prompt = """
+Add a note to the current Patina session with Git context:
+
+1. Execute the session note script:
+   `.gemini/bin/session-git-note.sh {{args}}`
+
+2. The note has been added to `.gemini/context/active-session.md` with the current Git branch and commit SHA
+
+Notes with Git context become searchable memory - future sessions can find "when did we solve X?"
+"""
