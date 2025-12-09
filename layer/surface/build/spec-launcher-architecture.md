@@ -273,6 +273,63 @@ default = "claude"
 strip_paths = [".patina/", "layer/"]
 ```
 
+### Branch Safety: Do and Inform
+
+Patina enforces the patina branch model but helps rather than blocks. Philosophy: **do it and inform** rather than **warn and block**.
+
+#### For `patina init`
+
+| Scenario | Action | Output |
+|----------|--------|--------|
+| On patina, up to date | Continue | "✓ Already on patina branch" |
+| On patina, behind main | Auto-rebase | "📥 Rebasing onto main... ✓" |
+| On main/other, clean | Create/switch | "🌱 Creating patina... ✓" |
+| On main/other, dirty | Stash → create/switch | "📦 Stashing... 🌱 Creating... 💡 restore hint" |
+| `--force` flag | Backup → recreate | "🗑️ Backed up patina → patina-backup-{ts}" |
+
+#### For `patina claude` (launcher)
+
+| Scenario | Action | Output |
+|----------|--------|--------|
+| On patina | Generate + launch | (proceed) |
+| On other, clean, patina exists | Switch → generate → launch | "🔀 Switching to patina..." |
+| On other, dirty, patina exists | Stash → switch → generate → launch | "📦 Stashing... 🔀 Switching... 💡 restore hint" |
+| No patina branch | Error | "Run patina init first" |
+| No .patina/ directory | Error | "Run patina init first" |
+
+#### Stash Restore Hint
+
+When auto-stashing, always show restore instructions:
+
+```
+────────────────────────────────────────────────
+💡 Your changes on 'main' are stashed.
+   To restore: git checkout main && git stash pop
+────────────────────────────────────────────────
+```
+
+#### Why Not Auto-Unstash?
+
+After launch exits, user stays on patina branch. This is intentional:
+- Patina branch is where AI work happens
+- Stash is waiting if they need it
+- Simple, predictable behavior
+
+#### The `--force` Flag
+
+Normal mode preserves existing patina branch. `--force` is for nuclear reset:
+
+```bash
+patina init . --force
+
+🗑️  Backing up existing patina branch...
+   ✓ Renamed patina → patina-backup-20251209-143022
+🌱 Creating fresh patina branch from 'main'...
+   ✓ Created and switched to patina branch
+```
+
+Use when patina branch is corrupted or you want to start completely fresh.
+
 ---
 
 ## .patina/context.md (Source of Truth)
