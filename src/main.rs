@@ -148,6 +148,10 @@ enum Commands {
         /// Include GitHub issues in search results
         #[arg(long)]
         include_issues: bool,
+
+        /// Exclude persona knowledge from results
+        #[arg(long)]
+        no_persona: bool,
     },
 
     /// Evaluate retrieval quality across dimensions
@@ -600,6 +604,7 @@ fn main() -> Result<()> {
             repo,
             all_repos,
             include_issues,
+            no_persona,
         } => {
             let options = commands::scry::ScryOptions {
                 limit,
@@ -609,6 +614,7 @@ fn main() -> Result<()> {
                 repo,
                 all_repos,
                 include_issues,
+                include_persona: !no_persona,
             };
             commands::scry::execute(query.as_deref(), options)?;
         }

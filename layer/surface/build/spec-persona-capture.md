@@ -1,6 +1,6 @@
 # Spec: Persona
 
-**Status:** Core implemented (2025-12-08), scry integration pending
+**Status:** Complete (2025-12-08)
 **Phase:** 4d (Core Infrastructure)
 **Location:** `src/commands/persona/mod.rs`
 
@@ -173,8 +173,8 @@ curl -X POST localhost:50051/api/scry \
 - [x] `patina persona materialize` processes events → SQLite + USearch
 - [x] `patina persona query` returns semantic search results
 - [x] `patina persona list` shows captured knowledge
-- [ ] `patina scry` includes persona results tagged `[PERSONA]`
-- [ ] `/api/scry` supports `include_persona` option
+- [x] `patina scry` includes persona results tagged `[PERSONA]`
+- [x] `/api/scry` supports `include_persona` option
 - [x] Persona data never appears in git
 
 ---
