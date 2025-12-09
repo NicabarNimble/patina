@@ -242,6 +242,26 @@ enum Commands {
         #[arg(long, default_value = "50051")]
         port: u16,
     },
+
+    /// Open project in AI frontend (like 'code .' for VS Code)
+    Launch {
+        /// Project path (default: current directory)
+        path: Option<String>,
+
+        /// Frontend to use (claude, gemini, codex)
+        #[arg(short, long)]
+        frontend: Option<String>,
+
+        /// Don't auto-start mothership
+        #[arg(long)]
+        no_serve: bool,
+    },
+
+    /// List available AI frontends
+    Adapter {
+        #[command(subcommand)]
+        command: Option<AdapterCommands>,
+    },
 }
 
 /// Common arguments for all scrape subcommands
@@ -421,6 +441,24 @@ enum RepoCommands {
     Show {
         /// Repository name
         name: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum AdapterCommands {
+    /// List available frontends
+    List,
+
+    /// Set default frontend
+    Default {
+        /// Frontend name (claude, gemini, codex)
+        name: String,
+    },
+
+    /// Check frontend installation status
+    Check {
+        /// Frontend name (optional, checks all if not specified)
+        name: Option<String>,
     },
 }
 
@@ -749,6 +787,69 @@ fn main() -> Result<()> {
         Commands::Serve { host, port } => {
             let options = commands::serve::ServeOptions { host, port };
             commands::serve::execute(options)?;
+        }
+        Commands::Launch {
+            path,
+            frontend,
+            no_serve,
+        } => {
+            let options = commands::launch::LaunchOptions {
+                path,
+                frontend,
+                auto_start_mothership: !no_serve,
+                auto_init: true,
+            };
+            commands::launch::execute(options)?;
+        }
+        Commands::Adapter { command } => {
+            use patina::adapters::launch as frontend;
+
+            match command {
+                None | Some(AdapterCommands::List) => {
+                    let frontends = frontend::list()?;
+                    println!("📱 Available AI Frontends\n");
+                    println!("{:<12} {:<15} {:<10} VERSION", "NAME", "DISPLAY", "STATUS");
+                    println!("{}", "─".repeat(50));
+                    for f in frontends {
+                        let status = if f.detected {
+                            "✓ found"
+                        } else {
+                            "✗ missing"
+                        };
+                        let version = f.version.unwrap_or_else(|| "-".to_string());
+                        println!(
+                            "{:<12} {:<15} {:<10} {}",
+                            f.name, f.display, status, version
+                        );
+                    }
+
+                    let default = frontend::default_name()?;
+                    println!("\nDefault: {}", default);
+                }
+                Some(AdapterCommands::Default { name }) => {
+                    frontend::set_default(&name)?;
+                    println!("✓ Default frontend set to: {}", name);
+                }
+                Some(AdapterCommands::Check { name }) => {
+                    if let Some(n) = name {
+                        let f = frontend::get(&n)?;
+                        if f.detected {
+                            println!("✓ {} is installed", f.display);
+                            if let Some(v) = f.version {
+                                println!("  Version: {}", v);
+                            }
+                        } else {
+                            println!("✗ {} is not installed", f.display);
+                        }
+                    } else {
+                        // Check all
+                        for f in frontend::list()? {
+                            let status = if f.detected { "✓" } else { "✗" };
+                            println!("{} {}", status, f.display);
+                        }
+                    }
+                }
+            }
         }
     }
 
