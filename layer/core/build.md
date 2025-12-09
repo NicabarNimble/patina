@@ -41,30 +41,30 @@ See: [rag-network.md](../surface/rag-network.md)
 
 **Goal:** Cross-project knowledge that helps win hackathons.
 
-**Phase 3 (Query Infrastructure):** ✅ Complete
-- Scrape, oxidize, scry, repo, dependency dimension all working
-- 8.6x improvement over random (measured)
+### Completed Infrastructure
+| Phase | Name | Status |
+|-------|------|--------|
+| **1** | Scrape Pipeline | ✅ Complete |
+| **2** | Oxidize (Embeddings) | ✅ Complete |
+| **3** | Query Infrastructure | ✅ Complete (8.6x vs random) |
+| **4** | Solid Foundation | ✅ Complete |
 
-**Phase 4 (Solid Foundation):** ← Current focus
+### Next: Make LLMs Use It
+| Phase | Name | Focus |
+|-------|------|-------|
+| **5** | Launcher & Adapters | `patina` as entry point, adapter system |
+| **6** | MCP Integration | Mothership MCP server, universal tools |
+| **7** | Capture Automation | Session → persona distillation |
+| **8** | Model Worlds | MLX, code-specific models |
 
-| Phase | Deliverable | Status |
-|-------|-------------|--------|
-| **4a** | `patina rebuild` | ✅ Complete |
-| **4b** | Reference repo indexing | ✅ Complete - dependency dimension + auto-detect |
-| **4c** | `--all-repos` query | ✅ Complete - cross-project search |
-| **4d** | Persona | 🔶 Core done, scry integration pending |
-| **4e** | `patina serve` complete | ✅ Complete |
+**The Gap:** Users run `claude` or `gemini` directly. Patina should be the launcher. Phase 5 makes `patina` the entry point, Phase 6 wires MCP for universal tool access.
 
 **Specs:**
+- [spec-launcher-architecture.md](../surface/build/spec-launcher-architecture.md) - launcher & adapter design
 - [spec-rebuild-command.md](../surface/build/spec-rebuild-command.md) - for projects
 - [spec-repo-command.md](../surface/build/spec-repo-command.md) - for reference repos
 - [spec-serve-command.md](../surface/build/spec-serve-command.md)
 - [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
-
-**Deferred (use-case features, not core):**
-- Bounty detection (future plugin system)
-- GitHub semantic embeddings
-- MLX runtime, model upgrades
 
 ---
 
@@ -201,7 +201,7 @@ Mac (Mothership)                    Container
 - [x] Mothership client module
 - [x] Auto-detection: `PATINA_MOTHERSHIP` env var or localhost check
 - [x] Update scry command to route to daemon
-- [ ] Persona integration (`include_persona` option) - after 4d complete
+- [x] Persona integration (`include_persona` option)
 
 **Phase 4: Container Integration** ✅
 - [x] `--host 0.0.0.0` option for container access
@@ -331,9 +331,9 @@ patina scry "entity component patterns" --all-repos
 
 **Validation:** ✅ Query returns combined results from project + all reference repos.
 
-### 4d: Persona
+### 4d: Persona ✅
 **Spec:** [spec-persona-capture.md](../surface/build/spec-persona-capture.md)
-**Status:** Core implemented (2025-12-08), scry integration pending
+**Status:** Complete (2025-12-08)
 
 **What persona IS:** A learned model of the user that enables LLMs to respond as the user would want. Includes beliefs, knowledge, style, history, preferences.
 
@@ -391,9 +391,128 @@ PATINA_MOTHERSHIP=host.docker.internal:50051 patina scry "test"
 
 ---
 
-## Phase 5: Model Worlds (Future)
+## Phase 5: Launcher & Adapters (Next)
+
+**Goal:** `patina` becomes the launcher for AI-assisted development. Like `code .` for VS Code.
+**Spec:** [spec-launcher-architecture.md](../surface/build/spec-launcher-architecture.md)
+
+**Key Insight:** Patina rules = source of truth. Adapters = winamp skins (same content, different format).
+
+```bash
+patina              # Open project in default frontend
+patina claude       # Open in Claude Code
+patina gemini       # Open in Gemini CLI
+patina --yolo gemini  # Launch in YOLO container
+```
+
+### 5a: First-Run & Workspace Setup
+- [ ] Detect first run → create `~/.patina/`
+- [ ] Create workspace folder `~/Projects/Patina`
+- [ ] Install default adapters (claude, gemini, codex)
+- [ ] Detect installed LLM CLIs
+- [ ] Set default frontend
+
+### 5b: Adapter System
+- [ ] `~/.patina/adapters/` structure
+- [ ] Adapter manifest format (detection, templates, MCP config)
+- [ ] `patina adapter list` - show available frontends
+- [ ] `patina adapter default X` - set default
+- [ ] `patina adapter add X` - install adapter resources
+
+### 5c: Launcher Command
+- [ ] `patina [path] [frontend]` - main entry point
+- [ ] Auto-start mothership if not running
+- [ ] Auto-init project if needed (prompt user)
+- [ ] Generate bootstrap file if missing
+- [ ] Launch frontend CLI
+
+### 5d: layer/rules/ Structure
+- [ ] `layer/rules/context.md` - project overview
+- [ ] `layer/rules/patterns.md` - code conventions
+- [ ] `layer/rules/tools.md` - available commands
+- [ ] Adapters render from rules → bootstrap files
+
+### 5e: Claude Adapter
+- [ ] Bootstrap template (tiny, MCP-focused)
+- [ ] MCP configuration for `~/.claude/settings.json`
+- [ ] Slash commands (optional enhancement)
+
+### 5f: Gemini Adapter
+- [ ] Bootstrap template
+- [ ] MCP configuration (TBD - research Gemini CLI)
+
+### 5g: Codex Adapter
+- [ ] Bootstrap template
+- [ ] MCP configuration (TBD - research Codex CLI)
+
+**Validation:** `patina claude` opens Claude Code with full patina integration in < 3 seconds.
+
+---
+
+## Phase 6: MCP Integration
+
+**Goal:** Mothership provides MCP interface. Any frontend that connects gets full patina functionality.
+**Spec:** [spec-launcher-architecture.md](../surface/build/spec-launcher-architecture.md)
+
+**Key Insight:** `patina serve` = HTTP + MCP in one process. MCP wraps CLI for LLM frontends.
+
+### 6a: MCP Server in Mothership
+- [ ] Add MCP protocol support to `patina serve`
+- [ ] stdio interface for frontend connections
+- [ ] Shared state with HTTP server
+
+### 6b: Core MCP Tools
+- [ ] `patina_context` - get project context and rules
+- [ ] `patina_scry` - search codebase knowledge
+- [ ] `patina_session_start` - begin tracked session
+- [ ] `patina_session_end` - end session, capture learnings
+- [ ] `patina_session_note` - capture insight during session
+
+### 6c: Workspace MCP Tools
+- [ ] `patina_workspace_list` - list projects
+- [ ] `patina_workspace_status` - overview of all projects
+- [ ] Cross-project queries via MCP
+
+### 6d: `patina context` CLI Command
+- [ ] Design informed by MCP tool implementation
+- [ ] `--format=markdown` (default), `--format=json`, `--format=xml`
+- [ ] Combines: project rules + scry results + persona
+
+### 6e: HTTP API Extensions
+- [ ] `POST /api/context` endpoint
+- [ ] `POST /api/session/start`, `/end`, `/note`
+- [ ] Parity with MCP tools
+
+**Validation:** MCP tools work from Claude Code, Gemini CLI, and Codex with identical functionality.
+
+---
+
+## Phase 7: Capture Automation
+
+**Goal:** Persona grows automatically without manual `patina persona note`.
+
+### 7a: Session Observation
+- [ ] Extract patterns during `/session-*` workflow
+- [ ] Tag observations for later distillation
+- [ ] Low friction - doesn't interrupt flow
+
+### 7b: Session Distillation
+- [ ] `patina persona distill` - batch extract from session history
+- [ ] Identify persona-worthy knowledge from sessions
+- [ ] Can run nightly or on-demand
+
+### 7c: Reflection Flow (`/persona-start`)
+- [ ] Dedicated Q&A session for persona refinement
+- [ ] LLM reviews observations, asks strategic questions
+- [ ] High signal, intentional capture
+
+**Validation:** After 10 sessions, persona has meaningful knowledge without manual notes.
+
+---
+
+## Phase 8: Model Worlds (Future)
 **Spec:** [spec-model-runtime.md](../surface/build/spec-model-runtime.md)
-**Blocked until:** Phase 4 complete, multi-project coordination proven
+**Blocked until:** Orchestration proven useful
 
 **Design Direction:** Different models for different purposes
 - E5-base-v2: Portable router/semantic (ONNX, runs everywhere)
@@ -403,7 +522,7 @@ PATINA_MOTHERSHIP=host.docker.internal:50051 patina scry "test"
 **Why deferred:**
 - E5-base-v2 validated (+68% vs baseline)
 - Model swap invalidates all trained projections
-- Prove multi-project coordination first
+- Prove orchestration value first
 
 ### Dimensions Roadmap
 
@@ -411,7 +530,7 @@ PATINA_MOTHERSHIP=host.docker.internal:50051 patina scry "test"
 |-----------|-----------------|----------------|--------|
 | Semantic | Same session = related | 2,174 session events | ✅ Done |
 | Temporal | Same commit = related | 590 files, 17,685 co-changes | ✅ Done |
-| Dependency | Caller/callee = related | 9,634 code.call events | Phase 3d |
+| Dependency | Caller/callee = related | 9,634 code.call events | ✅ Done |
 | Syntactic | Similar AST = related | 790 code.function events | Future |
 | Architectural | Same module = related | 13,146 code.* events | Future |
 | Social | Same author = related | 707 commits | Skip (single-user) |
@@ -486,19 +605,39 @@ When context is lost, read these sessions for architectural decisions:
 
 ## Validation Criteria
 
-**Phase 3 Complete!** ✅ (2025-12-03) - Query infrastructure working.
+### Phase 3 ✅ (2025-12-03)
 - [x] Scry: semantic, FTS5, file-based, dimension selection
 - [x] Repo: external repos, registry, --repo flag
 - [x] GitHub adapter: issues MVP, FTS5 search
 
-**Phase 4 Checklist:**
+### Phase 4 ✅ (2025-12-08)
+| Validation | Status |
+|------------|--------|
+| `git clone <project> && patina rebuild && patina scry` works | [x] |
+| `patina repo add` + `--oxidize` creates dependency index | [x] |
+| `patina scry --all-repos` returns combined results | [x] |
+| `patina persona query` returns cross-project knowledge | [x] |
+| `PATINA_MOTHERSHIP=... patina scry` routes to daemon | [x] |
 
-| Phase | Validation | Status |
-|-------|------------|--------|
-| 4a | `git clone <project> && patina rebuild && patina scry` works | [x] |
-| 4b | `patina repo add` + `--oxidize` creates dependency index for reference repos | [x] |
-| 4c | `patina scry --all-repos` returns results from projects + reference repos | [x] |
-| 4d | `patina persona query` in project B returns knowledge from project A | [~] core works, scry integration pending |
-| 4e | `PATINA_MOTHERSHIP=... patina scry` routes to daemon | [x] |
+### Phase 5 (Next)
+| Validation | Status |
+|------------|--------|
+| First-run creates `~/.patina/` and workspace | [ ] |
+| `patina adapter list` shows detected frontends | [ ] |
+| `patina claude` opens Claude Code with integration | [ ] |
+| `patina gemini` opens Gemini CLI with integration | [ ] |
+| Switching frontends < 2 seconds | [ ] |
 
-**Phase 4 Complete = Ready for hackathons with cross-project knowledge.**
+### Phase 6
+| Validation | Status |
+|------------|--------|
+| `patina serve` includes MCP server | [ ] |
+| MCP tools work from Claude Code | [ ] |
+| MCP tools work from Gemini CLI | [ ] |
+| `patina context "X"` returns LLM-formatted output | [ ] |
+| Same project works with all frontends via MCP | [ ] |
+
+### Phase 7
+| Validation | Status |
+|------------|--------|
+| After 10 sessions, persona has knowledge without manual notes | [ ] |
