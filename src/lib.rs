@@ -11,6 +11,7 @@ pub mod reasoning;
 pub mod session;
 pub mod storage;
 pub mod version;
+pub mod workspace;
 
 // Re-export commonly used types
 pub use environment::Environment;
