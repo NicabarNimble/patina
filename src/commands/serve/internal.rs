@@ -7,7 +7,8 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use super::ServeOptions;
-use crate::commands::scry::{self, ScryOptions};
+use crate::commands::persona;
+use crate::commands::scry::{self, ScryOptions, ScryResult};
 
 /// Server state shared across request handlers
 pub struct ServerState {
@@ -51,6 +52,9 @@ struct ScryRequest {
     /// Include GitHub issues
     #[serde(default)]
     include_issues: bool,
+    /// Include persona knowledge (default: true)
+    #[serde(default = "default_include_persona")]
+    include_persona: bool,
     /// Maximum results (default: 10)
     #[serde(default = "default_limit")]
     limit: usize,
@@ -61,6 +65,10 @@ struct ScryRequest {
 
 fn default_limit() -> usize {
     10
+}
+
+fn default_include_persona() -> bool {
+    true
 }
 
 /// Scry API response
@@ -162,10 +170,11 @@ fn handle_scry(request: &Request) -> Response {
         repo: body.repo,
         all_repos: body.all_repos,
         include_issues: body.include_issues,
+        include_persona: body.include_persona,
     };
 
     // Run scry - use scry_text for text queries
-    let results = match scry::scry_text(&body.query, &options) {
+    let mut results: Vec<ScryResult> = match scry::scry_text(&body.query, &options) {
         Ok(results) => results,
         Err(e) => {
             return Response::json(&serde_json::json!({
@@ -174,6 +183,32 @@ fn handle_scry(request: &Request) -> Response {
             .with_status_code(500);
         }
     };
+
+    // Query persona if enabled
+    if options.include_persona {
+        if let Ok(persona_results) =
+            persona::query(&body.query, options.limit, options.min_score, None)
+        {
+            for p in persona_results {
+                results.push(ScryResult {
+                    id: 0,
+                    content: p.content,
+                    score: p.score,
+                    event_type: "[PERSONA]".to_string(),
+                    source_id: format!("{} ({})", p.source, p.domains.join(", ")),
+                    timestamp: p.timestamp,
+                });
+            }
+        }
+    }
+
+    // Sort combined results by score and truncate
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results.truncate(options.limit);
 
     // Convert to JSON response
     let json_results: Vec<ScryResultJson> = results

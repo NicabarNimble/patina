@@ -88,6 +88,8 @@ pub struct ScryRequest {
     pub all_repos: bool,
     #[serde(default)]
     pub include_issues: bool,
+    #[serde(default)]
+    pub include_persona: bool,
     pub limit: usize,
     pub min_score: f32,
 }
@@ -100,6 +102,7 @@ impl Default for ScryRequest {
             repo: None,
             all_repos: false,
             include_issues: false,
+            include_persona: true,
             limit: 10,
             min_score: 0.0,
         }
