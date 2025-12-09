@@ -1,8 +1,8 @@
 # Spec: Patina Launcher Architecture
 
-**Status:** Design Complete (2025-12-09)
-**Session:** 20251209-075138
-**Phase:** 5-6 (Adapter & LLM Interface)
+**Status:** Design Revised (2025-12-09)
+**Session:** 20251209-100946
+**Phase:** 5-6 (Launcher & MCP)
 
 ---
 
@@ -11,13 +11,12 @@
 **Patina is how you open AI-assisted development.**
 
 ```bash
-cd my-project
 patina              # Open in default frontend
 patina claude       # Open in Claude Code
 patina gemini       # Open in Gemini CLI
 ```
 
-Like `code .` for VS Code, but for AI frontends.
+Like `code .` for VS Code. Not `claude`, not `gemini` - just `patina`.
 
 ---
 
@@ -32,18 +31,16 @@ Like `code .` for VS Code, but for AI frontends.
 │  │   HTTP Server   │         │     MCP Server          │   │
 │  │   :50051        │         │     (stdio)             │   │
 │  │                 │         │                         │   │
-│  │  • /api/scry    │         │  • patina_context       │   │
-│  │  • /api/context │         │  • patina_scry          │   │
-│  │  • /api/session │         │  • patina_session_*     │   │
-│  │                 │         │  • patina_workspace_*   │   │
+│  │  • /health      │         │  • patina_context       │   │
+│  │  • /api/scry    │         │  • patina_scry          │   │
+│  │  • /api/context │         │  • patina_session_*     │   │
 │  └─────────────────┘         └─────────────────────────┘   │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │                  Shared State                        │   │
 │  │  • Registry (projects, repos)                        │   │
-│  │  • Personas                                          │   │
+│  │  • Personas (global rules)                           │   │
 │  │  • Model cache (E5, projections)                     │   │
-│  │  • Workspace path                                    │   │
 │  └─────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
          ▲                              ▲
@@ -52,80 +49,88 @@ Like `code .` for VS Code, but for AI frontends.
    ┌─────┴─────┐                 ┌──────┴──────┐
    │ Containers│                 │ Claude Code │
    │ Scripts   │                 │ Gemini CLI  │
-   │ curl      │                 │ Codex       │
    └───────────┘                 └─────────────┘
 ```
 
-**One process. Two interfaces. All the state.**
+One process. Two interfaces. All the state.
 
 ---
 
 ## Key Principles
 
-### 1. Patina Rules = Source of Truth
+### 1. Source vs Presentation
 
-Project knowledge lives in `layer/rules/`. Adapters render it to frontend-specific formats.
+Project rules live in `.patina/context.md` (committed). Frontend-specific files are generated and gitignored.
 
 ```
-layer/rules/           →  patina adapter render  →  CLAUDE.md
-(source of truth)         (transformation)          (ephemeral)
+.patina/context.md     →  patina claude  →  CLAUDE.md (gitignored)
+(source of truth)         (generates)       (presentation)
 ```
 
-### 2. Adapters are Winamp Skins
+### 2. Two-Tier Rules
 
-Same content, different visualization. Easy to switch, no commitment.
+```
+Global Rules (~/.patina/personas/)     Project Rules (.patina/context.md)
+├── Light touch                        ├── Detailed architecture
+├── "I prefer explicit errors"         ├── Code patterns for THIS codebase
+├── General preferences                ├── Project-specific conventions
+└── Cross-project patterns             └── The meaty stuff
+            │                                    │
+            └────────────────┬───────────────────┘
+                             │
+                             ▼
+                    Frontend Adapter
+                     (combines + formats)
+                             │
+                     ┌───────┴───────┐
+                     ▼               ▼
+                CLAUDE.md        GEMINI.md
+                (generated)      (generated)
+```
+
+### 3. The Patina Branch Model
+
+**Rule: Always work on `patina` branch. Push to main via PR.**
+
+```
+patina branch              →  PR  →  main branch
+(our workspace)                     (clean for project)
+```
+
+This protects against overwriting others' repos and provides clear isolation.
+
+### 4. Frontend Switching is Instant
+
+Same source, regenerate presentation:
 
 ```bash
-patina claude    # Morning: Claude Code
-patina gemini    # Afternoon: try Gemini
-patina claude    # Back to Claude
-```
-
-No migration. No regeneration. Just switch.
-
-### 3. MCP Does the Heavy Lifting
-
-Bootstrap files (CLAUDE.md, GEMINI.md) are tiny - just "use MCP tools". The actual rules come from MCP dynamically.
-
-### 4. CLI-First, MCP-Enhanced
-
-Everything works via CLI. MCP wraps CLI for LLM frontends.
-
-```bash
-# CLI (always works)
-patina scry "query"
-patina context "query"
-
-# MCP (wraps CLI for LLMs)
-patina_scry, patina_context, etc.
+patina claude    # Generates CLAUDE.md, launches claude
+patina gemini    # Generates GEMINI.md from same source, launches gemini
 ```
 
 ---
 
-## Commands
+## Command Structure
 
-### User-Facing (Daily Use)
+### Launcher (Implicit Default)
 
 ```bash
-patina                      # Open project in default frontend
-patina claude               # Open project in Claude Code
-patina gemini               # Open project in Gemini CLI
-patina codex                # Open project in Codex
-
-patina .                    # Explicit current directory
-patina ~/other-project      # Open different project
-patina ~/project gemini     # Different project + specific frontend
-
-patina --yolo gemini        # Launch in YOLO container with Gemini
+patina                      # Default frontend, current dir
+patina claude               # Claude Code
+patina gemini               # Gemini CLI
+patina codex                # Codex
+patina ~/project claude     # Path + frontend
+patina --yolo gemini        # YOLO container with Gemini
 ```
 
-### Infrastructure (Usually Automatic)
+**Note:** Frontends are NOT subcommands. They're arguments to the implicit launcher.
+
+### Infrastructure
 
 ```bash
 patina serve                # Start mothership (HTTP + MCP)
 patina serve --daemon       # Start in background
 patina serve --status       # Check if running
-patina serve --stop         # Stop mothership
 ```
 
 ### Project Management
@@ -140,15 +145,6 @@ patina rebuild              # Rebuild indices from layer/
 ```bash
 patina adapter list         # Show available frontends
 patina adapter default X    # Set default frontend
-patina adapter add X        # Install adapter resources
-patina adapter check X      # Verify frontend CLI installed
-```
-
-### Workspace Management
-
-```bash
-patina workspace status     # Overview of all projects
-patina workspace list       # List workspace projects
 ```
 
 ---
@@ -159,22 +155,18 @@ patina workspace list       # List workspace projects
 patina claude
     │
     ├─► Is mothership running?
-    │   └─► Check: curl localhost:50051/health
-    │
-    ├─► If not running:
-    │   └─► Start: patina serve --daemon
-    │       Wait: until /health responds
+    │   └─► No? Start: patina serve --daemon
     │
     ├─► Is this a patina project?
-    │   ├─► No .patina/? → Prompt: `patina init` first? [y/n]
-    │   └─► Yes → continue
+    │   └─► No .patina/? → "Run patina init first"
     │
-    ├─► Ensure bootstrap ready:
-    │   └─► Generate CLAUDE.md if missing (tiny, instant)
+    ├─► Generate presentation files:
+    │   ├─► Read .patina/context.md (source of truth)
+    │   ├─► Read ~/.patina/personas/ (global rules)
+    │   ├─► Generate CLAUDE.md (combined, formatted)
+    │   └─► Ensure .claude/ exists (from adapter templates)
     │
-    └─► Launch frontend:
-        └─► exec claude
-            (claude connects to MCP via mothership)
+    └─► Launch: exec claude
 ```
 
 ---
@@ -186,108 +178,166 @@ patina claude
 ```
 ~/.patina/
 ├── config.toml              # Global config (default frontend, etc.)
-├── workspace/               # → ~/Projects/Patina (symlink or path)
-├── adapters/                # Adapter resources
+├── adapters/
 │   ├── claude/
-│   │   ├── manifest.yaml    # Detection, requirements
-│   │   └── templates/       # Bootstrap templates
+│   │   └── templates/       # .claude/, slash commands, scripts
 │   ├── gemini/
+│   │   └── templates/
 │   └── codex/
+│       └── templates/
 ├── personas/
-│   └── default/
-└── registry.yaml            # All projects and repos
+│   └── default/             # Global rules, preferences
+├── registry.yaml            # All known projects
+└── workspace/               # → ~/Projects/Patina
 ```
 
-### Project
+### Project (Committed)
 
 ```
-my-project/
-├── layer/
-│   ├── rules/               # LLM instructions (source of truth)
-│   │   ├── context.md       # Project overview
-│   │   ├── patterns.md      # Code conventions
-│   │   └── tools.md         # Available commands
-│   ├── sessions/            # Work history
-│   ├── core/                # Eternal patterns
-│   └── surface/             # Active docs
-│
+project/
 ├── .patina/
-│   ├── config.toml          # Project config
-│   └── data/                # Local indices (gitignored)
-│
-├── CLAUDE.md                # Bootstrap (tiny, gitignored or committed)
-├── GEMINI.md                # Bootstrap (tiny)
-└── CODEX.md                 # Bootstrap (tiny)
+│   ├── config.toml          # Project config (mode: owner/contrib)
+│   └── context.md           # PROJECT RULES (source of truth)
+├── layer/
+│   ├── core/                # Eternal patterns
+│   ├── surface/             # Active docs
+│   └── sessions/            # Work history
+└── .gitignore               # Ignores presentation files
 ```
 
-### Bootstrap File (Tiny)
+### Project (Generated, Gitignored)
 
-```markdown
-# CLAUDE.md (entire file, ~10 lines)
+```
+project/
+├── CLAUDE.md                # Generated from context.md + persona
+├── GEMINI.md                # Generated (if using gemini)
+├── .claude/                 # Copied from ~/.patina/adapters/claude/
+└── .gemini/                 # Copied from ~/.patina/adapters/gemini/
+```
 
-This project uses Patina for knowledge management.
+### .gitignore (on patina branch)
 
-## MCP Tools Available
-- `patina_context` - Get project context and rules
-- `patina_scry` - Search codebase knowledge
-- `patina_session_*` - Track work sessions
-
-Query `patina_context` before making assumptions about this codebase.
+```gitignore
+# Frontend presentation (generated by patina)
+CLAUDE.md
+GEMINI.md
+CODEX.md
+.claude/
+.gemini/
+.codex/
 ```
 
 ---
 
-## layer/rules/ Structure
+## The Branch Model
 
-### context.md - Project Overview
+### Owner Repos (Your Projects)
+
+```
+patina branch:                    main (via PR):
+├── .patina/           ──────►    ├── .patina/        ✓ included
+├── layer/             ──────►    ├── layer/          ✓ included
+├── .gitignore         ──────►    ├── .gitignore      ✓ included
+├── src/               ──────►    ├── src/            ✓ included
+
+CI: Simple merge (branches are ~identical)
+```
+
+### Contrib Repos (Other People's Projects)
+
+```
+patina branch:                    main (via PR):
+├── .patina/           ──────►    (stripped)          ✗ removed
+├── layer/             ──────►    (stripped)          ✗ removed
+├── .gitignore         ──────►    (stripped)          ✗ removed
+├── src/ (changes)     ──────►    ├── src/            ✓ only code
+
+CI: Strips patina artifacts, only code changes go through
+```
+
+### Project Config
+
+```toml
+# .patina/config.toml
+
+[project]
+name = "linux-kernel"
+mode = "contrib"              # or "owner"
+upstream = "torvalds/linux"
+
+[frontend]
+default = "claude"
+
+[ci]
+# For contrib mode: strip from PRs
+strip_paths = [".patina/", "layer/"]
+```
+
+---
+
+## .patina/context.md (Source of Truth)
+
+This file contains all project rules in frontend-agnostic markdown:
 
 ```markdown
 # Project: my-game
 
-## What This Is
-A roguelike game engine using Bevy ECS.
+## Overview
+Bevy ECS roguelike game engine.
 
 ## Architecture
-- Entity spawning: src/ecs/spawn.rs
+- Entity spawning: src/ecs/spawn.rs (use spawn_entity(), never direct)
 - Game state: GameWorld resource
 - Events: src/events/mod.rs
 
-## Getting Started
-Run `cargo run` for development build.
+## Patterns
+- Error handling: thiserror, Result<T,E>, wrap with .context()
+- Naming: snake_case functions, PascalCase types
+- ECS: Components are data-only, systems have logic
+
+## Commands
+- `cargo run` - development build
+- `cargo test` - run tests
+- `patina scry "query"` - search knowledge
+
+## Key Decisions
+- Using Bevy 0.12 for ECS
+- Custom event system over bevy_eventlistener
+- Sessions tracked in layer/sessions/
 ```
 
-### patterns.md - Code Conventions
+Adapters combine this with global persona and format for their frontend.
 
-```markdown
-## Error Handling
-- Use thiserror for custom errors
-- Prefer Result<T,E> over panics
-- Wrap external errors with .context()
+---
 
-## Naming
-- snake_case for functions
-- PascalCase for types
-- SCREAMING_CASE for constants
+## YOLO Containers
 
-## ECS Patterns
-Spawn entities via spawn_entity(), never direct world.spawn()
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Mac                                                        │
+│  ┌─────────────────┐    ┌─────────────────────────────────┐ │
+│  │ Mothership      │◄───│ YOLO Container                  │ │
+│  │ (patina serve)  │    │                                 │ │
+│  │                 │    │ patina gemini runs:             │ │
+│  │ • personas      │    │ ├─► Reads mounted context.md    │ │
+│  │ • registry      │    │ ├─► Generates GEMINI.md locally │ │
+│  │ • MCP server    │    │ ├─► Copies .gemini/ templates   │ │
+│  │                 │    │ └─► Launches gemini             │ │
+│  └─────────────────┘    └─────────────────────────────────┘ │
+│                                │                            │
+│                         mount: /work ← project/             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### tools.md - Available Commands
+Container generates its own presentation files. Source is mounted from host.
 
-```markdown
-## Patina Commands
-- `patina scry "query"` - search project knowledge
-- `patina context "query"` - get LLM-formatted context
-- `patina session start "name"` - begin tracked work
-
-## MCP Tools
-When connected via MCP, these are available as tool calls:
-- patina_context
-- patina_scry
-- patina_session_start
-- patina_session_end
-- patina_session_note
+```bash
+patina --yolo gemini
+# 1. Spins up YOLO container with Gemini CLI
+# 2. Mounts current project at /work
+# 3. Container connects to host mothership via MCP
+# 4. Runs: patina gemini (generates GEMINI.md locally)
+# 5. Full patina access via mothership
 ```
 
 ---
@@ -296,7 +346,7 @@ When connected via MCP, these are available as tool calls:
 
 ### patina_context
 
-Query project context and rules.
+Query project context and rules (combines global + project).
 
 ```
 Input: { "query": "error handling" }
@@ -315,8 +365,7 @@ Search codebase knowledge.
 Input: { "query": "spawn entity", "limit": 5 }
 Output: {
   "results": [
-    { "file": "src/ecs/spawn.rs", "score": 0.89, "snippet": "..." },
-    ...
+    { "file": "src/ecs/spawn.rs", "score": 0.89, "snippet": "..." }
   ]
 }
 ```
@@ -356,96 +405,9 @@ List projects in workspace.
 Input: {}
 Output: {
   "projects": [
-    { "name": "my-game", "path": "~/Projects/Patina/my-game", "adapter": "claude" },
-    ...
+    { "name": "my-game", "path": "~/Projects/Patina/my-game" }
   ]
 }
-```
-
----
-
-## First-Run Experience
-
-```bash
-cargo install patina
-
-cd my-project
-patina
-
-# Output:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- Welcome to Patina!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-First-time setup...
-  ✓ Created ~/.patina/
-  ✓ Created ~/Projects/Patina workspace
-  ✓ Installed adapters: claude, gemini, codex
-
-Detecting LLM frontends...
-  ✓ Claude Code (claude v1.0.3)
-  ✗ Gemini CLI (not found)
-  ✗ Codex (not found)
-
-Setting default: claude
-
-Initializing project...
-  ✓ Created .patina/
-  ✓ Created layer/
-  ✓ Generated CLAUDE.md bootstrap
-
-Starting mothership...
-  ✓ patina serve (pid 12345)
-
-Launching Claude Code...
-
-# Claude Code opens, fully configured
-```
-
----
-
-## Switching Frontends
-
-```bash
-# No ceremony, just switch
-patina claude    # Opens Claude Code
-# ... work ...
-patina gemini    # Opens Gemini CLI (same project, same rules)
-# ... work ...
-patina claude    # Back to Claude
-```
-
-**Same `layer/rules/`. Same MCP. Different frontend.**
-
----
-
-## YOLO Multi-LLM
-
-```bash
-# On Mac: Claude Code for pair programming
-patina claude
-
-# Spin up Gemini container for parallel task
-patina --yolo gemini
-
-# Inside container:
-# - Project mounted at /work
-# - MCP connects to host mothership
-# - Full patina access
-```
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Mac                                                        │
-│  ┌─────────────────┐    ┌─────────────────────────────────┐ │
-│  │ Mothership      │◄───│ YOLO Container                  │ │
-│  │ (patina serve)  │    │ ┌─────────────────────────────┐ │ │
-│  │                 │    │ │ gemini CLI                  │ │ │
-│  │ • HTTP + MCP    │    │ │ • MCP → host mothership     │ │ │
-│  │ • all projects  │    │ │ • project mounted           │ │ │
-│  │ • personas      │    │ └─────────────────────────────┘ │ │
-│  └─────────────────┘    └─────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -466,88 +428,95 @@ default = "claude"
 [serve]
 port = 50051
 auto_start = true
-
-[frontends.claude]
-command = "claude"
-detected = true
-mcp_config = "~/.claude/settings.json"
-
-[frontends.gemini]
-command = "gemini"
-detected = false
-mcp_config = "~/.gemini/config.yaml"
-
-[frontends.codex]
-command = "codex"
-detected = false
 ```
 
-### Adapter Manifest
+### Frontend Detection
 
-```yaml
-# ~/.patina/adapters/claude/manifest.yaml
-name: claude
-display: "Claude Code"
+Frontends are detected via simple enum (not manifest files):
 
-detect:
-  commands:
-    - "claude --version"
-  env:
-    - "CLAUDE_CODE"
+```rust
+pub enum Frontend {
+    Claude,   // detect: claude --version
+    Gemini,   // detect: gemini --version
+    Codex,    // detect: codex --version
+}
+```
 
-templates:
-  - CLAUDE.md
-  - .claude/commands/session-start.md
-  - .claude/commands/session-end.md
+Simple, type-safe, matches dependable-rust philosophy.
 
-mcp:
-  config_path: "~/.claude/settings.json"
-  config_format: json
-  config_template: |
-    {
-      "mcpServers": {
-        "patina": {
-          "command": "patina",
-          "args": ["serve", "--mcp-stdio"]
-        }
-      }
-    }
+---
+
+## First-Run Experience
+
+```bash
+cargo install patina
+cd my-project
+patina
+
+# Output:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Welcome to Patina!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+First-time setup...
+  ✓ Created ~/.patina/
+  ✓ Created ~/Projects/Patina workspace
+  ✓ Installed adapter templates
+
+Detecting frontends...
+  ✓ Claude Code (claude v1.0.3)
+  ✗ Gemini CLI (not found)
+  ✗ Codex (not found)
+
+Setting default: claude
+
+This directory is not a patina project.
+Initialize? [y/n]: y
+
+Initializing...
+  ✓ Created .patina/
+  ✓ Created layer/
+  ✓ Generated context.md template
+
+Starting mothership...
+  ✓ patina serve (background)
+
+Launching Claude Code...
+  ✓ Generated CLAUDE.md
+  ✓ Installed .claude/ templates
+
+# Claude Code opens, fully configured
 ```
 
 ---
 
 ## Phase Integration
 
-This design restructures Phases 5-6:
-
-### Phase 5: Adapters & Launcher (was Phase 6)
+### Phase 5: Launcher & Adapters
 
 ```
-5a: Adapter system
-    - ~/.patina/adapters/ structure
-    - Manifest format
-    - Detection logic
+5a: First-run setup
+    - ~/.patina/ structure
+    - Adapter templates installation
+    - Frontend detection (enum-based)
 
 5b: Launcher command
-    - `patina [path] [frontend]`
+    - `patina [path] [frontend]` as default behavior
     - Auto-start mothership
-    - Bootstrap generation
+    - Presentation file generation
 
-5c: Claude adapter
-    - Templates
-    - MCP configuration
-    - Slash commands (optional enhancement)
+5c: Source/Presentation model
+    - .patina/context.md as source of truth
+    - Generate CLAUDE.md/GEMINI.md on launch
+    - .gitignore for presentation files
 
-5d: Gemini adapter
-    - Templates
-    - MCP configuration
-
-5e: Codex adapter
-    - Templates
-    - MCP configuration
+5d: Branch model
+    - Always work on patina branch
+    - Owner vs contrib mode
+    - CI stripping for contrib repos
 ```
 
-### Phase 6: MCP Integration (was Phase 5)
+### Phase 6: MCP Integration
 
 ```
 6a: MCP server in mothership
@@ -555,41 +524,33 @@ This design restructures Phases 5-6:
     - stdio interface for frontends
 
 6b: Core MCP tools
-    - patina_context
+    - patina_context (combines global + project rules)
     - patina_scry
     - patina_session_*
 
 6c: Workspace MCP tools
     - patina_workspace_list
-    - patina_workspace_switch
     - Cross-project queries
-
-6d: `patina context` CLI
-    - Designed from MCP learnings
-    - Multiple output formats
 ```
-
-### Phase 7: Capture Automation (unchanged)
-
-### Phase 8: Model Worlds (unchanged)
 
 ---
 
-## Key Insights
+## Summary Table
 
-1. **Patina is the launcher** - not `claude`, not `gemini`, just `patina`
-
-2. **Mothership = HTTP + MCP** - one process, two interfaces
-
-3. **layer/rules/ = source of truth** - adapters render, don't define
-
-4. **Bootstrap files are tiny** - "use MCP", that's it
-
-5. **Switching is instant** - same rules, different frontend
-
-6. **CLI-first** - everything works without MCP, MCP enhances
-
-7. **YOLO integration** - containers connect to host mothership
+| Aspect | Design |
+|--------|--------|
+| Launcher | `patina [frontend]` (implicit, no subcommand) |
+| Frontends | Enum (claude, gemini, codex) - simple, type-safe |
+| Source of truth | `.patina/context.md` (committed) |
+| Presentation | `CLAUDE.md`, `.claude/` (gitignored, generated) |
+| Global rules | `~/.patina/personas/` (light touch) |
+| Project rules | `.patina/context.md` (detailed) |
+| Branch model | Always `patina` branch, PR to main |
+| Owner repos | PR includes patina artifacts |
+| Contrib repos | CI strips patina artifacts |
+| Mothership | `patina serve` (HTTP + MCP, one process) |
+| Switching | Instant (regenerate from same source) |
+| YOLO | Container generates locally, source mounted |
 
 ---
 
@@ -604,4 +565,7 @@ This design restructures Phases 5-6:
 | MCP tools work from any frontend | [ ] |
 | Switching frontends < 2 seconds | [ ] |
 | `patina --yolo X` launches container | [ ] |
-| Same project works with all frontends | [ ] |
+| Same source works with all frontends | [ ] |
+| Presentation files are gitignored | [ ] |
+| Owner mode: patina artifacts in main | [ ] |
+| Contrib mode: CI strips artifacts | [ ] |
