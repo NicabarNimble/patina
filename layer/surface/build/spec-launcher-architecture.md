@@ -549,43 +549,43 @@ Launching Claude Code...
 
 ## Phase Integration
 
-### Phase 5: Launcher & Adapters
+### Phase 1: Launcher & Adapters
 
 ```
-5a: First-run setup
+1a: First-run setup
     - ~/.patina/ structure
     - Adapter templates installation
     - Frontend detection (enum-based)
 
-5b: Launcher command
+1b: Launcher command
     - `patina [path] [frontend]` as default behavior
     - Auto-start mothership
     - Presentation file generation
 
-5c: Source/Presentation model
+1c: Source/Presentation model
     - .patina/context.md as source of truth
     - Generate CLAUDE.md/GEMINI.md on launch
     - .gitignore for presentation files
 
-5d: Branch model
+1d: Branch model
     - Always work on patina branch
     - Owner vs contrib mode
     - CI stripping for contrib repos
 ```
 
-### Phase 6: MCP Integration
+### Phase 2: MCP Integration
 
 ```
-6a: MCP server in mothership
+2a: MCP server in mothership
     - Add MCP to patina serve
     - stdio interface for frontends
 
-6b: Core MCP tools
+2b: Core MCP tools
     - patina_context (combines global + project rules)
     - patina_scry
     - patina_session_*
 
-6c: Workspace MCP tools
+2c: Workspace MCP tools
     - patina_workspace_list
     - Cross-project queries
 ```
