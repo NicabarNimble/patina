@@ -1,6 +1,7 @@
 pub mod claude;
 pub mod gemini;
 pub mod launch;
+pub mod templates;
 
 use crate::environment::Environment;
 use anyhow::Result;
