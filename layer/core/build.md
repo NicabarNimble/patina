@@ -396,7 +396,7 @@ PATINA_MOTHERSHIP=host.docker.internal:50051 patina scry "test"
 **Goal:** `patina` becomes the launcher for AI-assisted development. Like `code .` for VS Code.
 **Spec:** [spec-launcher-architecture.md](../surface/build/spec-launcher-architecture.md)
 
-**Key Insight:** Patina rules = source of truth. Adapters = winamp skins (same content, different format).
+**Key Insight:** Source vs Presentation. `.patina/context.md` is committed (source of truth), `CLAUDE.md` is generated and gitignored (presentation).
 
 ```bash
 patina              # Open project in default frontend
@@ -405,45 +405,37 @@ patina gemini       # Open in Gemini CLI
 patina --yolo gemini  # Launch in YOLO container
 ```
 
-### 5a: First-Run & Workspace Setup
+### 5a: First-Run Setup
 - [ ] Detect first run → create `~/.patina/`
 - [ ] Create workspace folder `~/Projects/Patina`
-- [ ] Install default adapters (claude, gemini, codex)
-- [ ] Detect installed LLM CLIs
+- [ ] Install adapter templates to `~/.patina/adapters/`
+- [ ] Detect installed LLM CLIs (enum-based, not manifest files)
 - [ ] Set default frontend
 
-### 5b: Adapter System
-- [ ] `~/.patina/adapters/` structure
-- [ ] Adapter manifest format (detection, templates, MCP config)
-- [ ] `patina adapter list` - show available frontends
-- [ ] `patina adapter default X` - set default
-- [ ] `patina adapter add X` - install adapter resources
-
-### 5c: Launcher Command
-- [ ] `patina [path] [frontend]` - main entry point
+### 5b: Launcher Command
+- [ ] `patina [path] [frontend]` as **default behavior** (not a subcommand)
+- [ ] Parse: frontend names vs subcommands (serve, init, adapter, etc.)
 - [ ] Auto-start mothership if not running
-- [ ] Auto-init project if needed (prompt user)
-- [ ] Generate bootstrap file if missing
-- [ ] Launch frontend CLI
+- [ ] Prompt `patina init` if not a patina project
+- [ ] Launch frontend CLI via `exec`
 
-### 5d: layer/rules/ Structure
-- [ ] `layer/rules/context.md` - project overview
-- [ ] `layer/rules/patterns.md` - code conventions
-- [ ] `layer/rules/tools.md` - available commands
-- [ ] Adapters render from rules → bootstrap files
+### 5c: Source/Presentation Model
+- [ ] `.patina/context.md` as source of truth (committed)
+- [ ] Generate `CLAUDE.md`/`GEMINI.md` on launch (gitignored)
+- [ ] Copy `.claude/`/`.gemini/` templates on launch (gitignored)
+- [ ] Combine global persona + project context in generated files
+- [ ] Update `.gitignore` for presentation files
 
-### 5e: Claude Adapter
-- [ ] Bootstrap template (tiny, MCP-focused)
-- [ ] MCP configuration for `~/.claude/settings.json`
-- [ ] Slash commands (optional enhancement)
+### 5d: Branch Model
+- [ ] Always work on `patina` branch
+- [ ] `.patina/config.toml` with `mode = "owner"` or `"contrib"`
+- [ ] Document CI stripping for contrib repos
+- [ ] PR workflow: patina → main
 
-### 5f: Gemini Adapter
-- [ ] Bootstrap template
-- [ ] MCP configuration (TBD - research Gemini CLI)
-
-### 5g: Codex Adapter
-- [ ] Bootstrap template
-- [ ] MCP configuration (TBD - research Codex CLI)
+### 5e: Adapter Commands
+- [ ] `patina adapter list` - show available frontends (detected status)
+- [ ] `patina adapter default X` - set default frontend
+- [ ] Frontend detection via enum (simple, type-safe)
 
 **Validation:** `patina claude` opens Claude Code with full patina integration in < 3 seconds.
 
@@ -623,10 +615,14 @@ When context is lost, read these sessions for architectural decisions:
 | Validation | Status |
 |------------|--------|
 | First-run creates `~/.patina/` and workspace | [ ] |
-| `patina adapter list` shows detected frontends | [ ] |
-| `patina claude` opens Claude Code with integration | [ ] |
-| `patina gemini` opens Gemini CLI with integration | [ ] |
-| Switching frontends < 2 seconds | [ ] |
+| `patina` (no args) opens default frontend | [ ] |
+| `patina claude` opens Claude Code | [ ] |
+| `patina gemini` opens Gemini CLI | [ ] |
+| `.patina/context.md` generates `CLAUDE.md` on launch | [ ] |
+| Presentation files (`CLAUDE.md`, `.claude/`) are gitignored | [ ] |
+| Switching frontends < 2 seconds (regenerate from same source) | [ ] |
+| Owner mode: patina artifacts included in PR | [ ] |
+| Contrib mode: CI strips patina artifacts | [ ] |
 
 ### Phase 6
 | Validation | Status |
