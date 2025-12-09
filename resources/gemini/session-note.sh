@@ -1,5 +1,6 @@
 #!/bin/bash
-# Add a note to the current Patina session with Git context (Gemini adapter)
+# Add a note to the current Patina session with Git context
+# Testing version - will replace session-note once validated
 
 ACTIVE_SESSION=".gemini/context/active-session.md"
 NOTE="$*"
@@ -20,12 +21,12 @@ if command -v git &> /dev/null && [ -d .git ]; then
     CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
     CURRENT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "no-commits")
     GIT_CONTEXT=" [${CURRENT_BRANCH}@${CURRENT_SHA}]"
-
+    
     # Check if this is an important insight that should be committed
-    if [[ "$NOTE" == *"breakthrough"* ]] ||
-       [[ "$NOTE" == *"discovered"* ]] ||
-       [[ "$NOTE" == *"solved"* ]] ||
-       [[ "$NOTE" == *"fixed"* ]] ||
+    if [[ "$NOTE" == *"breakthrough"* ]] || 
+       [[ "$NOTE" == *"discovered"* ]] || 
+       [[ "$NOTE" == *"solved"* ]] || 
+       [[ "$NOTE" == *"fixed"* ]] || 
        [[ "$NOTE" == *"important"* ]]; then
         echo ""
         echo "💡 Important insight detected!"

@@ -1,17 +1,17 @@
 #!/bin/bash
-# Start a new Patina development session with Git integration (Gemini adapter)
+# Start a new Patina development session with Git integration
 # Uses work branch + tags instead of creating session branches
 
 # Check for active session first
 ACTIVE_SESSION=".gemini/context/active-session.md"
 if [ -f "$ACTIVE_SESSION" ]; then
     echo "Found incomplete session, cleaning up..."
-
+    
     # Check if active session has meaningful content
     # (more than just headers - roughly 10 lines)
     if [ $(wc -l < "$ACTIVE_SESSION") -gt 10 ]; then
         # Run session-end silently to archive it
-        $(dirname "$0")/session-git-end.sh --silent
+        $(dirname "$0")/session-end.sh --silent
     else
         # Just delete if it's empty/trivial
         rm "$ACTIVE_SESSION"
@@ -46,7 +46,7 @@ if command -v git &> /dev/null && [ -d .git ]; then
         IS_WORK_RELATED=true
         echo "📌 Staying on work sub-branch: $CURRENT_BRANCH"
     fi
-
+    
     # Only switch to work if we're on main/master or unrelated branch
     if [[ "$IS_WORK_RELATED" == "false" ]]; then
         if [[ "$CURRENT_BRANCH" == "main" ]] || [[ "$CURRENT_BRANCH" == "master" ]]; then
@@ -58,12 +58,12 @@ if command -v git &> /dev/null && [ -d .git ]; then
             echo "   Consider: git checkout work or git checkout -b work/$CURRENT_BRANCH"
         fi
     fi
-
+    
     # Tag the session start point
     git tag -a "$SESSION_TAG" -m "Session start: ${SESSION_TITLE}" 2>/dev/null && \
         echo "✅ Session tagged: $SESSION_TAG" || \
         echo "⚠️  Could not create tag (may already exist)"
-
+    
     CURRENT_BRANCH=$(git branch --show-current)
 else
     echo "📝 Not a git repository - session tracking only"
@@ -95,7 +95,7 @@ fi
 # Create active session file
 mkdir -p .gemini/context/sessions
 
-# Get LLM info
+# Get LLM info (gemini for now, extensible later)
 LLM_NAME="gemini"
 
 # Create active session with metadata including git info

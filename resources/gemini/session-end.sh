@@ -1,5 +1,5 @@
 #!/bin/bash
-# Archive current Patina session with Git work classification (Gemini adapter)
+# Archive current Patina session with Git work classification
 # Works with work branch + tags strategy
 
 ACTIVE_SESSION=".gemini/context/active-session.md"
@@ -44,21 +44,21 @@ if command -v git &> /dev/null && [ -d .git ] && [ "$SESSION_TAG" != "none" ]; t
     # Tag the session end point
     git tag -a "$SESSION_END_TAG" -m "Session end: ${SESSION_TITLE}" 2>/dev/null && \
         [ "$SILENT_MODE" = false ] && echo "✅ Session end tagged: $SESSION_END_TAG"
-
+    
     # Calculate session metrics
     FILES_CHANGED=$(git diff --name-only ${SESSION_TAG}..HEAD 2>/dev/null | wc -l)
     COMMITS_MADE=$(git log --oneline ${SESSION_TAG}..HEAD 2>/dev/null | wc -l)
     PATTERNS_TOUCHED=$(git diff --name-only ${SESSION_TAG}..HEAD 2>/dev/null | grep -E "layer/|\.md" | wc -l)
-
+    
     if [ "$SILENT_MODE" = false ]; then
         echo -e "${BLUE}═══ Session Summary ═══${NC}"
         echo ""
-
+        
         # Check current branch
         CURRENT_BRANCH=$(git branch --show-current)
         echo "Working branch: $CURRENT_BRANCH"
         echo "Session range: ${SESSION_TAG}..${SESSION_END_TAG}"
-
+        
         # Check for uncommitted changes
         UNCOMMITTED=$(git status --porcelain | wc -l)
         if [ $UNCOMMITTED -gt 0 ]; then
@@ -73,14 +73,14 @@ if command -v git &> /dev/null && [ -d .git ] && [ "$SESSION_TAG" != "none" ]; t
             echo ""
             read -p "Press Enter to continue anyway, or Ctrl+C to go back and commit... "
         fi
-
+        
         # Analyze session commits
         echo ""
         echo "Session Metrics:"
         echo "- Files changed: $FILES_CHANGED"
         echo "- Commits made: $COMMITS_MADE"
         echo "- Patterns touched: $PATTERNS_TOUCHED"
-
+        
         # Classify based on actual work
         if [ $COMMITS_MADE -eq 0 ]; then
             echo "- Classification: 🧪 EXPLORATION (no commits)"
@@ -98,7 +98,7 @@ if command -v git &> /dev/null && [ -d .git ] && [ "$SESSION_TAG" != "none" ]; t
             echo "- Classification: ✨ FEATURE (normal work)"
             CLASSIFICATION="feature"
         fi
-
+        
         # Session history preserved through tags
         echo ""
         echo -e "${GREEN}Session Preserved:${NC}"
@@ -106,7 +106,7 @@ if command -v git &> /dev/null && [ -d .git ] && [ "$SESSION_TAG" != "none" ]; t
         echo "Diff session: git diff ${SESSION_TAG}..${SESSION_END_TAG}"
         echo "Cherry-pick to main: git cherry-pick ${SESSION_TAG}..${SESSION_END_TAG}"
     fi
-
+    
     # Add classification to session file
     echo "" >> "$ACTIVE_SESSION"
     echo "## Session Classification" >> "$ACTIVE_SESSION"
@@ -134,7 +134,7 @@ if [ -f "$DB_PATH" ] && command -v sqlite3 &> /dev/null; then
         # Linux date command
         DURATION=$(( ($(date +%s) - $(date -d "$START_TIME" +%s)) / 60 ))
     fi
-
+    
     sqlite3 "$DB_PATH" "
         INSERT INTO state_transitions (
             workspace_id,
@@ -188,13 +188,13 @@ if [ "$SILENT_MODE" = false ]; then
     echo "  - .gemini/context/sessions/${SESSION_ID}.md"
     echo "  - layer/sessions/${SESSION_ID}.md"
     echo "  - Updated last-session.md"
-
+    
     if [ "$SESSION_TAG" != "none" ]; then
         echo ""
         echo "✓ Session preserved via tags: ${SESSION_TAG}..${SESSION_END_TAG}"
         echo "  View work: git log ${SESSION_TAG}..${SESSION_END_TAG}"
     fi
-
+    
     echo ""
     echo "💭 Session Memory:"
     echo "  Your work is preserved in Git history and can be found by:"

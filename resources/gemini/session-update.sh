@@ -1,5 +1,6 @@
 #!/bin/bash
-# Update current Patina session with Git-aware context (Gemini adapter)
+# Update current Patina session with Git-aware context
+# Testing version - will replace session-update once validated
 
 ACTIVE_SESSION=".gemini/context/active-session.md"
 LAST_UPDATE_FILE=".gemini/context/.last-update"
@@ -23,29 +24,29 @@ NC='\033[0m' # No Color
 if command -v git &> /dev/null && [ -d .git ]; then
     echo -e "${GREEN}📊 Git Status Check${NC}"
     echo ""
-
+    
     # Get current branch
     CURRENT_BRANCH=$(git branch --show-current)
     echo "Current branch: $CURRENT_BRANCH"
-
+    
     # Get uncommitted changes
     MODIFIED_FILES=$(git status --porcelain | grep -c "^ M")
     STAGED_FILES=$(git status --porcelain | grep -c "^M")
     UNTRACKED_FILES=$(git status --porcelain | grep -c "^??")
     TOTAL_CHANGES=$((MODIFIED_FILES + STAGED_FILES + UNTRACKED_FILES))
-
+    
     # Get line count of changes
     LINES_CHANGED=$(git diff --stat | tail -1 | grep -oE '[0-9]+ insertion' | grep -oE '[0-9]+' || echo "0")
-
+    
     # Get last commit time
     LAST_COMMIT_TIME=$(git log -1 --format="%ar" 2>/dev/null || echo "never")
     LAST_COMMIT_MSG=$(git log -1 --format="%s" 2>/dev/null || echo "no commits yet")
-
+    
     # Recent commits
     echo ""
     echo "Recent commits:"
     git log --oneline -5 --decorate 2>/dev/null || echo "  No commits yet"
-
+    
     echo ""
     echo "Working tree status:"
     if [ $TOTAL_CHANGES -eq 0 ]; then
@@ -57,7 +58,7 @@ if command -v git &> /dev/null && [ -d .git ]; then
         echo "- Untracked files: $UNTRACKED_FILES"
         echo "- Lines changed: ~$LINES_CHANGED"
         echo "- Last commit: $LAST_COMMIT_TIME"
-
+        
         # Smart reminders based on state
         echo ""
         if [[ "$LAST_COMMIT_TIME" == *"hour"* ]] || [[ "$LAST_COMMIT_TIME" == *"hours"* ]]; then
@@ -77,7 +78,7 @@ if command -v git &> /dev/null && [ -d .git ]; then
             fi
         fi
     fi
-
+    
     # Show git diff summary
     echo ""
     echo "Changes summary:"
