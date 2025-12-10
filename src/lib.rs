@@ -6,6 +6,7 @@ pub mod environment;
 pub mod git;
 pub mod layer;
 pub mod mothership;
+pub mod project;
 pub mod query;
 pub mod reasoning;
 pub mod session;
