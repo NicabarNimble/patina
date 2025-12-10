@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 0 - main.rs Refactor (then Phase 1 - Launcher & Adapters)
+**Current Phase:** Phase 1 - Launcher & Adapters
 
 ---
 
@@ -36,57 +36,10 @@ patina gemini       # Open in Gemini CLI
 
 - [spec-launcher-architecture.md](../surface/build/spec-launcher-architecture.md) - Overall launcher design
 - [spec-template-centralization.md](../surface/build/spec-template-centralization.md) - Template extraction and LLM parity
-- [spec-main-refactor.md](../surface/build/spec-main-refactor.md) - CLI dispatcher cleanup
 
 ---
 
-## Phase 0: main.rs Refactor (Prerequisite)
-
-**Problem:** `src/main.rs` has grown to 1000 lines with 500 lines of business logic in match arms. This violates `dependable-rust` (small interfaces) and `unix-philosophy` (one job per component).
-
-**Goal:** main.rs becomes a thin dispatcher - CLI definition + 1-line match arms only.
-
-See [spec-main-refactor.md](../surface/build/spec-main-refactor.md) for full details.
-
-### 0a: Extract Adapter Command Handler ✓
-- [x] Create `src/commands/adapter.rs` module
-- [x] Move 170 lines from `Commands::Adapter` match arm
-- [x] main.rs: `Commands::Adapter { command } => commands::adapter::execute(command)?`
-
-### 0b: Extract Scrape Orchestration ✓
-- [x] Create `commands::scrape::execute_all()` function
-- [x] Move inline orchestration (15 lines) from `Commands::Scrape { None }` arm
-- [x] Consolidate scrape subcommand handling
-
-### 0c: Unify Repo Command Types ✓
-- [x] Remove `RepoCommands` enum from main.rs
-- [x] Have `commands::repo` accept clap's parsed args directly
-- [x] Eliminate 48 lines of translation code
-
-### 0d: Type String Enums ✓
-- [x] Create `Dimension` enum with `ValueEnum` derive
-- [x] Create `Llm` enum (claude, gemini, codex, local)
-- [x] Create `DevEnv` enum (docker, dagger, native)
-- [x] Update CLI args to use typed enums
-
-### 0e: Configurable ML Thresholds ✓
-- [x] Add `[search]` section to `ProjectConfig`
-- [x] Move hardcoded `min_score` defaults to config
-- [x] Document why different commands have different defaults
-
-### Phase 0 Validation
-
-| Criteria | Status |
-|----------|--------|
-| main.rs < 600 lines | [~] 750 lines (enum defs added 76) |
-| No match arm > 5 lines | [~] Some options structs remain |
-| All string enums converted to typed | [x] |
-| `Commands::Adapter` delegated to module | [x] |
-| ML thresholds configurable | [x] |
-
----
-
-## Tasks
+## Phase 1 Tasks
 
 ### 1a: Template Centralization ✓
 - [x] Create `resources/gemini/` templates (parity with claude)
@@ -195,4 +148,4 @@ git tag -l 'spec/*'              # List archived specs
 git show spec/scry:layer/surface/build/spec-scry.md  # View archived spec
 ```
 
-Tags: `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`
+Tags: `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`
