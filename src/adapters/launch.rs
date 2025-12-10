@@ -9,14 +9,17 @@
 //! ```no_run
 //! use patina::adapters::launch;
 //!
-//! // List available frontends
-//! let frontends = launch::list()?;
-//! for f in &frontends {
-//!     println!("{}: {} (detected: {})", f.name, f.display, f.detected);
-//! }
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // List available frontends
+//!     let frontends = launch::list()?;
+//!     for f in &frontends {
+//!         println!("{}: {} (detected: {})", f.name, f.display, f.detected);
+//!     }
 //!
-//! // Get specific frontend
-//! let claude = launch::get("claude")?;
+//!     // Get specific frontend
+//!     let claude = launch::get("claude")?;
+//!     Ok(())
+//! }
 //! ```
 
 use anyhow::{Context, Result};
