@@ -12,6 +12,7 @@ use std::thread;
 use std::time::Duration;
 
 use patina::adapters::launch as frontend;
+use patina::project;
 use patina::workspace;
 
 use super::LaunchOptions;
@@ -74,7 +75,20 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         }
     }
 
-    // Step 7: Ensure bootstrap file exists
+    // Step 7: Check if frontend is in allowed list
+    let project_config = project::load_with_migration(&project_path)?;
+    if !project_config.frontends.allowed.contains(&frontend_name) {
+        bail!(
+            "Frontend '{}' is not in allowed frontends for this project.\n\
+             Allowed: {:?}\n\n\
+             To add it, run: patina adapter add {}",
+            frontend_name,
+            project_config.frontends.allowed,
+            frontend_name
+        );
+    }
+
+    // Step 8: Ensure bootstrap file exists
     let bootstrap_file = match frontend_name.as_str() {
         "claude" => "CLAUDE.md",
         "gemini" => "GEMINI.md",
@@ -87,7 +101,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         frontend::generate_bootstrap(&frontend_name, &project_path)?;
     }
 
-    // Step 8: Launch frontend
+    // Step 9: Launch frontend
     launch_frontend_cli(&frontend_name, &project_path)?;
 
     Ok(())
