@@ -24,6 +24,8 @@ pub struct ProjectConfig {
     pub frontends: FrontendsSection,
     #[serde(default)]
     pub embeddings: EmbeddingsSection,
+    #[serde(default)]
+    pub search: SearchSection,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<EnvironmentSection>,
 }
@@ -148,6 +150,48 @@ pub struct EnvironmentSection {
     /// Detected tools
     #[serde(default)]
     pub detected_tools: Vec<String>,
+}
+
+/// Search configuration - ML thresholds for different use cases
+///
+/// Different commands have different min_score defaults because they serve
+/// different purposes:
+/// - **scry** (0.0): Cast a wide net, let user filter results
+/// - **query semantic** (0.35): Balance relevance vs recall for exploration
+/// - **belief validate** (0.50): Only strong evidence for validation claims
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchSection {
+    /// Default threshold for scry command (broad search, low filter)
+    #[serde(default = "default_scry_threshold")]
+    pub scry_threshold: f32,
+
+    /// Default threshold for semantic queries (moderate filter)
+    #[serde(default = "default_semantic_threshold")]
+    pub semantic_threshold: f32,
+
+    /// Default threshold for belief validation (strict evidence)
+    #[serde(default = "default_belief_threshold")]
+    pub belief_threshold: f32,
+}
+
+fn default_scry_threshold() -> f32 {
+    0.0
+}
+fn default_semantic_threshold() -> f32 {
+    0.35
+}
+fn default_belief_threshold() -> f32 {
+    0.50
+}
+
+impl Default for SearchSection {
+    fn default() -> Self {
+        Self {
+            scry_threshold: default_scry_threshold(),
+            semantic_threshold: default_semantic_threshold(),
+            belief_threshold: default_belief_threshold(),
+        }
+    }
 }
 
 // =============================================================================
