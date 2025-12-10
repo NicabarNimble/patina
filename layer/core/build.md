@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 1 - Launcher & Adapters
+**Current Phase:** Phase 0 - main.rs Refactor (then Phase 1 - Launcher & Adapters)
 
 ---
 
@@ -36,6 +36,53 @@ patina gemini       # Open in Gemini CLI
 
 - [spec-launcher-architecture.md](../surface/build/spec-launcher-architecture.md) - Overall launcher design
 - [spec-template-centralization.md](../surface/build/spec-template-centralization.md) - Template extraction and LLM parity
+- [spec-main-refactor.md](../surface/build/spec-main-refactor.md) - CLI dispatcher cleanup
+
+---
+
+## Phase 0: main.rs Refactor (Prerequisite)
+
+**Problem:** `src/main.rs` has grown to 1000 lines with 500 lines of business logic in match arms. This violates `dependable-rust` (small interfaces) and `unix-philosophy` (one job per component).
+
+**Goal:** main.rs becomes a thin dispatcher - CLI definition + 1-line match arms only.
+
+See [spec-main-refactor.md](../surface/build/spec-main-refactor.md) for full details.
+
+### 0a: Extract Adapter Command Handler
+- [ ] Create `src/commands/adapter.rs` module
+- [ ] Move 170 lines from `Commands::Adapter` match arm
+- [ ] main.rs: `Commands::Adapter { command } => commands::adapter::execute(command)?`
+
+### 0b: Extract Scrape Orchestration
+- [ ] Create `commands::scrape::execute_all()` function
+- [ ] Move inline orchestration (15 lines) from `Commands::Scrape { None }` arm
+- [ ] Consolidate scrape subcommand handling
+
+### 0c: Unify Repo Command Types
+- [ ] Remove `RepoCommands` enum from main.rs
+- [ ] Have `commands::repo` accept clap's parsed args directly
+- [ ] Eliminate 48 lines of translation code
+
+### 0d: Type String Enums
+- [ ] Create `Dimension` enum with `ValueEnum` derive
+- [ ] Create `Llm` enum (claude, gemini, codex, local)
+- [ ] Create `DevEnv` enum (docker, dagger, native)
+- [ ] Update CLI args to use typed enums
+
+### 0e: Configurable ML Thresholds
+- [ ] Add `[search]` section to `ProjectConfig`
+- [ ] Move hardcoded `min_score` defaults to config
+- [ ] Document why different commands have different defaults
+
+### Phase 0 Validation
+
+| Criteria | Status |
+|----------|--------|
+| main.rs < 600 lines | [ ] |
+| No match arm > 5 lines | [ ] |
+| All string enums converted to typed | [ ] |
+| `Commands::Adapter` delegated to module | [ ] |
+| ML thresholds configurable | [ ] |
 
 ---
 
