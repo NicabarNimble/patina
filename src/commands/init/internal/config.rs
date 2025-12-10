@@ -8,7 +8,7 @@ use patina::dev_env::DevEnvironment;
 use patina::environment::Environment;
 use patina::project::{
     DevSection, EmbeddingsSection, EnvironmentSection, FrontendsSection, ProjectConfig,
-    ProjectSection,
+    ProjectSection, SearchSection,
 };
 use patina::version::VersionManifest;
 
@@ -50,6 +50,7 @@ pub fn create_project_config(
         embeddings: EmbeddingsSection {
             model: "e5-base-v2".to_string(),
         },
+        search: SearchSection::default(),
         environment: Some(EnvironmentSection {
             os: environment.os.clone(),
             arch: environment.arch.clone(),
