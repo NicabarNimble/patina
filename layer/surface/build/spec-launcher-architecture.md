@@ -231,12 +231,19 @@ project/
 
 ### Project Config Schema
 
+**Note:** Unified config consolidates legacy `config.json` (project metadata) and `config.toml` (embeddings). Migration from old format is automatic.
+
 ```toml
-# .patina/config.toml
+# .patina/config.toml - Unified project configuration
 
 [project]
 name = "my-project"
 mode = "owner"              # owner | contrib
+created = "2025-12-05T16:52:27Z"
+
+[dev]
+type = "docker"             # docker | native
+version = "0.1.0"
 
 [frontends]
 allowed = ["claude", "gemini"]
@@ -244,6 +251,12 @@ default = "claude"
 
 [embeddings]
 model = "e5-base-v2"
+
+# Optional: environment snapshot (for doctor command)
+[environment]
+os = "macos"
+arch = "aarch64"
+detected_tools = ["cargo", "git", "docker"]
 ```
 
 ---
