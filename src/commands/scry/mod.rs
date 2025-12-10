@@ -12,6 +12,7 @@ use rusqlite::Connection;
 use std::path::Path;
 use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
+use crate::commands::persona;
 use patina::embeddings::create_embedder;
 use patina::mothership;
 
@@ -36,6 +37,7 @@ pub struct ScryOptions {
     pub repo: Option<String>,
     pub all_repos: bool,
     pub include_issues: bool,
+    pub include_persona: bool,
 }
 
 impl Default for ScryOptions {
@@ -48,6 +50,7 @@ impl Default for ScryOptions {
             repo: None,
             all_repos: false,
             include_issues: false,
+            include_persona: true, // Include persona by default
         }
     }
 }
@@ -78,7 +81,7 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     println!();
 
     // Determine query mode
-    let results = match (&options.file, query) {
+    let mut results = match (&options.file, query) {
         (Some(file), _) => {
             println!("File: {}\n", file);
             scry_file(file, &options)?
@@ -106,6 +109,32 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
             anyhow::bail!("Either a query text or --file must be provided");
         }
     };
+
+    // Query persona if enabled and we have a text query
+    if options.include_persona {
+        if let Some(q) = query {
+            if let Ok(persona_results) = persona::query(q, options.limit, options.min_score, None) {
+                for p in persona_results {
+                    results.push(ScryResult {
+                        id: 0,
+                        content: p.content,
+                        score: p.score,
+                        event_type: "[PERSONA]".to_string(),
+                        source_id: format!("{} ({})", p.source, p.domains.join(", ")),
+                        timestamp: p.timestamp,
+                    });
+                }
+            }
+        }
+    }
+
+    // Sort combined results by score
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    results.truncate(options.limit);
 
     if results.is_empty() {
         println!("No results found.");
@@ -654,7 +683,28 @@ fn execute_all_repos(query: Option<&str>, options: &ScryOptions) -> Result<()> {
         }
     }
 
-    // 3. Sort by score and take top limit
+    // 3. Query persona if enabled
+    if options.include_persona {
+        println!("🧠 Searching persona...");
+        if let Ok(persona_results) = persona::query(query, options.limit, options.min_score, None) {
+            println!("   Found {} results", persona_results.len());
+            for p in persona_results {
+                all_results.push((
+                    "[PERSONA]".to_string(),
+                    ScryResult {
+                        id: 0,
+                        content: p.content,
+                        score: p.score,
+                        event_type: p.source.clone(),
+                        source_id: p.domains.join(", "),
+                        timestamp: p.timestamp,
+                    },
+                ));
+            }
+        }
+    }
+
+    // 4. Sort by score and take top limit
     all_results.sort_by(|a, b| {
         b.1.score
             .partial_cmp(&a.1.score)
@@ -749,6 +799,7 @@ fn execute_via_mothership(query: Option<&str>, options: &ScryOptions) -> Result<
         repo: options.repo.clone(),
         all_repos: options.all_repos,
         include_issues: options.include_issues,
+        include_persona: options.include_persona,
         limit: options.limit,
         min_score: options.min_score,
     };
@@ -803,5 +854,6 @@ mod tests {
         assert_eq!(opts.limit, 10);
         assert_eq!(opts.min_score, 0.0);
         assert!(opts.dimension.is_none());
+        assert!(opts.include_persona); // Persona enabled by default
     }
 }

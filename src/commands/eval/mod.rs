@@ -140,6 +140,7 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
             repo: None,
             all_repos: false,
             include_issues: false,
+            include_persona: false, // Eval doesn't need persona
         };
 
         if let Ok(results) = scry(query, &options) {
@@ -241,6 +242,7 @@ fn eval_temporal_text(conn: &Connection) -> Result<EvalResults> {
             repo: None,
             all_repos: false,
             include_issues: false,
+            include_persona: false,
         };
 
         if let Ok(results) = scry(query, &options) {
@@ -334,6 +336,7 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
             repo: None,
             all_repos: false,
             include_issues: false,
+            include_persona: false,
         };
 
         if let Ok(results) = scry(&query, &options) {

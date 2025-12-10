@@ -6,11 +6,13 @@ pub mod environment;
 pub mod git;
 pub mod layer;
 pub mod mothership;
+pub mod project;
 pub mod query;
 pub mod reasoning;
 pub mod session;
 pub mod storage;
 pub mod version;
+pub mod workspace;
 
 // Re-export commonly used types
 pub use environment::Environment;

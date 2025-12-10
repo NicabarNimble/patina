@@ -1,7 +1,77 @@
 use anyhow::Result;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 mod commands;
+
+// ============================================================================
+// Typed CLI enums (Phase 0d: type safety for string args)
+// ============================================================================
+
+/// Search dimension for scry and eval commands
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Dimension {
+    /// Semantic similarity search
+    Semantic,
+    /// Temporal/co-change relationships
+    Temporal,
+    /// Code dependency relationships
+    Dependency,
+}
+
+impl Dimension {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Dimension::Semantic => "semantic",
+            Dimension::Temporal => "temporal",
+            Dimension::Dependency => "dependency",
+        }
+    }
+}
+
+/// LLM frontend for project initialization
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Llm {
+    /// Claude Code (Anthropic)
+    Claude,
+    /// Gemini CLI (Google)
+    Gemini,
+    /// Codex (OpenAI)
+    Codex,
+    /// Local LLM
+    Local,
+}
+
+impl Llm {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Llm::Claude => "claude",
+            Llm::Gemini => "gemini",
+            Llm::Codex => "codex",
+            Llm::Local => "local",
+        }
+    }
+}
+
+/// Development environment type
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum DevEnv {
+    /// Docker containerized builds
+    Docker,
+    /// Dagger CI/CD pipelines
+    Dagger,
+    /// Native local development
+    Native,
+}
+
+impl DevEnv {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DevEnv::Docker => "docker",
+            DevEnv::Dagger => "dagger",
+            DevEnv::Native => "native",
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(author, version = env!("CARGO_PKG_VERSION"), about = "Context management for AI-assisted development", long_about = None)]
@@ -17,13 +87,13 @@ enum Commands {
         /// Project name
         name: String,
 
-        /// LLM to use (claude, gemini, local)
-        #[arg(long)]
-        llm: String,
+        /// LLM to use (claude, gemini, codex, local)
+        #[arg(long, value_enum)]
+        llm: Llm,
 
         /// Development environment (docker, dagger, native)
-        #[arg(long)]
-        dev: Option<String>,
+        #[arg(long, value_enum)]
+        dev: Option<DevEnv>,
 
         /// Force initialization, backup and replace existing patina branch
         #[arg(long)]
@@ -134,8 +204,8 @@ enum Commands {
         min_score: f32,
 
         /// Dimension to search (semantic, temporal, dependency)
-        #[arg(long)]
-        dimension: Option<String>,
+        #[arg(long, value_enum)]
+        dimension: Option<Dimension>,
 
         /// Query a specific external repo (registered via 'patina repo')
         #[arg(long)]
@@ -148,13 +218,17 @@ enum Commands {
         /// Include GitHub issues in search results
         #[arg(long)]
         include_issues: bool,
+
+        /// Exclude persona knowledge from results
+        #[arg(long)]
+        no_persona: bool,
     },
 
     /// Evaluate retrieval quality across dimensions
     Eval {
         /// Specific dimension to evaluate (semantic, temporal)
-        #[arg(long)]
-        dimension: Option<String>,
+        #[arg(long, value_enum)]
+        dimension: Option<Dimension>,
     },
 
     /// Generate and manage semantic embeddings
@@ -237,6 +311,26 @@ enum Commands {
         /// Port to bind to
         #[arg(long, default_value = "50051")]
         port: u16,
+    },
+
+    /// Open project in AI frontend (like 'code .' for VS Code)
+    Launch {
+        /// Project path (default: current directory)
+        path: Option<String>,
+
+        /// Frontend to use (claude, gemini, codex)
+        #[arg(short, long)]
+        frontend: Option<String>,
+
+        /// Don't auto-start mothership
+        #[arg(long)]
+        no_serve: bool,
+    },
+
+    /// List available AI frontends
+    Adapter {
+        #[command(subcommand)]
+        command: Option<AdapterCommands>,
     },
 }
 
@@ -373,52 +467,9 @@ enum PersonaCommands {
     Materialize,
 }
 
-#[derive(Subcommand)]
-enum RepoCommands {
-    /// Add an external repository
-    Add {
-        /// GitHub URL (e.g., https://github.com/owner/repo or owner/repo)
-        url: String,
-
-        /// Enable contribution mode (create fork for PRs)
-        #[arg(long)]
-        contrib: bool,
-
-        /// Also fetch and index GitHub issues
-        #[arg(long)]
-        with_issues: bool,
-    },
-
-    /// List registered repositories
-    List,
-
-    /// Update a repository (git pull + rescrape)
-    Update {
-        /// Repository name (or --all for all repos)
-        name: Option<String>,
-
-        /// Update all repositories
-        #[arg(long)]
-        all: bool,
-
-        /// Also run oxidize to build semantic indices
-        #[arg(long)]
-        oxidize: bool,
-    },
-
-    /// Remove a repository
-    #[command(alias = "rm")]
-    Remove {
-        /// Repository name
-        name: String,
-    },
-
-    /// Show details about a repository
-    Show {
-        /// Repository name
-        name: String,
-    },
-}
+// CLI subcommand enums are defined in their respective command modules
+use commands::adapter::AdapterCommands;
+use commands::repo::RepoCommands;
 
 #[cfg(feature = "dev")]
 #[derive(Subcommand)]
@@ -491,7 +542,13 @@ fn main() -> Result<()> {
             force,
             local,
         } => {
-            commands::init::execute(name, llm, dev, force, local)?;
+            commands::init::execute(
+                name,
+                llm.as_str().to_string(),
+                dev.map(|d| d.as_str().to_string()),
+                force,
+                local,
+            )?;
         }
         Commands::Upgrade { check, json } => {
             commands::upgrade::execute(check, json)?;
@@ -536,44 +593,14 @@ fn main() -> Result<()> {
         Commands::Test => {
             commands::test::execute()?;
         }
-        Commands::Scrape { command } => {
-            match command {
-                None => {
-                    // Run all scrapers
-                    println!("🔄 Running all scrapers...\n");
-
-                    println!("📊 [1/3] Scraping code...");
-                    commands::scrape::execute_code(false, false)?;
-
-                    println!("\n📊 [2/3] Scraping git...");
-                    let git_stats = commands::scrape::git::run(false)?;
-                    println!("  • {} commits", git_stats.items_processed);
-
-                    println!("\n📚 [3/3] Scraping sessions...");
-                    let session_stats = commands::scrape::sessions::run(false)?;
-                    println!("  • {} sessions", session_stats.items_processed);
-
-                    println!("\n✅ All scrapers complete!");
-                }
-                Some(ScrapeCommands::Code { args }) => {
-                    commands::scrape::execute_code(args.init, args.force)?;
-                }
-                Some(ScrapeCommands::Git { full }) => {
-                    let stats = commands::scrape::git::run(full)?;
-                    println!("\n📊 Git Scrape Summary:");
-                    println!("  • Commits processed: {}", stats.items_processed);
-                    println!("  • Time elapsed: {:?}", stats.time_elapsed);
-                    println!("  • Database size: {} KB", stats.database_size_kb);
-                }
-                Some(ScrapeCommands::Sessions { full }) => {
-                    let stats = commands::scrape::sessions::run(full)?;
-                    println!("\n📊 Sessions Scrape Summary:");
-                    println!("  • Sessions processed: {}", stats.items_processed);
-                    println!("  • Time elapsed: {:?}", stats.time_elapsed);
-                    println!("  • Database size: {} KB", stats.database_size_kb);
-                }
+        Commands::Scrape { command } => match command {
+            None => commands::scrape::execute_all()?,
+            Some(ScrapeCommands::Code { args }) => {
+                commands::scrape::execute_code(args.init, args.force)?
             }
-        }
+            Some(ScrapeCommands::Git { full }) => commands::scrape::execute_git(full)?,
+            Some(ScrapeCommands::Sessions { full }) => commands::scrape::execute_sessions(full)?,
+        },
         Commands::Oxidize => {
             commands::oxidize::oxidize()?;
         }
@@ -600,20 +627,22 @@ fn main() -> Result<()> {
             repo,
             all_repos,
             include_issues,
+            no_persona,
         } => {
             let options = commands::scry::ScryOptions {
                 limit,
                 min_score,
-                dimension,
+                dimension: dimension.map(|d| d.as_str().to_string()),
                 file,
                 repo,
                 all_repos,
                 include_issues,
+                include_persona: !no_persona,
             };
             commands::scry::execute(query.as_deref(), options)?;
         }
         Commands::Eval { dimension } => {
-            commands::eval::execute(dimension)?;
+            commands::eval::execute(dimension.map(|d| d.as_str().to_string()))?;
         }
         Commands::Embeddings { command } => match command {
             EmbeddingsCommands::Generate { force } => {
@@ -684,50 +713,7 @@ fn main() -> Result<()> {
             url,
             contrib,
             with_issues,
-        } => {
-            use commands::repo::RepoCommand;
-
-            let cmd = match (command, url) {
-                // Subcommand form: patina repo add/list/update/etc
-                (
-                    Some(RepoCommands::Add {
-                        url,
-                        contrib,
-                        with_issues,
-                    }),
-                    _,
-                ) => RepoCommand::Add {
-                    url,
-                    contrib,
-                    with_issues,
-                },
-                (Some(RepoCommands::List), _) => RepoCommand::List,
-                (Some(RepoCommands::Update { name, all, oxidize }), _) => {
-                    if all {
-                        RepoCommand::Update {
-                            name: None,
-                            oxidize,
-                        }
-                    } else {
-                        RepoCommand::Update { name, oxidize }
-                    }
-                }
-                (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },
-                (Some(RepoCommands::Show { name }), _) => RepoCommand::Show { name },
-
-                // Shorthand form: patina repo <url> [--contrib] [--with-issues]
-                (None, Some(url)) => RepoCommand::Add {
-                    url,
-                    contrib,
-                    with_issues,
-                },
-
-                // No args: show list
-                (None, None) => RepoCommand::List,
-            };
-
-            commands::repo::execute(cmd)?;
-        }
+        } => commands::repo::execute_cli(command, url, contrib, with_issues)?,
         Commands::Yolo {
             interactive,
             defaults,
@@ -744,6 +730,20 @@ fn main() -> Result<()> {
             let options = commands::serve::ServeOptions { host, port };
             commands::serve::execute(options)?;
         }
+        Commands::Launch {
+            path,
+            frontend,
+            no_serve,
+        } => {
+            let options = commands::launch::LaunchOptions {
+                path,
+                frontend,
+                auto_start_mothership: !no_serve,
+                auto_init: true,
+            };
+            commands::launch::execute(options)?;
+        }
+        Commands::Adapter { command } => commands::adapter::execute(command)?,
     }
 
     Ok(())

@@ -73,7 +73,7 @@ runtime: auto  # Options: auto | onnx | mlx
 
 ## Implementation Phases
 
-### Phase 6a: Add Qwen3-0.6B (ONNX)
+### Phase 4a: Add Qwen3-0.6B (ONNX)
 **Blocked until:** Phase 2.5 evaluation complete
 **Effort:** 1-2 days
 
@@ -82,8 +82,8 @@ runtime: auto  # Options: auto | onnx | mlx
 - [ ] Benchmark vs E5-base-v2 on code/session queries
 - [ ] Retrain all projections (1024-dim base)
 
-### Phase 6b: Add MLX Runtime
-**Blocked until:** Phase 6a validates Qwen3 quality
+### Phase 4b: Add MLX Runtime
+**Blocked until:** Phase 4a validates Qwen3 quality
 **Effort:** 3-5 days
 
 - [ ] Add `mlx-rs` with feature flag

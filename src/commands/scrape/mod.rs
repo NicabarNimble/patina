@@ -49,6 +49,27 @@ mod tests {
     }
 }
 
+/// Run all scrapers in sequence (code, git, sessions)
+///
+/// This is the default when running `patina scrape` with no subcommand.
+pub fn execute_all() -> Result<()> {
+    println!("🔄 Running all scrapers...\n");
+
+    println!("📊 [1/3] Scraping code...");
+    execute_code(false, false)?;
+
+    println!("\n📊 [2/3] Scraping git...");
+    let git_stats = git::run(false)?;
+    println!("  • {} commits", git_stats.items_processed);
+
+    println!("\n📚 [3/3] Scraping sessions...");
+    let session_stats = sessions::run(false)?;
+    println!("  • {} sessions", session_stats.items_processed);
+
+    println!("\n✅ All scrapers complete!");
+    Ok(())
+}
+
 /// Execute code scraper for current directory
 ///
 /// For external repos, use `patina repo update <name>` instead.
@@ -66,5 +87,25 @@ pub fn execute_code(init: bool, force: bool) -> Result<()> {
         println!("  • Database size: {} KB", stats.database_size_kb);
     }
 
+    Ok(())
+}
+
+/// Execute git scraper with summary output
+pub fn execute_git(full: bool) -> Result<()> {
+    let stats = git::run(full)?;
+    println!("\n📊 Git Scrape Summary:");
+    println!("  • Commits processed: {}", stats.items_processed);
+    println!("  • Time elapsed: {:?}", stats.time_elapsed);
+    println!("  • Database size: {} KB", stats.database_size_kb);
+    Ok(())
+}
+
+/// Execute sessions scraper with summary output
+pub fn execute_sessions(full: bool) -> Result<()> {
+    let stats = sessions::run(full)?;
+    println!("\n📊 Sessions Scrape Summary:");
+    println!("  • Sessions processed: {}", stats.items_processed);
+    println!("  • Time elapsed: {:?}", stats.time_elapsed);
+    println!("  • Database size: {} KB", stats.database_size_kb);
     Ok(())
 }
