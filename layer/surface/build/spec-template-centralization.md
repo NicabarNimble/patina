@@ -1,8 +1,8 @@
 # Spec: Template Centralization
 
-**Status:** Design Complete
-**Session:** 20251209-112825
-**Phase:** 5 (Launcher & Adapters)
+**Status:** Partially Implemented
+**Session:** 20251210-065208
+**Phase:** 1a (Launcher & Adapters)
 **Depends On:** spec-launcher-architecture.md
 
 ---
@@ -61,7 +61,9 @@ Extract embedded templates to `~/.patina/adapters/{frontend}/templates/` on firs
 │     patina init         │     │     patina claude       │
 │                         │     │                         │
 │  Copy .claude/ to       │     │  Ensure .claude/ exists │
-│  project from central   │     │  Generate CLAUDE.md     │
+│  project from central   │     │  Bootstrap CLAUDE.md if │
+│  (if claude allowed)    │     │  missing (preserve if   │
+│                         │     │  exists)                │
 └─────────────────────────┘     └─────────────────────────┘
 ```
 
