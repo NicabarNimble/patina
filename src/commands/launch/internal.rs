@@ -191,34 +191,27 @@ fn prompt_init(_project_path: &Path) -> Result<bool> {
 
 /// Launch the frontend CLI
 fn launch_frontend_cli(frontend_name: &str, project_path: &Path) -> Result<()> {
-    let cmd = match frontend_name {
-        "claude" => "claude",
-        "gemini" => "gemini",
-        "codex" => "codex",
-        _ => frontend_name,
-    };
-
-    println!("\nLaunching {}...\n", cmd);
+    println!("\nLaunching {}...\n", frontend_name);
 
     // Use exec to replace current process (Unix-style)
     // On Windows, we'd spawn and wait instead
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        let err = Command::new(cmd).current_dir(project_path).exec();
+        let err = Command::new(frontend_name).current_dir(project_path).exec();
         // exec only returns on error
-        bail!("Failed to exec {}: {}", cmd, err);
+        bail!("Failed to exec {}: {}", frontend_name, err);
     }
 
     #[cfg(not(unix))]
     {
-        let status = Command::new(cmd)
+        let status = Command::new(frontend_name)
             .current_dir(project_path)
             .status()
-            .with_context(|| format!("Failed to run {}", cmd))?;
+            .with_context(|| format!("Failed to run {}", frontend_name))?;
 
         if !status.success() {
-            bail!("{} exited with status: {}", cmd, status);
+            bail!("{} exited with status: {}", frontend_name, status);
         }
         Ok(())
     }

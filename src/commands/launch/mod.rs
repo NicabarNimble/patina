@@ -16,7 +16,6 @@
 mod internal;
 
 use anyhow::Result;
-use std::path::Path;
 
 /// Launch options
 #[derive(Debug, Clone)]
@@ -45,37 +44,6 @@ impl Default for LaunchOptions {
 /// Execute the launch command
 pub fn execute(options: LaunchOptions) -> Result<()> {
     internal::launch(options)
-}
-
-/// Quick launch with defaults
-pub fn launch_default() -> Result<()> {
-    execute(LaunchOptions::default())
-}
-
-/// Launch specific frontend in current directory
-pub fn launch_frontend(frontend: &str) -> Result<()> {
-    execute(LaunchOptions {
-        frontend: Some(frontend.to_string()),
-        ..Default::default()
-    })
-}
-
-/// Launch in specific project directory
-pub fn launch_project(path: &Path) -> Result<()> {
-    execute(LaunchOptions {
-        path: Some(path.to_string_lossy().to_string()),
-        ..Default::default()
-    })
-}
-
-/// Check if mothership is running
-pub fn is_mothership_running() -> bool {
-    internal::check_mothership_health()
-}
-
-/// Start mothership in background
-pub fn start_mothership() -> Result<()> {
-    internal::start_mothership_daemon()
 }
 
 #[cfg(test)]
