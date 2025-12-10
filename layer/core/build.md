@@ -26,7 +26,9 @@ patina claude       # Open in Claude Code
 patina gemini       # Open in Gemini CLI
 ```
 
-**Key Insight:** Source vs Presentation. `.patina/context.md` is committed (source of truth), `CLAUDE.md` is generated and gitignored (presentation).
+**Key Insight:** Patina is an orchestrator, not a file generator. Embrace existing CLAUDE.md/GEMINI.md files - they're productive for their projects. Patina augments minimally, backs up before modifying, and moves toward MCP as the primary interface.
+
+**Allowed Frontends Model:** Projects control which LLM frontends are permitted via `.patina/config.toml`. Files exist only for allowed frontends. Switching is parallel (allowed frontends coexist), not exclusive.
 
 ---
 
@@ -39,20 +41,20 @@ patina gemini       # Open in Gemini CLI
 
 ## Tasks
 
-### 1a: Template Centralization
-- [ ] Create `resources/gemini/.gemini/` templates (parity with claude)
-- [ ] Create `src/adapters/templates.rs` extraction module
-- [ ] Extract templates to `~/.patina/adapters/{frontend}/templates/` on first run
+### 1a: Template Centralization ✓
+- [x] Create `resources/gemini/` templates (parity with claude)
+- [x] Create `src/adapters/templates.rs` extraction module
+- [x] Extract templates to `~/.patina/adapters/{frontend}/templates/` on first run
 - [ ] Refactor claude adapter to copy from central templates
 - [ ] Implement gemini adapter with full template support
 - [ ] Update init to use `templates::copy_to_project()`
 
-### 1b: First-Run Setup
-- [ ] Detect first run → create `~/.patina/`
-- [ ] Create workspace folder `~/Projects/Patina`
-- [ ] Call `templates::install_all()` to extract embedded templates
-- [ ] Detect installed LLM CLIs (enum-based, not manifest files)
-- [ ] Set default frontend
+### 1b: First-Run Setup ✓
+- [x] Detect first run → create `~/.patina/`
+- [x] Create workspace folder `~/Projects/Patina`
+- [x] Call `templates::install_all()` to extract embedded templates
+- [x] Detect installed LLM CLIs (enum-based, not manifest files)
+- [x] Set default frontend
 
 ### 1c: Launcher Command
 - [ ] Remove `Commands::Launch` subcommand
@@ -63,25 +65,35 @@ patina gemini       # Open in Gemini CLI
 - [ ] Ensure adapter templates exist via `templates::copy_to_project()`
 - [ ] Launch frontend CLI via `exec`
 
-### 1d: Source/Presentation Model
-- [ ] `.patina/context.md` as source of truth (committed)
-- [ ] Generate `CLAUDE.md`/`GEMINI.md` on launch from context + persona
-- [ ] Combine global persona (`~/.patina/personas/`) + project context
-- [ ] Update `.gitignore` for presentation files
+### 1d: Patina Context Layer
+- [ ] Create `.patina/context.md` schema (patina's project knowledge, LLM-agnostic)
+- [ ] Detect and preserve existing CLAUDE.md/GEMINI.md (don't clobber)
+- [ ] Minimal augmentation: add patina hooks (MCP pointer, layer/ reference) if missing
+- [ ] Backup before any modification to `.patina/backups/`
+- [ ] Log all actions for transparency
 
-### 1e: Branch Model & Safety
+### 1e: Project Config & Allowed Frontends
+- [ ] Expand `.patina/config.toml` with `[project]` section (name, mode)
+- [ ] Add `[frontends]` section with `allowed` list and `default`
+- [ ] `mode = "owner"` - patina artifacts go to main via PR
+- [ ] `mode = "contrib"` - CI strips patina artifacts from PRs
+- [ ] Enforce allowed frontends on launch (error if not in list)
+- [ ] Files exist only for allowed frontends (cleanup non-allowed)
+
+### 1f: Branch Model & Safety
 - [ ] Refactor `ensure_patina_branch()` to assisted mode (auto-stash, auto-switch)
 - [ ] Add `ensure_patina_for_launch()` for launcher branch safety
 - [ ] Auto-stash dirty working tree before switch
 - [ ] Auto-rebase patina if behind main
 - [ ] Show restore hints after stash
 - [ ] Keep `--force` for nuclear reset only
-- [ ] `.patina/config.toml` with `mode = "owner"` or `"contrib"`
 
-### 1f: Adapter Commands
-- [ ] `patina adapter list` - show available frontends
-- [ ] `patina adapter default X` - set default frontend
-- [ ] Frontend detection via enum
+### 1g: Adapter Commands
+- [ ] `patina adapter list` - show allowed + available frontends
+- [ ] `patina adapter add <frontend>` - add to allowed, create files
+- [ ] `patina adapter remove <frontend>` - backup, remove files, update config
+- [ ] `patina adapter default <frontend>` - set project default
+- [ ] Frontend detection via enum (global), allowed via config (project)
 
 ---
 
@@ -89,16 +101,18 @@ patina gemini       # Open in Gemini CLI
 
 | Criteria | Status |
 |----------|--------|
-| Gemini templates exist with full parity to Claude | [ ] |
-| First-run extracts templates to `~/.patina/adapters/` | [ ] |
-| `patina init --llm=claude` copies from central templates | [ ] |
-| `patina init --llm=gemini` copies from central templates | [ ] |
+| Gemini templates exist with full parity to Claude | [x] |
+| First-run extracts templates to `~/.patina/adapters/` | [x] |
+| `patina init` copies adapter templates from central location | [ ] |
 | `patina` (no args) opens default frontend | [ ] |
-| `patina claude` opens Claude Code | [ ] |
-| `patina gemini` opens Gemini CLI | [ ] |
-| `.patina/context.md` generates `CLAUDE.md` on launch | [ ] |
-| Presentation files are gitignored | [ ] |
+| `patina claude` opens Claude Code (if allowed) | [ ] |
+| `patina gemini` opens Gemini CLI (if allowed) | [ ] |
+| Existing CLAUDE.md preserved, not clobbered | [ ] |
+| `.patina/config.toml` has `[project]` and `[frontends]` sections | [ ] |
+| `patina adapter add/remove` manages allowed frontends | [ ] |
+| Non-allowed frontend files cleaned up | [ ] |
 | `patina init` on dirty main auto-stashes and switches | [ ] |
+| Backups created before modifying existing files | [ ] |
 
 ---
 
