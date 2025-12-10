@@ -1,8 +1,14 @@
-# Patina Metal: Unified Parser Architecture
+---
+id: reference-patina-metal
+status: active
+created: 2025-08-24
+updated: 2025-12-09
+oxidizer: nicabar
+tags: [reference, parser, tree-sitter, metal, guide]
+references: [architecture-patina-metal]
+---
 
-Created: 2025-08-24
-Status: Production Ready
-Branch: `patina-metal-parser`
+# Patina Metal: Unified Parser Architecture
 
 ## Core Concept
 

@@ -1,9 +1,11 @@
 ---
-id: yolo-devcontainer-architecture
+id: architecture-yolo-devcontainer
 status: active
 created: 2025-10-07
-tags: [architecture, yolo, devcontainer, buildpack-pattern, modular-system, detection, code-generation]
-references: [pattern-selection-framework, modular-architecture-plan]
+updated: 2025-12-09
+oxidizer: nicabar
+tags: [architecture, yolo, devcontainer, buildpack-pattern, modular-system, detection]
+references: [architecture-patina-system]
 ---
 
 # YOLO Devcontainer Architecture - Buildpack-Style Generation System

@@ -1,9 +1,14 @@
-# Patina: RAG Network Architecture
-
-**Crystallized:** 2025-12-04
-**Session:** 20251204-173633
-
 ---
+id: concept-rag-network
+status: emerging
+created: 2025-12-04
+updated: 2025-12-09
+oxidizer: nicabar
+tags: [concept, rag, architecture, knowledge-graph]
+references: [architecture-patina-system]
+---
+
+# Patina: RAG Network Architecture
 
 ## Key Insight: Patina Identity
 

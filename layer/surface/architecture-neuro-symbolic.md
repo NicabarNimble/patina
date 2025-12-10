@@ -1,3 +1,13 @@
+---
+id: architecture-neuro-symbolic
+status: active
+created: 2025-11-07
+updated: 2025-12-09
+oxidizer: nicabar
+tags: [architecture, neuro-symbolic, sqlite, prolog, reasoning]
+references: [architecture-patina-system, architecture-persona-belief]
+---
+
 # Neuro-Symbolic Design: SQLite + Scryer Prolog Integration
 
 ## Architecture Overview

@@ -1,8 +1,11 @@
 ---
-id: eskil-steenberg-rust
+id: rationale-eskil-steenberg
 status: active
 created: 2025-08-12
-tags: [architecture, rust, philosophy, black-box, eskil-steenberg]
+updated: 2025-12-09
+oxidizer: nicabar
+tags: [rationale, rust, philosophy, black-box, eskil-steenberg]
+references: [dependable-rust]
 ---
 
 # Building Software That Lasts Forever - Rust Edition

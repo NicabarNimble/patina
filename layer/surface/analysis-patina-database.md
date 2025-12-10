@@ -1,3 +1,13 @@
+---
+id: analysis-patina-database
+status: active
+created: 2025-11-23
+updated: 2025-12-09
+oxidizer: nicabar
+tags: [analysis, database, sqlite, code-analysis]
+references: [architecture-patina-system, architecture-neuro-symbolic]
+---
+
 # Patina Database Deep Dive Analysis
 
 ## Executive Summary

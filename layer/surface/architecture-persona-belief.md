@@ -1,11 +1,11 @@
 ---
-id: persona-belief-architecture
-version: 1
+id: architecture-persona-belief
 status: historical
-created_date: 2025-10-25
-updated_date: 2025-10-25
+created: 2025-10-25
+updated: 2025-12-09
 oxidizer: nicabar
 tags: [architecture, persona, beliefs, ontology, neuro-symbolic, domains]
+references: [architecture-neuro-symbolic]
 ---
 
 # Persona-Belief Architecture
