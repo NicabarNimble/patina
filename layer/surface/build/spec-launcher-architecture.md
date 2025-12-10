@@ -1,8 +1,8 @@
 # Spec: Patina Launcher Architecture
 
-**Status:** Design Revised (2025-12-09)
-**Session:** 20251209-100946
-**Phase:** 5-6 (Launcher & MCP)
+**Status:** Design Revised (2025-12-10)
+**Session:** 20251210-065208
+**Phase:** 1 (Launcher & Adapters)
 
 ---
 
@@ -58,37 +58,47 @@ One process. Two interfaces. All the state.
 
 ## Key Principles
 
-### 1. Source vs Presentation
+### 1. Orchestrator, Not Generator
 
-Project rules live in `.patina/context.md` (committed). Frontend-specific files are generated and gitignored.
-
-```
-.patina/context.md     →  patina claude  →  CLAUDE.md (gitignored)
-(source of truth)         (generates)       (presentation)
-```
-
-### 2. Two-Tier Rules
+Patina is an orchestrator that works WITH existing project files, not a generator that replaces them.
 
 ```
-Global Rules (~/.patina/personas/)     Project Rules (.patina/context.md)
-├── Light touch                        ├── Detailed architecture
-├── "I prefer explicit errors"         ├── Code patterns for THIS codebase
-├── General preferences                ├── Project-specific conventions
-└── Cross-project patterns             └── The meaty stuff
-            │                                    │
-            └────────────────┬───────────────────┘
-                             │
-                             ▼
-                    Frontend Adapter
-                     (combines + formats)
-                             │
-                     ┌───────┴───────┐
-                     ▼               ▼
-                CLAUDE.md        GEMINI.md
-                (generated)      (generated)
+Existing CLAUDE.md (project's own)  →  Patina preserves
+                                       Augments minimally if needed
+                                       Backs up before modifying
 ```
 
-### 3. The Patina Branch Model
+**Philosophy:** Embrace existing CLAUDE.md/GEMINI.md files. They're productive for their projects. The real value is MCP (Phase 2), where frontend LLMs query patina dynamically.
+
+### 2. Allowed Frontends Model
+
+Projects control which LLM frontends are permitted. Files exist only for allowed frontends.
+
+```toml
+# .patina/config.toml
+[frontends]
+allowed = ["claude", "gemini"]  # Team decision
+default = "claude"
+```
+
+```
+patina claude  → Allowed? Yes → Launch
+patina codex   → Allowed? No  → "codex not in allowed frontends"
+```
+
+**Switching is parallel:** Allowed frontends coexist (both .claude/ and .gemini/ exist). Switching doesn't remove files - that's explicit via `patina adapter remove`.
+
+### 3. Two-Tier Config
+
+```
+Global Config (~/.patina/config.toml)    Project Config (.patina/config.toml)
+├── Detected frontends                    ├── Allowed frontends
+├── User's default preference             ├── Project's default
+├── Serve settings                        ├── Mode (owner/contrib)
+└── Workspace path                        └── Embeddings config
+```
+
+### 4. The Patina Branch Model
 
 **Rule: Always work on `patina` branch. Push to main via PR.**
 
@@ -99,13 +109,14 @@ patina branch              →  PR  →  main branch
 
 This protects against overwriting others' repos and provides clear isolation.
 
-### 4. Frontend Switching is Instant
+### 5. Frontend Coexistence
 
-Same source, regenerate presentation:
+Allowed frontends exist in parallel:
 
 ```bash
-patina claude    # Generates CLAUDE.md, launches claude
-patina gemini    # Generates GEMINI.md from same source, launches gemini
+patina claude    # Ensures .claude/ exists, launches claude
+patina gemini    # Ensures .gemini/ exists, launches gemini
+# Both coexist - team can use different frontends
 ```
 
 ---
@@ -143,8 +154,10 @@ patina rebuild              # Rebuild indices from layer/
 ### Adapter Management
 
 ```bash
-patina adapter list         # Show available frontends
-patina adapter default X    # Set default frontend
+patina adapter list         # Show allowed + available frontends
+patina adapter add X        # Add frontend to allowed, create files
+patina adapter remove X     # Backup, remove files, update config
+patina adapter default X    # Set project default frontend
 ```
 
 ---
@@ -154,17 +167,22 @@ patina adapter default X    # Set default frontend
 ```
 patina claude
     │
-    ├─► Is mothership running?
-    │   └─► No? Start: patina serve --daemon
+    ├─► Is claude detected? (global config)
+    │   └─► No? → "claude CLI not found"
     │
     ├─► Is this a patina project?
     │   └─► No .patina/? → "Run patina init first"
     │
-    ├─► Generate presentation files:
-    │   ├─► Read .patina/context.md (source of truth)
-    │   ├─► Read ~/.patina/personas/ (global rules)
-    │   ├─► Generate CLAUDE.md (combined, formatted)
-    │   └─► Ensure .claude/ exists (from adapter templates)
+    ├─► Is claude in allowed frontends? (project config)
+    │   └─► No? → "claude not in allowed frontends. Run: patina adapter add claude"
+    │
+    ├─► Is mothership running?
+    │   └─► No? Start: patina serve --daemon
+    │
+    ├─► Ensure adapter files exist:
+    │   ├─► .claude/ missing? Copy from ~/.patina/adapters/claude/templates/
+    │   ├─► CLAUDE.md missing? Bootstrap minimal with patina hooks
+    │   └─► CLAUDE.md exists? Preserve (maybe add MCP pointer if missing)
     │
     └─► Launch: exec claude
 ```
@@ -196,35 +214,36 @@ patina claude
 ```
 project/
 ├── .patina/
-│   ├── config.toml          # Project config (mode: owner/contrib)
-│   └── context.md           # PROJECT RULES (source of truth)
+│   ├── config.toml          # Project config (mode, allowed frontends)
+│   ├── context.md           # Patina's project knowledge (optional)
+│   └── backups/             # Backups before modifications
 ├── layer/
 │   ├── core/                # Eternal patterns
 │   ├── surface/             # Active docs
 │   └── sessions/            # Work history
-└── .gitignore               # Ignores presentation files
+├── CLAUDE.md                # Project's Claude context (committed, preserved)
+├── GEMINI.md                # Project's Gemini context (if allowed)
+├── .claude/                 # Claude adapter files (if allowed)
+└── .gemini/                 # Gemini adapter files (if allowed)
 ```
 
-### Project (Generated, Gitignored)
+**Note:** Frontend files (CLAUDE.md, .claude/) are committed, not gitignored. Patina preserves existing files and only creates what's missing for allowed frontends.
 
-```
-project/
-├── CLAUDE.md                # Generated from context.md + persona
-├── GEMINI.md                # Generated (if using gemini)
-├── .claude/                 # Copied from ~/.patina/adapters/claude/
-└── .gemini/                 # Copied from ~/.patina/adapters/gemini/
-```
+### Project Config Schema
 
-### .gitignore (on patina branch)
+```toml
+# .patina/config.toml
 
-```gitignore
-# Frontend presentation (generated by patina)
-CLAUDE.md
-GEMINI.md
-CODEX.md
-.claude/
-.gemini/
-.codex/
+[project]
+name = "my-project"
+mode = "owner"              # owner | contrib
+
+[frontends]
+allowed = ["claude", "gemini"]
+default = "claude"
+
+[embeddings]
+model = "e5-base-v2"
 ```
 
 ---
@@ -552,25 +571,38 @@ Launching Claude Code...
 ### Phase 1: Launcher & Adapters
 
 ```
-1a: First-run setup
-    - ~/.patina/ structure
-    - Adapter templates installation
-    - Frontend detection (enum-based)
+1a: Template Centralization ✓
+    - ~/.patina/adapters/ structure
+    - Embedded templates extraction
+    - Parity across frontends
 
-1b: Launcher command
+1b: First-Run Setup ✓
+    - ~/.patina/ structure
+    - Frontend detection (enum-based)
+    - Default frontend selection
+
+1c: Launcher Command
     - `patina [path] [frontend]` as default behavior
     - Auto-start mothership
-    - Presentation file generation
+    - Allowed frontends enforcement
 
-1c: Source/Presentation model
-    - .patina/context.md as source of truth
-    - Generate CLAUDE.md/GEMINI.md on launch
-    - .gitignore for presentation files
+1d: Patina Context Layer
+    - Preserve existing CLAUDE.md/GEMINI.md
+    - Minimal augmentation (MCP pointers)
+    - Backup before modification
 
-1d: Branch model
-    - Always work on patina branch
+1e: Project Config & Allowed Frontends
+    - .patina/config.toml with [project] and [frontends]
+    - Allowed list controls which frontends have files
     - Owner vs contrib mode
+
+1f: Branch Model & Safety
+    - Always work on patina branch
+    - Auto-stash, auto-switch
     - CI stripping for contrib repos
+
+1g: Adapter Commands
+    - patina adapter add/remove/list/default
 ```
 
 ### Phase 2: MCP Integration
@@ -598,16 +630,16 @@ Launching Claude Code...
 |--------|--------|
 | Launcher | `patina [frontend]` (implicit, no subcommand) |
 | Frontends | Enum (claude, gemini, codex) - simple, type-safe |
-| Source of truth | `.patina/context.md` (committed) |
-| Presentation | `CLAUDE.md`, `.claude/` (gitignored, generated) |
-| Global rules | `~/.patina/personas/` (light touch) |
-| Project rules | `.patina/context.md` (detailed) |
+| Allowed frontends | `.patina/config.toml [frontends].allowed` |
+| Existing files | Preserved, not clobbered |
+| Global config | `~/.patina/config.toml` (detected frontends, user default) |
+| Project config | `.patina/config.toml` (allowed frontends, mode) |
 | Branch model | Always `patina` branch, PR to main |
 | Owner repos | PR includes patina artifacts |
 | Contrib repos | CI strips patina artifacts |
 | Mothership | `patina serve` (HTTP + MCP, one process) |
-| Switching | Instant (regenerate from same source) |
-| YOLO | Container generates locally, source mounted |
+| Switching | Parallel (allowed frontends coexist) |
+| YOLO | Container connects to host mothership |
 
 ---
 
@@ -615,14 +647,15 @@ Launching Claude Code...
 
 | Validation | Status |
 |------------|--------|
-| `patina` opens project in default frontend | [ ] |
-| `patina claude` opens in Claude Code | [ ] |
-| `patina gemini` opens in Gemini CLI | [ ] |
+| `patina` opens project in default frontend (if allowed) | [ ] |
+| `patina claude` opens Claude Code (if allowed) | [ ] |
+| `patina gemini` opens Gemini CLI (if allowed) | [ ] |
+| Non-allowed frontend shows clear error message | [ ] |
+| Existing CLAUDE.md preserved, not clobbered | [ ] |
+| `patina adapter add/remove` manages allowed list | [ ] |
+| Files exist only for allowed frontends | [ ] |
 | Mothership auto-starts if not running | [ ] |
 | MCP tools work from any frontend | [ ] |
-| Switching frontends < 2 seconds | [ ] |
-| `patina --yolo X` launches container | [ ] |
-| Same source works with all frontends | [ ] |
-| Presentation files are gitignored | [ ] |
 | Owner mode: patina artifacts in main | [ ] |
 | Contrib mode: CI strips artifacts | [ ] |
+| Backups created before modifying existing files | [ ] |
