@@ -1,3 +1,4 @@
+pub mod adapter;
 pub mod ask;
 pub mod audit;
 pub mod belief;
