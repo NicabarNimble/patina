@@ -1,27 +1,14 @@
 use anyhow::{Context, Result};
 use patina::dev_env;
-use std::fs;
+use patina::project;
 
 pub fn execute() -> Result<()> {
     let project_root = std::env::current_dir().context("Failed to get current directory")?;
 
-    // Read config to determine which dev environment to use
-    let config_path = project_root.join(".patina/config.json");
-    let (dev_env_name, _project_name) = if config_path.exists() {
-        let config_content = fs::read_to_string(&config_path)?;
-        let config: serde_json::Value = serde_json::from_str(&config_content)?;
-
-        let dev = config
-            .get("dev")
-            .and_then(|d| d.as_str())
-            .unwrap_or("docker");
-
-        let name = config.get("name").and_then(|n| n.as_str()).unwrap_or("app");
-
-        (dev.to_string(), name.to_string())
-    } else {
-        ("docker".to_string(), "app".to_string())
-    };
+    // Load unified project config (with migration if needed)
+    let config = project::load_with_migration(&project_root)?;
+    let dev_env_name = config.dev.dev_type.clone();
+    let _project_name = config.project.name.clone();
 
     // Get the appropriate dev environment
     let dev_environment = dev_env::get_dev_env(&dev_env_name);

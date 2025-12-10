@@ -56,7 +56,7 @@ patina repo add <url> --with-issues
 | Incremental updates | ✅ | `github/mod.rs:get_last_scrape()` |
 | `--with-issues` flag on `repo add` | ✅ | `src/commands/repo/` |
 
-### What's Missing (Phase 3g from build.md)
+### What's Missing (Deferred)
 
 | Feature | Status | Issue |
 |---------|--------|-------|

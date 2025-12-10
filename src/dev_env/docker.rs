@@ -1,4 +1,5 @@
 use super::DevEnvironment;
+use crate::project;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
@@ -116,18 +117,12 @@ impl DevEnvironment for DockerEnvironment {
 
         println!("🐳 Building with Docker...");
 
-        // Get project name from config
-        let config_path = project_path.join(".patina/config.json");
-        let project_name = if config_path.exists() {
-            let config_content = fs::read_to_string(&config_path)?;
-            let config: serde_json::Value = serde_json::from_str(&config_content)?;
-            config
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("app")
-                .to_string()
-        } else {
+        // Get project name from unified config
+        let config = project::load_with_migration(project_path)?;
+        let project_name = if config.project.name.is_empty() || config.project.name == "unnamed" {
             "app".to_string()
+        } else {
+            config.project.name.clone()
         };
 
         let output = Command::new("docker")
@@ -150,17 +145,12 @@ impl DevEnvironment for DockerEnvironment {
 
         println!("🧪 Running tests in Docker container...");
 
-        let config_path = project_path.join(".patina/config.json");
-        let project_name = if config_path.exists() {
-            let config_content = fs::read_to_string(&config_path)?;
-            let config: serde_json::Value = serde_json::from_str(&config_content)?;
-            config
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("app")
-                .to_string()
-        } else {
+        // Get project name from unified config
+        let config = project::load_with_migration(project_path)?;
+        let project_name = if config.project.name.is_empty() || config.project.name == "unnamed" {
             "app".to_string()
+        } else {
+            config.project.name.clone()
         };
 
         let output = Command::new("docker")

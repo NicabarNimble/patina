@@ -1,53 +1,65 @@
 //! Configuration management for project initialization
 
 use anyhow::{Context, Result};
-use serde_json::json;
 use std::fs;
 use std::path::Path;
 
 use patina::dev_env::DevEnvironment;
 use patina::environment::Environment;
+use patina::project::{
+    DevSection, EmbeddingsSection, EnvironmentSection, FrontendsSection, ProjectConfig,
+    ProjectSection, SearchSection,
+};
 use patina::version::VersionManifest;
 
-/// Create project configuration file
+/// Create project configuration file (unified config.toml format)
 pub fn create_project_config(
     project_path: &Path,
     name: &str,
     llm: &str,
     dev: &str,
     environment: &Environment,
-    dev_env: &dyn DevEnvironment,
+    _dev_env: &dyn DevEnvironment,
 ) -> Result<()> {
     let patina_dir = project_path.join(".patina");
     fs::create_dir_all(&patina_dir).context("Failed to create .patina directory")?;
 
-    // Create dev manifest
-    let dev_manifest = json!({
-        "environment": dev,
-        "version": dev_env.version(),
-        "available": dev_env.is_available(),
-    });
+    // Build detected tools list
+    let detected_tools: Vec<String> = environment
+        .tools
+        .iter()
+        .filter(|(_, info)| info.available)
+        .map(|(name, _)| name.clone())
+        .collect();
 
-    // Store current project configuration with environment snapshot
-    let config = json!({
-        "name": name,
-        "llm": llm,
-        "dev": dev,
-        "dev_manifest": dev_manifest,
-        "created": chrono::Utc::now().to_rfc3339(),
-        "environment_snapshot": {
-            "os": environment.os,
-            "arch": environment.arch,
-            "detected_tools": environment.tools.iter()
-                .filter(|(_, info)| info.available)
-                .map(|(name, _)| name)
-                .collect::<Vec<_>>(),
-        }
-    });
+    // Create unified project config
+    let config = ProjectConfig {
+        project: ProjectSection {
+            name: name.to_string(),
+            mode: "owner".to_string(),
+            created: Some(chrono::Utc::now().to_rfc3339()),
+        },
+        dev: DevSection {
+            dev_type: dev.to_string(),
+            version: None,
+        },
+        frontends: FrontendsSection {
+            allowed: vec![llm.to_string()],
+            default: llm.to_string(),
+        },
+        embeddings: EmbeddingsSection {
+            model: "e5-base-v2".to_string(),
+        },
+        search: SearchSection::default(),
+        environment: Some(EnvironmentSection {
+            os: environment.os.clone(),
+            arch: environment.arch.clone(),
+            detected_tools,
+        }),
+    };
 
-    let config_path = patina_dir.join("config.json");
-    fs::write(&config_path, serde_json::to_string_pretty(&config)?)
-        .context("Failed to write project config")?;
+    // Save using project module
+    patina::project::save(project_path, &config)?;
 
     Ok(())
 }
