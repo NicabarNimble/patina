@@ -78,14 +78,8 @@ pub fn execute(
         .map(|e| e.detected_tools.clone())
         .unwrap_or_default();
 
-    // Compare environments (pass config for compatibility)
-    let config_json = serde_json::json!({
-        "llm": &config.frontends.default,
-        "environment_snapshot": {
-            "detected_tools": &stored_tools
-        }
-    });
-    let mut health_check = analyze_environment(&current_env, &stored_tools, &config_json)?;
+    // Compare environments
+    let mut health_check = analyze_environment(&current_env, &stored_tools, &config.dev.dev_type)?;
 
     // Check project status - use frontends.default as the LLM
     let llm = &config.frontends.default;
@@ -141,7 +135,7 @@ pub fn execute(
 fn analyze_environment(
     current: &Environment,
     stored_tools: &[String],
-    config: &serde_json::Value,
+    dev_type: &str,
 ) -> Result<HealthCheck> {
     let mut missing_tools = Vec::new();
     let mut new_tools = Vec::new();
@@ -155,7 +149,7 @@ fn analyze_environment(
             .get(tool_name)
             .is_some_and(|info| info.available)
         {
-            let required = is_tool_required(tool_name, config);
+            let required = is_tool_required(tool_name, dev_type);
             missing_tools.push(ToolChange {
                 name: tool_name.clone(),
                 old_version: Some("detected".to_string()),
@@ -210,18 +204,11 @@ fn analyze_environment(
     })
 }
 
-fn is_tool_required(tool: &str, config: &serde_json::Value) -> bool {
+fn is_tool_required(tool: &str, dev_type: &str) -> bool {
     // Check if tool is required based on project type and configuration
     match tool {
         "cargo" | "rust" => true, // Always required for Patina
-        "docker" => {
-            // Required if dev environment is docker
-            config
-                .get("dev")
-                .and_then(|d| d.as_str())
-                .map(|d| d == "docker")
-                .unwrap_or(false)
-        }
+        "docker" => dev_type == "docker",
         _ => false,
     }
 }
