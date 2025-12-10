@@ -48,41 +48,41 @@ patina gemini       # Open in Gemini CLI
 
 See [spec-main-refactor.md](../surface/build/spec-main-refactor.md) for full details.
 
-### 0a: Extract Adapter Command Handler
-- [ ] Create `src/commands/adapter.rs` module
-- [ ] Move 170 lines from `Commands::Adapter` match arm
-- [ ] main.rs: `Commands::Adapter { command } => commands::adapter::execute(command)?`
+### 0a: Extract Adapter Command Handler ✓
+- [x] Create `src/commands/adapter.rs` module
+- [x] Move 170 lines from `Commands::Adapter` match arm
+- [x] main.rs: `Commands::Adapter { command } => commands::adapter::execute(command)?`
 
-### 0b: Extract Scrape Orchestration
-- [ ] Create `commands::scrape::execute_all()` function
-- [ ] Move inline orchestration (15 lines) from `Commands::Scrape { None }` arm
-- [ ] Consolidate scrape subcommand handling
+### 0b: Extract Scrape Orchestration ✓
+- [x] Create `commands::scrape::execute_all()` function
+- [x] Move inline orchestration (15 lines) from `Commands::Scrape { None }` arm
+- [x] Consolidate scrape subcommand handling
 
-### 0c: Unify Repo Command Types
-- [ ] Remove `RepoCommands` enum from main.rs
-- [ ] Have `commands::repo` accept clap's parsed args directly
-- [ ] Eliminate 48 lines of translation code
+### 0c: Unify Repo Command Types ✓
+- [x] Remove `RepoCommands` enum from main.rs
+- [x] Have `commands::repo` accept clap's parsed args directly
+- [x] Eliminate 48 lines of translation code
 
-### 0d: Type String Enums
-- [ ] Create `Dimension` enum with `ValueEnum` derive
-- [ ] Create `Llm` enum (claude, gemini, codex, local)
-- [ ] Create `DevEnv` enum (docker, dagger, native)
-- [ ] Update CLI args to use typed enums
+### 0d: Type String Enums ✓
+- [x] Create `Dimension` enum with `ValueEnum` derive
+- [x] Create `Llm` enum (claude, gemini, codex, local)
+- [x] Create `DevEnv` enum (docker, dagger, native)
+- [x] Update CLI args to use typed enums
 
-### 0e: Configurable ML Thresholds
-- [ ] Add `[search]` section to `ProjectConfig`
-- [ ] Move hardcoded `min_score` defaults to config
-- [ ] Document why different commands have different defaults
+### 0e: Configurable ML Thresholds ✓
+- [x] Add `[search]` section to `ProjectConfig`
+- [x] Move hardcoded `min_score` defaults to config
+- [x] Document why different commands have different defaults
 
 ### Phase 0 Validation
 
 | Criteria | Status |
 |----------|--------|
-| main.rs < 600 lines | [ ] |
-| No match arm > 5 lines | [ ] |
-| All string enums converted to typed | [ ] |
-| `Commands::Adapter` delegated to module | [ ] |
-| ML thresholds configurable | [ ] |
+| main.rs < 600 lines | [~] 750 lines (enum defs added 76) |
+| No match arm > 5 lines | [~] Some options structs remain |
+| All string enums converted to typed | [x] |
+| `Commands::Adapter` delegated to module | [x] |
+| ML thresholds configurable | [x] |
 
 ---
 
