@@ -1,7 +1,77 @@
 use anyhow::Result;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 
 mod commands;
+
+// ============================================================================
+// Typed CLI enums (Phase 0d: type safety for string args)
+// ============================================================================
+
+/// Search dimension for scry and eval commands
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Dimension {
+    /// Semantic similarity search
+    Semantic,
+    /// Temporal/co-change relationships
+    Temporal,
+    /// Code dependency relationships
+    Dependency,
+}
+
+impl Dimension {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Dimension::Semantic => "semantic",
+            Dimension::Temporal => "temporal",
+            Dimension::Dependency => "dependency",
+        }
+    }
+}
+
+/// LLM frontend for project initialization
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum Llm {
+    /// Claude Code (Anthropic)
+    Claude,
+    /// Gemini CLI (Google)
+    Gemini,
+    /// Codex (OpenAI)
+    Codex,
+    /// Local LLM
+    Local,
+}
+
+impl Llm {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Llm::Claude => "claude",
+            Llm::Gemini => "gemini",
+            Llm::Codex => "codex",
+            Llm::Local => "local",
+        }
+    }
+}
+
+/// Development environment type
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum DevEnv {
+    /// Docker containerized builds
+    Docker,
+    /// Dagger CI/CD pipelines
+    Dagger,
+    /// Native local development
+    Native,
+}
+
+impl DevEnv {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DevEnv::Docker => "docker",
+            DevEnv::Dagger => "dagger",
+            DevEnv::Native => "native",
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(author, version = env!("CARGO_PKG_VERSION"), about = "Context management for AI-assisted development", long_about = None)]
@@ -17,13 +87,13 @@ enum Commands {
         /// Project name
         name: String,
 
-        /// LLM to use (claude, gemini, local)
-        #[arg(long)]
-        llm: String,
+        /// LLM to use (claude, gemini, codex, local)
+        #[arg(long, value_enum)]
+        llm: Llm,
 
         /// Development environment (docker, dagger, native)
-        #[arg(long)]
-        dev: Option<String>,
+        #[arg(long, value_enum)]
+        dev: Option<DevEnv>,
 
         /// Force initialization, backup and replace existing patina branch
         #[arg(long)]
@@ -134,8 +204,8 @@ enum Commands {
         min_score: f32,
 
         /// Dimension to search (semantic, temporal, dependency)
-        #[arg(long)]
-        dimension: Option<String>,
+        #[arg(long, value_enum)]
+        dimension: Option<Dimension>,
 
         /// Query a specific external repo (registered via 'patina repo')
         #[arg(long)]
@@ -157,8 +227,8 @@ enum Commands {
     /// Evaluate retrieval quality across dimensions
     Eval {
         /// Specific dimension to evaluate (semantic, temporal)
-        #[arg(long)]
-        dimension: Option<String>,
+        #[arg(long, value_enum)]
+        dimension: Option<Dimension>,
     },
 
     /// Generate and manage semantic embeddings
@@ -472,7 +542,13 @@ fn main() -> Result<()> {
             force,
             local,
         } => {
-            commands::init::execute(name, llm, dev, force, local)?;
+            commands::init::execute(
+                name,
+                llm.as_str().to_string(),
+                dev.map(|d| d.as_str().to_string()),
+                force,
+                local,
+            )?;
         }
         Commands::Upgrade { check, json } => {
             commands::upgrade::execute(check, json)?;
@@ -556,7 +632,7 @@ fn main() -> Result<()> {
             let options = commands::scry::ScryOptions {
                 limit,
                 min_score,
-                dimension,
+                dimension: dimension.map(|d| d.as_str().to_string()),
                 file,
                 repo,
                 all_repos,
@@ -566,7 +642,7 @@ fn main() -> Result<()> {
             commands::scry::execute(query.as_deref(), options)?;
         }
         Commands::Eval { dimension } => {
-            commands::eval::execute(dimension)?;
+            commands::eval::execute(dimension.map(|d| d.as_str().to_string()))?;
         }
         Commands::Embeddings { command } => match command {
             EmbeddingsCommands::Generate { force } => {
