@@ -6,17 +6,20 @@
 //! # Example
 //!
 //! ```no_run
+//! # fn main() -> anyhow::Result<()> {
 //! // Add a repo for learning
-//! patina repo https://github.com/dojoengine/dojo
+//! // patina repo https://github.com/dojoengine/dojo
 //!
 //! // Add a repo for contributing (creates fork)
-//! patina repo https://github.com/dojoengine/dojo --contrib
+//! // patina repo https://github.com/dojoengine/dojo --contrib
 //!
 //! // List all repos
-//! patina repo list
+//! // patina repo list
 //!
 //! // Query a specific repo
-//! patina scry "spawn patterns" --repo dojo
+//! // patina scry "spawn patterns" --repo dojo
+//! # Ok(())
+//! # }
 //! ```
 
 mod internal;
@@ -24,6 +27,106 @@ mod internal;
 use anyhow::Result;
 
 pub use internal::RepoEntry;
+
+/// Repo CLI subcommands (used by main.rs via clap)
+#[derive(Debug, Clone, clap::Subcommand)]
+pub enum RepoCommands {
+    /// Add an external repository
+    Add {
+        /// GitHub URL (e.g., https://github.com/owner/repo or owner/repo)
+        url: String,
+
+        /// Enable contribution mode (create fork for PRs)
+        #[arg(long)]
+        contrib: bool,
+
+        /// Also fetch and index GitHub issues
+        #[arg(long)]
+        with_issues: bool,
+    },
+
+    /// List registered repositories
+    List,
+
+    /// Update a repository (git pull + rescrape)
+    Update {
+        /// Repository name (or --all for all repos)
+        name: Option<String>,
+
+        /// Update all repositories
+        #[arg(long)]
+        all: bool,
+
+        /// Also run oxidize to build semantic indices
+        #[arg(long)]
+        oxidize: bool,
+    },
+
+    /// Remove a repository
+    #[command(alias = "rm")]
+    Remove {
+        /// Repository name
+        name: String,
+    },
+
+    /// Show details about a repository
+    Show {
+        /// Repository name
+        name: String,
+    },
+}
+
+/// Execute repo command from CLI arguments
+///
+/// Handles both subcommand form (`patina repo add <url>`) and
+/// shorthand form (`patina repo <url>`).
+pub fn execute_cli(
+    command: Option<RepoCommands>,
+    url: Option<String>,
+    contrib: bool,
+    with_issues: bool,
+) -> Result<()> {
+    let cmd = match (command, url) {
+        // Subcommand form: patina repo add/list/update/etc
+        (
+            Some(RepoCommands::Add {
+                url,
+                contrib,
+                with_issues,
+            }),
+            _,
+        ) => RepoCommand::Add {
+            url,
+            contrib,
+            with_issues,
+        },
+        (Some(RepoCommands::List), _) => RepoCommand::List,
+        (Some(RepoCommands::Update { name, all, oxidize }), _) => {
+            if all {
+                RepoCommand::Update {
+                    name: None,
+                    oxidize,
+                }
+            } else {
+                RepoCommand::Update { name, oxidize }
+            }
+        }
+        (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },
+        (Some(RepoCommands::Show { name }), _) => RepoCommand::Show { name },
+
+        // Shorthand form: patina repo <url> [--contrib] [--with-issues]
+        (None, Some(url)) => RepoCommand::Add {
+            url,
+            contrib,
+            with_issues,
+        },
+
+        // No args: show list
+        (None, None) => RepoCommand::List,
+    };
+
+    execute(cmd)
+}
 
 /// Add an external repository
 ///
