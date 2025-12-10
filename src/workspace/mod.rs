@@ -8,14 +8,17 @@
 //! ```no_run
 //! use patina::workspace;
 //!
-//! // Check if first run
-//! if workspace::is_first_run() {
-//!     workspace::setup()?;
-//! }
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Check if first run
+//!     if workspace::is_first_run() {
+//!         workspace::setup()?;
+//!     }
 //!
-//! // Load global config
-//! let config = workspace::config()?;
-//! println!("Default frontend: {}", config.frontend.default);
+//!     // Load global config
+//!     let config = workspace::config()?;
+//!     println!("Default frontend: {}", config.frontend.default);
+//!     Ok(())
+//! }
 //! ```
 
 mod internal;
