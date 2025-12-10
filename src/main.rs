@@ -446,19 +446,39 @@ enum RepoCommands {
 
 #[derive(Subcommand)]
 enum AdapterCommands {
-    /// List available frontends
+    /// List available frontends (global) and allowed frontends (project)
     List,
 
-    /// Set default frontend
+    /// Set default frontend (global or project with --project)
     Default {
         /// Frontend name (claude, gemini, codex)
         name: String,
+
+        /// Set default for current project (not global)
+        #[arg(short, long)]
+        project: bool,
     },
 
     /// Check frontend installation status
     Check {
         /// Frontend name (optional, checks all if not specified)
         name: Option<String>,
+    },
+
+    /// Add a frontend to project's allowed list
+    Add {
+        /// Frontend name (claude, gemini, codex)
+        name: String,
+    },
+
+    /// Remove a frontend from project's allowed list
+    Remove {
+        /// Frontend name (claude, gemini, codex)
+        name: String,
+
+        /// Don't backup files before removing
+        #[arg(long)]
+        no_backup: bool,
     },
 }
 
@@ -803,11 +823,13 @@ fn main() -> Result<()> {
         }
         Commands::Adapter { command } => {
             use patina::adapters::launch as frontend;
+            use patina::project;
 
             match command {
                 None | Some(AdapterCommands::List) => {
+                    // Show global frontends
                     let frontends = frontend::list()?;
-                    println!("📱 Available AI Frontends\n");
+                    println!("📱 Available AI Frontends (Global)\n");
                     println!("{:<12} {:<15} {:<10} VERSION", "NAME", "DISPLAY", "STATUS");
                     println!("{}", "─".repeat(50));
                     for f in frontends {
@@ -824,11 +846,39 @@ fn main() -> Result<()> {
                     }
 
                     let default = frontend::default_name()?;
-                    println!("\nDefault: {}", default);
+                    println!("\nGlobal default: {}", default);
+
+                    // Show project frontends if in a patina project
+                    let cwd = std::env::current_dir()?;
+                    if project::is_patina_project(&cwd) {
+                        let config = project::load_with_migration(&cwd)?;
+                        println!("\n📁 Project Allowed Frontends\n");
+                        println!("Allowed: {:?}", config.frontends.allowed);
+                        println!("Project default: {}", config.frontends.default);
+                    }
                 }
-                Some(AdapterCommands::Default { name }) => {
-                    frontend::set_default(&name)?;
-                    println!("✓ Default frontend set to: {}", name);
+                Some(AdapterCommands::Default { name, project: is_project }) => {
+                    if is_project {
+                        // Set project default
+                        let cwd = std::env::current_dir()?;
+                        if !project::is_patina_project(&cwd) {
+                            anyhow::bail!("Not a patina project. Run `patina init .` first.");
+                        }
+                        let mut config = project::load_with_migration(&cwd)?;
+                        if !config.frontends.allowed.contains(&name) {
+                            anyhow::bail!(
+                                "Frontend '{}' is not in allowed list. Add it first: patina adapter add {}",
+                                name, name
+                            );
+                        }
+                        config.frontends.default = name.clone();
+                        project::save(&cwd, &config)?;
+                        println!("✓ Project default frontend set to: {}", name);
+                    } else {
+                        // Set global default
+                        frontend::set_default(&name)?;
+                        println!("✓ Global default frontend set to: {}", name);
+                    }
                 }
                 Some(AdapterCommands::Check { name }) => {
                     if let Some(n) = name {
@@ -848,6 +898,87 @@ fn main() -> Result<()> {
                             println!("{} {}", status, f.display);
                         }
                     }
+                }
+                Some(AdapterCommands::Add { name }) => {
+                    // Verify frontend exists
+                    let _ = frontend::get(&name)?;
+
+                    let cwd = std::env::current_dir()?;
+                    if !project::is_patina_project(&cwd) {
+                        anyhow::bail!("Not a patina project. Run `patina init .` first.");
+                    }
+
+                    let mut config = project::load_with_migration(&cwd)?;
+                    if config.frontends.allowed.contains(&name) {
+                        println!("Frontend '{}' is already in allowed list.", name);
+                        return Ok(());
+                    }
+
+                    config.frontends.allowed.push(name.clone());
+                    project::save(&cwd, &config)?;
+
+                    println!("✓ Added '{}' to allowed frontends", name);
+                    println!("  Allowed: {:?}", config.frontends.allowed);
+
+                    // TODO: Copy adapter templates if needed
+                }
+                Some(AdapterCommands::Remove { name, no_backup }) => {
+                    let cwd = std::env::current_dir()?;
+                    if !project::is_patina_project(&cwd) {
+                        anyhow::bail!("Not a patina project. Run `patina init .` first.");
+                    }
+
+                    let mut config = project::load_with_migration(&cwd)?;
+                    if !config.frontends.allowed.contains(&name) {
+                        println!("Frontend '{}' is not in allowed list.", name);
+                        return Ok(());
+                    }
+
+                    // Backup files if requested
+                    if !no_backup {
+                        // Backup bootstrap file (CLAUDE.md, GEMINI.md, etc.)
+                        let bootstrap_file = match name.as_str() {
+                            "claude" => "CLAUDE.md",
+                            "gemini" => "GEMINI.md",
+                            "codex" => "CODEX.md",
+                            _ => "",
+                        };
+                        if !bootstrap_file.is_empty() {
+                            let file_path = cwd.join(bootstrap_file);
+                            if let Some(backup_path) = project::backup_file(&cwd, &file_path)? {
+                                println!("  ✓ Backed up {} to {}", bootstrap_file, backup_path.display());
+                            }
+                        }
+
+                        // Backup adapter directory (.claude/, .gemini/, etc.)
+                        let adapter_dir = cwd.join(format!(".{}", name));
+                        if adapter_dir.exists() {
+                            // For directories, we just note they exist - full backup would be complex
+                            println!("  ⚠ Adapter directory .{}/ exists (not backed up)", name);
+                        }
+                    }
+
+                    // Remove from allowed list
+                    config.frontends.allowed.retain(|f| f != &name);
+
+                    // Update default if we removed it
+                    if config.frontends.default == name {
+                        config.frontends.default = config
+                            .frontends
+                            .allowed
+                            .first()
+                            .cloned()
+                            .unwrap_or_default();
+                        if !config.frontends.default.is_empty() {
+                            println!("  ✓ Default changed to: {}", config.frontends.default);
+                        }
+                    }
+
+                    project::save(&cwd, &config)?;
+
+                    println!("✓ Removed '{}' from allowed frontends", name);
+                    println!("  Allowed: {:?}", config.frontends.allowed);
+                    println!("\n💡 To also remove files: rm -rf .{}/ {}.md", name, name.to_uppercase());
                 }
             }
         }
