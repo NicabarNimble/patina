@@ -230,7 +230,10 @@ pub fn migrate_legacy_config(project_path: &Path) -> Result<bool> {
     // Extract environment snapshot if present
     if let Some(env) = json.get("environment_snapshot") {
         let os = env.get("os").and_then(|v| v.as_str()).unwrap_or("unknown");
-        let arch = env.get("arch").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let arch = env
+            .get("arch")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
         let tools = env
             .get("detected_tools")
             .and_then(|v| v.as_array())
@@ -436,7 +439,11 @@ mod tests {
         fs::write(patina.join("config.json"), json).unwrap();
 
         // Create existing config.toml with just embeddings
-        fs::write(patina.join("config.toml"), "[embeddings]\nmodel = \"bge-base\"\n").unwrap();
+        fs::write(
+            patina.join("config.toml"),
+            "[embeddings]\nmodel = \"bge-base\"\n",
+        )
+        .unwrap();
 
         // Migrate
         let migrated = migrate_legacy_config(tmp.path()).unwrap();
