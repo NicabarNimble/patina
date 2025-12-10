@@ -397,90 +397,9 @@ enum PersonaCommands {
     Materialize,
 }
 
-#[derive(Subcommand)]
-enum RepoCommands {
-    /// Add an external repository
-    Add {
-        /// GitHub URL (e.g., https://github.com/owner/repo or owner/repo)
-        url: String,
-
-        /// Enable contribution mode (create fork for PRs)
-        #[arg(long)]
-        contrib: bool,
-
-        /// Also fetch and index GitHub issues
-        #[arg(long)]
-        with_issues: bool,
-    },
-
-    /// List registered repositories
-    List,
-
-    /// Update a repository (git pull + rescrape)
-    Update {
-        /// Repository name (or --all for all repos)
-        name: Option<String>,
-
-        /// Update all repositories
-        #[arg(long)]
-        all: bool,
-
-        /// Also run oxidize to build semantic indices
-        #[arg(long)]
-        oxidize: bool,
-    },
-
-    /// Remove a repository
-    #[command(alias = "rm")]
-    Remove {
-        /// Repository name
-        name: String,
-    },
-
-    /// Show details about a repository
-    Show {
-        /// Repository name
-        name: String,
-    },
-}
-
-#[derive(Subcommand)]
-enum AdapterCommands {
-    /// List available frontends (global) and allowed frontends (project)
-    List,
-
-    /// Set default frontend (global or project with --project)
-    Default {
-        /// Frontend name (claude, gemini, codex)
-        name: String,
-
-        /// Set default for current project (not global)
-        #[arg(short, long)]
-        project: bool,
-    },
-
-    /// Check frontend installation status
-    Check {
-        /// Frontend name (optional, checks all if not specified)
-        name: Option<String>,
-    },
-
-    /// Add a frontend to project's allowed list
-    Add {
-        /// Frontend name (claude, gemini, codex)
-        name: String,
-    },
-
-    /// Remove a frontend from project's allowed list
-    Remove {
-        /// Frontend name (claude, gemini, codex)
-        name: String,
-
-        /// Don't backup files before removing
-        #[arg(long)]
-        no_backup: bool,
-    },
-}
+// CLI subcommand enums are defined in their respective command modules
+use commands::adapter::AdapterCommands;
+use commands::repo::RepoCommands;
 
 #[cfg(feature = "dev")]
 #[derive(Subcommand)]
@@ -598,44 +517,14 @@ fn main() -> Result<()> {
         Commands::Test => {
             commands::test::execute()?;
         }
-        Commands::Scrape { command } => {
-            match command {
-                None => {
-                    // Run all scrapers
-                    println!("🔄 Running all scrapers...\n");
-
-                    println!("📊 [1/3] Scraping code...");
-                    commands::scrape::execute_code(false, false)?;
-
-                    println!("\n📊 [2/3] Scraping git...");
-                    let git_stats = commands::scrape::git::run(false)?;
-                    println!("  • {} commits", git_stats.items_processed);
-
-                    println!("\n📚 [3/3] Scraping sessions...");
-                    let session_stats = commands::scrape::sessions::run(false)?;
-                    println!("  • {} sessions", session_stats.items_processed);
-
-                    println!("\n✅ All scrapers complete!");
-                }
-                Some(ScrapeCommands::Code { args }) => {
-                    commands::scrape::execute_code(args.init, args.force)?;
-                }
-                Some(ScrapeCommands::Git { full }) => {
-                    let stats = commands::scrape::git::run(full)?;
-                    println!("\n📊 Git Scrape Summary:");
-                    println!("  • Commits processed: {}", stats.items_processed);
-                    println!("  • Time elapsed: {:?}", stats.time_elapsed);
-                    println!("  • Database size: {} KB", stats.database_size_kb);
-                }
-                Some(ScrapeCommands::Sessions { full }) => {
-                    let stats = commands::scrape::sessions::run(full)?;
-                    println!("\n📊 Sessions Scrape Summary:");
-                    println!("  • Sessions processed: {}", stats.items_processed);
-                    println!("  • Time elapsed: {:?}", stats.time_elapsed);
-                    println!("  • Database size: {} KB", stats.database_size_kb);
-                }
+        Commands::Scrape { command } => match command {
+            None => commands::scrape::execute_all()?,
+            Some(ScrapeCommands::Code { args }) => {
+                commands::scrape::execute_code(args.init, args.force)?
             }
-        }
+            Some(ScrapeCommands::Git { full }) => commands::scrape::execute_git(full)?,
+            Some(ScrapeCommands::Sessions { full }) => commands::scrape::execute_sessions(full)?,
+        },
         Commands::Oxidize => {
             commands::oxidize::oxidize()?;
         }
@@ -748,50 +637,7 @@ fn main() -> Result<()> {
             url,
             contrib,
             with_issues,
-        } => {
-            use commands::repo::RepoCommand;
-
-            let cmd = match (command, url) {
-                // Subcommand form: patina repo add/list/update/etc
-                (
-                    Some(RepoCommands::Add {
-                        url,
-                        contrib,
-                        with_issues,
-                    }),
-                    _,
-                ) => RepoCommand::Add {
-                    url,
-                    contrib,
-                    with_issues,
-                },
-                (Some(RepoCommands::List), _) => RepoCommand::List,
-                (Some(RepoCommands::Update { name, all, oxidize }), _) => {
-                    if all {
-                        RepoCommand::Update {
-                            name: None,
-                            oxidize,
-                        }
-                    } else {
-                        RepoCommand::Update { name, oxidize }
-                    }
-                }
-                (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },
-                (Some(RepoCommands::Show { name }), _) => RepoCommand::Show { name },
-
-                // Shorthand form: patina repo <url> [--contrib] [--with-issues]
-                (None, Some(url)) => RepoCommand::Add {
-                    url,
-                    contrib,
-                    with_issues,
-                },
-
-                // No args: show list
-                (None, None) => RepoCommand::List,
-            };
-
-            commands::repo::execute(cmd)?;
-        }
+        } => commands::repo::execute_cli(command, url, contrib, with_issues)?,
         Commands::Yolo {
             interactive,
             defaults,
@@ -821,178 +667,7 @@ fn main() -> Result<()> {
             };
             commands::launch::execute(options)?;
         }
-        Commands::Adapter { command } => {
-            use patina::adapters::launch as frontend;
-            use patina::project;
-
-            match command {
-                None | Some(AdapterCommands::List) => {
-                    // Show global frontends
-                    let frontends = frontend::list()?;
-                    println!("📱 Available AI Frontends (Global)\n");
-                    println!("{:<12} {:<15} {:<10} VERSION", "NAME", "DISPLAY", "STATUS");
-                    println!("{}", "─".repeat(50));
-                    for f in frontends {
-                        let status = if f.detected {
-                            "✓ found"
-                        } else {
-                            "✗ missing"
-                        };
-                        let version = f.version.unwrap_or_else(|| "-".to_string());
-                        println!(
-                            "{:<12} {:<15} {:<10} {}",
-                            f.name, f.display, status, version
-                        );
-                    }
-
-                    let default = frontend::default_name()?;
-                    println!("\nGlobal default: {}", default);
-
-                    // Show project frontends if in a patina project
-                    let cwd = std::env::current_dir()?;
-                    if project::is_patina_project(&cwd) {
-                        let config = project::load_with_migration(&cwd)?;
-                        println!("\n📁 Project Allowed Frontends\n");
-                        println!("Allowed: {:?}", config.frontends.allowed);
-                        println!("Project default: {}", config.frontends.default);
-                    }
-                }
-                Some(AdapterCommands::Default {
-                    name,
-                    project: is_project,
-                }) => {
-                    if is_project {
-                        // Set project default
-                        let cwd = std::env::current_dir()?;
-                        if !project::is_patina_project(&cwd) {
-                            anyhow::bail!("Not a patina project. Run `patina init .` first.");
-                        }
-                        let mut config = project::load_with_migration(&cwd)?;
-                        if !config.frontends.allowed.contains(&name) {
-                            anyhow::bail!(
-                                "Frontend '{}' is not in allowed list. Add it first: patina adapter add {}",
-                                name, name
-                            );
-                        }
-                        config.frontends.default = name.clone();
-                        project::save(&cwd, &config)?;
-                        println!("✓ Project default frontend set to: {}", name);
-                    } else {
-                        // Set global default
-                        frontend::set_default(&name)?;
-                        println!("✓ Global default frontend set to: {}", name);
-                    }
-                }
-                Some(AdapterCommands::Check { name }) => {
-                    if let Some(n) = name {
-                        let f = frontend::get(&n)?;
-                        if f.detected {
-                            println!("✓ {} is installed", f.display);
-                            if let Some(v) = f.version {
-                                println!("  Version: {}", v);
-                            }
-                        } else {
-                            println!("✗ {} is not installed", f.display);
-                        }
-                    } else {
-                        // Check all
-                        for f in frontend::list()? {
-                            let status = if f.detected { "✓" } else { "✗" };
-                            println!("{} {}", status, f.display);
-                        }
-                    }
-                }
-                Some(AdapterCommands::Add { name }) => {
-                    // Verify frontend exists
-                    let _ = frontend::get(&name)?;
-
-                    let cwd = std::env::current_dir()?;
-                    if !project::is_patina_project(&cwd) {
-                        anyhow::bail!("Not a patina project. Run `patina init .` first.");
-                    }
-
-                    let mut config = project::load_with_migration(&cwd)?;
-                    if config.frontends.allowed.contains(&name) {
-                        println!("Frontend '{}' is already in allowed list.", name);
-                        return Ok(());
-                    }
-
-                    config.frontends.allowed.push(name.clone());
-                    project::save(&cwd, &config)?;
-
-                    println!("✓ Added '{}' to allowed frontends", name);
-                    println!("  Allowed: {:?}", config.frontends.allowed);
-
-                    // TODO: Copy adapter templates if needed
-                }
-                Some(AdapterCommands::Remove { name, no_backup }) => {
-                    let cwd = std::env::current_dir()?;
-                    if !project::is_patina_project(&cwd) {
-                        anyhow::bail!("Not a patina project. Run `patina init .` first.");
-                    }
-
-                    let mut config = project::load_with_migration(&cwd)?;
-                    if !config.frontends.allowed.contains(&name) {
-                        println!("Frontend '{}' is not in allowed list.", name);
-                        return Ok(());
-                    }
-
-                    // Backup files if requested
-                    if !no_backup {
-                        // Backup bootstrap file (CLAUDE.md, GEMINI.md, etc.)
-                        let bootstrap_file = match name.as_str() {
-                            "claude" => "CLAUDE.md",
-                            "gemini" => "GEMINI.md",
-                            "codex" => "CODEX.md",
-                            _ => "",
-                        };
-                        if !bootstrap_file.is_empty() {
-                            let file_path = cwd.join(bootstrap_file);
-                            if let Some(backup_path) = project::backup_file(&cwd, &file_path)? {
-                                println!(
-                                    "  ✓ Backed up {} to {}",
-                                    bootstrap_file,
-                                    backup_path.display()
-                                );
-                            }
-                        }
-
-                        // Backup adapter directory (.claude/, .gemini/, etc.)
-                        let adapter_dir = cwd.join(format!(".{}", name));
-                        if adapter_dir.exists() {
-                            // For directories, we just note they exist - full backup would be complex
-                            println!("  ⚠ Adapter directory .{}/ exists (not backed up)", name);
-                        }
-                    }
-
-                    // Remove from allowed list
-                    config.frontends.allowed.retain(|f| f != &name);
-
-                    // Update default if we removed it
-                    if config.frontends.default == name {
-                        config.frontends.default = config
-                            .frontends
-                            .allowed
-                            .first()
-                            .cloned()
-                            .unwrap_or_default();
-                        if !config.frontends.default.is_empty() {
-                            println!("  ✓ Default changed to: {}", config.frontends.default);
-                        }
-                    }
-
-                    project::save(&cwd, &config)?;
-
-                    println!("✓ Removed '{}' from allowed frontends", name);
-                    println!("  Allowed: {:?}", config.frontends.allowed);
-                    println!(
-                        "\n💡 To also remove files: rm -rf .{}/ {}.md",
-                        name,
-                        name.to_uppercase()
-                    );
-                }
-            }
-        }
+        Commands::Adapter { command } => commands::adapter::execute(command)?,
     }
 
     Ok(())
