@@ -857,7 +857,10 @@ fn main() -> Result<()> {
                         println!("Project default: {}", config.frontends.default);
                     }
                 }
-                Some(AdapterCommands::Default { name, project: is_project }) => {
+                Some(AdapterCommands::Default {
+                    name,
+                    project: is_project,
+                }) => {
                     if is_project {
                         // Set project default
                         let cwd = std::env::current_dir()?;
@@ -946,7 +949,11 @@ fn main() -> Result<()> {
                         if !bootstrap_file.is_empty() {
                             let file_path = cwd.join(bootstrap_file);
                             if let Some(backup_path) = project::backup_file(&cwd, &file_path)? {
-                                println!("  ✓ Backed up {} to {}", bootstrap_file, backup_path.display());
+                                println!(
+                                    "  ✓ Backed up {} to {}",
+                                    bootstrap_file,
+                                    backup_path.display()
+                                );
                             }
                         }
 
@@ -978,7 +985,11 @@ fn main() -> Result<()> {
 
                     println!("✓ Removed '{}' from allowed frontends", name);
                     println!("  Allowed: {:?}", config.frontends.allowed);
-                    println!("\n💡 To also remove files: rm -rf .{}/ {}.md", name, name.to_uppercase());
+                    println!(
+                        "\n💡 To also remove files: rm -rf .{}/ {}.md",
+                        name,
+                        name.to_uppercase()
+                    );
                 }
             }
         }
