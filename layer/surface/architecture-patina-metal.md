@@ -1,9 +1,14 @@
-# Patina Metal: Unified Language Parser Architecture
+---
+id: architecture-patina-metal
+status: active
+created: 2025-08-22
+updated: 2025-12-09
+oxidizer: nicabar
+tags: [architecture, parser, tree-sitter, multi-language, metal]
+references: [reference-patina-metal, architecture-patina-system]
+---
 
-Created: 2025-08-22
-Status: Implemented & Working
-Branch: `patina-metal-parser`
-Last Updated: 2025-08-22 (Session #3)
+# Patina Metal: Unified Language Parser Architecture
 
 ## Problem Statement
 

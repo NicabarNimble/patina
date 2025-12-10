@@ -1,10 +1,11 @@
 ---
-id: patina-embedding-architecture
-layer: surface
+id: architecture-patina-embedding
 status: emerging
 created: 2025-11-20
+updated: 2025-12-09
+oxidizer: nicabar
 tags: [architecture, embeddings, adapters, ml, vision]
-references: [adapter-pattern, patina-system-architecture, session-capture]
+references: [adapter-pattern, architecture-patina-system, session-capture]
 ---
 
 # Patina Embedding Architecture

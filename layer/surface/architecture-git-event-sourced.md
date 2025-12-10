@@ -1,12 +1,11 @@
 ---
-id: git-event-sourced-multi-persona-architecture
-version: 1
+id: architecture-git-event-sourced
 status: active
-created_date: 2025-11-07
-updated_date: 2025-11-07
+created: 2025-11-07
+updated: 2025-12-09
 oxidizer: nicabar
 tags: [architecture, event-sourcing, multi-persona, git, collaboration, local-first]
-related: [patina-llm-driven-neuro-symbolic-knowledge-system]
+references: [architecture-neuro-symbolic]
 ---
 
 # Git-Based Event-Sourced Multi-Persona Architecture

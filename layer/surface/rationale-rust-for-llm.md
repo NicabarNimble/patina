@@ -1,9 +1,11 @@
 ---
-id: why-rust-for-llm-development
+id: rationale-rust-for-llm
 status: active
 created: 2025-11-14
-tags: [architecture, rust, llm-development, design-decisions, type-safety]
-references: [pattern-selection-framework, ts-effect-patina-exploration, dependable-rust]
+updated: 2025-12-09
+oxidizer: nicabar
+tags: [rationale, rust, llm-development, design-decisions, type-safety]
+references: [dependable-rust]
 ---
 
 # Why Rust for LLM-Assisted Development

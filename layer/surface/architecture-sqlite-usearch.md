@@ -1,11 +1,11 @@
 ---
-id: sqlite-usearch-vectors
-version: 2
+id: architecture-sqlite-usearch
 status: active
-created_date: 2025-11-02
-updated_date: 2025-11-03
+created: 2025-11-02
+updated: 2025-12-09
 oxidizer: nicabar
-tags: [sqlite, usearch, vectors, local-first, storage, architecture, rust, sync]
+tags: [architecture, sqlite, usearch, vectors, local-first, storage, rust]
+references: [architecture-patina-system]
 ---
 
 # Local-First Vector Storage: SQLite + USearch

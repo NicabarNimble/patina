@@ -1,9 +1,11 @@
 ---
-id: patina-system-architecture
-status: active
+id: architecture-patina-system
+status: needs-update
 created: 2025-10-13
+updated: 2025-12-09
+oxidizer: nicabar
 tags: [architecture, system-design, comprehensive, core-documentation]
-references: [dependable-rust, pattern-selection-framework, modular-architecture-plan, patina-metal-explained]
+references: [dependable-rust, reference-patina-metal]
 ---
 
 # Patina System Architecture
