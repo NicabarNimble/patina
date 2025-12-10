@@ -72,13 +72,22 @@ patina gemini       # Open in Gemini CLI
 - [ ] Backup before any modification to `.patina/backups/`
 - [ ] Log all actions for transparency
 
-### 1e: Project Config & Allowed Frontends
-- [ ] Expand `.patina/config.toml` with `[project]` section (name, mode)
+### 1e: Project Config Consolidation & Allowed Frontends
+**Background:** Currently `.patina/` has two config files:
+- `config.json` (Aug 2025) - project metadata from init (name, llm, dev, environment_snapshot)
+- `config.toml` (Nov 2025) - embeddings model selection
+
+**Decision:** Consolidate into unified `.patina/config.toml` with migration support.
+
+- [ ] Create unified `ProjectConfig` struct in `src/project/`
+- [ ] Schema: `[project]`, `[dev]`, `[frontends]`, `[embeddings]` sections
+- [ ] Migration: detect config.json → merge into config.toml → delete json
+- [ ] Update consumers: build.rs, test.rs, docker.rs, doctor.rs
+- [ ] Update init command to write unified TOML format
 - [ ] Add `[frontends]` section with `allowed` list and `default`
 - [ ] `mode = "owner"` - patina artifacts go to main via PR
 - [ ] `mode = "contrib"` - CI strips patina artifacts from PRs
 - [ ] Enforce allowed frontends on launch (error if not in list)
-- [ ] Files exist only for allowed frontends (cleanup non-allowed)
 
 ### 1f: Branch Model & Safety
 - [ ] Refactor `ensure_patina_branch()` to assisted mode (auto-stash, auto-switch)
