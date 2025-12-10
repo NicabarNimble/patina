@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use patina::environment::Environment;
+use patina::project;
 use patina::session::SessionManager;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -64,36 +65,30 @@ pub fn execute(
         println!("🏥 Checking project health...");
     }
 
-    // Read project config
-    let config_path = project_root.join(".patina").join("config.json");
-    let config_content =
-        fs::read_to_string(&config_path).context("Failed to read project config")?;
-    let config: serde_json::Value = serde_json::from_str(&config_content)?;
+    // Load unified project config (with migration if needed)
+    let config = project::load_with_migration(&project_root)?;
 
     // Get current environment
     let current_env = Environment::detect()?;
 
     // Get stored environment snapshot
     let stored_tools = config
-        .get("environment_snapshot")
-        .and_then(|s| s.get("detected_tools"))
-        .and_then(|t| t.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str())
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>()
-        })
+        .environment
+        .as_ref()
+        .map(|e| e.detected_tools.clone())
         .unwrap_or_default();
 
-    // Compare environments
-    let mut health_check = analyze_environment(&current_env, &stored_tools, &config)?;
+    // Compare environments (pass config for compatibility)
+    let config_json = serde_json::json!({
+        "llm": &config.frontends.default,
+        "environment_snapshot": {
+            "detected_tools": &stored_tools
+        }
+    });
+    let mut health_check = analyze_environment(&current_env, &stored_tools, &config_json)?;
 
-    // Check project status
-    let llm = config
-        .get("llm")
-        .and_then(|l| l.as_str())
-        .unwrap_or("unknown");
+    // Check project status - use frontends.default as the LLM
+    let llm = &config.frontends.default;
     let adapter = patina::adapters::get_adapter(llm);
     let adapter_version = adapter
         .check_for_updates(&project_root)?
