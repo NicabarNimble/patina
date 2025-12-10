@@ -18,34 +18,21 @@ use crate::workspace;
 
 mod claude_templates {
     // Shell scripts (git-integrated)
-    pub const SESSION_START_SH: &str =
-        include_str!("../../resources/claude/session-start.sh");
-    pub const SESSION_UPDATE_SH: &str =
-        include_str!("../../resources/claude/session-update.sh");
-    pub const SESSION_NOTE_SH: &str =
-        include_str!("../../resources/claude/session-note.sh");
-    pub const SESSION_END_SH: &str =
-        include_str!("../../resources/claude/session-end.sh");
-    pub const LAUNCH_SH: &str =
-        include_str!("../../resources/claude/launch.sh");
-    pub const PERSONA_START_SH: &str =
-        include_str!("../../resources/claude/persona-start.sh");
+    pub const SESSION_START_SH: &str = include_str!("../../resources/claude/session-start.sh");
+    pub const SESSION_UPDATE_SH: &str = include_str!("../../resources/claude/session-update.sh");
+    pub const SESSION_NOTE_SH: &str = include_str!("../../resources/claude/session-note.sh");
+    pub const SESSION_END_SH: &str = include_str!("../../resources/claude/session-end.sh");
+    pub const LAUNCH_SH: &str = include_str!("../../resources/claude/launch.sh");
+    pub const PERSONA_START_SH: &str = include_str!("../../resources/claude/persona-start.sh");
 
     // Commands (markdown)
-    pub const SESSION_START_MD: &str =
-        include_str!("../../resources/claude/session-start.md");
-    pub const SESSION_UPDATE_MD: &str =
-        include_str!("../../resources/claude/session-update.md");
-    pub const SESSION_NOTE_MD: &str =
-        include_str!("../../resources/claude/session-note.md");
-    pub const SESSION_END_MD: &str =
-        include_str!("../../resources/claude/session-end.md");
-    pub const LAUNCH_MD: &str =
-        include_str!("../../resources/claude/launch.md");
-    pub const PERSONA_START_MD: &str =
-        include_str!("../../resources/claude/persona-start.md");
-    pub const PATINA_REVIEW_MD: &str =
-        include_str!("../../resources/claude/patina-review.md");
+    pub const SESSION_START_MD: &str = include_str!("../../resources/claude/session-start.md");
+    pub const SESSION_UPDATE_MD: &str = include_str!("../../resources/claude/session-update.md");
+    pub const SESSION_NOTE_MD: &str = include_str!("../../resources/claude/session-note.md");
+    pub const SESSION_END_MD: &str = include_str!("../../resources/claude/session-end.md");
+    pub const LAUNCH_MD: &str = include_str!("../../resources/claude/launch.md");
+    pub const PERSONA_START_MD: &str = include_str!("../../resources/claude/persona-start.md");
+    pub const PATINA_REVIEW_MD: &str = include_str!("../../resources/claude/patina-review.md");
 }
 
 // =============================================================================
@@ -54,24 +41,17 @@ mod claude_templates {
 
 mod gemini_templates {
     // Shell scripts (git-integrated)
-    pub const SESSION_START_SH: &str =
-        include_str!("../../resources/gemini/session-start.sh");
-    pub const SESSION_UPDATE_SH: &str =
-        include_str!("../../resources/gemini/session-update.sh");
-    pub const SESSION_NOTE_SH: &str =
-        include_str!("../../resources/gemini/session-note.sh");
-    pub const SESSION_END_SH: &str =
-        include_str!("../../resources/gemini/session-end.sh");
+    pub const SESSION_START_SH: &str = include_str!("../../resources/gemini/session-start.sh");
+    pub const SESSION_UPDATE_SH: &str = include_str!("../../resources/gemini/session-update.sh");
+    pub const SESSION_NOTE_SH: &str = include_str!("../../resources/gemini/session-note.sh");
+    pub const SESSION_END_SH: &str = include_str!("../../resources/gemini/session-end.sh");
 
     // Commands (TOML format for Gemini)
-    pub const SESSION_START_TOML: &str =
-        include_str!("../../resources/gemini/session-start.toml");
+    pub const SESSION_START_TOML: &str = include_str!("../../resources/gemini/session-start.toml");
     pub const SESSION_UPDATE_TOML: &str =
         include_str!("../../resources/gemini/session-update.toml");
-    pub const SESSION_NOTE_TOML: &str =
-        include_str!("../../resources/gemini/session-note.toml");
-    pub const SESSION_END_TOML: &str =
-        include_str!("../../resources/gemini/session-end.toml");
+    pub const SESSION_NOTE_TOML: &str = include_str!("../../resources/gemini/session-note.toml");
+    pub const SESSION_END_TOML: &str = include_str!("../../resources/gemini/session-end.toml");
 
     // Context template
     pub const GEMINI_MD: &str = include_str!("../../resources/gemini/GEMINI.md");
@@ -132,21 +112,54 @@ fn install_claude_templates(adapters_dir: &Path) -> Result<()> {
     fs::create_dir_all(&commands_dir)?;
 
     // Write shell scripts
-    write_executable(&bin_dir.join("session-start.sh"), claude_templates::SESSION_START_SH)?;
-    write_executable(&bin_dir.join("session-update.sh"), claude_templates::SESSION_UPDATE_SH)?;
-    write_executable(&bin_dir.join("session-note.sh"), claude_templates::SESSION_NOTE_SH)?;
-    write_executable(&bin_dir.join("session-end.sh"), claude_templates::SESSION_END_SH)?;
+    write_executable(
+        &bin_dir.join("session-start.sh"),
+        claude_templates::SESSION_START_SH,
+    )?;
+    write_executable(
+        &bin_dir.join("session-update.sh"),
+        claude_templates::SESSION_UPDATE_SH,
+    )?;
+    write_executable(
+        &bin_dir.join("session-note.sh"),
+        claude_templates::SESSION_NOTE_SH,
+    )?;
+    write_executable(
+        &bin_dir.join("session-end.sh"),
+        claude_templates::SESSION_END_SH,
+    )?;
     write_executable(&bin_dir.join("launch.sh"), claude_templates::LAUNCH_SH)?;
-    write_executable(&bin_dir.join("persona-start.sh"), claude_templates::PERSONA_START_SH)?;
+    write_executable(
+        &bin_dir.join("persona-start.sh"),
+        claude_templates::PERSONA_START_SH,
+    )?;
 
     // Write commands
-    fs::write(commands_dir.join("session-start.md"), claude_templates::SESSION_START_MD)?;
-    fs::write(commands_dir.join("session-update.md"), claude_templates::SESSION_UPDATE_MD)?;
-    fs::write(commands_dir.join("session-note.md"), claude_templates::SESSION_NOTE_MD)?;
-    fs::write(commands_dir.join("session-end.md"), claude_templates::SESSION_END_MD)?;
+    fs::write(
+        commands_dir.join("session-start.md"),
+        claude_templates::SESSION_START_MD,
+    )?;
+    fs::write(
+        commands_dir.join("session-update.md"),
+        claude_templates::SESSION_UPDATE_MD,
+    )?;
+    fs::write(
+        commands_dir.join("session-note.md"),
+        claude_templates::SESSION_NOTE_MD,
+    )?;
+    fs::write(
+        commands_dir.join("session-end.md"),
+        claude_templates::SESSION_END_MD,
+    )?;
     fs::write(commands_dir.join("launch.md"), claude_templates::LAUNCH_MD)?;
-    fs::write(commands_dir.join("persona-start.md"), claude_templates::PERSONA_START_MD)?;
-    fs::write(commands_dir.join("patina-review.md"), claude_templates::PATINA_REVIEW_MD)?;
+    fs::write(
+        commands_dir.join("persona-start.md"),
+        claude_templates::PERSONA_START_MD,
+    )?;
+    fs::write(
+        commands_dir.join("patina-review.md"),
+        claude_templates::PATINA_REVIEW_MD,
+    )?;
 
     Ok(())
 }
@@ -165,16 +178,40 @@ fn install_gemini_templates(adapters_dir: &Path) -> Result<()> {
     fs::create_dir_all(&commands_dir)?;
 
     // Write shell scripts
-    write_executable(&bin_dir.join("session-start.sh"), gemini_templates::SESSION_START_SH)?;
-    write_executable(&bin_dir.join("session-update.sh"), gemini_templates::SESSION_UPDATE_SH)?;
-    write_executable(&bin_dir.join("session-note.sh"), gemini_templates::SESSION_NOTE_SH)?;
-    write_executable(&bin_dir.join("session-end.sh"), gemini_templates::SESSION_END_SH)?;
+    write_executable(
+        &bin_dir.join("session-start.sh"),
+        gemini_templates::SESSION_START_SH,
+    )?;
+    write_executable(
+        &bin_dir.join("session-update.sh"),
+        gemini_templates::SESSION_UPDATE_SH,
+    )?;
+    write_executable(
+        &bin_dir.join("session-note.sh"),
+        gemini_templates::SESSION_NOTE_SH,
+    )?;
+    write_executable(
+        &bin_dir.join("session-end.sh"),
+        gemini_templates::SESSION_END_SH,
+    )?;
 
     // Write commands (TOML format for Gemini)
-    fs::write(commands_dir.join("session-start.toml"), gemini_templates::SESSION_START_TOML)?;
-    fs::write(commands_dir.join("session-update.toml"), gemini_templates::SESSION_UPDATE_TOML)?;
-    fs::write(commands_dir.join("session-note.toml"), gemini_templates::SESSION_NOTE_TOML)?;
-    fs::write(commands_dir.join("session-end.toml"), gemini_templates::SESSION_END_TOML)?;
+    fs::write(
+        commands_dir.join("session-start.toml"),
+        gemini_templates::SESSION_START_TOML,
+    )?;
+    fs::write(
+        commands_dir.join("session-update.toml"),
+        gemini_templates::SESSION_UPDATE_TOML,
+    )?;
+    fs::write(
+        commands_dir.join("session-note.toml"),
+        gemini_templates::SESSION_NOTE_TOML,
+    )?;
+    fs::write(
+        commands_dir.join("session-end.toml"),
+        gemini_templates::SESSION_END_TOML,
+    )?;
 
     // Write GEMINI.md template
     fs::write(templates_dir.join("GEMINI.md"), gemini_templates::GEMINI_MD)?;
@@ -218,8 +255,13 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<()> {
         if src_path.is_dir() {
             copy_dir_recursive(&src_path, &dest_path)?;
         } else {
-            fs::copy(&src_path, &dest_path)
-                .with_context(|| format!("Failed to copy: {} -> {}", src_path.display(), dest_path.display()))?;
+            fs::copy(&src_path, &dest_path).with_context(|| {
+                format!(
+                    "Failed to copy: {} -> {}",
+                    src_path.display(),
+                    dest_path.display()
+                )
+            })?;
 
             // Preserve executable permissions
             #[cfg(unix)]
