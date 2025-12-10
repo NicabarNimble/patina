@@ -284,11 +284,9 @@ pub fn load(project_path: &Path) -> Result<ProjectConfig> {
 
 /// Load project config with automatic migration
 pub fn load_with_migration(project_path: &Path) -> Result<ProjectConfig> {
-    // Try migration first
-    if has_legacy_config(project_path) {
-        if migrate_legacy_config(project_path)? {
-            eprintln!("  ✓ Migrated config.json → config.toml");
-        }
+    // Try migration first (short-circuit: only migrate if legacy config exists)
+    if has_legacy_config(project_path) && migrate_legacy_config(project_path)? {
+        eprintln!("  ✓ Migrated config.json → config.toml");
     }
     load(project_path)
 }
