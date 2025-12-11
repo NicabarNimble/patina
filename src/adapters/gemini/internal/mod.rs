@@ -1,9 +1,10 @@
-//! Internal implementation for Gemini adapter (stub)
+//! Internal implementation for Gemini adapter
 
 use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::adapters::templates;
 use crate::environment::Environment;
 
 /// Path constants for Gemini adapter
@@ -16,11 +17,11 @@ pub fn init_project(
     project_name: &str,
     environment: &Environment,
 ) -> Result<()> {
-    // Create .gemini directory
-    let gemini_path = project_path.join(ADAPTER_DIR);
-    fs::create_dir_all(&gemini_path)?;
+    // Copy templates from central location (~/.patina/adapters/gemini/templates/)
+    templates::copy_to_project("gemini", project_path)?;
 
-    // Generate initial context
+    // Generate context file in .gemini/
+    let gemini_path = project_path.join(ADAPTER_DIR);
     let content = generate_minimal_context(project_name, environment);
     fs::write(gemini_path.join(CONTEXT_FILE), content)?;
 
