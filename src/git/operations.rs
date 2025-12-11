@@ -239,10 +239,10 @@ pub fn commit(message: &str) -> Result<()> {
     Ok(())
 }
 
-/// Stash changes with a named message
+/// Stash changes with a named message (includes untracked files)
 pub fn stash_push(message: &str) -> Result<()> {
     let output = Command::new("git")
-        .args(["stash", "push", "-m", message])
+        .args(["stash", "push", "--include-untracked", "-m", message])
         .output()
         .context("Failed to stash changes")?;
 
