@@ -12,6 +12,7 @@ use std::thread;
 use std::time::Duration;
 
 use patina::adapters::launch as frontend;
+use patina::git;
 use patina::project;
 use patina::workspace;
 
@@ -63,15 +64,43 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
     let patina_dir = project_path.join(".patina");
     if !patina_dir.exists() {
         if options.auto_init {
-            if prompt_init(&project_path)? {
-                println!("\n💡 Run `patina init .` first to initialize this project.");
+            let initialized = prompt_are_you_lost(&project_path, &frontend_name)?;
+            if !initialized {
+                // User declined or init failed
                 return Ok(());
             }
+            // Project was initialized, continue to launch
         } else {
             bail!(
                 "Not a patina project (no .patina/ directory).\n\
                  Run `patina init .` first."
             );
+        }
+    }
+
+    // Step 6.5: Branch safety - ensure we're on patina branch
+    match ensure_on_patina_branch()? {
+        BranchAction::AlreadyOnPatina => {
+            // Good, already there
+        }
+        BranchAction::Switched { .. } | BranchAction::StashedAndSwitched { .. } => {
+            // Successfully switched, messages already printed
+        }
+        BranchAction::Rebased { .. } => {
+            // Successfully rebased, messages already printed
+        }
+        BranchAction::RebaseConflicts => {
+            // Cannot continue with conflicts
+            bail!("Please resolve rebase conflicts before launching.");
+        }
+        BranchAction::NotGitRepo => {
+            // Not a git repo but has .patina/ - unusual but allow
+            println!("⚠️  Not a git repository (patina branch model disabled)");
+        }
+        BranchAction::NoPatinaExists => {
+            // Has .patina/ but no patina branch - legacy project or manual setup
+            // Allow but warn
+            println!("⚠️  No 'patina' branch found (working on current branch)");
         }
     }
 
@@ -181,12 +210,39 @@ pub fn start_mothership_daemon() -> Result<()> {
     Ok(())
 }
 
-/// Prompt user to initialize project
-fn prompt_init(_project_path: &Path) -> Result<bool> {
-    print!(
-        "This directory is not a patina project.\n\
-         Initialize it? [y/N]: "
-    );
+/// "Are you lost?" prompt - show git context and offer to initialize
+fn prompt_are_you_lost(project_path: &Path, frontend_name: &str) -> Result<bool> {
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    println!(" Are you lost?");
+    println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
+    println!("This is not a patina project.\n");
+
+    // Show path
+    println!("📁 Path: {}", project_path.display());
+
+    // Show git context if available
+    if git::is_git_repo().unwrap_or(false) {
+        let branch = git::current_branch().unwrap_or_else(|_| "unknown".to_string());
+        let clean = git::is_clean().unwrap_or(true);
+        let status = if clean {
+            "clean".to_string()
+        } else {
+            let count = git::status_count().unwrap_or(0);
+            format!("{} files modified", count)
+        };
+        println!("🔀 Git:  {} ({})", branch, status);
+
+        // Show remote if available
+        if let Ok(url) = git::remote_url("origin") {
+            let display_url = format_remote_url(&url);
+            println!("🌐 Remote: {}", display_url);
+        }
+    } else {
+        println!("🔀 Git:  not a git repository");
+    }
+
+    println!();
+    print!("Initialize as patina project? [y/N]: ");
     io::stdout().flush()?;
 
     let mut input = String::new();
@@ -195,12 +251,168 @@ fn prompt_init(_project_path: &Path) -> Result<bool> {
     let should_init = input.trim().to_lowercase() == "y";
 
     if should_init {
-        // Could call init here, but for now just tell user to do it
-        // This keeps the flow simple and avoids circular dependencies
-        return Ok(true);
+        // Initialize the project
+        println!();
+        return initialize_project(project_path, frontend_name);
     }
 
     Ok(false)
+}
+
+/// Format remote URL for display (strip git@/https://, .git suffix)
+fn format_remote_url(url: &str) -> String {
+    url.trim()
+        .strip_prefix("git@")
+        .or_else(|| url.strip_prefix("https://"))
+        .unwrap_or(url)
+        .replace(":", "/")
+        .strip_suffix(".git")
+        .unwrap_or(url)
+        .to_string()
+}
+
+/// Branch safety result indicating what action was taken
+#[derive(Debug)]
+pub enum BranchAction {
+    /// Already on patina, no action needed
+    AlreadyOnPatina,
+    /// Switched to patina (was clean)
+    Switched { _from: String },
+    /// Stashed and switched to patina
+    StashedAndSwitched { _from: String, _stash_name: String },
+    /// Rebased patina onto main
+    Rebased { _commits: usize },
+    /// Conflicts during rebase - user must resolve
+    RebaseConflicts,
+    /// Not a git repo
+    NotGitRepo,
+    /// No patina branch exists
+    NoPatinaExists,
+}
+
+/// Ensure we're on patina branch using "Do and Inform" model
+/// Returns the action taken so caller can display appropriate message
+fn ensure_on_patina_branch() -> Result<BranchAction> {
+    // Check if this is a git repo
+    if !git::is_git_repo()? {
+        return Ok(BranchAction::NotGitRepo);
+    }
+
+    let current = git::current_branch()?;
+
+    // Check if patina branch exists
+    if !git::branch_exists("patina")? {
+        return Ok(BranchAction::NoPatinaExists);
+    }
+
+    // Already on patina?
+    if current == "patina" {
+        // Check if behind main and auto-rebase
+        let default = git::default_branch()?;
+
+        // Try to fetch to get latest
+        let _ = git::fetch("origin"); // Ignore fetch errors (might be offline)
+
+        let behind = git::commits_behind("patina", &format!("origin/{}", default)).unwrap_or(0);
+
+        if behind > 0 {
+            println!(
+                "\n📥 Patina branch is {} commits behind {}",
+                behind, default
+            );
+            println!("   Rebasing onto {}...", default);
+
+            if git::rebase(&format!("origin/{}", default))? {
+                println!("   ✓ Rebased ({} commits)", behind);
+                return Ok(BranchAction::Rebased { _commits: behind });
+            } else {
+                println!("   ✗ Rebase failed (conflicts)");
+                println!();
+                println!("   To resolve:");
+                println!("   1. Fix conflicts");
+                println!("   2. git add <files>");
+                println!("   3. git rebase --continue");
+                println!();
+                println!("   Or abort: git rebase --abort");
+                return Ok(BranchAction::RebaseConflicts);
+            }
+        }
+
+        return Ok(BranchAction::AlreadyOnPatina);
+    }
+
+    // On another branch, patina exists - need to switch
+    let clean = git::is_clean()?;
+
+    if clean {
+        // Clean working tree - just switch
+        println!("\n🔀 Switching to patina branch...");
+        git::checkout("patina")?;
+        println!("   ✓ Switched to patina");
+        return Ok(BranchAction::Switched { _from: current });
+    }
+
+    // Dirty working tree - stash first
+    let timestamp = git::timestamp();
+    let stash_name = format!("patina-autostash-{}", timestamp);
+
+    println!("\n📦 Stashing changes on '{}'...", current);
+    git::stash_push(&stash_name)?;
+    println!("   ✓ Stashed: \"{}\"", stash_name);
+
+    println!("🔀 Switching to patina branch...");
+    git::checkout("patina")?;
+    println!("   ✓ Switched to patina");
+
+    println!();
+    println!("────────────────────────────────────────────────");
+    println!("💡 Your changes on '{}' are stashed.", current);
+    println!("   To restore: git checkout {} && git stash pop", current);
+    println!("────────────────────────────────────────────────");
+
+    Ok(BranchAction::StashedAndSwitched {
+        _from: current,
+        _stash_name: stash_name,
+    })
+}
+
+/// Initialize project from the "Are you lost?" prompt
+fn initialize_project(project_path: &Path, frontend_name: &str) -> Result<bool> {
+    // Get project name from directory
+    let project_name = project_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("project")
+        .to_string();
+
+    // Change to project directory for init
+    let original_dir = env::current_dir()?;
+    env::set_current_dir(project_path)?;
+
+    // Call init with contrib mode (safe default for auto-init)
+    // Note: init currently defaults to "owner" mode, but for auto-init
+    // from launcher we should default to "contrib" for safety
+    let result = crate::commands::init::execute(
+        project_name,
+        frontend_name.to_string(),
+        None,  // dev environment
+        false, // force
+        true,  // local (skip GitHub integration for quick init)
+    );
+
+    // Restore original directory
+    env::set_current_dir(original_dir)?;
+
+    match result {
+        Ok(()) => {
+            println!("\n✓ Initialized as patina project (contrib mode)");
+            Ok(true) // Continue to launch
+        }
+        Err(e) => {
+            eprintln!("\n❌ Failed to initialize: {}", e);
+            Ok(false) // Don't continue
+        }
+    }
 }
 
 /// Launch the frontend CLI
