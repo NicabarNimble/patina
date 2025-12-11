@@ -776,10 +776,10 @@ Starting mothership...
 
 | Validation | Status |
 |------------|--------|
-| `patina` opens project in default frontend (if allowed) | [ ] |
-| `patina -f claude` opens Claude Code (if allowed) | [ ] |
+| `patina` opens project in default frontend (if allowed) | [x] |
+| `patina -f claude` opens Claude Code (if allowed) | [x] |
 | `patina -f gemini` opens Gemini CLI (if allowed) | [ ] |
-| Non-allowed frontend shows clear error message | [ ] |
+| Non-allowed frontend shows clear error message | [x] |
 | "Are you lost?" prompt for non-patina projects | [ ] |
 | Auto-init as contrib mode on prompt confirmation | [ ] |
 | Auto-stash on dirty working tree (with restore hint) | [ ] |
