@@ -1,7 +1,7 @@
 # Spec: Patina Launcher Architecture
 
 **Status:** Design Revised (2025-12-10)
-**Session:** 20251210-065208
+**Session:** 20251210-152252
 **Phase:** 1 (Launcher & Adapters)
 
 ---
@@ -11,12 +11,14 @@
 **Patina is how you open AI-assisted development.**
 
 ```bash
-patina              # Open in default frontend
-patina claude       # Open in Claude Code
-patina gemini       # Open in Gemini CLI
+patina              # Open in default frontend (current directory)
+patina -f claude    # Open in Claude Code
+patina -f gemini    # Open in Gemini CLI
 ```
 
 Like `code .` for VS Code. Not `claude`, not `gemini` - just `patina`.
+
+**Syntax:** Frontend is a flag (`-f`/`--frontend`), not a positional argument. This avoids ambiguity with subcommands.
 
 ---
 
@@ -82,8 +84,8 @@ default = "claude"
 ```
 
 ```
-patina claude  → Allowed? Yes → Launch
-patina codex   → Allowed? No  → "codex not in allowed frontends"
+patina -f claude  → Allowed? Yes → Launch
+patina -f codex   → Allowed? No  → "codex not in allowed frontends"
 ```
 
 **Switching is parallel:** Allowed frontends coexist (both .claude/ and .gemini/ exist). Switching doesn't remove files - that's explicit via `patina adapter remove`.
@@ -114,8 +116,8 @@ This protects against overwriting others' repos and provides clear isolation.
 Allowed frontends exist in parallel:
 
 ```bash
-patina claude    # Ensures .claude/ exists, launches claude
-patina gemini    # Ensures .gemini/ exists, launches gemini
+patina -f claude    # Ensures .claude/ exists, launches claude
+patina -f gemini    # Ensures .gemini/ exists, launches gemini
 # Both coexist - team can use different frontends
 ```
 
@@ -123,18 +125,31 @@ patina gemini    # Ensures .gemini/ exists, launches gemini
 
 ## Command Structure
 
-### Launcher (Implicit Default)
+### Launcher (Default Behavior)
 
 ```bash
 patina                      # Default frontend, current dir
-patina claude               # Claude Code
-patina gemini               # Gemini CLI
-patina codex                # Codex
-patina ~/project claude     # Path + frontend
-patina --yolo gemini        # YOLO container with Gemini
+patina -f claude            # Explicit frontend (short flag)
+patina --frontend gemini    # Explicit frontend (long flag)
+patina --yolo -f gemini     # YOLO container with Gemini
 ```
 
-**Note:** Frontends are NOT subcommands. They're arguments to the implicit launcher.
+**Note:** No path argument - always operates on current directory. `cd` to the project first (Unix way).
+
+**CLI Structure:**
+```rust
+#[derive(Parser)]
+struct Cli {
+    /// Frontend to launch (default: from config)
+    #[arg(short = 'f', long = "frontend")]
+    frontend: Option<String>,
+
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+```
+
+When `command` is None → launcher mode.
 
 ### Infrastructure
 
@@ -165,27 +180,70 @@ patina adapter default X    # Set project default frontend
 ## Launch Flow
 
 ```
-patina claude
+patina [-f frontend]
     │
-    ├─► Is claude detected? (global config)
-    │   └─► No? → "claude CLI not found"
+    ├─► First run? → Setup ~/.patina/, detect frontends, extract templates
     │
-    ├─► Is this a patina project?
-    │   └─► No .patina/? → "Run patina init first"
+    ├─► Resolve frontend (from -f flag or project default)
     │
-    ├─► Is claude in allowed frontends? (project config)
-    │   └─► No? → "claude not in allowed frontends. Run: patina adapter add claude"
+    ├─► Is frontend CLI installed? (global)
+    │   └─► No → ERROR: "claude CLI not found"
+    │
+    ├─► Is this a git repo?
+    │   └─► No → Prompt: "Initialize git? [y/N]"
+    │
+    ├─► Is this a patina project? (patina branch + .patina/)
+    │   └─► No → "Are you lost?" prompt (see below)
+    │
+    ├─► Branch handling (Do and Inform):
+    │   ├─► On patina → continue
+    │   ├─► On other, patina exists → auto-switch (stash if dirty)
+    │   └─► No patina branch → "Are you lost?" prompt
+    │
+    ├─► Is frontend in allowed list? (project config)
+    │   └─► No → ERROR: "Not in allowed frontends. Run: patina adapter add X"
     │
     ├─► Is mothership running?
-    │   └─► No? Start: patina serve --daemon
+    │   └─► No → Start in background
     │
     ├─► Ensure adapter files exist:
-    │   ├─► .claude/ missing? Copy from ~/.patina/adapters/claude/templates/
-    │   ├─► CLAUDE.md missing? Bootstrap minimal with patina hooks
-    │   └─► CLAUDE.md exists? Preserve (maybe add MCP pointer if missing)
+    │   ├─► .frontend/ missing → copy from ~/.patina/adapters/
+    │   ├─► FRONTEND.md missing → create minimal bootstrap
+    │   └─► FRONTEND.md exists → PRESERVE (don't touch)
     │
-    └─► Launch: exec claude
+    └─► exec frontend
 ```
+
+### The "Are You Lost?" Prompt
+
+When user runs `patina` in a non-patina project:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Are you lost?
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+This is not a patina project.
+
+📁 Path: /Users/me/Projects/some-repo
+🔀 Git:  main (3 commits ahead of origin/main)
+🌐 Remote: github.com/me/some-repo
+
+Initialize as patina project? [y/N]: y
+
+✓ Created patina branch
+✓ Initialized .patina/ (contrib mode)
+✓ Created layer/
+
+🚀 Launching Claude Code...
+```
+
+**Key points:**
+- Show full path (so they know where they are)
+- Show git branch + status
+- Show remote URL (parsed nicely)
+- Single yes/no question (no mode selection - default to contrib)
+- If yes, initialize and continue to launch
 
 ---
 
@@ -309,35 +367,78 @@ strip_paths = [".patina/", "layer/"]
 
 Patina enforces the patina branch model but helps rather than blocks. Philosophy: **do it and inform** rather than **warn and block**.
 
-#### For `patina init`
+#### Branch Scenarios (Launcher)
 
-| Scenario | Action | Output |
-|----------|--------|--------|
-| On patina, up to date | Continue | "✓ Already on patina branch" |
-| On patina, behind main | Auto-rebase | "📥 Rebasing onto main... ✓" |
-| On main/other, clean | Create/switch | "🌱 Creating patina... ✓" |
-| On main/other, dirty | Stash → create/switch | "📦 Stashing... 🌱 Creating... 💡 restore hint" |
-| `--force` flag | Backup → recreate | "🗑️ Backed up patina → patina-backup-{ts}" |
+| Current Branch | Patina Exists | Working Tree | Action |
+|---------------|---------------|--------------|--------|
+| patina | - | clean | Proceed |
+| patina | - | dirty | Proceed (user's changes) |
+| patina (behind) | - | any | Auto-rebase, proceed |
+| other | yes | clean | Switch to patina |
+| other | yes | dirty | Stash → switch → show restore hint |
+| other | no | any | "Are you lost?" prompt → create patina |
+| (not git) | - | - | "Initialize git?" prompt |
 
-#### For `patina claude` (launcher)
+#### Scenario: On patina, behind main
 
-| Scenario | Action | Output |
-|----------|--------|--------|
-| On patina | Generate + launch | (proceed) |
-| On other, clean, patina exists | Switch → generate → launch | "🔀 Switching to patina..." |
-| On other, dirty, patina exists | Stash → switch → generate → launch | "📦 Stashing... 🔀 Switching... 💡 restore hint" |
-| No patina branch | Error | "Run patina init first" |
-| No .patina/ directory | Error | "Run patina init first" |
+```bash
+$ patina
 
-#### Stash Restore Hint
+📥 Patina branch is behind main
+   Rebasing onto main...
+   ✓ Rebased (3 commits)
 
-When auto-stashing, always show restore instructions:
-
+🚀 Launching Claude Code...
 ```
+
+**Git commands:** `git fetch origin main && git rebase origin/main`
+
+**If rebase fails (conflicts):**
+```
+📥 Patina branch is behind main
+   Rebasing onto main...
+   ✗ Rebase failed (conflicts in src/main.rs)
+
+   To resolve:
+   1. Fix conflicts
+   2. git add <files>
+   3. git rebase --continue
+
+   Or abort: git rebase --abort
+```
+Stop here. Don't launch with conflicts.
+
+#### Scenario: On other branch, patina exists, dirty
+
+```bash
+$ patina
+
+📦 Stashing changes on 'main'...
+   ✓ Stashed: "patina-autostash-20251210-160532"
+🔀 Switching to patina branch...
+   ✓ Switched to patina
+
 ────────────────────────────────────────────────
 💡 Your changes on 'main' are stashed.
    To restore: git checkout main && git stash pop
 ────────────────────────────────────────────────
+
+🚀 Launching Claude Code...
+```
+
+**Git commands:**
+```bash
+git stash push -m "patina-autostash-20251210-160532"
+git checkout patina
+```
+
+**If stash fails (untracked files conflict):**
+```
+📦 Stashing changes on 'main'...
+   ✗ Cannot stash: untracked files would be overwritten
+
+   Please commit or stash manually:
+   git stash --include-untracked
 ```
 
 #### Why Not Auto-Unstash?
@@ -347,12 +448,12 @@ After launch exits, user stays on patina branch. This is intentional:
 - Stash is waiting if they need it
 - Simple, predictable behavior
 
-#### The `--force` Flag
+#### The `--force` Flag (init only)
 
 Normal mode preserves existing patina branch. `--force` is for nuclear reset:
 
 ```bash
-patina init . --force
+patina init --force
 
 🗑️  Backing up existing patina branch...
    ✓ Renamed patina → patina-backup-20251209-143022
@@ -559,20 +660,29 @@ Detecting frontends...
 
 Setting default: claude
 
-This directory is not a patina project.
-Initialize? [y/n]: y
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Are you lost?
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Initializing...
-  ✓ Created .patina/
-  ✓ Created layer/
-  ✓ Generated context.md template
+This is not a patina project.
+
+📁 Path: /Users/me/my-project
+🔀 Git:  main (clean)
+🌐 Remote: github.com/me/my-project
+
+Initialize as patina project? [y/N]: y
+
+🌱 Creating patina branch from main...
+   ✓ Created and switched to patina
+✓ Initialized .patina/ (contrib mode)
+✓ Created layer/
 
 Starting mothership...
   ✓ patina serve (background)
 
-Launching Claude Code...
-  ✓ Generated CLAUDE.md
-  ✓ Installed .claude/ templates
+🚀 Launching Claude Code...
+  ✓ Created CLAUDE.md
+  ✓ Copied .claude/ templates
 
 # Claude Code opens, fully configured
 ```
@@ -595,26 +705,29 @@ Launching Claude Code...
     - Default frontend selection
 
 1c: Launcher Command
-    - `patina [path] [frontend]` as default behavior
+    - `patina [-f frontend]` as default behavior (flag, not positional)
+    - No path argument (always current directory)
+    - "Are you lost?" prompt for non-patina projects
+    - Auto-init as contrib mode
     - Auto-start mothership
-    - Allowed frontends enforcement
 
 1d: Patina Context Layer
     - Preserve existing CLAUDE.md/GEMINI.md
     - Minimal augmentation (MCP pointers)
     - Backup before modification
 
-1e: Project Config & Allowed Frontends
+1e: Project Config & Allowed Frontends ✓
     - .patina/config.toml with [project] and [frontends]
     - Allowed list controls which frontends have files
     - Owner vs contrib mode
 
 1f: Branch Model & Safety
     - Always work on patina branch
-    - Auto-stash, auto-switch
+    - Auto-stash, auto-switch, auto-rebase
+    - Do and Inform (not warn and block)
     - CI stripping for contrib repos
 
-1g: Adapter Commands
+1g: Adapter Commands ✓
     - patina adapter add/remove/list/default
 ```
 
@@ -641,13 +754,16 @@ Launching Claude Code...
 
 | Aspect | Design |
 |--------|--------|
-| Launcher | `patina [frontend]` (implicit, no subcommand) |
+| Launcher | `patina [-f frontend]` (flag, not positional) |
+| Path | Always current directory (no path argument) |
+| Non-patina project | "Are you lost?" prompt → auto-init as contrib |
 | Frontends | Enum (claude, gemini, codex) - simple, type-safe |
 | Allowed frontends | `.patina/config.toml [frontends].allowed` |
-| Existing files | Preserved, not clobbered |
+| Existing files | Preserved (don't touch existing CLAUDE.md) |
 | Global config | `~/.patina/config.toml` (detected frontends, user default) |
 | Project config | `.patina/config.toml` (allowed frontends, mode) |
 | Branch model | Always `patina` branch, PR to main |
+| Branch safety | Do and Inform (auto-stash, auto-switch, auto-rebase) |
 | Owner repos | PR includes patina artifacts |
 | Contrib repos | CI strips patina artifacts |
 | Mothership | `patina serve` (HTTP + MCP, one process) |
@@ -661,14 +777,18 @@ Launching Claude Code...
 | Validation | Status |
 |------------|--------|
 | `patina` opens project in default frontend (if allowed) | [ ] |
-| `patina claude` opens Claude Code (if allowed) | [ ] |
-| `patina gemini` opens Gemini CLI (if allowed) | [ ] |
+| `patina -f claude` opens Claude Code (if allowed) | [ ] |
+| `patina -f gemini` opens Gemini CLI (if allowed) | [ ] |
 | Non-allowed frontend shows clear error message | [ ] |
-| Existing CLAUDE.md preserved, not clobbered | [ ] |
-| `patina adapter add/remove` manages allowed list | [ ] |
-| Files exist only for allowed frontends | [ ] |
-| Mothership auto-starts if not running | [ ] |
+| "Are you lost?" prompt for non-patina projects | [ ] |
+| Auto-init as contrib mode on prompt confirmation | [ ] |
+| Auto-stash on dirty working tree (with restore hint) | [ ] |
+| Auto-switch to patina branch | [ ] |
+| Auto-rebase if patina behind main | [ ] |
+| Existing CLAUDE.md preserved (don't touch) | [x] |
+| `patina adapter add/remove` manages allowed list | [x] |
+| Mothership auto-starts if not running | [x] |
 | MCP tools work from any frontend | [ ] |
 | Owner mode: patina artifacts in main | [ ] |
 | Contrib mode: CI strips artifacts | [ ] |
-| Backups created before modifying existing files | [ ] |
+| Backups created before modifying existing files | [x] |
