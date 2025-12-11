@@ -49,9 +49,10 @@ patina --frontend gemini  # Explicit frontend (long flag)
 - [x] Create `resources/gemini/` templates (parity with claude)
 - [x] Create `src/adapters/templates.rs` extraction module
 - [x] Extract templates to `~/.patina/adapters/{frontend}/templates/` on first run
-- [ ] Refactor claude adapter to copy from central templates
-- [ ] Implement gemini adapter with full template support
-- [ ] Update init to use `templates::copy_to_project()`
+- [x] Fix template structure: install to `.{frontend}/` subdirectory for copy_to_project()
+- [x] Implement gemini adapter with full template support (uses templates::copy_to_project)
+- [x] `patina adapter add` creates adapter files from templates
+- [-] Refactor claude adapter - kept as-is (embedded approach works, has version management)
 
 ### 1b: First-Run Setup ✓
 - [x] Detect first run → create `~/.patina/`
@@ -86,8 +87,8 @@ struct Cli {
   - [x] Single y/N question to initialize
   - [x] Auto-init on confirmation
 
-**Remaining:**
-- [ ] Ensure adapter templates exist via `templates::copy_to_project()`
+**Completed** (session 20251211-103012):
+- [x] Ensure adapter templates exist via `templates::copy_to_project()` (in adapter add)
 
 ### 1d: Patina Context Layer
 - [ ] Create `.patina/context.md` schema (patina's project knowledge, LLM-agnostic)
@@ -154,10 +155,10 @@ struct Cli {
 |----------|--------|
 | Gemini templates exist with full parity to Claude | [x] |
 | First-run extracts templates to `~/.patina/adapters/` | [x] |
-| `patina init` copies adapter templates from central location | [ ] |
+| `patina adapter add` copies templates from central location | [x] |
 | `patina` (no args) opens default frontend | [x] |
 | `patina -f claude` opens Claude Code (if allowed) | [x] |
-| `patina -f gemini` opens Gemini CLI (if allowed) | [ ] |
+| `patina -f gemini` opens Gemini CLI (if allowed) | [x] |
 | "Are you lost?" prompt for non-patina projects | [x] |
 | Auto-init on confirmation | [x] |
 | Auto-stash on dirty working tree (with restore hint) | [x] |
