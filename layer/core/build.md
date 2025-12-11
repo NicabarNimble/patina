@@ -63,28 +63,31 @@ patina --frontend gemini  # Explicit frontend (long flag)
 ### 1c: Launcher Command
 **New design:** Frontend via flag (`-f`/`--frontend`), no path argument, "Are you lost?" prompt.
 
-**CLI structure:**
+**CLI structure (implemented):**
 ```rust
 #[derive(Parser)]
 struct Cli {
-    #[arg(short = 'f', long = "frontend")]
+    #[arg(short = 'f', long = "frontend", global = true)]
     frontend: Option<String>,
     #[command(subcommand)]
     command: Option<Commands>,
 }
-// When command is None → launcher mode
+// When command is None → launcher mode (calls launch::execute)
 ```
 
-**Tasks:**
-- [ ] Refactor CLI to use `-f` flag for frontend selection
-- [ ] Remove `Commands::Launch` subcommand (launcher is default behavior)
+**Completed** (session 20251210-152252):
+- [x] Refactor CLI to use `-f` flag for frontend selection
+- [x] Make `command` optional - no subcommand = launcher mode
+- [x] Auto-start mothership if not running
+- [x] Launch frontend CLI via `exec`
+
+**Remaining:**
+- [ ] Remove `Commands::Launch` subcommand (redundant, but backwards compat)
 - [ ] "Are you lost?" prompt for non-patina projects
   - [ ] Show: path, git branch+status, remote URL
   - [ ] Single y/N question to initialize
   - [ ] Auto-init as contrib mode on confirmation
-- [x] Auto-start mothership if not running
 - [ ] Ensure adapter templates exist via `templates::copy_to_project()`
-- [x] Launch frontend CLI via `exec`
 
 ### 1d: Patina Context Layer
 - [ ] Create `.patina/context.md` schema (patina's project knowledge, LLM-agnostic)
@@ -149,8 +152,8 @@ struct Cli {
 | Gemini templates exist with full parity to Claude | [x] |
 | First-run extracts templates to `~/.patina/adapters/` | [x] |
 | `patina init` copies adapter templates from central location | [ ] |
-| `patina` (no args) opens default frontend | [ ] |
-| `patina -f claude` opens Claude Code (if allowed) | [ ] |
+| `patina` (no args) opens default frontend | [x] |
+| `patina -f claude` opens Claude Code (if allowed) | [x] |
 | `patina -f gemini` opens Gemini CLI (if allowed) | [ ] |
 | "Are you lost?" prompt for non-patina projects | [ ] |
 | Auto-init as contrib mode on confirmation | [ ] |
