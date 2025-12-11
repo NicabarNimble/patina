@@ -104,12 +104,16 @@ pub fn templates_installed(frontend: &str) -> bool {
 
 fn install_claude_templates(adapters_dir: &Path) -> Result<()> {
     let templates_dir = adapters_dir.join("claude").join("templates");
-    let bin_dir = templates_dir.join("bin");
-    let commands_dir = templates_dir.join("commands");
+    // Create .claude/ structure inside templates/ so copy_to_project works correctly
+    let claude_dir = templates_dir.join(".claude");
+    let bin_dir = claude_dir.join("bin");
+    let commands_dir = claude_dir.join("commands");
+    let context_dir = claude_dir.join("context");
 
     // Create directories
     fs::create_dir_all(&bin_dir)?;
     fs::create_dir_all(&commands_dir)?;
+    fs::create_dir_all(&context_dir)?;
 
     // Write shell scripts
     write_executable(
@@ -170,8 +174,10 @@ fn install_claude_templates(adapters_dir: &Path) -> Result<()> {
 
 fn install_gemini_templates(adapters_dir: &Path) -> Result<()> {
     let templates_dir = adapters_dir.join("gemini").join("templates");
-    let bin_dir = templates_dir.join("bin");
-    let commands_dir = templates_dir.join("commands");
+    // Create .gemini/ structure inside templates/ so copy_to_project works correctly
+    let gemini_dir = templates_dir.join(".gemini");
+    let bin_dir = gemini_dir.join("bin");
+    let commands_dir = gemini_dir.join("commands");
 
     // Create directories
     fs::create_dir_all(&bin_dir)?;
@@ -305,9 +311,12 @@ mod tests {
         let temp = TempDir::new().unwrap();
         install_claude_templates(temp.path()).unwrap();
 
+        // Templates install to .claude/ structure for copy_to_project()
         let templates_dir = temp.path().join("claude/templates");
-        assert!(templates_dir.join("bin/session-start.sh").exists());
-        assert!(templates_dir.join("commands/session-start.md").exists());
+        assert!(templates_dir.join(".claude/bin/session-start.sh").exists());
+        assert!(templates_dir
+            .join(".claude/commands/session-start.md")
+            .exists());
     }
 
     #[test]
@@ -315,9 +324,12 @@ mod tests {
         let temp = TempDir::new().unwrap();
         install_gemini_templates(temp.path()).unwrap();
 
+        // Templates install to .gemini/ structure for copy_to_project()
         let templates_dir = temp.path().join("gemini/templates");
-        assert!(templates_dir.join("bin/session-start.sh").exists());
-        assert!(templates_dir.join("commands/session-start.toml").exists());
+        assert!(templates_dir.join(".gemini/bin/session-start.sh").exists());
+        assert!(templates_dir
+            .join(".gemini/commands/session-start.toml")
+            .exists());
         assert!(templates_dir.join("GEMINI.md").exists());
     }
 }
