@@ -317,20 +317,6 @@ enum Commands {
         port: u16,
     },
 
-    /// Open project in AI frontend (like 'code .' for VS Code)
-    Launch {
-        /// Project path (default: current directory)
-        path: Option<String>,
-
-        /// Frontend to use (claude, gemini, codex)
-        #[arg(short, long)]
-        frontend: Option<String>,
-
-        /// Don't auto-start mothership
-        #[arg(long)]
-        no_serve: bool,
-    },
-
     /// List available AI frontends
     Adapter {
         #[command(subcommand)]
@@ -744,19 +730,6 @@ fn main() -> Result<()> {
         Some(Commands::Serve { host, port }) => {
             let options = commands::serve::ServeOptions { host, port };
             commands::serve::execute(options)?;
-        }
-        Some(Commands::Launch {
-            path,
-            frontend,
-            no_serve,
-        }) => {
-            let options = commands::launch::LaunchOptions {
-                path,
-                frontend,
-                auto_start_mothership: !no_serve,
-                auto_init: true,
-            };
-            commands::launch::execute(options)?;
         }
         Some(Commands::Adapter { command }) => commands::adapter::execute(command)?,
     }
