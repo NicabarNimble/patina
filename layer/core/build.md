@@ -108,9 +108,11 @@ struct Cli {
 - [x] Add `[frontends]` section with `allowed` list and `default`
 - [x] Enforce allowed frontends on launch (error if not in list)
 
-**Remaining** (move to 1f):
-- [ ] `mode = "owner"` - patina artifacts go to main via PR
-- [ ] `mode = "contrib"` - CI strips patina artifacts from PRs
+**Completed** (session 20251211-081016):
+- [x] Remove `mode` field - replaced with `[upstream]` section
+- [x] Add `[upstream]` section: `repo`, `branch`, `remote` for contribution PRs
+- [x] Add `[ci]` section: `checks` (pre-PR commands), `branch_prefix`
+- [x] LLM-driven PR workflow - config provides metadata, LLM handles git
 
 ### 1f: Branch Model & Safety
 **Philosophy:** Do and Inform (not warn and block)
@@ -133,10 +135,9 @@ struct Cli {
 - [x] Handle rebase conflicts (stop, show instructions)
 - [x] `--force` flag for `patina init` (nuclear reset, backup old branch) - already existed
 
-**Remaining:**
-- [ ] Handle stash failures (untracked files conflict) - partial, needs better error handling
-- [ ] `mode = "owner"` - patina artifacts go to main via PR
-- [ ] `mode = "contrib"` - CI strips patina artifacts from PRs
+**Completed** (session 20251211-081016):
+- [x] Handle stash failures - `--include-untracked` flag captures all changes
+- [x] Replaced mode concept with `[upstream]` config for LLM-driven PRs
 
 ### 1g: Adapter Commands ✓
 - [x] `patina adapter list` - show allowed + available frontends

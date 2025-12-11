@@ -34,8 +34,8 @@ use std::path::{Path, PathBuf};
 
 // Re-export config types
 pub use internal::{
-    DevSection, EmbeddingsSection, EnvironmentSection, FrontendsSection, ProjectConfig,
-    ProjectSection, SearchSection,
+    CiSection, DevSection, EmbeddingsSection, EnvironmentSection, FrontendsSection, ProjectConfig,
+    ProjectSection, SearchSection, UpstreamSection,
 };
 
 /// Check if a directory is a patina project (has .patina/)

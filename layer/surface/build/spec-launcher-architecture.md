@@ -296,7 +296,6 @@ project/
 
 [project]
 name = "my-project"
-mode = "owner"              # owner | contrib
 created = "2025-12-05T16:52:27Z"
 
 [dev]
@@ -306,6 +305,19 @@ version = "0.1.0"
 [frontends]
 allowed = ["claude", "gemini"]
 default = "claude"
+
+# Upstream config - EVERY repo has one (even owned repos)
+[upstream]
+repo = "Provable-Games/death-mountain"  # gh pr create --repo
+branch = "main"                          # target branch for PRs
+remote = "upstream"                      # "upstream" for forks, "origin" if you own it
+include_patina = false                   # include .patina/ in PRs? (false for contrib)
+include_adapters = false                 # include CLAUDE.md, .claude/ in PRs?
+
+# CI checks to run before PR (helps LLM avoid rejections)
+[ci]
+checks = ["sozo build", "scarb fmt --check"]
+branch_prefix = "feat/"                  # branch naming convention
 
 [embeddings]
 model = "e5-base-v2"
@@ -317,51 +329,49 @@ arch = "aarch64"
 detected_tools = ["cargo", "git", "docker"]
 ```
 
+**Key insight:** The `[upstream]` and `[ci]` sections are metadata for the LLM frontend. When you say "create a PR for this fix", the LLM:
+1. Reads the config to know the upstream repo and branch
+2. Runs CI checks locally before pushing
+3. Creates a clean branch (excludes `.patina/`, `layer/`, context files)
+4. Uses `gh pr create --repo <upstream.repo>` with proper branch naming
+
 ---
 
 ## The Branch Model
 
-### Owner Repos (Your Projects)
+**Simplified:** All repos work the same way. The patina branch is your workspace. PRs strip artifacts by default.
+
+### Your Fork (patina branch = workspace)
 
 ```
-patina branch:                    main (via PR):
-├── .patina/           ──────►    ├── .patina/        ✓ included
-├── layer/             ──────►    ├── layer/          ✓ included
-├── .gitignore         ──────►    ├── .gitignore      ✓ included
-├── src/               ──────►    ├── src/            ✓ included
-
-CI: Simple merge (branches are ~identical)
+patina branch (your workspace):
+├── .patina/           ← your config, sessions
+├── layer/             ← your knowledge
+├── CLAUDE.md          ← your context
+└── src/               ← actual code changes
 ```
 
-### Contrib Repos (Other People's Projects)
+### Creating PRs (LLM-driven)
 
 ```
-patina branch:                    main (via PR):
-├── .patina/           ──────►    (stripped)          ✗ removed
-├── layer/             ──────►    (stripped)          ✗ removed
-├── .gitignore         ──────►    (stripped)          ✗ removed
-├── src/ (changes)     ──────►    ├── src/            ✓ only code
+You: "Create a PR for the beast stat fix"
 
-CI: Strips patina artifacts, only code changes go through
+LLM reads .patina/config.toml:
+- upstream.repo = "Provable-Games/death-mountain"
+- upstream.branch = "main"
+- ci.checks = ["sozo build"]
+
+LLM creates clean branch:
+├── src/               ← only your code changes (artifacts excluded)
+
+gh pr create --repo Provable-Games/death-mountain --base main
 ```
 
-### Project Config
+### For Your Own Repos (No Upstream)
 
-```toml
-# .patina/config.toml
-
-[project]
-name = "linux-kernel"
-mode = "contrib"              # or "owner"
-upstream = "torvalds/linux"
-
-[frontend]
-default = "claude"
-
-[ci]
-# For contrib mode: strip from PRs
-strip_paths = [".patina/", "layer/"]
-```
+When `[upstream]` section is absent, you own the repo:
+- PRs can include patina artifacts (your choice)
+- LLM asks: "Include patina artifacts in PR?"
 
 ### Branch Safety: Do and Inform
 
@@ -756,16 +766,16 @@ Starting mothership...
 |--------|--------|
 | Launcher | `patina [-f frontend]` (flag, not positional) |
 | Path | Always current directory (no path argument) |
-| Non-patina project | "Are you lost?" prompt → auto-init as contrib |
+| Non-patina project | "Are you lost?" prompt → auto-init |
 | Frontends | Enum (claude, gemini, codex) - simple, type-safe |
 | Allowed frontends | `.patina/config.toml [frontends].allowed` |
 | Existing files | Preserved (don't touch existing CLAUDE.md) |
 | Global config | `~/.patina/config.toml` (detected frontends, user default) |
-| Project config | `.patina/config.toml` (allowed frontends, mode) |
+| Project config | `.patina/config.toml` (allowed frontends, upstream, ci) |
 | Branch model | Always `patina` branch, PR to main |
 | Branch safety | Do and Inform (auto-stash, auto-switch, auto-rebase) |
-| Owner repos | PR includes patina artifacts |
-| Contrib repos | CI strips patina artifacts |
+| Contributing | `[upstream]` section → LLM creates clean PRs |
+| Owned repos | No `[upstream]` → LLM asks about artifacts |
 | Mothership | `patina serve` (HTTP + MCP, one process) |
 | Switching | Parallel (allowed frontends coexist) |
 | YOLO | Container connects to host mothership |
@@ -783,12 +793,13 @@ Starting mothership...
 | "Are you lost?" prompt for non-patina projects | [x] |
 | Auto-init on prompt confirmation | [x] |
 | Auto-stash on dirty working tree (with restore hint) | [x] |
+| Auto-stash includes untracked files | [x] |
 | Auto-switch to patina branch | [x] |
 | Auto-rebase if patina behind main | [x] |
 | Existing CLAUDE.md preserved (don't touch) | [x] |
 | `patina adapter add/remove` manages allowed list | [x] |
 | Mothership auto-starts if not running | [x] |
 | MCP tools work from any frontend | [ ] |
-| Owner mode: patina artifacts in main | [ ] |
-| Contrib mode: CI strips artifacts | [ ] |
+| `[upstream]` config enables LLM-driven PRs | [x] |
+| `[ci]` config provides pre-PR checks | [x] |
 | Backups created before modifying existing files | [x] |
