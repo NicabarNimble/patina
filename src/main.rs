@@ -76,8 +76,12 @@ impl DevEnv {
 #[derive(Parser)]
 #[command(author, version = env!("CARGO_PKG_VERSION"), about = "Context management for AI-assisted development", long_about = None)]
 struct Cli {
+    /// Frontend to launch (claude, gemini, codex). Default: from config.
+    #[arg(short = 'f', long = "frontend", global = true)]
+    frontend: Option<String>,
+
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -535,13 +539,24 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init {
+        // Launcher mode: no subcommand means launch frontend
+        None => {
+            let options = commands::launch::LaunchOptions {
+                path: None,
+                frontend: cli.frontend,
+                auto_start_mothership: true,
+                auto_init: true,
+            };
+            commands::launch::execute(options)?;
+        }
+
+        Some(Commands::Init {
             name,
             llm,
             dev,
             force,
             local,
-        } => {
+        }) => {
             commands::init::execute(
                 name,
                 llm.as_str().to_string(),
@@ -550,11 +565,11 @@ fn main() -> Result<()> {
                 local,
             )?;
         }
-        Commands::Upgrade { check, json } => {
+        Some(Commands::Upgrade { check, json }) => {
             commands::upgrade::execute(check, json)?;
         }
         #[cfg(feature = "dev")]
-        Commands::Dev { command } => match command {
+        Some(Commands::Dev { command }) => match command {
             DevCommands::Validate { json } => {
                 commands::dev::validate::execute(json)?;
             }
@@ -587,13 +602,13 @@ fn main() -> Result<()> {
                 commands::dev::update_fixtures::execute(fixture.as_deref())?;
             }
         },
-        Commands::Build => {
+        Some(Commands::Build) => {
             commands::build::execute()?;
         }
-        Commands::Test => {
+        Some(Commands::Test) => {
             commands::test::execute()?;
         }
-        Commands::Scrape { command } => match command {
+        Some(Commands::Scrape { command }) => match command {
             None => commands::scrape::execute_all()?,
             Some(ScrapeCommands::Code { args }) => {
                 commands::scrape::execute_code(args.init, args.force)?
@@ -601,15 +616,15 @@ fn main() -> Result<()> {
             Some(ScrapeCommands::Git { full }) => commands::scrape::execute_git(full)?,
             Some(ScrapeCommands::Sessions { full }) => commands::scrape::execute_sessions(full)?,
         },
-        Commands::Oxidize => {
+        Some(Commands::Oxidize) => {
             commands::oxidize::oxidize()?;
         }
-        Commands::Rebuild {
+        Some(Commands::Rebuild {
             scrape,
             oxidize,
             force,
             dry_run,
-        } => {
+        }) => {
             let options = commands::rebuild::RebuildOptions {
                 scrape_only: scrape,
                 oxidize_only: oxidize,
@@ -618,7 +633,7 @@ fn main() -> Result<()> {
             };
             commands::rebuild::execute(options)?;
         }
-        Commands::Scry {
+        Some(Commands::Scry {
             query,
             file,
             limit,
@@ -628,7 +643,7 @@ fn main() -> Result<()> {
             all_repos,
             include_issues,
             no_persona,
-        } => {
+        }) => {
             let options = commands::scry::ScryOptions {
                 limit,
                 min_score,
@@ -641,10 +656,10 @@ fn main() -> Result<()> {
             };
             commands::scry::execute(query.as_deref(), options)?;
         }
-        Commands::Eval { dimension } => {
+        Some(Commands::Eval { dimension }) => {
             commands::eval::execute(dimension.map(|d| d.as_str().to_string()))?;
         }
-        Commands::Embeddings { command } => match command {
+        Some(Commands::Embeddings { command }) => match command {
             EmbeddingsCommands::Generate { force } => {
                 commands::embeddings::generate(force)?;
             }
@@ -652,7 +667,7 @@ fn main() -> Result<()> {
                 commands::embeddings::status()?;
             }
         },
-        Commands::Query { command } => match command {
+        Some(Commands::Query { command }) => match command {
             QueryCommands::Semantic {
                 query,
                 r#type,
@@ -662,7 +677,7 @@ fn main() -> Result<()> {
                 commands::query::semantic::execute(&query, r#type.clone(), min_score, limit)?;
             }
         },
-        Commands::Belief { command } => match command {
+        Some(Commands::Belief { command }) => match command {
             BeliefCommands::Validate {
                 query,
                 min_score,
@@ -671,7 +686,7 @@ fn main() -> Result<()> {
                 commands::belief::validate::execute(&query, min_score, limit)?;
             }
         },
-        Commands::Persona { command } => match command {
+        Some(Commands::Persona { command }) => match command {
             PersonaCommands::Note {
                 content,
                 domains,
@@ -694,47 +709,47 @@ fn main() -> Result<()> {
                 commands::persona::execute_materialize()?;
             }
         },
-        Commands::Doctor {
+        Some(Commands::Doctor {
             json,
             repos,
             update,
             audit,
-        } => {
+        }) => {
             let exit_code = commands::doctor::execute(json, repos, update, audit)?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
         }
-        Commands::Ask { args } => {
+        Some(Commands::Ask { args }) => {
             commands::ask::run(args)?;
         }
-        Commands::Repo {
+        Some(Commands::Repo {
             command,
             url,
             contrib,
             with_issues,
-        } => commands::repo::execute_cli(command, url, contrib, with_issues)?,
-        Commands::Yolo {
+        }) => commands::repo::execute_cli(command, url, contrib, with_issues)?,
+        Some(Commands::Yolo {
             interactive,
             defaults,
             with,
             without,
             json,
-        } => {
+        }) => {
             commands::yolo::execute(interactive, defaults, with, without, json)?;
         }
-        Commands::Version { json, components } => {
+        Some(Commands::Version { json, components }) => {
             commands::version::execute(json, components)?;
         }
-        Commands::Serve { host, port } => {
+        Some(Commands::Serve { host, port }) => {
             let options = commands::serve::ServeOptions { host, port };
             commands::serve::execute(options)?;
         }
-        Commands::Launch {
+        Some(Commands::Launch {
             path,
             frontend,
             no_serve,
-        } => {
+        }) => {
             let options = commands::launch::LaunchOptions {
                 path,
                 frontend,
@@ -743,7 +758,7 @@ fn main() -> Result<()> {
             };
             commands::launch::execute(options)?;
         }
-        Commands::Adapter { command } => commands::adapter::execute(command)?,
+        Some(Commands::Adapter { command }) => commands::adapter::execute(command)?,
     }
 
     Ok(())
