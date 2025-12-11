@@ -10,6 +10,7 @@ use patina::project::{
     DevSection, EmbeddingsSection, EnvironmentSection, FrontendsSection, ProjectConfig,
     ProjectSection, SearchSection,
 };
+// Note: CiSection and UpstreamSection are optional, set to None for new projects
 use patina::version::VersionManifest;
 
 /// Create project configuration file (unified config.toml format)
@@ -33,10 +34,11 @@ pub fn create_project_config(
         .collect();
 
     // Create unified project config
+    // Note: upstream and ci are None by default (owned repo)
+    // For contrib repos, user/LLM sets [upstream] section later
     let config = ProjectConfig {
         project: ProjectSection {
             name: name.to_string(),
-            mode: "owner".to_string(),
             created: Some(chrono::Utc::now().to_rfc3339()),
         },
         dev: DevSection {
@@ -47,6 +49,8 @@ pub fn create_project_config(
             allowed: vec![llm.to_string()],
             default: llm.to_string(),
         },
+        upstream: None, // Set when contributing to another repo
+        ci: None,       // Set with repo's CI requirements
         embeddings: EmbeddingsSection {
             model: "e5-base-v2".to_string(),
         },

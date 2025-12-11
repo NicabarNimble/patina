@@ -22,6 +22,10 @@ pub struct ProjectConfig {
     pub dev: DevSection,
     #[serde(default)]
     pub frontends: FrontendsSection,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream: Option<UpstreamSection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ci: Option<CiSection>,
     #[serde(default)]
     pub embeddings: EmbeddingsSection,
     #[serde(default)]
@@ -48,9 +52,6 @@ pub struct ProjectSection {
     /// Project name
     #[serde(default = "default_name")]
     pub name: String,
-    /// Mode: "owner" (patina artifacts in main) or "contrib" (CI strips artifacts)
-    #[serde(default = "default_mode")]
-    pub mode: String,
     /// Creation timestamp (ISO 8601)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
@@ -59,15 +60,11 @@ pub struct ProjectSection {
 fn default_name() -> String {
     "unnamed".to_string()
 }
-fn default_mode() -> String {
-    "owner".to_string()
-}
 
 impl Default for ProjectSection {
     fn default() -> Self {
         Self {
             name: default_name(),
-            mode: default_mode(),
             created: None,
         }
     }
@@ -120,6 +117,51 @@ impl Default for FrontendsSection {
             default: default_frontend(),
         }
     }
+}
+
+/// Upstream repository configuration for contributions
+/// Helps LLM create clean PRs that won't get rejected
+///
+/// Every repo has an upstream - even owned repos (upstream = yourself).
+/// The key difference is what gets included in PRs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpstreamSection {
+    /// GitHub repo in "owner/repo" format (for gh pr create --repo)
+    pub repo: String,
+    /// Target branch for PRs (default: main)
+    #[serde(default = "default_upstream_branch")]
+    pub branch: String,
+    /// Git remote name: "upstream" for forks, "origin" if you own the repo
+    #[serde(default = "default_upstream_remote")]
+    pub remote: String,
+    /// Include .patina/ directory in PRs (default: false)
+    /// Set true for owned repos where you want to share knowledge
+    #[serde(default)]
+    pub include_patina: bool,
+    /// Include adapter files (CLAUDE.md, .claude/, etc.) in PRs (default: false)
+    /// Set true for owned repos to share with collaborators
+    #[serde(default)]
+    pub include_adapters: bool,
+}
+
+fn default_upstream_branch() -> String {
+    "main".to_string()
+}
+
+fn default_upstream_remote() -> String {
+    "upstream".to_string()
+}
+
+/// CI checks to run before creating a PR
+/// Ensures PR won't fail upstream CI
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CiSection {
+    /// Commands to run before PR (format, lint, test)
+    #[serde(default)]
+    pub checks: Vec<String>,
+    /// Branch naming convention (e.g., "feat/", "fix/")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_prefix: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -391,11 +433,12 @@ mod tests {
     fn test_default_config() {
         let config = ProjectConfig::default();
         assert_eq!(config.project.name, "unnamed");
-        assert_eq!(config.project.mode, "owner");
         assert_eq!(config.dev.dev_type, "docker");
         assert_eq!(config.frontends.default, "claude");
         assert!(config.frontends.allowed.contains(&"claude".to_string()));
         assert_eq!(config.embeddings.model, "e5-base-v2");
+        assert!(config.upstream.is_none()); // No upstream by default (owned repo)
+        assert!(config.ci.is_none()); // No CI checks by default
     }
 
     #[test]
@@ -504,5 +547,65 @@ mod tests {
 
         // Verify backup was created
         assert!(backups_dir(tmp.path()).exists());
+    }
+
+    #[test]
+    fn test_upstream_config() {
+        let tmp = TempDir::new().unwrap();
+        let project_path = tmp.path();
+
+        // Create config with upstream (contribution mode)
+        let mut config = ProjectConfig::with_name("death-mountain");
+        config.upstream = Some(UpstreamSection {
+            repo: "Provable-Games/death-mountain".to_string(),
+            branch: "main".to_string(),
+            remote: "upstream".to_string(),
+            include_patina: false,
+            include_adapters: false,
+        });
+        config.ci = Some(CiSection {
+            checks: vec!["sozo build".to_string(), "scarb test".to_string()],
+            branch_prefix: Some("feat/".to_string()),
+        });
+
+        save(project_path, &config).unwrap();
+        let loaded = load(project_path).unwrap();
+
+        // Verify upstream
+        let upstream = loaded.upstream.unwrap();
+        assert_eq!(upstream.repo, "Provable-Games/death-mountain");
+        assert_eq!(upstream.branch, "main");
+        assert_eq!(upstream.remote, "upstream");
+        assert!(!upstream.include_patina);
+        assert!(!upstream.include_adapters);
+
+        // Verify CI
+        let ci = loaded.ci.unwrap();
+        assert_eq!(ci.checks.len(), 2);
+        assert_eq!(ci.branch_prefix, Some("feat/".to_string()));
+    }
+
+    #[test]
+    fn test_upstream_config_owned_repo() {
+        let tmp = TempDir::new().unwrap();
+        let project_path = tmp.path();
+
+        // Create config for owned repo (include artifacts)
+        let mut config = ProjectConfig::with_name("patina");
+        config.upstream = Some(UpstreamSection {
+            repo: "nicabar/patina".to_string(),
+            branch: "main".to_string(),
+            remote: "origin".to_string(), // origin because we own it
+            include_patina: true,         // share knowledge
+            include_adapters: true,       // share with collaborators
+        });
+
+        save(project_path, &config).unwrap();
+        let loaded = load(project_path).unwrap();
+
+        let upstream = loaded.upstream.unwrap();
+        assert_eq!(upstream.remote, "origin");
+        assert!(upstream.include_patina);
+        assert!(upstream.include_adapters);
     }
 }
