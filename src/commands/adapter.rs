@@ -187,7 +187,14 @@ fn add(name: &str) -> Result<()> {
     println!("✓ Added '{}' to allowed frontends", name);
     println!("  Allowed: {:?}", config.frontends.allowed);
 
-    // TODO: Copy adapter templates if needed
+    // Create adapter files if they don't exist
+    let adapter_dir = cwd.join(format!(".{}", name));
+    if !adapter_dir.exists() {
+        println!("  Creating .{}/ directory...", name);
+        patina::adapters::templates::copy_to_project(name, &cwd)?;
+        println!("  ✓ Created adapter files");
+    }
+
     Ok(())
 }
 
