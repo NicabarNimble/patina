@@ -60,7 +60,7 @@ patina --frontend gemini  # Explicit frontend (long flag)
 - [x] Detect installed LLM CLIs (enum-based, not manifest files)
 - [x] Set default frontend
 
-### 1c: Launcher Command
+### 1c: Launcher Command ✓
 **New design:** Frontend via flag (`-f`/`--frontend`), no path argument, "Are you lost?" prompt.
 
 **CLI structure (implemented):**
@@ -75,18 +75,18 @@ struct Cli {
 // When command is None → launcher mode (calls launch::execute)
 ```
 
-**Completed** (session 20251210-152252):
+**Completed** (session 20251210-152252, 20251211-061558):
 - [x] Refactor CLI to use `-f` flag for frontend selection
 - [x] Make `command` optional - no subcommand = launcher mode
 - [x] Auto-start mothership if not running
 - [x] Launch frontend CLI via `exec`
+- [x] Remove `Commands::Launch` subcommand (redundant)
+- [x] "Are you lost?" prompt for non-patina projects
+  - [x] Show: path, git branch+status, remote URL
+  - [x] Single y/N question to initialize
+  - [x] Auto-init on confirmation
 
 **Remaining:**
-- [ ] Remove `Commands::Launch` subcommand (redundant, but backwards compat)
-- [ ] "Are you lost?" prompt for non-patina projects
-  - [ ] Show: path, git branch+status, remote URL
-  - [ ] Single y/N question to initialize
-  - [ ] Auto-init as contrib mode on confirmation
 - [ ] Ensure adapter templates exist via `templates::copy_to_project()`
 
 ### 1d: Patina Context Layer
@@ -126,13 +126,15 @@ struct Cli {
 | other | no | any | "Are you lost?" |
 | (not git) | - | - | "Init git?" prompt |
 
-**Tasks:**
-- [ ] `ensure_patina_branch()` - auto-stash, auto-switch, auto-rebase
-- [ ] Stash with named message: `patina-autostash-{timestamp}`
-- [ ] Show restore hint after stash: `git checkout X && git stash pop`
-- [ ] Handle rebase conflicts (stop, show instructions)
-- [ ] Handle stash failures (untracked files conflict)
-- [ ] `--force` flag for `patina init` (nuclear reset, backup old branch)
+**Completed** (session 20251211-061558):
+- [x] `ensure_on_patina_branch()` - auto-stash, auto-switch, auto-rebase
+- [x] Stash with named message: `patina-autostash-{timestamp}`
+- [x] Show restore hint after stash: `git checkout X && git stash pop`
+- [x] Handle rebase conflicts (stop, show instructions)
+- [x] `--force` flag for `patina init` (nuclear reset, backup old branch) - already existed
+
+**Remaining:**
+- [ ] Handle stash failures (untracked files conflict) - partial, needs better error handling
 - [ ] `mode = "owner"` - patina artifacts go to main via PR
 - [ ] `mode = "contrib"` - CI strips patina artifacts from PRs
 
@@ -155,11 +157,11 @@ struct Cli {
 | `patina` (no args) opens default frontend | [x] |
 | `patina -f claude` opens Claude Code (if allowed) | [x] |
 | `patina -f gemini` opens Gemini CLI (if allowed) | [ ] |
-| "Are you lost?" prompt for non-patina projects | [ ] |
-| Auto-init as contrib mode on confirmation | [ ] |
-| Auto-stash on dirty working tree (with restore hint) | [ ] |
-| Auto-switch to patina branch | [ ] |
-| Auto-rebase if patina behind main | [ ] |
+| "Are you lost?" prompt for non-patina projects | [x] |
+| Auto-init on confirmation | [x] |
+| Auto-stash on dirty working tree (with restore hint) | [x] |
+| Auto-switch to patina branch | [x] |
+| Auto-rebase if patina behind main | [x] |
 | Existing CLAUDE.md preserved | [x] |
 | `.patina/config.toml` has `[project]` and `[frontends]` sections | [x] |
 | `patina adapter add/remove` manages allowed frontends | [x] |

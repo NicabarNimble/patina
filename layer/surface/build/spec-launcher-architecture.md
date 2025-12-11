@@ -780,11 +780,11 @@ Starting mothership...
 | `patina -f claude` opens Claude Code (if allowed) | [x] |
 | `patina -f gemini` opens Gemini CLI (if allowed) | [ ] |
 | Non-allowed frontend shows clear error message | [x] |
-| "Are you lost?" prompt for non-patina projects | [ ] |
-| Auto-init as contrib mode on prompt confirmation | [ ] |
-| Auto-stash on dirty working tree (with restore hint) | [ ] |
-| Auto-switch to patina branch | [ ] |
-| Auto-rebase if patina behind main | [ ] |
+| "Are you lost?" prompt for non-patina projects | [x] |
+| Auto-init on prompt confirmation | [x] |
+| Auto-stash on dirty working tree (with restore hint) | [x] |
+| Auto-switch to patina branch | [x] |
+| Auto-rebase if patina behind main | [x] |
 | Existing CLAUDE.md preserved (don't touch) | [x] |
 | `patina adapter add/remove` manages allowed list | [x] |
 | Mothership auto-starts if not running | [x] |
