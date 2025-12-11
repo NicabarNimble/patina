@@ -239,6 +239,94 @@ pub fn commit(message: &str) -> Result<()> {
     Ok(())
 }
 
+/// Stash changes with a named message
+pub fn stash_push(message: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["stash", "push", "-m", message])
+        .output()
+        .context("Failed to stash changes")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to stash changes: {}", stderr);
+    }
+
+    Ok(())
+}
+
+/// Checkout an existing branch
+pub fn checkout(branch: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["checkout", branch])
+        .output()
+        .context("Failed to checkout branch")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to checkout {}: {}",
+            branch,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    Ok(())
+}
+
+/// Rebase current branch onto another
+/// Returns Ok(true) if rebase succeeded, Ok(false) if conflicts, Err on other failure
+pub fn rebase(onto: &str) -> Result<bool> {
+    let output = Command::new("git")
+        .args(["rebase", onto])
+        .output()
+        .context("Failed to rebase")?;
+
+    if output.status.success() {
+        Ok(true)
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("CONFLICT") || stderr.contains("could not apply") {
+            Ok(false) // Conflicts - caller should handle
+        } else {
+            anyhow::bail!("Failed to rebase onto {}: {}", onto, stderr);
+        }
+    }
+}
+
+/// Abort an in-progress rebase
+pub fn rebase_abort() -> Result<()> {
+    let output = Command::new("git")
+        .args(["rebase", "--abort"])
+        .output()
+        .context("Failed to abort rebase")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to abort rebase: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    Ok(())
+}
+
+/// Fetch from remote
+pub fn fetch(remote: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["fetch", remote])
+        .output()
+        .context("Failed to fetch from remote")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to fetch {}: {}",
+            remote,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
