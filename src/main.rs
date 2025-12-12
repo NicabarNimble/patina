@@ -2,6 +2,8 @@ use anyhow::Result;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 mod commands;
+mod mcp;
+mod retrieval;
 
 // ============================================================================
 // Typed CLI enums (Phase 0d: type safety for string args)
@@ -315,6 +317,10 @@ enum Commands {
         /// Port to bind to
         #[arg(long, default_value = "50051")]
         port: u16,
+
+        /// Run as MCP server (JSON-RPC over stdio) instead of HTTP
+        #[arg(long)]
+        mcp: bool,
     },
 
     /// List available AI frontends
@@ -727,9 +733,13 @@ fn main() -> Result<()> {
         Some(Commands::Version { json, components }) => {
             commands::version::execute(json, components)?;
         }
-        Some(Commands::Serve { host, port }) => {
-            let options = commands::serve::ServeOptions { host, port };
-            commands::serve::execute(options)?;
+        Some(Commands::Serve { host, port, mcp }) => {
+            if mcp {
+                mcp::run_mcp_server()?;
+            } else {
+                let options = commands::serve::ServeOptions { host, port };
+                commands::serve::execute(options)?;
+            }
         }
         Some(Commands::Adapter { command }) => commands::adapter::execute(command)?,
     }

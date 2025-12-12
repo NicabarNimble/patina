@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 1 - Launcher & Adapters
+**Current Phase:** Phase 2 Complete - Ready for Lab & Production Testing
 
 ---
 
@@ -49,9 +49,10 @@ patina --frontend gemini  # Explicit frontend (long flag)
 - [x] Create `resources/gemini/` templates (parity with claude)
 - [x] Create `src/adapters/templates.rs` extraction module
 - [x] Extract templates to `~/.patina/adapters/{frontend}/templates/` on first run
-- [ ] Refactor claude adapter to copy from central templates
-- [ ] Implement gemini adapter with full template support
-- [ ] Update init to use `templates::copy_to_project()`
+- [x] Fix template structure: install to `.{frontend}/` subdirectory for copy_to_project()
+- [x] Implement gemini adapter with full template support (uses templates::copy_to_project)
+- [x] `patina adapter add` creates adapter files from templates
+- [-] Refactor claude adapter - kept as-is (embedded approach works, has version management)
 
 ### 1b: First-Run Setup ✓
 - [x] Detect first run → create `~/.patina/`
@@ -86,8 +87,8 @@ struct Cli {
   - [x] Single y/N question to initialize
   - [x] Auto-init on confirmation
 
-**Remaining:**
-- [ ] Ensure adapter templates exist via `templates::copy_to_project()`
+**Completed** (session 20251211-103012):
+- [x] Ensure adapter templates exist via `templates::copy_to_project()` (in adapter add)
 
 ### 1d: Patina Context Layer
 - [ ] Create `.patina/context.md` schema (patina's project knowledge, LLM-agnostic)
@@ -154,10 +155,10 @@ struct Cli {
 |----------|--------|
 | Gemini templates exist with full parity to Claude | [x] |
 | First-run extracts templates to `~/.patina/adapters/` | [x] |
-| `patina init` copies adapter templates from central location | [ ] |
+| `patina adapter add` copies templates from central location | [x] |
 | `patina` (no args) opens default frontend | [x] |
 | `patina -f claude` opens Claude Code (if allowed) | [x] |
-| `patina -f gemini` opens Gemini CLI (if allowed) | [ ] |
+| `patina -f gemini` opens Gemini CLI (if allowed) | [x] |
 | "Are you lost?" prompt for non-patina projects | [x] |
 | Auto-init on confirmation | [x] |
 | Auto-stash on dirty working tree (with restore hint) | [x] |
@@ -170,17 +171,160 @@ struct Cli {
 
 ---
 
+## Phase 2: Agentic RAG
+
+**Goal:** Transform Patina from a tool provider into an intelligent retrieval layer via MCP.
+
+**Key Insight:** No local LLM needed for routing. Research shows parallel retrieval + RRF fusion + frontier LLM synthesis beats small-model routing.
+
+**Spec:** [spec-agentic-rag.md](../surface/build/spec-agentic-rag.md)
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    patina serve --mcp                           │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │  Query Processor (NO LLM)                                 │  │
+│  │  - Parallel oracle dispatch                               │  │
+│  │  - RRF fusion (k=60)                                      │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                              │                                  │
+│       ┌──────────────────────┼──────────────────────┐          │
+│       ▼                      ▼                      ▼          │
+│  ┌─────────────┐  ┌─────────────────┐  ┌─────────────────┐     │
+│  │ Semantic    │  │ Lexical         │  │ Session         │     │
+│  │ (E5+USearch)│  │ (BM25/FTS5)     │  │ (Persona)       │     │
+│  └─────────────┘  └─────────────────┘  └─────────────────┘     │
+│                              ▼                                  │
+│                    RRF Fusion → Top-K                           │
+│                              ▼                                  │
+│                    MCP Response (JSON-RPC)                      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Phase 2 Tasks
+
+#### 2a: Oracle Abstraction ✓
+- [x] Create `Oracle` trait in `src/retrieval/oracle.rs` (strategy pattern, not adapter)
+- [x] Wrap existing scry functions as oracle implementations
+- [x] Add parallel query execution with rayon
+
+#### 2b: Hybrid Retrieval + RRF ✓
+- [x] Run semantic + BM25 in parallel for every query
+- [x] Implement RRF fusion (k=60) in `src/retrieval/fusion.rs`
+- [x] Cross-oracle deduplication for proper RRF boosting
+
+#### 2c: MCP Server ✓
+- [x] Add `--mcp` flag to `patina serve`
+- [x] JSON-RPC over stdio transport (hand-rolled, no external SDK)
+- [x] JSON-RPC 2.0 version validation
+- [x] Tool: `patina_query` with hybrid retrieval
+- [x] Rich output format (file path, event type, timestamp)
+- [x] `patina adapter mcp claude` one-command setup
+- [ ] Tool: `patina_context` (project rules/patterns)
+- [ ] Session tools: `patina_session_start/end/note`
+
+#### 2d: Integration Testing
+- [ ] Test with Claude Code MCP config (immediate next step)
+- [ ] Test with Gemini CLI (when MCP supported)
+- [ ] Latency benchmarks (<500ms target)
+
+### Validation
+
+| Criteria | Status |
+|----------|--------|
+| `patina serve --mcp` starts MCP server | [x] |
+| `patina adapter mcp claude` configures Claude Code | [x] |
+| Claude Code can call `patina_query` tool | [ ] needs live test |
+| Returns fused results (semantic + lexical + persona) | [x] |
+| Output includes metadata (path, event_type, timestamp) | [x] |
+| Latency < 500ms for typical query | [ ] needs benchmark |
+| Session tools work via MCP | [ ] not yet implemented |
+
+---
+
+## Phase 2.5: Lab Readiness
+
+**Goal:** Enable experimentation (new models, fusion strategies) while keeping Patina running in production.
+
+**Philosophy:** Patina is not an academic exercise. It runs daily on hackathons, bounties, and repo contributions while we experiment with its internals.
+
+### Current State Assessment
+
+| Component | Production | Lab Ready | Blocker |
+|-----------|------------|-----------|---------|
+| Scrape pipeline | ✅ | ⚠️ | Schema hardcoded |
+| Embeddings (E5) | ✅ | ❌ | Model locked in code |
+| Retrieval/Oracles | ✅ | ✅ | - |
+| Fusion (RRF) | ✅ | ⚠️ | k=60 hardcoded |
+| MCP server | ✅ | ✅ | - |
+| Persona | ✅ | ⚠️ | Storage format locked |
+| Frontends | ✅ | ✅ | Adapter pattern works |
+
+### Phase 2.5 Tasks
+
+#### 2.5a: Retrieval Configuration
+- [ ] Add `[retrieval]` section to config.toml
+- [ ] Make RRF k value configurable (default 60)
+- [ ] Make fetch_multiplier configurable (default 2x)
+- [ ] Config validation on load
+
+#### 2.5b: Benchmark Infrastructure
+- [ ] `patina bench retrieval` command skeleton
+- [ ] Query set format (JSON with ground truth)
+- [ ] Metrics: MRR, Recall@K, latency p50/p95
+- [ ] Baseline measurement before changes
+
+#### 2.5c: Model Flexibility
+- [ ] Document model addition process
+- [ ] Test with second embedding model (bge-small or nomic)
+- [ ] Verify vector space compatibility
+
+### Validation
+
+| Criteria | Status |
+|----------|--------|
+| Can change RRF k via config | [ ] |
+| `patina bench` produces metrics | [ ] |
+| Second embedding model works | [ ] |
+| No regression in production use | [ ] |
+
+---
+
 ## Future Phases
 
 | Phase | Name | Focus |
 |-------|------|-------|
-| **2** | MCP Integration | Mothership MCP server, universal tools |
 | **3** | Capture Automation | Session → persona distillation |
-| **4** | Model Worlds | MLX, code-specific models |
+| **4** | Progressive Adapters | Project-specific embedding dimensions |
+
+### Phase 4: Progressive Adapters
+
+**Goal:** Improve retrieval quality with learned project-specific embeddings.
+
+**Concept:** Small adapter layers (~1-2M params) on frozen E5-base-v2. NOT fine-tuning.
+
+- Preserves E5 quality (trained on billions of pairs)
+- Data efficient: 10K pairs vs 100K+ for fine-tuning
+- Fast training: hours on Mac Studio
+- Extensible: add dimensions without retraining existing
+
+**Six planned dimensions:**
+1. Semantic (768-dim) - session observations *(exists)*
+2. Temporal (256-dim) - git co-change *(exists)*
+3. Dependency (256-dim) - call graph *(exists)*
+4. Syntactic (256-dim) - AST similarity
+5. Architectural (256-dim) - directory structure
+6. Social (256-dim) - GitHub metadata
+
+**Key References:**
+- [architecture-patina-embedding.md](../surface/architecture-patina-embedding.md) - Full spec
+- Sessions: 20251120-110914 (vision), 20251121-042111 (implementation)
 
 **Future Specs:**
 - [spec-github-adapter.md](../surface/build/spec-github-adapter.md) - Has pending work
-- [spec-model-runtime.md](../surface/build/spec-model-runtime.md) - Phase 4
 
 ---
 
