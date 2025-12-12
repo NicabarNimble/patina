@@ -227,6 +227,9 @@ fn build_projection_index(
 
 /// Query session events for semantic index
 fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)>> {
+    let mut events = Vec::new();
+
+    // 1. Session events from eventlog
     let mut stmt = conn.prepare(
         "SELECT seq, json_extract(data, '$.content') as content
          FROM eventlog
@@ -236,13 +239,60 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
          ORDER BY seq",
     )?;
 
-    let mut events = Vec::new();
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
         let seq: i64 = row.get(0)?;
         let content: String = row.get(1)?;
         events.push((seq, content));
     }
+
+    let session_count = events.len();
+
+    // 2. Code facts from function_facts (use offset to avoid ID collision)
+    const CODE_ID_OFFSET: i64 = 1_000_000_000;
+    let mut stmt = conn.prepare(
+        "SELECT rowid, file, name, parameters, return_type, is_public, is_async
+         FROM function_facts
+         WHERE name != ''",
+    )?;
+
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let rowid: i64 = row.get(0)?;
+        let file: String = row.get(1)?;
+        let name: String = row.get(2)?;
+        let params: Option<String> = row.get(3)?;
+        let return_type: Option<String> = row.get(4)?;
+        let is_public: bool = row.get(5)?;
+        let is_async: bool = row.get(6)?;
+
+        // Create embeddable text for the function
+        let mut desc = format!("Function `{}` in file `{}`", name, file);
+        if is_public {
+            desc.push_str(", public");
+        }
+        if is_async {
+            desc.push_str(", async");
+        }
+        if let Some(p) = params {
+            if !p.is_empty() {
+                desc.push_str(&format!(", parameters: {}", p));
+            }
+        }
+        if let Some(rt) = return_type {
+            if !rt.is_empty() {
+                desc.push_str(&format!(", returns: {}", rt));
+            }
+        }
+
+        events.push((CODE_ID_OFFSET + rowid, desc));
+    }
+
+    println!(
+        "   Indexed {} session events + {} code facts",
+        session_count,
+        events.len() - session_count
+    );
 
     Ok(events)
 }
