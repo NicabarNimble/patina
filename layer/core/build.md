@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 1 - Launcher & Adapters
+**Current Phase:** Phase 2 Complete - Ready for Lab & Production Testing
 
 ---
 
@@ -206,24 +206,28 @@ struct Cli {
 
 ### Phase 2 Tasks
 
-#### 2a: Oracle Abstraction
-- [ ] Create `Oracle` trait in `src/retrieval/oracle.rs` (strategy pattern, not adapter)
-- [ ] Wrap existing scry functions as oracle implementations
-- [ ] Add parallel query execution with rayon
+#### 2a: Oracle Abstraction ✓
+- [x] Create `Oracle` trait in `src/retrieval/oracle.rs` (strategy pattern, not adapter)
+- [x] Wrap existing scry functions as oracle implementations
+- [x] Add parallel query execution with rayon
 
-#### 2b: Hybrid Retrieval + RRF
-- [ ] Run semantic + BM25 in parallel for every query
-- [ ] Implement RRF fusion (k=60) in `src/retrieval/fusion.rs`
-- [ ] Score normalization across oracles
+#### 2b: Hybrid Retrieval + RRF ✓
+- [x] Run semantic + BM25 in parallel for every query
+- [x] Implement RRF fusion (k=60) in `src/retrieval/fusion.rs`
+- [x] Cross-oracle deduplication for proper RRF boosting
 
-#### 2c: MCP Server
-- [ ] Add `--mcp` flag to `patina serve`
-- [ ] JSON-RPC over stdio transport
-- [ ] Tool registration: `patina_query`, `patina_context`
+#### 2c: MCP Server ✓
+- [x] Add `--mcp` flag to `patina serve`
+- [x] JSON-RPC over stdio transport (hand-rolled, no external SDK)
+- [x] JSON-RPC 2.0 version validation
+- [x] Tool: `patina_query` with hybrid retrieval
+- [x] Rich output format (file path, event type, timestamp)
+- [x] `patina adapter mcp claude` one-command setup
+- [ ] Tool: `patina_context` (project rules/patterns)
 - [ ] Session tools: `patina_session_start/end/note`
 
 #### 2d: Integration Testing
-- [ ] Test with Claude Code MCP config
+- [ ] Test with Claude Code MCP config (immediate next step)
 - [ ] Test with Gemini CLI (when MCP supported)
 - [ ] Latency benchmarks (<500ms target)
 
@@ -231,11 +235,61 @@ struct Cli {
 
 | Criteria | Status |
 |----------|--------|
-| `patina serve --mcp` starts MCP server | [ ] |
-| Claude Code can call `patina_query` tool | [ ] |
-| Returns fused results (semantic + lexical + persona) | [ ] |
-| Latency < 500ms for typical query | [ ] |
-| Session tools work via MCP | [ ] |
+| `patina serve --mcp` starts MCP server | [x] |
+| `patina adapter mcp claude` configures Claude Code | [x] |
+| Claude Code can call `patina_query` tool | [ ] needs live test |
+| Returns fused results (semantic + lexical + persona) | [x] |
+| Output includes metadata (path, event_type, timestamp) | [x] |
+| Latency < 500ms for typical query | [ ] needs benchmark |
+| Session tools work via MCP | [ ] not yet implemented |
+
+---
+
+## Phase 2.5: Lab Readiness
+
+**Goal:** Enable experimentation (new models, fusion strategies) while keeping Patina running in production.
+
+**Philosophy:** Patina is not an academic exercise. It runs daily on hackathons, bounties, and repo contributions while we experiment with its internals.
+
+### Current State Assessment
+
+| Component | Production | Lab Ready | Blocker |
+|-----------|------------|-----------|---------|
+| Scrape pipeline | ✅ | ⚠️ | Schema hardcoded |
+| Embeddings (E5) | ✅ | ❌ | Model locked in code |
+| Retrieval/Oracles | ✅ | ✅ | - |
+| Fusion (RRF) | ✅ | ⚠️ | k=60 hardcoded |
+| MCP server | ✅ | ✅ | - |
+| Persona | ✅ | ⚠️ | Storage format locked |
+| Frontends | ✅ | ✅ | Adapter pattern works |
+
+### Phase 2.5 Tasks
+
+#### 2.5a: Retrieval Configuration
+- [ ] Add `[retrieval]` section to config.toml
+- [ ] Make RRF k value configurable (default 60)
+- [ ] Make fetch_multiplier configurable (default 2x)
+- [ ] Config validation on load
+
+#### 2.5b: Benchmark Infrastructure
+- [ ] `patina bench retrieval` command skeleton
+- [ ] Query set format (JSON with ground truth)
+- [ ] Metrics: MRR, Recall@K, latency p50/p95
+- [ ] Baseline measurement before changes
+
+#### 2.5c: Model Flexibility
+- [ ] Document model addition process
+- [ ] Test with second embedding model (bge-small or nomic)
+- [ ] Verify vector space compatibility
+
+### Validation
+
+| Criteria | Status |
+|----------|--------|
+| Can change RRF k via config | [ ] |
+| `patina bench` produces metrics | [ ] |
+| Second embedding model works | [ ] |
+| No regression in production use | [ ] |
 
 ---
 
