@@ -499,11 +499,14 @@ fn enrich_results(
 ) -> Result<Vec<ScryResult>> {
     let mut enriched = Vec::new();
 
+    // Code facts use ID offset to distinguish from eventlog entries
+    const CODE_ID_OFFSET: i64 = 1_000_000_000;
+
     match dimension {
         "semantic" => {
-            // Semantic index uses seq as key
+            // Semantic index contains both eventlog entries and code facts
             for i in 0..results.keys.len() {
-                let key = results.keys[i];
+                let key = results.keys[i] as i64;
                 let distance = results.distances[i];
                 // Convert distance to similarity score (cosine: 1 - distance)
                 let score = 1.0 - distance;
@@ -512,26 +515,79 @@ fn enrich_results(
                     continue;
                 }
 
-                let result = conn.query_row(
-                    "SELECT seq, event_type, source_id, timestamp,
-                            json_extract(data, '$.content') as content
-                     FROM eventlog
-                     WHERE seq = ?",
-                    [key as i64],
-                    |row| {
-                        Ok(ScryResult {
-                            id: row.get(0)?,
-                            event_type: row.get(1)?,
-                            source_id: row.get(2)?,
-                            timestamp: row.get(3)?,
-                            content: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
-                            score,
-                        })
-                    },
-                );
+                // Check if this is a code fact (ID >= offset) or eventlog entry
+                if key >= CODE_ID_OFFSET {
+                    // Code fact - look up in function_facts
+                    let rowid = key - CODE_ID_OFFSET;
+                    let result = conn.query_row(
+                        "SELECT rowid, file, name, parameters, return_type, is_public, is_async
+                         FROM function_facts
+                         WHERE rowid = ?",
+                        [rowid],
+                        |row| {
+                            let file: String = row.get(1)?;
+                            let name: String = row.get(2)?;
+                            let params: Option<String> = row.get(3)?;
+                            let return_type: Option<String> = row.get(4)?;
+                            let is_public: bool = row.get(5)?;
+                            let is_async: bool = row.get(6)?;
 
-                if let Ok(r) = result {
-                    enriched.push(r);
+                            // Reconstruct the description
+                            let mut desc = format!("Function `{}` in `{}`", name, file);
+                            if is_public {
+                                desc.push_str(", public");
+                            }
+                            if is_async {
+                                desc.push_str(", async");
+                            }
+                            if let Some(p) = params {
+                                if !p.is_empty() {
+                                    desc.push_str(&format!(", params: {}", p));
+                                }
+                            }
+                            if let Some(rt) = return_type {
+                                if !rt.is_empty() {
+                                    desc.push_str(&format!(", returns: {}", rt));
+                                }
+                            }
+
+                            Ok(ScryResult {
+                                id: key,
+                                event_type: "code.function".to_string(),
+                                source_id: format!("{}:{}", file, name),
+                                timestamp: String::new(),
+                                content: desc,
+                                score,
+                            })
+                        },
+                    );
+
+                    if let Ok(r) = result {
+                        enriched.push(r);
+                    }
+                } else {
+                    // Eventlog entry
+                    let result = conn.query_row(
+                        "SELECT seq, event_type, source_id, timestamp,
+                                json_extract(data, '$.content') as content
+                         FROM eventlog
+                         WHERE seq = ?",
+                        [key],
+                        |row| {
+                            Ok(ScryResult {
+                                id: row.get(0)?,
+                                event_type: row.get(1)?,
+                                source_id: row.get(2)?,
+                                timestamp: row.get(3)?,
+                                content: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+                                score,
+                            })
+                        },
+                    );
+
+                    if let Ok(r) = result {
+                        enriched.push(r);
+                    }
                 }
             }
         }

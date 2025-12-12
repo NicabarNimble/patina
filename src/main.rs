@@ -237,6 +237,12 @@ enum Commands {
         dimension: Option<Dimension>,
     },
 
+    /// Benchmark retrieval quality with ground truth
+    Bench {
+        #[command(subcommand)]
+        command: BenchCommands,
+    },
+
     /// Generate and manage semantic embeddings
     Embeddings {
         #[command(subcommand)]
@@ -360,6 +366,24 @@ enum ScrapeCommands {
         /// Full rebuild (ignore incremental)
         #[arg(long)]
         full: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum BenchCommands {
+    /// Benchmark retrieval quality
+    Retrieval {
+        /// Path to query set JSON file
+        #[arg(long, short = 'q')]
+        query_set: String,
+
+        /// Number of results per query (default: 10)
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long, short)]
+        json: bool,
     },
 }
 
@@ -651,6 +675,20 @@ fn main() -> Result<()> {
         Some(Commands::Eval { dimension }) => {
             commands::eval::execute(dimension.map(|d| d.as_str().to_string()))?;
         }
+        Some(Commands::Bench { command }) => match command {
+            BenchCommands::Retrieval {
+                query_set,
+                limit,
+                json,
+            } => {
+                let options = commands::bench::BenchOptions {
+                    query_set,
+                    limit,
+                    json,
+                };
+                commands::bench::execute(options)?;
+            }
+        },
         Some(Commands::Embeddings { command }) => match command {
             EmbeddingsCommands::Generate { force } => {
                 commands::embeddings::generate(force)?;
