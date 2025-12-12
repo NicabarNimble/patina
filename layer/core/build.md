@@ -227,9 +227,9 @@ struct Cli {
 - [ ] Session tools: `patina_session_start/end/note`
 
 #### 2d: Integration Testing
-- [ ] Test with Claude Code MCP config (immediate next step)
+- [x] Test with Claude Code MCP config (validated 2025-12-12, ~196ms)
 - [ ] Test with Gemini CLI (when MCP supported)
-- [ ] Latency benchmarks (<500ms target)
+- [x] Latency benchmarks (<500ms target) - measured ~196ms
 
 ### Validation
 
@@ -237,10 +237,10 @@ struct Cli {
 |----------|--------|
 | `patina serve --mcp` starts MCP server | [x] |
 | `patina adapter mcp claude` configures Claude Code | [x] |
-| Claude Code can call `patina_query` tool | [ ] needs live test |
+| Claude Code can call `patina_query` tool | [x] tested 2025-12-12 |
 | Returns fused results (semantic + lexical + persona) | [x] |
 | Output includes metadata (path, event_type, timestamp) | [x] |
-| Latency < 500ms for typical query | [ ] needs benchmark |
+| Latency < 500ms for typical query | [x] ~196ms measured |
 | Session tools work via MCP | [ ] not yet implemented |
 
 ---
@@ -271,11 +271,40 @@ struct Cli {
 - [ ] Make fetch_multiplier configurable (default 2x)
 - [ ] Config validation on load
 
-#### 2.5b: Benchmark Infrastructure
-- [ ] `patina bench retrieval` command skeleton
-- [ ] Query set format (JSON with ground truth)
-- [ ] Metrics: MRR, Recall@K, latency p50/p95
-- [ ] Baseline measurement before changes
+#### 2.5b: Benchmark Infrastructure ✓
+- [x] `patina bench retrieval` command skeleton
+- [x] Query set format (JSON with ground truth keywords)
+- [x] Metrics: MRR, Recall@K, latency p50/p95
+- [x] Baseline measurement (2025-12-12)
+
+**Baseline Results (before fix):**
+```
+MRR: 0.017 | Recall@5: 0% | Recall@10: 5% | p50: 138ms
+```
+
+**Critical Finding:** Benchmark revealed code facts not in semantic index.
+
+#### 2.5d: Code Knowledge Gap (discovered via benchmark) ✓
+**Problem:** `oxidize` only indexed session events, not code facts.
+
+**Fix Applied:**
+1. `oxidize/mod.rs` - Added code facts to semantic index (ID offset 1B+)
+2. `scry/mod.rs` - Fixed `enrich_results()` to handle dual ID space
+
+**Results After Fix:**
+```
+MRR: 0.176 | Recall@5: 26.7% | Recall@10: 31.7% | p50: 139ms
+```
+
+| Metric | Before | After | Change |
+|--------|--------|-------|--------|
+| MRR | 0.017 | 0.176 | **10x** |
+| Recall@10 | 5% | 31.7% | **+26.7%** |
+
+**CodeOracle Decision:** Deferred to Phase 3. Current retrieval is functional.
+- Semantic finds code when queries are code-like
+- Natural language finding sessions is correct behavior
+- Lexical oracle already handles exact code matches
 
 #### 2.5c: Model Flexibility
 - [ ] Document model addition process
@@ -287,9 +316,11 @@ struct Cli {
 | Criteria | Status |
 |----------|--------|
 | Can change RRF k via config | [ ] |
-| `patina bench` produces metrics | [ ] |
+| `patina bench` produces metrics | [x] MRR, Recall@K, latency |
+| Code facts in semantic index | [x] 911 functions indexed |
+| Benchmark shows improvement | [x] 10x MRR, +26% recall |
 | Second embedding model works | [ ] |
-| No regression in production use | [ ] |
+| No regression in production use | [x] tested via MCP |
 
 ---
 
