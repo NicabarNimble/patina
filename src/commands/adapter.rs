@@ -68,6 +68,16 @@ pub enum AdapterCommands {
         #[arg(long)]
         no_backup: bool,
     },
+
+    /// Configure MCP server for a frontend
+    Mcp {
+        /// Frontend name (claude)
+        name: String,
+
+        /// Remove MCP configuration instead of adding
+        #[arg(long)]
+        remove: bool,
+    },
 }
 
 /// Execute the adapter command (main entry point from CLI)
@@ -78,6 +88,7 @@ pub fn execute(command: Option<AdapterCommands>) -> Result<()> {
         Some(AdapterCommands::Check { name }) => check(name.as_deref()),
         Some(AdapterCommands::Add { name }) => add(&name),
         Some(AdapterCommands::Remove { name, no_backup }) => remove(&name, no_backup),
+        Some(AdapterCommands::Mcp { name, remove }) => configure_mcp(&name, remove),
     }
 }
 
@@ -270,6 +281,66 @@ fn backup_frontend_files(project_root: &std::path::Path, name: &str) -> Result<(
     if adapter_dir.exists() {
         // For directories, we just note they exist - full backup would be complex
         println!("  ⚠ Adapter directory .{}/ exists (not backed up)", name);
+    }
+
+    Ok(())
+}
+
+/// Configure MCP server for a frontend
+fn configure_mcp(name: &str, remove: bool) -> Result<()> {
+    use std::process::Command;
+
+    match name {
+        "claude" => {
+            // Find patina binary path
+            let patina_path = std::env::current_exe()?;
+
+            if remove {
+                // Remove MCP configuration
+                println!("Removing patina MCP server from Claude Code...");
+                let status = Command::new("claude")
+                    .args(["mcp", "remove", "patina"])
+                    .status()?;
+
+                if status.success() {
+                    println!("✓ Removed patina MCP server");
+                } else {
+                    anyhow::bail!("Failed to remove MCP server. Is Claude Code installed?");
+                }
+            } else {
+                // Add MCP configuration
+                println!("Adding patina MCP server to Claude Code...");
+                let status = Command::new("claude")
+                    .args([
+                        "mcp",
+                        "add",
+                        "--transport",
+                        "stdio",
+                        "-s",
+                        "user",
+                        "patina",
+                        "--",
+                        patina_path.to_str().unwrap(),
+                        "serve",
+                        "--mcp",
+                    ])
+                    .status()?;
+
+                if status.success() {
+                    println!("✓ Added patina MCP server");
+                    println!("\n  Restart Claude Code to use patina_query tool.");
+                    println!("  Verify with: claude mcp list");
+                } else {
+                    anyhow::bail!("Failed to add MCP server. Is Claude Code installed?");
+                }
+            }
+        }
+        "gemini" => {
+            anyhow::bail!("Gemini MCP configuration not yet supported");
+        }
+        _ => {
+            anyhow::bail!("Unknown frontend: {}. Supported: claude", name);
+        }
     }
 
     Ok(())
