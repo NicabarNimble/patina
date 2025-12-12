@@ -43,13 +43,12 @@ impl QuerySet {
 }
 
 /// Results from a single query
+/// Note: query_id and retrieved_docs removed (unused). Add back for --verbose mode.
 struct QueryResult {
-    query_id: String,
     latency: Duration,
     reciprocal_rank: f64,
     recall_at_5: f64,
     recall_at_10: f64,
-    retrieved_docs: Vec<String>,
 }
 
 /// Aggregate benchmark results
@@ -149,12 +148,10 @@ pub fn run_benchmark(query_set: &QuerySet, limit: usize, json_output: bool) -> R
         );
 
         results.push(QueryResult {
-            query_id: bench_query.id.clone(),
             latency,
             reciprocal_rank: rr,
             recall_at_5: r5,
             recall_at_10: r10,
-            retrieved_docs,
         });
     }
 
