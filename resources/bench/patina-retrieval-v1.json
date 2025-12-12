@@ -1,0 +1,56 @@
+{
+  "name": "patina-retrieval-v1",
+  "description": "Baseline retrieval benchmark for Patina knowledge base (sessions, patterns, decisions)",
+  "queries": [
+    {
+      "id": "q1-rrf-fusion",
+      "query": "How does RRF fusion work?",
+      "relevant": ["RRF", "fusion", "retrieval"]
+    },
+    {
+      "id": "q2-oracle-abstraction",
+      "query": "Oracle abstraction for multi-source retrieval",
+      "relevant": ["Oracle", "semantic", "lexical", "retrieval"]
+    },
+    {
+      "id": "q3-mcp-server",
+      "query": "MCP server implementation for Claude",
+      "relevant": ["MCP", "JSON-RPC", "Claude"]
+    },
+    {
+      "id": "q4-black-box-pattern",
+      "query": "Black box module pattern for stable APIs",
+      "relevant": ["black-box", "dependable", "module", "internal.rs"]
+    },
+    {
+      "id": "q5-embeddings-model",
+      "query": "E5 embedding model for semantic search",
+      "relevant": ["E5", "embedding", "ONNX", "semantic"]
+    },
+    {
+      "id": "q6-persona",
+      "query": "Persona knowledge capture across projects",
+      "relevant": ["persona", "knowledge", "cross-project"]
+    },
+    {
+      "id": "q7-session-distillation",
+      "query": "Session distillation and pattern extraction",
+      "relevant": ["session", "distill", "pattern", "observation"]
+    },
+    {
+      "id": "q8-adapter-pattern",
+      "query": "LLM adapter pattern for Claude and Gemini",
+      "relevant": ["adapter", "Claude", "Gemini", "frontend"]
+    },
+    {
+      "id": "q9-docker-builds",
+      "query": "Docker containerized builds",
+      "relevant": ["Docker", "container", "build"]
+    },
+    {
+      "id": "q10-git-branch-safety",
+      "query": "Git branch safety and auto-stash",
+      "relevant": ["git", "branch", "stash", "safety"]
+    }
+  ]
+}
