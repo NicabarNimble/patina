@@ -17,6 +17,9 @@ pub struct RetrievalConfig {
     pub rrf_k: usize,
     /// Over-fetch multiplier for fusion (default: 2)
     pub fetch_multiplier: usize,
+    /// Filter to specific oracles (None = all available)
+    /// Used for ablation testing: --oracle semantic
+    pub oracle_filter: Option<Vec<String>>,
 }
 
 impl Default for RetrievalConfig {
@@ -24,6 +27,7 @@ impl Default for RetrievalConfig {
         Self {
             rrf_k: 60,
             fetch_multiplier: 2,
+            oracle_filter: None,
         }
     }
 }
@@ -56,16 +60,25 @@ impl QueryEngine {
         // Over-fetch from each oracle for better fusion
         let fetch_limit = limit * self.config.fetch_multiplier;
 
-        // Query available oracles in parallel
+        // Query available oracles in parallel (optionally filtered)
         let oracle_results: Vec<_> = self
             .oracles
             .par_iter()
             .filter(|o| o.is_available())
+            .filter(|o| self.matches_filter(o.name()))
             .filter_map(|oracle| oracle.query(query, fetch_limit).ok())
             .collect();
 
         // Fuse with RRF
         Ok(rrf_fuse(oracle_results, self.config.rrf_k, limit))
+    }
+
+    /// Check if oracle matches the filter (if any)
+    fn matches_filter(&self, oracle_name: &str) -> bool {
+        match &self.config.oracle_filter {
+            None => true, // No filter = include all
+            Some(allowed) => allowed.iter().any(|a| a.eq_ignore_ascii_case(oracle_name)),
+        }
     }
 
     /// List available oracles

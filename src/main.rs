@@ -392,6 +392,10 @@ enum BenchCommands {
         /// Override fetch multiplier (default: from config or 2)
         #[arg(long)]
         fetch_multiplier: Option<usize>,
+
+        /// Filter to specific oracle(s) for ablation testing (semantic, lexical, persona)
+        #[arg(long)]
+        oracle: Option<Vec<String>>,
     },
 }
 
@@ -690,6 +694,7 @@ fn main() -> Result<()> {
                 json,
                 rrf_k,
                 fetch_multiplier,
+                oracle,
             } => {
                 let options = commands::bench::BenchOptions {
                     query_set,
@@ -697,6 +702,7 @@ fn main() -> Result<()> {
                     json,
                     rrf_k,
                     fetch_multiplier,
+                    oracle,
                 };
                 commands::bench::execute(options)?;
             }

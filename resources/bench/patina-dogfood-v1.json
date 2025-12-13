@@ -1,0 +1,106 @@
+{
+  "name": "patina-dogfood-v1",
+  "description": "Strong ground truth benchmark for Patina itself. Each query has explicit relevant_docs (code paths) representing authoritative answers. Used to validate the lab before applying to other projects.",
+  "queries": [
+    {
+      "id": "df01-rrf-fusion",
+      "query": "How does RRF fusion combine results from multiple oracles?",
+      "relevant_docs": ["src/retrieval/fusion.rs"]
+    },
+    {
+      "id": "df02-query-engine",
+      "query": "How does the QueryEngine coordinate parallel oracle retrieval?",
+      "relevant_docs": ["src/retrieval/engine.rs"]
+    },
+    {
+      "id": "df03-oracle-trait",
+      "query": "What is the Oracle trait interface for retrieval strategies?",
+      "relevant_docs": ["src/retrieval/oracle.rs"]
+    },
+    {
+      "id": "df04-semantic-oracle",
+      "query": "How does the semantic oracle perform vector similarity search?",
+      "relevant_docs": ["src/retrieval/oracles/semantic.rs"]
+    },
+    {
+      "id": "df05-lexical-oracle",
+      "query": "How does the lexical oracle do BM25 full-text search?",
+      "relevant_docs": ["src/retrieval/oracles/lexical.rs"]
+    },
+    {
+      "id": "df06-persona-oracle",
+      "query": "How does persona retrieval work for cross-project knowledge?",
+      "relevant_docs": ["src/retrieval/oracles/persona.rs", "src/commands/persona/mod.rs"]
+    },
+    {
+      "id": "df07-mcp-server",
+      "query": "How does the MCP server handle JSON-RPC requests?",
+      "relevant_docs": ["src/mcp/server.rs", "src/mcp/mod.rs"]
+    },
+    {
+      "id": "df08-embedding-onnx",
+      "query": "How are embeddings generated using ONNX runtime?",
+      "relevant_docs": ["src/embeddings/onnx.rs", "src/embeddings/mod.rs"]
+    },
+    {
+      "id": "df09-oxidize-pipeline",
+      "query": "How does the oxidize command build the semantic index?",
+      "relevant_docs": ["src/commands/oxidize/mod.rs"]
+    },
+    {
+      "id": "df10-scrape-sessions",
+      "query": "How does patina scrape extract observations from session files?",
+      "relevant_docs": ["src/commands/scrape/sessions/mod.rs"]
+    },
+    {
+      "id": "df11-scrape-code",
+      "query": "How does code scraping extract function signatures?",
+      "relevant_docs": ["src/commands/scrape/code/mod.rs", "src/commands/scrape/code/extract_v2.rs"]
+    },
+    {
+      "id": "df12-project-config",
+      "query": "What is the structure of the unified project config?",
+      "relevant_docs": ["src/project/internal.rs", "src/project/mod.rs"]
+    },
+    {
+      "id": "df13-adapter-launch",
+      "query": "How does patina launch different LLM frontends?",
+      "relevant_docs": ["src/adapters/launch.rs", "src/commands/launch/mod.rs"]
+    },
+    {
+      "id": "df14-claude-adapter",
+      "query": "How does the Claude adapter set up project files?",
+      "relevant_docs": ["src/adapters/claude/mod.rs", "src/adapters/claude/internal/mod.rs"]
+    },
+    {
+      "id": "df15-mothership",
+      "query": "How does the mothership daemon manage background services?",
+      "relevant_docs": ["src/mothership/mod.rs", "src/mothership/internal.rs"]
+    },
+    {
+      "id": "df16-benchmark-metrics",
+      "query": "How are retrieval benchmark metrics calculated?",
+      "relevant_docs": ["src/commands/bench/internal.rs", "src/commands/bench/mod.rs"]
+    },
+    {
+      "id": "df17-git-branch-safety",
+      "query": "How does patina ensure safe git branch switching?",
+      "relevant_docs": ["src/git/fork.rs"]
+    },
+    {
+      "id": "df18-docker-builds",
+      "query": "How does patina handle containerized Docker builds?",
+      "relevant_docs": ["src/dev_env/docker.rs"]
+    },
+    {
+      "id": "df19-dependable-rust",
+      "query": "What is the dependable-rust black-box module pattern?",
+      "relevant_docs": ["layer/core/dependable-rust.md"]
+    },
+    {
+      "id": "df20-unix-philosophy",
+      "query": "How does Patina apply Unix philosophy to decomposition?",
+      "relevant_docs": ["layer/core/unix-philosophy.md"]
+    }
+  ]
+}
