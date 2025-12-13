@@ -385,6 +385,10 @@ enum BenchCommands {
         #[arg(long, short)]
         json: bool,
 
+        /// Show detailed per-query analysis (expected vs retrieved docs)
+        #[arg(long, short)]
+        verbose: bool,
+
         /// Override RRF k value (default: from config or 60)
         #[arg(long)]
         rrf_k: Option<usize>,
@@ -692,6 +696,7 @@ fn main() -> Result<()> {
                 query_set,
                 limit,
                 json,
+                verbose,
                 rrf_k,
                 fetch_multiplier,
                 oracle,
@@ -700,6 +705,7 @@ fn main() -> Result<()> {
                     query_set,
                     limit,
                     json,
+                    verbose,
                     rrf_k,
                     fetch_multiplier,
                     oracle,

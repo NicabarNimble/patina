@@ -166,6 +166,72 @@ fn recall_at_k(retrieved: &[String], ground_truth: &GroundTruth, k: usize) -> f6
     }
 }
 
+/// Print detailed analysis for a query (verbose mode)
+fn print_verbose_analysis(
+    query: &BenchQuery,
+    retrieved: &[String],
+    ground_truth: &GroundTruth,
+    rr: f64,
+) {
+    println!("      ┌─ Query: \"{}\"", truncate(&query.query, 60));
+
+    // Show expected documents
+    if !ground_truth.docs.is_empty() {
+        println!("      │  Expected: {:?}", ground_truth.docs);
+    } else if !ground_truth.keywords.is_empty() {
+        println!("      │  Keywords: {:?}", ground_truth.keywords);
+    }
+
+    // Show top 5 retrieved
+    println!("      │  Retrieved (top 5):");
+    for (i, doc) in retrieved.iter().take(5).enumerate() {
+        let matches = ground_truth.matches(doc);
+        let marker = if matches { "✓" } else { " " };
+        println!("      │    {}. {} {}", i + 1, marker, truncate(doc, 50));
+    }
+
+    // Analysis for failures
+    if rr == 0.0 {
+        println!("      │  ");
+        println!("      │  ⚠ FAILURE ANALYSIS:");
+
+        // Check if expected docs exist in retrieved at all
+        let mut found_any = false;
+        for expected in ground_truth.docs.iter() {
+            for (rank, doc) in retrieved.iter().enumerate() {
+                if doc.contains(expected) || expected.contains(doc) {
+                    println!(
+                        "      │    Found '{}' at rank {} (not in top 10)",
+                        expected,
+                        rank + 1
+                    );
+                    found_any = true;
+                    break;
+                }
+            }
+        }
+
+        if !found_any && !ground_truth.docs.is_empty() {
+            println!("      │    Expected docs NOT in retrieved results at all");
+            println!("      │    Possible causes:");
+            println!("      │      - Document not indexed (run: patina scrape && patina oxidize)");
+            println!("      │      - Query doesn't match document content semantically");
+            println!("      │      - Lexical terms don't appear in doc symbols");
+        }
+    }
+
+    println!("      └─");
+}
+
+/// Truncate string for display
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len.saturating_sub(3)])
+    }
+}
+
 /// Calculate percentile from sorted latencies
 fn percentile(sorted_latencies: &[Duration], p: f64) -> Duration {
     if sorted_latencies.is_empty() {
@@ -206,6 +272,7 @@ pub fn run_benchmark(
     query_set: &QuerySet,
     limit: usize,
     json_output: bool,
+    verbose: bool,
     config: RetrievalConfig,
 ) -> Result<()> {
     println!("🔬 Patina Retrieval Benchmark");
@@ -260,6 +327,11 @@ pub fn run_benchmark(
             r5 * 100.0,
             r10 * 100.0
         );
+
+        // Verbose: show detailed analysis for failures or all queries
+        if verbose {
+            print_verbose_analysis(bench_query, &retrieved_docs, &ground_truth, rr);
+        }
 
         results.push(QueryResult {
             latency,
