@@ -8,7 +8,7 @@ use patina::dev_env::DevEnvironment;
 use patina::environment::Environment;
 use patina::project::{
     DevSection, EmbeddingsSection, EnvironmentSection, FrontendsSection, ProjectConfig,
-    ProjectSection, SearchSection,
+    ProjectSection, RetrievalSection, SearchSection,
 };
 // Note: CiSection and UpstreamSection are optional, set to None for new projects
 use patina::version::VersionManifest;
@@ -55,6 +55,7 @@ pub fn create_project_config(
             model: "e5-base-v2".to_string(),
         },
         search: SearchSection::default(),
+        retrieval: RetrievalSection::default(),
         environment: Some(EnvironmentSection {
             os: environment.os.clone(),
             arch: environment.arch.clone(),

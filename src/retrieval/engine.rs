@@ -7,27 +7,54 @@ use super::fusion::{rrf_fuse, FusedResult};
 use super::oracle::Oracle;
 use super::oracles::{LexicalOracle, PersonaOracle, SemanticOracle};
 
+/// Retrieval configuration for QueryEngine
+///
+/// These are algorithm constants from the literature (Cormack et al., 2009).
+/// See `RetrievalSection` in project config for persistence.
+#[derive(Debug, Clone)]
+pub struct RetrievalConfig {
+    /// RRF smoothing constant (default: 60)
+    pub rrf_k: usize,
+    /// Over-fetch multiplier for fusion (default: 2)
+    pub fetch_multiplier: usize,
+}
+
+impl Default for RetrievalConfig {
+    fn default() -> Self {
+        Self {
+            rrf_k: 60,
+            fetch_multiplier: 2,
+        }
+    }
+}
+
 /// Query engine that coordinates parallel oracle retrieval
 pub struct QueryEngine {
     oracles: Vec<Box<dyn Oracle>>,
+    config: RetrievalConfig,
 }
 
 impl QueryEngine {
-    /// Create engine with default oracles (semantic, lexical, persona)
+    /// Create engine with default oracles and config
     pub fn new() -> Self {
+        Self::with_config(RetrievalConfig::default())
+    }
+
+    /// Create engine with custom retrieval config
+    pub fn with_config(config: RetrievalConfig) -> Self {
         let oracles: Vec<Box<dyn Oracle>> = vec![
             Box::new(SemanticOracle::new()),
             Box::new(LexicalOracle::new()),
             Box::new(PersonaOracle::new()),
         ];
 
-        Self { oracles }
+        Self { oracles, config }
     }
 
     /// Query all available oracles in parallel, fuse with RRF
     pub fn query(&self, query: &str, limit: usize) -> Result<Vec<FusedResult>> {
-        // Over-fetch from each oracle (2x limit) for better fusion
-        let fetch_limit = limit * 2;
+        // Over-fetch from each oracle for better fusion
+        let fetch_limit = limit * self.config.fetch_multiplier;
 
         // Query available oracles in parallel
         let oracle_results: Vec<_> = self
@@ -37,8 +64,8 @@ impl QueryEngine {
             .filter_map(|oracle| oracle.query(query, fetch_limit).ok())
             .collect();
 
-        // Fuse with RRF (k=60 is standard)
-        Ok(rrf_fuse(oracle_results, 60, limit))
+        // Fuse with RRF
+        Ok(rrf_fuse(oracle_results, self.config.rrf_k, limit))
     }
 
     /// List available oracles

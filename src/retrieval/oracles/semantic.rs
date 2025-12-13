@@ -1,7 +1,7 @@
 //! Semantic oracle - E5 embeddings + USearch vector search
 
 use anyhow::Result;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::commands::scry::{scry_text, ScryOptions};
 use crate::retrieval::oracle::{Oracle, OracleMetadata, OracleResult};
@@ -13,11 +13,18 @@ pub struct SemanticOracle {
 
 impl SemanticOracle {
     pub fn new() -> Self {
+        // Read model from project config
+        let model = patina::project::load(Path::new("."))
+            .ok()
+            .map(|c| c.embeddings.model)
+            .unwrap_or_else(|| "e5-base-v2".to_string());
+
         Self {
             db_path: PathBuf::from(".patina/data/patina.db"),
-            index_path: PathBuf::from(
-                ".patina/data/embeddings/e5-base-v2/projections/semantic.usearch",
-            ),
+            index_path: PathBuf::from(format!(
+                ".patina/data/embeddings/{}/projections/semantic.usearch",
+                model
+            )),
         }
     }
 }

@@ -384,6 +384,14 @@ enum BenchCommands {
         /// Output as JSON
         #[arg(long, short)]
         json: bool,
+
+        /// Override RRF k value (default: from config or 60)
+        #[arg(long)]
+        rrf_k: Option<usize>,
+
+        /// Override fetch multiplier (default: from config or 2)
+        #[arg(long)]
+        fetch_multiplier: Option<usize>,
     },
 }
 
@@ -680,11 +688,15 @@ fn main() -> Result<()> {
                 query_set,
                 limit,
                 json,
+                rrf_k,
+                fetch_multiplier,
             } => {
                 let options = commands::bench::BenchOptions {
                     query_set,
                     limit,
                     json,
+                    rrf_k,
+                    fetch_multiplier,
                 };
                 commands::bench::execute(options)?;
             }

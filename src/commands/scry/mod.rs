@@ -169,15 +169,27 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
 /// Get database and embeddings paths (handles --repo flag)
 fn get_paths(options: &ScryOptions) -> Result<(String, String)> {
     if let Some(ref repo_name) = options.repo {
+        // For repos, model name is stored in repo's config (future: read from repo metadata)
+        // For now, default to e5-base-v2 for repo queries
         let db_path = crate::commands::repo::get_db_path(repo_name)?;
         let embeddings_dir = db_path.replace("patina.db", "embeddings/e5-base-v2/projections");
         Ok((db_path, embeddings_dir))
     } else {
+        // For local project, read model from config
+        let model = get_embedding_model();
         Ok((
             ".patina/data/patina.db".to_string(),
-            ".patina/data/embeddings/e5-base-v2/projections".to_string(),
+            format!(".patina/data/embeddings/{}/projections", model),
         ))
     }
+}
+
+/// Get embedding model from project config (defaults to e5-base-v2)
+fn get_embedding_model() -> String {
+    patina::project::load(std::path::Path::new("."))
+        .ok()
+        .map(|c| c.embeddings.model)
+        .unwrap_or_else(|| "e5-base-v2".to_string())
 }
 
 /// Text-based scry - embed query and search (for semantic dimension)

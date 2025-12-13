@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 2 Complete - Ready for Lab & Production Testing
+**Current Phase:** Phase 2.5e - Lab Calibration (final step for true lab readiness)
 
 ---
 
@@ -265,11 +265,11 @@ struct Cli {
 
 ### Phase 2.5 Tasks
 
-#### 2.5a: Retrieval Configuration
-- [ ] Add `[retrieval]` section to config.toml
-- [ ] Make RRF k value configurable (default 60)
-- [ ] Make fetch_multiplier configurable (default 2x)
-- [ ] Config validation on load
+#### 2.5a: Retrieval Configuration ✓
+- [x] Add `[retrieval]` section to config.toml
+- [x] Make RRF k value configurable (default 60)
+- [x] Make fetch_multiplier configurable (default 2x)
+- [x] CLI overrides for `patina bench` (`--rrf-k`, `--fetch-multiplier`)
 
 #### 2.5b: Benchmark Infrastructure ✓
 - [x] `patina bench retrieval` command skeleton
@@ -306,21 +306,108 @@ MRR: 0.176 | Recall@5: 26.7% | Recall@10: 31.7% | p50: 139ms
 - Natural language finding sessions is correct behavior
 - Lexical oracle already handles exact code matches
 
-#### 2.5c: Model Flexibility
-- [ ] Document model addition process
-- [ ] Test with second embedding model (bge-small or nomic)
-- [ ] Verify vector space compatibility
+#### 2.5c: Model Flexibility ✓
+- [x] Document model addition process (see below)
+- [x] Config-driven model paths in scry and semantic oracle
+- [ ] Test with second embedding model (Phase 3 - requires model download)
+
+**Model Addition Process:**
+
+1. **Download the model** to `resources/models/{model-name}/`:
+   ```bash
+   ./scripts/download-model.sh {model-name}  # e.g., bge-small-en-v1.5
+   ```
+
+2. **Update project config** (`.patina/config.toml`):
+   ```toml
+   [embeddings]
+   model = "{model-name}"
+   ```
+
+3. **Update oxidize recipe** (`.patina/oxidize.yaml`):
+   ```yaml
+   embedding_model: {model-name}
+   projections:
+     semantic:
+       layers: [{input_dim}, 1024, 256]  # Adjust input_dim for model
+   ```
+
+4. **Rebuild embeddings**:
+   ```bash
+   patina oxidize
+   ```
+
+**Important:** Different models have different embedding dimensions:
+- `e5-base-v2`: 768 dims (default)
+- `bge-small-en-v1.5`: 384 dims
+- `nomic-embed-text`: 768 dims
+
+Changing models requires rebuilding the entire index (`patina oxidize`).
+
+#### 2.5e: Lab Calibration (Required for True Lab Readiness)
+
+**Problem Discovered:** The benchmark infrastructure (2.5b) exists but produces unreliable metrics because:
+1. Ground truth uses **keywords** not **document IDs**
+2. No **oracle ablation** to isolate which retrieval source helps
+3. Recall@K counts keyword matches, not document matches
+
+**The Andrew Ng Principle:** Data > Code. The benchmark code is correct, but the ground truth data is weak. A benchmark with bad labels can't tell us if retrieval is actually good.
+
+**The Patina Reality:**
+- LLMs write most code, humans direct
+- Sessions capture the WHY, code shows the HOW
+- Both are valid retrieval targets
+- Patina itself is the dogfood test case (rich sessions + code + git)
+
+**Required Fixes:**
+
+- [ ] **Fix benchmark format** - Use document IDs instead of keywords
+  ```json
+  // Before (weak)
+  {"query": "How does RRF work?", "relevant": ["RRF", "fusion"]}
+
+  // After (strong)
+  {"query": "How does RRF work?", "relevant_docs": ["src/retrieval/fusion.rs"]}
+  ```
+
+- [ ] **Add `--oracle` flag** - Ablation testing to isolate oracle contribution
+  ```bash
+  patina bench retrieval -q queries.json --oracle semantic
+  patina bench retrieval -q queries.json --oracle lexical
+  patina bench retrieval -q queries.json --oracle persona
+  patina bench retrieval -q queries.json  # all (default)
+  ```
+
+- [ ] **Fix Recall@K calculation** - Match on document IDs, not keywords
+
+- [ ] **Create Patina dogfood queries** - ~20 queries about Patina features where we know correct documents (sessions that built the feature + code that implements it)
+
+**Why Patina Dogfood:**
+- Rich session data exists
+- Git history is meaningful
+- Code is indexed
+- We can validate lab actually works before applying to other projects
+
+**Phase 3 Concern (NOT 2.5):** Graceful degradation for:
+- New projects (no sessions)
+- External repos (suspect git quality)
+- Cold start problem
 
 ### Validation
 
 | Criteria | Status |
 |----------|--------|
-| Can change RRF k via config | [ ] |
+| Can change RRF k via config | [x] `[retrieval].rrf_k` |
+| Can change fetch_multiplier via config | [x] `[retrieval].fetch_multiplier` |
+| CLI overrides for bench | [x] `--rrf-k`, `--fetch-multiplier` |
 | `patina bench` produces metrics | [x] MRR, Recall@K, latency |
 | Code facts in semantic index | [x] 911 functions indexed |
 | Benchmark shows improvement | [x] 10x MRR, +26% recall |
-| Second embedding model works | [ ] |
+| Model paths read from config | [x] scry + semantic oracle |
 | No regression in production use | [x] tested via MCP |
+| **Ground truth uses document IDs** | [ ] 2.5e |
+| **Oracle ablation available** | [ ] 2.5e |
+| **Dogfood queries created** | [ ] 2.5e |
 
 ---
 
