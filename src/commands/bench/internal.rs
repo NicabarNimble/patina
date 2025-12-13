@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crate::retrieval::QueryEngine;
+use crate::retrieval::{QueryEngine, RetrievalConfig};
+use patina::project;
 
 /// A single benchmark query with ground truth
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -104,8 +105,37 @@ fn percentile(sorted_latencies: &[Duration], p: f64) -> Duration {
     sorted_latencies[idx.min(sorted_latencies.len() - 1)]
 }
 
+/// Build retrieval config from project config with optional CLI overrides
+pub fn build_retrieval_config(
+    rrf_k_override: Option<usize>,
+    fetch_multiplier_override: Option<usize>,
+) -> RetrievalConfig {
+    // Try to load from project config, fall back to defaults
+    let project_config = project::load(Path::new(".")).ok();
+
+    let base_rrf_k = project_config
+        .as_ref()
+        .map(|c| c.retrieval.rrf_k)
+        .unwrap_or(60);
+
+    let base_fetch_multiplier = project_config
+        .as_ref()
+        .map(|c| c.retrieval.fetch_multiplier)
+        .unwrap_or(2);
+
+    RetrievalConfig {
+        rrf_k: rrf_k_override.unwrap_or(base_rrf_k),
+        fetch_multiplier: fetch_multiplier_override.unwrap_or(base_fetch_multiplier),
+    }
+}
+
 /// Run the benchmark and report results
-pub fn run_benchmark(query_set: &QuerySet, limit: usize, json_output: bool) -> Result<()> {
+pub fn run_benchmark(
+    query_set: &QuerySet,
+    limit: usize,
+    json_output: bool,
+    config: RetrievalConfig,
+) -> Result<()> {
     println!("🔬 Patina Retrieval Benchmark");
     println!(
         "   Query set: {} ({} queries)",
@@ -113,10 +143,14 @@ pub fn run_benchmark(query_set: &QuerySet, limit: usize, json_output: bool) -> R
         query_set.queries.len()
     );
     println!("   Limit: {} results per query", limit);
+    println!(
+        "   Config: rrf_k={}, fetch_multiplier={}",
+        config.rrf_k, config.fetch_multiplier
+    );
     println!();
 
-    // Initialize query engine
-    let engine = QueryEngine::new();
+    // Initialize query engine with config
+    let engine = QueryEngine::with_config(config);
 
     // Run each query
     let mut results: Vec<QueryResult> = Vec::new();

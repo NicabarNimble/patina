@@ -30,6 +30,8 @@ pub struct ProjectConfig {
     pub embeddings: EmbeddingsSection,
     #[serde(default)]
     pub search: SearchSection,
+    #[serde(default)]
+    pub retrieval: RetrievalSection,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<EnvironmentSection>,
 }
@@ -192,6 +194,43 @@ pub struct EnvironmentSection {
     /// Detected tools
     #[serde(default)]
     pub detected_tools: Vec<String>,
+}
+
+/// Retrieval configuration - RRF fusion parameters
+///
+/// These are algorithm constants from the literature (Cormack et al., 2009).
+/// Most users should not change these unless experimenting with retrieval quality.
+///
+/// - **rrf_k** (60): Smoothing constant for RRF. Higher values reduce the
+///   impact of top ranks. k=60 is standard from the original paper.
+/// - **fetch_multiplier** (2): Over-fetch factor for fusion. Fetches limit * N
+///   results from each oracle before fusion to improve diversity.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetrievalSection {
+    /// RRF smoothing constant (default: 60)
+    #[serde(default = "default_rrf_k")]
+    pub rrf_k: usize,
+
+    /// Over-fetch multiplier for fusion (default: 2)
+    #[serde(default = "default_fetch_multiplier")]
+    pub fetch_multiplier: usize,
+}
+
+fn default_rrf_k() -> usize {
+    60
+}
+
+fn default_fetch_multiplier() -> usize {
+    2
+}
+
+impl Default for RetrievalSection {
+    fn default() -> Self {
+        Self {
+            rrf_k: default_rrf_k(),
+            fetch_multiplier: default_fetch_multiplier(),
+        }
+    }
 }
 
 /// Search configuration - ML thresholds for different use cases
@@ -439,6 +478,27 @@ mod tests {
         assert_eq!(config.embeddings.model, "e5-base-v2");
         assert!(config.upstream.is_none()); // No upstream by default (owned repo)
         assert!(config.ci.is_none()); // No CI checks by default
+                                      // Retrieval defaults (from Cormack et al. 2009)
+        assert_eq!(config.retrieval.rrf_k, 60);
+        assert_eq!(config.retrieval.fetch_multiplier, 2);
+    }
+
+    #[test]
+    fn test_retrieval_config() {
+        let tmp = TempDir::new().unwrap();
+        let config_path = tmp.path().join(".patina/config.toml");
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+
+        // Test custom retrieval config
+        fs::write(
+            &config_path,
+            "[retrieval]\nrrf_k = 30\nfetch_multiplier = 3\n",
+        )
+        .unwrap();
+
+        let config = load(tmp.path()).unwrap();
+        assert_eq!(config.retrieval.rrf_k, 30);
+        assert_eq!(config.retrieval.fetch_multiplier, 3);
     }
 
     #[test]

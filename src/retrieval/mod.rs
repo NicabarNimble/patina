@@ -2,6 +2,7 @@
 //!
 //! Public interface:
 //! - `QueryEngine` for parallel multi-oracle queries
+//! - `RetrievalConfig` for tuning RRF parameters
 //! - `FusedResult` for query results (includes metadata)
 //!
 //! Internal (not exported):
@@ -13,5 +14,5 @@ mod fusion;
 mod oracle;
 mod oracles;
 
-pub use engine::QueryEngine;
+pub use engine::{QueryEngine, RetrievalConfig};
 pub use fusion::FusedResult;
