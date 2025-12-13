@@ -1,9 +1,10 @@
 # Spec: Agentic RAG System
 
-**Status:** Active Development
-**Phase:** 2 (Agentic RAG)
-**Session:** 20251211-201645
+**Status:** Active Development (Phase 2.7 in progress)
+**Phase:** 2 (Agentic RAG) + 2.5 (Lab) + 2.7 (Quality)
+**Sessions:** 20251211-201645, 20251213-083935
 **Created:** 2025-12-12
+**Updated:** 2025-12-13
 
 ---
 
@@ -625,15 +626,82 @@ Parallel execution means semantic/lexical/persona run concurrently, so actual ti
 
 ---
 
-## Success Criteria
+## Success Criteria (Phase 2 Core)
 
-| Criteria | Target |
-|----------|--------|
-| MCP server starts | `patina serve --mcp` works |
-| Tool discovery | Claude sees patina_query |
-| Hybrid retrieval | Fuses semantic + lexical |
-| Latency | < 500ms |
-| Persona included | Session knowledge in results |
+| Criteria | Target | Status |
+|----------|--------|--------|
+| MCP server starts | `patina serve --mcp` works | ✅ Done |
+| Tool discovery | Claude sees patina_query | ✅ Done |
+| Hybrid retrieval | Fuses semantic + lexical | ✅ Done |
+| Latency | < 500ms | ✅ ~196ms |
+| Persona included | Session knowledge in results | ✅ Done |
+| patina_context tool | Patterns via MCP | ❌ Pending |
+| Session tools | start/note/end via MCP | ❌ Pending |
+
+---
+
+## Phase 2.5: Lab Readiness (Complete)
+
+**Goal:** Enable experimentation without breaking production use.
+
+**Session:** 20251213-083935
+
+### Completed (2.5a-e)
+
+| Task | Deliverable |
+|------|-------------|
+| 2.5a: Retrieval Config | `[retrieval]` in config.toml, rrf_k and fetch_multiplier |
+| 2.5b: Benchmark Infrastructure | `patina bench retrieval` with MRR, Recall@K, latency |
+| 2.5c: Model Flexibility | Config-driven model paths in scry/semantic oracle |
+| 2.5d: Code Knowledge Gap | Fixed: code facts now in semantic index (1121 indexed) |
+| 2.5e: Lab Calibration | Strong ground truth (doc IDs), oracle ablation (`--oracle`), dogfood queries |
+
+### Key Learnings
+
+**Dogfood benchmark results (20 queries):**
+```
+Before re-index: MRR 0.059 | Recall@10 17.5%
+After re-index:  MRR 0.171 | Recall@10 45.0%  (+2.9x)
+```
+
+**Ablation revealed:**
+- Semantic: MRR 0.071 (doing all the work)
+- Lexical: MRR 0.000 (broken for code queries)
+- Persona: MRR 0.000 (expected - stores session knowledge)
+
+---
+
+## Phase 2.7: Retrieval Quality (In Progress)
+
+**Goal:** Fix retrieval gaps before moving to Phase 3.
+
+**Philosophy (Andrew Ng):** Don't add features until current features work. Phase 3 assumes retrieval works.
+
+### Problems Identified
+
+1. **Lexical oracle broken for code** - FTS5 searches sessions, not code paths
+2. **Some code files don't rank high** - oracle.rs, oracles/*.rs
+3. **No error analysis** - can't see WHY queries fail
+4. **Small ground truth** - 20 queries = high variance
+5. **No hyperparameter optimization** - is k=60 optimal?
+
+### Tasks
+
+| Task | Focus | Status |
+|------|-------|--------|
+| 2.7a | Lexical oracle for code | ❌ |
+| 2.7b | Error analysis (`--verbose`) | ❌ |
+| 2.7c | Ground truth expansion (20→50+) | ❌ |
+| 2.7d | Hyperparameter sweep | ❌ |
+| 2.7e | Complete MCP tools (patina_context, session) | ❌ |
+
+### Exit Criteria for Phase 2
+
+Before Phase 3, ALL must be true:
+- [ ] All three oracles contribute meaningfully
+- [ ] MRR > 0.3 on dogfood benchmark
+- [ ] patina_context exposes patterns via MCP
+- [ ] Error analysis tooling exists
 
 ---
 

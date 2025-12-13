@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 2.5e - Lab Calibration (final step for true lab readiness)
+**Current Phase:** Phase 2.7 - Retrieval Quality (fix gaps before Phase 3)
 
 ---
 
@@ -359,18 +359,19 @@ Changing models requires rebuilding the entire index (`patina oxidize`).
 - Both are valid retrieval targets
 - Patina itself is the dogfood test case (rich sessions + code + git)
 
-**Required Fixes:**
+**Completed Fixes (session 20251213-083935):**
 
-- [ ] **Fix benchmark format** - Use document IDs instead of keywords
+- [x] **Fix benchmark format** - Use document IDs instead of keywords
+  - `BenchQuery` now supports `relevant_docs` (strong) and legacy `relevant` (weak)
+  - `GroundTruth` struct handles matching logic with fallback
   ```json
-  // Before (weak)
-  {"query": "How does RRF work?", "relevant": ["RRF", "fusion"]}
-
-  // After (strong)
+  // New format (strong ground truth)
   {"query": "How does RRF work?", "relevant_docs": ["src/retrieval/fusion.rs"]}
   ```
 
-- [ ] **Add `--oracle` flag** - Ablation testing to isolate oracle contribution
+- [x] **Add `--oracle` flag** - Ablation testing to isolate oracle contribution
+  - `RetrievalConfig` now has `oracle_filter: Option<Vec<String>>`
+  - `QueryEngine` filters oracles by name (case-insensitive)
   ```bash
   patina bench retrieval -q queries.json --oracle semantic
   patina bench retrieval -q queries.json --oracle lexical
@@ -378,15 +379,51 @@ Changing models requires rebuilding the entire index (`patina oxidize`).
   patina bench retrieval -q queries.json  # all (default)
   ```
 
-- [ ] **Fix Recall@K calculation** - Match on document IDs, not keywords
+- [x] **Fix Recall@K calculation** - Match on document IDs, not keywords
+  - `reciprocal_rank()` and `recall_at_k()` now use `GroundTruth` struct
+  - Strong matching: doc_id path contains ground truth path
 
-- [ ] **Create Patina dogfood queries** - ~20 queries about Patina features where we know correct documents (sessions that built the feature + code that implements it)
+- [x] **Create Patina dogfood queries** - 20 queries in `resources/bench/patina-dogfood-v1.json`
+  - Code implementation queries (semantic oracle target)
+  - Architecture queries (pattern files target)
+  - Mix of retrieval challenges for comprehensive testing
 
 **Why Patina Dogfood:**
 - Rich session data exists
 - Git history is meaningful
 - Code is indexed
 - We can validate lab actually works before applying to other projects
+
+**Key Learnings from Dogfood (session 20251213-083935):**
+
+Initial benchmark run with strong ground truth (stale index):
+```
+MRR: 0.059 | Recall@5: 12.5% | Recall@10: 17.5%
+```
+
+**Critical finding:** The low scores revealed that the retrieval module code (Phase 2) hadn't been indexed! The lab correctly identified the stale index problem.
+
+**After re-scrape and re-oxidize:**
+```
+MRR: 0.171 | Recall@5: 30.0% | Recall@10: 45.0%
+```
+
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| MRR | 0.059 | 0.171 | **2.9x** |
+| Recall@5 | 12.5% | 30.0% | **2.4x** |
+| Recall@10 | 17.5% | 45.0% | **2.6x** |
+
+**Notable wins:**
+- `df01-rrf-fusion`: RR=0.50, R@10=100% (found fusion.rs!)
+- `df07-mcp-server`: RR=1.00 (perfect, found it first!)
+- `df02-query-engine`: RR=0.20, R@10=100%
+
+**Remaining gaps (Phase 3 opportunities):**
+- Oracle files (`src/retrieval/oracles/*.rs`) not ranking high
+- Pattern files (`layer/core/*.md`) not in semantic index (markdown, not code/sessions)
+
+This validates the lab infrastructure works - it revealed actual retrieval state and proved the re-indexing hypothesis.
 
 **Phase 3 Concern (NOT 2.5):** Graceful degradation for:
 - New projects (no sessions)
@@ -405,9 +442,82 @@ Changing models requires rebuilding the entire index (`patina oxidize`).
 | Benchmark shows improvement | [x] 10x MRR, +26% recall |
 | Model paths read from config | [x] scry + semantic oracle |
 | No regression in production use | [x] tested via MCP |
-| **Ground truth uses document IDs** | [ ] 2.5e |
-| **Oracle ablation available** | [ ] 2.5e |
-| **Dogfood queries created** | [ ] 2.5e |
+| **Ground truth uses document IDs** | [x] `relevant_docs` field in BenchQuery |
+| **Oracle ablation available** | [x] `--oracle` flag with filter |
+| **Dogfood queries created** | [x] 20 queries in `patina-dogfood-v1.json` |
+
+---
+
+## Phase 2.7: Retrieval Quality (Discovered via Lab)
+
+**Goal:** Fix retrieval gaps revealed by Phase 2.5e dogfood benchmarking before moving to Phase 3.
+
+**Philosophy (Andrew Ng):** Don't add more features until current features work well. Phase 3 (distillation) assumes retrieval works. Fix fundamentals first.
+
+**Current State (after 2.5e):**
+```
+MRR: 0.171 | Recall@5: 30.0% | Recall@10: 45.0%
+
+Ablation:
+- Semantic: MRR 0.071 (doing all the work)
+- Lexical:  MRR 0.000 (broken for code queries)
+- Persona:  MRR 0.000 (expected - stores session knowledge)
+```
+
+**Problems Identified:**
+1. Lexical oracle returns 0 for code queries (FTS5 searches sessions, not code paths)
+2. Some code files don't rank high (oracle.rs, oracles/*.rs)
+3. No error analysis tooling (can't see WHY queries fail)
+4. Small ground truth (20 queries = high variance)
+5. No hyperparameter optimization (is k=60 optimal?)
+
+### Phase 2.7 Tasks
+
+#### 2.7a: Lexical Oracle for Code
+- [ ] Analyze why lexical returns 0 for code queries
+- [ ] Option A: Add code to FTS5 index (function names, file paths)
+- [ ] Option B: Create separate code lexical oracle
+- [ ] Re-benchmark after fix
+
+#### 2.7b: Error Analysis Tooling
+- [ ] Add `--verbose` flag to `patina bench` showing retrieved vs expected
+- [ ] Per-query breakdown: which queries fail consistently?
+- [ ] Identify failure patterns (wrong embedding? missing doc? ranking?)
+
+#### 2.7c: Ground Truth Expansion
+- [ ] Expand dogfood queries from 20 → 50+
+- [ ] Cover more query types (architecture, debugging, "why" questions)
+- [ ] Add queries that should hit lexical (exact function names)
+
+#### 2.7d: Hyperparameter Optimization
+- [ ] Sweep rrf_k values (20, 40, 60, 80, 100)
+- [ ] Sweep fetch_multiplier (1, 2, 3, 4)
+- [ ] Document optimal values with evidence
+
+#### 2.7e: Complete Phase 2 MCP Tools
+- [ ] `patina_context` tool (project rules/patterns from layer/)
+- [ ] Session tools via MCP (`patina_session_start/end/note`)
+
+### Validation
+
+| Criteria | Status |
+|----------|--------|
+| Lexical oracle contributes to code queries | [ ] |
+| MRR > 0.3 on dogfood benchmark | [ ] |
+| Recall@10 > 60% on dogfood benchmark | [ ] |
+| Error analysis available via --verbose | [ ] |
+| Ground truth has 50+ queries | [ ] |
+| rrf_k optimized with evidence | [ ] |
+| `patina_context` MCP tool works | [ ] |
+| Session MCP tools work | [ ] |
+
+### Exit Criteria for Phase 2
+
+Before moving to Phase 3, ALL of these must be true:
+- [ ] All three oracles contribute meaningfully to relevant queries
+- [ ] MRR > 0.3 on dogfood benchmark
+- [ ] `patina_context` exposes patterns via MCP
+- [ ] Error analysis tooling exists
 
 ---
 

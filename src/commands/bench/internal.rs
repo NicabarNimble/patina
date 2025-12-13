@@ -17,7 +17,11 @@ pub struct BenchQuery {
     pub id: String,
     /// The query text
     pub query: String,
-    /// Relevant document identifiers (substring matching)
+    /// Relevant documents by path/ID (preferred - explicit document matching)
+    #[serde(default)]
+    pub relevant_docs: Vec<String>,
+    /// Legacy: keywords for substring matching (deprecated, use relevant_docs)
+    #[serde(default)]
     pub relevant: Vec<String>,
 }
 
@@ -65,18 +69,60 @@ struct BenchmarkResults {
     latency_mean_ms: f64,
 }
 
-/// Check if retrieved content matches any relevant term (case-insensitive)
-fn is_relevant(content: &str, relevant: &[String]) -> bool {
-    let content_lower = content.to_lowercase();
-    relevant
-        .iter()
-        .any(|r| content_lower.contains(&r.to_lowercase()))
+/// Ground truth for a benchmark query
+/// Supports both document ID matching (preferred) and keyword matching (legacy)
+struct GroundTruth<'a> {
+    /// Explicit document paths/IDs (strong ground truth)
+    docs: &'a [String],
+    /// Keywords for substring matching (weak ground truth, legacy)
+    keywords: &'a [String],
+}
+
+impl<'a> GroundTruth<'a> {
+    fn from_query(query: &'a BenchQuery) -> Self {
+        Self {
+            docs: &query.relevant_docs,
+            keywords: &query.relevant,
+        }
+    }
+
+    /// Check if a retrieved doc_id matches ground truth
+    /// Prefers doc matching; falls back to keyword matching if no docs specified
+    fn matches(&self, doc_id: &str) -> bool {
+        if !self.docs.is_empty() {
+            // Strong matching: doc_id must contain one of the relevant doc paths
+            // e.g., doc_id="src/retrieval/fusion.rs:42" matches "src/retrieval/fusion.rs"
+            self.docs
+                .iter()
+                .any(|d| doc_id.contains(d) || d.contains(doc_id))
+        } else {
+            // Legacy keyword matching (weak)
+            let doc_lower = doc_id.to_lowercase();
+            self.keywords
+                .iter()
+                .any(|k| doc_lower.contains(&k.to_lowercase()))
+        }
+    }
+
+    /// Count of expected relevant documents
+    fn expected_count(&self) -> usize {
+        if !self.docs.is_empty() {
+            self.docs.len()
+        } else {
+            self.keywords.len()
+        }
+    }
+
+    /// Check if using strong (doc-based) or weak (keyword-based) ground truth
+    fn is_strong(&self) -> bool {
+        !self.docs.is_empty()
+    }
 }
 
 /// Calculate reciprocal rank (1/rank of first relevant result, or 0)
-fn reciprocal_rank(retrieved: &[String], relevant: &[String]) -> f64 {
+fn reciprocal_rank(retrieved: &[String], ground_truth: &GroundTruth) -> f64 {
     for (rank, doc_id) in retrieved.iter().enumerate() {
-        if is_relevant(doc_id, relevant) {
+        if ground_truth.matches(doc_id) {
             return 1.0 / (rank + 1) as f64;
         }
     }
@@ -84,16 +130,40 @@ fn reciprocal_rank(retrieved: &[String], relevant: &[String]) -> f64 {
 }
 
 /// Calculate recall at K (fraction of relevant docs found in top K)
-fn recall_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
-    if relevant.is_empty() {
+fn recall_at_k(retrieved: &[String], ground_truth: &GroundTruth, k: usize) -> f64 {
+    let expected = ground_truth.expected_count();
+    if expected == 0 {
         return 1.0; // No relevant docs = perfect recall (vacuous truth)
     }
+
     let top_k: Vec<_> = retrieved.iter().take(k).collect();
-    let found = relevant
-        .iter()
-        .filter(|r| top_k.iter().any(|doc| is_relevant(doc, &[(*r).clone()])))
-        .count();
-    found as f64 / relevant.len() as f64
+
+    if ground_truth.is_strong() {
+        // Count how many expected docs were found
+        let found = ground_truth
+            .docs
+            .iter()
+            .filter(|d| {
+                top_k
+                    .iter()
+                    .any(|doc| doc.contains(*d) || d.contains(doc.as_str()))
+            })
+            .count();
+        found as f64 / expected as f64
+    } else {
+        // Legacy: count keywords matched (weaker signal)
+        let found = ground_truth
+            .keywords
+            .iter()
+            .filter(|k| {
+                let k_lower = k.to_lowercase();
+                top_k
+                    .iter()
+                    .any(|doc| doc.to_lowercase().contains(&k_lower))
+            })
+            .count();
+        found as f64 / expected as f64
+    }
 }
 
 /// Calculate percentile from sorted latencies
@@ -109,6 +179,7 @@ fn percentile(sorted_latencies: &[Duration], p: f64) -> Duration {
 pub fn build_retrieval_config(
     rrf_k_override: Option<usize>,
     fetch_multiplier_override: Option<usize>,
+    oracle_filter: Option<Vec<String>>,
 ) -> RetrievalConfig {
     // Try to load from project config, fall back to defaults
     let project_config = project::load(Path::new(".")).ok();
@@ -126,6 +197,7 @@ pub fn build_retrieval_config(
     RetrievalConfig {
         rrf_k: rrf_k_override.unwrap_or(base_rrf_k),
         fetch_multiplier: fetch_multiplier_override.unwrap_or(base_fetch_multiplier),
+        oracle_filter,
     }
 }
 
@@ -147,6 +219,13 @@ pub fn run_benchmark(
         "   Config: rrf_k={}, fetch_multiplier={}",
         config.rrf_k, config.fetch_multiplier
     );
+
+    // Show oracle filter for ablation clarity
+    let oracle_desc = match &config.oracle_filter {
+        Some(oracles) => oracles.join(", "),
+        None => "all".to_string(),
+    };
+    println!("   Oracles: {}", oracle_desc);
     println!();
 
     // Initialize query engine with config
@@ -169,9 +248,10 @@ pub fn run_benchmark(
 
         let retrieved_docs: Vec<String> = fused_results.iter().map(|r| r.doc_id.clone()).collect();
 
-        let rr = reciprocal_rank(&retrieved_docs, &bench_query.relevant);
-        let r5 = recall_at_k(&retrieved_docs, &bench_query.relevant, 5);
-        let r10 = recall_at_k(&retrieved_docs, &bench_query.relevant, 10);
+        let ground_truth = GroundTruth::from_query(bench_query);
+        let rr = reciprocal_rank(&retrieved_docs, &ground_truth);
+        let r5 = recall_at_k(&retrieved_docs, &ground_truth, 5);
+        let r10 = recall_at_k(&retrieved_docs, &ground_truth, 10);
 
         println!(
             "{:.0}ms (RR={:.2}, R@5={:.0}%, R@10={:.0}%)",
