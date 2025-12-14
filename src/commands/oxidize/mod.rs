@@ -288,10 +288,52 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
         events.push((CODE_ID_OFFSET + rowid, desc));
     }
 
+    let code_count = events.len() - session_count;
+
+    // 3. Layer patterns from patterns + pattern_fts tables (use offset to avoid ID collision)
+    const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
+    let mut stmt = conn.prepare(
+        "SELECT p.rowid, p.id, p.title, p.purpose, f.content, p.tags, p.file_path
+         FROM patterns p
+         LEFT JOIN pattern_fts f ON p.id = f.id",
+    )?;
+
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let rowid: i64 = row.get(0)?;
+        let id: String = row.get(1)?;
+        let title: String = row.get(2)?;
+        let purpose: Option<String> = row.get(3)?;
+        let content: Option<String> = row.get(4)?;
+        let tags: Option<String> = row.get(5)?;
+        let file_path: String = row.get(6)?;
+
+        // Create embeddable text for the pattern
+        // Include title, purpose, tags, and content for rich semantic matching
+        let mut desc = format!("Pattern: {} - {}", title, id);
+        if let Some(p) = purpose {
+            desc.push_str(&format!(". Purpose: {}", p));
+        }
+        if let Some(t) = tags {
+            if !t.is_empty() {
+                desc.push_str(&format!(". Tags: {}", t));
+            }
+        }
+        // Include first ~500 chars of content for context
+        if let Some(c) = content {
+            let content_preview: String = c.chars().take(500).collect();
+            desc.push_str(&format!(". Content: {}", content_preview));
+        }
+        desc.push_str(&format!(". File: {}", file_path));
+
+        events.push((PATTERN_ID_OFFSET + rowid, desc));
+    }
+
+    let pattern_count = events.len() - session_count - code_count;
+
     println!(
-        "   Indexed {} session events + {} code facts",
-        session_count,
-        events.len() - session_count
+        "   Indexed {} session events + {} code facts + {} patterns",
+        session_count, code_count, pattern_count
     );
 
     Ok(events)

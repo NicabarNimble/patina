@@ -655,12 +655,13 @@ fn enrich_results(
 ) -> Result<Vec<ScryResult>> {
     let mut enriched = Vec::new();
 
-    // Code facts use ID offset to distinguish from eventlog entries
+    // ID offsets to distinguish different content types in semantic index
     const CODE_ID_OFFSET: i64 = 1_000_000_000;
+    const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
 
     match dimension {
         "semantic" => {
-            // Semantic index contains both eventlog entries and code facts
+            // Semantic index contains eventlog entries, code facts, and patterns
             for i in 0..results.keys.len() {
                 let key = results.keys[i] as i64;
                 let distance = results.distances[i];
@@ -671,8 +672,44 @@ fn enrich_results(
                     continue;
                 }
 
-                // Check if this is a code fact (ID >= offset) or eventlog entry
-                if key >= CODE_ID_OFFSET {
+                // Check content type based on ID range
+                if key >= PATTERN_ID_OFFSET {
+                    // Pattern - look up in patterns table
+                    let rowid = key - PATTERN_ID_OFFSET;
+                    let result = conn.query_row(
+                        "SELECT rowid, id, title, purpose, layer, file_path
+                         FROM patterns
+                         WHERE rowid = ?",
+                        [rowid],
+                        |row| {
+                            let id: String = row.get(1)?;
+                            let title: String = row.get(2)?;
+                            let purpose: Option<String> = row.get(3)?;
+                            let layer: String = row.get(4)?;
+                            let file_path: String = row.get(5)?;
+
+                            // Build description
+                            let desc = if let Some(p) = purpose {
+                                format!("{}: {}", title, p)
+                            } else {
+                                title.clone()
+                            };
+
+                            Ok(ScryResult {
+                                id: key,
+                                event_type: format!("pattern.{}", layer),
+                                source_id: id,
+                                timestamp: String::new(),
+                                content: format!("{} ({})", desc, file_path),
+                                score,
+                            })
+                        },
+                    );
+
+                    if let Ok(r) = result {
+                        enriched.push(r);
+                    }
+                } else if key >= CODE_ID_OFFSET {
                     // Code fact - look up in function_facts
                     let rowid = key - CODE_ID_OFFSET;
                     let result = conn.query_row(
