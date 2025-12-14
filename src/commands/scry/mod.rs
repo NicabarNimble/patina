@@ -417,17 +417,16 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
 
     println!("FTS5 query: {}", fts_query);
 
-    // Build event type filter based on include_issues flag
+    let mut collected: Vec<ScryResult> = Vec::new();
+
+    // 1. Search code_fts
     let event_type_filter = if options.include_issues {
-        // Include both code and github events
         "event_type LIKE 'code.%' OR event_type = 'github.issue'"
     } else {
-        // Code events only (default)
         "event_type LIKE 'code.%'"
     };
 
-    // Search using FTS5 with BM25 scoring
-    let sql = format!(
+    let code_sql = format!(
         "SELECT
             symbol_name,
             file_path,
@@ -442,34 +441,81 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
         event_type_filter
     );
 
-    let mut stmt = conn.prepare(&sql)?;
+    let mut stmt = conn.prepare(&code_sql)?;
+    let code_results =
+        stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
+            let symbol: String = row.get(0)?;
+            let file_path: String = row.get(1)?;
+            let snippet: String = row.get(2)?;
+            let event_type: String = row.get(3)?;
+            let bm25_score: f64 = row.get(4)?;
 
-    let results = stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
-        let symbol: String = row.get(0)?;
-        let file_path: String = row.get(1)?;
-        let snippet: String = row.get(2)?;
-        let event_type: String = row.get(3)?;
-        let bm25_score: f64 = row.get(4)?;
+            let source_id = if event_type == "github.issue" {
+                format!("[ISSUE] {}", symbol)
+            } else {
+                format!("{}:{}", file_path, symbol)
+            };
 
-        // Format source_id based on event type
-        let source_id = if event_type == "github.issue" {
-            format!("[ISSUE] {}", symbol) // symbol contains issue title for github events
-        } else {
-            format!("{}:{}", file_path, symbol)
-        };
+            Ok(ScryResult {
+                id: 0,
+                content: snippet,
+                // BM25 is negative, convert to positive (don't cap - preserve ranking)
+                score: -bm25_score as f32,
+                event_type,
+                source_id,
+                timestamp: String::new(),
+            })
+        })?;
+    collected.extend(code_results.filter_map(|r| r.ok()));
 
-        Ok(ScryResult {
-            id: 0,
-            content: snippet,
-            // BM25 is negative (lower = better), convert to positive score
-            score: (-bm25_score as f32).min(1.0),
-            event_type,
-            source_id,
-            timestamp: String::new(),
-        })
-    })?;
+    // 2. Search pattern_fts (layer docs)
+    let pattern_sql = "SELECT
+            id,
+            title,
+            snippet(pattern_fts, 2, '>>>', '<<<', '...', 64) as snippet,
+            file_path,
+            bm25(pattern_fts) as score
+         FROM pattern_fts
+         WHERE pattern_fts MATCH ?
+         ORDER BY score
+         LIMIT ?";
 
-    let mut collected: Vec<ScryResult> = results.filter_map(|r| r.ok()).collect();
+    if let Ok(mut stmt) = conn.prepare(pattern_sql) {
+        let pattern_results =
+            stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
+                let id: String = row.get(0)?;
+                let title: String = row.get(1)?;
+                let snippet: String = row.get(2)?;
+                let file_path: String = row.get(3)?;
+                let bm25_score: f64 = row.get(4)?;
+
+                // Determine layer from file path
+                let layer = if file_path.contains("layer/core") {
+                    "core"
+                } else {
+                    "surface"
+                };
+
+                Ok(ScryResult {
+                    id: 0,
+                    content: format!("{}: {}", title, snippet),
+                    // BM25 is negative, convert to positive (don't cap - preserve ranking)
+                    score: -bm25_score as f32,
+                    event_type: format!("pattern.{}", layer),
+                    source_id: id,
+                    timestamp: String::new(),
+                })
+            })?;
+        collected.extend(pattern_results.filter_map(|r| r.ok()));
+    }
+
+    // Sort by score (higher is better) and limit
+    collected.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    collected.truncate(options.limit);
 
     // Filter by min_score
     collected.retain(|r| r.score >= options.min_score);
@@ -632,8 +678,12 @@ fn extract_technical_terms(query: &str) -> Vec<String> {
         let is_technical = cleaned.len() > 2;
 
         if is_snake_case || is_camel_case || is_acronym || is_technical {
-            // Preserve original case for code symbols
-            terms.push(cleaned);
+            // Quote hyphenated terms to prevent FTS5 interpreting - as NOT
+            if cleaned.contains('-') {
+                terms.push(format!("\"{}\"", cleaned));
+            } else {
+                terms.push(cleaned);
+            }
         }
     }
 
@@ -1137,10 +1187,10 @@ mod tests {
         let terms2 = extract_technical_terms("What is the QueryEngine interface?");
         assert!(terms2.contains(&"QueryEngine".to_string()));
 
-        // Acronyms preserved
+        // Acronyms preserved, hyphenated terms quoted for FTS5
         let terms3 = extract_technical_terms("How does MCP server handle JSON-RPC?");
         assert!(terms3.contains(&"MCP".to_string()));
-        assert!(terms3.contains(&"JSON-RPC".to_string()));
+        assert!(terms3.contains(&"\"JSON-RPC\"".to_string())); // Quoted for FTS5
     }
 
     #[test]
