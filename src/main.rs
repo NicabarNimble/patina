@@ -367,6 +367,12 @@ enum ScrapeCommands {
         #[arg(long)]
         full: bool,
     },
+    /// Extract patterns from layer/core and layer/surface markdown files
+    Layer {
+        /// Full rebuild (ignore incremental)
+        #[arg(long)]
+        full: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -647,6 +653,7 @@ fn main() -> Result<()> {
             }
             Some(ScrapeCommands::Git { full }) => commands::scrape::execute_git(full)?,
             Some(ScrapeCommands::Sessions { full }) => commands::scrape::execute_sessions(full)?,
+            Some(ScrapeCommands::Layer { full }) => commands::scrape::execute_layer(full)?,
         },
         Some(Commands::Oxidize) => {
             commands::oxidize::oxidize()?;

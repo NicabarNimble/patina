@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 2.7 - Retrieval Quality (2.7a/2.7e partial complete)
+**Current Phase:** Phase 2.7 - Retrieval Quality (exit criteria met, optional tasks remain)
 
 ---
 
@@ -499,12 +499,12 @@ Ablation:
 - [ ] Add queries that should hit lexical (exact function names)
 - [ ] Add queries for layer docs (patterns, philosophy)
 
-#### 2.7f: Index Layer Docs (NEW - discovered via error analysis)
-- [ ] Add layer/*.md files to scrape pipeline
-- [ ] Create event_type: "pattern" or "knowledge"
-- [ ] Index title, content, tags from frontmatter
-- [ ] Re-run: `patina scrape && patina oxidize`
-- [ ] Verify df19/df20 queries now succeed
+#### 2.7f: Index Layer Docs ✓ (session 20251214-134746)
+- [x] Add layer/*.md files to scrape pipeline (`src/commands/scrape/layer/mod.rs`)
+- [x] Create event_type: `pattern.core`, `pattern.surface` (based on layer)
+- [x] Index title, purpose, content, tags from frontmatter + FTS5
+- [x] Re-run: `patina scrape && patina oxidize` (25 patterns indexed)
+- [x] Verify df19/df20 queries now succeed (R@10=100%, patterns retrievable)
 
 #### 2.7d: Hyperparameter Optimization
 - [ ] Sweep rrf_k values (20, 40, 60, 80, 100)
@@ -520,10 +520,10 @@ Ablation:
 | Criteria | Status |
 |----------|--------|
 | Lexical oracle contributes to code queries | [x] MRR 0.436 |
-| MRR > 0.3 on dogfood benchmark | [x] MRR 0.496 |
-| Recall@10 > 60% on dogfood benchmark | [ ] 55.0% (close) |
+| MRR > 0.3 on dogfood benchmark | [x] MRR 0.498 |
+| Recall@10 > 60% on dogfood benchmark | [ ] 57.5% (close) |
 | Error analysis available via --verbose | [x] implemented |
-| Layer docs indexed | [ ] **NEXT** |
+| Layer docs indexed | [x] 25 patterns (7 core + 18 surface) |
 | Ground truth has 50+ queries | [ ] 20 queries |
 | rrf_k optimized with evidence | [ ] |
 | `patina_context` MCP tool works | [x] |
@@ -532,15 +532,14 @@ Ablation:
 ### Exit Criteria for Phase 2
 
 Before moving to Phase 3, ALL of these must be true:
-- [x] All three oracles contribute meaningfully to relevant queries (RRF boost: 0.496 > individual)
-- [x] MRR > 0.3 on dogfood benchmark (0.496)
+- [x] All three oracles contribute meaningfully to relevant queries (RRF boost: 0.498 > individual)
+- [x] MRR > 0.3 on dogfood benchmark (0.498)
 - [x] `patina_context` exposes patterns via MCP
-- [ ] Error analysis tooling exists
+- [x] Error analysis tooling exists (`--verbose` flag)
 
-**Status (session 20251213-155714):** 3/4 exit criteria met. Remaining work:
-- 2.7b: Error analysis (`--verbose` flag)
-- 2.7c-d: Ground truth expansion & hyperparameter tuning (optional)
-- 2c/2.7e: Session MCP tools (`patina_session_start/end/note`)
+**Status (session 20251214-134746):**
+- 2.7f: Layer docs indexed ✓ (25 patterns)
+- Remaining: 2.7c (ground truth 50+), 2.7d (hyperparameter tuning), 2c/2.7e (session MCP tools)
 
 ---
 
