@@ -520,10 +520,11 @@ Ablation:
 | Criteria | Status |
 |----------|--------|
 | Lexical oracle contributes to code queries | [x] MRR 0.436 |
-| MRR > 0.3 on dogfood benchmark | [x] MRR 0.498 |
-| Recall@10 > 60% on dogfood benchmark | [ ] 57.5% (close) |
+| MRR > 0.3 on dogfood benchmark | [x] MRR 0.624 |
+| Recall@10 > 60% on dogfood benchmark | [x] 67.5% |
 | Error analysis available via --verbose | [x] implemented |
 | Layer docs indexed | [x] 25 patterns (7 core + 18 surface) |
+| Lexical searches pattern_fts | [x] fixed session 20251214 |
 | Ground truth has 50+ queries | [ ] 20 queries |
 | rrf_k optimized with evidence | [ ] |
 | `patina_context` MCP tool works | [x] |
