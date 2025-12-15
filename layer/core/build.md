@@ -550,51 +550,88 @@ Before moving to Phase 3, ALL of these must be true:
 
 ## Phase 2.8: Multi-Project RAG
 
-**Goal:** Enable Oracle/MCP layer to query across multiple projects, not just the current one.
+**Goal:** Enable cross-project queries so knowledge doesn't stay in islands.
 
-**Problem Discovered (session 20251215):** The Oracle/MCP layer only exposes a subset of scry's capabilities. Scry already supports `--repo` and `--all-repos`, but Oracles don't pass these through. This creates knowledge islands - each project is isolated.
+**Problem Discovered (session 20251215):** Each project is isolated. Scry already supports `--repo` and `--all-repos`, but MCP can't access this capability.
 
-**Philosophy:** Complete the abstraction before moving forward. The retrieval layer should expose what scry can do.
+### User Stories
 
-### Current Gap
+1. `patina_query("X")` → searches current project
+2. `patina_query("X", repo="dojo")` → searches specific registered repo
+3. `patina_query("X", all_repos=true)` → searches all registered projects
 
-| Capability | Scry | Oracles | MCP |
-|------------|------|---------|-----|
-| Semantic search | ✅ | ✅ | ✅ |
-| Lexical search | ✅ | ✅ | ✅ |
-| Persona search | ✅ | ✅ | ✅ |
-| RRF fusion | - | ✅ | ✅ |
-| Specific repo | ✅ | ❌ | ❌ |
-| All repos | ✅ | ❌ | ❌ |
-| Include issues | ✅ | ❌ | ❌ |
+### Architecture Decision (session 20251215)
+
+**Wrong approach (attempted then reverted):** Push repo params into Oracle trait, duplicate ScryOptions as QueryOptions, thread options through every layer.
+
+**Correct approach:** Clean layering with federation at QueryEngine level.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  INTERFACE LAYER (thin adapters)                            │
+│  MCP, HTTP, CLI → just parse params and call QueryEngine    │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  RETRIEVAL LAYER (the smarts)                               │
+│  QueryEngine:                                               │
+│  ├── Accepts repo/all_repos params                          │
+│  ├── If all_repos: loops through registry, queries each     │
+│  ├── Coordinates oracles (single-project, simple)           │
+│  └── RRF fusion across all results                          │
+│                                                             │
+│  Oracles (stay simple):                                     │
+│  └── query(query, limit) - single project only              │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  CORE TOOLS                                                 │
+│  scry, persona, registry                                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Why this is better:**
+- Oracles stay focused (unix-philosophy: one job)
+- No duplication (QueryOptions mirroring ScryOptions)
+- MCP stays thin (adapter-pattern)
+- Lab benchmarks test the real code path
+- Federation logic in ONE place (QueryEngine)
 
 ### Phase 2.8 Tasks
 
-#### 2.8a: QueryOptions Struct
-- [ ] Add `QueryOptions` struct to `oracle.rs` with repo params
-- [ ] Update `Oracle` trait: `query(&self, query: &str, options: &QueryOptions)`
+#### 2.8a: Revert Oracle Changes
+- [ ] Revert QueryOptions from oracle.rs
+- [ ] Restore Oracle trait: `query(&self, query: &str, limit: usize)`
+- [ ] Restore simple oracle implementations
 
-#### 2.8b: Thread Options Through Oracles
-- [ ] Update `SemanticOracle` to pass options to `scry::scry_text()`
-- [ ] Update `LexicalOracle` to pass options to `scry::scry_lexical()`
-- [ ] Update `PersonaOracle` to accept options
+#### 2.8b: QueryEngine Federation
+- [ ] Add `QueryOptions` to QueryEngine (not Oracle trait)
+- [ ] QueryEngine reads registry for repo list
+- [ ] If `all_repos`: loop through repos, call oracles for each
+- [ ] If `repo`: switch context to that repo's .patina/
+- [ ] RRF fuse results from all repos
 
-#### 2.8c: Update QueryEngine
-- [ ] `QueryEngine::query()` accepts `QueryOptions`
-- [ ] Pass options to each oracle
+#### 2.8c: MCP Interface (Thin)
+- [ ] Add `repo`, `all_repos`, `include_issues` params to `patina_query` schema
+- [ ] MCP server parses params, passes to QueryEngine
+- [ ] No MCP-specific logic in retrieval layer
 
-#### 2.8d: Update MCP Tools
-- [ ] Add `repo`, `all_repos`, `include_issues` params to `patina_query` tool
-- [ ] Wire through to QueryEngine
+#### 2.8d: CLI Parity
+- [ ] `patina scry` should use same QueryEngine
+- [ ] Same params available: `--repo`, `--all-repos`
 
 ### Validation
 
 | Criteria | Status |
 |----------|--------|
-| `patina_query` accepts `repo` param | [ ] |
-| `patina_query` accepts `all_repos` param | [ ] |
-| Can query specific repo via MCP | [ ] |
-| Can query all repos via MCP | [ ] |
+| Oracles stay simple (query, limit only) | [ ] |
+| QueryEngine handles federation | [ ] |
+| MCP `patina_query` accepts `repo` param | [ ] |
+| MCP `patina_query` accepts `all_repos` param | [ ] |
+| CLI `patina scry` has same capabilities | [ ] |
+| `patina bench` tests same code path as MCP | [ ] |
 | Existing single-project queries still work | [ ] |
 
 ---
