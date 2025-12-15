@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crate::retrieval::QueryEngine;
+use crate::retrieval::{QueryEngine, RetrievalConfig};
+use patina::project;
 
 /// A single benchmark query with ground truth
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -16,7 +17,11 @@ pub struct BenchQuery {
     pub id: String,
     /// The query text
     pub query: String,
-    /// Relevant document identifiers (substring matching)
+    /// Relevant documents by path/ID (preferred - explicit document matching)
+    #[serde(default)]
+    pub relevant_docs: Vec<String>,
+    /// Legacy: keywords for substring matching (deprecated, use relevant_docs)
+    #[serde(default)]
     pub relevant: Vec<String>,
 }
 
@@ -64,18 +69,60 @@ struct BenchmarkResults {
     latency_mean_ms: f64,
 }
 
-/// Check if retrieved content matches any relevant term (case-insensitive)
-fn is_relevant(content: &str, relevant: &[String]) -> bool {
-    let content_lower = content.to_lowercase();
-    relevant
-        .iter()
-        .any(|r| content_lower.contains(&r.to_lowercase()))
+/// Ground truth for a benchmark query
+/// Supports both document ID matching (preferred) and keyword matching (legacy)
+struct GroundTruth<'a> {
+    /// Explicit document paths/IDs (strong ground truth)
+    docs: &'a [String],
+    /// Keywords for substring matching (weak ground truth, legacy)
+    keywords: &'a [String],
+}
+
+impl<'a> GroundTruth<'a> {
+    fn from_query(query: &'a BenchQuery) -> Self {
+        Self {
+            docs: &query.relevant_docs,
+            keywords: &query.relevant,
+        }
+    }
+
+    /// Check if a retrieved doc_id matches ground truth
+    /// Prefers doc matching; falls back to keyword matching if no docs specified
+    fn matches(&self, doc_id: &str) -> bool {
+        if !self.docs.is_empty() {
+            // Strong matching: doc_id must contain one of the relevant doc paths
+            // e.g., doc_id="src/retrieval/fusion.rs:42" matches "src/retrieval/fusion.rs"
+            self.docs
+                .iter()
+                .any(|d| doc_id.contains(d) || d.contains(doc_id))
+        } else {
+            // Legacy keyword matching (weak)
+            let doc_lower = doc_id.to_lowercase();
+            self.keywords
+                .iter()
+                .any(|k| doc_lower.contains(&k.to_lowercase()))
+        }
+    }
+
+    /// Count of expected relevant documents
+    fn expected_count(&self) -> usize {
+        if !self.docs.is_empty() {
+            self.docs.len()
+        } else {
+            self.keywords.len()
+        }
+    }
+
+    /// Check if using strong (doc-based) or weak (keyword-based) ground truth
+    fn is_strong(&self) -> bool {
+        !self.docs.is_empty()
+    }
 }
 
 /// Calculate reciprocal rank (1/rank of first relevant result, or 0)
-fn reciprocal_rank(retrieved: &[String], relevant: &[String]) -> f64 {
+fn reciprocal_rank(retrieved: &[String], ground_truth: &GroundTruth) -> f64 {
     for (rank, doc_id) in retrieved.iter().enumerate() {
-        if is_relevant(doc_id, relevant) {
+        if ground_truth.matches(doc_id) {
             return 1.0 / (rank + 1) as f64;
         }
     }
@@ -83,16 +130,106 @@ fn reciprocal_rank(retrieved: &[String], relevant: &[String]) -> f64 {
 }
 
 /// Calculate recall at K (fraction of relevant docs found in top K)
-fn recall_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
-    if relevant.is_empty() {
+fn recall_at_k(retrieved: &[String], ground_truth: &GroundTruth, k: usize) -> f64 {
+    let expected = ground_truth.expected_count();
+    if expected == 0 {
         return 1.0; // No relevant docs = perfect recall (vacuous truth)
     }
+
     let top_k: Vec<_> = retrieved.iter().take(k).collect();
-    let found = relevant
-        .iter()
-        .filter(|r| top_k.iter().any(|doc| is_relevant(doc, &[(*r).clone()])))
-        .count();
-    found as f64 / relevant.len() as f64
+
+    if ground_truth.is_strong() {
+        // Count how many expected docs were found
+        let found = ground_truth
+            .docs
+            .iter()
+            .filter(|d| {
+                top_k
+                    .iter()
+                    .any(|doc| doc.contains(*d) || d.contains(doc.as_str()))
+            })
+            .count();
+        found as f64 / expected as f64
+    } else {
+        // Legacy: count keywords matched (weaker signal)
+        let found = ground_truth
+            .keywords
+            .iter()
+            .filter(|k| {
+                let k_lower = k.to_lowercase();
+                top_k
+                    .iter()
+                    .any(|doc| doc.to_lowercase().contains(&k_lower))
+            })
+            .count();
+        found as f64 / expected as f64
+    }
+}
+
+/// Print detailed analysis for a query (verbose mode)
+fn print_verbose_analysis(
+    query: &BenchQuery,
+    retrieved: &[String],
+    ground_truth: &GroundTruth,
+    rr: f64,
+) {
+    println!("      ┌─ Query: \"{}\"", truncate(&query.query, 60));
+
+    // Show expected documents
+    if !ground_truth.docs.is_empty() {
+        println!("      │  Expected: {:?}", ground_truth.docs);
+    } else if !ground_truth.keywords.is_empty() {
+        println!("      │  Keywords: {:?}", ground_truth.keywords);
+    }
+
+    // Show top 5 retrieved
+    println!("      │  Retrieved (top 5):");
+    for (i, doc) in retrieved.iter().take(5).enumerate() {
+        let matches = ground_truth.matches(doc);
+        let marker = if matches { "✓" } else { " " };
+        println!("      │    {}. {} {}", i + 1, marker, truncate(doc, 50));
+    }
+
+    // Analysis for failures
+    if rr == 0.0 {
+        println!("      │  ");
+        println!("      │  ⚠ FAILURE ANALYSIS:");
+
+        // Check if expected docs exist in retrieved at all
+        let mut found_any = false;
+        for expected in ground_truth.docs.iter() {
+            for (rank, doc) in retrieved.iter().enumerate() {
+                if doc.contains(expected) || expected.contains(doc) {
+                    println!(
+                        "      │    Found '{}' at rank {} (not in top 10)",
+                        expected,
+                        rank + 1
+                    );
+                    found_any = true;
+                    break;
+                }
+            }
+        }
+
+        if !found_any && !ground_truth.docs.is_empty() {
+            println!("      │    Expected docs NOT in retrieved results at all");
+            println!("      │    Possible causes:");
+            println!("      │      - Document not indexed (run: patina scrape && patina oxidize)");
+            println!("      │      - Query doesn't match document content semantically");
+            println!("      │      - Lexical terms don't appear in doc symbols");
+        }
+    }
+
+    println!("      └─");
+}
+
+/// Truncate string for display
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len.saturating_sub(3)])
+    }
 }
 
 /// Calculate percentile from sorted latencies
@@ -104,8 +241,40 @@ fn percentile(sorted_latencies: &[Duration], p: f64) -> Duration {
     sorted_latencies[idx.min(sorted_latencies.len() - 1)]
 }
 
+/// Build retrieval config from project config with optional CLI overrides
+pub fn build_retrieval_config(
+    rrf_k_override: Option<usize>,
+    fetch_multiplier_override: Option<usize>,
+    oracle_filter: Option<Vec<String>>,
+) -> RetrievalConfig {
+    // Try to load from project config, fall back to defaults
+    let project_config = project::load(Path::new(".")).ok();
+
+    let base_rrf_k = project_config
+        .as_ref()
+        .map(|c| c.retrieval.rrf_k)
+        .unwrap_or(60);
+
+    let base_fetch_multiplier = project_config
+        .as_ref()
+        .map(|c| c.retrieval.fetch_multiplier)
+        .unwrap_or(2);
+
+    RetrievalConfig {
+        rrf_k: rrf_k_override.unwrap_or(base_rrf_k),
+        fetch_multiplier: fetch_multiplier_override.unwrap_or(base_fetch_multiplier),
+        oracle_filter,
+    }
+}
+
 /// Run the benchmark and report results
-pub fn run_benchmark(query_set: &QuerySet, limit: usize, json_output: bool) -> Result<()> {
+pub fn run_benchmark(
+    query_set: &QuerySet,
+    limit: usize,
+    json_output: bool,
+    verbose: bool,
+    config: RetrievalConfig,
+) -> Result<()> {
     println!("🔬 Patina Retrieval Benchmark");
     println!(
         "   Query set: {} ({} queries)",
@@ -113,10 +282,21 @@ pub fn run_benchmark(query_set: &QuerySet, limit: usize, json_output: bool) -> R
         query_set.queries.len()
     );
     println!("   Limit: {} results per query", limit);
+    println!(
+        "   Config: rrf_k={}, fetch_multiplier={}",
+        config.rrf_k, config.fetch_multiplier
+    );
+
+    // Show oracle filter for ablation clarity
+    let oracle_desc = match &config.oracle_filter {
+        Some(oracles) => oracles.join(", "),
+        None => "all".to_string(),
+    };
+    println!("   Oracles: {}", oracle_desc);
     println!();
 
-    // Initialize query engine
-    let engine = QueryEngine::new();
+    // Initialize query engine with config
+    let engine = QueryEngine::with_config(config);
 
     // Run each query
     let mut results: Vec<QueryResult> = Vec::new();
@@ -135,9 +315,10 @@ pub fn run_benchmark(query_set: &QuerySet, limit: usize, json_output: bool) -> R
 
         let retrieved_docs: Vec<String> = fused_results.iter().map(|r| r.doc_id.clone()).collect();
 
-        let rr = reciprocal_rank(&retrieved_docs, &bench_query.relevant);
-        let r5 = recall_at_k(&retrieved_docs, &bench_query.relevant, 5);
-        let r10 = recall_at_k(&retrieved_docs, &bench_query.relevant, 10);
+        let ground_truth = GroundTruth::from_query(bench_query);
+        let rr = reciprocal_rank(&retrieved_docs, &ground_truth);
+        let r5 = recall_at_k(&retrieved_docs, &ground_truth, 5);
+        let r10 = recall_at_k(&retrieved_docs, &ground_truth, 10);
 
         println!(
             "{:.0}ms (RR={:.2}, R@5={:.0}%, R@10={:.0}%)",
@@ -146,6 +327,11 @@ pub fn run_benchmark(query_set: &QuerySet, limit: usize, json_output: bool) -> R
             r5 * 100.0,
             r10 * 100.0
         );
+
+        // Verbose: show detailed analysis for failures or all queries
+        if verbose {
+            print_verbose_analysis(bench_query, &retrieved_docs, &ground_truth, rr);
+        }
 
         results.push(QueryResult {
             latency,

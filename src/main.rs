@@ -367,6 +367,12 @@ enum ScrapeCommands {
         #[arg(long)]
         full: bool,
     },
+    /// Extract patterns from layer/core and layer/surface markdown files
+    Layer {
+        /// Full rebuild (ignore incremental)
+        #[arg(long)]
+        full: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -384,6 +390,22 @@ enum BenchCommands {
         /// Output as JSON
         #[arg(long, short)]
         json: bool,
+
+        /// Show detailed per-query analysis (expected vs retrieved docs)
+        #[arg(long, short)]
+        verbose: bool,
+
+        /// Override RRF k value (default: from config or 60)
+        #[arg(long)]
+        rrf_k: Option<usize>,
+
+        /// Override fetch multiplier (default: from config or 2)
+        #[arg(long)]
+        fetch_multiplier: Option<usize>,
+
+        /// Filter to specific oracle(s) for ablation testing (semantic, lexical, persona)
+        #[arg(long)]
+        oracle: Option<Vec<String>>,
     },
 }
 
@@ -631,6 +653,7 @@ fn main() -> Result<()> {
             }
             Some(ScrapeCommands::Git { full }) => commands::scrape::execute_git(full)?,
             Some(ScrapeCommands::Sessions { full }) => commands::scrape::execute_sessions(full)?,
+            Some(ScrapeCommands::Layer { full }) => commands::scrape::execute_layer(full)?,
         },
         Some(Commands::Oxidize) => {
             commands::oxidize::oxidize()?;
@@ -680,11 +703,19 @@ fn main() -> Result<()> {
                 query_set,
                 limit,
                 json,
+                verbose,
+                rrf_k,
+                fetch_multiplier,
+                oracle,
             } => {
                 let options = commands::bench::BenchOptions {
                     query_set,
                     limit,
                     json,
+                    verbose,
+                    rrf_k,
+                    fetch_multiplier,
+                    oracle,
                 };
                 commands::bench::execute(options)?;
             }

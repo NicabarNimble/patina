@@ -169,15 +169,27 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
 /// Get database and embeddings paths (handles --repo flag)
 fn get_paths(options: &ScryOptions) -> Result<(String, String)> {
     if let Some(ref repo_name) = options.repo {
+        // For repos, model name is stored in repo's config (future: read from repo metadata)
+        // For now, default to e5-base-v2 for repo queries
         let db_path = crate::commands::repo::get_db_path(repo_name)?;
         let embeddings_dir = db_path.replace("patina.db", "embeddings/e5-base-v2/projections");
         Ok((db_path, embeddings_dir))
     } else {
+        // For local project, read model from config
+        let model = get_embedding_model();
         Ok((
             ".patina/data/patina.db".to_string(),
-            ".patina/data/embeddings/e5-base-v2/projections".to_string(),
+            format!(".patina/data/embeddings/{}/projections", model),
         ))
     }
+}
+
+/// Get embedding model from project config (defaults to e5-base-v2)
+fn get_embedding_model() -> String {
+    patina::project::load(std::path::Path::new("."))
+        .ok()
+        .map(|c| c.embeddings.model)
+        .unwrap_or_else(|| "e5-base-v2".to_string())
 }
 
 /// Text-based scry - embed query and search (for semantic dimension)
@@ -405,17 +417,16 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
 
     println!("FTS5 query: {}", fts_query);
 
-    // Build event type filter based on include_issues flag
+    let mut collected: Vec<ScryResult> = Vec::new();
+
+    // 1. Search code_fts
     let event_type_filter = if options.include_issues {
-        // Include both code and github events
         "event_type LIKE 'code.%' OR event_type = 'github.issue'"
     } else {
-        // Code events only (default)
         "event_type LIKE 'code.%'"
     };
 
-    // Search using FTS5 with BM25 scoring
-    let sql = format!(
+    let code_sql = format!(
         "SELECT
             symbol_name,
             file_path,
@@ -430,34 +441,81 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
         event_type_filter
     );
 
-    let mut stmt = conn.prepare(&sql)?;
+    let mut stmt = conn.prepare(&code_sql)?;
+    let code_results =
+        stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
+            let symbol: String = row.get(0)?;
+            let file_path: String = row.get(1)?;
+            let snippet: String = row.get(2)?;
+            let event_type: String = row.get(3)?;
+            let bm25_score: f64 = row.get(4)?;
 
-    let results = stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
-        let symbol: String = row.get(0)?;
-        let file_path: String = row.get(1)?;
-        let snippet: String = row.get(2)?;
-        let event_type: String = row.get(3)?;
-        let bm25_score: f64 = row.get(4)?;
+            let source_id = if event_type == "github.issue" {
+                format!("[ISSUE] {}", symbol)
+            } else {
+                format!("{}:{}", file_path, symbol)
+            };
 
-        // Format source_id based on event type
-        let source_id = if event_type == "github.issue" {
-            format!("[ISSUE] {}", symbol) // symbol contains issue title for github events
-        } else {
-            format!("{}:{}", file_path, symbol)
-        };
+            Ok(ScryResult {
+                id: 0,
+                content: snippet,
+                // BM25 is negative, convert to positive (don't cap - preserve ranking)
+                score: -bm25_score as f32,
+                event_type,
+                source_id,
+                timestamp: String::new(),
+            })
+        })?;
+    collected.extend(code_results.filter_map(|r| r.ok()));
 
-        Ok(ScryResult {
-            id: 0,
-            content: snippet,
-            // BM25 is negative (lower = better), convert to positive score
-            score: (-bm25_score as f32).min(1.0),
-            event_type,
-            source_id,
-            timestamp: String::new(),
-        })
-    })?;
+    // 2. Search pattern_fts (layer docs)
+    let pattern_sql = "SELECT
+            id,
+            title,
+            snippet(pattern_fts, 2, '>>>', '<<<', '...', 64) as snippet,
+            file_path,
+            bm25(pattern_fts) as score
+         FROM pattern_fts
+         WHERE pattern_fts MATCH ?
+         ORDER BY score
+         LIMIT ?";
 
-    let mut collected: Vec<ScryResult> = results.filter_map(|r| r.ok()).collect();
+    if let Ok(mut stmt) = conn.prepare(pattern_sql) {
+        let pattern_results =
+            stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
+                let id: String = row.get(0)?;
+                let title: String = row.get(1)?;
+                let snippet: String = row.get(2)?;
+                let file_path: String = row.get(3)?;
+                let bm25_score: f64 = row.get(4)?;
+
+                // Determine layer from file path
+                let layer = if file_path.contains("layer/core") {
+                    "core"
+                } else {
+                    "surface"
+                };
+
+                Ok(ScryResult {
+                    id: 0,
+                    content: format!("{}: {}", title, snippet),
+                    // BM25 is negative, convert to positive (don't cap - preserve ranking)
+                    score: -bm25_score as f32,
+                    event_type: format!("pattern.{}", layer),
+                    source_id: id,
+                    timestamp: String::new(),
+                })
+            })?;
+        collected.extend(pattern_results.filter_map(|r| r.ok()));
+    }
+
+    // Sort by score (higher is better) and limit
+    collected.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    collected.truncate(options.limit);
 
     // Filter by min_score
     collected.retain(|r| r.score >= options.min_score);
@@ -465,23 +523,171 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
     Ok(collected)
 }
 
-/// Prepare query for FTS5 (strip prefixes, quote if needed)
+/// Prepare query for FTS5 - extract technical terms for better matching
+///
+/// Strategy:
+/// 1. If query looks like code (snake_case, CamelCase, ::), use as-is
+/// 2. Otherwise, extract technical terms from natural language
+/// 3. Use OR search for multiple terms
 fn prepare_fts_query(query: &str) -> String {
-    // Strip common prefixes
-    let cleaned = query
-        .trim()
-        .trim_start_matches("find ")
-        .trim_start_matches("where is ")
-        .trim_start_matches("show me the ")
-        .trim_start_matches("show me ")
-        .trim();
+    let trimmed = query.trim();
 
-    // If it contains special characters, use phrase search
-    if cleaned.contains("::") || cleaned.contains("()") || cleaned.contains(' ') {
-        format!("\"{}\"", cleaned)
-    } else {
-        cleaned.to_string()
+    // If it looks like code already, use direct search
+    if is_code_like(trimmed) {
+        return if trimmed.contains(' ') {
+            format!("\"{}\"", trimmed)
+        } else {
+            trimmed.to_string()
+        };
     }
+
+    // Extract technical terms from natural language
+    let terms = extract_technical_terms(trimmed);
+
+    if terms.is_empty() {
+        // Fallback: use whole query as phrase
+        format!("\"{}\"", trimmed)
+    } else if terms.len() == 1 {
+        terms[0].clone()
+    } else {
+        // OR search for multiple terms (FTS5 defaults to AND, we want OR)
+        terms.join(" OR ")
+    }
+}
+
+/// Check if query looks like code (not natural language)
+fn is_code_like(query: &str) -> bool {
+    query.contains("::")
+        || query.contains("()")
+        || query.contains('_') && !query.contains(' ')
+        || query.chars().all(|c| c.is_alphanumeric() || c == '_')
+}
+
+/// Extract technical terms from natural language query
+fn extract_technical_terms(query: &str) -> Vec<String> {
+    // Words to filter out (question words, common verbs, articles)
+    let stop_words: std::collections::HashSet<&str> = [
+        // Question words
+        "how",
+        "what",
+        "why",
+        "when",
+        "where",
+        "which",
+        "who",
+        // Common verbs
+        "does",
+        "do",
+        "is",
+        "are",
+        "was",
+        "were",
+        "can",
+        "could",
+        "will",
+        "would",
+        "work",
+        "works",
+        "working",
+        "handle",
+        "handles",
+        "handling",
+        "perform",
+        "performs",
+        "performing",
+        "combine",
+        "combines",
+        "combining",
+        "coordinate",
+        "coordinates",
+        "extract",
+        "extracts",
+        "build",
+        "builds",
+        "get",
+        "gets",
+        "set",
+        "sets",
+        "use",
+        "uses",
+        "using",
+        "create",
+        "creates",
+        "manage",
+        "manages",
+        "ensure",
+        "ensures",
+        "apply",
+        "applies",
+        // Articles and prepositions
+        "the",
+        "a",
+        "an",
+        "for",
+        "from",
+        "with",
+        "to",
+        "in",
+        "on",
+        "of",
+        "by",
+        // Other common words
+        "and",
+        "or",
+        "but",
+        "this",
+        "that",
+        "these",
+        "those",
+        "multiple",
+        "different",
+        "various",
+        "specific",
+    ]
+    .into_iter()
+    .collect();
+
+    let mut terms = Vec::new();
+
+    for word in query.split_whitespace() {
+        // Clean punctuation
+        let cleaned: String = word
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+            .collect();
+
+        if cleaned.is_empty() {
+            continue;
+        }
+
+        let lower = cleaned.to_lowercase();
+
+        // Skip stop words
+        if stop_words.contains(lower.as_str()) {
+            continue;
+        }
+
+        // Keep if:
+        // 1. Contains underscore (snake_case)
+        // 2. Contains uppercase in middle (CamelCase)
+        // 3. Is all uppercase (acronym like RRF, MCP, JSON)
+        // 4. Is a technical term (length > 2 and not common)
+        let is_snake_case = cleaned.contains('_');
+        let is_camel_case = cleaned.chars().skip(1).any(|c| c.is_uppercase());
+        let is_acronym = cleaned.len() >= 2 && cleaned.chars().all(|c| c.is_uppercase());
+        let is_technical = cleaned.len() > 2;
+
+        if is_snake_case || is_camel_case || is_acronym || is_technical {
+            // Quote hyphenated terms to prevent FTS5 interpreting - as NOT
+            if cleaned.contains('-') {
+                terms.push(format!("\"{}\"", cleaned));
+            } else {
+                terms.push(cleaned);
+            }
+        }
+    }
+
+    terms
 }
 
 /// Search results from USearch
@@ -499,12 +705,13 @@ fn enrich_results(
 ) -> Result<Vec<ScryResult>> {
     let mut enriched = Vec::new();
 
-    // Code facts use ID offset to distinguish from eventlog entries
+    // ID offsets to distinguish different content types in semantic index
     const CODE_ID_OFFSET: i64 = 1_000_000_000;
+    const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
 
     match dimension {
         "semantic" => {
-            // Semantic index contains both eventlog entries and code facts
+            // Semantic index contains eventlog entries, code facts, and patterns
             for i in 0..results.keys.len() {
                 let key = results.keys[i] as i64;
                 let distance = results.distances[i];
@@ -515,8 +722,44 @@ fn enrich_results(
                     continue;
                 }
 
-                // Check if this is a code fact (ID >= offset) or eventlog entry
-                if key >= CODE_ID_OFFSET {
+                // Check content type based on ID range
+                if key >= PATTERN_ID_OFFSET {
+                    // Pattern - look up in patterns table
+                    let rowid = key - PATTERN_ID_OFFSET;
+                    let result = conn.query_row(
+                        "SELECT rowid, id, title, purpose, layer, file_path
+                         FROM patterns
+                         WHERE rowid = ?",
+                        [rowid],
+                        |row| {
+                            let id: String = row.get(1)?;
+                            let title: String = row.get(2)?;
+                            let purpose: Option<String> = row.get(3)?;
+                            let layer: String = row.get(4)?;
+                            let file_path: String = row.get(5)?;
+
+                            // Build description
+                            let desc = if let Some(p) = purpose {
+                                format!("{}: {}", title, p)
+                            } else {
+                                title.clone()
+                            };
+
+                            Ok(ScryResult {
+                                id: key,
+                                event_type: format!("pattern.{}", layer),
+                                source_id: id,
+                                timestamp: String::new(),
+                                content: format!("{} ({})", desc, file_path),
+                                score,
+                            })
+                        },
+                    );
+
+                    if let Ok(r) = result {
+                        enriched.push(r);
+                    }
+                } else if key >= CODE_ID_OFFSET {
                     // Code fact - look up in function_facts
                     let rowid = key - CODE_ID_OFFSET;
                     let result = conn.query_row(
@@ -911,5 +1154,55 @@ mod tests {
         assert_eq!(opts.min_score, 0.0);
         assert!(opts.dimension.is_none());
         assert!(opts.include_persona); // Persona enabled by default
+    }
+
+    #[test]
+    fn test_is_code_like() {
+        // Code-like patterns
+        assert!(is_code_like("rrf_fuse"));
+        assert!(is_code_like("std::env"));
+        assert!(is_code_like("execute()"));
+        assert!(is_code_like("QueryEngine"));
+
+        // Natural language
+        assert!(!is_code_like("How does RRF work?"));
+        assert!(!is_code_like("semantic search"));
+    }
+
+    #[test]
+    fn test_extract_technical_terms() {
+        // Natural language query
+        let terms =
+            extract_technical_terms("How does RRF fusion combine results from multiple oracles?");
+        assert!(terms.contains(&"RRF".to_string()));
+        assert!(terms.contains(&"fusion".to_string()));
+        assert!(terms.contains(&"results".to_string()));
+        assert!(terms.contains(&"oracles".to_string()));
+        // Should NOT contain stop words
+        assert!(!terms.iter().any(|t| t.to_lowercase() == "how"));
+        assert!(!terms.iter().any(|t| t.to_lowercase() == "does"));
+        assert!(!terms.iter().any(|t| t.to_lowercase() == "from"));
+
+        // CamelCase preserved
+        let terms2 = extract_technical_terms("What is the QueryEngine interface?");
+        assert!(terms2.contains(&"QueryEngine".to_string()));
+
+        // Acronyms preserved, hyphenated terms quoted for FTS5
+        let terms3 = extract_technical_terms("How does MCP server handle JSON-RPC?");
+        assert!(terms3.contains(&"MCP".to_string()));
+        assert!(terms3.contains(&"\"JSON-RPC\"".to_string())); // Quoted for FTS5
+    }
+
+    #[test]
+    fn test_prepare_fts_query() {
+        // Code symbols pass through
+        assert_eq!(prepare_fts_query("rrf_fuse"), "rrf_fuse");
+        assert_eq!(prepare_fts_query("QueryEngine"), "QueryEngine");
+
+        // Natural language extracts terms with OR
+        let result = prepare_fts_query("How does RRF fusion work?");
+        assert!(result.contains("RRF"));
+        assert!(result.contains("fusion"));
+        assert!(result.contains(" OR "));
     }
 }

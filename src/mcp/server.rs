@@ -1,7 +1,9 @@
 //! MCP server - stdio transport
 
 use anyhow::Result;
+use std::fs;
 use std::io::{BufRead, BufReader, Write};
+use std::path::Path;
 
 use super::protocol::{Request, Response};
 use crate::retrieval::{FusedResult, QueryEngine};
@@ -106,6 +108,19 @@ fn handle_list_tools(req: &Request) -> Response {
                         },
                         "required": ["query"]
                     }
+                },
+                {
+                    "name": "patina_context",
+                    "description": "Get project context, patterns, and architectural rules from the knowledge layer. Returns core patterns (eternal principles), surface patterns (active architecture), and project-specific conventions.",
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "topic": {
+                                "type": "string",
+                                "description": "Optional topic to focus on (e.g., 'error handling', 'testing', 'architecture')"
+                            }
+                        }
+                    }
                 }
             ]
         }),
@@ -143,6 +158,18 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         }),
                     )
                 }
+                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            }
+        }
+        "patina_context" => {
+            let topic = args.get("topic").and_then(|v| v.as_str());
+            match get_project_context(topic) {
+                Ok(text) => Response::success(
+                    req.id.clone(),
+                    serde_json::json!({
+                        "content": [{ "type": "text", "text": text }]
+                    }),
+                ),
                 Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
             }
         }
@@ -191,4 +218,144 @@ fn format_results(results: &[FusedResult]) -> String {
         output.push_str("\n\n");
     }
     output
+}
+
+/// Get project context from the knowledge layer
+///
+/// Reads patterns from layer/core/ (eternal principles) and layer/surface/ (active patterns)
+/// Optionally filters by topic if provided
+fn get_project_context(topic: Option<&str>) -> Result<String> {
+    let mut output = String::new();
+
+    // Check if we're in a patina project
+    let layer_path = Path::new("layer");
+    if !layer_path.exists() {
+        return Ok(
+            "No knowledge layer found. Run 'patina init' to initialize a project.".to_string(),
+        );
+    }
+
+    // Read core patterns (eternal principles)
+    let core_path = layer_path.join("core");
+    let core_patterns = read_patterns(&core_path, topic)?;
+
+    // Read surface patterns (active architecture)
+    let surface_path = layer_path.join("surface");
+    let surface_patterns = read_patterns(&surface_path, topic)?;
+
+    // Format output
+    if !core_patterns.is_empty() {
+        output.push_str("# Core Patterns (Eternal Principles)\n\n");
+        for (name, content) in &core_patterns {
+            output.push_str(&format!("## {}\n\n{}\n\n", name, content));
+        }
+    }
+
+    if !surface_patterns.is_empty() {
+        output.push_str("# Surface Patterns (Active Architecture)\n\n");
+        for (name, content) in &surface_patterns {
+            output.push_str(&format!("## {}\n\n{}\n\n", name, content));
+        }
+    }
+
+    if output.is_empty() {
+        if let Some(t) = topic {
+            output = format!("No patterns found matching topic: '{}'", t);
+        } else {
+            output = "No patterns found in the knowledge layer.".to_string();
+        }
+    }
+
+    Ok(output)
+}
+
+/// Read markdown patterns from a directory
+fn read_patterns(dir: &Path, topic: Option<&str>) -> Result<Vec<(String, String)>> {
+    let mut patterns = Vec::new();
+
+    if !dir.exists() {
+        return Ok(patterns);
+    }
+
+    // Read .md files in the directory
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        // Only process markdown files
+        if path.extension().map(|e| e == "md").unwrap_or(false) {
+            let name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+
+            // Skip certain files
+            if name == "README" || name.starts_with('.') {
+                continue;
+            }
+
+            let content = fs::read_to_string(&path)?;
+
+            // If topic filter provided, check if content matches
+            if let Some(t) = topic {
+                let topic_lower = t.to_lowercase();
+                let content_lower = content.to_lowercase();
+                let name_lower = name.to_lowercase();
+
+                if !content_lower.contains(&topic_lower) && !name_lower.contains(&topic_lower) {
+                    continue;
+                }
+            }
+
+            // Extract summary (first non-frontmatter paragraph)
+            let summary = extract_summary(&content);
+            patterns.push((name, summary));
+        }
+    }
+
+    // Sort by name for consistent output
+    patterns.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(patterns)
+}
+
+/// Extract a summary from markdown content (skip frontmatter, get first paragraphs)
+fn extract_summary(content: &str) -> String {
+    let mut lines: Vec<&str> = content.lines().collect();
+
+    // Skip YAML frontmatter if present
+    if lines.first().map(|l| *l == "---").unwrap_or(false) {
+        if let Some(end) = lines.iter().skip(1).position(|l| *l == "---") {
+            lines = lines[end + 2..].to_vec();
+        }
+    }
+
+    // Skip title line (# ...)
+    if lines.first().map(|l| l.starts_with('#')).unwrap_or(false) {
+        lines = lines[1..].to_vec();
+    }
+
+    // Get first ~500 chars of meaningful content
+    let mut summary = String::new();
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            if !summary.is_empty() {
+                summary.push('\n');
+            }
+            continue;
+        }
+        summary.push_str(trimmed);
+        summary.push(' ');
+
+        if summary.len() > 500 {
+            // Truncate at char boundary
+            let truncated: String = summary.chars().take(500).collect();
+            summary = truncated;
+            summary.push_str("...");
+            break;
+        }
+    }
+
+    summary.trim().to_string()
 }

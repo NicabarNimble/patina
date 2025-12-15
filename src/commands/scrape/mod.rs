@@ -4,6 +4,7 @@ pub mod code;
 pub mod database;
 pub mod git;
 pub mod github;
+pub mod layer;
 pub mod sessions;
 
 use anyhow::Result;
@@ -49,22 +50,26 @@ mod tests {
     }
 }
 
-/// Run all scrapers in sequence (code, git, sessions)
+/// Run all scrapers in sequence (code, git, sessions, layer)
 ///
 /// This is the default when running `patina scrape` with no subcommand.
 pub fn execute_all() -> Result<()> {
     println!("🔄 Running all scrapers...\n");
 
-    println!("📊 [1/3] Scraping code...");
+    println!("📊 [1/4] Scraping code...");
     execute_code(false, false)?;
 
-    println!("\n📊 [2/3] Scraping git...");
+    println!("\n📊 [2/4] Scraping git...");
     let git_stats = git::run(false)?;
     println!("  • {} commits", git_stats.items_processed);
 
-    println!("\n📚 [3/3] Scraping sessions...");
+    println!("\n📚 [3/4] Scraping sessions...");
     let session_stats = sessions::run(false)?;
     println!("  • {} sessions", session_stats.items_processed);
+
+    println!("\n📜 [4/4] Scraping layer patterns...");
+    let layer_stats = layer::run(false)?;
+    println!("  • {} patterns", layer_stats.items_processed);
 
     println!("\n✅ All scrapers complete!");
     Ok(())
@@ -105,6 +110,16 @@ pub fn execute_sessions(full: bool) -> Result<()> {
     let stats = sessions::run(full)?;
     println!("\n📊 Sessions Scrape Summary:");
     println!("  • Sessions processed: {}", stats.items_processed);
+    println!("  • Time elapsed: {:?}", stats.time_elapsed);
+    println!("  • Database size: {} KB", stats.database_size_kb);
+    Ok(())
+}
+
+/// Execute layer pattern scraper with summary output
+pub fn execute_layer(full: bool) -> Result<()> {
+    let stats = layer::run(full)?;
+    println!("\n📊 Layer Scrape Summary:");
+    println!("  • Patterns processed: {}", stats.items_processed);
     println!("  • Time elapsed: {:?}", stats.time_elapsed);
     println!("  • Database size: {} KB", stats.database_size_kb);
     Ok(())
