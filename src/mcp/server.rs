@@ -163,7 +163,10 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
             let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
             let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
             let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
-            let all_repos = args.get("all_repos").and_then(|v| v.as_bool()).unwrap_or(false);
+            let all_repos = args
+                .get("all_repos")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
             let include_issues = args
                 .get("include_issues")
                 .and_then(|v| v.as_bool())
