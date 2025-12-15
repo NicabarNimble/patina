@@ -6,7 +6,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
 
 use super::protocol::{Request, Response};
-use crate::retrieval::{FusedResult, QueryEngine};
+use crate::retrieval::{FusedResult, QueryEngine, QueryOptions};
 
 /// Run MCP server over stdio
 pub fn run_mcp_server() -> Result<()> {
@@ -104,6 +104,20 @@ fn handle_list_tools(req: &Request) -> Response {
                                 "type": "integer",
                                 "description": "Maximum results to return (default: 10)",
                                 "default": 10
+                            },
+                            "repo": {
+                                "type": "string",
+                                "description": "Query a specific registered repo by name (from registry)"
+                            },
+                            "all_repos": {
+                                "type": "boolean",
+                                "description": "Query all registered repos (default: false)",
+                                "default": false
+                            },
+                            "include_issues": {
+                                "type": "boolean",
+                                "description": "Include GitHub issues in results (default: false)",
+                                "default": false
                             }
                         },
                         "required": ["query"]
@@ -118,6 +132,15 @@ fn handle_list_tools(req: &Request) -> Response {
                             "topic": {
                                 "type": "string",
                                 "description": "Optional topic to focus on (e.g., 'error handling', 'testing', 'architecture')"
+                            },
+                            "repo": {
+                                "type": "string",
+                                "description": "Query a specific repo by name (from registry)"
+                            },
+                            "all_repos": {
+                                "type": "boolean",
+                                "description": "Query all registered repos (default: false)",
+                                "default": false
                             }
                         }
                     }
@@ -139,6 +162,12 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
         "patina_query" => {
             let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
             let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
+            let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
+            let all_repos = args.get("all_repos").and_then(|v| v.as_bool()).unwrap_or(false);
+            let include_issues = args
+                .get("include_issues")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
 
             if query.is_empty() {
                 return Response::error(
@@ -148,7 +177,13 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                 );
             }
 
-            match engine.query(query, limit) {
+            let options = QueryOptions {
+                repo,
+                all_repos,
+                include_issues,
+            };
+
+            match engine.query_with_options(query, limit, &options) {
                 Ok(results) => {
                     let text = format_results(&results);
                     Response::success(
