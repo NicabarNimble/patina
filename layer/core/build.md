@@ -548,6 +548,57 @@ Before moving to Phase 3, ALL of these must be true:
 
 ---
 
+## Phase 2.8: Multi-Project RAG
+
+**Goal:** Enable Oracle/MCP layer to query across multiple projects, not just the current one.
+
+**Problem Discovered (session 20251215):** The Oracle/MCP layer only exposes a subset of scry's capabilities. Scry already supports `--repo` and `--all-repos`, but Oracles don't pass these through. This creates knowledge islands - each project is isolated.
+
+**Philosophy:** Complete the abstraction before moving forward. The retrieval layer should expose what scry can do.
+
+### Current Gap
+
+| Capability | Scry | Oracles | MCP |
+|------------|------|---------|-----|
+| Semantic search | ✅ | ✅ | ✅ |
+| Lexical search | ✅ | ✅ | ✅ |
+| Persona search | ✅ | ✅ | ✅ |
+| RRF fusion | - | ✅ | ✅ |
+| Specific repo | ✅ | ❌ | ❌ |
+| All repos | ✅ | ❌ | ❌ |
+| Include issues | ✅ | ❌ | ❌ |
+
+### Phase 2.8 Tasks
+
+#### 2.8a: QueryOptions Struct
+- [ ] Add `QueryOptions` struct to `oracle.rs` with repo params
+- [ ] Update `Oracle` trait: `query(&self, query: &str, options: &QueryOptions)`
+
+#### 2.8b: Thread Options Through Oracles
+- [ ] Update `SemanticOracle` to pass options to `scry::scry_text()`
+- [ ] Update `LexicalOracle` to pass options to `scry::scry_lexical()`
+- [ ] Update `PersonaOracle` to accept options
+
+#### 2.8c: Update QueryEngine
+- [ ] `QueryEngine::query()` accepts `QueryOptions`
+- [ ] Pass options to each oracle
+
+#### 2.8d: Update MCP Tools
+- [ ] Add `repo`, `all_repos`, `include_issues` params to `patina_query` tool
+- [ ] Wire through to QueryEngine
+
+### Validation
+
+| Criteria | Status |
+|----------|--------|
+| `patina_query` accepts `repo` param | [ ] |
+| `patina_query` accepts `all_repos` param | [ ] |
+| Can query specific repo via MCP | [ ] |
+| Can query all repos via MCP | [ ] |
+| Existing single-project queries still work | [ ] |
+
+---
+
 ## Future Phases
 
 | Phase | Name | Focus |
