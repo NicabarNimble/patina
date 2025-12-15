@@ -148,6 +148,46 @@ We use the trait for:
 
 This is intentional deviation from adapter-pattern (which targets external systems).
 
+### Layering Principle (added session 20251215)
+
+**MCP is an interface adapter, not core logic.** The retrieval layer should be interface-agnostic.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  INTERFACE LAYER (thin adapters)                            │
+│  ├── MCP Server (for Claude/LLMs via stdio)                 │
+│  ├── HTTP API (for containers via network)                  │
+│  └── CLI (for humans via terminal)                          │
+│                                                             │
+│  All interfaces call the SAME retrieval layer.              │
+│  No interface-specific logic in retrieval.                  │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  RETRIEVAL LAYER (the smarts)                               │
+│  QueryEngine:                                               │
+│  ├── Multi-repo federation (reads registry)                 │
+│  ├── Oracle coordination (parallel execution)               │
+│  └── RRF fusion                                             │
+│                                                             │
+│  Oracles (simple, single-project):                          │
+│  └── query(query, limit) - no repo awareness                │
+└─────────────────────────────────────────────────────────────┘
+                           │
+                           ▼
+┌─────────────────────────────────────────────────────────────┐
+│  CORE TOOLS                                                 │
+│  scry, persona, registry                                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key design decisions:**
+- Oracles stay simple: `query(query, limit)` - single project only
+- QueryEngine handles federation across repos
+- MCP/HTTP/CLI are thin wrappers that parse params and delegate
+- `patina bench` tests the same code path as MCP (no surprises)
+
 ---
 
 ## Core Components
