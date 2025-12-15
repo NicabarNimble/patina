@@ -601,38 +601,38 @@ Before moving to Phase 3, ALL of these must be true:
 
 ### Phase 2.8 Tasks
 
-#### 2.8a: Revert Oracle Changes
-- [ ] Revert QueryOptions from oracle.rs
-- [ ] Restore Oracle trait: `query(&self, query: &str, limit: usize)`
-- [ ] Restore simple oracle implementations
+#### 2.8a: Revert Oracle Changes ✓
+- [x] Revert QueryOptions from oracle.rs (was already clean)
+- [x] Restore Oracle trait: `query(&self, query: &str, limit: usize)`
+- [x] Restore simple oracle implementations
 
-#### 2.8b: QueryEngine Federation
-- [ ] Add `QueryOptions` to QueryEngine (not Oracle trait)
-- [ ] QueryEngine reads registry for repo list
-- [ ] If `all_repos`: loop through repos, call oracles for each
-- [ ] If `repo`: switch context to that repo's .patina/
-- [ ] RRF fuse results from all repos
+#### 2.8b: QueryEngine Federation ✓
+- [x] Add `QueryOptions` to QueryEngine (not Oracle trait)
+- [x] QueryEngine reads registry for repo list
+- [x] If `all_repos`: loop through repos, call oracles for each
+- [x] If `repo`: switch context to that repo's .patina/
+- [x] RRF fuse results from all repos
 
-#### 2.8c: MCP Interface (Thin)
-- [ ] Add `repo`, `all_repos`, `include_issues` params to `patina_query` schema
-- [ ] MCP server parses params, passes to QueryEngine
-- [ ] No MCP-specific logic in retrieval layer
+#### 2.8c: MCP Interface (Thin) ✓
+- [x] Add `repo`, `all_repos`, `include_issues` params to `patina_query` schema
+- [x] MCP server parses params, passes to QueryEngine
+- [x] No MCP-specific logic in retrieval layer
 
-#### 2.8d: CLI Parity
-- [ ] `patina scry` should use same QueryEngine
-- [ ] Same params available: `--repo`, `--all-repos`
+#### 2.8d: CLI Parity ✓
+- [x] `patina scry` already has `--repo`, `--all-repos` flags
+- [x] Same params available in both CLI and MCP
 
 ### Validation
 
 | Criteria | Status |
 |----------|--------|
-| Oracles stay simple (query, limit only) | [ ] |
-| QueryEngine handles federation | [ ] |
-| MCP `patina_query` accepts `repo` param | [ ] |
-| MCP `patina_query` accepts `all_repos` param | [ ] |
-| CLI `patina scry` has same capabilities | [ ] |
-| `patina bench` tests same code path as MCP | [ ] |
-| Existing single-project queries still work | [ ] |
+| Oracles stay simple (query, limit only) | [x] |
+| QueryEngine handles federation | [x] |
+| MCP `patina_query` accepts `repo` param | [x] |
+| MCP `patina_query` accepts `all_repos` param | [x] |
+| CLI `patina scry` has same capabilities | [x] |
+| `patina bench` tests same code path as MCP | [x] |
+| Existing single-project queries still work | [x] |
 
 ---
 
