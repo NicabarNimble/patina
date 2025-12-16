@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 1 - Folder Restructure
+**Current Phase:** Phase 2 - Release Automation & Template Sync
 
 ---
 
@@ -170,9 +170,114 @@ Project-level path consolidation deferred to [spec-work-deferred.md](../surface/
 
 ---
 
+## Phase 2: Release Automation & Template Sync
+
+**Goal:** Proper versioning with release-plz, template propagation to projects.
+
+### Context
+
+**Problem 1: No release automation**
+- 943 commits, still at v0.1.0
+- No GitHub releases
+- Manual versioning won't happen consistently
+
+**Problem 2: Template updates don't propagate**
+- Templates live in 3 places: `resources/` → binary → `~/.patina/adapters/` → projects
+- Changing a template requires: edit source, rebuild, reinstall, re-init each project
+- Need `patina upgrade` to sync templates to all registered projects
+
+### Solution: release-plz
+
+**Why release-plz** (researched in session 20251216):
+- Rust-native, zero-config
+- Used by mise (popular Rust tool)
+- 1.2k stars, 291 releases, actively maintained
+- Supports GitHub, GitLab, Gitea
+- Works with conventional commits (we're 85% consistent already)
+
+**How it works:**
+1. Push to main with conventional commits (`feat:`, `fix:`, `docs:`)
+2. release-plz creates a "Release PR" with version bump + changelog
+3. Merge PR → GitHub Release created automatically
+
+### Tasks
+
+#### 2a: Commit Template Improvements
+- [ ] Commit `resources/claude/session-update.md` (added "Discussion context" bullet)
+- [ ] Rebuild patina binary (`cargo build --release && cargo install --path .`)
+
+#### 2b: Add release-plz Workflow
+- [ ] Create `.github/workflows/release-plz.yml`
+- [ ] Test workflow runs on push to main
+
+```yaml
+# .github/workflows/release-plz.yml
+name: Release-plz
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release-plz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: MarcoIeni/release-plz-action@v0.5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+```
+
+#### 2c: Create v0.1.0 Baseline Release
+- [ ] Create git tag `v0.1.0`
+- [ ] Create GitHub release with changelog summarizing all work to date
+- [ ] Changelog should cover: scrape, oxidize, scry, persona, MCP, hybrid retrieval, folder restructure
+
+#### 2d: Update `patina upgrade` Command
+- [ ] Extend existing upgrade.rs to sync templates
+- [ ] Add `--templates` flag to only sync templates (skip binary check)
+- [ ] Sync flow: binary → `~/.patina/adapters/` → all registered projects
+- [ ] Register projects in `registry.yaml` during `patina init`
+
+### Validation (Exit Criteria)
+
+| Criteria | Status |
+|----------|--------|
+| `resources/claude/session-update.md` committed | [ ] |
+| `.github/workflows/release-plz.yml` exists | [ ] |
+| v0.1.0 GitHub release created | [ ] |
+| release-plz creates PR on next push to main | [ ] |
+| `patina upgrade --templates` syncs to projects | [ ] |
+
+### Research Notes (Session 20251216)
+
+**Tools compared:**
+| Tool | Stars | Used By | Approach |
+|------|-------|---------|----------|
+| release-plz | 1.2k | mise | Rust-native, auto |
+| release-please | 6.2k | Google | Multi-lang, auto |
+| cargo-release | 1.5k | Dojo | Rust, semi-manual |
+| tinysemver | 27 | USearch | Multi-lang, auto |
+| Manual tags | n/a | ethrex, starknet-foundry | Full control |
+
+**Why blockchain projects use manual tags:** Coordination, security review, breaking changes matter more.
+
+**Why patina uses auto:** Dev tool, no downstream dependencies, ship fast.
+
+---
+
 ## Completed
 
 Shipped phases (details preserved in git tags):
+
+### Phase 1: Folder Restructure
+Centralized paths module (`src/paths.rs`), migration logic (`src/migration.rs`), user-level path consolidation. Clean separation of source vs derived data at `~/.patina/`.
+
+**Tag:** `spec/folder-structure`
 
 ### Launcher & Adapters
 Template centralization, first-run setup, launcher command (`patina` / `patina -f claude`), config consolidation (`.patina/config.toml`), branch safety (auto-stash, auto-switch), adapter commands.

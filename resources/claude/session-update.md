@@ -11,6 +11,7 @@ Update the current Patina session with Git-aware progress tracking:
 
 5. Fill in the update section with what happened during that time period:
    - **Work completed**: Code written, files modified, problems solved
+   - **Discussion context**: Key questions asked, reasoning frameworks used, why we chose this approach
    - **Key decisions**: Design choices, trade-offs, reasoning behind changes
    - **Challenges faced**: Errors encountered, debugging steps, solutions found
    - **Patterns observed**: Reusable insights, things that worked well
