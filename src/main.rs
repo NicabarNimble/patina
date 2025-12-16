@@ -228,6 +228,10 @@ enum Commands {
         /// Exclude persona knowledge from results
         #[arg(long)]
         no_persona: bool,
+
+        /// Use hybrid search (fuse all oracles via RRF)
+        #[arg(long)]
+        hybrid: bool,
     },
 
     /// Evaluate retrieval quality across dimensions
@@ -685,6 +689,7 @@ fn main() -> Result<()> {
             all_repos,
             include_issues,
             no_persona,
+            hybrid,
         }) => {
             let options = commands::scry::ScryOptions {
                 limit,
@@ -695,6 +700,7 @@ fn main() -> Result<()> {
                 all_repos,
                 include_issues,
                 include_persona: !no_persona,
+                hybrid,
             };
             commands::scry::execute(query.as_deref(), options)?;
         }

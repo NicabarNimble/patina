@@ -13,6 +13,7 @@ use std::path::Path;
 use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
 use crate::commands::persona;
+use crate::retrieval::{QueryEngine, QueryOptions};
 use patina::embeddings::create_embedder;
 use patina::mothership;
 
@@ -38,6 +39,7 @@ pub struct ScryOptions {
     pub all_repos: bool,
     pub include_issues: bool,
     pub include_persona: bool,
+    pub hybrid: bool,
 }
 
 impl Default for ScryOptions {
@@ -51,6 +53,7 @@ impl Default for ScryOptions {
             all_repos: false,
             include_issues: false,
             include_persona: true, // Include persona by default
+            hybrid: false,
         }
     }
 }
@@ -67,6 +70,11 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     // Handle --all-repos mode
     if options.all_repos {
         return execute_all_repos(query, &options);
+    }
+
+    // Handle --hybrid mode (uses QueryEngine with RRF fusion)
+    if options.hybrid {
+        return execute_hybrid(query, &options);
     }
 
     // Show repo context if specified
@@ -927,6 +935,57 @@ fn enrich_results(
     });
 
     Ok(enriched)
+}
+
+/// Execute hybrid search using QueryEngine with RRF fusion
+fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> {
+    let query = query.ok_or_else(|| anyhow::anyhow!("Query required for --hybrid"))?;
+
+    println!("Mode: Hybrid (RRF fusion of all oracles)\n");
+    println!("Query: \"{}\"\n", query);
+
+    let engine = QueryEngine::new();
+
+    // Show available oracles
+    let available = engine.available_oracles();
+    println!("Oracles: {}\n", available.join(", "));
+
+    // Build query options
+    let query_opts = QueryOptions {
+        repo: options.repo.clone(),
+        all_repos: options.all_repos,
+        include_issues: options.include_issues,
+    };
+
+    let results = engine.query_with_options(query, options.limit, &query_opts)?;
+
+    if results.is_empty() {
+        println!("No results found.");
+        return Ok(());
+    }
+
+    println!("Found {} results:\n", results.len());
+    println!("{}", "─".repeat(60));
+
+    for (i, result) in results.iter().enumerate() {
+        // Format sources (which oracles contributed)
+        let sources_str = result.sources.join("+");
+        let event_type = result.metadata.event_type.as_deref().unwrap_or("unknown");
+
+        println!(
+            "\n[{}] [{}] (score: {:.3}) {} ({})",
+            i + 1,
+            sources_str,
+            result.fused_score,
+            result.doc_id,
+            event_type
+        );
+        println!("    {}", truncate_content(&result.content, 200));
+    }
+
+    println!("\n{}", "─".repeat(60));
+
+    Ok(())
 }
 
 /// Execute query across all repos (current project + all reference repos)
