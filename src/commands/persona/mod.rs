@@ -1,7 +1,10 @@
 //! Persona command - Cross-project user knowledge
 //!
 //! Captures and queries user preferences, style, and knowledge that spans projects.
-//! Storage: ~/.patina/personas/default/
+//!
+//! Storage layout (via paths module):
+//! - Events (source): ~/.patina/personas/default/events/
+//! - Cache (derived): ~/.patina/cache/personas/default/
 //!
 //! Entry points:
 //! - note(content, domains) - capture knowledge
@@ -19,15 +22,7 @@ use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 use uuid::Uuid;
 
 use patina::embeddings::create_embedder;
-
-/// Persona base directory
-fn persona_dir() -> std::path::PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join(".patina")
-        .join("personas")
-        .join("default")
-}
+use patina::paths::persona as persona_paths;
 
 /// Captured knowledge event (private - implementation detail)
 #[derive(Debug, Serialize, Deserialize)]
@@ -61,8 +56,7 @@ pub fn note(
     domains: Option<Vec<String>>,
     supersedes: Option<String>,
 ) -> Result<String> {
-    let dir = persona_dir();
-    let events_dir = dir.join("events");
+    let events_dir = persona_paths::events_dir();
     fs::create_dir_all(&events_dir).context("Failed to create events directory")?;
 
     let event_id = format!("evt_{}", Uuid::new_v4().simple());
@@ -95,13 +89,12 @@ pub fn note(
 
 /// Build searchable index from events
 pub fn materialize() -> Result<()> {
-    let dir = persona_dir();
-    let events_dir = dir.join("events");
-    let materialized_dir = dir.join("materialized");
-    fs::create_dir_all(&materialized_dir)?;
+    let events_dir = persona_paths::events_dir();
+    let cache_dir = persona_paths::cache_dir();
+    fs::create_dir_all(&cache_dir)?;
 
-    let db_path = materialized_dir.join("persona.db");
-    let index_path = materialized_dir.join("persona.usearch");
+    let db_path = cache_dir.join("persona.db");
+    let index_path = cache_dir.join("persona.usearch");
 
     // Open database and create schema
     let conn = Connection::open(&db_path)?;
@@ -241,9 +234,9 @@ pub fn query(
     min_score: f32,
     domains: Option<Vec<String>>,
 ) -> Result<Vec<PersonaResult>> {
-    let dir = persona_dir();
-    let db_path = dir.join("materialized/persona.db");
-    let index_path = dir.join("materialized/persona.usearch");
+    let cache_dir = persona_paths::cache_dir();
+    let db_path = cache_dir.join("persona.db");
+    let index_path = cache_dir.join("persona.usearch");
 
     if !index_path.exists() {
         return Ok(Vec::new());
@@ -317,7 +310,7 @@ pub fn query(
 
 /// List recent persona entries from event files
 pub fn list(limit: usize, domains: Option<Vec<String>>) -> Result<Vec<PersonaResult>> {
-    let events_dir = persona_dir().join("events");
+    let events_dir = persona_paths::events_dir();
 
     if !events_dir.exists() {
         return Ok(Vec::new());
@@ -497,7 +490,7 @@ mod tests {
         let events_dir = temp.path().join("events");
         fs::create_dir_all(&events_dir)?;
 
-        // Create event manually (can't override persona_dir in test easily)
+        // Create event manually (can't override paths in test easily)
         let event = PersonaEvent {
             id: "test_001".to_string(),
             event_type: "knowledge_captured".to_string(),

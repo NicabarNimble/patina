@@ -1,6 +1,7 @@
 //! Internal implementation for workspace module
 //!
 //! Handles ~/.patina/ directory structure, config persistence, and first-run setup.
+//! Path definitions are in the paths module - this module contains behavior.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -9,6 +10,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use super::SetupResult;
+use crate::paths;
 
 // =============================================================================
 // Config Types
@@ -102,40 +104,12 @@ pub struct WorkspaceInfo {
 }
 
 // =============================================================================
-// Path Functions
-// =============================================================================
-
-/// Get the mothership directory (~/.patina)
-pub fn mothership_dir() -> PathBuf {
-    dirs::home_dir()
-        .expect("Could not find home directory")
-        .join(".patina")
-}
-
-/// Get the adapters directory (~/.patina/adapters)
-pub fn adapters_dir() -> PathBuf {
-    mothership_dir().join("adapters")
-}
-
-/// Get the config file path (~/.patina/config.toml)
-pub fn config_path() -> PathBuf {
-    mothership_dir().join("config.toml")
-}
-
-/// Get the workspace projects directory from config
-pub fn projects_dir() -> Result<PathBuf> {
-    let config = load_config()?;
-    let path = shellexpand::tilde(&config.workspace.path);
-    Ok(PathBuf::from(path.as_ref()))
-}
-
-// =============================================================================
 // First-Run Detection
 // =============================================================================
 
 /// Check if this is first run
 pub fn is_first_run() -> bool {
-    !mothership_dir().exists()
+    !paths::patina_home().exists()
 }
 
 // =============================================================================
@@ -144,8 +118,8 @@ pub fn is_first_run() -> bool {
 
 /// Perform first-run setup
 pub fn setup() -> Result<SetupResult> {
-    let mothership = mothership_dir();
-    let adapters = adapters_dir();
+    let mothership = paths::patina_home();
+    let adapters = paths::adapters_dir();
 
     // Create directory structure
     println!("First-time setup...");
@@ -258,7 +232,7 @@ pub fn setup() -> Result<SetupResult> {
 
 /// Ensure workspace exists (idempotent)
 pub fn ensure_workspace() -> Result<()> {
-    let mothership = mothership_dir();
+    let mothership = paths::patina_home();
 
     if !mothership.exists() {
         setup()?;
@@ -266,7 +240,7 @@ pub fn ensure_workspace() -> Result<()> {
     }
 
     // Ensure subdirectories exist
-    let adapters = adapters_dir();
+    let adapters = paths::adapters_dir();
     if !adapters.exists() {
         fs::create_dir_all(&adapters)?;
         for adapter in &["claude", "gemini", "codex"] {
@@ -283,7 +257,7 @@ pub fn ensure_workspace() -> Result<()> {
     }
 
     // Ensure config exists
-    if !config_path().exists() {
+    if !paths::config_path().exists() {
         save_config(&GlobalConfig::default())?;
     }
 
@@ -296,7 +270,7 @@ pub fn ensure_workspace() -> Result<()> {
 
 /// Load config from ~/.patina/config.toml
 pub fn load_config() -> Result<GlobalConfig> {
-    let path = config_path();
+    let path = paths::config_path();
 
     if !path.exists() {
         return Ok(GlobalConfig::default());
@@ -310,7 +284,7 @@ pub fn load_config() -> Result<GlobalConfig> {
 
 /// Save config to ~/.patina/config.toml
 pub fn save_config(config: &GlobalConfig) -> Result<()> {
-    let path = config_path();
+    let path = paths::config_path();
 
     // Ensure parent exists
     if let Some(parent) = path.parent() {
@@ -328,12 +302,12 @@ pub fn save_config(config: &GlobalConfig) -> Result<()> {
 
 /// Get workspace info
 pub fn workspace_info() -> Result<WorkspaceInfo> {
-    let mothership = mothership_dir();
+    let mothership = paths::patina_home();
     let config = load_config()?;
     let workspace_path = PathBuf::from(shellexpand::tilde(&config.workspace.path).as_ref());
 
     // Check installed adapters
-    let adapters = adapters_dir();
+    let adapters = paths::adapters_dir();
     let mut installed = Vec::new();
     for name in &["claude", "gemini", "codex"] {
         if adapters.join(name).exists() {
@@ -344,7 +318,7 @@ pub fn workspace_info() -> Result<WorkspaceInfo> {
     Ok(WorkspaceInfo {
         mothership_path: mothership.clone(),
         workspace_path,
-        config_exists: config_path().exists(),
+        config_exists: paths::config_path().exists(),
         adapters_installed: installed,
     })
 }

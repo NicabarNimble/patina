@@ -65,20 +65,8 @@ pub fn ensure() -> Result<()> {
     internal::ensure_workspace()
 }
 
-/// Get the mothership directory path (~/.patina)
-pub fn mothership_dir() -> std::path::PathBuf {
-    internal::mothership_dir()
-}
-
-/// Get the workspace projects directory path
-pub fn projects_dir() -> Result<std::path::PathBuf> {
-    internal::projects_dir()
-}
-
-/// Get the adapters directory path (~/.patina/adapters)
-pub fn adapters_dir() -> std::path::PathBuf {
-    internal::adapters_dir()
-}
+// Path functions moved to patina::paths module
+// Use paths::patina_home(), paths::adapters_dir(), etc.
 
 /// Result of first-run setup
 #[derive(Debug)]
@@ -95,19 +83,4 @@ pub struct SetupResult {
     pub default_frontend: Option<String>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_mothership_dir() {
-        let path = mothership_dir();
-        assert!(path.ends_with(".patina"));
-    }
-
-    #[test]
-    fn test_adapters_dir() {
-        let path = adapters_dir();
-        assert!(path.ends_with("adapters"));
-    }
-}
+// Tests for path functions are in paths module

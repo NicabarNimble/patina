@@ -8,12 +8,18 @@ use crate::retrieval::oracle::{Oracle, OracleMetadata, OracleResult};
 
 pub struct LexicalOracle {
     db_path: PathBuf,
+    include_issues: bool,
 }
 
 impl LexicalOracle {
     pub fn new() -> Self {
+        Self::with_options(false)
+    }
+
+    pub fn with_options(include_issues: bool) -> Self {
         Self {
             db_path: PathBuf::from(".patina/data/patina.db"),
+            include_issues,
         }
     }
 }
@@ -27,6 +33,7 @@ impl Oracle for LexicalOracle {
         let options = ScryOptions {
             limit,
             include_persona: false,
+            include_issues: self.include_issues,
             ..Default::default()
         };
 
