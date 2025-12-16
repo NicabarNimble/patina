@@ -14,5 +14,5 @@ mod fusion;
 mod oracle;
 mod oracles;
 
-pub use engine::{QueryEngine, RetrievalConfig};
+pub use engine::{QueryEngine, QueryOptions, RetrievalConfig};
 pub use fusion::FusedResult;
