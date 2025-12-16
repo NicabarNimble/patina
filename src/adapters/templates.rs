@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
-use crate::workspace;
+use crate::paths;
 
 // =============================================================================
 // Embedded Templates - Claude
@@ -76,7 +76,7 @@ pub fn install_all(adapters_dir: &Path) -> Result<()> {
 /// Copies the adapter-specific directory (.claude/, .gemini/) from
 /// central templates to the project.
 pub fn copy_to_project(frontend: &str, project_path: &Path) -> Result<()> {
-    let templates_dir = workspace::adapters_dir().join(frontend).join("templates");
+    let templates_dir = paths::adapters_dir().join(frontend).join("templates");
 
     let adapter_dir_name = format!(".{}", frontend);
     let src = templates_dir.join(&adapter_dir_name);
@@ -84,7 +84,7 @@ pub fn copy_to_project(frontend: &str, project_path: &Path) -> Result<()> {
 
     if !src.exists() {
         // Templates not installed yet, install from embedded
-        let adapters = workspace::adapters_dir();
+        let adapters = paths::adapters_dir();
         install_all(&adapters)?;
     }
 
@@ -94,7 +94,7 @@ pub fn copy_to_project(frontend: &str, project_path: &Path) -> Result<()> {
 
 /// Check if templates are installed for a frontend
 pub fn templates_installed(frontend: &str) -> bool {
-    let templates_dir = workspace::adapters_dir().join(frontend).join("templates");
+    let templates_dir = paths::adapters_dir().join(frontend).join("templates");
     templates_dir.exists()
 }
 

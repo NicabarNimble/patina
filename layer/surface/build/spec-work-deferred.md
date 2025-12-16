@@ -72,6 +72,42 @@ Work blocked on dependencies outside our control.
 
 Nice-to-have work that wasn't required for exit criteria.
 
+### Project-Level Path Consolidation
+
+| Field | Value |
+|-------|-------|
+| **Origin** | Phase 1 (Folder Restructure) |
+| **Spec** | `spec-folder-structure.md` |
+| **Why deferred** | 45+ files work today; ship user-level restructure first |
+| **When to revisit** | Incrementally, as you touch these files |
+
+**Context:** `paths.rs` was designed with complete API (user + project level) following Eskil philosophy. User-level migrations shipped. Project-level migrations deferred.
+
+**Files to migrate (when touched):**
+
+| Category | Files | Path Functions Needed |
+|----------|-------|----------------------|
+| **Database** | `scrape/database.rs`, `retrieval/oracles/*.rs`, `retrieval/engine.rs` | `project::db_path()` |
+| **Oxidize** | `oxidize/mod.rs`, `oxidize/recipe.rs` | `project::recipe_path()`, `project::model_projections_dir()` |
+| **Rebuild** | `rebuild/mod.rs` | `project::data_dir()`, `project::db_path()`, `project::embeddings_dir()` |
+| **Project** | `project/internal.rs`, `version.rs` | `project::config_path()`, `project::versions_path()` |
+| **Init** | `commands/init/*.rs` | `project::patina_dir()`, `project::config_path()` |
+| **Other** | ~30 more files | Various `project::*` |
+
+**Migration pattern:**
+```rust
+// Before (hardcoded)
+let db_path = ".patina/data/patina.db";
+
+// After (using paths module)
+use patina::paths::project;
+let db_path = project::db_path(project_root);
+```
+
+**Value:** Single source of truth for all paths. But existing code works, so migrate opportunistically.
+
+---
+
 ### Ground Truth Expansion
 
 | Field | Value |

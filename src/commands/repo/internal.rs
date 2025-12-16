@@ -1,13 +1,15 @@
 //! Internal implementation for repo command
 //!
-//! Central storage at `~/.patina/repos/` with registry at `~/.patina/registry.yaml`
+//! Central storage at `~/.patina/cache/repos/` with registry at `~/.patina/registry.yaml`
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
+
+use patina::paths;
 
 /// Registry schema (persisted to ~/.patina/registry.yaml)
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -50,7 +52,7 @@ pub struct RepoEntry {
 impl Registry {
     /// Load registry from default location
     pub fn load() -> Result<Self> {
-        let path = registry_path();
+        let path = paths::registry_path();
         if !path.exists() {
             return Ok(Registry {
                 version: 1,
@@ -67,7 +69,7 @@ impl Registry {
 
     /// Save registry to default location
     pub fn save(&self) -> Result<()> {
-        let path = registry_path();
+        let path = paths::registry_path();
 
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
@@ -78,23 +80,6 @@ impl Registry {
         fs::write(&path, contents)?;
         Ok(())
     }
-}
-
-/// Get the mothership directory (~/.patina)
-pub fn mothership_dir() -> PathBuf {
-    dirs::home_dir()
-        .expect("Could not find home directory")
-        .join(".patina")
-}
-
-/// Get the repos directory (~/.patina/repos)
-pub fn repos_dir() -> PathBuf {
-    mothership_dir().join("repos")
-}
-
-/// Get the registry path (~/.patina/registry.yaml)
-pub fn registry_path() -> PathBuf {
-    mothership_dir().join("registry.yaml")
 }
 
 /// Add a repository
@@ -121,8 +106,8 @@ pub fn add_repo(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
         );
     }
 
-    // Ensure repos directory exists
-    let repos_path = repos_dir();
+    // Ensure repos cache directory exists
+    let repos_path = paths::repos::cache_dir();
     fs::create_dir_all(&repos_path)?;
 
     let repo_path = repos_path.join(&repo_name);

@@ -574,6 +574,9 @@ enum BumpType {
 }
 
 fn main() -> Result<()> {
+    // Run migrations early (before any command)
+    patina::migration::migrate_if_needed();
+
     let cli = Cli::parse();
 
     match cli.command {

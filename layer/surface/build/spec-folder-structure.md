@@ -1,9 +1,10 @@
 # Spec: Folder Structure Design
 
 **Status:** Design Complete, Implementation Pending
-**Phase:** 2.9 (Folder Restructure)
-**Session:** 20251215-155622
+**Phase:** 1 (Folder Restructure)
+**Session:** 20251215-192032
 **Created:** 2025-12-15
+**Updated:** 2025-12-15
 
 ---
 
@@ -172,116 +173,235 @@ rmdir ~/.patina/repos
 
 ## Code Design: Centralized Paths Module
 
+### Design Philosophy
+
+From **rationale-eskil-steenberg.md**:
+
+> "It's faster to write 5 lines of code today than to write 1 line today and edit it later."
+> "Make it complete - cover all use cases, but no more"
+
+The paths module should be **complete from day one** - not minimal, not clever, but correct. If `paths.rs` is the single source of truth for Patina filesystem layout, it must define ALL paths (user-level AND project-level).
+
+**This is not over-engineering.** It's designing the complete, correct API once so we never have to change it.
+
 ### The Problem with Scattered Paths
 
-Current code defines paths inline in each module:
+Current code defines paths inline across 45+ files:
 
 ```rust
 // persona/mod.rs
-fn persona_dir() -> PathBuf {
-    dirs::home_dir().join(".patina/personas/default")
-}
-// Then: persona_dir().join("events"), persona_dir().join("materialized")
+fn persona_dir() -> PathBuf { dirs::home_dir().join(".patina/personas/default") }
+
+// workspace/internal.rs
+pub fn mothership_dir() -> PathBuf { dirs::home_dir().join(".patina") }
+
+// repo/internal.rs (DUPLICATE!)
+pub fn mothership_dir() -> PathBuf { dirs::home_dir().join(".patina") }
+
+// scrape/database.rs
+pub const PATINA_DB: &str = ".patina/data/patina.db";
+
+// retrieval/oracles/semantic.rs
+db_path: PathBuf::from(".patina/data/patina.db"),
 ```
 
 **Issues:**
 - No single place to see filesystem layout
-- Path changes require hunting through multiple files
-- `persona_dir()` abstraction breaks when source/derived split
+- Same paths defined in multiple places (DRY violation)
+- Mix of absolute paths (user-level) and relative paths (project-level)
+- Path changes require hunting through 45+ files
+- Abstractions break when structure changes
 
 ### Solution: `src/paths.rs`
 
-Single module owns ALL filesystem layout decisions:
+Single module owns ALL filesystem layout decisions for both user-level and project-level:
 
 ```rust
-// src/paths.rs - Single source of truth
+//! src/paths.rs - Single source of truth for ALL Patina filesystem layout
+//!
+//! This module defines WHERE data lives. It has no I/O, no validation,
+//! no business logic. One file shows the entire filesystem layout.
+//!
+//! Design: Complete from day one (Eskil philosophy).
+//! "Write code once, have it work forever."
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-/// ~/.patina/
+// =============================================================================
+// User Level (~/.patina/)
+// =============================================================================
+
+/// User's patina home directory: ~/.patina/
 pub fn patina_home() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".patina")
 }
 
-/// ~/.patina/cache/ - all rebuildable data
+/// Cache directory for all rebuildable data: ~/.patina/cache/
 pub fn patina_cache() -> PathBuf {
     patina_home().join("cache")
 }
 
-/// Persona paths
+/// Global config file: ~/.patina/config.toml
+pub fn config_path() -> PathBuf {
+    patina_home().join("config.toml")
+}
+
+/// Project/repo registry: ~/.patina/registry.yaml
+pub fn registry_path() -> PathBuf {
+    patina_home().join("registry.yaml")
+}
+
+/// LLM adapter templates: ~/.patina/adapters/
+pub fn adapters_dir() -> PathBuf {
+    patina_home().join("adapters")
+}
+
+/// Persona paths (cross-project user knowledge)
 pub mod persona {
     use super::*;
 
-    /// Source: ~/.patina/personas/default/events/
+    /// Source events (valuable): ~/.patina/personas/default/events/
     pub fn events_dir() -> PathBuf {
         patina_home().join("personas/default/events")
     }
 
-    /// Cache: ~/.patina/cache/personas/default/
+    /// Materialized cache (rebuildable): ~/.patina/cache/personas/default/
     pub fn cache_dir() -> PathBuf {
         patina_cache().join("personas/default")
     }
 }
 
-/// Reference repo paths
+/// Reference repository paths
 pub mod repos {
     use super::*;
 
-    /// Cache: ~/.patina/cache/repos/
+    /// Cloned repos (rebuildable): ~/.patina/cache/repos/
     pub fn cache_dir() -> PathBuf {
         patina_cache().join("repos")
     }
 }
+
+// =============================================================================
+// Project Level (project/.patina/)
+// =============================================================================
+
+/// Project-level paths, relative to a project root
+pub mod project {
+    use super::*;
+
+    /// Project's patina directory: .patina/
+    pub fn patina_dir(root: &Path) -> PathBuf {
+        root.join(".patina")
+    }
+
+    /// Project config: .patina/config.toml
+    pub fn config_path(root: &Path) -> PathBuf {
+        root.join(".patina/config.toml")
+    }
+
+    /// Derived data directory (gitignored): .patina/data/
+    pub fn data_dir(root: &Path) -> PathBuf {
+        root.join(".patina/data")
+    }
+
+    /// Main SQLite database: .patina/data/patina.db
+    pub fn db_path(root: &Path) -> PathBuf {
+        root.join(".patina/data/patina.db")
+    }
+
+    /// Embedding indices: .patina/data/embeddings/
+    pub fn embeddings_dir(root: &Path) -> PathBuf {
+        root.join(".patina/data/embeddings")
+    }
+
+    /// Model-specific projections: .patina/data/embeddings/{model}/projections/
+    pub fn model_projections_dir(root: &Path, model: &str) -> PathBuf {
+        root.join(format!(".patina/data/embeddings/{}/projections", model))
+    }
+
+    /// Oxidize recipe: .patina/oxidize.yaml
+    pub fn recipe_path(root: &Path) -> PathBuf {
+        root.join(".patina/oxidize.yaml")
+    }
+
+    /// Version manifest: .patina/versions.json
+    pub fn versions_path(root: &Path) -> PathBuf {
+        root.join(".patina/versions.json")
+    }
+
+    /// Backup directory: .patina/backups/
+    pub fn backups_dir(root: &Path) -> PathBuf {
+        root.join(".patina/backups")
+    }
+}
 ```
 
-### Consumer Code
+### Consumer Code Examples
 
+**User-level (absolute paths):**
 ```rust
-use crate::paths::persona;
+use patina::paths::{self, persona};
 
 pub fn note(...) {
     let dir = persona::events_dir();  // Obviously source
     fs::create_dir_all(&dir)?;
-    // ...
 }
 
 pub fn materialize() {
     let source = persona::events_dir();   // Read from here
-    let target = persona::cache_dir();    // Write to here
-    fs::create_dir_all(&target)?;
-    // Intent is clear, no ambiguity
+    let target = persona::cache_dir();    // Write to here - clear intent
+}
+```
+
+**Project-level (relative to root):**
+```rust
+use patina::paths::project;
+
+pub fn scrape(project_root: &Path) {
+    let db = project::db_path(project_root);
+    let embeddings = project::embeddings_dir(project_root);
 }
 
-pub fn query(...) {
-    let cache = persona::cache_dir();
-    let db_path = cache.join("persona.db");
-    let index_path = cache.join("persona.usearch");
-    // ...
+pub fn oxidize(project_root: &Path, model: &str) {
+    let recipe = project::recipe_path(project_root);
+    let projections = project::model_projections_dir(project_root, model);
 }
 ```
 
 ### Alignment with Core Values
 
+**rationale-eskil-steenberg.md:**
+- "Write code once, have it work forever"
+- "Make it complete - cover all use cases, but no more"
+- API designed once, correctly - never needs to change
+
 **dependable-rust.md:**
-- "Do X" test: "Return filesystem paths for Patina data"
+- "Do X" test: "Return filesystem paths for ALL Patina data" - clear and complete
 - Small interface: just path functions, no I/O
-- One file shows entire layout
+- One file shows ENTIRE layout (user + project)
+- Black box: internals can change, API stays stable
 
 **unix-philosophy.md:**
 - One tool, one job: defines where data lives
 - Composition: modules compose with paths
 - No feature creep: no I/O, validation, or migration logic
 
-### Affected Functions
+### Current Path Definitions to Consolidate
 
-| Function | Current | New |
-|----------|---------|-----|
-| `note()` | `persona_dir().join("events")` | `paths::persona::events_dir()` |
-| `materialize()` | `persona_dir().join("materialized")` | `paths::persona::cache_dir()` |
-| `query()` | `persona_dir().join("materialized/...")` | `paths::persona::cache_dir().join(...)` |
-| `list()` | `persona_dir().join("events")` | `paths::persona::events_dir()` |
+| Location | Functions | Status |
+|----------|-----------|--------|
+| `workspace/internal.rs` | `mothership_dir()`, `adapters_dir()`, `config_path()` | Move to paths.rs |
+| `repo/internal.rs` | `mothership_dir()` (duplicate!), `repos_dir()`, `registry_path()` | Move to paths.rs |
+| `persona/mod.rs` | `persona_dir()` | Split to `persona::events_dir()`, `persona::cache_dir()` |
+| `retrieval/oracles/persona.rs` | Hardcoded inline | Use `paths::persona::cache_dir()` |
+| `adapters/templates.rs` | Uses `workspace::adapters_dir()` | Use `paths::adapters_dir()` |
+| `scrape/database.rs` | `PATINA_DB` constant | Use `paths::project::db_path()` |
+| `retrieval/oracles/*.rs` | Hardcoded `.patina/data/...` | Use `paths::project::*` |
+| `oxidize/mod.rs` | Hardcoded paths | Use `paths::project::*` |
+| `rebuild/mod.rs` | Hardcoded paths | Use `paths::project::*` |
+| ~40 other files | Various hardcoded paths | Migrate incrementally |
 
 ---
 
@@ -297,17 +417,24 @@ pub fn query(...) {
 
 ## Validation Checklist
 
+**Ship Criteria:**
+
 | Criteria | Status |
 |----------|--------|
 | `layer/` stays at project root | ✅ Design decision |
 | Project `.patina/data/` is gitignored | ✅ Already done |
-| User `cache/` directory created | ⬜ Implementation |
-| `materialized/` moved to `cache/personas/` | ⬜ Implementation |
-| `repos/` moved to `cache/repos/` | ⬜ Implementation |
-| `patina persona materialize` uses new path | ⬜ Code change |
-| `patina persona query` uses new path | ⬜ Code change |
-| Old `materialized/` cleaned up | ⬜ Migration |
-| `claude-linux/` evaluated | ⬜ User decision |
+| `paths.rs` exists with complete API (user + project) | ⬜ |
+| User `cache/` directory structure works | ⬜ |
+| `materialized/` moved to `cache/personas/` | ⬜ |
+| `repos/` moved to `cache/repos/` | ⬜ |
+| All user-level path functions consolidated | ⬜ |
+| `patina persona` commands work | ⬜ |
+| `patina repo` commands work | ⬜ |
+| `patina` launcher works | ⬜ |
+| Auto-migration on first run | ⬜ |
+| `claude-linux/` evaluated | ⬜ |
+
+**Deferred:** Project-level path consolidation (45+ files). See [spec-work-deferred.md](spec-work-deferred.md).
 
 ---
 
@@ -337,7 +464,16 @@ Not a priority until Windows support is needed.
 
 ## References
 
-- **Session:** 20251215-155622 (design discussion)
-- **Session:** 20251215-111922 (initial proposal in last session)
+**Sessions:**
+- **20251215-192032** - Current implementation session (Phase 1)
+- **20251215-155622** - Design discussion, folder structure decisions
+- **20251215-111922** - Initial proposal, Phase 2.8 architecture
+
+**Core Patterns:**
+- **rationale-eskil-steenberg.md** - "Complete from day one" philosophy
+- **dependable-rust.md** - Black box module pattern
+- **unix-philosophy.md** - One tool, one job
+
+**External:**
 - **Cargo docs:** https://doc.rust-lang.org/cargo/guide/cargo-home.html
 - **XDG spec:** https://specifications.freedesktop.org/basedir-spec/
