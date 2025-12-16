@@ -91,8 +91,8 @@ fn handle_list_tools(req: &Request) -> Response {
         serde_json::json!({
             "tools": [
                 {
-                    "name": "patina_query",
-                    "description": "Search codebase knowledge using hybrid retrieval. Returns relevant code, patterns, decisions, and session history fused from semantic search, lexical search, and persona.",
+                    "name": "scry",
+                    "description": "Search codebase knowledge - USE THIS FIRST for any question about the code. Fast hybrid search over indexed symbols, functions, types, git history, and session learnings. Prefer this over manual file exploration.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -124,8 +124,8 @@ fn handle_list_tools(req: &Request) -> Response {
                     }
                 },
                 {
-                    "name": "patina_context",
-                    "description": "Get project context, patterns, and architectural rules from the knowledge layer. Returns core patterns (eternal principles), surface patterns (active architecture), and project-specific conventions.",
+                    "name": "context",
+                    "description": "Get project patterns and conventions - USE THIS to understand design rules before making architectural changes. Returns core patterns (eternal principles) and surface patterns (active architecture).",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -159,7 +159,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
     let args = req.params.get("arguments").cloned().unwrap_or_default();
 
     match name {
-        "patina_query" => {
+        "scry" => {
             let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
             let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
             let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
@@ -199,7 +199,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                 Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
             }
         }
-        "patina_context" => {
+        "context" => {
             let topic = args.get("topic").and_then(|v| v.as_str());
             match get_project_context(topic) {
                 Ok(text) => Response::success(

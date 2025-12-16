@@ -34,13 +34,13 @@ Work cut from completed phases to ship faster.
 |-------|-------|
 | **Origin** | Phase 2 (Agentic RAG) |
 | **Archived** | `spec/agentic-rag` |
-| **Why deferred** | Prioritized `patina_query` and `patina_context` first |
+| **Why deferred** | Prioritized `scry` and `context` tools first |
 | **When to revisit** | When starting capture automation |
 
 **Original tasks:**
-- `patina_session_start` - Start tracked session via MCP
-- `patina_session_note` - Capture insight via MCP
-- `patina_session_end` - End session and archive via MCP
+- `session_start` - Start tracked session via MCP
+- `session_note` - Capture insight via MCP
+- `session_end` - End session and archive via MCP
 
 **Value:** LLMs could manage sessions directly without shell scripts.
 
