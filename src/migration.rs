@@ -7,7 +7,7 @@
 //! Called early in startup to ensure data is in the right place.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::paths;
 
@@ -165,7 +165,7 @@ fn migrate_repos_cache() -> bool {
 }
 
 /// Merge repos when both old and new paths exist
-fn migrate_repos_merge(old_path: &PathBuf, new_path: &PathBuf) -> bool {
+fn migrate_repos_merge(old_path: &Path, new_path: &Path) -> bool {
     let mut migrated_any = false;
 
     if let Ok(entries) = fs::read_dir(old_path) {
