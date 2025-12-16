@@ -53,11 +53,11 @@ This is partly expected (Patina's value grows over time), but we can expose more
 - [x] Update CLAUDE.md generation with MCP guidance
 - [x] Update bootstrap content in launch.rs
 
-#### 1b: Add TemporalOracle
-- [ ] Create `src/retrieval/oracles/temporal.rs`
-- [ ] Query co-change neighbors for a file path
-- [ ] Fuse temporal results with lexical/semantic via RRF
-- [ ] Test: `scry "files related to auth"` returns co-change data
+#### 1b: Add TemporalOracle ✅
+- [x] Create `src/retrieval/oracles/temporal.rs`
+- [x] Query co-change neighbors for a file path
+- [x] Fuse temporal results with lexical/semantic via RRF
+- [x] Test: `scry "files related to auth"` returns co-change data
 
 #### 1c: Evaluate Auto-Oxidize
 - [ ] Should `patina init` run `oxidize`? (adds ~30s)
@@ -70,8 +70,8 @@ This is partly expected (Patina's value grows over time), but we can expose more
 |----------|--------|
 | MCP tools renamed to `scry`/`context` | [x] |
 | CLAUDE.md guides LLMs to use MCP tools | [x] |
-| TemporalOracle in QueryEngine | [ ] |
-| Co-change data queryable via `scry` | [ ] |
+| TemporalOracle in QueryEngine | [x] |
+| Co-change data queryable via `scry` | [x] |
 | Fresh project `scry` returns useful results | [ ] |
 
 ---
