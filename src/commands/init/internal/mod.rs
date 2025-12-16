@@ -235,6 +235,17 @@ pub fn execute_init(
         }
     }
 
+    // === STEP 5: BUILD EMBEDDINGS FOR SEMANTIC SEARCH ===
+    println!("\n🧪 Building embeddings for semantic search...");
+    match crate::commands::oxidize::oxidize() {
+        Ok(()) => println!("✓ Embeddings built - semantic search ready"),
+        Err(e) => {
+            // Don't fail init if oxidize fails, just warn
+            println!("⚠️  Embeddings incomplete: {}", e);
+            println!("   Run 'patina oxidize' later for semantic search");
+        }
+    }
+
     // Suggest tool installation if needed
     suggest_missing_tools(&environment)?;
 
