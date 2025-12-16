@@ -108,6 +108,47 @@ let db_path = project::db_path(project_root);
 
 ---
 
+### Template Sync Across Projects
+
+| Field | Value |
+|-------|-------|
+| **Origin** | Phase 2 (Release Automation) |
+| **Why deferred** | Part of Phase 2, not blocking release-plz |
+| **When to revisit** | After release-plz is working |
+
+**Problem:** Template updates require manual propagation:
+1. Edit `resources/claude/*.md`
+2. Rebuild patina binary
+3. Reinstall patina
+4. Run `patina init` in each project
+
+**Proposed solution:** `patina upgrade --templates`
+- Sync templates from binary → `~/.patina/adapters/`
+- Push templates from mothership → all registered projects
+- Requires projects to be registered in `registry.yaml`
+
+**Tasks:**
+- [ ] Register projects in `registry.yaml` during `patina init`
+- [ ] Add `projects` section to registry (currently only `repos`)
+- [ ] Extend `upgrade.rs` to sync templates
+- [ ] Add `--templates` flag for template-only sync
+
+**Template flow (current):**
+```
+resources/claude/    →  compile  →  binary  →  first-run  →  ~/.patina/adapters/  →  patina init  →  project/.claude/
+```
+
+**Template flow (with upgrade):**
+```
+patina upgrade --templates
+  ↓
+binary embedded templates  →  ~/.patina/adapters/  →  all registered projects
+```
+
+**Value:** One command updates templates everywhere.
+
+---
+
 ### Ground Truth Expansion
 
 | Field | Value |
