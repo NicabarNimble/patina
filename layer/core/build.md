@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 1 - MCP & Retrieval Polish
+**Current Phase:** Phase 2 - Model Management
 
 ---
 
@@ -18,6 +18,10 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 ## Specs
 
+Active specs:
+
+- [spec-model-management.md](../surface/build/spec-model-management.md) - Phase 2: Base model download, caching, provenance
+
 Deferred work (with context for why/when):
 
 - [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Scope cuts, blockers, enhancements, future ideas
@@ -25,7 +29,6 @@ Deferred work (with context for why/when):
 Future specs (not yet planned):
 
 - [spec-github-adapter.md](../surface/build/spec-github-adapter.md) - GitHub integration
-- [spec-model-runtime.md](../surface/build/spec-model-runtime.md) - Model flexibility
 
 ---
 
@@ -85,88 +88,65 @@ This is partly expected (Patina's value grows over time), but we can expose more
 
 ## Phase 2: Model Management
 
-**Goal:** Models are hardware-specific resources managed at mothership (user) level. Projects select models, mothership provides them.
+**Goal:** Base models are infrastructure managed at mothership level. Projects reference by name, mothership provides files.
 
-### Design Principles
+**Spec:** [spec-model-management.md](../surface/build/spec-model-management.md)
 
-**Unix Philosophy:** Model management is one focused tool:
-- `patina model` - manages embedding models (download, list, select)
-- Does one thing: translate model selection → working embeddings
+### Summary
 
-**Adapter Pattern:** Models mirror the frontends pattern:
-```toml
-# ~/.patina/config.toml (mothership - hardware specific)
-[models]
-approved = ["e5-base-v2", "bge-small-en-v1-5"]
-default = "e5-base-v2"
+Base models (~100MB each) move from repo to `~/.patina/cache/models/`. Provenance tracked in `models.lock`. Projects just reference by name.
 
-# project/.patina/config.toml (project - portable)
-[embeddings]
-model = "e5-base-v2"  # must be in mothership's approved
 ```
-
-**Dependable Rust:** Single source of truth chain:
+registry.toml (metadata)  →  What models exist
+models.lock (mothership)  →  What's downloaded + provenance
+config.toml (project)     →  What model to use
 ```
-registry.toml     →  What models exist (dimensions, URLs, prefixes)
-     ↓
-~/.patina/        →  What models are approved/downloaded (hardware-specific)
-     ↓
-project/config    →  What model this project uses (validated against approved)
-     ↓
-oxidize           →  Derives all settings from above (no recipe needed for defaults)
-```
-
-### Architecture
-
-**Mothership owns models:**
-- Models downloaded once to `~/.patina/cache/models/{name}/`
-- Large files (100MB+) not duplicated per project
-- Hardware-specific (Apple Silicon optimized vs CUDA)
-- Containers ask mothership for embedding services
-
-**Projects reference models:**
-- Project config specifies model name
-- Init validates against mothership's approved list
-- Oxidize reads dimensions from registry, not hardcoded recipe
-
-**Recipe becomes optional:**
-- Default behavior: use model from config, standard architecture
-- Recipe only for power users who want custom projections/epochs
 
 ### Tasks
 
-#### 2a: Mothership Model Registry
-- [ ] Add `[models]` section to `~/.patina/config.toml`
-- [ ] Store downloaded models in `~/.patina/cache/models/{name}/`
-- [ ] Track approved vs downloaded (can approve before download)
+#### 2a: Mothership Model Cache
+- [ ] Create `~/.patina/cache/models/` directory structure
+- [ ] Add `models.lock` TOML format + parser
+- [ ] Update `src/embeddings/models.rs` to read from cache
+- [ ] Add `patina::paths::mothership_model_cache()` helper
 
 #### 2b: Model Command
-- [ ] `patina model list` - show registry models + download status
-- [ ] `patina model add <name>` - download and approve model
-- [ ] `patina model remove <name>` - remove from approved (keep files?)
-- [ ] `patina model use <name>` - set project's model (validates against approved)
+- [ ] `patina model list` - show registry + download status
+- [ ] `patina model add <name>` - download with progress bar
+- [ ] `patina model remove <name>` - remove from cache
+- [ ] `patina model status` - show project needs vs cache
 
-#### 2c: Oxidize Without Recipe
-- [ ] Remove `embedding_model` from recipe (read from project config)
-- [ ] Look up `input_dim` from registry instead of hardcoding in recipe
-- [ ] Generate default recipe on-the-fly if none exists
-- [ ] Recipe only needed for custom `epochs`, `batch_size`, architecture
+#### 2c: Download Infrastructure
+- [ ] HTTP download with progress (reqwest)
+- [ ] SHA256 verification
+- [ ] Provenance recording to lock file
 
 #### 2d: Init Integration
-- [ ] Validate project model against mothership approved list
-- [ ] Warn if model not downloaded: "Run `patina model add e5-base-v2`"
-- [ ] Remove hardcoded oxidize.yaml creation (use defaults)
+- [ ] Check model availability on init
+- [ ] Prompt to download if missing
+- [ ] Validate project model against registry
+
+#### 2e: Oxidize Updates
+- [ ] Derive `input_dim` from registry (not recipe)
+- [ ] Recipe v2 format (optional `embedding_model`)
+- [ ] Backwards compat with v1 recipes
+
+#### 2f: Migration Path
+- [ ] Detect models in `resources/models/`
+- [ ] Copy to mothership cache + record provenance
+- [ ] Update gitignore guidance
 
 ### Validation (Exit Criteria)
 
 | Criteria | Status |
 |----------|--------|
-| `patina model list` shows available models | [ ] |
-| `patina model add` downloads to ~/.patina | [ ] |
-| Project can select any approved model | [ ] |
-| Oxidize works without recipe file | [ ] |
-| Model switch rebuilds embeddings automatically | [ ] |
-| Containers use mothership for embeddings | [ ] |
+| `patina model list` shows registry + status | [ ] |
+| `patina model add` downloads with provenance | [ ] |
+| Models stored in `~/.patina/cache/models/` | [ ] |
+| `models.lock` tracks downloads + checksums | [ ] |
+| Init validates model availability | [ ] |
+| Oxidize derives dimensions from registry | [ ] |
+| Existing projects can migrate | [ ] |
 
 ---
 
