@@ -83,6 +83,37 @@ This is partly expected (Patina's value grows over time), but we can expose more
 
 ---
 
+## Future Work
+
+### Model Management (not yet scheduled)
+
+**Problem:** Model changes are fragile. Three files must stay in sync:
+- `config.toml` - user's chosen model
+- `oxidize.yaml` - hardcodes model name + input dimensions
+- `registry.toml` - authoritative source of model dimensions
+
+**Current pain points:**
+1. Editing config.toml doesn't update oxidize.yaml → silent failures
+2. User must know correct dimensions for each model
+3. No validation that config + recipe match
+4. Old embeddings orphaned when switching models
+5. No `patina model` command for safe switching
+
+**Walkthroughs documented:** See session 20251216 for 3 scenarios:
+- User edits config.toml directly (breaks)
+- Patina ships new default model (partial migration)
+- Proper manual model migration (tedious, error-prone)
+
+**Potential solutions:**
+1. **Recipe inherits model** - oxidize.yaml removes `embedding_model`, reads from config
+2. **Auto-detect input dim** - trainer queries model registry instead of hardcoding
+3. **No recipe for defaults** - oxidize works out-of-box, recipe only for custom tuning
+4. **Model switch command** - `patina model use bge-small-en-v1-5` updates all files + rebuilds
+
+**Design principle:** Single source of truth for model selection (config.toml), everything else derives from it.
+
+---
+
 ## Completed
 
 Shipped phases (details preserved in git tags):
