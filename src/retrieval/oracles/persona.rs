@@ -4,8 +4,8 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 use crate::commands::persona;
-use patina::paths::persona as persona_paths;
 use crate::retrieval::oracle::{Oracle, OracleMetadata, OracleResult};
+use patina::paths::persona as persona_paths;
 
 pub struct PersonaOracle {
     db_path: PathBuf,
