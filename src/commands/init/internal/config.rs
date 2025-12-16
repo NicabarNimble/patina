@@ -66,6 +66,48 @@ pub fn create_project_config(
     // Save using project module
     patina::project::save(project_path, &config)?;
 
+    // Create default oxidize recipe for embeddings
+    create_oxidize_recipe(&patina_dir)?;
+
+    Ok(())
+}
+
+/// Create default oxidize.yaml recipe for embeddings
+fn create_oxidize_recipe(patina_dir: &Path) -> Result<()> {
+    let recipe_path = patina_dir.join("oxidize.yaml");
+    if recipe_path.exists() {
+        return Ok(()); // Don't overwrite existing recipe
+    }
+
+    let default_recipe = r#"# Oxidize Recipe - Build embeddings and projections
+# Run: patina oxidize
+
+version: 1
+embedding_model: e5-base-v2
+
+projections:
+  # Semantic projection - observations from same session are similar
+  semantic:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
+
+  # Temporal projection - files that co-change are related
+  temporal:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
+
+  # Dependency projection - functions that call each other are related
+  dependency:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
+"#;
+
+    fs::write(&recipe_path, default_recipe)
+        .with_context(|| format!("Failed to create oxidize recipe: {}", recipe_path.display()))?;
+
     Ok(())
 }
 
