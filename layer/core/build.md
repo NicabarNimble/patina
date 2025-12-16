@@ -83,34 +83,90 @@ This is partly expected (Patina's value grows over time), but we can expose more
 
 ---
 
-## Future Work
+## Phase 2: Model Management
 
-### Model Management (not yet scheduled)
+**Goal:** Models are hardware-specific resources managed at mothership (user) level. Projects select models, mothership provides them.
 
-**Problem:** Model changes are fragile. Three files must stay in sync:
-- `config.toml` - user's chosen model
-- `oxidize.yaml` - hardcodes model name + input dimensions
-- `registry.toml` - authoritative source of model dimensions
+### Design Principles
 
-**Current pain points:**
-1. Editing config.toml doesn't update oxidize.yaml → silent failures
-2. User must know correct dimensions for each model
-3. No validation that config + recipe match
-4. Old embeddings orphaned when switching models
-5. No `patina model` command for safe switching
+**Unix Philosophy:** Model management is one focused tool:
+- `patina model` - manages embedding models (download, list, select)
+- Does one thing: translate model selection → working embeddings
 
-**Walkthroughs documented:** See session 20251216 for 3 scenarios:
-- User edits config.toml directly (breaks)
-- Patina ships new default model (partial migration)
-- Proper manual model migration (tedious, error-prone)
+**Adapter Pattern:** Models mirror the frontends pattern:
+```toml
+# ~/.patina/config.toml (mothership - hardware specific)
+[models]
+approved = ["e5-base-v2", "bge-small-en-v1-5"]
+default = "e5-base-v2"
 
-**Potential solutions:**
-1. **Recipe inherits model** - oxidize.yaml removes `embedding_model`, reads from config
-2. **Auto-detect input dim** - trainer queries model registry instead of hardcoding
-3. **No recipe for defaults** - oxidize works out-of-box, recipe only for custom tuning
-4. **Model switch command** - `patina model use bge-small-en-v1-5` updates all files + rebuilds
+# project/.patina/config.toml (project - portable)
+[embeddings]
+model = "e5-base-v2"  # must be in mothership's approved
+```
 
-**Design principle:** Single source of truth for model selection (config.toml), everything else derives from it.
+**Dependable Rust:** Single source of truth chain:
+```
+registry.toml     →  What models exist (dimensions, URLs, prefixes)
+     ↓
+~/.patina/        →  What models are approved/downloaded (hardware-specific)
+     ↓
+project/config    →  What model this project uses (validated against approved)
+     ↓
+oxidize           →  Derives all settings from above (no recipe needed for defaults)
+```
+
+### Architecture
+
+**Mothership owns models:**
+- Models downloaded once to `~/.patina/cache/models/{name}/`
+- Large files (100MB+) not duplicated per project
+- Hardware-specific (Apple Silicon optimized vs CUDA)
+- Containers ask mothership for embedding services
+
+**Projects reference models:**
+- Project config specifies model name
+- Init validates against mothership's approved list
+- Oxidize reads dimensions from registry, not hardcoded recipe
+
+**Recipe becomes optional:**
+- Default behavior: use model from config, standard architecture
+- Recipe only for power users who want custom projections/epochs
+
+### Tasks
+
+#### 2a: Mothership Model Registry
+- [ ] Add `[models]` section to `~/.patina/config.toml`
+- [ ] Store downloaded models in `~/.patina/cache/models/{name}/`
+- [ ] Track approved vs downloaded (can approve before download)
+
+#### 2b: Model Command
+- [ ] `patina model list` - show registry models + download status
+- [ ] `patina model add <name>` - download and approve model
+- [ ] `patina model remove <name>` - remove from approved (keep files?)
+- [ ] `patina model use <name>` - set project's model (validates against approved)
+
+#### 2c: Oxidize Without Recipe
+- [ ] Remove `embedding_model` from recipe (read from project config)
+- [ ] Look up `input_dim` from registry instead of hardcoding in recipe
+- [ ] Generate default recipe on-the-fly if none exists
+- [ ] Recipe only needed for custom `epochs`, `batch_size`, architecture
+
+#### 2d: Init Integration
+- [ ] Validate project model against mothership approved list
+- [ ] Warn if model not downloaded: "Run `patina model add e5-base-v2`"
+- [ ] Remove hardcoded oxidize.yaml creation (use defaults)
+
+### Validation (Exit Criteria)
+
+| Criteria | Status |
+|----------|--------|
+| `patina model list` shows available models | [ ] |
+| `patina model add` downloads to ~/.patina | [ ] |
+| Project can select any approved model | [ ] |
+| Oxidize works without recipe file | [ ] |
+| Model switch rebuilds embeddings automatically | [ ] |
+| Containers use mothership for embeddings | [ ] |
 
 ---
 
