@@ -110,57 +110,57 @@ pub mod project {
 **Approach:** Design complete API, ship user-level restructure, iterate on project-level.
 
 #### 1a: Create `src/paths.rs` Module
-- [ ] Create `src/paths.rs` with complete API (user + project level)
-- [ ] User-level: `patina_home()`, `patina_cache()`, `config_path()`, `registry_path()`, `adapters_dir()`
-- [ ] User-level: `persona::events_dir()`, `persona::cache_dir()`, `repos::cache_dir()`
-- [ ] Project-level: `project::*` (full API ready for future use)
-- [ ] Export from `src/lib.rs`
+- [x] Create `src/paths.rs` with complete API (user + project level)
+- [x] User-level: `patina_home()`, `patina_cache()`, `config_path()`, `registry_path()`, `adapters_dir()`
+- [x] User-level: `persona::events_dir()`, `persona::cache_dir()`, `repos::cache_dir()`
+- [x] Project-level: `project::*` (full API ready for future use)
+- [x] Export from `src/lib.rs`
 
 #### 1b: Update Persona Paths
-- [ ] Replace `persona_dir()` in `src/commands/persona/mod.rs`
-- [ ] Replace hardcoded path in `src/retrieval/oracles/persona.rs`
-- [ ] Update `note()`, `materialize()`, `query()`, `list()`
-- [ ] Test: `patina persona materialize` && `patina persona query`
+- [x] Replace `persona_dir()` in `src/commands/persona/mod.rs`
+- [x] Replace hardcoded path in `src/retrieval/oracles/persona.rs`
+- [x] Update `note()`, `materialize()`, `query()`, `list()`
+- [x] Test: `patina persona materialize` && `patina persona query`
 
 #### 1c: Update Repo & Registry Paths
-- [ ] Replace `repos_dir()`, `mothership_dir()`, `registry_path()` in `repo/internal.rs`
-- [ ] Remove old functions
-- [ ] Test: `patina repo list`, `patina repo add`
+- [x] Replace `repos_dir()`, `mothership_dir()`, `registry_path()` in `repo/internal.rs`
+- [x] Remove old functions
+- [x] Test: `patina repo list`, `patina repo add`
 
 #### 1d: Update Workspace & Adapters Paths
-- [ ] Replace path functions in `workspace/internal.rs`
-- [ ] Replace `workspace::adapters_dir()` in `adapters/templates.rs`
-- [ ] Update `workspace/mod.rs` re-exports
-- [ ] Remove old path functions, keep behavior functions
-- [ ] Delete unused `projects_dir()`
-- [ ] Test: `patina` launcher, first-run setup
+- [x] Replace path functions in `workspace/internal.rs`
+- [x] Replace `workspace::adapters_dir()` in `adapters/templates.rs`
+- [x] Update `workspace/mod.rs` re-exports
+- [x] Remove old path functions, keep behavior functions
+- [x] Delete unused `projects_dir()`
+- [x] Test: `patina` launcher, first-run setup
 
 #### 1e: Migration Logic
-- [ ] Create `src/migration.rs`
-- [ ] Add `migrate_if_needed()` - move old paths to new `cache/` locations
-- [ ] Print migration message
-- [ ] Call from startup (main.rs)
+- [x] Create `src/migration.rs`
+- [x] Add `migrate_if_needed()` - move old paths to new `cache/` locations
+- [x] Print migration message
+- [x] Call from startup (main.rs)
 
 #### 1f: Ship It
-- [ ] Delete stale `.patina/patina.db` (0 bytes)
-- [ ] **USER DECISION:** `~/.patina/claude-linux/` - keep/delete/archive?
-- [ ] Run test suite
-- [ ] Build release, test with live install
-- [ ] Commit and tag
+- [x] Delete stale `.patina/patina.db` (0 bytes)
+- [x] `~/.patina/claude-linux/` - removed
+- [x] Run test suite
+- [x] Build release, test with live install
+- [x] Commit and tag
 
 ### Validation (Exit Criteria)
 
 | Criteria | Status |
 |----------|--------|
-| `src/paths.rs` exists with complete API | [ ] |
-| `src/migration.rs` exists | [ ] |
-| All user-level path functions consolidated | [ ] |
-| `patina persona materialize` writes to `cache/personas/` | [ ] |
-| `patina persona query` reads from `cache/personas/` | [ ] |
-| `patina repo` commands work | [ ] |
-| `patina` launcher works | [ ] |
-| Old paths auto-migrated | [ ] |
-| `claude-linux/` evaluated | [ ] |
+| `src/paths.rs` exists with complete API | [x] |
+| `src/migration.rs` exists | [x] |
+| All user-level path functions consolidated | [x] |
+| `patina persona materialize` writes to `cache/personas/` | [x] |
+| `patina persona query` reads from `cache/personas/` | [x] |
+| `patina repo` commands work | [x] |
+| `patina` launcher works | [x] |
+| Old paths auto-migrated | [x] |
+| `claude-linux/` evaluated | [x] removed |
 
 ### Deferred
 
