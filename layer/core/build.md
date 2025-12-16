@@ -176,15 +176,15 @@ Project-level path consolidation deferred to [spec-work-deferred.md](../surface/
 
 ### Context
 
-**Problem 1: No release automation**
-- 943 commits, still at v0.1.0
-- No GitHub releases
-- Manual versioning won't happen consistently
+**Problem 1: No release automation** ✅ SOLVED
+- Was: 943 commits, no GitHub releases
+- Now: v0.1.0 released, release-plz automates future releases
+- Conventional commits (`feat:`, `fix:`) trigger Release PRs automatically
 
-**Problem 2: Template updates don't propagate**
+**Problem 2: Template updates don't propagate** (deferred)
 - Templates live in 3 places: `resources/` → binary → `~/.patina/adapters/` → projects
 - Changing a template requires: edit source, rebuild, reinstall, re-init each project
-- Need `patina upgrade` to sync templates to all registered projects
+- Future: `patina upgrade --templates` to sync to all registered projects
 
 ### Solution: release-plz
 
@@ -203,55 +203,33 @@ Project-level path consolidation deferred to [spec-work-deferred.md](../surface/
 ### Tasks
 
 #### 2a: Commit Template Improvements
-- [ ] Commit `resources/claude/session-update.md` (added "Discussion context" bullet)
-- [ ] Rebuild patina binary (`cargo build --release && cargo install --path .`)
+- [x] Commit `resources/claude/session-update.md` (added "Discussion context" bullet)
+- [x] Rebuild patina binary (`cargo build --release && cargo install --path .`)
 
 #### 2b: Add release-plz Workflow
-- [ ] Create `.github/workflows/release-plz.yml`
-- [ ] Test workflow runs on push to main
-
-```yaml
-# .github/workflows/release-plz.yml
-name: Release-plz
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  release-plz:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: MarcoIeni/release-plz-action@v0.5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-```
+- [x] Create `.github/workflows/release-plz.yml`
+- [x] Create `release-plz.toml` with `publish = false` (GitHub only, no crates.io)
+- [x] Test workflow runs on push to main (PR #60)
 
 #### 2c: Create v0.1.0 Baseline Release
-- [ ] Create git tag `v0.1.0`
-- [ ] Create GitHub release with changelog summarizing all work to date
-- [ ] Changelog should cover: scrape, oxidize, scry, persona, MCP, hybrid retrieval, folder restructure
+- [x] Create git tag `v0.1.0`
+- [x] Create GitHub release with changelog summarizing all work to date
+- [x] Changelog covers: scrape, oxidize, scry, persona, MCP, hybrid retrieval, folder restructure
 
-#### 2d: Update `patina upgrade` Command
-- [ ] Extend existing upgrade.rs to sync templates
-- [ ] Add `--templates` flag to only sync templates (skip binary check)
-- [ ] Sync flow: binary → `~/.patina/adapters/` → all registered projects
-- [ ] Register projects in `registry.yaml` during `patina init`
+#### 2d: Template Sync Command
+- Deferred to [spec-work-deferred.md](../surface/build/spec-work-deferred.md#template-sync-across-projects)
+- Not blocking release automation
 
 ### Validation (Exit Criteria)
 
 | Criteria | Status |
 |----------|--------|
-| `resources/claude/session-update.md` committed | [ ] |
-| `.github/workflows/release-plz.yml` exists | [ ] |
-| v0.1.0 GitHub release created | [ ] |
-| release-plz creates PR on next push to main | [ ] |
-| `patina upgrade --templates` syncs to projects | [ ] |
+| `resources/claude/session-update.md` committed | [x] |
+| `.github/workflows/release-plz.yml` exists | [x] |
+| `release-plz.toml` configured (GitHub only) | [x] |
+| v0.1.0 GitHub release created | [x] |
+| release-plz workflow runs on push to main | [x] |
+| `patina upgrade --templates` syncs to projects | deferred |
 
 ### Research Notes (Session 20251216)
 
