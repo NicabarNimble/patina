@@ -59,10 +59,15 @@ This is partly expected (Patina's value grows over time), but we can expose more
 - [x] Fuse temporal results with lexical/semantic via RRF
 - [x] Test: `scry "files related to auth"` returns co-change data
 
-#### 1c: Evaluate Auto-Oxidize
-- [ ] Should `patina init` run `oxidize`? (adds ~30s)
-- [ ] Or document: "run `patina oxidize` for semantic search"
-- [ ] Decision: [pending]
+#### 1c: Auto-Oxidize on Init ✅
+- [x] Should `patina init` run `oxidize`? → Yes, for best first-run UX
+- [x] Added to init flow after scrape (Step 5)
+- [x] Non-fatal: warns and suggests manual `patina oxidize` if fails
+
+#### 1d: CLI Hybrid Mode ✅
+- [x] Add `--hybrid` flag to `patina scry` CLI
+- [x] Add `hybrid` option to HTTP API (`POST /scry`)
+- [x] Shows which oracles contributed to each result
 
 ### Validation (Exit Criteria)
 
@@ -72,7 +77,9 @@ This is partly expected (Patina's value grows over time), but we can expose more
 | CLAUDE.md guides LLMs to use MCP tools | [x] |
 | TemporalOracle in QueryEngine | [x] |
 | Co-change data queryable via `scry` | [x] |
-| Fresh project `scry` returns useful results | [ ] |
+| CLI `--hybrid` exposes RRF fusion | [x] |
+| Auto-oxidize on init | [x] |
+| Fresh project `scry` returns useful results | [x] |
 
 ---
 
