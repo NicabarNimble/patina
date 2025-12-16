@@ -328,7 +328,7 @@ fn configure_mcp(name: &str, remove: bool) -> Result<()> {
 
                 if status.success() {
                     println!("✓ Added patina MCP server");
-                    println!("\n  Restart Claude Code to use patina_query tool.");
+                    println!("\n  Restart Claude Code to use scry and context tools.");
                     println!("  Verify with: claude mcp list");
                 } else {
                     anyhow::bail!("Failed to add MCP server. Is Claude Code installed?");

@@ -65,9 +65,17 @@ fn generate_minimal_context(project_name: &str, environment: &Environment) -> St
     }
     content.push('\n');
 
-    // TODO: Implement real pattern discovery and referencing
+    // MCP Tools guidance
+    content.push_str("## Patina MCP Tools\n\n");
+    content.push_str("This project has pre-indexed knowledge. Use these tools:\n\n");
+    content.push_str("- **`scry`** - Search codebase. USE FIRST for any code question.\n");
+    content
+        .push_str("- **`context`** - Get design patterns. USE before architectural changes.\n\n");
+    content.push_str("💡 Faster than manual file exploration - searches indexed symbols, git history, sessions.\n\n");
+
+    // Patterns reference
     content.push_str("## Patterns\n\n");
-    content.push_str("See files in `layer/` directory for patterns and documentation.\n\n");
+    content.push_str("See `layer/` directory for design patterns and documentation.\n\n");
 
     // Session Commands (Git-integrated)
     content.push_str("## Session Commands\n\n");
