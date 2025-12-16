@@ -41,9 +41,6 @@ pub fn execute_init(
     // Initialize git if needed
     ensure_git_initialized()?;
 
-    // Ensure proper .gitignore exists
-    ensure_gitignore(Path::new("."))?;
-
     // Check if this is a re-init (already has .patina/)
     let is_reinit_early = name == "." && Path::new(".patina").exists();
 
@@ -52,12 +49,16 @@ pub fn execute_init(
         println!("🔄 Re-initializing existing Patina project...\n");
     } else {
         // First-time init: full git setup (fork detection, branch management)
+        // NOTE: This checks for clean state BEFORE we modify any files
         patina::git::ensure_fork(local)?;
         println!();
 
         patina::git::ensure_patina_branch(force)?;
         println!("✓ On branch 'patina'\n");
     }
+
+    // Ensure proper .gitignore exists (AFTER branch setup, so our changes go on patina branch)
+    ensure_gitignore(Path::new("."))?;
 
     // === STEP 2: SAFE TO PROCEED WITH DESTRUCTIVE CHANGES ===
 
