@@ -9,7 +9,7 @@
 A local-first RAG network: portable project knowledge + personal mothership.
 
 - **Patina Projects:** `patina init .` - full RAG (semantic, temporal, dependency)
-- **Reference Repos:** `patina repo add <url>` - lightweight index in `~/.patina/repos/`
+- **Reference Repos:** `patina repo add <url>` - lightweight index in `~/.patina/cache/repos/`
 - **Mothership:** `~/.patina/` - registry, personas, `patina serve` daemon
 
 **Completed infrastructure:** Scrape pipeline, oxidize embeddings, query/scry, serve daemon, persona, rebuild command, MCP server, hybrid retrieval (MRR 0.624). All working.
@@ -58,12 +58,22 @@ Future specs (not yet planned):
 
 ### Code Design: Centralized Paths Module
 
-**Solution:** Single `src/paths.rs` module owns all filesystem layout decisions.
+**Philosophy (from rationale-eskil-steenberg.md):**
+> "It's faster to write 5 lines of code today than to write 1 line today and edit it later."
+
+The paths module should be **complete from day one** - defining ALL Patina paths (user-level AND project-level). Not minimal, not clever, but correct.
+
+**Solution:** Single `src/paths.rs` module owns ALL filesystem layout decisions.
 
 ```rust
-// src/paths.rs - Single source of truth
+// src/paths.rs - Single source of truth for ALL Patina filesystem layout
+
+// === User Level (~/.patina/) ===
 pub fn patina_home() -> PathBuf { ~/.patina/ }
 pub fn patina_cache() -> PathBuf { ~/.patina/cache/ }
+pub fn config_path() -> PathBuf { ~/.patina/config.toml }
+pub fn registry_path() -> PathBuf { ~/.patina/registry.yaml }
+pub fn adapters_dir() -> PathBuf { ~/.patina/adapters/ }
 
 pub mod persona {
     pub fn events_dir() -> PathBuf { ~/.patina/personas/default/events/ }
@@ -73,51 +83,90 @@ pub mod persona {
 pub mod repos {
     pub fn cache_dir() -> PathBuf { ~/.patina/cache/repos/ }
 }
+
+// === Project Level (project/.patina/) ===
+pub mod project {
+    pub fn patina_dir(root: &Path) -> PathBuf { .patina/ }
+    pub fn config_path(root: &Path) -> PathBuf { .patina/config.toml }
+    pub fn data_dir(root: &Path) -> PathBuf { .patina/data/ }
+    pub fn db_path(root: &Path) -> PathBuf { .patina/data/patina.db }
+    pub fn embeddings_dir(root: &Path) -> PathBuf { .patina/data/embeddings/ }
+    pub fn model_projections_dir(root: &Path, model: &str) -> PathBuf { ... }
+    pub fn recipe_path(root: &Path) -> PathBuf { .patina/oxidize.yaml }
+    pub fn versions_path(root: &Path) -> PathBuf { .patina/versions.json }
+    pub fn backups_dir(root: &Path) -> PathBuf { .patina/backups/ }
+}
 ```
 
+**Full design:** See [spec-folder-structure.md](../surface/build/spec-folder-structure.md)
+
 **Alignment with core values:**
-- **dependable-rust:** Small interface, one file shows entire layout
+- **eskil-steenberg:** Complete from day one, never needs to change
+- **dependable-rust:** Small interface, one file shows ENTIRE layout
 - **unix-philosophy:** One job (define paths), no I/O or business logic
 
 ### Tasks
 
+**Approach:** Design complete API, ship user-level restructure, iterate on project-level.
+
 #### 1a: Create `src/paths.rs` Module
-- [ ] Create `src/paths.rs` with `patina_home()`, `patina_cache()`
-- [ ] Add `persona::events_dir()`, `persona::cache_dir()`
-- [ ] Add `repos::cache_dir()`
+- [ ] Create `src/paths.rs` with complete API (user + project level)
+- [ ] User-level: `patina_home()`, `patina_cache()`, `config_path()`, `registry_path()`, `adapters_dir()`
+- [ ] User-level: `persona::events_dir()`, `persona::cache_dir()`, `repos::cache_dir()`
+- [ ] Project-level: `project::*` (full API ready for future use)
 - [ ] Export from `src/lib.rs`
 
-#### 1b: Update Persona to Use Paths Module
-- [ ] Replace `persona_dir()` with `paths::persona::events_dir()`
-- [ ] Replace `persona_dir().join("materialized")` with `paths::persona::cache_dir()`
-- [ ] Update `materialize()`, `query()`, `list()`
+#### 1b: Update Persona Paths
+- [ ] Replace `persona_dir()` in `src/commands/persona/mod.rs`
+- [ ] Replace hardcoded path in `src/retrieval/oracles/persona.rs`
+- [ ] Update `note()`, `materialize()`, `query()`, `list()`
 - [ ] Test: `patina persona materialize` && `patina persona query`
 
-#### 1c: Update Repo Paths
-- [ ] Find all code referencing `~/.patina/repos/`
-- [ ] Update to use `paths::repos::cache_dir()`
-- [ ] Test: `patina repo` commands still work
+#### 1c: Update Repo & Registry Paths
+- [ ] Replace `repos_dir()`, `mothership_dir()`, `registry_path()` in `repo/internal.rs`
+- [ ] Remove old functions
+- [ ] Test: `patina repo list`, `patina repo add`
 
-#### 1d: Migration Logic
-- [ ] Add `paths::migrate_if_needed()` function
-- [ ] Detect old paths → move to new locations
-- [ ] Print migration message so user knows what happened
+#### 1d: Update Workspace & Adapters Paths
+- [ ] Replace path functions in `workspace/internal.rs`
+- [ ] Replace `workspace::adapters_dir()` in `adapters/templates.rs`
+- [ ] Update `workspace/mod.rs` re-exports
+- [ ] Remove old path functions, keep behavior functions
+- [ ] Delete unused `projects_dir()`
+- [ ] Test: `patina` launcher, first-run setup
 
-#### 1e: Cleanup
-- [ ] Delete stale `.patina/patina.db` (0 bytes) at project level
-- [ ] **USER DECISION:** Evaluate `~/.patina/claude-linux/` - keep/delete/archive?
-- [ ] Remove old `persona_dir()` function
+#### 1e: Migration Logic
+- [ ] Create `src/migration.rs`
+- [ ] Add `migrate_if_needed()` - move old paths to new `cache/` locations
+- [ ] Print migration message
+- [ ] Call from startup (main.rs)
 
-### Validation
+#### 1f: Ship It
+- [ ] Delete stale `.patina/patina.db` (0 bytes)
+- [ ] **USER DECISION:** `~/.patina/claude-linux/` - keep/delete/archive?
+- [ ] Run test suite
+- [ ] Build release, test with live install
+- [ ] Commit and tag
+
+### Validation (Exit Criteria)
 
 | Criteria | Status |
 |----------|--------|
-| `src/paths.rs` exists with clear module structure | [ ] |
-| All path logic centralized | [ ] |
-| `patina persona materialize` uses `cache/personas/` | [ ] |
-| `patina persona query` uses `cache/personas/` | [ ] |
+| `src/paths.rs` exists with complete API | [ ] |
+| `src/migration.rs` exists | [ ] |
+| All user-level path functions consolidated | [ ] |
+| `patina persona materialize` writes to `cache/personas/` | [ ] |
+| `patina persona query` reads from `cache/personas/` | [ ] |
+| `patina repo` commands work | [ ] |
+| `patina` launcher works | [ ] |
 | Old paths auto-migrated | [ ] |
-| `claude-linux/` evaluated (user decision) | [ ] |
+| `claude-linux/` evaluated | [ ] |
+
+### Deferred
+
+Project-level path consolidation deferred to [spec-work-deferred.md](../surface/build/spec-work-deferred.md).
+
+**Why:** The 45+ files with hardcoded project paths work today. Migrate them incrementally as we touch those files.
 
 ---
 
