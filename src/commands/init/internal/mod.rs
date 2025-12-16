@@ -224,14 +224,21 @@ pub fn execute_init(
         println!("✓ Committed Patina initialization");
     }
 
+    // === STEP 4: INDEX CODEBASE FOR MCP ===
+    println!("\n🔍 Indexing codebase for AI context...");
+    match crate::commands::scrape::execute_all() {
+        Ok(()) => println!("✓ Codebase indexed - MCP tools ready"),
+        Err(e) => {
+            // Don't fail init if scrape fails, just warn
+            println!("⚠️  Indexing incomplete: {}", e);
+            println!("   Run 'patina scrape' later to enable MCP tools");
+        }
+    }
+
     // Suggest tool installation if needed
     suggest_missing_tools(&environment)?;
 
     println!("\n✨ Project '{name}' initialized successfully!");
-    println!("\nNext steps:");
-    println!("  1. patina add <type> <name>  # Add patterns to session");
-    println!("  2. patina commit             # Commit patterns to layer");
-    println!("  3. patina push               # Generate LLM context");
 
     Ok(())
 }
