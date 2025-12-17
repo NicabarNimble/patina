@@ -14,7 +14,6 @@ pub use onnx::OnnxEmbedder;
 pub use similarity::{cosine_similarity, euclidean_distance};
 
 use anyhow::Result;
-use std::path::Path;
 
 /// Trait for embedding generation engines
 pub trait EmbeddingEngine {
@@ -73,7 +72,8 @@ fn create_embedder_from_config() -> Result<Box<dyn EmbeddingEngine>> {
 
 /// Create ONNX embedder from model definition
 fn create_onnx_embedder(model_def: &ModelDefinition) -> Result<Box<dyn EmbeddingEngine>> {
-    let model_dir = Path::new(&model_def.path);
+    // Resolve model path: checks mothership cache first, then local
+    let model_dir = crate::models::resolve_model_path(&model_def.name)?;
 
     // Construct paths based on model directory
     let model_path = model_dir.join("model.onnx");
