@@ -214,17 +214,13 @@ mod tests {
 
     #[test]
     fn test_cached_model_path_missing() {
-        // Model doesn't exist in cache
         let path = cached_model_path("nonexistent-model-xyz");
         assert!(path.is_none());
     }
 
     #[test]
     fn test_resolve_model_path_local_fallback() {
-        // Should find local model if it exists
         let result = resolve_model_path("all-minilm-l6-v2");
-        // This will succeed if local model exists, fail otherwise
-        // Either outcome is valid for this test
         match result {
             Ok(path) => {
                 assert!(path.to_string_lossy().contains("all-minilm-l6-v2"));
@@ -233,5 +229,24 @@ mod tests {
                 assert!(e.to_string().contains("not found"));
             }
         }
+    }
+
+    #[test]
+    #[ignore] // Run with: cargo test test_add_model_e2e -- --ignored
+    fn test_add_model_e2e() {
+        // Downloads bge-small (smallest model ~32MB) to cache
+        let result = add_model("bge-small-en-v1-5");
+        assert!(result.is_ok(), "Failed: {:?}", result);
+
+        // Verify files exist
+        let model_dir = paths::models::model_dir("bge-small-en-v1-5");
+        assert!(model_dir.join("model_quantized.onnx").exists());
+        assert!(model_dir.join("tokenizer.json").exists());
+
+        // Verify lock file updated
+        let lock = ModelLock::load().unwrap();
+        let entry = lock.get("bge-small-en-v1-5");
+        assert!(entry.is_some());
+        assert_eq!(entry.unwrap().dimensions, 384);
     }
 }
