@@ -6,6 +6,7 @@ pub mod environment;
 pub mod git;
 pub mod layer;
 pub mod migration;
+pub mod models;
 pub mod mothership;
 pub mod paths;
 pub mod project;
