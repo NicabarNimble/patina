@@ -295,6 +295,12 @@ enum Commands {
         with_issues: bool,
     },
 
+    /// Manage embedding models in mothership cache
+    Model {
+        #[command(subcommand)]
+        command: Option<commands::model::ModelCommands>,
+    },
+
     /// Generate YOLO devcontainer for autonomous AI development
     Yolo {
         /// Use interactive mode to choose options
@@ -799,6 +805,7 @@ fn main() -> Result<()> {
             contrib,
             with_issues,
         }) => commands::repo::execute_cli(command, url, contrib, with_issues)?,
+        Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
         Some(Commands::Yolo {
             interactive,
             defaults,
