@@ -21,13 +21,21 @@ pub struct ModelDefinition {
     #[serde(default)]
     pub instructions: Option<String>,
 
-    /// Query prefix for asymmetric models (e.g., "Represent this sentence for searching relevant passages: " for BGE)
+    /// Query prefix for asymmetric models
     #[serde(default)]
     pub query_prefix: Option<String>,
 
-    /// Passage prefix for asymmetric models (e.g., "passage: " for E5)
+    /// Passage prefix for asymmetric models
     #[serde(default)]
     pub passage_prefix: Option<String>,
+
+    /// Download URL for quantized ONNX model
+    #[serde(default)]
+    pub download_quantized: Option<String>,
+
+    /// Download URL for tokenizer.json
+    #[serde(default)]
+    pub download_tokenizer: Option<String>,
 }
 
 /// Model registry (from resources/models/registry.toml)
