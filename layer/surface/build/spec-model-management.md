@@ -1,7 +1,7 @@
 # Spec: Model Management
 
 **Phase:** 2
-**Status:** Planned
+**Status:** In Progress (2a-2e complete, 2f remaining)
 **Goal:** Base models are infrastructure managed at mothership level. Projects reference by name, mothership provides files.
 
 ---
@@ -232,21 +232,26 @@ let model_dir = patina::paths::mothership_model_cache(&model_def.name)?;
 Recipe no longer needs `embedding_model` - derives from project config:
 
 ```yaml
-# Before (oxidize.yaml)
+# Before (oxidize.yaml) - v1 format
 version: 1
 embedding_model: e5-base-v2  # Redundant, can drift
 projections:
   semantic:
     layers: [768, 1024, 256]  # 768 hardcoded, must match model
+    epochs: 10
+    batch_size: 32
 
-# After (oxidize.yaml)
+# After (oxidize.yaml) - v2 format (implemented)
 version: 2
+# embedding_model: optional, falls back to config.toml
 projections:
   semantic:
-    layers: [hidden: 1024, output: 256]  # input_dim derived from registry
+    layers: [1024, 256]  # Just [hidden, output], input_dim from registry
     epochs: 10
     batch_size: 32
 ```
+
+**Note:** v2 uses a simple array `[hidden, output]` rather than named keys. The input dimension is derived from the model registry based on the model configured in `.patina/config.toml`.
 
 ---
 
@@ -277,33 +282,57 @@ Migrating from resources/models/...
 
 ## Tasks
 
-### 2a: Mothership Model Cache
-- [ ] Create `~/.patina/cache/models/` directory structure
-- [ ] Add `models.lock` TOML format + parser
-- [ ] Update `src/embeddings/models.rs` to read from cache
-- [ ] Add `patina::paths::mothership_model_cache()` helper
+### 2a: Mothership Model Cache ✅
+- [x] Create `~/.patina/cache/models/` directory structure
+- [x] Add `models.lock` TOML format + parser
+- [x] Update `src/embeddings/models.rs` to read from cache
+- [x] Add `patina::paths::models` module with cache helpers
 
-### 2b: Model Command
-- [ ] `patina model list` - show registry + download status
-- [ ] `patina model add <name>` - download with progress bar
-- [ ] `patina model remove <name>` - remove from cache
-- [ ] `patina model status` - show project needs vs cache
+**Implementation:**
+- `src/models/mod.rs` - Public API: `resolve_model_path()`, `add_model()`, `model_status()`
+- `src/models/internal.rs` - `ModelLock`, `LockedModel` types with TOML serde
+- `src/paths.rs::models` - `cache_dir()`, `model_dir()`, `model_onnx()`, `model_tokenizer()`, `lock_path()`
 
-### 2c: Download Infrastructure
-- [ ] HTTP download with progress (reqwest)
-- [ ] SHA256 verification
-- [ ] Provenance recording to lock file
-- [ ] Resume interrupted downloads (optional)
+### 2b: Model Command ✅
+- [x] `patina model list` - show registry + download status
+- [x] `patina model add <name>` - download with progress bar
+- [x] `patina model remove <name>` - remove from cache
+- [x] `patina model status` - show project needs vs cache
 
-### 2d: Init Integration
-- [ ] Check model availability on init
-- [ ] Prompt to download if missing
-- [ ] Validate project model against registry
+**Implementation:**
+- `src/commands/model.rs` - CLI subcommands via clap
+- Downloads quantized INT8 models (~30-50MB vs ~100-170MB full)
 
-### 2e: Oxidize Updates
-- [ ] Derive `input_dim` from registry (not recipe)
-- [ ] Recipe v2 format (optional `embedding_model`)
-- [ ] Backwards compat with v1 recipes
+### 2c: Download Infrastructure ✅
+- [x] HTTP download with progress (reqwest)
+- [x] SHA256 verification
+- [x] Provenance recording to lock file
+- [ ] Resume interrupted downloads (deferred - not critical)
+
+**Implementation:**
+- `src/models/download.rs` - `download_file()`, `sha256_file()`, `download_and_verify()`
+- Uses `shasum -a 256` for verification (macOS built-in)
+- Note: Could use `sha2` crate for cross-platform, but shasum works and avoids dependency
+
+### 2d: Init Integration ✅
+- [x] Check model availability on init
+- [x] Prompt to download if missing
+- [x] Validate project model against registry
+
+**Implementation:**
+- `src/commands/init/internal/mod.rs::ensure_model_available()` - Called before oxidize step
+- Interactive Y/n prompt with sensible default (Y)
+
+### 2e: Oxidize Updates ✅
+- [x] Derive `input_dim` from registry (not recipe)
+- [x] Recipe v2 format (optional `embedding_model`)
+- [x] Backwards compat with v1 recipes
+
+**Implementation:**
+- `src/commands/oxidize/recipe.rs` - `OxidizeRecipe` with optional `embedding_model`
+- Recipe v2: layers can be `[hidden, output]` instead of `[input, hidden, output]`
+- `get_model_name()` falls back to `config.toml` if not in recipe
+- `input_dim(&recipe)` derives from registry for v2, from layers[0] for v1
 
 ### 2f: Migration Path
 - [ ] Detect models in `resources/models/`
@@ -317,14 +346,16 @@ Migrating from resources/models/...
 
 | Criteria | Status |
 |----------|--------|
-| `patina model list` shows registry + status | [ ] |
-| `patina model add` downloads with provenance | [ ] |
-| Models stored in `~/.patina/cache/models/` | [ ] |
-| `models.lock` tracks downloads + checksums | [ ] |
-| Init validates model availability | [ ] |
-| Oxidize derives dimensions from registry | [ ] |
+| `patina model list` shows registry + status | [x] |
+| `patina model add` downloads with provenance | [x] |
+| Models stored in `~/.patina/cache/models/` | [x] |
+| `models.lock` tracks downloads + checksums | [x] |
+| Init validates model availability | [x] |
+| Oxidize derives dimensions from registry | [x] |
 | Existing projects can migrate | [ ] |
 | `resources/models/` can be gitignored | [ ] |
+
+**Progress:** 6/8 criteria met. Migration path (2f) is the remaining work.
 
 ---
 
