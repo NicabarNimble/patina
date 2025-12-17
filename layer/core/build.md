@@ -104,32 +104,32 @@ config.toml (project)     →  What model to use
 
 ### Tasks
 
-#### 2a: Mothership Model Cache
-- [ ] Create `~/.patina/cache/models/` directory structure
-- [ ] Add `models.lock` TOML format + parser
-- [ ] Update `src/embeddings/models.rs` to read from cache
-- [ ] Add `patina::paths::mothership_model_cache()` helper
+#### 2a: Mothership Model Cache ✅
+- [x] Create `~/.patina/cache/models/` directory structure
+- [x] Add `models.lock` TOML format + parser (`src/models/internal.rs`)
+- [x] Update `src/embeddings/mod.rs` to read from cache via `models::resolve_model_path()`
+- [x] Add `src/paths.rs::models` module with cache path helpers
 
-#### 2b: Model Command
-- [ ] `patina model list` - show registry + download status
-- [ ] `patina model add <name>` - download with progress bar
-- [ ] `patina model remove <name>` - remove from cache
-- [ ] `patina model status` - show project needs vs cache
+#### 2b: Model Command ✅
+- [x] `patina model list` - show registry + download status
+- [x] `patina model add <name>` - download with progress bar
+- [x] `patina model remove <name>` - remove from cache
+- [x] `patina model status` - show project needs vs cache
 
-#### 2c: Download Infrastructure
-- [ ] HTTP download with progress (reqwest)
-- [ ] SHA256 verification
-- [ ] Provenance recording to lock file
+#### 2c: Download Infrastructure ✅
+- [x] HTTP download with progress (reqwest blocking client)
+- [x] SHA256 verification via `shasum -a 256` (macOS)
+- [x] Provenance recording to lock file
 
-#### 2d: Init Integration
-- [ ] Check model availability on init
-- [ ] Prompt to download if missing
-- [ ] Validate project model against registry
+#### 2d: Init Integration ✅
+- [x] Check model availability on init (`ensure_model_available()`)
+- [x] Prompt to download if missing
+- [x] Validate project model against registry
 
-#### 2e: Oxidize Updates
-- [ ] Derive `input_dim` from registry (not recipe)
-- [ ] Recipe v2 format (optional `embedding_model`)
-- [ ] Backwards compat with v1 recipes
+#### 2e: Oxidize Updates ✅
+- [x] Derive `input_dim` from registry (not recipe)
+- [x] Recipe v2 format (optional `embedding_model`, 2-element layers)
+- [x] Backwards compat with v1 recipes
 
 #### 2f: Migration Path
 - [ ] Detect models in `resources/models/`
@@ -140,12 +140,12 @@ config.toml (project)     →  What model to use
 
 | Criteria | Status |
 |----------|--------|
-| `patina model list` shows registry + status | [ ] |
-| `patina model add` downloads with provenance | [ ] |
-| Models stored in `~/.patina/cache/models/` | [ ] |
-| `models.lock` tracks downloads + checksums | [ ] |
-| Init validates model availability | [ ] |
-| Oxidize derives dimensions from registry | [ ] |
+| `patina model list` shows registry + status | [x] |
+| `patina model add` downloads with provenance | [x] |
+| Models stored in `~/.patina/cache/models/` | [x] |
+| `models.lock` tracks downloads + checksums | [x] |
+| Init validates model availability | [x] |
+| Oxidize derives dimensions from registry | [x] |
 | Existing projects can migrate | [ ] |
 
 ---
