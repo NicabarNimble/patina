@@ -145,6 +145,69 @@ pub fn model_status(name: &str) -> Result<ModelStatus> {
     })
 }
 
+/// Download a model from registry to mothership cache.
+///
+/// 1. Gets model info from registry
+/// 2. Downloads model.onnx and tokenizer.json
+/// 3. Verifies checksums (if known)
+/// 4. Records provenance in lock file
+pub fn add_model(name: &str) -> Result<()> {
+    use crate::embeddings::models::ModelRegistry;
+
+    // Load registry to get download URLs
+    let registry = ModelRegistry::load()?;
+    let model_def = registry.get_model(name)?;
+
+    let model_url = model_def
+        .download_quantized
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("No download URL for model '{}'", name))?;
+
+    let tokenizer_url = model_def
+        .download_tokenizer
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("No tokenizer URL for model '{}'", name))?;
+
+    println!("Downloading {}...", name);
+
+    // Download model
+    let model_path = paths::models::model_onnx(name);
+    // Rename to model_quantized.onnx to match existing convention
+    let model_path = model_path.with_file_name("model_quantized.onnx");
+    println!("  Model:");
+    let sha256_model = download_and_verify(model_url, &model_path, None)?;
+
+    // Download tokenizer
+    let tokenizer_path = paths::models::model_tokenizer(name);
+    println!("  Tokenizer:");
+    let sha256_tokenizer = download_and_verify(tokenizer_url, &tokenizer_path, None)?;
+
+    // Get total size
+    let model_size = std::fs::metadata(&model_path)?.len();
+    let tokenizer_size = std::fs::metadata(&tokenizer_path)?.len();
+
+    // Record provenance
+    let mut lock = ModelLock::load()?;
+    lock.insert(
+        name,
+        LockedModel {
+            downloaded: chrono::Utc::now().to_rfc3339(),
+            source_model: model_url.clone(),
+            source_tokenizer: tokenizer_url.clone(),
+            sha256_model,
+            sha256_tokenizer,
+            size_bytes: model_size + tokenizer_size,
+            dimensions: model_def.dimensions,
+        },
+    );
+    lock.save()?;
+
+    println!("\n✓ Model '{}' added to cache", name);
+    println!("  Location: {:?}", paths::models::model_dir(name));
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
