@@ -95,6 +95,36 @@ pub mod repos {
     }
 }
 
+/// Model management paths (base models shared across projects)
+pub mod models {
+    use super::*;
+
+    /// Model cache directory: `~/.patina/cache/models/`
+    pub fn cache_dir() -> PathBuf {
+        patina_cache().join("models")
+    }
+
+    /// Specific model directory: `~/.patina/cache/models/{name}/`
+    pub fn model_dir(name: &str) -> PathBuf {
+        cache_dir().join(name)
+    }
+
+    /// Model ONNX file: `~/.patina/cache/models/{name}/model.onnx`
+    pub fn model_onnx(name: &str) -> PathBuf {
+        model_dir(name).join("model.onnx")
+    }
+
+    /// Model tokenizer: `~/.patina/cache/models/{name}/tokenizer.json`
+    pub fn model_tokenizer(name: &str) -> PathBuf {
+        model_dir(name).join("tokenizer.json")
+    }
+
+    /// Lock file tracking provenance: `~/.patina/models.lock`
+    pub fn lock_path() -> PathBuf {
+        patina_home().join("models.lock")
+    }
+}
+
 // =============================================================================
 // Project Level (project/.patina/)
 // =============================================================================
@@ -192,6 +222,30 @@ mod tests {
     fn test_repos_cache() {
         let repos = repos::cache_dir();
         assert!(repos.to_string_lossy().contains("cache/repos"));
+    }
+
+    #[test]
+    fn test_models_paths() {
+        let cache = models::cache_dir();
+        assert!(cache.to_string_lossy().contains("cache/models"));
+
+        let model_dir = models::model_dir("e5-base-v2");
+        assert!(model_dir
+            .to_string_lossy()
+            .contains("cache/models/e5-base-v2"));
+
+        let onnx = models::model_onnx("e5-base-v2");
+        assert!(onnx.to_string_lossy().ends_with("e5-base-v2/model.onnx"));
+
+        let tokenizer = models::model_tokenizer("e5-base-v2");
+        assert!(tokenizer
+            .to_string_lossy()
+            .ends_with("e5-base-v2/tokenizer.json"));
+
+        let lock = models::lock_path();
+        assert!(lock.to_string_lossy().ends_with("models.lock"));
+        // Lock is at ~/.patina/, not in cache
+        assert!(!lock.to_string_lossy().contains("cache"));
     }
 
     #[test]
