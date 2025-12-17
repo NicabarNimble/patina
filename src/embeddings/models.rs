@@ -36,6 +36,10 @@ pub struct ModelDefinition {
     /// Download URL for tokenizer.json
     #[serde(default)]
     pub download_tokenizer: Option<String>,
+
+    /// Size of INT8 quantized model (e.g., "32.4MB")
+    #[serde(default)]
+    pub size_int8: Option<String>,
 }
 
 /// Model registry (from resources/models/registry.toml)
