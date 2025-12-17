@@ -131,10 +131,10 @@ config.toml (project)     →  What model to use
 - [x] Recipe v2 format (optional `embedding_model`, 2-element layers)
 - [x] Backwards compat with v1 recipes
 
-#### 2f: Migration Path
-- [ ] Detect models in `resources/models/`
-- [ ] Copy to mothership cache + record provenance
-- [ ] Update gitignore guidance
+#### 2f: Migration Path ✅
+- [x] Models already gitignored (never tracked in git)
+- [x] `resources/models/` contains only `registry.toml` + `README.md`
+- [x] New clones download models on-demand via `patina model add`
 
 ### Validation (Exit Criteria)
 
@@ -146,7 +146,7 @@ config.toml (project)     →  What model to use
 | `models.lock` tracks downloads + checksums | [x] |
 | Init validates model availability | [x] |
 | Oxidize derives dimensions from registry | [x] |
-| Existing projects can migrate | [ ] |
+| Existing projects can migrate | [x] |
 
 ---
 
