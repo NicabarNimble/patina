@@ -236,6 +236,9 @@ pub fn execute_init(
     }
 
     // === STEP 5: BUILD EMBEDDINGS FOR SEMANTIC SEARCH ===
+    // First check if the required model is available
+    ensure_model_available()?;
+
     println!("\n🧪 Building embeddings for semantic search...");
     match crate::commands::oxidize::oxidize() {
         Ok(()) => println!("✓ Embeddings built - semantic search ready"),
@@ -555,6 +558,55 @@ logs/
     fs::write(gitignore_path, content).context("Failed to create .gitignore")?;
 
     println!("✓ Created .gitignore with standard patterns");
+    Ok(())
+}
+
+/// Ensure the embedding model is available (in cache or local)
+fn ensure_model_available() -> Result<()> {
+    use patina::embeddings::models::{Config, ModelRegistry};
+    use patina::models;
+
+    // Load project config to get model name
+    let config = match Config::load() {
+        Ok(c) => c,
+        Err(_) => return Ok(()), // No config yet, skip check
+    };
+
+    let model_name = &config.embeddings.model;
+
+    // Validate model exists in registry
+    let registry = ModelRegistry::load()?;
+    if registry.get_model(model_name).is_err() {
+        println!("\n⚠️  Model '{}' not in registry.", model_name);
+        println!("   Available models:");
+        for name in registry.list_models() {
+            println!("     - {}", name);
+        }
+        println!("   Update .patina/config.toml to use a valid model.");
+        return Ok(());
+    }
+
+    let status = models::model_status(model_name)?;
+
+    if status.in_cache || status.in_local {
+        return Ok(()); // Model available
+    }
+
+    // Model not available - prompt to download
+    println!("\n📦 Model '{}' not found in cache.", model_name);
+    print!("   Download now? [Y/n]: ");
+    std::io::stdout().flush()?;
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    let input = input.trim().to_lowercase();
+
+    if input.is_empty() || input == "y" || input == "yes" {
+        models::add_model(model_name)?;
+    } else {
+        println!("   Skipped. Run 'patina model add {}' later.", model_name);
+    }
+
     Ok(())
 }
 
