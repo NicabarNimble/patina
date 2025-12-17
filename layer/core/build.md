@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 2 - Model Management
+**Current Phase:** Phase 3 - Feedback Loop
 
 ---
 
@@ -20,7 +20,8 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 Active specs:
 
-- [spec-model-management.md](../surface/build/spec-model-management.md) - Phase 2: Base model download, caching, provenance
+- [spec-feedback-loop.md](../surface/build/spec-feedback-loop.md) - Phase 3: Measure and learn from retrieval quality
+- [spec-model-management.md](../surface/build/spec-model-management.md) - Phase 2: Base model download, caching, provenance (complete)
 
 Deferred work (with context for why/when):
 
@@ -147,6 +148,66 @@ config.toml (project)     →  What model to use
 | Init validates model availability | [x] |
 | Oxidize derives dimensions from registry | [x] |
 | Existing projects can migrate | [x] |
+
+---
+
+## Phase 3: Feedback Loop
+
+**Goal:** Measure whether Patina's retrievals are actually useful, learn from real user behavior, and improve over time.
+
+**Spec:** [spec-feedback-loop.md](../surface/build/spec-feedback-loop.md)
+
+### Context
+
+Current state:
+- Projections train with constant loss (not learning)
+- We don't know if retrievals help the user
+- `eval` measures against synthetic ground truth (same-session observations)
+- No measurement of real-world retrieval quality
+
+Key insight: Git is truth. Sessions link queries to commits. We can derive feedback without new storage.
+
+### Design Principles
+
+1. **Git is truth** - we don't store feedback, we derive it from git
+2. **Session links query to commit** - session tags bracket the work
+3. **Stability + utility = relevance** - not time decay
+4. **No new commands** - extend scrape (views), scry (logging), eval (metrics)
+
+### Tasks
+
+#### 3a: Instrument Scry
+- [ ] Add `scry.query` event logging to `scry/mod.rs`
+- [ ] Capture: query text, mode, session_id, results (doc_id, score, rank)
+- [ ] Best-effort logging (don't fail scry if logging fails)
+- [ ] Helper: `get_active_session_id()` from active-session.md
+
+#### 3b: Session-Commit Linkage
+- [ ] Enhance git scraper to associate commits with sessions
+- [ ] Use session tags to bracket commits: `session-*-start` to `session-*-end`
+- [ ] Store `session_id` in git.commit event data
+
+#### 3c: Feedback Views
+- [ ] Add `scry_retrievals` view (flatten query results)
+- [ ] Add `session_commits` view (files committed per session)
+- [ ] Add `feedback_retrieval` view (join retrievals with commits)
+- [ ] Add `doc_utility` view (aggregate hit rate per document)
+
+#### 3d: Eval --feedback
+- [ ] Add `--feedback` flag to `patina eval`
+- [ ] Query feedback views for real-world precision metrics
+- [ ] Show precision by rank, top utility documents
+- [ ] Compare real-world vs synthetic ground truth
+
+### Validation (Exit Criteria)
+
+| Criteria | Status |
+|----------|--------|
+| `scry.query` events logged to eventlog | [ ] |
+| Commits linked to sessions via tags | [ ] |
+| Feedback views created in scrape | [ ] |
+| `patina eval --feedback` shows real-world precision | [ ] |
+| Can identify high-utility and missed files | [ ] |
 
 ---
 
