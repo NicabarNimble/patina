@@ -46,22 +46,22 @@ Future specs (not yet planned):
 
 Patina has grown through rapid iteration (~36K lines, 45 modules). Before adding new features, audit the codebase to verify adherence to core architectural principles, identify dead code and inconsistencies, and document the current state.
 
-### Structure
+### Approach
 
-The audit combines multiple categorization strategies:
+Six iterative passes - understand before judging, clean before polishing:
 
-| Part | Focus | Sessions |
-|------|-------|----------|
-| **Part 1** | Module Inventory | Document "Do X" for all 45 modules |
-| **Part 2** | Churn Analysis | Git history, co-change patterns, session pain points |
-| **Part 3** | Core Value Audit | dependable-rust, unix-philosophy, adapter-pattern |
-| **Part 4** | Code Health | Clippy, unused deps, dead code, error handling, tests |
-| **Part 5** | User Impact Priority | P0-P3 ranking by user impact |
-| **Part 6** | Findings Summary | Prioritized issues, Phase 2 recommendations |
+| Pass | Focus | Goal |
+|------|-------|------|
+| **Pass 1** | Inventory | What do we have? Why does it exist? |
+| **Pass 2** | Cleanup | Remove dead weight (code, deps, modules) |
+| **Pass 3** | Alignment | Tighten against layer/core values |
+| **Pass 4** | Deep Dive | Go deep on survivors, document as we go |
+| **Pass 5** | Hardening | Security review + test coverage |
+| **Pass 6** | Polish | API consistency, deps, final docs |
 
 ### Layers
 
-Modules are grouped by architectural layer:
+Modules grouped by architectural role:
 
 | Layer | Modules | Primary Value |
 |-------|---------|---------------|
@@ -70,18 +70,18 @@ Modules are grouped by architectural layer:
 | **Infrastructure** | db/, git/, paths.rs | stability |
 | **Integration** | adapters/, mcp/, models/ | adapter-pattern |
 | **Project Mgmt** | project/, mothership/, workspace/ | dependable-rust |
-| **Legacy?** | query/, reasoning/, dev_env/ | determine status |
+| **Uncertain** | query/, reasoning/, dev_env/ | Pass 1 determines fate |
 
 ### Validation (Exit Criteria)
 
 | Criteria | Status |
 |----------|--------|
-| All modules inventoried with "Do X" | [ ] |
-| Churn analysis complete | [ ] |
-| Core value audit complete | [ ] |
-| Code health checks run | [ ] |
-| Findings prioritized | [ ] |
-| Phase 2 tasks identified | [ ] |
+| Pass 1: Inventory complete | [ ] |
+| Pass 2: Cleanup complete | [ ] |
+| Pass 3: Alignment complete | [ ] |
+| Pass 4: Deep dive complete | [ ] |
+| Pass 5: Hardening complete | [ ] |
+| Pass 6: Polish complete | [ ] |
 
 ---
 
