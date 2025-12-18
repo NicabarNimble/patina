@@ -20,6 +20,7 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 Active specs:
 
+- [spec-code-audit.md](../surface/build/spec-code-audit.md) - Phase 1: Comprehensive codebase audit
 - [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
 
 Archived specs (preserved via git tags):
@@ -39,105 +40,48 @@ Future specs (not yet planned):
 
 **Goal:** Comprehensive review of Patina codebase against layer/core values, informed by session history and git patterns.
 
+**Spec:** [spec-code-audit.md](../surface/build/spec-code-audit.md)
+
 ### Context
 
-Patina has grown through rapid iteration. Before adding new features, audit the codebase to:
-- Verify adherence to core architectural principles
-- Identify dead code, unused dependencies, inconsistencies
-- Surface refactoring opportunities
-- Document the current state for future contributors
+Patina has grown through rapid iteration (~36K lines, 45 modules). Before adding new features, audit the codebase to verify adherence to core architectural principles, identify dead code and inconsistencies, and document the current state.
 
-### Audit Framework
+### Structure
 
-#### From dependable-rust.md
+The audit combines multiple categorization strategies:
 
-| Check | Description |
-|-------|-------------|
-| Small public interfaces | Do modules expose minimal, stable APIs? |
-| internal.rs usage | Is implementation hidden appropriately? |
-| No `pub mod internal` | Is internal module private? |
-| No `internal::` in signatures | Do public APIs leak internal types? |
-| Clear "Do X" | Can each module's purpose be stated in one sentence? |
-| Doctests | Do public APIs have usage examples? |
+| Part | Focus | Sessions |
+|------|-------|----------|
+| **Part 1** | Module Inventory | Document "Do X" for all 45 modules |
+| **Part 2** | Churn Analysis | Git history, co-change patterns, session pain points |
+| **Part 3** | Core Value Audit | dependable-rust, unix-philosophy, adapter-pattern |
+| **Part 4** | Code Health | Clippy, unused deps, dead code, error handling, tests |
+| **Part 5** | User Impact Priority | P0-P3 ranking by user impact |
+| **Part 6** | Findings Summary | Prioritized issues, Phase 2 recommendations |
 
-#### From unix-philosophy.md
+### Layers
 
-| Check | Description |
-|-------|-------------|
-| Single responsibility | Does each component do one thing? |
-| Tools vs systems | Are complex systems decomposed into tools? |
-| No flag soup | Are flags used appropriately (not instead of commands)? |
-| Loose coupling | Do components use public interfaces only? |
-| Text interfaces | Is output parseable by other tools? |
+Modules are grouped by architectural layer:
 
-#### From adapter-pattern.md
-
-| Check | Description |
-|-------|-------------|
-| Trait-based integration | Do external systems use traits? |
-| No type leakage | Do traits avoid adapter-specific types? |
-| Trait object usage | Do commands use `&dyn Trait`? |
-| Minimal traits | Are trait interfaces 3-7 methods? |
-| Mock support | Can adapters be mocked for testing? |
-
-#### Additional Checks
-
-| Check | Description |
-|-------|-------------|
-| Dead code | Unused functions, modules, dependencies? |
-| Error handling | Consistent error types and propagation? |
-| Test coverage | Critical paths covered? |
-| Security | OWASP top 10 considerations? |
-| Git patterns | What files change together? (from session/git history) |
-
-### Tasks
-
-#### 1a: Module Inventory
-- [ ] List all modules in `src/`
-- [ ] Document "Do X" statement for each
-- [ ] Identify modules violating dependable-rust pattern
-- [ ] Flag modules with unclear boundaries
-
-#### 1b: Interface Analysis
-- [ ] Audit public APIs for each module
-- [ ] Check for `internal::` leakage in signatures
-- [ ] Verify `pub mod internal` not used
-- [ ] List modules missing doctests
-
-#### 1c: Coupling Analysis
-- [ ] Map inter-module dependencies
-- [ ] Identify tight coupling (using internal details)
-- [ ] Check adapter usage in commands
-- [ ] Review trait definitions for bloat
-
-#### 1d: Code Health
-- [ ] Run `cargo clippy` with all warnings
-- [ ] Check for unused dependencies (`cargo machete` or manual)
-- [ ] Identify dead code paths
-- [ ] Review error handling consistency
-
-#### 1e: Session/Git Analysis
-- [ ] Query feedback views for high-churn files
-- [ ] Analyze co-change patterns (temporal oracle data)
-- [ ] Review session history for recurring pain points
-- [ ] Identify modules that frequently change together
-
-#### 1f: Documentation
-- [ ] Document audit findings
-- [ ] Prioritize issues by severity
-- [ ] Create follow-up tasks for refactoring
-- [ ] Update CLAUDE.md if needed
+| Layer | Modules | Primary Value |
+|-------|---------|---------------|
+| **Entry** | main.rs, commands/ | unix-philosophy |
+| **Domain** | retrieval/, embeddings/, storage/, layer/ | dependable-rust |
+| **Infrastructure** | db/, git/, paths.rs | stability |
+| **Integration** | adapters/, mcp/, models/ | adapter-pattern |
+| **Project Mgmt** | project/, mothership/, workspace/ | dependable-rust |
+| **Legacy?** | query/, reasoning/, dev_env/ | determine status |
 
 ### Validation (Exit Criteria)
 
 | Criteria | Status |
 |----------|--------|
 | All modules inventoried with "Do X" | [ ] |
-| Interface violations documented | [ ] |
-| Coupling analysis complete | [ ] |
-| Code health issues catalogued | [ ] |
-| Git/session patterns analyzed | [ ] |
-| Findings documented with priorities | [ ] |
+| Churn analysis complete | [ ] |
+| Core value audit complete | [ ] |
+| Code health checks run | [ ] |
+| Findings prioritized | [ ] |
+| Phase 2 tasks identified | [ ] |
 
 ---
 
