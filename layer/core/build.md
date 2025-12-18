@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 3 - Feedback Loop
+**Current Phase:** Phase 4 - Build Tracking System
 
 ---
 
@@ -21,6 +21,7 @@ A local-first RAG network: portable project knowledge + personal mothership.
 Active specs:
 
 - [spec-feedback-loop.md](../surface/build/spec-feedback-loop.md) - Phase 3: Measure and learn from retrieval quality
+- [spec-build-system.md](../surface/build/spec-build-system.md) - Phase 4: Git-native task tracking with TOML + commit trailers
 - [spec-model-management.md](../surface/build/spec-model-management.md) - Phase 2: Base model download, caching, provenance (complete)
 
 Deferred work (with context for why/when):
@@ -176,38 +177,110 @@ Key insight: Git is truth. Sessions link queries to commits. We can derive feedb
 
 ### Tasks
 
-#### 3a: Instrument Scry
-- [ ] Add `scry.query` event logging to `scry/mod.rs`
-- [ ] Capture: query text, mode, session_id, results (doc_id, score, rank)
-- [ ] Best-effort logging (don't fail scry if logging fails)
-- [ ] Helper: `get_active_session_id()` from active-session.md
+#### 3a: Instrument Scry ✅
+- [x] Add `scry.query` event logging to `scry/mod.rs`
+- [x] Capture: query text, mode, session_id, results (doc_id, score, rank)
+- [x] Best-effort logging (don't fail scry if logging fails)
+- [x] Helper: `get_active_session_id()` from active-session.md
 
-#### 3b: Session-Commit Linkage
-- [ ] Enhance git scraper to associate commits with sessions
-- [ ] Use session tags to bracket commits: `session-*-start` to `session-*-end`
-- [ ] Store `session_id` in git.commit event data
+#### 3b: Session-Commit Linkage ✅
+- [x] Enhance git scraper to associate commits with sessions
+- [x] Use session tags to bracket commits: `session-*-start` to `session-*-end`
+- [x] Store `session_id` in git.commit event data
+- [x] 24h timeout for sessions without end tag (abandoned sessions)
 
-#### 3c: Feedback Views
-- [ ] Add `scry_retrievals` view (flatten query results)
-- [ ] Add `session_commits` view (files committed per session)
-- [ ] Add `feedback_retrieval` view (join retrievals with commits)
-- [ ] Add `doc_utility` view (aggregate hit rate per document)
+#### 3c: Feedback Views ✅
+- [x] Add `feedback_session_queries` view (queries per session)
+- [x] Add `feedback_commit_files` view (files committed per session)
+- [x] Add `feedback_query_hits` view (join retrievals with commits)
+- [x] Created in `database.rs::create_feedback_views()`
 
-#### 3d: Eval --feedback
-- [ ] Add `--feedback` flag to `patina eval`
-- [ ] Query feedback views for real-world precision metrics
-- [ ] Show precision by rank, top utility documents
-- [ ] Compare real-world vs synthetic ground truth
+#### 3d: Eval --feedback ✅
+- [x] Add `--feedback` flag to `patina eval`
+- [x] Query feedback views for real-world precision metrics
+- [x] Show precision by rank, top sessions, high-value retrievals
+- [x] Guidance when no feedback data available
 
 ### Validation (Exit Criteria)
 
 | Criteria | Status |
 |----------|--------|
-| `scry.query` events logged to eventlog | [ ] |
-| Commits linked to sessions via tags | [ ] |
-| Feedback views created in scrape | [ ] |
-| `patina eval --feedback` shows real-world precision | [ ] |
-| Can identify high-utility and missed files | [ ] |
+| `scry.query` events logged to eventlog | [x] |
+| Commits linked to sessions via tags | [x] |
+| Feedback views created in scrape | [x] |
+| `patina eval --feedback` shows real-world precision | [x] |
+| Can identify high-utility and missed files | [x] |
+
+---
+
+## Phase 4: Build Tracking System
+
+**Goal:** Track build tasks across sessions with a TOML file, commit trailers for history, and documentation for LLM guidance.
+
+**Spec:** [spec-build-system.md](../surface/build/spec-build-system.md)
+
+### Context
+
+Current state:
+- Manual markdown tracking in `build.md`
+- No query interface for LLMs
+- Rabbit holes and explorations not tracked
+- Task state disconnected from git history
+
+Key insight: TOML state file + commit trailers + CLAUDE.md guidance = simple, git-native build tracking that LLMs can drive.
+
+### Design Principles
+
+1. **Git is the database** - commit trailers provide audit trail, no custom infrastructure
+2. **One file, one truth** - `.patina/build.toml` is current state
+3. **Commands, not file editing** - LLMs use `patina build`, not TOML editing
+4. **Capture learnings** - explorations always end with `--learned`
+
+### Tasks
+
+#### 4a: TOML Schema and Parser
+- [ ] Define `BuildState` struct (phases, tasks, deferred, explorations)
+- [ ] Parse/serialize with `toml` crate
+- [ ] Validate state transitions (pending → active → complete)
+
+#### 4b: Query Commands
+- [ ] `patina build status` - summary view
+- [ ] `patina build tasks` - list with filters
+- [ ] `patina build deferred` - list deferred items
+- [ ] `patina build explorations` - list explorations
+
+#### 4c: Mutation Commands
+- [ ] `patina build task start/done/abandon/add`
+- [ ] `patina build defer/undefer`
+- [ ] `patina build explore` / `explore done` / `explore abandon`
+- [ ] `patina build phase done/start`
+
+#### 4d: Commit Integration
+- [ ] Auto-commit after each mutation
+- [ ] Format trailers: `Task:`, `Deferred:`, `Exploration:`, `Learned:`
+- [ ] Use conventional commit format: `build(type): message`
+
+#### 4e: CLAUDE.md Integration
+- [ ] Add build tracking section to CLAUDE.md template
+- [ ] Update session-start to show build status
+- [ ] Document when to use each command
+
+#### 4f: Migration
+- [ ] Create initial `.patina/build.toml` from current `build.md`
+- [ ] One-time migration of existing phases/tasks
+
+### Validation (Exit Criteria)
+
+| Criteria | Status |
+|----------|--------|
+| `.patina/build.toml` created and parseable | [ ] |
+| `patina build status` shows current state | [ ] |
+| `patina build task done X` updates TOML and commits with trailer | [ ] |
+| `patina build defer` captures deferred work | [ ] |
+| `patina build explore` tracks rabbit holes with learnings | [ ] |
+| `git log --grep="Task:"` finds task history | [ ] |
+| CLAUDE.md documents usage for LLMs | [ ] |
+| Session start shows build status | [ ] |
 
 ---
 

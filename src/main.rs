@@ -239,6 +239,10 @@ enum Commands {
         /// Specific dimension to evaluate (semantic, temporal)
         #[arg(long, value_enum)]
         dimension: Option<Dimension>,
+
+        /// Show real-world precision from session feedback loop (Phase 3)
+        #[arg(long)]
+        feedback: bool,
     },
 
     /// Benchmark retrieval quality with ground truth
@@ -710,8 +714,15 @@ fn main() -> Result<()> {
             };
             commands::scry::execute(query.as_deref(), options)?;
         }
-        Some(Commands::Eval { dimension }) => {
-            commands::eval::execute(dimension.map(|d| d.as_str().to_string()))?;
+        Some(Commands::Eval {
+            dimension,
+            feedback,
+        }) => {
+            if feedback {
+                commands::eval::execute_feedback()?;
+            } else {
+                commands::eval::execute(dimension.map(|d| d.as_str().to_string()))?;
+            }
         }
         Some(Commands::Bench { command }) => match command {
             BenchCommands::Retrieval {
