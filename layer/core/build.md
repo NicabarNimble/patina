@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 4 - Build Tracking System
+**Current Phase:** Phase 1 - Code Audit
 
 ---
 
@@ -12,7 +12,7 @@ A local-first RAG network: portable project knowledge + personal mothership.
 - **Reference Repos:** `patina repo add <url>` - lightweight index in `~/.patina/cache/repos/`
 - **Mothership:** `~/.patina/` - registry, personas, `patina serve` daemon
 
-**Completed infrastructure:** Scrape pipeline, oxidize embeddings, query/scry, serve daemon, persona, rebuild command, MCP server, hybrid retrieval (MRR 0.624). All working.
+**Completed infrastructure:** Scrape pipeline, oxidize embeddings, query/scry, serve daemon, persona, rebuild command, MCP server, hybrid retrieval (MRR 0.624), model management, feedback loop. All working.
 
 ---
 
@@ -20,273 +20,145 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 Active specs:
 
-- [spec-feedback-loop.md](../surface/build/spec-feedback-loop.md) - Phase 3: Measure and learn from retrieval quality
-- [spec-build-system.md](../surface/build/spec-build-system.md) - Phase 4: Git-native task tracking with TOML + commit trailers
-- [spec-model-management.md](../surface/build/spec-model-management.md) - Phase 2: Base model download, caching, provenance (complete)
+- [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
 
-Deferred work (with context for why/when):
+Archived specs (preserved via git tags):
 
-- [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Scope cuts, blockers, enhancements, future ideas
+- `spec/feedback-loop` - Phase 3: Measure and learn from retrieval quality
+- `spec/model-management` - Phase 2: Base model download, caching, provenance
+- `spec/mcp-retrieval-polish` - Phase 1: MCP tool rename, temporal oracle, hybrid mode
 
 Future specs (not yet planned):
 
 - [spec-github-adapter.md](../surface/build/spec-github-adapter.md) - GitHub integration
+- [spec-build-system.md](../surface/build/spec-build-system.md) - Git-native task tracking (deferred)
 
 ---
 
-## Phase 1: MCP & Retrieval Polish
+## Phase 1: Code Audit
 
-**Goal:** Make MCP tools useful on fresh projects, expose all indexed data.
+**Goal:** Comprehensive review of Patina codebase against layer/core values, informed by session history and git patterns.
 
 ### Context
 
-Live testing on dojo (fresh clone) revealed:
-- MCP tools ARE called (directive descriptions work) ✅
-- But results unhelpful on fresh projects:
-  - Lexical only (semantic needs `oxidize`)
-  - No temporal oracle (75K co-change relationships scraped but not queryable)
-  - No session history yet (first session!)
+Patina has grown through rapid iteration. Before adding new features, audit the codebase to:
+- Verify adherence to core architectural principles
+- Identify dead code, unused dependencies, inconsistencies
+- Surface refactoring opportunities
+- Document the current state for future contributors
 
-This is partly expected (Patina's value grows over time), but we can expose more of what's already scraped.
+### Audit Framework
+
+#### From dependable-rust.md
+
+| Check | Description |
+|-------|-------------|
+| Small public interfaces | Do modules expose minimal, stable APIs? |
+| internal.rs usage | Is implementation hidden appropriately? |
+| No `pub mod internal` | Is internal module private? |
+| No `internal::` in signatures | Do public APIs leak internal types? |
+| Clear "Do X" | Can each module's purpose be stated in one sentence? |
+| Doctests | Do public APIs have usage examples? |
+
+#### From unix-philosophy.md
+
+| Check | Description |
+|-------|-------------|
+| Single responsibility | Does each component do one thing? |
+| Tools vs systems | Are complex systems decomposed into tools? |
+| No flag soup | Are flags used appropriately (not instead of commands)? |
+| Loose coupling | Do components use public interfaces only? |
+| Text interfaces | Is output parseable by other tools? |
+
+#### From adapter-pattern.md
+
+| Check | Description |
+|-------|-------------|
+| Trait-based integration | Do external systems use traits? |
+| No type leakage | Do traits avoid adapter-specific types? |
+| Trait object usage | Do commands use `&dyn Trait`? |
+| Minimal traits | Are trait interfaces 3-7 methods? |
+| Mock support | Can adapters be mocked for testing? |
+
+#### Additional Checks
+
+| Check | Description |
+|-------|-------------|
+| Dead code | Unused functions, modules, dependencies? |
+| Error handling | Consistent error types and propagation? |
+| Test coverage | Critical paths covered? |
+| Security | OWASP top 10 considerations? |
+| Git patterns | What files change together? (from session/git history) |
 
 ### Tasks
 
-#### 1a: MCP Tool Rename ✅
-- [x] Rename `patina_query` → `scry` (CLI parity)
-- [x] Rename `patina_context` → `context` (simpler)
-- [x] Add directive descriptions ("USE FIRST for any code question")
-- [x] Update CLAUDE.md generation with MCP guidance
-- [x] Update bootstrap content in launch.rs
+#### 1a: Module Inventory
+- [ ] List all modules in `src/`
+- [ ] Document "Do X" statement for each
+- [ ] Identify modules violating dependable-rust pattern
+- [ ] Flag modules with unclear boundaries
 
-#### 1b: Add TemporalOracle ✅
-- [x] Create `src/retrieval/oracles/temporal.rs`
-- [x] Query co-change neighbors for a file path
-- [x] Fuse temporal results with lexical/semantic via RRF
-- [x] Test: `scry "files related to auth"` returns co-change data
+#### 1b: Interface Analysis
+- [ ] Audit public APIs for each module
+- [ ] Check for `internal::` leakage in signatures
+- [ ] Verify `pub mod internal` not used
+- [ ] List modules missing doctests
 
-#### 1c: Auto-Oxidize on Init ✅
-- [x] Should `patina init` run `oxidize`? → Yes, for best first-run UX
-- [x] Added to init flow after scrape (Step 5)
-- [x] Non-fatal: warns and suggests manual `patina oxidize` if fails
+#### 1c: Coupling Analysis
+- [ ] Map inter-module dependencies
+- [ ] Identify tight coupling (using internal details)
+- [ ] Check adapter usage in commands
+- [ ] Review trait definitions for bloat
 
-#### 1d: CLI Hybrid Mode ✅
-- [x] Add `--hybrid` flag to `patina scry` CLI
-- [x] Add `hybrid` option to HTTP API (`POST /scry`)
-- [x] Shows which oracles contributed to each result
+#### 1d: Code Health
+- [ ] Run `cargo clippy` with all warnings
+- [ ] Check for unused dependencies (`cargo machete` or manual)
+- [ ] Identify dead code paths
+- [ ] Review error handling consistency
+
+#### 1e: Session/Git Analysis
+- [ ] Query feedback views for high-churn files
+- [ ] Analyze co-change patterns (temporal oracle data)
+- [ ] Review session history for recurring pain points
+- [ ] Identify modules that frequently change together
+
+#### 1f: Documentation
+- [ ] Document audit findings
+- [ ] Prioritize issues by severity
+- [ ] Create follow-up tasks for refactoring
+- [ ] Update CLAUDE.md if needed
 
 ### Validation (Exit Criteria)
 
 | Criteria | Status |
 |----------|--------|
-| MCP tools renamed to `scry`/`context` | [x] |
-| CLAUDE.md guides LLMs to use MCP tools | [x] |
-| TemporalOracle in QueryEngine | [x] |
-| Co-change data queryable via `scry` | [x] |
-| CLI `--hybrid` exposes RRF fusion | [x] |
-| Auto-oxidize on init | [x] |
-| Fresh project `scry` returns useful results | [x] |
-
----
-
-## Phase 2: Model Management
-
-**Goal:** Base models are infrastructure managed at mothership level. Projects reference by name, mothership provides files.
-
-**Spec:** [spec-model-management.md](../surface/build/spec-model-management.md)
-
-### Summary
-
-Base models (~100MB each) move from repo to `~/.patina/cache/models/`. Provenance tracked in `models.lock`. Projects just reference by name.
-
-```
-registry.toml (metadata)  →  What models exist
-models.lock (mothership)  →  What's downloaded + provenance
-config.toml (project)     →  What model to use
-```
-
-### Tasks
-
-#### 2a: Mothership Model Cache ✅
-- [x] Create `~/.patina/cache/models/` directory structure
-- [x] Add `models.lock` TOML format + parser (`src/models/internal.rs`)
-- [x] Update `src/embeddings/mod.rs` to read from cache via `models::resolve_model_path()`
-- [x] Add `src/paths.rs::models` module with cache path helpers
-
-#### 2b: Model Command ✅
-- [x] `patina model list` - show registry + download status
-- [x] `patina model add <name>` - download with progress bar
-- [x] `patina model remove <name>` - remove from cache
-- [x] `patina model status` - show project needs vs cache
-
-#### 2c: Download Infrastructure ✅
-- [x] HTTP download with progress (reqwest blocking client)
-- [x] SHA256 verification via `shasum -a 256` (macOS)
-- [x] Provenance recording to lock file
-
-#### 2d: Init Integration ✅
-- [x] Check model availability on init (`ensure_model_available()`)
-- [x] Prompt to download if missing
-- [x] Validate project model against registry
-
-#### 2e: Oxidize Updates ✅
-- [x] Derive `input_dim` from registry (not recipe)
-- [x] Recipe v2 format (optional `embedding_model`, 2-element layers)
-- [x] Backwards compat with v1 recipes
-
-#### 2f: Migration Path ✅
-- [x] Models already gitignored (never tracked in git)
-- [x] `resources/models/` contains only `registry.toml` + `README.md`
-- [x] New clones download models on-demand via `patina model add`
-
-### Validation (Exit Criteria)
-
-| Criteria | Status |
-|----------|--------|
-| `patina model list` shows registry + status | [x] |
-| `patina model add` downloads with provenance | [x] |
-| Models stored in `~/.patina/cache/models/` | [x] |
-| `models.lock` tracks downloads + checksums | [x] |
-| Init validates model availability | [x] |
-| Oxidize derives dimensions from registry | [x] |
-| Existing projects can migrate | [x] |
-
----
-
-## Phase 3: Feedback Loop
-
-**Goal:** Measure whether Patina's retrievals are actually useful, learn from real user behavior, and improve over time.
-
-**Spec:** [spec-feedback-loop.md](../surface/build/spec-feedback-loop.md)
-
-### Context
-
-Current state:
-- Projections train with constant loss (not learning)
-- We don't know if retrievals help the user
-- `eval` measures against synthetic ground truth (same-session observations)
-- No measurement of real-world retrieval quality
-
-Key insight: Git is truth. Sessions link queries to commits. We can derive feedback without new storage.
-
-### Design Principles
-
-1. **Git is truth** - we don't store feedback, we derive it from git
-2. **Session links query to commit** - session tags bracket the work
-3. **Stability + utility = relevance** - not time decay
-4. **No new commands** - extend scrape (views), scry (logging), eval (metrics)
-
-### Tasks
-
-#### 3a: Instrument Scry ✅
-- [x] Add `scry.query` event logging to `scry/mod.rs`
-- [x] Capture: query text, mode, session_id, results (doc_id, score, rank)
-- [x] Best-effort logging (don't fail scry if logging fails)
-- [x] Helper: `get_active_session_id()` from active-session.md
-
-#### 3b: Session-Commit Linkage ✅
-- [x] Enhance git scraper to associate commits with sessions
-- [x] Use session tags to bracket commits: `session-*-start` to `session-*-end`
-- [x] Store `session_id` in git.commit event data
-- [x] 24h timeout for sessions without end tag (abandoned sessions)
-
-#### 3c: Feedback Views ✅
-- [x] Add `feedback_session_queries` view (queries per session)
-- [x] Add `feedback_commit_files` view (files committed per session)
-- [x] Add `feedback_query_hits` view (join retrievals with commits)
-- [x] Created in `database.rs::create_feedback_views()`
-
-#### 3d: Eval --feedback ✅
-- [x] Add `--feedback` flag to `patina eval`
-- [x] Query feedback views for real-world precision metrics
-- [x] Show precision by rank, top sessions, high-value retrievals
-- [x] Guidance when no feedback data available
-
-### Validation (Exit Criteria)
-
-| Criteria | Status |
-|----------|--------|
-| `scry.query` events logged to eventlog | [x] |
-| Commits linked to sessions via tags | [x] |
-| Feedback views created in scrape | [x] |
-| `patina eval --feedback` shows real-world precision | [x] |
-| Can identify high-utility and missed files | [x] |
-
----
-
-## Phase 4: Build Tracking System
-
-**Goal:** Track build tasks across sessions with a TOML file, commit trailers for history, and documentation for LLM guidance.
-
-**Spec:** [spec-build-system.md](../surface/build/spec-build-system.md)
-
-### Context
-
-Current state:
-- Manual markdown tracking in `build.md`
-- No query interface for LLMs
-- Rabbit holes and explorations not tracked
-- Task state disconnected from git history
-
-Key insight: TOML state file + commit trailers + CLAUDE.md guidance = simple, git-native build tracking that LLMs can drive.
-
-### Design Principles
-
-1. **Git is the database** - commit trailers provide audit trail, no custom infrastructure
-2. **One file, one truth** - `.patina/build.toml` is current state
-3. **Commands, not file editing** - LLMs use `patina build`, not TOML editing
-4. **Capture learnings** - explorations always end with `--learned`
-
-### Tasks
-
-#### 4a: TOML Schema and Parser
-- [ ] Define `BuildState` struct (phases, tasks, deferred, explorations)
-- [ ] Parse/serialize with `toml` crate
-- [ ] Validate state transitions (pending → active → complete)
-
-#### 4b: Query Commands
-- [ ] `patina build status` - summary view
-- [ ] `patina build tasks` - list with filters
-- [ ] `patina build deferred` - list deferred items
-- [ ] `patina build explorations` - list explorations
-
-#### 4c: Mutation Commands
-- [ ] `patina build task start/done/abandon/add`
-- [ ] `patina build defer/undefer`
-- [ ] `patina build explore` / `explore done` / `explore abandon`
-- [ ] `patina build phase done/start`
-
-#### 4d: Commit Integration
-- [ ] Auto-commit after each mutation
-- [ ] Format trailers: `Task:`, `Deferred:`, `Exploration:`, `Learned:`
-- [ ] Use conventional commit format: `build(type): message`
-
-#### 4e: CLAUDE.md Integration
-- [ ] Add build tracking section to CLAUDE.md template
-- [ ] Update session-start to show build status
-- [ ] Document when to use each command
-
-#### 4f: Migration
-- [ ] Create initial `.patina/build.toml` from current `build.md`
-- [ ] One-time migration of existing phases/tasks
-
-### Validation (Exit Criteria)
-
-| Criteria | Status |
-|----------|--------|
-| `.patina/build.toml` created and parseable | [ ] |
-| `patina build status` shows current state | [ ] |
-| `patina build task done X` updates TOML and commits with trailer | [ ] |
-| `patina build defer` captures deferred work | [ ] |
-| `patina build explore` tracks rabbit holes with learnings | [ ] |
-| `git log --grep="Task:"` finds task history | [ ] |
-| CLAUDE.md documents usage for LLMs | [ ] |
-| Session start shows build status | [ ] |
+| All modules inventoried with "Do X" | [ ] |
+| Interface violations documented | [ ] |
+| Coupling analysis complete | [ ] |
+| Code health issues catalogued | [ ] |
+| Git/session patterns analyzed | [ ] |
+| Findings documented with priorities | [ ] |
 
 ---
 
 ## Completed
 
 Shipped phases (details preserved in git tags):
+
+### MCP & Retrieval Polish
+MCP tools renamed (`scry`/`context`), directive descriptions for LLM tool selection, TemporalOracle integration, CLI `--hybrid` mode, auto-oxidize on init.
+
+**Tag:** `spec/mcp-retrieval-polish`
+
+### Model Management
+Base models moved to `~/.patina/cache/models/`, provenance tracking via `models.lock`, `patina model` command (list/add/remove/status), init validates model availability, oxidize derives dimensions from registry.
+
+**Tag:** `spec/model-management`
+
+### Feedback Loop
+Scry query logging to eventlog, session-commit linkage via git tags (75% attribution), feedback SQL views (session_queries, commit_files, query_hits), `patina eval --feedback` for real-world precision metrics.
+
+**Tag:** `spec/feedback-loop`
 
 ### Phase 1: Folder Restructure
 Centralized paths module (`src/paths.rs`), migration logic (`src/migration.rs`), user-level path consolidation. Clean separation of source vs derived data at `~/.patina/`.
@@ -323,4 +195,4 @@ git tag -l 'spec/*'              # List archived specs
 git show spec/scry:layer/surface/build/spec-scry.md  # View archived spec
 ```
 
-**Tags:** `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`
+**Tags:** `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`

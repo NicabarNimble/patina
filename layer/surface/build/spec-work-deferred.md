@@ -204,6 +204,30 @@ binary embedded templates  →  ~/.patina/adapters/  →  all registered project
 
 ---
 
+## Scope Cuts (Recent)
+
+Work cut from recent phases to focus on audit.
+
+### Build Tracking System
+
+| Field | Value |
+|-------|-------|
+| **Origin** | Phase 4 (planned, never started) |
+| **Spec** | `spec-build-system.md` |
+| **Why deferred** | Prioritizing code audit before adding new features |
+| **When to revisit** | After code audit identifies architectural improvements |
+
+**Original tasks:**
+- TOML schema and parser for `.patina/build.toml`
+- Query commands: `patina build status/tasks/deferred/explorations`
+- Mutation commands: `patina build task start/done/abandon/add`
+- Commit integration with trailers (`Task:`, `Deferred:`, `Exploration:`)
+- CLAUDE.md integration for LLM guidance
+
+**Value:** Git-native task tracking that LLMs can drive. Exploration/rabbit-hole tracking as first-class citizens.
+
+---
+
 ## Future Ideas
 
 Ideas captured but never formally planned.
