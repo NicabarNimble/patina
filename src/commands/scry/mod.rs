@@ -13,6 +13,7 @@ use std::path::Path;
 use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
 use crate::commands::persona;
+use crate::commands::scrape::database;
 use crate::retrieval::{QueryEngine, QueryOptions};
 use patina::embeddings::create_embedder;
 use patina::mothership;
@@ -143,6 +144,18 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     results.truncate(options.limit);
+
+    // Log query for feedback loop (Phase 3)
+    if let Some(q) = query {
+        let mode = if options.dimension.is_some() {
+            options.dimension.as_deref().unwrap_or("semantic")
+        } else if is_lexical_query(q) {
+            "lexical"
+        } else {
+            "semantic"
+        };
+        log_scry_query(q, mode, &results);
+    }
 
     if results.is_empty() {
         println!("No results found.");
@@ -959,6 +972,20 @@ fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> {
 
     let results = engine.query_with_options(query, options.limit, &query_opts)?;
 
+    // Log query for feedback loop (Phase 3) - convert at boundary
+    let log_results: Vec<ScryResult> = results
+        .iter()
+        .map(|r| ScryResult {
+            id: 0,
+            source_id: r.doc_id.clone(),
+            score: r.fused_score,
+            event_type: r.metadata.event_type.clone().unwrap_or_default(),
+            content: r.content.clone(),
+            timestamp: String::new(),
+        })
+        .collect();
+    log_scry_query(query, "hybrid", &log_results);
+
     if results.is_empty() {
         println!("No results found.");
         return Ok(());
@@ -1193,6 +1220,70 @@ fn execute_via_mothership(query: Option<&str>, options: &ScryOptions) -> Result<
     println!("\n{}", "─".repeat(60));
 
     Ok(())
+}
+
+// ============================================================================
+// Feedback Loop Instrumentation (Phase 3)
+// ============================================================================
+
+/// Get the active session ID from .claude/context/active-session.md
+///
+/// Returns None if no active session or file doesn't exist.
+/// This is best-effort - we don't want to fail scry if session detection fails.
+fn get_active_session_id() -> Option<String> {
+    let content = std::fs::read_to_string(".claude/context/active-session.md").ok()?;
+    for line in content.lines() {
+        if line.starts_with("**ID**:") {
+            return Some(line.replace("**ID**:", "").trim().to_string());
+        }
+    }
+    None
+}
+
+/// Log a scry query to the eventlog for feedback loop analysis
+///
+/// Best-effort logging - failures are silently ignored to not disrupt scry.
+fn log_scry_query(query: &str, mode: &str, results: &[ScryResult]) {
+    let session_id = match get_active_session_id() {
+        Some(id) => id,
+        None => return, // No active session, skip logging
+    };
+
+    // Build results array for logging
+    let results_json: Vec<serde_json::Value> = results
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            serde_json::json!({
+                "doc_id": r.source_id,
+                "score": r.score,
+                "rank": i + 1,
+                "event_type": r.event_type
+            })
+        })
+        .collect();
+
+    let query_data = serde_json::json!({
+        "query": query,
+        "mode": mode,
+        "session_id": session_id,
+        "results": results_json
+    });
+
+    // Best-effort insert into eventlog
+    let _ = (|| -> Result<()> {
+        let conn = Connection::open(database::PATINA_DB)?;
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        database::insert_event(
+            &conn,
+            "scry.query",
+            &timestamp,
+            &timestamp, // timestamp is unique enough for source_id
+            None,
+            &query_data.to_string(),
+        )?;
+        Ok(())
+    })();
 }
 
 #[cfg(test)]

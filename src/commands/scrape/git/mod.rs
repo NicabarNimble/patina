@@ -5,6 +5,7 @@
 //! - Creates materialized views (commits, commit_files, co_changes) from eventlog
 
 use anyhow::{Context, Result};
+use chrono;
 use rusqlite::Connection;
 use serde_json::json;
 use std::collections::HashMap;
@@ -15,6 +16,129 @@ use std::time::Instant;
 use super::database;
 use super::ScrapeStats;
 
+// ============================================================================
+// Session-Commit Linkage (Phase 3)
+// ============================================================================
+
+/// Session boundaries derived from git tags
+#[derive(Debug)]
+struct SessionBounds {
+    session_id: String,
+    start_time: String,       // ISO8601
+    end_time: Option<String>, // None if session still active
+}
+
+/// Parse session tags to get session boundaries
+///
+/// Session tags follow pattern: session-YYYYMMDD-HHMMSS-{start|end}
+fn parse_session_tags() -> Result<Vec<SessionBounds>> {
+    // Get all session tags with their timestamps
+    let output = Command::new("git")
+        .args([
+            "tag",
+            "-l",
+            "session-*",
+            "--format",
+            "%(refname:short)|%(creatordate:iso-strict)",
+        ])
+        .output()
+        .context("Failed to run git tag")?;
+
+    if !output.status.success() {
+        // No tags or git error - return empty (commits won't be linked to sessions)
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Group tags by session ID
+    let mut sessions: HashMap<String, (Option<String>, Option<String>)> = HashMap::new();
+
+    for line in stdout.lines() {
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.split('|').collect();
+        if parts.len() != 2 {
+            continue;
+        }
+
+        let tag_name = parts[0];
+        let timestamp = parts[1].to_string();
+
+        // Parse tag name: session-YYYYMMDD-HHMMSS-{start|end}
+        if let Some(rest) = tag_name.strip_prefix("session-") {
+            if let Some(session_id) = rest.strip_suffix("-start") {
+                let entry = sessions
+                    .entry(session_id.to_string())
+                    .or_insert((None, None));
+                entry.0 = Some(timestamp);
+            } else if let Some(session_id) = rest.strip_suffix("-end") {
+                let entry = sessions
+                    .entry(session_id.to_string())
+                    .or_insert((None, None));
+                entry.1 = Some(timestamp);
+            }
+        }
+    }
+
+    // Convert to SessionBounds
+    let mut bounds: Vec<SessionBounds> = sessions
+        .into_iter()
+        .filter_map(|(session_id, (start, end))| {
+            // Only include sessions with a start time
+            start.map(|start_time| SessionBounds {
+                session_id,
+                start_time,
+                end_time: end,
+            })
+        })
+        .collect();
+
+    // Sort by start time
+    bounds.sort_by(|a, b| a.start_time.cmp(&b.start_time));
+
+    Ok(bounds)
+}
+
+/// Maximum duration (in seconds) for a session without an end tag to be considered "active"
+/// Sessions older than this with no end tag are treated as abandoned.
+const MAX_SESSION_DURATION_SECS: i64 = 24 * 60 * 60; // 24 hours
+
+/// Find which session a commit belongs to (if any)
+fn find_session_for_commit(commit_time: &str, sessions: &[SessionBounds]) -> Option<String> {
+    // Iterate in reverse (newest sessions first) for better matching
+    for session in sessions.iter().rev() {
+        // Check if commit is after session start
+        if commit_time >= session.start_time.as_str() {
+            match &session.end_time {
+                Some(end_time) if commit_time <= end_time.as_str() => {
+                    // Commit is within session bounds
+                    return Some(session.session_id.clone());
+                }
+                None => {
+                    // Session has no end tag - check if it's reasonably recent
+                    // Parse timestamps to check duration
+                    if let (Ok(commit_dt), Ok(start_dt)) = (
+                        chrono::DateTime::parse_from_rfc3339(commit_time),
+                        chrono::DateTime::parse_from_rfc3339(&session.start_time),
+                    ) {
+                        let duration = commit_dt.signed_duration_since(start_dt);
+                        if duration.num_seconds() >= 0
+                            && duration.num_seconds() <= MAX_SESSION_DURATION_SECS
+                        {
+                            return Some(session.session_id.clone());
+                        }
+                    }
+                }
+                _ => continue, // Commit is after session end, check next
+            }
+        }
+    }
+    None
+}
+
 /// Parsed commit from git log
 #[derive(Debug)]
 struct GitCommit {
@@ -24,6 +148,7 @@ struct GitCommit {
     author_email: String,
     timestamp: String,
     files: Vec<FileChange>,
+    session_id: Option<String>, // Phase 3: Link commits to sessions
 }
 
 /// File change within a commit
@@ -137,6 +262,7 @@ fn parse_git_log_output(output: &str) -> Result<Vec<GitCommit>> {
                 author_email: parts[3].to_string(),
                 timestamp: parts[4].to_string(),
                 files: Vec::new(),
+                session_id: None, // Will be populated later from session tags
             });
         } else if let Some(ref mut commit) = current_commit {
             // This is a numstat line: additions\tdeletions\tfilename
@@ -191,7 +317,8 @@ fn insert_commits(conn: &Connection, commits: &[GitCommit]) -> Result<usize> {
 
     for commit in commits {
         // 1. Insert into eventlog (source of truth)
-        let event_data = json!({
+        // Phase 3: Include session_id for feedback loop
+        let mut event_data = json!({
             "sha": &commit.sha,
             "message": &commit.message,
             "author_name": &commit.author_name,
@@ -203,6 +330,11 @@ fn insert_commits(conn: &Connection, commits: &[GitCommit]) -> Result<usize> {
                 "lines_removed": f.lines_removed,
             })).collect::<Vec<_>>(),
         });
+
+        // Add session_id if commit was made during a session
+        if let Some(ref session_id) = commit.session_id {
+            event_data["session_id"] = json!(session_id);
+        }
 
         database::insert_event(
             conn,
@@ -369,7 +501,7 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     }
 
     // Parse git log
-    let commits = parse_git_log(since_sha.as_deref())?;
+    let mut commits = parse_git_log(since_sha.as_deref())?;
 
     if commits.is_empty() {
         println!("  No new commits to process");
@@ -383,6 +515,21 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     }
 
     println!("  Found {} commits to process", commits.len());
+
+    // Phase 3: Parse session tags and link commits to sessions
+    let session_bounds = parse_session_tags().unwrap_or_default();
+    if !session_bounds.is_empty() {
+        let mut linked_count = 0;
+        for commit in &mut commits {
+            if let Some(session_id) = find_session_for_commit(&commit.timestamp, &session_bounds) {
+                commit.session_id = Some(session_id);
+                linked_count += 1;
+            }
+        }
+        if linked_count > 0 {
+            println!("  Linked {} commits to sessions", linked_count);
+        }
+    }
 
     // Insert commits
     let commit_count = insert_commits(&conn, &commits)?;
@@ -425,5 +572,94 @@ mod tests {
         assert_eq!(commits[0].files[0].path, "src/parser.rs");
         assert_eq!(commits[0].files[0].lines_added, 5);
         assert_eq!(commits[0].files[0].lines_removed, 2);
+        assert!(commits[0].session_id.is_none()); // Not linked yet
+    }
+
+    #[test]
+    fn test_find_session_for_commit() {
+        let sessions = vec![
+            SessionBounds {
+                session_id: "20251217-100000".to_string(),
+                start_time: "2025-12-17T10:00:00+00:00".to_string(),
+                end_time: Some("2025-12-17T12:00:00+00:00".to_string()),
+            },
+            SessionBounds {
+                session_id: "20251217-140000".to_string(),
+                start_time: "2025-12-17T14:00:00+00:00".to_string(),
+                end_time: None, // Still active (within 24h)
+            },
+        ];
+
+        // Commit during first session
+        assert_eq!(
+            find_session_for_commit("2025-12-17T11:00:00+00:00", &sessions),
+            Some("20251217-100000".to_string())
+        );
+
+        // Commit between sessions (no match)
+        assert_eq!(
+            find_session_for_commit("2025-12-17T13:00:00+00:00", &sessions),
+            None
+        );
+
+        // Commit during second (active) session - within 24h of start
+        assert_eq!(
+            find_session_for_commit("2025-12-17T15:00:00+00:00", &sessions),
+            Some("20251217-140000".to_string())
+        );
+
+        // Commit before any session
+        assert_eq!(
+            find_session_for_commit("2025-12-17T09:00:00+00:00", &sessions),
+            None
+        );
+    }
+
+    #[test]
+    fn test_find_session_for_commit_abandoned_session() {
+        // Session started long ago with no end tag (abandoned)
+        let sessions = vec![SessionBounds {
+            session_id: "20250801-100000".to_string(),
+            start_time: "2025-08-01T10:00:00+00:00".to_string(),
+            end_time: None, // No end tag
+        }];
+
+        // Commit from months later should NOT match (session is abandoned)
+        assert_eq!(
+            find_session_for_commit("2025-12-17T11:00:00+00:00", &sessions),
+            None
+        );
+
+        // Commit within 24h of session start should match
+        assert_eq!(
+            find_session_for_commit("2025-08-01T20:00:00+00:00", &sessions),
+            Some("20250801-100000".to_string())
+        );
+    }
+
+    #[test]
+    fn test_chrono_parsing_real_timestamps() {
+        // Test with actual timestamps from git log
+        let commit_time = "2025-12-17T08:52:56-05:00";
+        let session_start = "2025-08-19T10:51:24-04:00";
+
+        let commit_dt = chrono::DateTime::parse_from_rfc3339(commit_time);
+        let start_dt = chrono::DateTime::parse_from_rfc3339(session_start);
+
+        assert!(commit_dt.is_ok(), "Failed to parse commit time");
+        assert!(start_dt.is_ok(), "Failed to parse session start time");
+
+        let duration = commit_dt.unwrap().signed_duration_since(start_dt.unwrap());
+
+        // Should be ~120 days apart, way more than 24 hours
+        assert!(
+            duration.num_days() > 100,
+            "Duration should be months, got {} days",
+            duration.num_days()
+        );
+        assert!(
+            duration.num_seconds() > MAX_SESSION_DURATION_SECS,
+            "Duration should exceed 24h limit"
+        );
     }
 }
