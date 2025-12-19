@@ -228,6 +228,40 @@ Work cut from recent phases to focus on audit.
 
 ---
 
+## Enhancements (Recent)
+
+### Per-Language Module Documentation Extraction
+
+| Field | Value |
+|-------|-------|
+| **Origin** | Phase 0 (Assay Command) |
+| **Spec** | `spec-assay.md` |
+| **Why deferred** | Universal-first approach; language-specific logic adds complexity |
+| **When to revisit** | After assay is working and tested on multi-language repos |
+
+**Problem:** Each language has different doc comment conventions:
+
+| Language | Convention | Tree-sitter Node |
+|----------|------------|------------------|
+| Rust | `//!` module doc | `inner_line_doc` |
+| Python | `"""docstring"""` | `expression_statement > string` |
+| Go | `// Package X` | `comment` before `package` |
+| TypeScript | `/** @module */` | `comment` at file start |
+| Solidity | `/// @title` NatSpec | `natspec_comment` |
+| C/C++ | `/** @file */` | `comment` with `@file` |
+
+**Existing patterns:** Python (`extract_docstring`) and Solidity (`extract_natspec`) already have doc extraction in their language parsers.
+
+**Tasks:**
+- [ ] Add `extract_module_doc()` to each language parser
+- [ ] Store in new `module_docs` table or column in `index_state`
+- [ ] Expose via `patina assay --with-docs`
+- [ ] Update MCP tool to include docs in inventory
+
+**Value:** `patina assay` returns module purpose alongside stats, reducing need to read files for basic understanding.
+
+---
+
 ## Future Ideas
 
 Ideas captured but never formally planned.

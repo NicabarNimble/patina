@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 1 - Code Audit
+**Current Phase:** Phase 0 - Assay Command
 
 ---
 
@@ -20,6 +20,7 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 Active specs:
 
+- [spec-assay.md](../surface/build/spec-assay.md) - Phase 0: Structural query command
 - [spec-code-audit.md](../surface/build/spec-code-audit.md) - Phase 1: Comprehensive codebase audit
 - [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
 
@@ -33,6 +34,40 @@ Future specs (not yet planned):
 
 - [spec-github-adapter.md](../surface/build/spec-github-adapter.md) - GitHub integration
 - [spec-build-system.md](../surface/build/spec-build-system.md) - Git-native task tracking (deferred)
+
+---
+
+## Phase 0: Assay Command
+
+**Goal:** Add structural query interface to complement semantic search (scry).
+
+**Spec:** [spec-assay.md](../surface/build/spec-assay.md)
+
+### Context
+
+Dogfooding insight: Pass 1 inventory required 40+ shell tool calls. Patina has structural data in SQLite (functions, imports, call graph) but no query interface. Adding `assay` enables LLMs to get module inventory in 1-3 calls.
+
+### Tasks
+
+| Task | Status |
+|------|--------|
+| Add line_count to scrape pipeline | [ ] |
+| Create `src/commands/assay/mod.rs` | [ ] |
+| Implement inventory query | [ ] |
+| Implement imports/importers queries | [ ] |
+| Implement callers/callees queries | [ ] |
+| Add `assay` MCP tool to server.rs | [ ] |
+| Wire command in main.rs | [ ] |
+| Test on Patina codebase | [ ] |
+
+### Validation (Exit Criteria)
+
+| Criteria | Status |
+|----------|--------|
+| `patina assay` returns module inventory | [ ] |
+| `patina assay --importers X` works | [ ] |
+| MCP `assay` tool callable | [ ] |
+| Line counts in scrape output | [ ] |
 
 ---
 

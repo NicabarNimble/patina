@@ -50,145 +50,335 @@ Captured at audit start (2025-12-17):
 
 | File | Lines | Purpose | Origin | Used? | Notes |
 |------|-------|---------|--------|-------|-------|
-| main.rs | 844 | | | | |
-| lib.rs | | | | | |
-| paths.rs | | | | | |
-| environment.rs | | | | | |
-| migration.rs | | | | | |
-| session.rs | | | | | |
-| version.rs | | | | | |
+| main.rs | 844 | CLI entry point: all command definitions and routing | Core bootstrap | ✓ | Large - 28 commands, typed enums |
+| lib.rs | 23 | Module declarations and re-exports | Core bootstrap | ✓ | Clean, minimal |
+| paths.rs | 268 | Single source of truth for filesystem layout | Folder structure spec | ✓ | Pure functions, no I/O - good design |
+| environment.rs | 450 | Detects OS/tools/languages for context generation | Adapter support | ✓ | Used by adapters, init, doctor |
+| migration.rs | 263 | One-time data migration (old paths → new cache) | Folder structure spec | ✓ | Called from main early in startup |
+| session.rs | 162 | Project discovery (find_project_root) | Core bootstrap | ✓ | Lean - original staging system removed |
+| version.rs | 317 | Version manifest tracking component versions | Init/upgrade support | ✓ | Imports from adapters/dev_env for versions |
 
 ### 1.2 Commands Layer
 
-CLI entry points. What commands exist and what do they do?
+CLI entry points. 24 public modules, ~19K lines total.
 
 | Module | Lines | Purpose | Origin | Used? | Notes |
 |--------|-------|---------|--------|-------|-------|
-| commands/mod.rs | | | | | |
-| commands/adapter.rs | | | | | |
-| commands/audit.rs | 797 | | | | |
-| commands/build.rs | | | | | |
-| commands/doctor.rs | 602 | | | | |
-| commands/model.rs | | | | | |
-| commands/test.rs | | | | | |
-| commands/upgrade.rs | | | | | |
-| commands/version.rs | | | | | |
+| commands/mod.rs | 28 | Module declarations | Core | ✓ | 24 public mods + dev feature-gated |
+| commands/adapter.rs | 363 | Manage LLM adapter files | Adapter spec | ✓ | Sync, status, update operations |
+| commands/audit.rs | 797 | File system audit/cleanup | Doctor enhancement | ✓ | Safety categorization, layer insights |
+| commands/build.rs | 33 | Docker containerized build | Dev env spec | ✓ | Delegates to dev_env trait |
+| commands/doctor.rs | 602 | Project health checks | Core | ✓ | Environment, config, recommendations |
+| commands/model.rs | 195 | Manage embedding models | Model mgmt spec | ✓ | list/add/remove/status |
+| commands/test.rs | 32 | Run tests in dev env | Dev env spec | ✓ | Delegates to dev_env trait |
+| commands/upgrade.rs | 176 | Check for CLI updates | Core | ✓ | Checks crates.io for new versions |
+| commands/version.rs | 158 | Show version info | Core | ✓ | Component versions, manifest |
 
 #### Command Subdirectories
 
 | Module | Lines | Purpose | Origin | Used? | Notes |
 |--------|-------|---------|--------|-------|-------|
-| commands/ask/ | | | | | |
-| commands/bench/ | | | | | |
-| commands/belief/ | | | | | |
-| commands/dev/ | | | | | |
-| commands/embeddings/ | | | | | |
-| commands/eval/ | 593 | | | | |
-| commands/init/ | | | | | |
-| commands/launch/ | | | | | |
-| commands/oxidize/ | | | | | |
-| commands/persona/ | | | | | |
-| commands/repo/ | | | | | |
-| commands/scrape/ | | | | | Submodules: code/, git/, github/, layer/, sessions/ |
-| commands/scry/ | 1358 | | | | Largest module |
-| commands/yolo/ | | | | | |
+| commands/ask/ | 347 | Query codebase patterns | Code analysis | ✓ | Naming, conventions, architecture |
+| commands/bench/ | 448 | Benchmark retrieval quality | RAG tuning | ✓ | Ground truth evaluation |
+| commands/belief/ | ~100 | Neuro-symbolic reasoning | Research | ? | May be experimental |
+| commands/dev/ | ~400 | Dev-only commands | Internal | ✓ | Feature-gated, release tools |
+| commands/embeddings/ | ~150 | Generate/check embeddings | Oxidize support | ✓ | Lower-level than oxidize |
+| commands/eval/ | 593 | Evaluate retrieval quality | Feedback loop | ✓ | MRR, recall metrics |
+| commands/init/ | 1224 | Initialize project | Core | ✓ | Git, adapters, patterns, env detection |
+| commands/launch/ | 518 | Open in AI frontend | Launcher spec | ✓ | Like `code .` for AI |
+| commands/oxidize/ | 1805 | Build embeddings/projections | RAG pipeline | ✓ | Recipe-based, multi-dimension |
+| commands/persona/ | 525 | Cross-project user knowledge | Persona spec | ✓ | Note, query, materialize |
+| commands/query/ | ~200 | Semantic search interface | Legacy? | ? | May overlap with scry |
+| commands/rebuild/ | 259 | Rebuild .patina from sources | Portability | ✓ | Clone-and-go support |
+| commands/repo/ | 1068 | External repo management | Federation | ✓ | Add, remove, sync, fork |
+| commands/scrape/ | **11,173** | Build knowledge database | RAG pipeline | ✓ | **HUGE** - see breakdown below |
+| commands/scry/ | 1358 | Vector similarity search | MCP tool | ✓ | Core query interface, hybrid mode |
+| commands/serve/ | 302 | Mothership HTTP daemon | Federation | ✓ | Container ↔ Mac queries |
+| commands/yolo/ | 1613 | Generate devcontainers | Autonomous dev | ✓ | Scan repo, generate config |
+
+#### Scrape Breakdown (11,173 lines)
+
+| Submodule | Lines | Purpose | Notes |
+|-----------|-------|---------|-------|
+| scrape/mod.rs + database.rs | 463 | Core config/stats | Shared utilities |
+| scrape/git/ | 665 | Git history scraping | Co-change, temporal |
+| scrape/github/ | 342 | GitHub issues | Issue indexing |
+| scrape/layer/ | 422 | Layer pattern scraping | Core/surface/dust |
+| scrape/sessions/ | 537 | Session distillation | Learning capture |
+| scrape/code/ (core) | 1521 | Code extraction engine | AST walking |
+| scrape/code/languages/ | **7223** | 10 language parsers | ts/cpp/js/go/sol/py/rs/c/cairo |
+
+**Finding:** Language scrapers are 7K+ lines - 20% of entire codebase. Candidate for consolidation?
 
 ### 1.3 Domain Layer
 
-Core RAG logic - the heart of Patina.
+Core RAG logic - the heart of Patina. ~2,550 lines total.
 
-| Module | Lines | Purpose | Origin | Used? | Notes |
-|--------|-------|---------|--------|-------|-------|
-| retrieval/mod.rs | | | | | |
-| retrieval/engine.rs | | | | | |
-| retrieval/fusion.rs | | | | | |
-| retrieval/oracle.rs | | | | | |
-| retrieval/oracles/* | | | | | |
-| embeddings/mod.rs | | | | | |
-| embeddings/database.rs | | | | | |
-| embeddings/models.rs | | | | | |
-| embeddings/onnx.rs | | | | | |
-| embeddings/similarity.rs | | | | | |
-| storage/mod.rs | | | | | |
-| storage/beliefs.rs | | | | | |
-| storage/observations.rs | | | | | |
-| storage/types.rs | | | | | |
-| layer/mod.rs | | | | | |
+#### retrieval/ (750 lines)
+Multi-oracle knowledge retrieval with RRF fusion.
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 18 | Public interface exports | Clean API |
+| engine.rs | 353 | Parallel multi-oracle queries | Rayon parallelism, multi-repo |
+| fusion.rs | 136 | RRF fusion algorithm | k=60 default |
+| oracle.rs | 42 | Oracle trait definition | Abstraction point |
+| oracles/mod.rs | 14 | Oracle implementations | 4 oracles |
+| oracles/semantic.rs | 70 | Vector similarity | ONNX embeddings |
+| oracles/lexical.rs | 65 | FTS5 full-text | SQLite |
+| oracles/temporal.rs | 191 | Co-change patterns | Git history |
+| oracles/persona.rs | 49 | Cross-project knowledge | User mothership |
+
+**Status:** ✓ Well-designed. Clean trait abstraction, parallel execution.
+
+#### embeddings/ (912 lines)
+ONNX-based embedding generation.
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 104 | EmbeddingEngine trait | Query vs passage handling |
+| onnx.rs | 316 | ONNX Runtime integration | Pure Rust, no Python |
+| database.rs | 231 | Embedding storage/retrieval | SQLite metadata |
+| models.rs | 159 | Model registry/config | Provenance tracking |
+| similarity.rs | 102 | Distance functions | Cosine, euclidean |
+
+**Status:** ✓ Solid. Trait-based, model-agnostic design.
+
+#### storage/ (799 lines)
+SQLite + USearch hybrid storage.
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 29 | Public interface | Clean exports |
+| beliefs.rs | 330 | Belief storage | Vector + metadata |
+| observations.rs | 386 | Observation storage | Event-sourced |
+| types.rs | 54 | Type definitions | Shared types |
+
+**Status:** ✓ Good separation. Dual-backend (SQL + vector) pattern.
+
+#### layer/ (89 lines)
+Pattern layer management.
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 89 | Layer struct | Init, path helpers |
+
+**Status:** ✓ Simple and correct. Just path management.
 
 ### 1.4 Infrastructure Layer
 
-Cross-cutting utilities.
+Cross-cutting utilities. ~1,120 lines total.
 
-| Module | Lines | Purpose | Origin | Used? | Notes |
-|--------|-------|---------|--------|-------|-------|
-| db/mod.rs | | | | | |
-| db/sqlite.rs | | | | | |
-| git/mod.rs | | | | | |
-| git/fork.rs | | | | | |
-| git/operations.rs | | | | | |
-| git/validation.rs | | | | | |
+#### db/ (108 lines)
+Simple SQLite wrapper.
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 17 | Public interface | Clean exports |
+| sqlite.rs | 91 | SQLite database ops | Basic CRUD |
+
+**Status:** ✓ Minimal. Vector storage uses dedicated `storage` module.
+
+#### git/ (1,012 lines)
+Git repository management.
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 26 | Public interface | Many exports |
+| operations.rs | 349 | Core git operations | Shell commands |
+| fork.rs | 501 | Fork detection/creation | GitHub integration |
+| validation.rs | 136 | Branch validation | Safety checks |
+
+**Status:** ✓ Comprehensive. Handles edge cases (forks, branch safety).
 
 ### 1.5 Integration Layer
 
-External system bridges.
+External system bridges. ~2,580 lines total.
 
-| Module | Lines | Purpose | Origin | Used? | Notes |
-|--------|-------|---------|--------|-------|-------|
-| adapters/mod.rs | | | | | |
-| adapters/launch.rs | | | | | |
-| adapters/templates.rs | | | | | |
-| adapters/claude/* | | | | | |
-| adapters/gemini/* | | | | | |
-| mcp/mod.rs | | | | | |
-| mcp/protocol.rs | | | | | |
-| mcp/server.rs | | | | | |
-| models/mod.rs | | | | | |
-| models/download.rs | | | | | |
-| models/internal.rs | | | | | |
+#### adapters/ (1,521 lines)
+LLM-specific adapter implementations.
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 82 | LLMAdapter trait | Clean abstraction |
+| templates.rs | 335 | Template file management | Copy from resources |
+| launch.rs | 337 | Frontend launcher | claude/gemini process launch |
+| claude/mod.rs | 123 | Claude adapter impl | Version tracking |
+| claude/internal/* | 382 | Claude internals | Context, scripts, paths |
+| gemini/mod.rs | 87 | Gemini adapter impl | Lighter weight |
+| gemini/internal/mod.rs | 85 | Gemini internals | Context generation |
+
+**Status:** ✓ Trait-based. Clean adapter pattern implementation.
+
+#### mcp/ (459 lines)
+Model Context Protocol server.
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 8 | Public interface | Single export |
+| protocol.rs | 52 | JSON-RPC types | Minimal |
+| server.rs | 399 | MCP server impl | scry + context tools |
+
+**Status:** ✓ Clean. No external SDK, blocking I/O.
+
+#### models/ (601 lines)
+Base model management.
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 252 | Public API + registry | Embedded model configs |
+| download.rs | 142 | HTTP download + SHA256 | Provenance tracking |
+| internal.rs | 207 | Lock file management | models.lock persistence |
+
+**Status:** ✓ Good design. Registry → Lock → Cache pattern.
 
 ### 1.6 Project Management Layer
 
-Config and state.
+Config and state. ~1,434 lines total.
 
-| Module | Lines | Purpose | Origin | Used? | Notes |
-|--------|-------|---------|--------|-------|-------|
-| project/mod.rs | | | | | |
-| project/internal.rs | 671 | | | | |
-| mothership/mod.rs | | | | | |
-| mothership/internal.rs | | | | | |
-| workspace/mod.rs | | | | | |
-| workspace/internal.rs | | | | | |
+#### project/ (778 lines)
+Project-level configuration.
 
-### 1.7 Uncertain Status
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 107 | Public API | Config load/save |
+| internal.rs | 671 | Config types + migration | TOML sections |
 
-Modules that may be legacy, experimental, or superseded.
+**Status:** ✓ Handles `.patina/config.toml`, legacy JSON migration.
 
-| Module | Lines | Purpose | Origin | Used? | Verdict | Notes |
-|--------|-------|---------|--------|-------|---------|-------|
-| query/mod.rs | | | | | | Superseded by retrieval? |
-| query/semantic_search.rs | | | | | | |
-| reasoning/mod.rs | | | | | | |
-| reasoning/engine.rs | | | | | | |
-| dev_env/mod.rs | | | | | | |
-| dev_env/docker.rs | | | | | | |
+#### mothership/ (211 lines)
+HTTP client for remote daemon.
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 53 | Public API | Env var config |
+| internal.rs | 158 | HTTP client impl | Container ↔ Mac |
+
+**Status:** ✓ Simple. Used by containers to query host.
+
+#### workspace/ (445 lines)
+Global Patina configuration (~/.patina/).
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 86 | Public API | First-run detection |
+| internal.rs | 359 | Setup + config | Dir structure, defaults |
+
+**Status:** ✓ Clean. First-run wizard, global config.
+
+### 1.7 Uncertain Status → RESOLVED
+
+All "uncertain" modules were analyzed. **None are dead code.**
+
+#### query/ (461 lines) - KEEP
+Semantic search over beliefs/observations.
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 8 | Exports | |
+| semantic_search.rs | 453 | SemanticSearch engine | Wraps storage + embedder |
+
+**Usage:** commands/query/semantic, commands/embeddings, commands/belief/validate, tests
+**Verdict:** ✓ KEEP - Different domain than retrieval/. This is for **persona knowledge** (beliefs, observations). Retrieval/ is for **project knowledge** (code, git, layer).
+
+#### reasoning/ (455 lines) - REVIEW
+Prolog-based neuro-symbolic reasoning.
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 8 | Exports | |
+| engine.rs | 447 | Scryer Prolog integration | Symbolic validation |
+
+**Usage:** commands/belief/validate (only consumer)
+**Verdict:** ? REVIEW - Only used by `patina belief validate`. May be experimental research code. Keep if belief validation is valued, otherwise candidate for removal in Pass 2.
+
+#### dev_env/ (222 lines) - KEEP
+Development environment trait.
+
+| Module | Lines | Purpose | Notes |
+|--------|-------|---------|-------|
+| mod.rs | 43 | DevEnvironment trait | build/test interface |
+| docker.rs | 179 | Docker implementation | Default env |
+
+**Usage:** commands/build, commands/test, commands/init, version.rs
+**Verdict:** ✓ KEEP - Core infrastructure. The trait enables future envs (dagger, native).
 
 ### 1.8 Dependency Map
 
-Which modules import which? (Generated after inventory)
+Key import relationships (by frequency):
 
 ```
-[To be filled: key dependency relationships]
+MOST IMPORTED (Core Infrastructure)
+├── paths (9 uses) - Filesystem layout, central truth
+├── environment (10 uses) - OS/tool detection
+├── project (8 uses) - Config management
+└── embeddings (8 uses) - Vector operations
+
+DOMAIN LAYER CONSUMERS
+├── retrieval (8 uses) - QueryEngine for project search
+│   └── Used by: commands/scry, mcp/server
+├── query (3 uses) - SemanticSearch for beliefs
+│   └── Used by: commands/query, commands/belief
+└── storage (3 uses) - Dual SQLite + USearch
+    └── Used by: query/, embeddings/
+
+INTEGRATION LAYER
+├── adapters (7 uses) - LLM adapters
+│   └── Used by: commands/init, commands/launch
+├── dev_env (4 uses) - Build environments
+│   └── Used by: commands/build, commands/test
+└── models (1 use) - Embedding model management
+    └── Used by: commands/model
+
+DEPENDENCY FLOW
+main.rs → commands/* → {retrieval, query, embeddings, adapters}
+                    → {project, paths, environment}
+                    → {db, git, storage}
 ```
+
+**Key Observations:**
+1. `paths` is the foundation - pure functions defining layout
+2. `project` is config hub - most commands need it
+3. Two distinct query paths: `retrieval/` (project) vs `query/` (persona)
+4. `embeddings` is shared infrastructure for both query paths
 
 ### Pass 1 Exit Criteria
 
 | Criteria | Status |
 |----------|--------|
-| All modules have Purpose filled | [ ] |
-| All modules have Origin (when/why added) | [ ] |
-| All modules have Used? determination | [ ] |
-| Uncertain modules have Verdict | [ ] |
-| Key dependencies mapped | [ ] |
+| All modules have Purpose filled | [x] |
+| All modules have Origin (when/why added) | [x] |
+| All modules have Used? determination | [x] |
+| Uncertain modules have Verdict | [x] |
+| Key dependencies mapped | [x] |
+
+### Pass 1 Summary
+
+**Total Lines:** ~28,000 (excluding tests/examples)
+
+**Distribution:**
+| Layer | Lines | % |
+|-------|-------|---|
+| Commands | ~19,000 | 68% |
+| Domain | ~2,550 | 9% |
+| Integration | ~2,580 | 9% |
+| Project Mgmt | ~1,434 | 5% |
+| Infrastructure | ~1,120 | 4% |
+| Top-Level | ~2,327 | 8% |
+| Uncertain (resolved) | ~1,138 | 4% |
+
+**Key Findings:**
+1. **Scrape dominates** - 11K lines (39% of codebase), 7K in language parsers alone
+2. **Language scrapers** are largest component - 10 parsers, highly repetitive
+3. **Two query systems** - retrieval/ (project) vs query/ (persona) - intentional separation
+4. **No dead code found** - all "uncertain" modules have active uses
+5. **reasoning/** is only consumer of Prolog - review if belief validation is valuable
+6. **Clean architecture** - layers are well-separated, dependencies flow downward
+
+**Candidates for Pass 2 (Cleanup):**
+1. Language scrapers - consolidation opportunity (7K → ?)
+2. reasoning/ - may be removable if belief validation unused
+3. commands/belief/ - only consumer of reasoning/
 
 ---
 
