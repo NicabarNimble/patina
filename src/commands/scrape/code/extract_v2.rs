@@ -91,9 +91,10 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
             .as_secs() as i64;
 
         let size = content.len() as i64;
+        let line_count = content.iter().filter(|&&b| b == b'\n').count() as i64;
 
         // Update index state
-        db.update_index_state(&relative_path, mtime, size, None)?;
+        db.update_index_state(&relative_path, mtime, size, None, Some(line_count))?;
 
         // Process file based on language
         match process_file_by_language(&relative_path, &content, language) {
