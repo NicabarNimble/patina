@@ -51,23 +51,23 @@ Dogfooding insight: Pass 1 inventory required 40+ shell tool calls. Patina has s
 
 | Task | Status |
 |------|--------|
-| Add line_count to scrape pipeline | [ ] |
-| Create `src/commands/assay/mod.rs` | [ ] |
-| Implement inventory query | [ ] |
-| Implement imports/importers queries | [ ] |
-| Implement callers/callees queries | [ ] |
-| Add `assay` MCP tool to server.rs | [ ] |
-| Wire command in main.rs | [ ] |
-| Test on Patina codebase | [ ] |
+| Add line_count to scrape pipeline | [x] |
+| Create `src/commands/assay/mod.rs` | [x] |
+| Implement inventory query | [x] |
+| Implement imports/importers queries | [x] |
+| Implement callers/callees queries | [x] |
+| Add `assay` MCP tool to server.rs | [x] |
+| Wire command in main.rs | [x] |
+| Test on Patina codebase | [x] |
 
 ### Validation (Exit Criteria)
 
 | Criteria | Status |
 |----------|--------|
-| `patina assay` returns module inventory | [ ] |
-| `patina assay --importers X` works | [ ] |
-| MCP `assay` tool callable | [ ] |
-| Line counts in scrape output | [ ] |
+| `patina assay` returns module inventory | [x] |
+| `patina assay importers <module>` works | [x] |
+| MCP `assay` tool callable | [x] |
+| Line counts in scrape output | [x] |
 
 ---
 
