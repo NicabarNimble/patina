@@ -694,7 +694,64 @@ Recurring themes across the audit:
 
 | Pattern | Occurrences | Notes |
 |---------|-------------|-------|
-| | | |
+| Subcommands vs Flags | All CLI commands | See below |
+
+#### CLI Design Pattern: Subcommands vs Flags
+
+**Discovered during Phase 0 assay implementation (2025-12-18):**
+
+The pattern that holds across patina:
+- **Subcommands** = fundamentally different operations/modes
+- **Flags** = modifiers to a single core operation
+
+**Aligned with unix-philosophy.md:** "New functionality = new commands, not new flags"
+
+| Subcommand Pattern | Flag Pattern |
+|--------------------|--------------|
+| `scrape code/git/sessions/layer` | `scry --dimension/--limit/--repo` |
+| `repo add/list/update/remove/show` | `init --llm/--dev/--force` |
+| `persona note/query/list/materialize` | `eval --dimension/--feedback` |
+| `model list/add/remove/status` | `build/test/oxidize` (minimal) |
+| `assay inventory/imports/callers/callees` | |
+
+**YAGNI violations to address in Pass 3:**
+| Command | Issue | Proposal |
+|---------|-------|----------|
+| `query semantic` | Only one subcommand | Collapse to `patina query <QUERY>` or add more query types |
+| `belief validate` | Only one subcommand | Collapse to `patina belief <STATEMENT>` or add more operations |
+| `bench retrieval` | Only one subcommand | Collapse to `patina bench` or add more benchmark types |
+
+**Decision:** When adding new CLI commands, ask: "Is this a different operation, or a modifier to an existing operation?" Subcommand if former, flag if latter.
+
+#### Assay Multi-language and Reference Repo Support
+
+**Discovered during Phase 0 testing (2025-12-18):**
+
+Scrape system already handles multiple languages. Tested on USearch reference repo:
+
+| Language | Files | Call Edges |
+|----------|-------|------------|
+| C++ | 1,735 | 5,046 |
+| Go | 92 | 1,249 |
+| Python | 334 | 613 |
+| Rust | 137 | 475 |
+| TypeScript | 55 | 111 |
+| C | 38 | 167 |
+| JavaScript | 9 | 6 |
+
+**Gap:** Assay lacks `--repo` / `--all-repos` flags. Scry can query reference repos, assay cannot.
+
+```bash
+# Works:
+patina scry "vector search" --repo USearch
+
+# Doesn't work (yet):
+patina assay imports usearch --repo USearch
+```
+
+**Non-gap:** "Tests vs source" filtering not needed. File paths (`./tests/`, `*_test.go`, etc.) reveal context - LLM can interpret.
+
+**Recommendation:** Add `--repo` and `--all-repos` to assay for parity with scry.
 
 ### Recommendations for Future Development
 
