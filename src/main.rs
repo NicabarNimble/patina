@@ -348,6 +348,113 @@ enum Commands {
         #[command(subcommand)]
         command: Option<AdapterCommands>,
     },
+
+    /// Query codebase structure (modules, imports, call graph)
+    Assay {
+        #[command(subcommand)]
+        command: Option<AssayCommands>,
+
+        /// Pattern to filter results (for default inventory mode)
+        pattern: Option<String>,
+
+        /// Maximum number of results (default: 50)
+        #[arg(long, default_value = "50")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Query a specific external repo (registered via 'patina repo')
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Query all registered repos (current project + reference repos)
+        #[arg(long)]
+        all_repos: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum AssayCommands {
+    /// Module inventory with line counts and stats (default)
+    Inventory {
+        /// Path pattern to filter modules
+        pattern: Option<String>,
+
+        /// Maximum number of results
+        #[arg(long, default_value = "50")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// What a module imports
+    Imports {
+        /// Module path pattern
+        module: String,
+
+        /// Maximum number of results
+        #[arg(long, default_value = "100")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// What modules import a given module
+    Importers {
+        /// Module name to search for
+        module: String,
+
+        /// Maximum number of results
+        #[arg(long, default_value = "100")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// List functions in the codebase
+    Functions {
+        /// Pattern to filter functions
+        pattern: Option<String>,
+
+        /// Maximum number of results
+        #[arg(long, default_value = "100")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// What functions call a given function
+    Callers {
+        /// Function name to search for
+        function: String,
+
+        /// Maximum number of results
+        #[arg(long, default_value = "100")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// What functions a given function calls
+    Callees {
+        /// Function name to search for
+        function: String,
+
+        /// Maximum number of results
+        #[arg(long, default_value = "100")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Common arguments for all scrape subcommands
@@ -590,6 +697,7 @@ enum BumpType {
 fn main() -> Result<()> {
     // Run migrations early (before any command)
     patina::migration::migrate_if_needed();
+    commands::repo::migrate_registry_paths();
 
     let cli = Cli::parse();
 
@@ -838,6 +946,98 @@ fn main() -> Result<()> {
             }
         }
         Some(Commands::Adapter { command }) => commands::adapter::execute(command)?,
+        Some(Commands::Assay {
+            command,
+            pattern,
+            limit,
+            json,
+            repo,
+            all_repos,
+        }) => {
+            let options = match command {
+                None => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Inventory,
+                    pattern,
+                    limit,
+                    json,
+                    repo,
+                    all_repos,
+                },
+                Some(AssayCommands::Inventory {
+                    pattern,
+                    limit,
+                    json,
+                }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Inventory,
+                    pattern,
+                    limit,
+                    json,
+                    repo,
+                    all_repos,
+                },
+                Some(AssayCommands::Imports {
+                    module,
+                    limit,
+                    json,
+                }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Imports,
+                    pattern: Some(module),
+                    limit,
+                    json,
+                    repo,
+                    all_repos,
+                },
+                Some(AssayCommands::Importers {
+                    module,
+                    limit,
+                    json,
+                }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Importers,
+                    pattern: Some(module),
+                    limit,
+                    json,
+                    repo,
+                    all_repos,
+                },
+                Some(AssayCommands::Functions {
+                    pattern,
+                    limit,
+                    json,
+                }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Functions,
+                    pattern,
+                    limit,
+                    json,
+                    repo,
+                    all_repos,
+                },
+                Some(AssayCommands::Callers {
+                    function,
+                    limit,
+                    json,
+                }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Callers,
+                    pattern: Some(function),
+                    limit,
+                    json,
+                    repo,
+                    all_repos,
+                },
+                Some(AssayCommands::Callees {
+                    function,
+                    limit,
+                    json,
+                }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Callees,
+                    pattern: Some(function),
+                    limit,
+                    json,
+                    repo,
+                    all_repos,
+                },
+            };
+            commands::assay::execute(options)?;
+        }
     }
 
     Ok(())
