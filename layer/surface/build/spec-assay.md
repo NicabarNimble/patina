@@ -44,28 +44,25 @@ Add `patina assay` command + MCP tool for structural queries.
 
 ```bash
 # Module inventory (default)
-patina assay
-# Output: JSON array of modules with stats
-
-# Filter by path pattern
-patina assay src/commands
-patina assay "**/*.rs"
+patina assay                        # All modules, sorted by line count
+patina assay src/commands           # Filter by path pattern
+patina assay inventory "**/*.rs"    # Explicit subcommand
 
 # Dependency queries
-patina assay --imports <module>     # What does <module> import?
-patina assay --importers <module>   # What imports <module>?
+patina assay imports <module>       # What does <module> import?
+patina assay importers <module>     # What imports <module>?
 
 # Function queries
-patina assay --functions            # All functions with signatures
-patina assay --functions <pattern>  # Functions matching pattern
+patina assay functions              # All functions with signatures
+patina assay functions <pattern>    # Functions matching pattern
 
 # Call graph queries
-patina assay --callers <function>   # What calls <function>?
-patina assay --callees <function>   # What does <function> call?
+patina assay callers <function>     # What calls <function>?
+patina assay callees <function>     # What does <function> call?
 
 # Output format
-patina assay --json                 # JSON (default)
-patina assay --table                # ASCII table
+patina assay --json                 # JSON output
+patina assay --limit 100            # Limit results
 ```
 
 ---
@@ -211,12 +208,12 @@ WHERE callee_function = ?;
 
 | Criteria | Status |
 |----------|--------|
-| `patina assay` returns module inventory | [ ] |
-| `patina assay --imports X` works | [ ] |
-| `patina assay --importers X` works | [ ] |
-| MCP `assay` tool exposed | [ ] |
-| Line counts in scrape output | [ ] |
-| Tested on Patina codebase | [ ] |
+| `patina assay` returns module inventory | [x] |
+| `patina assay imports <module>` works | [x] |
+| `patina assay importers <module>` works | [x] |
+| MCP `assay` tool exposed | [x] |
+| Line counts in scrape output | [x] |
+| Tested on Patina codebase | [x] |
 
 ---
 
