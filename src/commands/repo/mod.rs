@@ -22,7 +22,7 @@
 //! # }
 //! ```
 
-mod internal;
+pub(crate) mod internal;
 
 use anyhow::Result;
 
@@ -167,6 +167,64 @@ pub fn show(name: &str) -> Result<()> {
 /// Get the database path for a repo (for scry --repo)
 pub fn get_db_path(name: &str) -> Result<String> {
     internal::get_repo_db_path(name)
+}
+
+/// Migrate registry paths to the new cache location.
+///
+/// This handles the case where repos were moved but the registry wasn't updated,
+/// or where repos were registered with old paths before the migration existed.
+/// Called from main.rs after patina::migration::migrate_if_needed().
+pub fn migrate_registry_paths() -> bool {
+    let Ok(mut registry) = internal::Registry::load() else {
+        return false;
+    };
+
+    if registry.repos.is_empty() {
+        return false;
+    }
+
+    let cache_base = patina::paths::repos::cache_dir();
+    let mut updated_any = false;
+    let mut updates: Vec<(String, String)> = Vec::new(); // (name, new_path)
+
+    for (name, entry) in registry.repos.iter() {
+        let expected_path = cache_base.join(name);
+        let expected_path_str = expected_path.to_string_lossy().to_string();
+
+        // Check if path needs updating
+        if entry.path != expected_path_str {
+            // Verify the repo actually exists at the expected location
+            if expected_path.join(".patina/data/patina.db").exists()
+                || expected_path.join(".git").exists()
+            {
+                updates.push((name.clone(), expected_path_str));
+            }
+        }
+    }
+
+    if updates.is_empty() {
+        return false;
+    }
+
+    println!("📦 Updating registry paths to new cache location...");
+
+    for (name, new_path) in updates {
+        if let Some(entry) = registry.repos.get_mut(&name) {
+            entry.path = new_path.clone();
+            updated_any = true;
+            println!("   ✓ {} -> {}", name, new_path);
+        }
+    }
+
+    if updated_any {
+        if let Err(e) = registry.save() {
+            eprintln!("Warning: Could not save updated registry: {}", e);
+            return false;
+        }
+        println!();
+    }
+
+    updated_any
 }
 
 /// Execute the repo command (main entry point from CLI)
