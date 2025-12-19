@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 0 - Assay Command
+**Current Phase:** Pipeline Architecture - scry as unified oracle
 
 ---
 
@@ -12,7 +12,52 @@ A local-first RAG network: portable project knowledge + personal mothership.
 - **Reference Repos:** `patina repo add <url>` - lightweight index in `~/.patina/cache/repos/`
 - **Mothership:** `~/.patina/` - registry, personas, `patina serve` daemon
 
-**Completed infrastructure:** Scrape pipeline, oxidize embeddings, query/scry, serve daemon, persona, rebuild command, MCP server, hybrid retrieval (MRR 0.624), model management, feedback loop. All working.
+**Completed infrastructure:** Scrape pipeline, oxidize embeddings, query/scry, serve daemon, persona, rebuild command, MCP server, hybrid retrieval (MRR 0.624), model management, feedback loop, assay structural queries. All working.
+
+---
+
+## The Architecture
+
+**Spec:** [spec-pipeline.md](../surface/build/spec-pipeline.md)
+
+```
+                            GIT (source of truth)
+                                    │
+                                    ▼
+                                 scrape
+                        (extract facts from reality)
+                                    │
+                                    ▼
+                               SQLite DB
+                                    │
+                   ┌────────────────┴────────────────┐
+                   ▼                                 ▼
+               oxidize                            assay
+           (→ embeddings)                      (→ signals)
+                   │                                 │
+                   └────────────┬────────────────────┘
+                                ▼
+                              scry
+                       (unified oracle)
+                                │
+                                ▼
+                          LLM Frontend
+```
+
+**Core insight:** scry is the API between LLM and codebase knowledge. Everything else prepares for that moment.
+
+| Command | Role | "Do X" |
+|---------|------|--------|
+| scrape | Extract | Capture raw → structured facts |
+| oxidize | Prepare (semantic) | Build embeddings from facts |
+| assay | Prepare (structural) | Build signals from facts |
+| scry | Deliver | Fuse and route knowledge to LLM |
+
+**Values alignment:**
+- unix-philosophy: One tool, one job
+- dependable-rust: Black box interfaces
+- local-first: No cloud, rebuild from git
+- git as memory: layer/ tracked, .patina/ derived
 
 ---
 
@@ -20,109 +65,75 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 Active specs:
 
-- [spec-assay.md](../surface/build/spec-assay.md) - Phase 0: Structural query command
-- [spec-code-audit.md](../surface/build/spec-code-audit.md) - Phase 1: Comprehensive codebase audit
+- [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
+- [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
 - [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
 
 Archived specs (preserved via git tags):
 
-- `spec/feedback-loop` - Phase 3: Measure and learn from retrieval quality
-- `spec/model-management` - Phase 2: Base model download, caching, provenance
-- `spec/mcp-retrieval-polish` - Phase 1: MCP tool rename, temporal oracle, hybrid mode
+- `spec/assay` - Phase 0: Structural query command (inventory, imports, callers)
+- `spec/feedback-loop` - Measure and learn from retrieval quality
+- `spec/model-management` - Base model download, caching, provenance
+- `spec/mcp-retrieval-polish` - MCP tool rename, temporal oracle, hybrid mode
 
 Future specs (not yet planned):
 
 - [spec-github-adapter.md](../surface/build/spec-github-adapter.md) - GitHub integration
-- [spec-build-system.md](../surface/build/spec-build-system.md) - Git-native task tracking (deferred)
 
 ---
 
-## Phase 0: Assay Command
+## Current Work: Assay Signals
 
-**Goal:** Add structural query interface to complement semantic search (scry).
+**Goal:** Add structural signal preparation to assay, wire into scry as StructuralOracle.
 
-**Spec:** [spec-assay.md](../surface/build/spec-assay.md)
+**Spec:** [spec-pipeline.md](../surface/build/spec-pipeline.md)
 
 ### Context
 
-Dogfooding insight: Pass 1 inventory required 40+ shell tool calls. Patina has structural data in SQLite (functions, imports, call graph) but no query interface. Adding `assay` enables LLMs to get module inventory in 1-3 calls.
+Audit of Patina architecture revealed missing ORGANIZE stage. We go scrape → scry, skipping derived signals. Assay currently queries raw facts; it should also prepare signals (health, activity, centrality, staleness) that scry can fuse with semantic results.
 
 ### Tasks
 
 | Task | Status |
 |------|--------|
-| Add line_count to scrape pipeline | [x] |
-| Create `src/commands/assay/mod.rs` | [x] |
-| Implement inventory query | [x] |
-| Implement imports/importers queries | [x] |
-| Implement callers/callees queries | [x] |
-| Add `assay` MCP tool to server.rs | [x] |
-| Wire command in main.rs | [x] |
-| Test on Patina codebase | [x] |
+| Write spec-pipeline.md | [ ] |
+| Add signal tables to schema | [ ] |
+| Implement `assay derive` subcommand | [ ] |
+| Compute health signal (importer_count, is_used) | [ ] |
+| Compute activity signal (commits/week, contributors) | [ ] |
+| Add StructuralOracle to scry | [ ] |
+| Wire signals into RRF fusion | [ ] |
+| Update MCP tool descriptions | [ ] |
 
-### Validation (Exit Criteria)
+### Signals to Compute
 
-| Criteria | Status |
-|----------|--------|
-| `patina assay` returns module inventory | [x] |
-| `patina assay importers <module>` works | [x] |
-| MCP `assay` tool callable | [x] |
-| Line counts in scrape output | [x] |
+| Signal | Source | Formula |
+|--------|--------|---------|
+| `is_used` | import_facts | importer_count > 0 OR is_entry_point |
+| `activity_level` | co_changes, git | commits in last N days |
+| `core_contributors` | git history | top authors by commit count |
+| `centrality` | call_graph | PageRank or degree centrality |
+| `staleness` | cross-reference | contradicts CI, references deleted things |
 
----
-
-## Phase 1: Code Audit
-
-**Goal:** Comprehensive review of Patina codebase against layer/core values, informed by session history and git patterns.
-
-**Spec:** [spec-code-audit.md](../surface/build/spec-code-audit.md)
-
-### Context
-
-Patina has grown through rapid iteration (~36K lines, 45 modules). Before adding new features, audit the codebase to verify adherence to core architectural principles, identify dead code and inconsistencies, and document the current state.
-
-### Approach
-
-Six iterative passes - understand before judging, clean before polishing:
-
-| Pass | Focus | Goal |
-|------|-------|------|
-| **Pass 1** | Inventory | What do we have? Why does it exist? |
-| **Pass 2** | Cleanup | Remove dead weight (code, deps, modules) |
-| **Pass 3** | Alignment | Tighten against layer/core values |
-| **Pass 4** | Deep Dive | Go deep on survivors, document as we go |
-| **Pass 5** | Hardening | Security review + test coverage |
-| **Pass 6** | Polish | API consistency, deps, final docs |
-
-### Layers
-
-Modules grouped by architectural role:
-
-| Layer | Modules | Primary Value |
-|-------|---------|---------------|
-| **Entry** | main.rs, commands/ | unix-philosophy |
-| **Domain** | retrieval/, embeddings/, storage/, layer/ | dependable-rust |
-| **Infrastructure** | db/, git/, paths.rs | stability |
-| **Integration** | adapters/, mcp/, models/ | adapter-pattern |
-| **Project Mgmt** | project/, mothership/, workspace/ | dependable-rust |
-| **Uncertain** | query/, reasoning/, dev_env/ | Pass 1 determines fate |
-
-### Validation (Exit Criteria)
+### Validation
 
 | Criteria | Status |
 |----------|--------|
-| Pass 1: Inventory complete | [ ] |
-| Pass 2: Cleanup complete | [ ] |
-| Pass 3: Alignment complete | [ ] |
-| Pass 4: Deep dive complete | [ ] |
-| Pass 5: Hardening complete | [ ] |
-| Pass 6: Polish complete | [ ] |
+| `patina assay derive` computes signals | [ ] |
+| Signals queryable via `patina assay` | [ ] |
+| scry includes structural signals in fusion | [ ] |
+| Lab metrics (eval/bench) show improvement | [ ] |
 
 ---
 
 ## Completed
 
 Shipped phases (details preserved in git tags):
+
+### Assay Command (Phase 0)
+Structural query interface for codebase facts. Inventory, imports/importers, callers/callees queries. MCP tool integration. Reduces 40+ shell calls to 1-3 patina commands.
+
+**Tag:** `spec/assay`
 
 ### MCP & Retrieval Polish
 MCP tools renamed (`scry`/`context`), directive descriptions for LLM tool selection, TemporalOracle integration, CLI `--hybrid` mode, auto-oxidize on init.
@@ -174,4 +185,4 @@ git tag -l 'spec/*'              # List archived specs
 git show spec/scry:layer/surface/build/spec-scry.md  # View archived spec
 ```
 
-**Tags:** `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`
+**Tags:** `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`
