@@ -671,14 +671,21 @@ fn execute_derive(conn: &Connection, options: &AssayOptions) -> Result<()> {
     let now = chrono::Utc::now().to_rfc3339();
 
     for path in &modules {
+        // Convert file path to module path pattern for import matching
+        // ./src/adapters/claude/mod.rs -> adapters::claude
+        // ./src/adapters/templates.rs -> adapters::templates
+        let module_path = path
+            .trim_start_matches("./")
+            .trim_start_matches("src/")
+            .trim_end_matches(".rs")
+            .trim_end_matches("/mod")
+            .replace('/', "::");
+
         // Compute importer_count: how many files import this module
         let importer_count: i64 = conn
             .query_row(
                 "SELECT COUNT(DISTINCT file) FROM import_facts WHERE import_path LIKE ?",
-                [format!(
-                    "%{}%",
-                    path.trim_start_matches("src/").trim_end_matches(".rs")
-                )],
+                [format!("%{}%", module_path)],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -778,17 +785,20 @@ fn execute_derive(conn: &Connection, options: &AssayOptions) -> Result<()> {
 
 /// Compute activity level from git commits
 fn compute_activity(conn: &Connection, path: &str) -> (String, Option<i64>) {
-    // Query git.commit events that touch this file
+    // Normalize path: strip ./ prefix to match git file paths
+    let normalized_path = path.trim_start_matches("./");
+
+    // Query git.commit events that touch this file using json_each to search the files array
     let result: Result<(i64, String), _> = conn.query_row(
         r#"
         SELECT
-            COUNT(*) as commit_count,
-            MAX(timestamp) as last_commit
-        FROM eventlog
-        WHERE event_type = 'git.commit'
-          AND json_extract(data, '$.files') LIKE ?
+            COUNT(DISTINCT e.seq) as commit_count,
+            MAX(e.timestamp) as last_commit
+        FROM eventlog e, json_each(json_extract(e.data, '$.files')) as f
+        WHERE e.event_type = 'git.commit'
+          AND json_extract(f.value, '$.path') = ?
         "#,
-        [format!("%{}%", path)],
+        [normalized_path],
         |row| {
             Ok((
                 row.get(0)?,
@@ -825,12 +835,15 @@ fn compute_activity(conn: &Connection, path: &str) -> (String, Option<i64>) {
 
 /// Get top contributors for a file
 fn compute_contributors(conn: &Connection, path: &str) -> Vec<String> {
+    // Normalize path: strip ./ prefix to match git file paths
+    let normalized_path = path.trim_start_matches("./");
+
     let mut stmt = match conn.prepare(
         r#"
-        SELECT json_extract(data, '$.author') as author, COUNT(*) as commits
-        FROM eventlog
-        WHERE event_type = 'git.commit'
-          AND json_extract(data, '$.files') LIKE ?
+        SELECT json_extract(e.data, '$.author_name') as author, COUNT(DISTINCT e.seq) as commits
+        FROM eventlog e, json_each(json_extract(e.data, '$.files')) as f
+        WHERE e.event_type = 'git.commit'
+          AND json_extract(f.value, '$.path') = ?
         GROUP BY author
         ORDER BY commits DESC
         LIMIT 3
@@ -840,7 +853,7 @@ fn compute_contributors(conn: &Connection, path: &str) -> Vec<String> {
         Err(_) => return vec![],
     };
 
-    stmt.query_map([format!("%{}%", path)], |row| row.get(0))
+    stmt.query_map([normalized_path], |row| row.get(0))
         .ok()
         .map(|rows| rows.filter_map(|r| r.ok()).collect())
         .unwrap_or_default()
