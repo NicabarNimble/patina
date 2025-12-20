@@ -126,6 +126,56 @@ Audit of Patina architecture revealed missing ORGANIZE stage. We go scrape → s
 
 ---
 
+## Next: Phase 1.5 - Robust Signals
+
+**Goal:** Add language-agnostic signals that work reliably across different repos.
+
+**Spec:** [spec-robust-signals.md](../surface/build/spec-robust-signals.md) (to be written)
+
+### ML/RL Insight
+
+We're building a retrieval re-ranking system. Structural signals are **priors** - query-independent importance scores (like PageRank for code).
+
+**Key insight:** We don't need *accurate* features. We need features that are:
+- Correlated with usefulness
+- Robust across repos/languages
+- Cheap to compute
+
+`importer_count` is ~60% accurate due to relative imports, language-specific syntax. That's fine - it's a weak signal. The fix isn't to make it accurate; it's to **add more weak signals** and let ensemble/fusion combine them.
+
+### Signal Reliability Matrix
+
+| Signal | Accuracy | Language-agnostic | Status |
+|--------|----------|-------------------|--------|
+| `importer_count` | ~60% | No | [x] Have (noisy, accept it) |
+| `activity_level` | ~90% | Yes | [x] Have |
+| `commit_count` | ~95% | Yes | [ ] Add |
+| `contributor_count` | ~95% | Yes | [ ] Add |
+| `is_entry_point` | ~99% | Yes | [ ] Add |
+| `file_size_rank` | ~99% | Yes | [ ] Add |
+| `directory_depth` | ~99% | Yes | [ ] Add |
+
+### Tasks
+
+| Task | Status |
+|------|--------|
+| Add `commit_count` to module_signals | [ ] |
+| Add `contributor_count` to module_signals | [ ] |
+| Add `is_entry_point` detection (main.rs, index.ts, __init__.py) | [ ] |
+| Normalize all signals to 0-1 range | [ ] |
+| Update StructuralOracle to use composite score | [ ] |
+| Re-run lab metrics, compare to baseline (MRR 0.542) | [ ] |
+
+### Design Principle
+
+```
+Many weak signals > One accurate signal
+```
+
+Let Phase 3 (learned weights) figure out which signals matter for which repos. Don't over-engineer individual signal accuracy.
+
+---
+
 ## Completed
 
 Shipped phases (details preserved in git tags):
