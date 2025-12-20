@@ -21,6 +21,7 @@ pub enum QueryType {
     Functions,
     Callers,
     Callees,
+    Derive,
 }
 
 /// Options for assay command
@@ -115,6 +116,7 @@ pub fn execute(options: AssayOptions) -> Result<()> {
         QueryType::Functions => execute_functions(&conn, &options),
         QueryType::Callers => execute_callers(&conn, &options),
         QueryType::Callees => execute_callees(&conn, &options),
+        QueryType::Derive => execute_derive(&conn, &options),
     }
 }
 
@@ -607,6 +609,241 @@ fn execute_callees(conn: &Connection, options: &AssayOptions) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Module signal data
+#[derive(Debug, Serialize)]
+pub struct ModuleSignal {
+    pub path: String,
+    pub is_used: bool,
+    pub importer_count: i64,
+    pub activity_level: String,
+    pub last_commit_days: Option<i64>,
+    pub top_contributors: Vec<String>,
+    pub centrality_score: f64,
+}
+
+/// Derive result
+#[derive(Debug, Serialize)]
+pub struct DeriveResult {
+    pub signals: Vec<ModuleSignal>,
+    pub summary: DeriveSummary,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeriveSummary {
+    pub total_modules: usize,
+    pub used_modules: usize,
+    pub dormant_modules: usize,
+}
+
+/// Compute structural signals for all modules
+fn execute_derive(conn: &Connection, options: &AssayOptions) -> Result<()> {
+    // Ensure module_signals table exists (migration for existing databases)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS module_signals (
+            path TEXT PRIMARY KEY,
+            is_used INTEGER,
+            importer_count INTEGER,
+            activity_level TEXT,
+            last_commit_days INTEGER,
+            top_contributors TEXT,
+            centrality_score REAL,
+            staleness_flags TEXT,
+            computed_at TEXT
+        )",
+        [],
+    )?;
+
+    // Clear existing signals
+    conn.execute("DELETE FROM module_signals", [])?;
+
+    // Get all modules from index_state
+    let mut modules_stmt = conn.prepare(
+        "SELECT path FROM index_state WHERE path LIKE '%.rs' OR path LIKE '%.py' OR path LIKE '%.ts' OR path LIKE '%.js' OR path LIKE '%.go'",
+    )?;
+    let modules: Vec<String> = modules_stmt
+        .query_map([], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut signals = Vec::new();
+    let now = chrono::Utc::now().to_rfc3339();
+
+    for path in &modules {
+        // Compute importer_count: how many files import this module
+        let importer_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(DISTINCT file) FROM import_facts WHERE import_path LIKE ?",
+                [format!(
+                    "%{}%",
+                    path.trim_start_matches("src/").trim_end_matches(".rs")
+                )],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        let is_used = importer_count > 0;
+
+        // Compute centrality: degree centrality from call_graph
+        // (number of callers + callees for functions in this file)
+        let centrality_score: f64 = conn
+            .query_row(
+                "SELECT CAST(COUNT(*) AS REAL) / 100.0 FROM call_graph WHERE file = ?",
+                [path],
+                |row| row.get(0),
+            )
+            .unwrap_or(0.0);
+
+        // Compute activity from git commits in eventlog
+        let (activity_level, last_commit_days) = compute_activity(conn, path);
+
+        // Get top contributors from git events
+        let top_contributors = compute_contributors(conn, path);
+
+        // Insert into module_signals
+        conn.execute(
+            "INSERT INTO module_signals (path, is_used, importer_count, activity_level, last_commit_days, top_contributors, centrality_score, staleness_flags, computed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rusqlite::params![
+                path,
+                is_used as i32,
+                importer_count,
+                &activity_level,
+                last_commit_days,
+                serde_json::to_string(&top_contributors).unwrap_or_else(|_| "[]".to_string()),
+                centrality_score,
+                "[]",
+                &now,
+            ],
+        )?;
+
+        signals.push(ModuleSignal {
+            path: path.clone(),
+            is_used,
+            importer_count,
+            activity_level: activity_level.clone(),
+            last_commit_days,
+            top_contributors,
+            centrality_score,
+        });
+    }
+
+    // Calculate summary
+    let total_modules = signals.len();
+    let used_modules = signals.iter().filter(|s| s.is_used).count();
+    let dormant_modules = signals
+        .iter()
+        .filter(|s| s.activity_level == "dormant")
+        .count();
+
+    let result = DeriveResult {
+        signals,
+        summary: DeriveSummary {
+            total_modules,
+            used_modules,
+            dormant_modules,
+        },
+    };
+
+    if options.json {
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        println!("🔬 Structural Signals Derived\n");
+        println!(
+            "Summary: {} modules, {} used, {} dormant\n",
+            result.summary.total_modules,
+            result.summary.used_modules,
+            result.summary.dormant_modules
+        );
+        println!(
+            "{:<45} {:>6} {:>8} {:>10} {:>8}",
+            "Path", "Used", "Imports", "Activity", "Central"
+        );
+        println!("{}", "─".repeat(82));
+        for s in &result.signals {
+            println!(
+                "{:<45} {:>6} {:>8} {:>10} {:>8.2}",
+                truncate(&s.path, 45),
+                if s.is_used { "✓" } else { "" },
+                s.importer_count,
+                s.activity_level,
+                s.centrality_score
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// Compute activity level from git commits
+fn compute_activity(conn: &Connection, path: &str) -> (String, Option<i64>) {
+    // Query git.commit events that touch this file
+    let result: Result<(i64, String), _> = conn.query_row(
+        r#"
+        SELECT
+            COUNT(*) as commit_count,
+            MAX(timestamp) as last_commit
+        FROM eventlog
+        WHERE event_type = 'git.commit'
+          AND json_extract(data, '$.files') LIKE ?
+        "#,
+        [format!("%{}%", path)],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+            ))
+        },
+    );
+
+    match result {
+        Ok((commit_count, last_commit)) => {
+            // Calculate days since last commit
+            let last_commit_days = if !last_commit.is_empty() {
+                chrono::DateTime::parse_from_rfc3339(&last_commit)
+                    .ok()
+                    .map(|dt| (chrono::Utc::now() - dt.with_timezone(&chrono::Utc)).num_days())
+            } else {
+                None
+            };
+
+            // Determine activity level based on commits and recency
+            let activity_level = match (commit_count, last_commit_days) {
+                (0, _) => "dormant",
+                (_, Some(days)) if days <= 7 => "high",
+                (_, Some(days)) if days <= 30 => "medium",
+                (_, Some(days)) if days <= 90 => "low",
+                _ => "dormant",
+            };
+
+            (activity_level.to_string(), last_commit_days)
+        }
+        Err(_) => ("dormant".to_string(), None),
+    }
+}
+
+/// Get top contributors for a file
+fn compute_contributors(conn: &Connection, path: &str) -> Vec<String> {
+    let mut stmt = match conn.prepare(
+        r#"
+        SELECT json_extract(data, '$.author') as author, COUNT(*) as commits
+        FROM eventlog
+        WHERE event_type = 'git.commit'
+          AND json_extract(data, '$.files') LIKE ?
+        GROUP BY author
+        ORDER BY commits DESC
+        LIMIT 3
+        "#,
+    ) {
+        Ok(s) => s,
+        Err(_) => return vec![],
+    };
+
+    stmt.query_map([format!("%{}%", path)], |row| row.get(0))
+        .ok()
+        .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default()
 }
 
 /// Truncate string for display
