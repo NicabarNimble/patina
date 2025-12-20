@@ -9,7 +9,9 @@ use std::path::Path;
 
 use super::fusion::{rrf_fuse, FusedResult};
 use super::oracle::Oracle;
-use super::oracles::{LexicalOracle, PersonaOracle, SemanticOracle};
+use super::oracles::{
+    LexicalOracle, PersonaOracle, SemanticOracle, StructuralOracle, TemporalOracle,
+};
 
 /// Retrieval configuration for QueryEngine
 ///
@@ -67,6 +69,8 @@ impl QueryEngine {
         let oracles: Vec<Box<dyn Oracle>> = vec![
             Box::new(SemanticOracle::new()),
             Box::new(LexicalOracle::new()),
+            Box::new(TemporalOracle::new()),
+            Box::new(StructuralOracle::new()),
             Box::new(PersonaOracle::new()),
         ];
 
@@ -112,6 +116,8 @@ impl QueryEngine {
         vec![
             Box::new(SemanticOracle::new()),
             Box::new(LexicalOracle::with_options(include_issues)),
+            Box::new(TemporalOracle::new()),
+            Box::new(StructuralOracle::new()),
             Box::new(PersonaOracle::new()),
         ]
     }
@@ -299,6 +305,8 @@ impl QueryEngine {
         let context_oracles: Vec<Box<dyn Oracle>> = vec![
             Box::new(SemanticOracle::new()),
             Box::new(LexicalOracle::with_options(include_issues)),
+            Box::new(TemporalOracle::new()),
+            Box::new(StructuralOracle::new()),
         ];
 
         let fetch_limit = limit * self.config.fetch_multiplier;

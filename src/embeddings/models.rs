@@ -21,21 +21,36 @@ pub struct ModelDefinition {
     #[serde(default)]
     pub instructions: Option<String>,
 
-    /// Query prefix for asymmetric models (e.g., "Represent this sentence for searching relevant passages: " for BGE)
+    /// Query prefix for asymmetric models
     #[serde(default)]
     pub query_prefix: Option<String>,
 
-    /// Passage prefix for asymmetric models (e.g., "passage: " for E5)
+    /// Passage prefix for asymmetric models
     #[serde(default)]
     pub passage_prefix: Option<String>,
+
+    /// Download URL for quantized ONNX model
+    #[serde(default)]
+    pub download_quantized: Option<String>,
+
+    /// Download URL for tokenizer.json
+    #[serde(default)]
+    pub download_tokenizer: Option<String>,
+
+    /// Size of INT8 quantized model (e.g., "32.4MB")
+    #[serde(default)]
+    pub size_int8: Option<String>,
 }
 
-/// Model registry (from resources/models/registry.toml)
+/// Model registry (embedded at compile time from resources/models/registry.toml)
 #[derive(Debug, Deserialize)]
 pub struct ModelRegistry {
     pub models: HashMap<String, ModelDefinition>,
     pub default: DefaultConfig,
 }
+
+/// Registry content embedded at compile time
+const EMBEDDED_REGISTRY: &str = include_str!("../../resources/models/registry.toml");
 
 /// Default configuration
 #[derive(Debug, Deserialize)]
@@ -56,13 +71,9 @@ pub struct EmbeddingsConfig {
 }
 
 impl ModelRegistry {
-    /// Load model registry from resources/models/registry.toml
+    /// Load model registry (embedded at compile time)
     pub fn load() -> Result<Self> {
-        let registry_path = PathBuf::from("resources/models/registry.toml");
-        let content = std::fs::read_to_string(&registry_path)
-            .with_context(|| format!("Failed to read model registry: {:?}", registry_path))?;
-
-        toml::from_str(&content).context("Failed to parse model registry TOML")
+        toml::from_str(EMBEDDED_REGISTRY).context("Failed to parse embedded model registry")
     }
 
     /// Get model definition by name

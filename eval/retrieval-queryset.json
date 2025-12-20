@@ -1,0 +1,46 @@
+{
+  "name": "patina-core-retrieval",
+  "description": "Core retrieval benchmark for patina codebase",
+  "queries": [
+    {
+      "id": "q1-adapters",
+      "query": "where is the adapter pattern implemented",
+      "relevant_docs": ["./src/adapters/mod.rs", "./src/adapters/launch.rs", "./src/adapters/templates.rs"]
+    },
+    {
+      "id": "q2-embeddings",
+      "query": "how do embeddings work",
+      "relevant_docs": ["./src/embeddings/onnx.rs", "./src/embeddings/models.rs", "./src/embeddings/mod.rs"]
+    },
+    {
+      "id": "q3-scry",
+      "query": "scry query implementation",
+      "relevant_docs": ["./src/commands/scry/mod.rs", "./src/retrieval/engine.rs", "./src/retrieval/fusion.rs"]
+    },
+    {
+      "id": "q4-assay",
+      "query": "assay structural queries",
+      "relevant_docs": ["./src/commands/assay/mod.rs"]
+    },
+    {
+      "id": "q5-mcp",
+      "query": "MCP server implementation",
+      "relevant_docs": ["./src/mcp/server.rs", "./src/mcp/mod.rs"]
+    },
+    {
+      "id": "q6-git",
+      "query": "git commit scraping",
+      "relevant_docs": ["./src/commands/scrape/git.rs", "./src/git/operations.rs"]
+    },
+    {
+      "id": "q7-oracle",
+      "query": "oracle trait and implementations",
+      "relevant_docs": ["./src/retrieval/oracle.rs", "./src/retrieval/oracles/mod.rs", "./src/retrieval/oracles/semantic.rs", "./src/retrieval/oracles/lexical.rs"]
+    },
+    {
+      "id": "q8-session",
+      "query": "session management and tracking",
+      "relevant_docs": ["./src/session.rs", "./src/commands/scrape/sessions.rs"]
+    }
+  ]
+}

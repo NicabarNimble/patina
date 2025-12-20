@@ -41,9 +41,6 @@ pub fn execute_init(
     // Initialize git if needed
     ensure_git_initialized()?;
 
-    // Ensure proper .gitignore exists
-    ensure_gitignore(Path::new("."))?;
-
     // Check if this is a re-init (already has .patina/)
     let is_reinit_early = name == "." && Path::new(".patina").exists();
 
@@ -52,12 +49,16 @@ pub fn execute_init(
         println!("🔄 Re-initializing existing Patina project...\n");
     } else {
         // First-time init: full git setup (fork detection, branch management)
+        // NOTE: This checks for clean state BEFORE we modify any files
         patina::git::ensure_fork(local)?;
         println!();
 
         patina::git::ensure_patina_branch(force)?;
         println!("✓ On branch 'patina'\n");
     }
+
+    // Ensure proper .gitignore exists (AFTER branch setup, so our changes go on patina branch)
+    ensure_gitignore(Path::new("."))?;
 
     // === STEP 2: SAFE TO PROCEED WITH DESTRUCTIVE CHANGES ===
 
@@ -223,14 +224,35 @@ pub fn execute_init(
         println!("✓ Committed Patina initialization");
     }
 
+    // === STEP 4: INDEX CODEBASE FOR MCP ===
+    println!("\n🔍 Indexing codebase for AI context...");
+    match crate::commands::scrape::execute_all() {
+        Ok(()) => println!("✓ Codebase indexed - MCP tools ready"),
+        Err(e) => {
+            // Don't fail init if scrape fails, just warn
+            println!("⚠️  Indexing incomplete: {}", e);
+            println!("   Run 'patina scrape' later to enable MCP tools");
+        }
+    }
+
+    // === STEP 5: BUILD EMBEDDINGS FOR SEMANTIC SEARCH ===
+    // First check if the required model is available
+    ensure_model_available()?;
+
+    println!("\n🧪 Building embeddings for semantic search...");
+    match crate::commands::oxidize::oxidize() {
+        Ok(()) => println!("✓ Embeddings built - semantic search ready"),
+        Err(e) => {
+            // Don't fail init if oxidize fails, just warn
+            println!("⚠️  Embeddings incomplete: {}", e);
+            println!("   Run 'patina oxidize' later for semantic search");
+        }
+    }
+
     // Suggest tool installation if needed
     suggest_missing_tools(&environment)?;
 
     println!("\n✨ Project '{name}' initialized successfully!");
-    println!("\nNext steps:");
-    println!("  1. patina add <type> <name>  # Add patterns to session");
-    println!("  2. patina commit             # Commit patterns to layer");
-    println!("  3. patina push               # Generate LLM context");
 
     Ok(())
 }
@@ -536,6 +558,55 @@ logs/
     fs::write(gitignore_path, content).context("Failed to create .gitignore")?;
 
     println!("✓ Created .gitignore with standard patterns");
+    Ok(())
+}
+
+/// Ensure the embedding model is available (in cache or local)
+fn ensure_model_available() -> Result<()> {
+    use patina::embeddings::models::{Config, ModelRegistry};
+    use patina::models;
+
+    // Load project config to get model name
+    let config = match Config::load() {
+        Ok(c) => c,
+        Err(_) => return Ok(()), // No config yet, skip check
+    };
+
+    let model_name = &config.embeddings.model;
+
+    // Validate model exists in registry
+    let registry = ModelRegistry::load()?;
+    if registry.get_model(model_name).is_err() {
+        println!("\n⚠️  Model '{}' not in registry.", model_name);
+        println!("   Available models:");
+        for name in registry.list_models() {
+            println!("     - {}", name);
+        }
+        println!("   Update .patina/config.toml to use a valid model.");
+        return Ok(());
+    }
+
+    let status = models::model_status(model_name)?;
+
+    if status.in_cache || status.in_local {
+        return Ok(()); // Model available
+    }
+
+    // Model not available - prompt to download
+    println!("\n📦 Model '{}' not found in cache.", model_name);
+    print!("   Download now? [Y/n]: ");
+    std::io::stdout().flush()?;
+
+    let mut input = String::new();
+    std::io::stdin().read_line(&mut input)?;
+    let input = input.trim().to_lowercase();
+
+    if input.is_empty() || input == "y" || input == "yes" {
+        models::add_model(model_name)?;
+    } else {
+        println!("   Skipped. Run 'patina model add {}' later.", model_name);
+    }
+
     Ok(())
 }
 

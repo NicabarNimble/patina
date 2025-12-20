@@ -34,13 +34,13 @@ Work cut from completed phases to ship faster.
 |-------|-------|
 | **Origin** | Phase 2 (Agentic RAG) |
 | **Archived** | `spec/agentic-rag` |
-| **Why deferred** | Prioritized `patina_query` and `patina_context` first |
+| **Why deferred** | Prioritized `scry` and `context` tools first |
 | **When to revisit** | When starting capture automation |
 
 **Original tasks:**
-- `patina_session_start` - Start tracked session via MCP
-- `patina_session_note` - Capture insight via MCP
-- `patina_session_end` - End session and archive via MCP
+- `session_start` - Start tracked session via MCP
+- `session_note` - Capture insight via MCP
+- `session_end` - End session and archive via MCP
 
 **Value:** LLMs could manage sessions directly without shell scripts.
 
@@ -201,6 +201,64 @@ binary embedded templates  →  ~/.patina/adapters/  →  all registered project
 - Compare quality vs speed tradeoffs
 
 **Value:** Validate model flexibility actually works.
+
+---
+
+## Scope Cuts (Recent)
+
+Work cut from recent phases to focus on audit.
+
+### Build Tracking System
+
+| Field | Value |
+|-------|-------|
+| **Origin** | Phase 4 (planned, never started) |
+| **Spec** | `spec-build-system.md` |
+| **Why deferred** | Prioritizing code audit before adding new features |
+| **When to revisit** | After code audit identifies architectural improvements |
+
+**Original tasks:**
+- TOML schema and parser for `.patina/build.toml`
+- Query commands: `patina build status/tasks/deferred/explorations`
+- Mutation commands: `patina build task start/done/abandon/add`
+- Commit integration with trailers (`Task:`, `Deferred:`, `Exploration:`)
+- CLAUDE.md integration for LLM guidance
+
+**Value:** Git-native task tracking that LLMs can drive. Exploration/rabbit-hole tracking as first-class citizens.
+
+---
+
+## Enhancements (Recent)
+
+### Per-Language Module Documentation Extraction
+
+| Field | Value |
+|-------|-------|
+| **Origin** | Phase 0 (Assay Command) |
+| **Spec** | `spec-assay.md` |
+| **Why deferred** | Universal-first approach; language-specific logic adds complexity |
+| **When to revisit** | After assay is working and tested on multi-language repos |
+
+**Problem:** Each language has different doc comment conventions:
+
+| Language | Convention | Tree-sitter Node |
+|----------|------------|------------------|
+| Rust | `//!` module doc | `inner_line_doc` |
+| Python | `"""docstring"""` | `expression_statement > string` |
+| Go | `// Package X` | `comment` before `package` |
+| TypeScript | `/** @module */` | `comment` at file start |
+| Solidity | `/// @title` NatSpec | `natspec_comment` |
+| C/C++ | `/** @file */` | `comment` with `@file` |
+
+**Existing patterns:** Python (`extract_docstring`) and Solidity (`extract_natspec`) already have doc extraction in their language parsers.
+
+**Tasks:**
+- [ ] Add `extract_module_doc()` to each language parser
+- [ ] Store in new `module_docs` table or column in `index_state`
+- [ ] Expose via `patina assay --with-docs`
+- [ ] Update MCP tool to include docs in inventory
+
+**Value:** `patina assay` returns module purpose alongside stats, reducing need to read files for basic understanding.
 
 ---
 

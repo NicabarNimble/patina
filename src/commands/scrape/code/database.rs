@@ -214,7 +214,24 @@ impl Database {
                 path TEXT PRIMARY KEY,
                 mtime BIGINT NOT NULL,
                 size BIGINT NOT NULL,
-                hash TEXT
+                hash TEXT,
+                line_count INTEGER
+            )",
+            [],
+        )?;
+
+        // Module signals for structural oracle (assay derive)
+        tx.execute(
+            "CREATE TABLE IF NOT EXISTS module_signals (
+                path TEXT PRIMARY KEY,
+                is_used INTEGER,
+                importer_count INTEGER,
+                activity_level TEXT,
+                last_commit_days INTEGER,
+                top_contributors TEXT,
+                centrality_score REAL,
+                staleness_flags TEXT,
+                computed_at TEXT
             )",
             [],
         )?;
@@ -501,10 +518,11 @@ impl Database {
         mtime: i64,
         size: i64,
         hash: Option<&str>,
+        line_count: Option<i64>,
     ) -> Result<()> {
         self.db.connection().execute(
-            "INSERT OR REPLACE INTO index_state (path, mtime, size, hash) VALUES (?, ?, ?, ?)",
-            params![path, mtime, size, hash],
+            "INSERT OR REPLACE INTO index_state (path, mtime, size, hash, line_count) VALUES (?, ?, ?, ?, ?)",
+            params![path, mtime, size, hash, line_count],
         )?;
         Ok(())
     }

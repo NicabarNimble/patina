@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Current Phase:** Phase 2 - Release Automation & Template Sync
+**Current Phase:** Pipeline Architecture - scry as unified oracle
 
 ---
 
@@ -12,267 +12,143 @@ A local-first RAG network: portable project knowledge + personal mothership.
 - **Reference Repos:** `patina repo add <url>` - lightweight index in `~/.patina/cache/repos/`
 - **Mothership:** `~/.patina/` - registry, personas, `patina serve` daemon
 
-**Completed infrastructure:** Scrape pipeline, oxidize embeddings, query/scry, serve daemon, persona, rebuild command, MCP server, hybrid retrieval (MRR 0.624). All working.
+**Completed infrastructure:** Scrape pipeline, oxidize embeddings, query/scry, serve daemon, persona, rebuild command, MCP server, hybrid retrieval (MRR 0.624), model management, feedback loop, assay structural queries. All working.
+
+---
+
+## The Architecture
+
+**Spec:** [spec-pipeline.md](../surface/build/spec-pipeline.md)
+
+```
+                            GIT (source of truth)
+                                    │
+                                    ▼
+                                 scrape
+                        (extract facts from reality)
+                                    │
+                                    ▼
+                               SQLite DB
+                                    │
+                   ┌────────────────┴────────────────┐
+                   ▼                                 ▼
+               oxidize                            assay
+           (→ embeddings)                      (→ signals)
+                   │                                 │
+                   └────────────┬────────────────────┘
+                                ▼
+                              scry
+                       (unified oracle)
+                                │
+                                ▼
+                          LLM Frontend
+```
+
+**Core insight:** scry is the API between LLM and codebase knowledge. Everything else prepares for that moment.
+
+| Command | Role | "Do X" |
+|---------|------|--------|
+| scrape | Extract | Capture raw → structured facts |
+| oxidize | Prepare (semantic) | Build embeddings from facts |
+| assay | Prepare (structural) | Build signals from facts |
+| scry | Deliver | Fuse and route knowledge to LLM |
+
+**Values alignment:**
+- unix-philosophy: One tool, one job
+- dependable-rust: Black box interfaces
+- local-first: No cloud, rebuild from git
+- git as memory: layer/ tracked, .patina/ derived
 
 ---
 
 ## Specs
 
-Active specs for current work:
+Active specs:
 
-- [spec-folder-structure.md](../surface/build/spec-folder-structure.md) - Folder structure design (project + user level)
+- [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
+- [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
+- [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
 
-Deferred work (with context for why/when):
+Archived specs (preserved via git tags):
 
-- [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Scope cuts, blockers, enhancements, future ideas
+- `spec/assay` - Phase 0: Structural query command (inventory, imports, callers)
+- `spec/feedback-loop` - Measure and learn from retrieval quality
+- `spec/model-management` - Base model download, caching, provenance
+- `spec/mcp-retrieval-polish` - MCP tool rename, temporal oracle, hybrid mode
 
 Future specs (not yet planned):
 
 - [spec-github-adapter.md](../surface/build/spec-github-adapter.md) - GitHub integration
-- [spec-model-runtime.md](../surface/build/spec-model-runtime.md) - Model flexibility
 
 ---
 
-## Phase 1: Folder Restructure
+## Current Work: Assay Signals
 
-**Goal:** Clean separation of source vs derived data at user level (`~/.patina/`).
+**Goal:** Add structural signal preparation to assay, wire into scry as StructuralOracle.
 
-**Spec:** [spec-folder-structure.md](../surface/build/spec-folder-structure.md)
-
-**Key Insight:** Patina coats projects, not users.
-- `layer/` = accumulated patina on a project (stays at project root)
-- `~/.patina/` = user's tools and preferences (restructure needed)
-
-### Target Structure
-
-```
-~/.patina/
-├── personas/default/events/     # Source ONLY (valuable)
-├── cache/                       # ALL rebuildable data
-│   ├── repos/                   # Git clones
-│   └── personas/default/        # Materialized indices
-└── registry.yaml                # Source (valuable)
-```
-
-**Backup story:** `~/.patina/` minus `cache/` = everything valuable.
-
-### Code Design: Centralized Paths Module
-
-**Philosophy (from rationale-eskil-steenberg.md):**
-> "It's faster to write 5 lines of code today than to write 1 line today and edit it later."
-
-The paths module should be **complete from day one** - defining ALL Patina paths (user-level AND project-level). Not minimal, not clever, but correct.
-
-**Solution:** Single `src/paths.rs` module owns ALL filesystem layout decisions.
-
-```rust
-// src/paths.rs - Single source of truth for ALL Patina filesystem layout
-
-// === User Level (~/.patina/) ===
-pub fn patina_home() -> PathBuf { ~/.patina/ }
-pub fn patina_cache() -> PathBuf { ~/.patina/cache/ }
-pub fn config_path() -> PathBuf { ~/.patina/config.toml }
-pub fn registry_path() -> PathBuf { ~/.patina/registry.yaml }
-pub fn adapters_dir() -> PathBuf { ~/.patina/adapters/ }
-
-pub mod persona {
-    pub fn events_dir() -> PathBuf { ~/.patina/personas/default/events/ }
-    pub fn cache_dir() -> PathBuf { ~/.patina/cache/personas/default/ }
-}
-
-pub mod repos {
-    pub fn cache_dir() -> PathBuf { ~/.patina/cache/repos/ }
-}
-
-// === Project Level (project/.patina/) ===
-pub mod project {
-    pub fn patina_dir(root: &Path) -> PathBuf { .patina/ }
-    pub fn config_path(root: &Path) -> PathBuf { .patina/config.toml }
-    pub fn data_dir(root: &Path) -> PathBuf { .patina/data/ }
-    pub fn db_path(root: &Path) -> PathBuf { .patina/data/patina.db }
-    pub fn embeddings_dir(root: &Path) -> PathBuf { .patina/data/embeddings/ }
-    pub fn model_projections_dir(root: &Path, model: &str) -> PathBuf { ... }
-    pub fn recipe_path(root: &Path) -> PathBuf { .patina/oxidize.yaml }
-    pub fn versions_path(root: &Path) -> PathBuf { .patina/versions.json }
-    pub fn backups_dir(root: &Path) -> PathBuf { .patina/backups/ }
-}
-```
-
-**Full design:** See [spec-folder-structure.md](../surface/build/spec-folder-structure.md)
-
-**Alignment with core values:**
-- **eskil-steenberg:** Complete from day one, never needs to change
-- **dependable-rust:** Small interface, one file shows ENTIRE layout
-- **unix-philosophy:** One job (define paths), no I/O or business logic
-
-### Tasks
-
-**Approach:** Design complete API, ship user-level restructure, iterate on project-level.
-
-#### 1a: Create `src/paths.rs` Module
-- [x] Create `src/paths.rs` with complete API (user + project level)
-- [x] User-level: `patina_home()`, `patina_cache()`, `config_path()`, `registry_path()`, `adapters_dir()`
-- [x] User-level: `persona::events_dir()`, `persona::cache_dir()`, `repos::cache_dir()`
-- [x] Project-level: `project::*` (full API ready for future use)
-- [x] Export from `src/lib.rs`
-
-#### 1b: Update Persona Paths
-- [x] Replace `persona_dir()` in `src/commands/persona/mod.rs`
-- [x] Replace hardcoded path in `src/retrieval/oracles/persona.rs`
-- [x] Update `note()`, `materialize()`, `query()`, `list()`
-- [x] Test: `patina persona materialize` && `patina persona query`
-
-#### 1c: Update Repo & Registry Paths
-- [x] Replace `repos_dir()`, `mothership_dir()`, `registry_path()` in `repo/internal.rs`
-- [x] Remove old functions
-- [x] Test: `patina repo list`, `patina repo add`
-
-#### 1d: Update Workspace & Adapters Paths
-- [x] Replace path functions in `workspace/internal.rs`
-- [x] Replace `workspace::adapters_dir()` in `adapters/templates.rs`
-- [x] Update `workspace/mod.rs` re-exports
-- [x] Remove old path functions, keep behavior functions
-- [x] Delete unused `projects_dir()`
-- [x] Test: `patina` launcher, first-run setup
-
-#### 1e: Migration Logic
-- [x] Create `src/migration.rs`
-- [x] Add `migrate_if_needed()` - move old paths to new `cache/` locations
-- [x] Print migration message
-- [x] Call from startup (main.rs)
-
-#### 1f: Ship It
-- [x] Delete stale `.patina/patina.db` (0 bytes)
-- [x] `~/.patina/claude-linux/` - removed
-- [x] Run test suite
-- [x] Build release, test with live install
-- [x] Commit and tag
-
-### Validation (Exit Criteria)
-
-| Criteria | Status |
-|----------|--------|
-| `src/paths.rs` exists with complete API | [x] |
-| `src/migration.rs` exists | [x] |
-| All user-level path functions consolidated | [x] |
-| `patina persona materialize` writes to `cache/personas/` | [x] |
-| `patina persona query` reads from `cache/personas/` | [x] |
-| `patina repo` commands work | [x] |
-| `patina` launcher works | [x] |
-| Old paths auto-migrated | [x] |
-| `claude-linux/` evaluated | [x] removed |
-
-### Deferred
-
-Project-level path consolidation deferred to [spec-work-deferred.md](../surface/build/spec-work-deferred.md).
-
-**Why:** The 45+ files with hardcoded project paths work today. Migrate them incrementally as we touch those files.
-
----
-
-## Phase 2: Release Automation & Template Sync
-
-**Goal:** Proper versioning with release-plz, template propagation to projects.
+**Spec:** [spec-pipeline.md](../surface/build/spec-pipeline.md)
 
 ### Context
 
-**Problem 1: No release automation**
-- 943 commits, still at v0.1.0
-- No GitHub releases
-- Manual versioning won't happen consistently
-
-**Problem 2: Template updates don't propagate**
-- Templates live in 3 places: `resources/` → binary → `~/.patina/adapters/` → projects
-- Changing a template requires: edit source, rebuild, reinstall, re-init each project
-- Need `patina upgrade` to sync templates to all registered projects
-
-### Solution: release-plz
-
-**Why release-plz** (researched in session 20251216):
-- Rust-native, zero-config
-- Used by mise (popular Rust tool)
-- 1.2k stars, 291 releases, actively maintained
-- Supports GitHub, GitLab, Gitea
-- Works with conventional commits (we're 85% consistent already)
-
-**How it works:**
-1. Push to main with conventional commits (`feat:`, `fix:`, `docs:`)
-2. release-plz creates a "Release PR" with version bump + changelog
-3. Merge PR → GitHub Release created automatically
+Audit of Patina architecture revealed missing ORGANIZE stage. We go scrape → scry, skipping derived signals. Assay currently queries raw facts; it should also prepare signals (health, activity, centrality, staleness) that scry can fuse with semantic results.
 
 ### Tasks
 
-#### 2a: Commit Template Improvements
-- [ ] Commit `resources/claude/session-update.md` (added "Discussion context" bullet)
-- [ ] Rebuild patina binary (`cargo build --release && cargo install --path .`)
+| Task | Status |
+|------|--------|
+| Write spec-pipeline.md | [x] |
+| Add signal tables to schema | [x] |
+| Implement `assay derive` subcommand | [x] |
+| Compute health signal (importer_count, is_used) | [x] |
+| Compute activity signal (commits/week, contributors) | [x] |
+| Add StructuralOracle to scry | [x] |
+| Wire signals into RRF fusion | [x] |
+| Update MCP tool descriptions | [x] |
 
-#### 2b: Add release-plz Workflow
-- [ ] Create `.github/workflows/release-plz.yml`
-- [ ] Test workflow runs on push to main
+### Signals to Compute
 
-```yaml
-# .github/workflows/release-plz.yml
-name: Release-plz
+| Signal | Source | Formula |
+|--------|--------|---------|
+| `is_used` | import_facts | importer_count > 0 OR is_entry_point |
+| `activity_level` | co_changes, git | commits in last N days |
+| `core_contributors` | git history | top authors by commit count |
+| `centrality` | call_graph | PageRank or degree centrality |
+| `staleness` | cross-reference | contradicts CI, references deleted things |
 
-on:
-  push:
-    branches: [main]
-
-jobs:
-  release-plz:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: MarcoIeni/release-plz-action@v0.5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-```
-
-#### 2c: Create v0.1.0 Baseline Release
-- [ ] Create git tag `v0.1.0`
-- [ ] Create GitHub release with changelog summarizing all work to date
-- [ ] Changelog should cover: scrape, oxidize, scry, persona, MCP, hybrid retrieval, folder restructure
-
-#### 2d: Update `patina upgrade` Command
-- [ ] Extend existing upgrade.rs to sync templates
-- [ ] Add `--templates` flag to only sync templates (skip binary check)
-- [ ] Sync flow: binary → `~/.patina/adapters/` → all registered projects
-- [ ] Register projects in `registry.yaml` during `patina init`
-
-### Validation (Exit Criteria)
+### Validation
 
 | Criteria | Status |
 |----------|--------|
-| `resources/claude/session-update.md` committed | [ ] |
-| `.github/workflows/release-plz.yml` exists | [ ] |
-| v0.1.0 GitHub release created | [ ] |
-| release-plz creates PR on next push to main | [ ] |
-| `patina upgrade --templates` syncs to projects | [ ] |
-
-### Research Notes (Session 20251216)
-
-**Tools compared:**
-| Tool | Stars | Used By | Approach |
-|------|-------|---------|----------|
-| release-plz | 1.2k | mise | Rust-native, auto |
-| release-please | 6.2k | Google | Multi-lang, auto |
-| cargo-release | 1.5k | Dojo | Rust, semi-manual |
-| tinysemver | 27 | USearch | Multi-lang, auto |
-| Manual tags | n/a | ethrex, starknet-foundry | Full control |
-
-**Why blockchain projects use manual tags:** Coordination, security review, breaking changes matter more.
-
-**Why patina uses auto:** Dev tool, no downstream dependencies, ship fast.
+| `patina assay derive` computes signals | [x] |
+| Signals queryable via `patina assay` | [x] |
+| scry includes structural signals in fusion | [x] |
+| Lab metrics (eval/bench) show improvement | [ ] |
 
 ---
 
 ## Completed
 
 Shipped phases (details preserved in git tags):
+
+### Assay Command (Phase 0)
+Structural query interface for codebase facts. Inventory, imports/importers, callers/callees queries. MCP tool integration. Reduces 40+ shell calls to 1-3 patina commands.
+
+**Tag:** `spec/assay`
+
+### MCP & Retrieval Polish
+MCP tools renamed (`scry`/`context`), directive descriptions for LLM tool selection, TemporalOracle integration, CLI `--hybrid` mode, auto-oxidize on init.
+
+**Tag:** `spec/mcp-retrieval-polish`
+
+### Model Management
+Base models moved to `~/.patina/cache/models/`, provenance tracking via `models.lock`, `patina model` command (list/add/remove/status), init validates model availability, oxidize derives dimensions from registry.
+
+**Tag:** `spec/model-management`
+
+### Feedback Loop
+Scry query logging to eventlog, session-commit linkage via git tags (75% attribution), feedback SQL views (session_queries, commit_files, query_hits), `patina eval --feedback` for real-world precision metrics.
+
+**Tag:** `spec/feedback-loop`
 
 ### Phase 1: Folder Restructure
 Centralized paths module (`src/paths.rs`), migration logic (`src/migration.rs`), user-level path consolidation. Clean separation of source vs derived data at `~/.patina/`.
@@ -285,13 +161,18 @@ Template centralization, first-run setup, launcher command (`patina` / `patina -
 **Tags:** `spec/launcher-architecture`, `spec/template-centralization`
 
 ### Agentic RAG
-Oracle abstraction (semantic, lexical, persona), hybrid retrieval + RRF fusion (k=60), MCP server (`patina serve --mcp`), `patina_query` and `patina_context` tools.
+Oracle abstraction (semantic, lexical, persona), hybrid retrieval + RRF fusion (k=60), MCP server (`patina serve --mcp`), `scry` and `context` tools.
 
 **Metrics:** MRR 0.624, Recall@10 67.5%, Latency ~135ms
 
 **Includes:** Lab infrastructure (benchmarks, config), retrieval quality fixes (FTS5, layer docs), multi-project federation.
 
 **Tags:** `spec/agentic-rag`
+
+### Release Automation
+release-plz workflow for automated GitHub releases. v0.1.0 baseline created. Conventional commits (`feat:`, `fix:`) trigger Release PRs automatically.
+
+**Tags:** `spec/release-automation`
 
 ---
 
@@ -304,4 +185,4 @@ git tag -l 'spec/*'              # List archived specs
 git show spec/scry:layer/surface/build/spec-scry.md  # View archived spec
 ```
 
-**Tags:** `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/agentic-rag`
+**Tags:** `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`

@@ -22,14 +22,15 @@ pub fn oxidize() -> Result<()> {
     // Load recipe
     let recipe = OxidizeRecipe::load()?;
 
-    println!("✅ Recipe loaded: {}", recipe.embedding_model);
+    let model_name = recipe.get_model_name()?;
+    println!("✅ Recipe loaded: {}", model_name);
     println!("   Projections: {}", recipe.projections.len());
 
     for (name, config) in &recipe.projections {
         println!(
             "   - {}: {}→{}→{} ({} epochs)",
             name,
-            config.input_dim(),
+            config.input_dim(&recipe)?,
             config.hidden_dim(),
             config.output_dim(),
             config.epochs
@@ -37,10 +38,7 @@ pub fn oxidize() -> Result<()> {
     }
 
     let db_path = ".patina/data/patina.db";
-    let output_dir = format!(
-        ".patina/data/embeddings/{}/projections",
-        recipe.embedding_model
-    );
+    let output_dir = format!(".patina/data/embeddings/{}/projections", model_name);
     std::fs::create_dir_all(&output_dir)?;
 
     // Create embedder once, reuse for all projections
@@ -53,7 +51,7 @@ pub fn oxidize() -> Result<()> {
         println!("📊 Training {} projection...", name);
         println!("{}", "=".repeat(60));
 
-        let projection = train_projection(name, config, db_path, &mut embedder)?;
+        let projection = train_projection(name, config, &recipe, db_path, &mut embedder)?;
 
         // Save trained weights
         println!("\n💾 Saving projection weights...");
@@ -86,6 +84,7 @@ pub fn oxidize() -> Result<()> {
 fn train_projection(
     name: &str,
     config: &ProjectionConfig,
+    recipe: &OxidizeRecipe,
     db_path: &str,
     embedder: &mut Box<dyn patina::embeddings::EmbeddingEngine>,
 ) -> Result<Projection> {
@@ -130,15 +129,15 @@ fn train_projection(
     println!("   Embedded {} triplets", anchors.len());
 
     // Train projection
+    let input_dim = config.input_dim(recipe)?;
     println!(
         "\n🧠 Training MLP: {}→{}→{}...",
-        config.input_dim(),
+        input_dim,
         config.hidden_dim(),
         config.output_dim()
     );
 
-    let mut projection =
-        Projection::new(config.input_dim(), config.hidden_dim(), config.output_dim());
+    let mut projection = Projection::new(input_dim, config.hidden_dim(), config.output_dim());
 
     let learning_rate = 0.001;
     let _losses = projection.train(

@@ -17,6 +17,9 @@ use crate::paths;
 /// - ~/.patina/personas/default/materialized/ -> ~/.patina/cache/personas/default/
 /// - ~/.patina/repos/ -> ~/.patina/cache/repos/
 ///
+/// Note: Registry path updates are handled separately by `repo::migrate_registry_paths()`
+/// which is called from main.rs after this migration runs.
+///
 /// This function is idempotent - safe to call multiple times.
 pub fn migrate_if_needed() {
     // Only run if patina home exists (not first run)
