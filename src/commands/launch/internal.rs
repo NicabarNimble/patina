@@ -378,22 +378,14 @@ fn ensure_on_patina_branch() -> Result<BranchAction> {
 
 /// Initialize project from the "Are you lost?" prompt
 fn initialize_project(project_path: &Path, frontend_name: &str) -> Result<bool> {
-    // Get project name from directory
-    let project_name = project_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("project")
-        .to_string();
-
     // Change to project directory for init
     let original_dir = env::current_dir()?;
     env::set_current_dir(project_path)?;
 
-    // Call init with contrib mode (safe default for auto-init)
-    // Note: init currently defaults to "owner" mode, but for auto-init
-    // from launcher we should default to "contrib" for safety
+    // Call init with "." so it commits the patina setup
+    // (init only commits when name == ".")
     let result = crate::commands::init::execute(
-        project_name,
+        ".".to_string(), // Use "." to trigger commit step in init
         frontend_name.to_string(),
         None,  // dev environment
         false, // force

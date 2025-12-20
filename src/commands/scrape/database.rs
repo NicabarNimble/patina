@@ -139,6 +139,79 @@ pub fn set_last_processed(conn: &Connection, scraper: &str, value: &str) -> Resu
     Ok(())
 }
 
+// ============================================================================
+// Feedback Loop Views (Phase 3)
+// ============================================================================
+
+/// Create SQL views for feedback loop analysis
+///
+/// These views correlate scry queries with subsequent commits to measure
+/// retrieval precision in real-world usage.
+pub fn create_feedback_views(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        -- View: Queries made during each session
+        CREATE VIEW IF NOT EXISTS feedback_session_queries AS
+        SELECT
+            json_extract(data, '$.session_id') as session_id,
+            json_extract(data, '$.query') as query,
+            json_extract(data, '$.mode') as mode,
+            json_extract(data, '$.results') as results,
+            timestamp
+        FROM eventlog
+        WHERE event_type = 'scry.query'
+          AND json_extract(data, '$.session_id') IS NOT NULL;
+
+        -- View: Files committed during each session (from latest scrape only)
+        -- Uses window function to get only the most recent event per commit SHA
+        CREATE VIEW IF NOT EXISTS feedback_commit_files AS
+        SELECT
+            session_id,
+            sha,
+            file_path,
+            change_type,
+            timestamp
+        FROM (
+            SELECT
+                json_extract(data, '$.session_id') as session_id,
+                json_extract(data, '$.sha') as sha,
+                json_extract(f.value, '$.path') as file_path,
+                json_extract(f.value, '$.change_type') as change_type,
+                timestamp,
+                ROW_NUMBER() OVER (PARTITION BY json_extract(data, '$.sha') ORDER BY seq DESC) as rn
+            FROM eventlog, json_each(json_extract(data, '$.files')) as f
+            WHERE event_type = 'git.commit'
+              AND json_extract(data, '$.session_id') IS NOT NULL
+        )
+        WHERE rn = 1;
+
+        -- View: Query results matched to committed files
+        -- A "hit" is when a retrieved doc_id matches a file that was committed
+        CREATE VIEW IF NOT EXISTS feedback_query_hits AS
+        SELECT
+            q.session_id,
+            q.query,
+            q.mode,
+            q.timestamp as query_time,
+            json_extract(r.value, '$.doc_id') as retrieved_doc_id,
+            json_extract(r.value, '$.rank') as rank,
+            json_extract(r.value, '$.score') as score,
+            CASE
+                WHEN EXISTS (
+                    SELECT 1 FROM feedback_commit_files cf
+                    WHERE cf.session_id = q.session_id
+                      AND cf.file_path LIKE '%' || json_extract(r.value, '$.doc_id') || '%'
+                ) THEN 1
+                ELSE 0
+            END as is_hit
+        FROM feedback_session_queries q,
+             json_each(q.results) as r;
+        "#,
+    )?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

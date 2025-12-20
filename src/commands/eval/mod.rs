@@ -141,6 +141,7 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
             all_repos: false,
             include_issues: false,
             include_persona: false, // Eval doesn't need persona
+            hybrid: false,
         };
 
         if let Ok(results) = scry(query, &options) {
@@ -243,6 +244,7 @@ fn eval_temporal_text(conn: &Connection) -> Result<EvalResults> {
             all_repos: false,
             include_issues: false,
             include_persona: false,
+            hybrid: false,
         };
 
         if let Ok(results) = scry(query, &options) {
@@ -337,6 +339,7 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
             all_repos: false,
             include_issues: false,
             include_persona: false,
+            hybrid: false,
         };
 
         if let Ok(results) = scry(&query, &options) {
@@ -425,4 +428,166 @@ fn print_results(results: &EvalResults) {
             results.precision_at_10 / results.random_baseline
         );
     }
+}
+
+// ============================================================================
+// Feedback Loop Evaluation (Phase 3)
+// ============================================================================
+
+use crate::commands::scrape::database;
+
+/// Execute feedback loop evaluation - measure real-world precision
+///
+/// Uses feedback views to correlate scry queries with subsequent commits.
+pub fn execute_feedback() -> Result<()> {
+    println!("📊 Feedback Loop Evaluation\n");
+    println!("Measuring real-world retrieval precision from session data...\n");
+
+    let conn = Connection::open(database::PATINA_DB)?;
+
+    // Ensure feedback views exist
+    database::create_feedback_views(&conn)?;
+
+    // Get overall statistics
+    let (total_queries, total_retrievals): (i64, i64) = conn.query_row(
+        "SELECT COUNT(DISTINCT query), COUNT(*) FROM feedback_query_hits",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+
+    if total_queries == 0 {
+        println!("No feedback data available yet.");
+        println!("\nTo collect feedback data:");
+        println!("  1. Start a session: /session-start");
+        println!("  2. Run scry queries during development");
+        println!("  3. Commit your changes");
+        println!("  4. Run: patina scrape git");
+        println!("  5. Then run: patina eval --feedback");
+        return Ok(());
+    }
+
+    let total_hits: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM feedback_query_hits WHERE is_hit = 1",
+        [],
+        |row| row.get(0),
+    )?;
+
+    println!("━━━ Overall Statistics ━━━\n");
+    println!("Queries with session data: {}", total_queries);
+    println!("Total retrievals: {}", total_retrievals);
+    println!("Retrievals that led to commits: {}", total_hits);
+    println!(
+        "Overall precision: {:.1}%",
+        if total_retrievals > 0 {
+            total_hits as f64 / total_retrievals as f64 * 100.0
+        } else {
+            0.0
+        }
+    );
+
+    // Precision by rank
+    println!("\n━━━ Precision by Rank ━━━\n");
+    let mut stmt = conn.prepare(
+        "SELECT rank, COUNT(*) as total, SUM(is_hit) as hits
+         FROM feedback_query_hits
+         GROUP BY rank
+         ORDER BY rank",
+    )?;
+
+    let mut rows = stmt.query([])?;
+    println!(
+        "{:<8} {:>10} {:>10} {:>12}",
+        "Rank", "Total", "Hits", "Precision"
+    );
+    println!("{}", "─".repeat(44));
+
+    while let Some(row) = rows.next()? {
+        let rank: i64 = row.get(0)?;
+        let total: i64 = row.get(1)?;
+        let hits: i64 = row.get(2)?;
+        let precision = if total > 0 {
+            hits as f64 / total as f64 * 100.0
+        } else {
+            0.0
+        };
+        println!(
+            "{:<8} {:>10} {:>10} {:>11.1}%",
+            rank, total, hits, precision
+        );
+    }
+
+    // Sessions with most feedback
+    println!("\n━━━ Top Sessions by Queries ━━━\n");
+    let mut stmt = conn.prepare(
+        "SELECT session_id, COUNT(DISTINCT query) as queries,
+                SUM(is_hit) as hits, COUNT(*) as retrievals
+         FROM feedback_query_hits
+         GROUP BY session_id
+         ORDER BY queries DESC
+         LIMIT 5",
+    )?;
+
+    let mut rows = stmt.query([])?;
+    println!(
+        "{:<20} {:>8} {:>10} {:>12}",
+        "Session", "Queries", "Retrievals", "Precision"
+    );
+    println!("{}", "─".repeat(54));
+
+    while let Some(row) = rows.next()? {
+        let session: String = row.get(0)?;
+        let queries: i64 = row.get(1)?;
+        let hits: i64 = row.get(2)?;
+        let retrievals: i64 = row.get(3)?;
+        let precision = if retrievals > 0 {
+            hits as f64 / retrievals as f64 * 100.0
+        } else {
+            0.0
+        };
+        println!(
+            "{:<20} {:>8} {:>10} {:>11.1}%",
+            session, queries, retrievals, precision
+        );
+    }
+
+    // High-value retrievals (files that were retrieved AND committed)
+    println!("\n━━━ High-Value Retrievals ━━━\n");
+    let mut stmt = conn.prepare(
+        "SELECT retrieved_doc_id, COUNT(*) as times_retrieved, SUM(is_hit) as times_committed
+         FROM feedback_query_hits
+         WHERE is_hit = 1
+         GROUP BY retrieved_doc_id
+         ORDER BY times_committed DESC
+         LIMIT 10",
+    )?;
+
+    let mut rows = stmt.query([])?;
+    let mut has_hits = false;
+
+    println!("{:<50} {:>12} {:>12}", "Document", "Retrieved", "Committed");
+    println!("{}", "─".repeat(76));
+
+    while let Some(row) = rows.next()? {
+        has_hits = true;
+        let doc_id: String = row.get(0)?;
+        let retrieved: i64 = row.get(1)?;
+        let committed: i64 = row.get(2)?;
+        // Truncate long doc_ids
+        let display_id = if doc_id.len() > 48 {
+            format!("...{}", &doc_id[doc_id.len() - 45..])
+        } else {
+            doc_id
+        };
+        println!("{:<50} {:>12} {:>12}", display_id, retrieved, committed);
+    }
+
+    if !has_hits {
+        println!("(No retrievals have matched committed files yet)");
+        println!("\nNote: Hits occur when retrieved doc_ids match committed file paths.");
+        println!("Code queries (not session queries) are more likely to have hits.");
+    }
+
+    println!("\n{}", "─".repeat(60));
+
+    Ok(())
 }
