@@ -148,13 +148,13 @@ fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "assay",
-                    "description": "Query codebase structure - modules, imports, functions, call graph. Use for exact structural questions like 'list all modules', 'what imports X', 'show largest files'. For semantic similarity, use scry instead.",
+                    "description": "Query codebase structure - modules, imports, functions, call graph. Use for exact structural questions like 'list all modules', 'what imports X', 'show largest files'. For semantic similarity, use scry instead. Use 'derive' to compute/view structural signals (usage, activity, centrality).",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "query_type": {
                                 "type": "string",
-                                "enum": ["inventory", "imports", "importers", "functions", "callers", "callees"],
+                                "enum": ["inventory", "imports", "importers", "functions", "callers", "callees", "derive"],
                                 "default": "inventory",
                                 "description": "Type of structural query"
                             },
@@ -267,6 +267,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                 "functions" => QueryType::Functions,
                 "callers" => QueryType::Callers,
                 "callees" => QueryType::Callees,
+                "derive" => QueryType::Derive,
                 _ => QueryType::Inventory,
             };
 
@@ -561,6 +562,58 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
                 .collect();
 
             Ok(serde_json::to_string_pretty(&callees)?)
+        }
+        QueryType::Derive => {
+            // Derive signals and return them
+            // Ensure table exists
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS module_signals (
+                    path TEXT PRIMARY KEY,
+                    is_used INTEGER,
+                    importer_count INTEGER,
+                    activity_level TEXT,
+                    last_commit_days INTEGER,
+                    top_contributors TEXT,
+                    centrality_score REAL,
+                    staleness_flags TEXT,
+                    computed_at TEXT
+                )",
+                [],
+            )?;
+
+            // Query existing signals (derive should be run via CLI first)
+            let sql = r#"
+                SELECT path, is_used, importer_count, activity_level,
+                       last_commit_days, centrality_score, computed_at
+                FROM module_signals
+                ORDER BY importer_count DESC
+                LIMIT 100
+            "#;
+
+            let mut stmt = conn.prepare(sql)?;
+            let signals: Vec<serde_json::Value> = stmt
+                .query_map([], |row| {
+                    Ok(serde_json::json!({
+                        "path": row.get::<_, String>(0)?,
+                        "is_used": row.get::<_, i32>(1)? != 0,
+                        "importer_count": row.get::<_, i64>(2)?,
+                        "activity_level": row.get::<_, String>(3)?,
+                        "last_commit_days": row.get::<_, Option<i64>>(4)?,
+                        "centrality_score": row.get::<_, f64>(5)?,
+                        "computed_at": row.get::<_, Option<String>>(6)?
+                    }))
+                })?
+                .filter_map(|r| r.ok())
+                .collect();
+
+            let result = serde_json::json!({
+                "signals": signals,
+                "summary": {
+                    "total_modules": signals.len(),
+                    "used_modules": signals.iter().filter(|s| s["is_used"].as_bool().unwrap_or(false)).count()
+                }
+            });
+            Ok(serde_json::to_string_pretty(&result)?)
         }
     }
 }

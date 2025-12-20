@@ -96,14 +96,14 @@ Audit of Patina architecture revealed missing ORGANIZE stage. We go scrape → s
 
 | Task | Status |
 |------|--------|
-| Write spec-pipeline.md | [ ] |
-| Add signal tables to schema | [ ] |
-| Implement `assay derive` subcommand | [ ] |
-| Compute health signal (importer_count, is_used) | [ ] |
-| Compute activity signal (commits/week, contributors) | [ ] |
-| Add StructuralOracle to scry | [ ] |
-| Wire signals into RRF fusion | [ ] |
-| Update MCP tool descriptions | [ ] |
+| Write spec-pipeline.md | [x] |
+| Add signal tables to schema | [x] |
+| Implement `assay derive` subcommand | [x] |
+| Compute health signal (importer_count, is_used) | [x] |
+| Compute activity signal (commits/week, contributors) | [x] |
+| Add StructuralOracle to scry | [x] |
+| Wire signals into RRF fusion | [x] |
+| Update MCP tool descriptions | [x] |
 
 ### Signals to Compute
 
@@ -119,9 +119,9 @@ Audit of Patina architecture revealed missing ORGANIZE stage. We go scrape → s
 
 | Criteria | Status |
 |----------|--------|
-| `patina assay derive` computes signals | [ ] |
-| Signals queryable via `patina assay` | [ ] |
-| scry includes structural signals in fusion | [ ] |
+| `patina assay derive` computes signals | [x] |
+| Signals queryable via `patina assay` | [x] |
+| scry includes structural signals in fusion | [x] |
 | Lab metrics (eval/bench) show improvement | [ ] |
 
 ---

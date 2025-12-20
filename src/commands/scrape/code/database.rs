@@ -220,6 +220,22 @@ impl Database {
             [],
         )?;
 
+        // Module signals for structural oracle (assay derive)
+        tx.execute(
+            "CREATE TABLE IF NOT EXISTS module_signals (
+                path TEXT PRIMARY KEY,
+                is_used INTEGER,
+                importer_count INTEGER,
+                activity_level TEXT,
+                last_commit_days INTEGER,
+                top_contributors TEXT,
+                centrality_score REAL,
+                staleness_flags TEXT,
+                computed_at TEXT
+            )",
+            [],
+        )?;
+
         // Skipped files tracking
         tx.execute(
             "CREATE TABLE IF NOT EXISTS skipped_files (

@@ -6,9 +6,11 @@
 mod lexical;
 mod persona;
 mod semantic;
+mod structural;
 mod temporal;
 
 pub(crate) use lexical::LexicalOracle;
 pub(crate) use persona::PersonaOracle;
 pub(crate) use semantic::SemanticOracle;
+pub(crate) use structural::StructuralOracle;
 pub(crate) use temporal::TemporalOracle;

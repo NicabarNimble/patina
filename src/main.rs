@@ -455,6 +455,12 @@ enum AssayCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Compute structural signals for all modules (is_used, activity, centrality)
+    Derive {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Common arguments for all scrape subcommands
@@ -1031,6 +1037,14 @@ fn main() -> Result<()> {
                     query_type: commands::assay::QueryType::Callees,
                     pattern: Some(function),
                     limit,
+                    json,
+                    repo,
+                    all_repos,
+                },
+                Some(AssayCommands::Derive { json }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Derive,
+                    pattern: None,
+                    limit: 0,
                     json,
                     repo,
                     all_repos,
