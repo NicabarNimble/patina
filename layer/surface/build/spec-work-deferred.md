@@ -204,6 +204,60 @@ binary embedded templates  →  ~/.patina/adapters/  →  all registered project
 
 ---
 
+## Experiments (Tried and Removed)
+
+Work that was implemented, tested, and removed because results didn't support the hypothesis.
+
+### Structural Boost Layer + StructuralOracle
+
+| Field | Value |
+|-------|-------|
+| **Origin** | Phase 1-2 (Assay Signals → Fusion Integration) |
+| **Spec** | `spec-robust-signals.md` |
+| **Why removed** | Structural priors don't improve relevance queries; doc_id mismatch prevented fusion |
+| **When to revisit** | When implementing query-type routing |
+
+**Two things were tried and removed:**
+
+1. **StructuralOracle** (~170 lines, `src/retrieval/oracles/structural.rs`)
+   - Queried module_signals table, returned files ranked by composite_score
+   - **Design bug:** returned file-level doc_ids (`./src/main.rs`) when other oracles return symbol-level (`./src/main.rs::fn:main`)
+   - RRF fusion can't merge different doc_id granularities
+
+2. **Boost Layer** (~120 lines, `src/retrieval/engine.rs`)
+   - Workaround for doc_id mismatch: multiply RRF scores by structural boost
+   - Formula: `boosted_score = rrf_score × (1 + boost_factor × composite_score)`
+   - Results: 0.1 neutral, 0.5 regression
+
+**Key lesson:**
+```
+Structural signals are priors (importance), not relevance signals.
+```
+
+- Structural signals = P(doc) — "how important is this file in general?"
+- Semantic retrieval = P(doc|query) — "how relevant is this to the query?"
+- Priors help when relevance is uncertain; they add noise when semantic match is clear
+- "Where is X?" queries have clear semantic matches → prior adds noise
+
+**What's preserved:**
+- Signal computation: `patina assay derive` (commit_count, is_entry_point, etc.)
+- Signal query: `patina assay --query-type derive` via MCP
+- module_signals table in database
+
+**Rebuild plan (when query routing exists):**
+
+| Approach | Use Case | Design |
+|----------|----------|--------|
+| **Orientation mode** | "What's important in this module?" | StructuralOracle as primary, file-level doc_ids OK |
+| **Tie-break mode** | "Where is X?" with ambiguous results | Structural features rerank top-N semantic candidates |
+
+**Blockers before rebuild:**
+1. Query-type router (detect orientation vs. targeted intent)
+2. Explicit fusion level decision (file vs. symbol)
+3. Tie-break semantics (only when top candidates are within margin)
+
+---
+
 ## Scope Cuts (Recent)
 
 Work cut from recent phases to focus on audit.
