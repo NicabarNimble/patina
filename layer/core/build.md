@@ -1,6 +1,8 @@
 # Build Recipe
 
-**Current Phase:** Pipeline Architecture - scry as unified oracle
+**Status:** Phase 1.5 signals complete (MRR 0.554). Phase 2 boost tried and removed — structural priors don't help relevance queries. Signals available via `assay derive`.
+
+**Current Direction:** Observable Scry — make scry explainable, steerable, and instrumented. See [spec-observable-scry.md](../surface/build/spec-observable-scry.md).
 
 ---
 
@@ -65,6 +67,7 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 Active specs:
 
+- [spec-observable-scry.md](../surface/build/spec-observable-scry.md) - **Current:** Make scry explainable, steerable, instrumented
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
 - [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
@@ -82,103 +85,17 @@ Future specs (not yet planned):
 
 ---
 
-## Current Work: Assay Signals
-
-**Goal:** Add structural signal preparation to assay, wire into scry as StructuralOracle.
-
-**Spec:** [spec-pipeline.md](../surface/build/spec-pipeline.md)
-
-### Context
-
-Audit of Patina architecture revealed missing ORGANIZE stage. We go scrape → scry, skipping derived signals. Assay currently queries raw facts; it should also prepare signals (health, activity, centrality, staleness) that scry can fuse with semantic results.
-
-### Tasks
-
-| Task | Status |
-|------|--------|
-| Write spec-pipeline.md | [x] |
-| Add signal tables to schema | [x] |
-| Implement `assay derive` subcommand | [x] |
-| Compute health signal (importer_count, is_used) | [x] |
-| Compute activity signal (commits/week, contributors) | [x] |
-| Add StructuralOracle to scry | [x] |
-| Wire signals into RRF fusion | [x] |
-| Update MCP tool descriptions | [x] |
-
-### Signals to Compute
-
-| Signal | Source | Formula |
-|--------|--------|---------|
-| `is_used` | import_facts | importer_count > 0 OR is_entry_point |
-| `activity_level` | co_changes, git | commits in last N days |
-| `core_contributors` | git history | top authors by commit count |
-| `centrality` | call_graph | PageRank or degree centrality |
-| `staleness` | cross-reference | contradicts CI, references deleted things |
-
-### Validation
-
-| Criteria | Status |
-|----------|--------|
-| `patina assay derive` computes signals | [x] |
-| Signals queryable via `patina assay` | [x] |
-| scry includes structural signals in fusion | [x] |
-| Lab metrics (eval/bench) show improvement | [ ] |
-
----
-
-## Next: Phase 1.5 - Robust Signals
-
-**Goal:** Add language-agnostic signals that work reliably across different repos.
-
-**Spec:** [spec-robust-signals.md](../surface/build/spec-robust-signals.md) (to be written)
-
-### ML/RL Insight
-
-We're building a retrieval re-ranking system. Structural signals are **priors** - query-independent importance scores (like PageRank for code).
-
-**Key insight:** We don't need *accurate* features. We need features that are:
-- Correlated with usefulness
-- Robust across repos/languages
-- Cheap to compute
-
-`importer_count` is ~60% accurate due to relative imports, language-specific syntax. That's fine - it's a weak signal. The fix isn't to make it accurate; it's to **add more weak signals** and let ensemble/fusion combine them.
-
-### Signal Reliability Matrix
-
-| Signal | Accuracy | Language-agnostic | Status |
-|--------|----------|-------------------|--------|
-| `importer_count` | ~60% | No | [x] Have (noisy, accept it) |
-| `activity_level` | ~90% | Yes | [x] Have |
-| `commit_count` | ~95% | Yes | [ ] Add |
-| `contributor_count` | ~95% | Yes | [ ] Add |
-| `is_entry_point` | ~99% | Yes | [ ] Add |
-| `file_size_rank` | ~99% | Yes | [ ] Add |
-| `directory_depth` | ~99% | Yes | [ ] Add |
-
-### Tasks
-
-| Task | Status |
-|------|--------|
-| Add `commit_count` to module_signals | [ ] |
-| Add `contributor_count` to module_signals | [ ] |
-| Add `is_entry_point` detection (main.rs, index.ts, __init__.py) | [ ] |
-| Normalize all signals to 0-1 range | [ ] |
-| Update StructuralOracle to use composite score | [ ] |
-| Re-run lab metrics, compare to baseline (MRR 0.542) | [ ] |
-
-### Design Principle
-
-```
-Many weak signals > One accurate signal
-```
-
-Let Phase 3 (learned weights) figure out which signals matter for which repos. Don't over-engineer individual signal accuracy.
-
----
-
 ## Completed
 
-Shipped phases (details preserved in git tags):
+Shipped phases (details preserved in git tags and specs):
+
+### Structural Signals (Phase 1 → 1.5 → 2)
+
+Added structural signal computation to assay (`assay derive`): is_used, importer_count, activity_level, centrality, commit_count, contributor_count, is_entry_point, is_test_file, directory_depth, file_size_rank. Achieved MRR 0.554 (+2.2% from baseline).
+
+Phase 2 experiment: tried boosting RRF scores with structural priors. Result: no improvement for relevance queries. Boost layer removed. Key lesson: structural signals are priors (importance), not relevance signals. Useful for orientation queries, not "where is X" queries.
+
+**Spec:** [spec-robust-signals.md](../surface/build/spec-robust-signals.md), [spec-work-deferred.md](../surface/build/spec-work-deferred.md)
 
 ### Assay Command (Phase 0)
 Structural query interface for codebase facts. Inventory, imports/importers, callers/callees queries. MCP tool integration. Reduces 40+ shell calls to 1-3 patina commands.
