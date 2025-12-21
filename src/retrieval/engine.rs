@@ -9,9 +9,7 @@ use std::path::Path;
 
 use super::fusion::{rrf_fuse, FusedResult};
 use super::oracle::Oracle;
-use super::oracles::{
-    LexicalOracle, PersonaOracle, SemanticOracle, StructuralOracle, TemporalOracle,
-};
+use super::oracles::{LexicalOracle, PersonaOracle, SemanticOracle, TemporalOracle};
 
 /// Retrieval configuration for QueryEngine
 ///
@@ -66,11 +64,11 @@ impl QueryEngine {
 
     /// Create engine with custom retrieval config
     pub fn with_config(config: RetrievalConfig) -> Self {
+        // Oracles for retrieval - structural signals available via `assay` tool directly
         let oracles: Vec<Box<dyn Oracle>> = vec![
             Box::new(SemanticOracle::new()),
             Box::new(LexicalOracle::new()),
             Box::new(TemporalOracle::new()),
-            Box::new(StructuralOracle::new()),
             Box::new(PersonaOracle::new()),
         ];
 
@@ -117,7 +115,6 @@ impl QueryEngine {
             Box::new(SemanticOracle::new()),
             Box::new(LexicalOracle::with_options(include_issues)),
             Box::new(TemporalOracle::new()),
-            Box::new(StructuralOracle::new()),
             Box::new(PersonaOracle::new()),
         ]
     }
@@ -306,7 +303,6 @@ impl QueryEngine {
             Box::new(SemanticOracle::new()),
             Box::new(LexicalOracle::with_options(include_issues)),
             Box::new(TemporalOracle::new()),
-            Box::new(StructuralOracle::new()),
         ];
 
         let fetch_limit = limit * self.config.fetch_multiplier;
