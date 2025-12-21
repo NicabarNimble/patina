@@ -1,8 +1,21 @@
 # Spec: Robust Signals (Phase 1.5)
 
-**Status:** Planned
+**Status:** Complete
 **Parent:** [build.md](../../core/build.md)
 **Depends on:** Phase 1 (Assay Signals) - complete
+
+## Results
+
+**Signals implemented:** commit_count, contributor_count, is_entry_point, is_test_file, directory_depth, file_size_rank
+
+**Phase 1.5 metrics:** MRR 0.554 (+2.2% from 0.542 baseline), Recall@5 42.7%
+
+**Phase 2 boost experiment:**
+- Tried multiplying RRF scores by `(1 + boost_factor × composite_score)`
+- boost_factor 0.1: neutral, boost_factor 0.5: regression
+- **Boost layer removed** — structural priors don't improve relevance queries
+
+**Key learning:** Structural signals are priors (importance), not relevance signals. Boosting RRF scores with importance priors helps only when relevance is uncertain. For "where is X" queries, semantic match is clear; priors add noise.
 
 ## Problem
 
@@ -112,23 +125,33 @@ let importance =
 
 ## Validation
 
-| Metric | Baseline (Phase 1) | Target |
-|--------|-------------------|--------|
-| MRR | 0.542 | 0.60+ |
-| Recall@5 | 42.7% | 50%+ |
+| Metric | Baseline | Target | Actual |
+|--------|----------|--------|--------|
+| MRR | 0.542 | 0.60+ | 0.554 |
+| Recall@5 | 42.7% | 50%+ | 42.7% |
+
+Targets not met. Analysis revealed fundamental mismatch: structural priors don't improve relevance queries.
 
 ## Implementation Steps
 
-1. Add new columns to module_signals schema
-2. Update `assay derive` to compute new signals
-3. Add normalization pass after all signals computed
-4. Update StructuralOracle to use composite importance score
-5. Re-run `patina bench retrieval` and compare
+1. [x] Add new columns to module_signals schema
+2. [x] Update `assay derive` to compute new signals
+3. [x] Add normalization pass after all signals computed
+4. [x] Update StructuralOracle to use composite importance score
+5. [x] Re-run `patina bench retrieval` and compare
+6. [x] Phase 2: Try boost layer (multiply RRF scores by composite)
+7. [x] Phase 2: Remove boost layer after experiment showed no benefit
 
-## Design Principle
+## Design Principles
 
 ```
 Many weak signals > One accurate signal
 ```
 
-Don't over-engineer individual signal accuracy. Let Phase 3 (learned fusion weights) figure out what matters for each repo.
+Signals are useful when exposed directly (via `assay derive`), not when silently injected into relevance queries.
+
+```
+Priors ≠ Relevance
+```
+
+Structural signals measure importance (P(doc)). Semantic retrieval measures relevance (P(doc|query)). Multiplying priors into relevance only helps when relevance is uncertain.
