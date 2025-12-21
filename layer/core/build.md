@@ -1,6 +1,8 @@
 # Build Recipe
 
-**Current Phase:** Pipeline Architecture - scry as unified oracle
+**Status:** Phase 1.5 signals complete (MRR 0.554). Phase 2 boost tried and removed — structural priors don't help relevance queries. Signals available via `assay derive`.
+
+**Current Direction:** Observable Scry — make scry explainable, steerable, and instrumented. See [spec-observable-scry.md](../surface/build/spec-observable-scry.md).
 
 ---
 
@@ -65,6 +67,7 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 Active specs:
 
+- [spec-observable-scry.md](../surface/build/spec-observable-scry.md) - **Current:** Make scry explainable, steerable, instrumented
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
 - [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
@@ -82,53 +85,17 @@ Future specs (not yet planned):
 
 ---
 
-## Current Work: Assay Signals
-
-**Goal:** Add structural signal preparation to assay, wire into scry as StructuralOracle.
-
-**Spec:** [spec-pipeline.md](../surface/build/spec-pipeline.md)
-
-### Context
-
-Audit of Patina architecture revealed missing ORGANIZE stage. We go scrape → scry, skipping derived signals. Assay currently queries raw facts; it should also prepare signals (health, activity, centrality, staleness) that scry can fuse with semantic results.
-
-### Tasks
-
-| Task | Status |
-|------|--------|
-| Write spec-pipeline.md | [x] |
-| Add signal tables to schema | [x] |
-| Implement `assay derive` subcommand | [x] |
-| Compute health signal (importer_count, is_used) | [x] |
-| Compute activity signal (commits/week, contributors) | [x] |
-| Add StructuralOracle to scry | [x] |
-| Wire signals into RRF fusion | [x] |
-| Update MCP tool descriptions | [x] |
-
-### Signals to Compute
-
-| Signal | Source | Formula |
-|--------|--------|---------|
-| `is_used` | import_facts | importer_count > 0 OR is_entry_point |
-| `activity_level` | co_changes, git | commits in last N days |
-| `core_contributors` | git history | top authors by commit count |
-| `centrality` | call_graph | PageRank or degree centrality |
-| `staleness` | cross-reference | contradicts CI, references deleted things |
-
-### Validation
-
-| Criteria | Status |
-|----------|--------|
-| `patina assay derive` computes signals | [x] |
-| Signals queryable via `patina assay` | [x] |
-| scry includes structural signals in fusion | [x] |
-| Lab metrics (eval/bench) show improvement | [ ] |
-
----
-
 ## Completed
 
-Shipped phases (details preserved in git tags):
+Shipped phases (details preserved in git tags and specs):
+
+### Structural Signals (Phase 1 → 1.5 → 2)
+
+Added structural signal computation to assay (`assay derive`): is_used, importer_count, activity_level, centrality, commit_count, contributor_count, is_entry_point, is_test_file, directory_depth, file_size_rank. Achieved MRR 0.554 (+2.2% from baseline).
+
+Phase 2 experiment: tried boosting RRF scores with structural priors. Result: no improvement for relevance queries. Boost layer removed. Key lesson: structural signals are priors (importance), not relevance signals. Useful for orientation queries, not "where is X" queries.
+
+**Spec:** [spec-robust-signals.md](../surface/build/spec-robust-signals.md), [spec-work-deferred.md](../surface/build/spec-work-deferred.md)
 
 ### Assay Command (Phase 0)
 Structural query interface for codebase facts. Inventory, imports/importers, callers/callees queries. MCP tool integration. Reduces 40+ shell calls to 1-3 patina commands.
