@@ -307,22 +307,22 @@ fn ensure_on_patina_branch() -> Result<BranchAction> {
 
     // Already on patina?
     if current == "patina" {
-        // Check if behind main and auto-rebase
-        let default = git::default_branch()?;
-
         // Try to fetch to get latest
         let _ = git::fetch("origin"); // Ignore fetch errors (might be offline)
 
-        let behind = git::commits_behind("patina", &format!("origin/{}", default)).unwrap_or(0);
+        // Check if behind origin/patina (not main!) and auto-rebase
+        // Rebasing onto main was wrong - it linearizes history and breaks merges
+        // We only want to sync local patina with remote patina
+        let behind = git::commits_behind("patina", "origin/patina").unwrap_or(0);
 
         if behind > 0 {
             println!(
-                "\n📥 Patina branch is {} commits behind {}",
-                behind, default
+                "\n📥 Patina branch is {} commits behind origin/patina",
+                behind
             );
-            println!("   Rebasing onto {}...", default);
+            println!("   Rebasing onto origin/patina...");
 
-            if git::rebase(&format!("origin/{}", default))? {
+            if git::rebase("origin/patina")? {
                 println!("   ✓ Rebased ({} commits)", behind);
                 return Ok(BranchAction::Rebased { _commits: behind });
             } else {
