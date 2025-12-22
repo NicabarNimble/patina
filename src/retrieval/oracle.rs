@@ -14,6 +14,10 @@ pub struct OracleResult {
     pub content: String,
     /// Source oracle name
     pub source: &'static str,
+    /// Raw score from this oracle (scale varies by oracle type)
+    pub score: f32,
+    /// Type of score for interpretation (cosine, bm25, co_change_count)
+    pub score_type: &'static str,
     /// Additional metadata
     pub metadata: OracleMetadata,
 }
@@ -24,6 +28,8 @@ pub struct OracleMetadata {
     pub file_path: Option<String>,
     pub timestamp: Option<String>,
     pub event_type: Option<String>,
+    /// Lexical matches (keywords that matched)
+    pub matches: Option<Vec<String>>,
 }
 
 /// Oracle interface - each retrieval dimension implements this
