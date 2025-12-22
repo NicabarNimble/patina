@@ -730,11 +730,36 @@ fn format_results(results: &[FusedResult]) -> String {
 
     let mut output = String::new();
     for (i, result) in results.iter().enumerate() {
-        // Header: rank, sources, score
+        // Header: rank, sources with ranks, fused score
+        let mut contributions_str: String = result
+            .contributions
+            .iter()
+            .map(|(name, c)| {
+                let score_display = match c.score_type {
+                    "co_change_count" => format!("co-changes: {}", c.raw_score as i32),
+                    "bm25" => format!("{:.1} BM25", c.raw_score),
+                    _ => format!("{:.2}", c.raw_score),
+                };
+                format!("{} #{} ({})", name, c.rank, score_display)
+            })
+            .collect::<Vec<_>>()
+            .join(" | ");
+
+        // Add structural annotations if available
+        let ann = &result.annotations;
+        if let Some(count) = ann.importer_count {
+            if count > 0 {
+                contributions_str.push_str(&format!(" | imp {}", count));
+            }
+        }
+        if let Some(true) = ann.is_entry_point {
+            contributions_str.push_str(" | entry");
+        }
+
         output.push_str(&format!(
             "{}. [{}] (score: {:.3})",
             i + 1,
-            result.sources.join("+"),
+            contributions_str,
             result.fused_score
         ));
 
