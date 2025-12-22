@@ -232,6 +232,10 @@ enum Commands {
         /// Use hybrid search (fuse all oracles via RRF)
         #[arg(long)]
         hybrid: bool,
+
+        /// Show detailed oracle contributions for each result
+        #[arg(long)]
+        explain: bool,
     },
 
     /// Evaluate retrieval quality across dimensions
@@ -814,6 +818,7 @@ fn main() -> Result<()> {
             include_issues,
             no_persona,
             hybrid,
+            explain,
         }) => {
             let options = commands::scry::ScryOptions {
                 limit,
@@ -825,6 +830,7 @@ fn main() -> Result<()> {
                 include_issues,
                 include_persona: !no_persona,
                 hybrid,
+                explain,
             };
             commands::scry::execute(query.as_deref(), options)?;
         }

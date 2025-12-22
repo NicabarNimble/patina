@@ -41,6 +41,7 @@ pub struct ScryOptions {
     pub include_issues: bool,
     pub include_persona: bool,
     pub hybrid: bool,
+    pub explain: bool,
 }
 
 impl Default for ScryOptions {
@@ -55,6 +56,7 @@ impl Default for ScryOptions {
             include_issues: false,
             include_persona: true, // Include persona by default
             hybrid: false,
+            explain: false,
         }
     }
 }
@@ -995,19 +997,83 @@ fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> {
     println!("{}", "─".repeat(60));
 
     for (i, result) in results.iter().enumerate() {
-        // Format sources (which oracles contributed)
-        let sources_str = result.sources.join("+");
         let event_type = result.metadata.event_type.as_deref().unwrap_or("unknown");
 
-        println!(
-            "\n[{}] [{}] (score: {:.3}) {} ({})",
-            i + 1,
-            sources_str,
-            result.fused_score,
-            result.doc_id,
-            event_type
-        );
-        println!("    {}", truncate_content(&result.content, 200));
+        if options.explain {
+            // Detailed output with per-oracle contributions
+            println!("\n{}. {} ({})", i + 1, result.doc_id, event_type);
+
+            // Show each oracle's contribution
+            for (oracle_name, contrib) in &result.contributions {
+                let score_display = match contrib.score_type {
+                    "co_change_count" => format!("co-changes: {}", contrib.raw_score as i32),
+                    "bm25" => format!("{:.1} BM25", contrib.raw_score),
+                    _ => format!("{:.2} {}", contrib.raw_score, contrib.score_type),
+                };
+
+                let matches_display = if let Some(ref matches) = contrib.matches {
+                    if !matches.is_empty() {
+                        format!(" matched: {}", matches.join(", "))
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+
+                println!(
+                    "   {:>8}: #{} ({}){}",
+                    oracle_name, contrib.rank, score_display, matches_display
+                );
+            }
+
+            // Show structural annotations if available
+            let ann = &result.annotations;
+            if ann.importer_count.is_some() || ann.activity_level.is_some() {
+                let mut parts = Vec::new();
+                if let Some(count) = ann.importer_count {
+                    parts.push(format!("{} importers", count));
+                }
+                if let Some(ref level) = ann.activity_level {
+                    parts.push(format!("{} activity", level));
+                }
+                if let Some(true) = ann.is_entry_point {
+                    parts.push("entry_point".to_string());
+                }
+                if let Some(true) = ann.is_test_file {
+                    parts.push("test".to_string());
+                }
+                if !parts.is_empty() {
+                    println!("   Structural: {}", parts.join(", "));
+                }
+            }
+
+            println!("   Content: {}", truncate_content(&result.content, 150));
+        } else {
+            // Default concise output with ranks
+            let mut contributions_str: String = result
+                .contributions
+                .iter()
+                .map(|(name, c)| format!("{} #{}", &name[..3.min(name.len())], c.rank))
+                .collect::<Vec<_>>()
+                .join(" | ");
+
+            // Add importer count if available
+            if let Some(count) = result.annotations.importer_count {
+                if count > 0 {
+                    contributions_str.push_str(&format!(" | imp {}", count));
+                }
+            }
+
+            println!(
+                "\n[{}] {} (score: {:.3}) ({})",
+                i + 1,
+                result.doc_id,
+                result.fused_score,
+                contributions_str
+            );
+            println!("    {}", truncate_content(&result.content, 200));
+        }
     }
 
     println!("\n{}", "─".repeat(60));
