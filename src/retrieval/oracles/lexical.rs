@@ -40,12 +40,21 @@ impl Oracle for LexicalOracle {
         let results = scry_lexical(query, &options)?;
         let source = self.name();
 
+        // Extract query terms as matches (what we searched for)
+        let query_terms: Vec<String> = query
+            .split_whitespace()
+            .filter(|t| t.len() > 1)
+            .map(|t| t.to_string())
+            .collect();
+
         Ok(results
             .into_iter()
             .map(|r| OracleResult {
                 doc_id: r.source_id.clone(),
                 content: r.content,
                 source,
+                score: r.score,
+                score_type: "bm25",
                 metadata: OracleMetadata {
                     file_path: Some(r.source_id),
                     timestamp: if r.timestamp.is_empty() {
@@ -54,6 +63,7 @@ impl Oracle for LexicalOracle {
                         Some(r.timestamp)
                     },
                     event_type: Some(r.event_type),
+                    matches: Some(query_terms.clone()),
                 },
             })
             .collect())

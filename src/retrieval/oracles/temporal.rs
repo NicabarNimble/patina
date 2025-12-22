@@ -162,10 +162,13 @@ impl Oracle for TemporalOracle {
                     doc_id: r.file_path.clone(),
                     content,
                     source,
+                    score: r.co_change_count as f32,
+                    score_type: "co_change_count",
                     metadata: OracleMetadata {
                         file_path: Some(r.file_path),
                         timestamp: None,
                         event_type: Some("co-change".to_string()),
+                        matches: None,
                     },
                 }
             })
