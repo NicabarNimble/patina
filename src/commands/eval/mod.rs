@@ -142,6 +142,7 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
             include_issues: false,
             include_persona: false, // Eval doesn't need persona
             hybrid: false,
+            explain: false,
         };
 
         if let Ok(results) = scry(query, &options) {
@@ -245,6 +246,7 @@ fn eval_temporal_text(conn: &Connection) -> Result<EvalResults> {
             include_issues: false,
             include_persona: false,
             hybrid: false,
+            explain: false,
         };
 
         if let Ok(results) = scry(query, &options) {
@@ -340,6 +342,7 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
             include_issues: false,
             include_persona: false,
             hybrid: false,
+            explain: false,
         };
 
         if let Ok(results) = scry(&query, &options) {
