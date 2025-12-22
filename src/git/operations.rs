@@ -13,6 +13,16 @@ pub fn is_git_repo() -> Result<bool> {
     Ok(output.status.success())
 }
 
+/// Check if the repository has any commits
+pub fn has_commits() -> Result<bool> {
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .context("Failed to check for commits")?;
+
+    Ok(output.status.success())
+}
+
 /// Get the current branch name
 pub fn current_branch() -> Result<String> {
     let output = Command::new("git")
@@ -131,6 +141,23 @@ pub fn branch_rename(old: &str, new: &str) -> Result<()> {
     if !output.status.success() {
         anyhow::bail!(
             "Failed to rename branch: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    Ok(())
+}
+
+/// Rename the current branch (works even in empty repos with no commits)
+pub fn rename_current_branch(new_name: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["branch", "-m", new_name])
+        .output()
+        .context("Failed to rename current branch")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to rename current branch: {}",
             String::from_utf8_lossy(&output.stderr)
         );
     }
