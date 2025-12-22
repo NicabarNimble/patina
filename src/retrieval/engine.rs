@@ -5,9 +5,10 @@
 
 use anyhow::Result;
 use rayon::prelude::*;
+use rusqlite::Connection;
 use std::path::Path;
 
-use super::fusion::{rrf_fuse, FusedResult};
+use super::fusion::{rrf_fuse, FusedResult, StructuralAnnotations};
 use super::oracle::Oracle;
 use super::oracles::{LexicalOracle, PersonaOracle, SemanticOracle, TemporalOracle};
 
@@ -134,7 +135,12 @@ impl QueryEngine {
             .collect();
 
         // Fuse with RRF
-        Ok(rrf_fuse(oracle_results, self.config.rrf_k, limit))
+        let mut results = rrf_fuse(oracle_results, self.config.rrf_k, limit);
+
+        // Populate structural annotations from module_signals
+        populate_annotations(&mut results);
+
+        Ok(results)
     }
 
     /// Query local project with options (creates oracles with include_issues if needed)
@@ -157,7 +163,9 @@ impl QueryEngine {
                 .filter_map(|oracle| oracle.query(query, fetch_limit).ok())
                 .collect();
 
-            Ok(rrf_fuse(oracle_results, self.config.rrf_k, limit))
+            let mut results = rrf_fuse(oracle_results, self.config.rrf_k, limit);
+            populate_annotations(&mut results);
+            Ok(results)
         } else {
             self.query_local(query, limit)
         }
@@ -260,7 +268,10 @@ impl QueryEngine {
             repo_name.unwrap_or("unknown"),
             include_issues,
         )?;
-        Ok(rrf_fuse(results, self.config.rrf_k, limit))
+        let fused = rrf_fuse(results, self.config.rrf_k, limit);
+        // Note: annotations for external repos would need context switch
+        // For now, skip annotations for repo queries
+        Ok(fused)
     }
 
     /// Collect raw oracle results (before RRF) for local context
@@ -350,5 +361,90 @@ impl QueryEngine {
 impl Default for QueryEngine {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Populate structural annotations from module_signals table
+///
+/// Best-effort: if database or table doesn't exist, results are unchanged
+fn populate_annotations(results: &mut [FusedResult]) {
+    const DB_PATH: &str = ".patina/data/patina.db";
+
+    let conn = match Connection::open(DB_PATH) {
+        Ok(c) => c,
+        Err(_) => return, // No database, skip annotations
+    };
+
+    // Check if module_signals table exists
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='module_signals'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !table_exists {
+        return;
+    }
+
+    for result in results.iter_mut() {
+        // Extract file path from doc_id
+        // Handles: "./src/main.rs::fn:main" -> "./src/main.rs"
+        //          "src/main.rs" -> "src/main.rs"
+        //          "persona:direct:..." -> skip (no file)
+        let file_path = extract_file_path(&result.doc_id);
+
+        if file_path.is_empty() || file_path.starts_with("persona:") {
+            continue;
+        }
+
+        // Try to find module signals for this file
+        // Try with and without leading "./"
+        let paths_to_try = vec![
+            file_path.clone(),
+            file_path.trim_start_matches("./").to_string(),
+            format!("./{}", file_path.trim_start_matches("./")),
+        ];
+
+        for path in paths_to_try {
+            if let Ok(annotations) = conn.query_row(
+                "SELECT importer_count, activity_level, is_entry_point, is_test_file
+                 FROM module_signals WHERE path = ?",
+                [&path],
+                |row| {
+                    Ok(StructuralAnnotations {
+                        importer_count: row.get(0).ok(),
+                        activity_level: row.get(1).ok(),
+                        is_entry_point: row.get::<_, Option<i32>>(2).ok().flatten().map(|v| v != 0),
+                        is_test_file: row.get::<_, Option<i32>>(3).ok().flatten().map(|v| v != 0),
+                    })
+                },
+            ) {
+                result.annotations = annotations;
+                break;
+            }
+        }
+    }
+}
+
+/// Extract file path from doc_id
+///
+/// doc_id formats:
+/// - "./src/main.rs::fn:main" -> "./src/main.rs"
+/// - "./src/retrieval/fusion.rs::rrf_fuse:rrf_fuse" -> "./src/retrieval/fusion.rs"
+/// - "src/main.rs" -> "src/main.rs"
+/// - "persona:direct:2025-12-08" -> "persona:direct:2025-12-08" (no file, skip)
+fn extract_file_path(doc_id: &str) -> String {
+    // If starts with persona:, it's not a file
+    if doc_id.starts_with("persona:") {
+        return doc_id.to_string();
+    }
+
+    // Find :: which separates file path from symbol
+    if let Some(idx) = doc_id.find("::") {
+        doc_id[..idx].to_string()
+    } else {
+        doc_id.to_string()
     }
 }
