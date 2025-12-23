@@ -103,9 +103,17 @@ fn handle_list_tools(req: &Request) -> Response {
                             },
                             "mode": {
                                 "type": "string",
-                                "enum": ["find", "orient", "recent", "why"],
+                                "enum": ["find", "orient", "recent", "why", "use"],
                                 "default": "find",
-                                "description": "Query mode: 'find' (default), 'orient' (structural ranking), 'recent' (temporal ranking), 'why' (explain result)"
+                                "description": "Query mode: 'find' (default), 'orient' (structural ranking), 'recent' (temporal ranking), 'why' (explain result), 'use' (log result usage)"
+                            },
+                            "query_id": {
+                                "type": "string",
+                                "description": "Query ID for use mode (from previous scry response)"
+                            },
+                            "rank": {
+                                "type": "integer",
+                                "description": "Result rank for use mode (1-based)"
                             },
                             "path": {
                                 "type": "string",
@@ -274,6 +282,29 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
                     }
                 }
+                "use" => {
+                    // Phase 3: Log result usage from agent
+                    let query_id = args.get("query_id").and_then(|v| v.as_str()).unwrap_or("");
+                    let rank = args.get("rank").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+
+                    if query_id.is_empty() || rank == 0 {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "use mode requires 'query_id' and 'rank' parameters",
+                        );
+                    }
+
+                    match handle_use(query_id, rank) {
+                        Ok(text) => Response::success(
+                            req.id.clone(),
+                            serde_json::json!({
+                                "content": [{ "type": "text", "text": text }]
+                            }),
+                        ),
+                        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                    }
+                }
                 _ => {
                     // Default find mode
                     let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
@@ -303,7 +334,9 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
 
                     match engine.query_with_options(query, limit, &options) {
                         Ok(results) => {
-                            let text = format_results(&results);
+                            // Log query and get query_id for feedback loop (Phase 3)
+                            let query_id = log_mcp_query(query, "find", &results);
+                            let text = format_results_with_query_id(&results, query_id.as_deref());
                             Response::success(
                                 req.id.clone(),
                                 serde_json::json!({
@@ -806,6 +839,75 @@ fn execute_assay_all_repos(options: &AssayOptions) -> Result<String> {
     Ok(serde_json::to_string_pretty(&result)?)
 }
 
+/// Log an MCP query to the eventlog and return query_id (Phase 3)
+fn log_mcp_query(query: &str, mode: &str, results: &[FusedResult]) -> Option<String> {
+    use rusqlite::Connection;
+
+    const DB_PATH: &str = ".patina/data/patina.db";
+
+    // Get session_id from active session
+    let session_id = std::fs::read_to_string(".claude/context/active-session.md")
+        .ok()
+        .and_then(|content| {
+            content
+                .lines()
+                .find(|l| l.starts_with("**ID**:"))
+                .map(|l| l.replace("**ID**:", "").trim().to_string())
+        })?;
+
+    // Generate query_id
+    let now = chrono::Utc::now();
+    let random_suffix: String = (0..3)
+        .map(|_| (b'a' + fastrand::u8(0..26)) as char)
+        .collect();
+    let query_id = format!("q_{}_{}", now.format("%Y%m%d_%H%M%S"), random_suffix);
+
+    // Build results array for logging
+    let results_json: Vec<serde_json::Value> = results
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            serde_json::json!({
+                "doc_id": r.doc_id,
+                "score": r.fused_score,
+                "rank": i + 1,
+                "event_type": r.metadata.event_type
+            })
+        })
+        .collect();
+
+    let query_data = serde_json::json!({
+        "query": query,
+        "query_id": query_id,
+        "mode": mode,
+        "session_id": session_id,
+        "results": results_json
+    });
+
+    // Best-effort insert into eventlog
+    let conn = Connection::open(DB_PATH).ok()?;
+    let timestamp = now.to_rfc3339();
+    conn.execute(
+        "INSERT INTO eventlog (event_type, timestamp, source_id, data) VALUES (?, ?, ?, ?)",
+        rusqlite::params!["scry.query", timestamp, query_id, query_data.to_string()],
+    )
+    .ok()?;
+
+    Some(query_id)
+}
+
+/// Format results with query_id for feedback (Phase 3)
+fn format_results_with_query_id(results: &[FusedResult], query_id: Option<&str>) -> String {
+    let mut output = format_results(results);
+    if let Some(qid) = query_id {
+        output.push_str(&format!(
+            "\n---\nQuery ID: {} (use with scry mode='use' to log usage)\n",
+            qid
+        ));
+    }
+    output
+}
+
 fn format_results(results: &[FusedResult]) -> String {
     if results.is_empty() {
         return "No results found.".to_string();
@@ -1113,7 +1215,7 @@ fn handle_why(doc_id: &str, query: &str, engine: &QueryEngine) -> Result<String>
             );
 
             for (oracle_name, contrib) in &result.contributions {
-                let score_display = match contrib.score_type.as_ref() {
+                let score_display = match contrib.score_type {
                     "co_change_count" => format!("{} co-changes", contrib.raw_score as i32),
                     "bm25" => format!("{:.2} BM25", contrib.raw_score),
                     "cosine" => format!("{:.3} cosine", contrib.raw_score),
@@ -1249,6 +1351,69 @@ fn read_patterns(dir: &Path, topic: Option<&str>) -> Result<Vec<(String, String)
     // Sort by name for consistent output
     patterns.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(patterns)
+}
+
+/// Handle use mode - log result usage from agent (Phase 3 feedback)
+fn handle_use(query_id: &str, rank: usize) -> Result<String> {
+    use rusqlite::Connection;
+
+    const DB_PATH: &str = ".patina/data/patina.db";
+
+    let conn = Connection::open(DB_PATH)?;
+
+    // Get the query results to find the doc_id for this rank
+    let data: String = conn.query_row(
+        "SELECT data FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
+        [query_id],
+        |row| row.get(0),
+    )?;
+
+    let parsed: serde_json::Value = serde_json::from_str(&data)?;
+    let results = parsed["results"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("No results in query"))?;
+
+    if rank == 0 || rank > results.len() {
+        anyhow::bail!(
+            "Invalid rank {}. Query had {} results.",
+            rank,
+            results.len()
+        );
+    }
+
+    let doc_id = results[rank - 1]["doc_id"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+
+    // Get session_id from active session
+    let session_id = std::fs::read_to_string(".claude/context/active-session.md")
+        .ok()
+        .and_then(|content| {
+            content
+                .lines()
+                .find(|l| l.starts_with("**ID**:"))
+                .map(|l| l.replace("**ID**:", "").trim().to_string())
+        });
+
+    // Log the usage event
+    let use_data = serde_json::json!({
+        "query_id": query_id,
+        "result_used": doc_id,
+        "rank": rank,
+        "session_id": session_id
+    });
+
+    let timestamp = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO eventlog (event_type, timestamp, source_id, data) VALUES (?, ?, ?, ?)",
+        rusqlite::params!["scry.use", timestamp, query_id, use_data.to_string()],
+    )?;
+
+    Ok(format!(
+        "Usage logged: {} rank #{} ({})",
+        query_id, rank, doc_id
+    ))
 }
 
 /// Extract a summary from markdown content (skip frontmatter, get first paragraphs)
