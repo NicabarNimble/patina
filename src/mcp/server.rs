@@ -101,6 +101,16 @@ fn handle_list_tools(req: &Request) -> Response {
                                 "type": "string",
                                 "description": "Natural language question or code search query"
                             },
+                            "mode": {
+                                "type": "string",
+                                "enum": ["find", "orient"],
+                                "default": "find",
+                                "description": "Query mode: 'find' for relevance search (default), 'orient' for structural importance ranking of files in a directory"
+                            },
+                            "path": {
+                                "type": "string",
+                                "description": "Directory path for orient mode (e.g., 'src/retrieval/'). Required when mode is 'orient'"
+                            },
                             "limit": {
                                 "type": "integer",
                                 "description": "Maximum results to return (default: 10)",
@@ -121,7 +131,7 @@ fn handle_list_tools(req: &Request) -> Response {
                                 "default": false
                             }
                         },
-                        "required": ["query"]
+                        "required": []
                     }
                 },
                 {
@@ -194,43 +204,68 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
 
     match name {
         "scry" => {
-            let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            let mode = args.get("mode").and_then(|v| v.as_str()).unwrap_or("find");
             let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
-            let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
-            let all_repos = args
-                .get("all_repos")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            let include_issues = args
-                .get("include_issues")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
 
-            if query.is_empty() {
-                return Response::error(
-                    req.id.clone(),
-                    -32602,
-                    "Missing required parameter: query",
-                );
-            }
+            // Handle orient mode separately
+            if mode == "orient" {
+                let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                if path.is_empty() {
+                    return Response::error(
+                        req.id.clone(),
+                        -32602,
+                        "orient mode requires 'path' parameter",
+                    );
+                }
 
-            let options = QueryOptions {
-                repo,
-                all_repos,
-                include_issues,
-            };
-
-            match engine.query_with_options(query, limit, &options) {
-                Ok(results) => {
-                    let text = format_results(&results);
-                    Response::success(
+                match handle_orient(path, limit) {
+                    Ok(text) => Response::success(
                         req.id.clone(),
                         serde_json::json!({
                             "content": [{ "type": "text", "text": text }]
                         }),
-                    )
+                    ),
+                    Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
                 }
-                Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+            } else {
+                // Default find mode
+                let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+                let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
+                let all_repos = args
+                    .get("all_repos")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let include_issues = args
+                    .get("include_issues")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+
+                if query.is_empty() {
+                    return Response::error(
+                        req.id.clone(),
+                        -32602,
+                        "find mode requires 'query' parameter",
+                    );
+                }
+
+                let options = QueryOptions {
+                    repo,
+                    all_repos,
+                    include_issues,
+                };
+
+                match engine.query_with_options(query, limit, &options) {
+                    Ok(results) => {
+                        let text = format_results(&results);
+                        Response::success(
+                            req.id.clone(),
+                            serde_json::json!({
+                                "content": [{ "type": "text", "text": text }]
+                            }),
+                        )
+                    }
+                    Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                }
             }
         }
         "context" => {
@@ -789,6 +824,125 @@ fn format_results(results: &[FusedResult]) -> String {
         output.push_str("\n\n");
     }
     output
+}
+
+/// Handle orient mode - rank files in a directory by structural importance
+fn handle_orient(dir_path: &str, limit: usize) -> Result<String> {
+    use anyhow::Context;
+    use rusqlite::Connection;
+
+    let db_path = ".patina/data/patina.db";
+    let conn = Connection::open(db_path)
+        .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
+
+    // Check if module_signals table exists
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='module_signals'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !table_exists {
+        anyhow::bail!("module_signals table not found. Run 'patina assay derive' first.");
+    }
+
+    // Normalize path (ensure ./ prefix)
+    let normalized_path = dir_path.trim_end_matches('/');
+    let normalized_path = if normalized_path.starts_with("./") {
+        normalized_path.to_string()
+    } else {
+        format!("./{}", normalized_path)
+    };
+
+    // Query files ranked by structural composite score
+    let sql = "
+        SELECT
+            path,
+            COALESCE(is_entry_point, 0) * 20 +
+            MIN(COALESCE(importer_count, 0) * 2, 20) +
+            CASE COALESCE(activity_level, 'dormant')
+                WHEN 'high' THEN 10
+                WHEN 'medium' THEN 5
+                WHEN 'low' THEN 2
+                ELSE 0
+            END +
+            CASE
+                WHEN COALESCE(commit_count, 0) > 50 THEN 10
+                WHEN COALESCE(commit_count, 0) > 20 THEN 8
+                WHEN COALESCE(commit_count, 0) > 5 THEN 5
+                WHEN COALESCE(commit_count, 0) > 0 THEN 2
+                ELSE 0
+            END -
+            COALESCE(is_test_file, 0) * 5
+            AS composite_score,
+            COALESCE(importer_count, 0),
+            COALESCE(activity_level, 'unknown'),
+            COALESCE(is_entry_point, 0),
+            COALESCE(is_test_file, 0),
+            COALESCE(commit_count, 0)
+        FROM module_signals
+        WHERE path LIKE ?
+        ORDER BY composite_score DESC
+        LIMIT ?
+    ";
+
+    let pattern = format!("{}%", normalized_path);
+    let mut stmt = conn.prepare(sql)?;
+    let results: Vec<(String, f64, i64, String, bool, bool, i64)> = stmt
+        .query_map(rusqlite::params![pattern, limit as i64], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, f64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)? != 0,
+                row.get::<_, i64>(5)? != 0,
+                row.get::<_, i64>(6)?,
+            ))
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if results.is_empty() {
+        return Ok(format!(
+            "No files found in '{}' with structural signals.\n\nRun 'patina assay derive' to compute signals.",
+            dir_path
+        ));
+    }
+
+    let mut output = format!("# Orient: {} ({} files)\n\n", dir_path, results.len());
+
+    for (i, (path, score, importers, activity, is_entry, is_test, commits)) in
+        results.iter().enumerate()
+    {
+        let mut flags = Vec::new();
+        if *is_entry {
+            flags.push("entry_point");
+        }
+        if *is_test {
+            flags.push("test");
+        }
+        let flags_str = if flags.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", flags.join(", "))
+        };
+
+        output.push_str(&format!(
+            "{}. **{}** (score: {:.0})\n   {} importers | {} activity | {} commits{}\n\n",
+            i + 1,
+            path,
+            score,
+            importers,
+            activity,
+            commits,
+            flags_str
+        ));
+    }
+
+    Ok(output)
 }
 
 /// Get project context from the knowledge layer
