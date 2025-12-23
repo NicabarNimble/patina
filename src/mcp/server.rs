@@ -103,13 +103,22 @@ fn handle_list_tools(req: &Request) -> Response {
                             },
                             "mode": {
                                 "type": "string",
-                                "enum": ["find", "orient"],
+                                "enum": ["find", "orient", "recent", "why"],
                                 "default": "find",
-                                "description": "Query mode: 'find' for relevance search (default), 'orient' for structural importance ranking of files in a directory"
+                                "description": "Query mode: 'find' (default), 'orient' (structural ranking), 'recent' (temporal ranking), 'why' (explain result)"
                             },
                             "path": {
                                 "type": "string",
-                                "description": "Directory path for orient mode (e.g., 'src/retrieval/'). Required when mode is 'orient'"
+                                "description": "Directory path for orient mode (e.g., 'src/retrieval/')"
+                            },
+                            "days": {
+                                "type": "integer",
+                                "default": 7,
+                                "description": "Days to look back for recent mode (default: 7)"
+                            },
+                            "doc_id": {
+                                "type": "string",
+                                "description": "Document ID for why mode (e.g., 'src/retrieval/engine.rs')"
                             },
                             "limit": {
                                 "type": "integer",
@@ -207,64 +216,103 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
             let mode = args.get("mode").and_then(|v| v.as_str()).unwrap_or("find");
             let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
 
-            // Handle orient mode separately
-            if mode == "orient" {
-                let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
-                if path.is_empty() {
-                    return Response::error(
-                        req.id.clone(),
-                        -32602,
-                        "orient mode requires 'path' parameter",
-                    );
-                }
+            // Handle modes
+            match mode {
+                "orient" => {
+                    let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+                    if path.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "orient mode requires 'path' parameter",
+                        );
+                    }
 
-                match handle_orient(path, limit) {
-                    Ok(text) => Response::success(
-                        req.id.clone(),
-                        serde_json::json!({
-                            "content": [{ "type": "text", "text": text }]
-                        }),
-                    ),
-                    Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
-                }
-            } else {
-                // Default find mode
-                let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-                let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
-                let all_repos = args
-                    .get("all_repos")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                let include_issues = args
-                    .get("include_issues")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-
-                if query.is_empty() {
-                    return Response::error(
-                        req.id.clone(),
-                        -32602,
-                        "find mode requires 'query' parameter",
-                    );
-                }
-
-                let options = QueryOptions {
-                    repo,
-                    all_repos,
-                    include_issues,
-                };
-
-                match engine.query_with_options(query, limit, &options) {
-                    Ok(results) => {
-                        let text = format_results(&results);
-                        Response::success(
+                    match handle_orient(path, limit) {
+                        Ok(text) => Response::success(
                             req.id.clone(),
                             serde_json::json!({
                                 "content": [{ "type": "text", "text": text }]
                             }),
-                        )
+                        ),
+                        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
                     }
-                    Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                }
+                "recent" => {
+                    let query = args.get("query").and_then(|v| v.as_str());
+                    let days = args.get("days").and_then(|v| v.as_u64()).unwrap_or(7) as u32;
+
+                    match handle_recent(query, days, limit) {
+                        Ok(text) => Response::success(
+                            req.id.clone(),
+                            serde_json::json!({
+                                "content": [{ "type": "text", "text": text }]
+                            }),
+                        ),
+                        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                    }
+                }
+                "why" => {
+                    let doc_id = args.get("doc_id").and_then(|v| v.as_str()).unwrap_or("");
+                    let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+
+                    if doc_id.is_empty() || query.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "why mode requires 'doc_id' and 'query' parameters",
+                        );
+                    }
+
+                    match handle_why(doc_id, query, engine) {
+                        Ok(text) => Response::success(
+                            req.id.clone(),
+                            serde_json::json!({
+                                "content": [{ "type": "text", "text": text }]
+                            }),
+                        ),
+                        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                    }
+                }
+                _ => {
+                    // Default find mode
+                    let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+                    let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
+                    let all_repos = args
+                        .get("all_repos")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    let include_issues = args
+                        .get("include_issues")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+
+                    if query.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "find mode requires 'query' parameter",
+                        );
+                    }
+
+                    let options = QueryOptions {
+                        repo,
+                        all_repos,
+                        include_issues,
+                    };
+
+                    match engine.query_with_options(query, limit, &options) {
+                        Ok(results) => {
+                            let text = format_results(&results);
+                            Response::success(
+                                req.id.clone(),
+                                serde_json::json!({
+                                    "content": [{ "type": "text", "text": text }]
+                                }),
+                            )
+                        }
+                        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                    }
                 }
             }
         }
@@ -943,6 +991,165 @@ fn handle_orient(dir_path: &str, limit: usize) -> Result<String> {
     }
 
     Ok(output)
+}
+
+/// Handle recent mode - show recently changed files
+fn handle_recent(query: Option<&str>, days: u32, limit: usize) -> Result<String> {
+    use anyhow::Context;
+    use rusqlite::Connection;
+
+    let db_path = ".patina/data/patina.db";
+    let conn = Connection::open(db_path)
+        .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
+
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(days as i64);
+    let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
+
+    let sql = if query.is_some() {
+        "SELECT cf.file_path, c.timestamp, c.message, c.author_name
+         FROM commits c
+         JOIN commit_files cf ON c.sha = cf.sha
+         WHERE c.timestamp >= ? AND cf.file_path LIKE ?
+         ORDER BY c.timestamp DESC
+         LIMIT ?"
+    } else {
+        "SELECT cf.file_path, c.timestamp, c.message, c.author_name
+         FROM commits c
+         JOIN commit_files cf ON c.sha = cf.sha
+         WHERE c.timestamp >= ?
+         ORDER BY c.timestamp DESC
+         LIMIT ?"
+    };
+
+    let mut stmt = conn.prepare(sql)?;
+    let results: Vec<(String, String, String, String)> = if let Some(q) = query {
+        let pattern = format!("%{}%", q);
+        stmt.query_map(
+            rusqlite::params![cutoff_str, pattern, limit as i64 * 3],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            },
+        )?
+        .filter_map(|r| r.ok())
+        .collect()
+    } else {
+        stmt.query_map(rusqlite::params![cutoff_str, limit as i64 * 3], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?
+        .filter_map(|r| r.ok())
+        .collect()
+    };
+
+    if results.is_empty() {
+        return Ok(format!("No changes found in the last {} days.", days));
+    }
+
+    // Deduplicate
+    let mut seen = std::collections::HashSet::new();
+    let unique: Vec<_> = results
+        .into_iter()
+        .filter(|(path, _, _, _)| seen.insert(path.clone()))
+        .take(limit)
+        .collect();
+
+    let mut output = format!(
+        "# Recent Changes{} ({} days)\n\n",
+        query
+            .map(|q| format!(" matching '{}'", q))
+            .unwrap_or_default(),
+        days
+    );
+
+    for (i, (path, timestamp, message, author)) in unique.iter().enumerate() {
+        let date = timestamp.split('T').next().unwrap_or(timestamp);
+        let short_msg: String = message.chars().take(50).collect();
+        output.push_str(&format!(
+            "{}. **{}** ({})\n   {} - {}\n\n",
+            i + 1,
+            path,
+            date,
+            author,
+            if message.len() > 50 {
+                format!("{}...", short_msg)
+            } else {
+                short_msg
+            }
+        ));
+    }
+
+    Ok(output)
+}
+
+/// Handle why mode - explain a specific result
+fn handle_why(doc_id: &str, query: &str, engine: &QueryEngine) -> Result<String> {
+    let options = QueryOptions::default();
+    let results = engine.query_with_options(query, 50, &options)?;
+
+    let matching = results
+        .iter()
+        .find(|r| r.doc_id == doc_id || r.doc_id.ends_with(doc_id) || doc_id.ends_with(&r.doc_id));
+
+    match matching {
+        Some(result) => {
+            let rank = results
+                .iter()
+                .position(|r| r.doc_id == result.doc_id)
+                .unwrap_or(0)
+                + 1;
+
+            let mut output = format!(
+                "# Why: {}\n\nQuery: \"{}\"\nRank: #{}\nFused Score: {:.4}\n\n## Oracle Contributions\n\n",
+                result.doc_id, query, rank, result.fused_score
+            );
+
+            for (oracle_name, contrib) in &result.contributions {
+                let score_display = match contrib.score_type.as_ref() {
+                    "co_change_count" => format!("{} co-changes", contrib.raw_score as i32),
+                    "bm25" => format!("{:.2} BM25", contrib.raw_score),
+                    "cosine" => format!("{:.3} cosine", contrib.raw_score),
+                    _ => format!("{:.3} {}", contrib.raw_score, contrib.score_type),
+                };
+
+                output.push_str(&format!(
+                    "- **{}**: rank #{} ({})\n",
+                    oracle_name, contrib.rank, score_display
+                ));
+            }
+
+            let ann = &result.annotations;
+            if ann.importer_count.is_some() || ann.activity_level.is_some() {
+                output.push_str("\n## Structural Signals\n\n");
+                if let Some(count) = ann.importer_count {
+                    output.push_str(&format!("- Importers: {}\n", count));
+                }
+                if let Some(ref level) = ann.activity_level {
+                    output.push_str(&format!("- Activity: {}\n", level));
+                }
+            }
+
+            Ok(output)
+        }
+        None => {
+            let mut output = format!(
+                "'{}' not found in top 50 results for query \"{}\".\n\nTop 5 results:\n",
+                doc_id, query
+            );
+            for (i, r) in results.iter().take(5).enumerate() {
+                output.push_str(&format!("{}. {}\n", i + 1, r.doc_id));
+            }
+            Ok(output)
+        }
+    }
 }
 
 /// Get project context from the knowledge layer
