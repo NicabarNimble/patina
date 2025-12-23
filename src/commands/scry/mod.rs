@@ -148,7 +148,7 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     results.truncate(options.limit);
 
     // Log query for feedback loop (Phase 3)
-    if let Some(q) = query {
+    let query_id = if let Some(q) = query {
         let mode = if options.dimension.is_some() {
             options.dimension.as_deref().unwrap_or("semantic")
         } else if is_lexical_query(q) {
@@ -156,8 +156,10 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
         } else {
             "semantic"
         };
-        log_scry_query(q, mode, &results);
-    }
+        log_scry_query(q, mode, &results)
+    } else {
+        None
+    };
 
     if results.is_empty() {
         println!("No results found.");
@@ -185,6 +187,11 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     }
 
     println!("\n{}", "─".repeat(60));
+
+    // Show query_id for feedback commands
+    if let Some(ref qid) = query_id {
+        println!("\nQuery ID: {} (use with 'scry open/copy/feedback')", qid);
+    }
 
     Ok(())
 }
@@ -986,7 +993,7 @@ fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> {
             timestamp: String::new(),
         })
         .collect();
-    log_scry_query(query, "hybrid", &log_results);
+    let query_id = log_scry_query(query, "hybrid", &log_results);
 
     if results.is_empty() {
         println!("No results found.");
@@ -1077,6 +1084,11 @@ fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> {
     }
 
     println!("\n{}", "─".repeat(60));
+
+    // Show query_id for feedback commands
+    if let Some(ref qid) = query_id {
+        println!("\nQuery ID: {} (use with 'scry open/copy/feedback')", qid);
+    }
 
     Ok(())
 }
@@ -1292,6 +1304,20 @@ fn execute_via_mothership(query: Option<&str>, options: &ScryOptions) -> Result<
 // Feedback Loop Instrumentation (Phase 3)
 // ============================================================================
 
+use std::sync::Mutex;
+
+/// Last query ID for use by scry open/copy/feedback commands
+static LAST_QUERY_ID: Mutex<Option<String>> = Mutex::new(None);
+
+/// Generate a query ID in the format: q_YYYYMMDD_HHMMSS_xxx
+fn generate_query_id() -> String {
+    let now = chrono::Utc::now();
+    let random_suffix: String = (0..3)
+        .map(|_| (b'a' + fastrand::u8(0..26)) as char)
+        .collect();
+    format!("q_{}_{}", now.format("%Y%m%d_%H%M%S"), random_suffix)
+}
+
 /// Get the active session ID from .claude/context/active-session.md
 ///
 /// Returns None if no active session or file doesn't exist.
@@ -1309,11 +1335,11 @@ fn get_active_session_id() -> Option<String> {
 /// Log a scry query to the eventlog for feedback loop analysis
 ///
 /// Best-effort logging - failures are silently ignored to not disrupt scry.
-fn log_scry_query(query: &str, mode: &str, results: &[ScryResult]) {
-    let session_id = match get_active_session_id() {
-        Some(id) => id,
-        None => return, // No active session, skip logging
-    };
+/// Returns the query_id for reference by open/copy/feedback commands.
+fn log_scry_query(query: &str, mode: &str, results: &[ScryResult]) -> Option<String> {
+    let session_id = get_active_session_id()?;
+
+    let query_id = generate_query_id();
 
     // Build results array for logging
     let results_json: Vec<serde_json::Value> = results
@@ -1331,25 +1357,118 @@ fn log_scry_query(query: &str, mode: &str, results: &[ScryResult]) {
 
     let query_data = serde_json::json!({
         "query": query,
+        "query_id": query_id,
         "mode": mode,
         "session_id": session_id,
         "results": results_json
     });
 
     // Best-effort insert into eventlog
-    let _ = (|| -> Result<()> {
+    let insert_result = (|| -> Result<()> {
         let conn = Connection::open(database::PATINA_DB)?;
         let timestamp = chrono::Utc::now().to_rfc3339();
         database::insert_event(
             &conn,
             "scry.query",
             &timestamp,
-            &timestamp, // timestamp is unique enough for source_id
+            &query_id, // Use query_id as source_id for lookup
             None,
             &query_data.to_string(),
         )?;
         Ok(())
     })();
+
+    if insert_result.is_ok() {
+        // Store as last query for open/copy/feedback without explicit query_id
+        if let Ok(mut last) = LAST_QUERY_ID.lock() {
+            *last = Some(query_id.clone());
+        }
+        Some(query_id)
+    } else {
+        None
+    }
+}
+
+/// Log usage of a scry result (scry.use event)
+///
+/// Called by scry open, scry copy, and MCP callback.
+fn log_scry_use(query_id: &str, doc_id: &str, rank: usize) {
+    let session_id = get_active_session_id();
+
+    let use_data = serde_json::json!({
+        "query_id": query_id,
+        "result_used": doc_id,
+        "rank": rank,
+        "session_id": session_id
+    });
+
+    // Best-effort insert
+    let _ = (|| -> Result<()> {
+        let conn = Connection::open(database::PATINA_DB)?;
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        database::insert_event(
+            &conn,
+            "scry.use",
+            &timestamp,
+            query_id,
+            None,
+            &use_data.to_string(),
+        )?;
+        Ok(())
+    })();
+}
+
+/// Log explicit feedback on a scry result (scry.feedback event)
+fn log_scry_feedback(query_id: &str, signal: &str, comment: Option<&str>) {
+    let session_id = get_active_session_id();
+
+    let feedback_data = serde_json::json!({
+        "query_id": query_id,
+        "signal": signal,
+        "comment": comment,
+        "session_id": session_id
+    });
+
+    // Best-effort insert
+    let _ = (|| -> Result<()> {
+        let conn = Connection::open(database::PATINA_DB)?;
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        database::insert_event(
+            &conn,
+            "scry.feedback",
+            &timestamp,
+            query_id,
+            None,
+            &feedback_data.to_string(),
+        )?;
+        Ok(())
+    })();
+}
+
+/// Get results from a previous query by query_id
+fn get_query_results(query_id: &str) -> Result<Vec<(String, f32)>> {
+    let conn = Connection::open(database::PATINA_DB)?;
+
+    let data: String = conn.query_row(
+        "SELECT data FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
+        [query_id],
+        |row| row.get(0),
+    )?;
+
+    let parsed: serde_json::Value = serde_json::from_str(&data)?;
+    let results = parsed["results"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("No results in query"))?;
+
+    Ok(results
+        .iter()
+        .map(|r| {
+            (
+                r["doc_id"].as_str().unwrap_or("").to_string(),
+                r["score"].as_f64().unwrap_or(0.0) as f32,
+            )
+        })
+        .collect())
 }
 
 // ============================================================================
@@ -1664,7 +1783,7 @@ pub fn execute_why(doc_id: &str, query: &str) -> Result<()> {
             println!("\n## Oracle Contributions\n");
 
             for (oracle_name, contrib) in &result.contributions {
-                let score_display = match contrib.score_type.as_ref() {
+                let score_display = match contrib.score_type {
                     "co_change_count" => format!("{} co-changes", contrib.raw_score as i32),
                     "bm25" => format!("{:.2} BM25", contrib.raw_score),
                     "cosine" => format!("{:.3} cosine", contrib.raw_score),
@@ -1713,6 +1832,229 @@ pub fn execute_why(doc_id: &str, query: &str) -> Result<()> {
                 println!("  {}. {}", i + 1, r.doc_id);
             }
         }
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Scry Open - Open file and log usage (Phase 3)
+// ============================================================================
+
+/// Execute open subcommand - open a file from query results and log usage
+///
+/// From spec-observable-scry.md:
+/// - Opens file/location, logs usage automatically
+/// - Automatic capture (no user effort required)
+pub fn execute_open(query_id: &str, rank: usize) -> Result<()> {
+    println!(
+        "🔮 Scry Open - Opening result #{} from {}\n",
+        rank, query_id
+    );
+
+    // Get the results from the query
+    let results = get_query_results(query_id)
+        .with_context(|| format!("Query '{}' not found in eventlog", query_id))?;
+
+    if rank == 0 || rank > results.len() {
+        anyhow::bail!(
+            "Invalid rank {}. Query had {} results (1-{})",
+            rank,
+            results.len(),
+            results.len()
+        );
+    }
+
+    let (doc_id, _score) = &results[rank - 1];
+
+    // Log usage before opening
+    log_scry_use(query_id, doc_id, rank);
+
+    // Extract file path from doc_id (may be "file:function" or just "file")
+    let file_path = if doc_id.contains(':') {
+        doc_id.split(':').next().unwrap_or(doc_id)
+    } else {
+        doc_id.as_str()
+    };
+
+    // Check if file exists
+    if !std::path::Path::new(file_path).exists() {
+        println!("File not found: {}", file_path);
+        println!("(Usage logged for feedback analysis)");
+        return Ok(());
+    }
+
+    // Open the file using the system's default handler
+    println!("Opening: {}", file_path);
+    println!("Usage logged: {} rank #{}", query_id, rank);
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(file_path)
+            .spawn()
+            .with_context(|| format!("Failed to open {}", file_path))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(file_path)
+            .spawn()
+            .with_context(|| format!("Failed to open {}", file_path))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", file_path])
+            .spawn()
+            .with_context(|| format!("Failed to open {}", file_path))?;
+    }
+
+    Ok(())
+}
+
+// ============================================================================
+// Scry Copy - Copy to clipboard and log usage (Phase 3)
+// ============================================================================
+
+/// Execute copy subcommand - copy doc_id to clipboard and log usage
+///
+/// From spec-observable-scry.md:
+/// - Copies to clipboard, logs usage automatically
+/// - Automatic capture (no user effort required)
+pub fn execute_copy(query_id: &str, rank: usize) -> Result<()> {
+    println!(
+        "🔮 Scry Copy - Copying result #{} from {}\n",
+        rank, query_id
+    );
+
+    // Get the results from the query
+    let results = get_query_results(query_id)
+        .with_context(|| format!("Query '{}' not found in eventlog", query_id))?;
+
+    if rank == 0 || rank > results.len() {
+        anyhow::bail!(
+            "Invalid rank {}. Query had {} results (1-{})",
+            rank,
+            results.len(),
+            results.len()
+        );
+    }
+
+    let (doc_id, _score) = &results[rank - 1];
+
+    // Log usage before copying
+    log_scry_use(query_id, doc_id, rank);
+
+    // Copy to clipboard using platform-specific command
+    let copy_result = copy_to_clipboard(doc_id);
+
+    match copy_result {
+        Ok(()) => {
+            println!("Copied to clipboard: {}", doc_id);
+            println!("Usage logged: {} rank #{}", query_id, rank);
+        }
+        Err(e) => {
+            println!("Failed to copy to clipboard: {}", e);
+            println!("Document ID: {}", doc_id);
+            println!("(Usage still logged for feedback analysis)");
+        }
+    }
+
+    Ok(())
+}
+
+/// Copy text to system clipboard
+fn copy_to_clipboard(text: &str) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::io::Write;
+        let mut child = std::process::Command::new("pbcopy")
+            .stdin(std::process::Stdio::piped())
+            .spawn()?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(text.as_bytes())?;
+        }
+        child.wait()?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use std::io::Write;
+        // Try xclip first, then xsel
+        let result = std::process::Command::new("xclip")
+            .args(["-selection", "clipboard"])
+            .stdin(std::process::Stdio::piped())
+            .spawn();
+
+        let mut child = match result {
+            Ok(c) => c,
+            Err(_) => std::process::Command::new("xsel")
+                .args(["--clipboard", "--input"])
+                .stdin(std::process::Stdio::piped())
+                .spawn()?,
+        };
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(text.as_bytes())?;
+        }
+        child.wait()?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::io::Write;
+        let mut child = std::process::Command::new("cmd")
+            .args(["/C", "clip"])
+            .stdin(std::process::Stdio::piped())
+            .spawn()?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(text.as_bytes())?;
+        }
+        child.wait()?;
+        Ok(())
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        anyhow::bail!("Clipboard not supported on this platform");
+    }
+}
+
+// ============================================================================
+// Scry Feedback - Explicit rating (Phase 3)
+// ============================================================================
+
+/// Execute feedback subcommand - record explicit good/bad rating
+///
+/// From spec-observable-scry.md:
+/// - Optional explicit feedback (rare, but valuable)
+/// - Manual feedback supplements automatic usage capture
+pub fn execute_feedback(query_id: &str, signal: &str, comment: Option<&str>) -> Result<()> {
+    println!(
+        "🔮 Scry Feedback - Recording '{}' for {}\n",
+        signal, query_id
+    );
+
+    // Validate signal
+    if signal != "good" && signal != "bad" {
+        anyhow::bail!("Signal must be 'good' or 'bad', got '{}'", signal);
+    }
+
+    // Verify query exists
+    let _ = get_query_results(query_id)
+        .with_context(|| format!("Query '{}' not found in eventlog", query_id))?;
+
+    // Log the feedback
+    log_scry_feedback(query_id, signal, comment);
+
+    println!("Feedback recorded: {} = {}", query_id, signal);
+    if let Some(c) = comment {
+        println!("Comment: {}", c);
     }
 
     Ok(())
