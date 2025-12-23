@@ -67,7 +67,8 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 Active specs:
 
-- [spec-observable-scry.md](../surface/build/spec-observable-scry.md) - **Current:** Make scry explainable, steerable, instrumented
+- [spec-lab-automation.md](../surface/build/spec-lab-automation.md) - **Next:** Automated benchmarking, model comparison, metrics history
+- [spec-observable-scry.md](../surface/build/spec-observable-scry.md) - Phase 3 complete, gaps documented
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
 - [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
