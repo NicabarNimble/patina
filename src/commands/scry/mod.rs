@@ -1352,6 +1352,146 @@ fn log_scry_query(query: &str, mode: &str, results: &[ScryResult]) {
     })();
 }
 
+// ============================================================================
+// Scry Orient - Structural-first file ranking
+// ============================================================================
+
+/// Result from orient query
+#[derive(Debug)]
+pub struct OrientResult {
+    pub path: String,
+    pub score: f64,
+    pub importer_count: i64,
+    pub activity_level: String,
+    pub is_entry_point: bool,
+    pub is_test_file: bool,
+    pub commit_count: i64,
+}
+
+/// Execute orient subcommand - rank files by structural importance
+///
+/// From spec-observable-scry.md:
+/// - File-level outputs only (by design)
+/// - Ranked by structural composite score
+/// - Answers "what matters here?" not "where is X?"
+pub fn execute_orient(dir_path: &str, limit: usize) -> Result<()> {
+    println!("🔮 Scry Orient - What's important in {}\n", dir_path);
+
+    let conn = Connection::open(database::PATINA_DB)
+        .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
+
+    // Check if module_signals table exists
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='module_signals'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !table_exists {
+        anyhow::bail!("module_signals table not found. Run 'patina assay derive' first.");
+    }
+
+    // Normalize path for matching (strip trailing slash, ensure ./ prefix)
+    let normalized_path = dir_path.trim_end_matches('/');
+    let normalized_path = if normalized_path.starts_with("./") {
+        normalized_path.to_string()
+    } else {
+        format!("./{}", normalized_path)
+    };
+
+    // Query files in directory, compute composite score, rank
+    // Composite score formula:
+    // - is_entry_point: +20 (entry points are critical for orientation)
+    // - importer_count: +2 per importer (up to 20)
+    // - activity_level: high=10, medium=5, low=2, dormant=0
+    // - commit_count: tiered (1-5: +2, 6-20: +5, 21-50: +8, 51+: +10)
+    // - is_test_file: -5 (deprioritize tests for orientation)
+    let sql = "
+        SELECT
+            path,
+            COALESCE(is_entry_point, 0) * 20 +
+            MIN(COALESCE(importer_count, 0) * 2, 20) +
+            CASE COALESCE(activity_level, 'dormant')
+                WHEN 'high' THEN 10
+                WHEN 'medium' THEN 5
+                WHEN 'low' THEN 2
+                ELSE 0
+            END +
+            CASE
+                WHEN COALESCE(commit_count, 0) > 50 THEN 10
+                WHEN COALESCE(commit_count, 0) > 20 THEN 8
+                WHEN COALESCE(commit_count, 0) > 5 THEN 5
+                WHEN COALESCE(commit_count, 0) > 0 THEN 2
+                ELSE 0
+            END -
+            COALESCE(is_test_file, 0) * 5
+            AS composite_score,
+            COALESCE(importer_count, 0) as importer_count,
+            COALESCE(activity_level, 'unknown') as activity_level,
+            COALESCE(is_entry_point, 0) as is_entry_point,
+            COALESCE(is_test_file, 0) as is_test_file,
+            COALESCE(commit_count, 0) as commit_count
+        FROM module_signals
+        WHERE path LIKE ?
+        ORDER BY composite_score DESC
+        LIMIT ?
+    ";
+
+    let pattern = format!("{}%", normalized_path);
+    let mut stmt = conn.prepare(sql)?;
+    let results: Vec<OrientResult> = stmt
+        .query_map(rusqlite::params![pattern, limit as i64], |row| {
+            Ok(OrientResult {
+                path: row.get(0)?,
+                score: row.get(1)?,
+                importer_count: row.get(2)?,
+                activity_level: row.get(3)?,
+                is_entry_point: row.get::<_, i64>(4)? != 0,
+                is_test_file: row.get::<_, i64>(5)? != 0,
+                commit_count: row.get(6)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if results.is_empty() {
+        println!("No files found in '{}' with structural signals.", dir_path);
+        println!("\nHint: Run 'patina assay derive' to compute signals for all files.");
+        return Ok(());
+    }
+
+    println!("Mode: Structural (file-level importance)\n");
+    println!("Found {} files:\n", results.len());
+    println!("{}", "─".repeat(70));
+
+    for (i, result) in results.iter().enumerate() {
+        let mut flags = Vec::new();
+        if result.is_entry_point {
+            flags.push("entry_point");
+        }
+        if result.is_test_file {
+            flags.push("test");
+        }
+        let flags_str = if flags.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", flags.join(", "))
+        };
+
+        println!("\n[{}] {} (score: {:.0})", i + 1, result.path, result.score);
+        println!(
+            "    {} importers | {} activity | {} commits{}",
+            result.importer_count, result.activity_level, result.commit_count, flags_str
+        );
+    }
+
+    println!("\n{}", "─".repeat(70));
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

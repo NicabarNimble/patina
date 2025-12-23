@@ -194,11 +194,15 @@ enum Commands {
 
     /// Search knowledge base using vector similarity
     Scry {
+        #[command(subcommand)]
+        command: Option<ScryCommands>,
+
         /// Query text to search for (optional if --file is provided)
+        #[arg(conflicts_with = "command")]
         query: Option<String>,
 
         /// File path for temporal/dependency queries (e.g., src/auth.rs)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "command")]
         file: Option<String>,
 
         /// Maximum number of results (default: 10)
@@ -210,7 +214,7 @@ enum Commands {
         min_score: f32,
 
         /// Dimension to search (semantic, temporal, dependency)
-        #[arg(long, value_enum)]
+        #[arg(long, value_enum, conflicts_with = "command")]
         dimension: Option<Dimension>,
 
         /// Query a specific external repo (registered via 'patina repo')
@@ -230,7 +234,7 @@ enum Commands {
         no_persona: bool,
 
         /// Use hybrid search (fuse all oracles via RRF)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "command")]
         hybrid: bool,
 
         /// Show detailed oracle contributions for each result
@@ -541,6 +545,19 @@ enum BenchCommands {
 }
 
 #[derive(Subcommand)]
+enum ScryCommands {
+    /// Orient to a directory - show important files ranked by structural signals
+    Orient {
+        /// Directory path to orient (e.g., src/retrieval/)
+        path: String,
+
+        /// Maximum number of results (default: 10)
+        #[arg(long, default_value = "10")]
+        limit: usize,
+    },
+}
+
+#[derive(Subcommand)]
 enum EmbeddingsCommands {
     /// Generate embeddings for all beliefs and observations
     Generate {
@@ -808,6 +825,7 @@ fn main() -> Result<()> {
             commands::rebuild::execute(options)?;
         }
         Some(Commands::Scry {
+            command,
             query,
             file,
             limit,
@@ -820,19 +838,29 @@ fn main() -> Result<()> {
             hybrid,
             explain,
         }) => {
-            let options = commands::scry::ScryOptions {
-                limit,
-                min_score,
-                dimension: dimension.map(|d| d.as_str().to_string()),
-                file,
-                repo,
-                all_repos,
-                include_issues,
-                include_persona: !no_persona,
-                hybrid,
-                explain,
-            };
-            commands::scry::execute(query.as_deref(), options)?;
+            // Handle subcommands first
+            if let Some(subcmd) = command {
+                match subcmd {
+                    ScryCommands::Orient { path, limit } => {
+                        commands::scry::execute_orient(&path, limit)?;
+                    }
+                }
+            } else {
+                // Default behavior: query-based search
+                let options = commands::scry::ScryOptions {
+                    limit,
+                    min_score,
+                    dimension: dimension.map(|d| d.as_str().to_string()),
+                    file,
+                    repo,
+                    all_repos,
+                    include_issues,
+                    include_persona: !no_persona,
+                    hybrid,
+                    explain,
+                };
+                commands::scry::execute(query.as_deref(), options)?;
+            }
         }
         Some(Commands::Eval {
             dimension,
