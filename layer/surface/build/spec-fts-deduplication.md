@@ -1,6 +1,6 @@
 # Spec: FTS5 Deduplication
 
-**Status:** In progress - fix applied, decision pending on benchmark update
+**Status:** Phase 1 COMPLETE (ef6f59c5) | Phase 2 logged (#63)
 **Parent:** [build.md](../../core/build.md)
 **Origin:** Session 20251222-191614 (git archaeology of duplication bug)
 
