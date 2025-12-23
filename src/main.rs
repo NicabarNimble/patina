@@ -578,6 +578,37 @@ enum ScryCommands {
         /// The query that returned this result
         query: String,
     },
+
+    /// Open a result file and log usage (Phase 3 feedback)
+    Open {
+        /// Query ID from previous scry command
+        query_id: String,
+
+        /// Result rank to open (1-based)
+        rank: usize,
+    },
+
+    /// Copy a result to clipboard and log usage (Phase 3 feedback)
+    Copy {
+        /// Query ID from previous scry command
+        query_id: String,
+
+        /// Result rank to copy (1-based)
+        rank: usize,
+    },
+
+    /// Record explicit feedback on query results (Phase 3 feedback)
+    Feedback {
+        /// Query ID from previous scry command
+        query_id: String,
+
+        /// Feedback signal: "good" or "bad"
+        signal: String,
+
+        /// Optional comment explaining the feedback
+        #[arg(long)]
+        comment: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -872,6 +903,19 @@ fn main() -> Result<()> {
                     }
                     ScryCommands::Why { doc_id, query } => {
                         commands::scry::execute_why(&doc_id, &query)?;
+                    }
+                    ScryCommands::Open { query_id, rank } => {
+                        commands::scry::execute_open(&query_id, rank)?;
+                    }
+                    ScryCommands::Copy { query_id, rank } => {
+                        commands::scry::execute_copy(&query_id, rank)?;
+                    }
+                    ScryCommands::Feedback {
+                        query_id,
+                        signal,
+                        comment,
+                    } => {
+                        commands::scry::execute_feedback(&query_id, &signal, comment.as_deref())?;
                     }
                 }
             } else {
