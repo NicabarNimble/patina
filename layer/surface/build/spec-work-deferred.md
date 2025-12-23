@@ -284,6 +284,34 @@ Work cut from recent phases to focus on audit.
 
 ## Enhancements (Recent)
 
+### Assay Snapshot Subcommand
+
+| Field | Value |
+|-------|-------|
+| **Origin** | Phase 1 (Assay Command) |
+| **Spec** | `spec-assay.md` |
+| **Why deferred** | Phase 0 covers core use cases; snapshot is edge case for audits |
+| **When to revisit** | When doing systematic codebase audits |
+
+**Problem:** Current assay requires multiple queries to get full picture. Snapshot would combine structure + dependencies + git origin + usage in one query.
+
+**Proposed command:**
+```bash
+patina assay snapshot              # Holistic view
+patina assay snapshot --format markdown  # Audit-ready tables
+patina assay snapshot --with-origin      # Include git first-commit data
+```
+
+**Features:**
+- Combines inventory + imports + callers in one output
+- Flags unused modules (importer_count = 0)
+- Git archaeology with `--with-origin` (first commit, author)
+- Markdown output for audit docs
+
+**Value:** One command for full "ore analysis" instead of 6 separate queries. Nice-to-have, not blocking.
+
+---
+
 ### Per-Language Module Documentation Extraction
 
 | Field | Value |
