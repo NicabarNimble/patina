@@ -480,10 +480,12 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
             let event_type: String = row.get(3)?;
             let bm25_score: f64 = row.get(4)?;
 
+            // Use file_path directly - it's already source_id format (path::name)
+            // Don't append symbol again (was causing path::name:name doubling)
             let source_id = if event_type == "github.issue" {
                 format!("[ISSUE] {}", symbol)
             } else {
-                format!("{}:{}", file_path, symbol)
+                file_path.clone()
             };
 
             Ok(ScryResult {
@@ -827,7 +829,8 @@ fn enrich_results(
                             Ok(ScryResult {
                                 id: key,
                                 event_type: "code.function".to_string(),
-                                source_id: format!("{}:{}", file, name),
+                                // Use :: to match eventlog source_id format (path::name)
+                                source_id: format!("{}::{}", file, name),
                                 timestamp: String::new(),
                                 content: desc,
                                 score,
