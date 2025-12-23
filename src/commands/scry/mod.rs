@@ -1492,6 +1492,232 @@ pub fn execute_orient(dir_path: &str, limit: usize) -> Result<()> {
     Ok(())
 }
 
+// ============================================================================
+// Scry Recent - Temporal-first ranking
+// ============================================================================
+
+/// Execute recent subcommand - show recently changed files
+///
+/// From spec-observable-scry.md:
+/// - Temporal-first reranking
+/// - "What changed related to X?"
+pub fn execute_recent(query: Option<&str>, days: u32, limit: usize) -> Result<()> {
+    println!(
+        "🔮 Scry Recent - What changed{}\n",
+        query
+            .map(|q| format!(" related to '{}'", q))
+            .unwrap_or_default()
+    );
+
+    let conn = Connection::open(database::PATINA_DB)
+        .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
+
+    // Calculate cutoff date
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(days as i64);
+    let cutoff_str = cutoff.format("%Y-%m-%d").to_string();
+
+    // Query recent commits with file changes
+    let sql = if query.is_some() {
+        // Filter by query pattern in file path
+        "SELECT
+            cf.file_path,
+            c.timestamp,
+            c.message,
+            c.author_name,
+            COUNT(*) OVER (PARTITION BY cf.file_path) as change_count
+        FROM commits c
+        JOIN commit_files cf ON c.sha = cf.sha
+        WHERE c.timestamp >= ?
+          AND cf.file_path LIKE ?
+        ORDER BY c.timestamp DESC
+        LIMIT ?"
+    } else {
+        // All recent changes
+        "SELECT
+            cf.file_path,
+            c.timestamp,
+            c.message,
+            c.author_name,
+            COUNT(*) OVER (PARTITION BY cf.file_path) as change_count
+        FROM commits c
+        JOIN commit_files cf ON c.sha = cf.sha
+        WHERE c.timestamp >= ?
+        ORDER BY c.timestamp DESC
+        LIMIT ?"
+    };
+
+    let mut stmt = conn.prepare(sql)?;
+
+    let results: Vec<(String, String, String, String, i64)> = if let Some(q) = query {
+        let pattern = format!("%{}%", q);
+        stmt.query_map(
+            rusqlite::params![cutoff_str, pattern, limit as i64 * 3],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                ))
+            },
+        )?
+        .filter_map(|r| r.ok())
+        .collect()
+    } else {
+        stmt.query_map(rusqlite::params![cutoff_str, limit as i64 * 3], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?,
+            ))
+        })?
+        .filter_map(|r| r.ok())
+        .collect()
+    };
+
+    if results.is_empty() {
+        println!("No changes found in the last {} days.", days);
+        return Ok(());
+    }
+
+    // Deduplicate by file path, keeping most recent
+    let mut seen = std::collections::HashSet::new();
+    let unique_results: Vec<_> = results
+        .into_iter()
+        .filter(|(path, _, _, _, _)| seen.insert(path.clone()))
+        .take(limit)
+        .collect();
+
+    println!("Mode: Temporal (last {} days)\n", days);
+    println!(
+        "Found {} files with recent changes:\n",
+        unique_results.len()
+    );
+    println!("{}", "─".repeat(70));
+
+    for (i, (path, timestamp, message, author, _change_count)) in unique_results.iter().enumerate()
+    {
+        // Parse and format timestamp
+        let date = timestamp.split('T').next().unwrap_or(timestamp);
+        let short_msg: String = message.chars().take(50).collect();
+        let short_msg = if message.len() > 50 {
+            format!("{}...", short_msg)
+        } else {
+            short_msg
+        };
+
+        println!("\n[{}] {} ({})", i + 1, path, date);
+        println!("    {} - {}", author, short_msg);
+    }
+
+    println!("\n{}", "─".repeat(70));
+
+    Ok(())
+}
+
+// ============================================================================
+// Scry Why - Explain single result
+// ============================================================================
+
+/// Execute why subcommand - explain why a result was returned
+///
+/// From spec-observable-scry.md:
+/// - Explain single result provenance
+/// - Shows all oracle contributions for a specific doc
+pub fn execute_why(doc_id: &str, query: &str) -> Result<()> {
+    println!("🔮 Scry Why - Explaining '{}'\n", doc_id);
+    println!("Query: \"{}\"\n", query);
+
+    let engine = crate::retrieval::QueryEngine::new();
+    let options = crate::retrieval::QueryOptions::default();
+
+    // Run the query to get full results with contributions
+    let results = engine.query_with_options(query, 50, &options)?;
+
+    // Find the specific doc_id in results
+    let matching = results
+        .iter()
+        .find(|r| r.doc_id == doc_id || r.doc_id.ends_with(doc_id) || doc_id.ends_with(&r.doc_id));
+
+    match matching {
+        Some(result) => {
+            println!(
+                "Found in results at rank {}:\n",
+                results
+                    .iter()
+                    .position(|r| r.doc_id == result.doc_id)
+                    .unwrap_or(0)
+                    + 1
+            );
+            println!("{}", "─".repeat(60));
+
+            println!("\n**Document:** {}", result.doc_id);
+            println!("**Fused Score:** {:.4}", result.fused_score);
+            println!(
+                "**Type:** {}",
+                result.metadata.event_type.as_deref().unwrap_or("unknown")
+            );
+
+            println!("\n## Oracle Contributions\n");
+
+            for (oracle_name, contrib) in &result.contributions {
+                let score_display = match contrib.score_type.as_ref() {
+                    "co_change_count" => format!("{} co-changes", contrib.raw_score as i32),
+                    "bm25" => format!("{:.2} BM25", contrib.raw_score),
+                    "cosine" => format!("{:.3} cosine", contrib.raw_score),
+                    _ => format!("{:.3} {}", contrib.raw_score, contrib.score_type),
+                };
+
+                println!(
+                    "- **{}**: rank #{} ({})",
+                    oracle_name, contrib.rank, score_display
+                );
+
+                if let Some(ref matches) = contrib.matches {
+                    if !matches.is_empty() {
+                        println!("  - Matched terms: {}", matches.join(", "));
+                    }
+                }
+            }
+
+            // Show structural annotations if available
+            let ann = &result.annotations;
+            if ann.importer_count.is_some() || ann.activity_level.is_some() {
+                println!("\n## Structural Signals\n");
+                if let Some(count) = ann.importer_count {
+                    println!("- Importers: {}", count);
+                }
+                if let Some(ref level) = ann.activity_level {
+                    println!("- Activity: {}", level);
+                }
+                if let Some(true) = ann.is_entry_point {
+                    println!("- Entry point: yes");
+                }
+                if let Some(true) = ann.is_test_file {
+                    println!("- Test file: yes");
+                }
+            }
+
+            println!("\n## Content Preview\n");
+            println!("{}", truncate_content(&result.content, 300));
+
+            println!("\n{}", "─".repeat(60));
+        }
+        None => {
+            println!("'{}' not found in top 50 results for this query.", doc_id);
+            println!("\nTop 5 results were:");
+            for (i, r) in results.iter().take(5).enumerate() {
+                println!("  {}. {}", i + 1, r.doc_id);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
