@@ -334,6 +334,93 @@ Issues/PRs as knowledge sources. Draft spec exists: [spec-github-adapter.md](spe
 
 ---
 
+## Observable Scry Gaps (Dec 2025)
+
+Issues identified during Phase 3 review. Infrastructure is built, but these gaps remain.
+
+### Feedback Capture in LLM Workflow
+
+| Field | Value |
+|-------|-------|
+| **Origin** | Phase 3 (Observable Scry) |
+| **Spec** | `spec-observable-scry.md` |
+| **Why gap exists** | LLM frontends (Claude Code) use `Read` tool after scry, not `scry open` |
+| **When to revisit** | When designing query routing or LLM integration patterns |
+
+**Problem:** When Claude runs `patina scry "query"` via Bash, then uses the `Read` tool to view a result file, patina never learns which result was used. The `scry open` command bundles open+log, but LLMs don't naturally use it.
+
+**Current state:**
+- `scry open/copy/feedback` CLI commands exist but aren't used by LLMs
+- MCP `mode: "use"` callback exists but requires explicit LLM action
+- Git correlation (`feedback_query_hits`) captures commits, not reads
+
+**Options to explore:**
+1. Accept git correlation as sufficient (commits = signal, reads = noise)
+2. Instruct LLMs to use `scry open` instead of `Read` (fights natural workflow)
+3. Session-level correlation (all queries ↔ all files touched in session)
+
+**Lab data:** `patina eval --feedback` shows 1.1% precision (retrievals → commits). Hits at rank 6-7, not rank 1.
+
+---
+
+### Query Intent Routing
+
+| Field | Value |
+|-------|-------|
+| **Origin** | Phase 2-3 (Observable Scry) |
+| **Spec** | `spec-observable-scry.md` |
+| **Why gap exists** | Explicit modes built, auto-routing deferred |
+| **When to revisit** | After collecting mode usage data from real sessions |
+
+**Problem:** LLM must manually choose mode (find/orient/recent/why). No automatic detection of query intent.
+
+**Current state:**
+- Explicit modes work: `scry orient`, `scry recent`, `scry why`
+- Default `find` mode fuses all oracles via RRF
+- No signal collection on which mode was used
+
+**Spec note:** "We learn which modes are used → informs future automatic routing." This data isn't being collected yet.
+
+---
+
+### Cross-Repo Validation
+
+| Field | Value |
+|-------|-------|
+| **Origin** | Phase 3 review |
+| **Why gap exists** | Only tested on patina (Rust CLI) |
+| **When to revisit** | Before trusting signals on diverse codebases |
+
+**Problem:** Signals (importer_count, activity_level, centrality) are computed but only validated on one repo type.
+
+**Repo styles to test:**
+- Python monorepo (different import patterns)
+- Go microservices (sparse co-changes)
+- TypeScript frontend (npm dependencies)
+- Solidity contracts (different structure)
+
+**Validation approach:** Run scry queries on each, manually check if top results are correct.
+
+---
+
+### Lab Query Set
+
+| Field | Value |
+|-------|-------|
+| **Origin** | Phase 2.7 (Retrieval Quality) |
+| **Spec** | `spec/agentic-rag` tag |
+| **Why gap exists** | MRR 0.624 met exit criteria with ad-hoc queries |
+| **When to revisit** | When systematic benchmarking is needed |
+
+**Problem:** `patina bench retrieval` requires `--query-set <file>` but no query set exists.
+
+**What's needed:**
+- Ground truth file: `{ "query": "...", "expected": ["file1", "file2"] }`
+- Cover query types: targeted, orientation, "where is X", "what does Y do"
+- At least 20-50 queries for statistical significance
+
+---
+
 ## How to Use This Spec
 
 **When archiving a phase:**
