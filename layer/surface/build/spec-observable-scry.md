@@ -1,6 +1,6 @@
 # Spec: Observable Scry
 
-**Status:** Planned
+**Status:** Phase 2 Complete (Dec 2025)
 **Parent:** [build.md](../../core/build.md)
 **Depends on:** Phase 1.5 signals complete
 **Creates:** Feedback loop infrastructure (this spec enables it, not the other way around)
@@ -254,23 +254,41 @@ Manual feedback is useful but rare. Design for automatic capture first.
 
 ## Tasks
 
-### Phase 1: Structured Response
+### Phase 1: Structured Response (Complete - Dec 2025)
 
-| Task | Scope |
-|------|-------|
-| Refactor `QueryEngine::query` to return per-oracle results alongside fused | ~50 lines |
-| Add `--explain` flag to scry CLI that shows oracle contributions | ~30 lines |
-| Update MCP scry tool to include oracle breakdown in response | ~20 lines |
-| Surface structural signals as annotations (from module_signals table) | ~40 lines |
+| Task | Status |
+|------|--------|
+| Refactor `QueryEngine::query` to return per-oracle results alongside fused | Done |
+| Add `--explain` flag to scry CLI that shows oracle contributions | Done |
+| Update MCP scry tool to include oracle breakdown in response | Done |
+| Surface structural signals as annotations (from module_signals table) | Done |
 
-### Phase 2: Explicit Modes
+**Commits:** `3b6b1eb7`, `d3c8ddca`, `4922fd4c`, `40e2b826`
 
-| Task | Scope |
-|------|-------|
-| Add `scry orient <path>` subcommand (structural-first ranking) | ~60 lines |
-| Add `scry recent <query>` subcommand (temporal-first) | ~40 lines |
-| Add `scry why <doc_id>` subcommand (explain single result) | ~50 lines |
-| Update MCP with mode variants or mode parameter | ~30 lines |
+### Phase 2: Explicit Modes (Complete - Dec 2025)
+
+| Task | Status |
+|------|--------|
+| Add `scry orient <path>` subcommand (structural-first ranking) | Done |
+| Add `scry recent <query>` subcommand (temporal-first) | Done |
+| Add `scry why <doc_id>` subcommand (explain single result) | Done |
+| Update MCP with mode variants or mode parameter | Done |
+
+**Commits:** `fc6ac8de`, `46c9c87d`, `ada02b8b`, `e585cbe1`
+
+**Usage:**
+```bash
+# CLI
+patina scry orient src/retrieval/          # Structural importance ranking
+patina scry recent --days 7                # Recent changes
+patina scry recent retrieval --days 3      # Recent changes matching pattern
+patina scry why "src/engine.rs" "query"    # Explain specific result
+
+# MCP
+scry({ mode: "orient", path: "src/..." })
+scry({ mode: "recent", days: 7 })
+scry({ mode: "why", doc_id: "...", query: "..." })
+```
 
 ### Phase 3: Feedback Logging
 
