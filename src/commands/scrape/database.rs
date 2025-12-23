@@ -78,6 +78,10 @@ pub fn populate_fts5(conn: &Connection) -> Result<usize> {
     conn.execute("DELETE FROM code_fts", [])?;
 
     // Populate from code events in eventlog
+    // Note: Exclude 'code.symbol' to avoid duplication - functions/types already
+    // have richer fact types (code.function, code.struct, etc.) that are indexed.
+    // GROUP BY dedupes across multiple scrape runs (eventlog is append-only).
+    // See: spec-fts-deduplication.md for full context on this fix.
     let count = conn.execute(
         r#"
         INSERT INTO code_fts (symbol_name, file_path, content, event_type)
@@ -88,7 +92,9 @@ pub fn populate_fts5(conn: &Connection) -> Result<usize> {
             event_type
         FROM eventlog
         WHERE event_type LIKE 'code.%'
+          AND event_type != 'code.symbol'
           AND json_extract(data, '$.name') IS NOT NULL
+        GROUP BY source_id, event_type
         "#,
         [],
     )?;
