@@ -1,8 +1,8 @@
 # Build Recipe
 
-**Status:** Observable Scry Phase 2 complete. scry now has explicit modes (orient, recent, why) with full MCP support.
+**Status:** Observable Scry Phase 3 complete. Feedback logging infrastructure built. Gaps documented in spec-work-deferred.md.
 
-**Current Direction:** Observable Scry Phase 3 — feedback logging for learning from real usage. See [spec-observable-scry.md](../surface/build/spec-observable-scry.md).
+**Current Direction:** Validate and harden before new features. See [spec-work-deferred.md](../surface/build/spec-work-deferred.md) for Observable Scry gaps.
 
 ---
 

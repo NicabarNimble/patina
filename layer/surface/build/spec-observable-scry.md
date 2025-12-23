@@ -1,6 +1,6 @@
 # Spec: Observable Scry
 
-**Status:** Phase 2 Complete (Dec 2025)
+**Status:** Phase 3 Complete (Dec 2025). Gaps documented in spec-work-deferred.md.
 **Parent:** [build.md](../../core/build.md)
 **Depends on:** Phase 1.5 signals complete
 **Creates:** Feedback loop infrastructure (this spec enables it, not the other way around)
@@ -290,16 +290,20 @@ scry({ mode: "recent", days: 7 })
 scry({ mode: "why", doc_id: "...", query: "..." })
 ```
 
-### Phase 3: Feedback Logging
+### Phase 3: Feedback Logging (Complete - Dec 2025)
 
-| Task | Scope |
-|------|-------|
-| Add `scry.use` event type to eventlog | ~20 lines |
-| Add `scry open <query_id> <rank>` — opens file, logs usage automatically | ~40 lines |
-| Add `scry copy <query_id> <rank>` — copies to clipboard, logs usage | ~30 lines |
-| Add MCP callback for "result used" (agent reports which result it consumed) | ~30 lines |
-| Add `scry feedback <query_id> good\|bad` for optional explicit rating | ~20 lines |
-| Create SQL view for query analysis (queries joined with usage/feedback) | ~20 lines |
+| Task | Status |
+|------|--------|
+| Add `scry.use` event type to eventlog | Done |
+| Add `scry open <query_id> <rank>` — opens file, logs usage automatically | Done |
+| Add `scry copy <query_id> <rank>` — copies to clipboard, logs usage | Done |
+| Add MCP callback for "result used" (agent reports which result it consumed) | Done |
+| Add `scry feedback <query_id> good\|bad` for optional explicit rating | Done |
+| Create SQL views for query analysis (usage, ratings, combined) | Done |
+
+**Commits:** `58dfa873`, `9452dd73`, `8e1f769e`, `cec8b50a`
+
+**Gaps identified:** LLM workflow doesn't naturally use these commands. See spec-work-deferred.md.
 
 ## Validation
 
