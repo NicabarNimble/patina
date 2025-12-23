@@ -555,6 +555,29 @@ enum ScryCommands {
         #[arg(long, default_value = "10")]
         limit: usize,
     },
+
+    /// Recent changes - show files that changed recently, optionally filtered by query
+    Recent {
+        /// Optional query to filter files (e.g., "retrieval" to show recent retrieval changes)
+        query: Option<String>,
+
+        /// Number of days to look back (default: 7)
+        #[arg(long, default_value = "7")]
+        days: u32,
+
+        /// Maximum number of results (default: 10)
+        #[arg(long, default_value = "10")]
+        limit: usize,
+    },
+
+    /// Explain why a specific result was returned
+    Why {
+        /// Document ID to explain (e.g., "src/retrieval/engine.rs")
+        doc_id: String,
+
+        /// The query that returned this result
+        query: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -843,6 +866,12 @@ fn main() -> Result<()> {
                 match subcmd {
                     ScryCommands::Orient { path, limit } => {
                         commands::scry::execute_orient(&path, limit)?;
+                    }
+                    ScryCommands::Recent { query, days, limit } => {
+                        commands::scry::execute_recent(query.as_deref(), days, limit)?;
+                    }
+                    ScryCommands::Why { doc_id, query } => {
+                        commands::scry::execute_why(&doc_id, &query)?;
                     }
                 }
             } else {
