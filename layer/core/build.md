@@ -1,8 +1,8 @@
 # Build Recipe
 
-**Status:** Observable Scry Phase 3 complete. Feedback logging infrastructure built. Gaps documented in spec-work-deferred.md.
+**Status:** Starting new feature work. Persona Fusion and Secrets Boundary specs ready for implementation.
 
-**Current Direction:** Validate and harden before new features. See [spec-work-deferred.md](../surface/build/spec-work-deferred.md) for Observable Scry gaps.
+**Current Direction:** Two parallel tracks - improve cross-project knowledge (Persona Fusion) and secure secret handling (Secrets Boundary).
 
 ---
 
@@ -67,14 +67,15 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 Active specs:
 
-- [spec-lab-automation.md](../surface/build/spec-lab-automation.md) - **Next:** Automated benchmarking, model comparison, metrics history
-- [spec-observable-scry.md](../surface/build/spec-observable-scry.md) - Phase 3 complete, gaps documented
+- [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - **Current:** Make PersonaOracle visible, tag results by source
+- [spec-secrets-boundary.md](../surface/build/spec-secrets-boundary.md) - **Current:** LLMs never see secret values, op:// references
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
 - [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
 
 Archived specs (preserved via git tags):
 
+- `spec/observable-scry` - Phase 1-3: Structured response, explicit modes, feedback logging
 - `spec/assay` - Phase 0: Structural query command (inventory, imports, callers)
 - `spec/feedback-loop` - Measure and learn from retrieval quality
 - `spec/model-management` - Base model download, caching, provenance
@@ -82,6 +83,7 @@ Archived specs (preserved via git tags):
 
 Future specs (not yet planned):
 
+- [spec-lab-automation.md](../surface/build/spec-lab-automation.md) - Automated benchmarking, model comparison, metrics history
 - [spec-github-adapter.md](../surface/build/spec-github-adapter.md) - GitHub integration
 
 ---
@@ -90,19 +92,11 @@ Future specs (not yet planned):
 
 Shipped phases (details preserved in git tags and specs):
 
-### Observable Scry (Phase 1 → 2)
+### Observable Scry (Phase 1 → 3)
 
-Made scry explainable, steerable, and instrumented:
+Made scry explainable, steerable, and instrumented. `--explain` flag shows per-oracle contributions. Explicit modes for intent (`orient`, `recent`, `why`). Feedback logging with query IDs, `scry open/copy/feedback` commands, MCP `use` mode callback. Gaps documented in spec-work-deferred.md.
 
-- **Phase 1:** Structured response with per-oracle contributions. `--explain` flag shows semantic/lexical/temporal breakdown. MCP returns full JSON schema with ranks and raw scores.
-
-- **Phase 2:** Explicit modes for different intents:
-  - `scry orient <path>` — structural importance ranking (entry points, importers, activity)
-  - `scry recent [query]` — temporal ranking (recent commits)
-  - `scry why <doc_id> <query>` — explain single result provenance
-  - All modes available via MCP `mode` parameter
-
-**Spec:** [spec-observable-scry.md](../surface/build/spec-observable-scry.md)
+**Tag:** `spec/observable-scry`
 
 ### Structural Signals (Phase 1 → 1.5 → 2)
 
@@ -167,4 +161,4 @@ git tag -l 'spec/*'              # List archived specs
 git show spec/scry:layer/surface/build/spec-scry.md  # View archived spec
 ```
 
-**Tags:** `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`
+**Tags:** `spec/observable-scry`, `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`
