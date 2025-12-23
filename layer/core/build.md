@@ -1,8 +1,8 @@
 # Build Recipe
 
-**Status:** Phase 1.5 signals complete (MRR 0.554). Phase 2 boost tried and removed — structural priors don't help relevance queries. Signals available via `assay derive`.
+**Status:** Observable Scry Phase 2 complete. scry now has explicit modes (orient, recent, why) with full MCP support.
 
-**Current Direction:** Observable Scry — make scry explainable, steerable, and instrumented. See [spec-observable-scry.md](../surface/build/spec-observable-scry.md).
+**Current Direction:** Observable Scry Phase 3 — feedback logging for learning from real usage. See [spec-observable-scry.md](../surface/build/spec-observable-scry.md).
 
 ---
 
@@ -88,6 +88,20 @@ Future specs (not yet planned):
 ## Completed
 
 Shipped phases (details preserved in git tags and specs):
+
+### Observable Scry (Phase 1 → 2)
+
+Made scry explainable, steerable, and instrumented:
+
+- **Phase 1:** Structured response with per-oracle contributions. `--explain` flag shows semantic/lexical/temporal breakdown. MCP returns full JSON schema with ranks and raw scores.
+
+- **Phase 2:** Explicit modes for different intents:
+  - `scry orient <path>` — structural importance ranking (entry points, importers, activity)
+  - `scry recent [query]` — temporal ranking (recent commits)
+  - `scry why <doc_id> <query>` — explain single result provenance
+  - All modes available via MCP `mode` parameter
+
+**Spec:** [spec-observable-scry.md](../surface/build/spec-observable-scry.md)
 
 ### Structural Signals (Phase 1 → 1.5 → 2)
 
