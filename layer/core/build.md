@@ -56,8 +56,9 @@ A local-first RAG network: portable project knowledge + personal mothership.
 | scry | Deliver | Fuse and route knowledge to LLM |
 
 **Values alignment:**
-- unix-philosophy: One tool, one job
-- dependable-rust: Black box interfaces
+- [unix-philosophy](unix-philosophy.md): One tool, one job
+- [dependable-rust](dependable-rust.md): Black box interfaces
+- [adapter-pattern](adapter-pattern.md): Trait-based external system integration
 - local-first: No cloud, rebuild from git
 - git as memory: layer/ tracked, .patina/ derived
 
