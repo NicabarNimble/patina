@@ -111,23 +111,41 @@ Central registry of all secrets across all projects:
 vault = "Patina"
 
 # Secret definitions
-# name = { item = "1password-item-name", field = "field-name" }
-# field defaults to "credential" if omitted
+# name = { item = "1password-item-name", field = "field-name", env = "ENV_VAR" }
+#
+# - item: required - 1Password item name in Patina vault
+# - field: optional - defaults to "credential"
+# - env: required - environment variable name (always explicit)
+#
+# The `env` field is always written to config, even when using default.
+# This makes the config self-documenting for LLM tools.
 
 [secrets]
 # Common development secrets
-github-token = { item = "github-token" }
-openai-key = { item = "openai-key" }
-anthropic-key = { item = "anthropic-key" }
+github-token = { item = "github-token", env = "GITHUB_TOKEN" }
+openai-key = { item = "openai-key", env = "OPENAI_API_KEY" }
+anthropic-key = { item = "anthropic-key", env = "ANTHROPIC_API_KEY" }
 
 # Infrastructure
-tailscale-authkey = { item = "tailscale-authkey", field = "password" }
-docker-hub = { item = "docker-hub", field = "password" }
+tailscale-authkey = { item = "tailscale-authkey", field = "password", env = "TAILSCALE_AUTHKEY" }
+docker-hub = { item = "docker-hub", field = "password", env = "DOCKER_HUB_TOKEN" }
 
 # Project-specific (namespaced)
-myapp-database = { item = "myapp-postgres", field = "connection_string" }
-myapp-stripe = { item = "myapp-stripe", field = "secret_key" }
+myapp-database = { item = "myapp-postgres", field = "connection_string", env = "DATABASE_URL" }
+myapp-stripe = { item = "myapp-stripe", field = "secret_key", env = "STRIPE_SECRET_KEY" }
 ```
+
+### Naming Rules
+
+**Secret names** (the key in `[secrets]`):
+- Lowercase letters, digits, hyphens only
+- Pattern: `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`
+- Examples: `github-token`, `openai-key`, `myapp-db`
+
+**Environment variable names** (`env` field):
+- Uppercase letters, digits, underscores only
+- Pattern: `^[A-Z][A-Z0-9_]*$`
+- Examples: `GITHUB_TOKEN`, `DATABASE_URL`, `STRIPE_SECRET_KEY`
 
 ### Project: `.patina/config.toml`
 
@@ -188,105 +206,196 @@ $ patina secrets init
 
 ## Commands
 
-### Mothership Level
+**Design:** 4 commands, LLM-first, non-interactive by default.
+
+| Command | Purpose |
+|---------|---------|
+| `patina secrets` | Smart status (mothership + project context) |
+| `patina secrets add NAME` | Register secret to mothership |
+| `patina secrets run -- CMD` | Execute with secrets (local or remote) |
+| `patina secrets init` | One-time vault setup |
+
+---
+
+### `patina secrets` - Status
+
+Shows mothership registry + project requirements in one view. LLM reads this to understand state.
 
 ```bash
-# Show all registered secrets + validation status
 $ patina secrets
 
-Patina Vault: ✓ connected (12 items)
+Patina Vault: ✓ connected
+Project: myapp
 
-Registered secrets (8):
-  ✓ github-token      → op://Patina/github-token/credential
-  ✓ openai-key        → op://Patina/openai-key/credential
-  ✓ anthropic-key     → op://Patina/anthropic-key/credential
-  ✓ tailscale-authkey → op://Patina/tailscale-authkey/password
-  ✓ docker-hub        → op://Patina/docker-hub/password
-  ✓ myapp-database    → op://Patina/myapp-postgres/connection_string
-  ✓ myapp-stripe      → op://Patina/myapp-stripe/secret_key
-  ✗ old-api-key       → op://Patina/old-api-key/credential (not found)
+Registered (mothership):
+  ✓ github-token      → GITHUB_TOKEN
+  ✓ openai-key        → OPENAI_API_KEY
+  ✓ database          → DATABASE_URL
+  ✗ old-api-key       → OLD_API_KEY         NOT FOUND
+
+Required (project):
+  ✓ github-token      (registered, resolves)
+  ✓ database          (registered, resolves)
+  ✗ stripe-key        (not registered)
+
+Action needed:
+  patina secrets add stripe-key --env STRIPE_SECRET_KEY
 ```
 
+If not in a project directory:
 ```bash
-# Add secret to registry (interactive)
-$ patina secrets add stripe-key
+$ patina secrets
 
-? Search 1Password: stripe
+Patina Vault: ✓ connected
 
-Found in Patina vault:
-  1. stripe-test (Development)
-  2. stripe-live (Production)
-  3. [Create new item]
+Registered (mothership):
+  ✓ github-token      → GITHUB_TOKEN
+  ✓ openai-key        → OPENAI_API_KEY
+  ✓ database          → DATABASE_URL
+```
 
-? Select: 3
+---
 
-Opening 1Password to create item...
-# 1Password app opens, user creates item securely
-# Claude never sees the value
+### `patina secrets add` - Register Secret
 
-? Item name in 1Password: stripe-api-key
-? Field [credential]: secret_key
+**Non-interactive (LLM use):** Assumes 1Password item already exists.
 
+```bash
+# Item exists in 1Password with same name
+$ patina secrets add github-token --env GITHUB_TOKEN
+
+✓ Found item 'github-token' in Patina vault
 ✓ Added to ~/.patina/secrets.toml:
-  stripe-key = { item = "stripe-api-key", field = "secret_key" }
+  github-token = { item = "github-token", env = "GITHUB_TOKEN" }
 ```
 
 ```bash
-# Validate all secrets resolve
-$ patina secrets check
+# Item exists with different name
+$ patina secrets add stripe --item stripe-live --field secret_key --env STRIPE_SECRET_KEY
 
-✓ 1Password CLI installed
-✓ Signed in
-✓ Patina vault accessible
-✓ 7/8 secrets resolve
+✓ Found item 'stripe-live' in Patina vault
+✓ Added to ~/.patina/secrets.toml:
+  stripe = { item = "stripe-live", field = "secret_key", env = "STRIPE_SECRET_KEY" }
+```
 
-✗ old-api-key: item not found
+```bash
+# Item doesn't exist - clear error, user creates in 1Password
+$ patina secrets add newkey --env NEW_KEY
+
+✗ Item 'newkey' not found in Patina vault.
+  Create it in 1Password first, then retry.
 
 $ echo $?
 1
 ```
 
-### Project Level
+**Interactive (human use):** Add `-i` flag for guided flow.
 
 ```bash
-# Add requirement to project
-$ patina secrets require openai-key
+$ patina secrets add stripe -i
 
-✓ Added 'openai-key' to .patina/config.toml [secrets.requires]
+? Search 1Password: stripe
+Found:
+  1. stripe-test (Development)
+  2. stripe-live (Production)
+
+? Select: 2
+? Field [credential]: secret_key
+? Environment variable [STRIPE]: STRIPE_SECRET_KEY
+
+✓ Added to ~/.patina/secrets.toml:
+  stripe = { item = "stripe-live", field = "secret_key", env = "STRIPE_SECRET_KEY" }
 ```
 
+---
+
+### `patina secrets run` - Execute with Secrets
+
+Resolves secrets, injects via `op run`, executes command.
+
+**Local execution:**
 ```bash
-# Check project's requirements against mothership
-$ patina secrets status
-
-Project: myapp
-Requires: 4 secrets
-
-  ✓ github-token      (in mothership, resolves)
-  ✓ openai-key        (in mothership, resolves)
-  ✓ myapp-database    (in mothership, resolves)
-  ✗ myapp-stripe      (not in mothership)
-
-Run 'patina secrets add myapp-stripe' to register.
-```
-
-```bash
-# Run with secrets injected
 $ patina secrets run -- cargo test
 
 Resolving secrets for myapp...
-  ✓ github-token
-  ✓ openai-key
-  ✓ myapp-database
-  ✓ myapp-stripe
+  ✓ github-token      → GITHUB_TOKEN
+  ✓ database          → DATABASE_URL
 
-Injecting 4 secrets...
 Running: cargo test
-
    Compiling myapp v0.1.0
    Running tests...
+test result: ok. 12 passed
+```
 
-test result: ok. 12 passed; 0 failed
+**Remote execution (--ssh):**
+```bash
+$ patina secrets run --ssh root@server -- 'cd /app && docker-compose restart'
+
+Resolving secrets for myapp...
+  ✓ tailscale-authkey → TAILSCALE_AUTHKEY
+
+Injecting via SSH...
+Running on root@server: cd /app && docker-compose restart
+Recreating tsdproxy ... done
+```
+
+How `--ssh` works:
+1. Resolves secrets locally via `op read`
+2. Constructs SSH command with env prefix
+3. Secrets travel encrypted (SSH), never on disk, never in chat
+
+**Failure cases:**
+```bash
+# Missing secret
+$ patina secrets run -- cargo test
+
+✗ Secret 'stripe-key' required but not registered.
+  Run: patina secrets add stripe-key --env STRIPE_SECRET_KEY
+
+$ echo $?
+1
+```
+
+```bash
+# Secret registered but 1Password item missing
+$ patina secrets run -- cargo test
+
+✗ Secret 'old-api-key' registered but item not found in 1Password.
+  Update ~/.patina/secrets.toml or create item in 1Password.
+
+$ echo $?
+1
+```
+
+---
+
+### `patina secrets init` - One-Time Setup
+
+Creates Patina vault if needed. Auto-triggered on first `add` if vault missing.
+
+```bash
+$ patina secrets init
+
+1Password:
+  ✓ CLI installed (2.30.0)
+  ✓ Signed in as nick@example.com
+
+Creating vault...
+  ✓ Vault 'Patina' created
+
+✓ Created ~/.patina/secrets.toml
+```
+
+If already set up:
+```bash
+$ patina secrets init
+
+1Password:
+  ✓ CLI installed
+  ✓ Signed in
+  ✓ Patina vault exists (12 items)
+
+✓ ~/.patina/secrets.toml ready
 ```
 
 ---
@@ -295,27 +404,16 @@ test result: ok. 12 passed; 0 failed
 
 ### `patina init`
 
+For v1, `patina init` does not prompt for secrets. Users configure secrets manually:
+
 ```bash
 $ patina init .
 
 ✓ Created .patina/config.toml
 
-Checking mothership...
-  ✓ ~/.patina/secrets.toml exists
-  ✓ Patina vault connected
-
-? Does this project need secrets? [Y/n] y
-? Which secrets? (space to select)
-  [x] github-token
-  [x] openai-key
-  [ ] anthropic-key
-  [ ] tailscale-authkey
-  [x] Add new...
-
-? New secret name: myapp-database
-  → Opening 1Password to create...
-
-✓ Added to [secrets.requires]: github-token, openai-key, myapp-database
+# User manually edits .patina/config.toml:
+# [secrets]
+# requires = ["github-token", "database"]
 ```
 
 ### `patina serve --mcp`
@@ -327,7 +425,7 @@ $ patina serve --mcp
 
 Checking secrets...
   ✓ 1Password signed in
-  ✓ Project requires 3 secrets
+  ✓ Project requires 2 secrets
   ✓ All secrets resolve
 
 Starting MCP server on stdio...
@@ -337,10 +435,10 @@ Starting MCP server on stdio...
 $ patina serve --mcp
 
 Checking secrets...
-  ✗ myapp-stripe not found in mothership
+  ✗ stripe-key not found in mothership
 
 ❌ Cannot start MCP server.
-   Run 'patina secrets add myapp-stripe' first.
+   Run: patina secrets add stripe-key --env STRIPE_SECRET_KEY
 ```
 
 ### Layer Pattern
@@ -356,9 +454,10 @@ This project uses 1Password for all secrets.
 
 - NEVER ask users to paste secrets in chat
 - NEVER put secrets in code or config files
-- Use `patina secrets add <name>` to register new secrets
-- Use `patina secrets require <name>` to add to project
+- Use `patina secrets` to check what's registered/missing
+- Use `patina secrets add <name> --env VAR` to register new secrets
 - Use `patina secrets run -- <command>` to execute with secrets
+- Use `patina secrets run --ssh HOST -- <command>` for remote execution
 
 ## Architecture
 
@@ -368,14 +467,11 @@ This project uses 1Password for all secrets.
 
 ## Commands
 
-- `patina secrets` - list all registered secrets
-- `patina secrets init` - create Patina vault
-- `patina secrets add <name>` - add to mothership registry
-- `patina secrets check` - validate all secrets resolve (CI)
-- `patina secrets require <name>` - add to project requirements
-- `patina secrets status` - check project's secrets
-- `patina secrets migrate` - migrate .env to 1Password
-- `patina secrets run -- <cmd>` - run with secrets injected
+- `patina secrets` - show status (mothership + project)
+- `patina secrets add <name> --env VAR` - register secret
+- `patina secrets run -- <cmd>` - execute with secrets (local)
+- `patina secrets run --ssh HOST -- <cmd>` - execute with secrets (remote)
+- `patina secrets init` - one-time vault setup
 ```
 
 ---
@@ -392,21 +488,20 @@ Claude: "Paste the key here and I'll update .env"
 ```
 User: "Deploy with the new Tailscale key"
 
-Claude: [calls patina context "secrets"]
-        [learns about secrets-boundary pattern]
+Claude: [calls patina secrets]
+        [sees tailscale-authkey not registered]
 
-Claude: "I'll help you set this up:
+Claude: "I see you need to register the Tailscale key:
 
-        1. Add the key to 1Password (I won't see it):
-           $ patina secrets add tailscale-authkey
+        1. Create item 'tailscale-authkey' in 1Password (I won't see it)
 
-        2. Add to this project's requirements:
-           $ patina secrets require tailscale-authkey
+        2. Register it:
+           $ patina secrets add tailscale-authkey --env TAILSCALE_AUTHKEY
 
         3. Deploy:
-           $ patina secrets run -- ./deploy.sh
+           $ patina secrets run --ssh root@server -- './deploy.sh'
 
-        I don't need to see the key."
+        I never see the key value."
 ```
 
 ---
@@ -478,6 +573,7 @@ pub struct SecretsRegistry {
 pub struct SecretDef {
     pub item: String,
     pub field: Option<String>,  // Defaults to "credential"
+    pub env: String,            // Always explicit, e.g., "GITHUB_TOKEN"
 }
 
 pub struct OpRef {
@@ -558,14 +654,16 @@ patina secrets init
 ### Adding a Secret
 
 ```bash
-# Add to mothership registry
-patina secrets add stripe-key
-# Interactive: creates in 1Password, adds to registry
+# 1. Create item in 1Password app (user does this manually)
+#    Item name: "stripe-key"
 
-# Add to project requirements
-cd ~/Projects/myapp
-patina secrets require stripe-key
-# Adds to .patina/config.toml
+# 2. Register with Patina (LLM runs this)
+patina secrets add stripe-key --env STRIPE_SECRET_KEY
+
+# 3. Add to project requirements (edit config manually)
+# .patina/config.toml:
+# [secrets]
+# requires = ["stripe-key"]
 ```
 
 ### New Project
@@ -573,46 +671,42 @@ patina secrets require stripe-key
 ```bash
 cd ~/Projects/newapp
 patina init .
-# Prompts for secrets, adds to [secrets.requires]
 
+# Edit .patina/config.toml to add required secrets:
+# [secrets]
+# requires = ["github-token", "database"]
+
+# Run with secrets injected
 patina secrets run -- cargo run
-# Injects all required secrets
 ```
 
-### Existing Project (Migration)
+### Remote Deployment
 
 ```bash
-cd ~/Projects/legacy-app
-patina init .
+# Deploy to server with secrets (never paste in chat)
+patina secrets run --ssh root@server -- 'cd /app && docker-compose restart'
 
-# Has .env file?
-patina secrets migrate
-# Reads .env, creates items in 1Password, updates registry
-# Updates project requirements
-# Backs up .env → .env.backup
+# Secrets resolved locally, injected over SSH, never on disk
 ```
 
 ### CI/CD
 
 ```yaml
 # GitHub Actions
-- name: Check secrets
-  run: patina secrets check
+- name: Run tests with secrets
+  run: patina secrets run -- cargo test
   env:
     OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-
-- name: Run tests
-  run: patina secrets run -- cargo test
 ```
 
 ### Key Rotation
 
 ```bash
 # 1. Update key in 1Password app (user does this)
-# 2. Verify
-patina secrets check
-# 3. Redeploy all projects using it
+# 2. Redeploy - no code changes needed
 patina secrets run -- ./deploy.sh
+# Or remote:
+patina secrets run --ssh root@server -- './deploy.sh'
 ```
 
 No code changes. No config edits. Update 1Password, redeploy.
@@ -621,18 +715,20 @@ No code changes. No config edits. Update 1Password, redeploy.
 
 ## What We Build
 
+**Core (v1):**
 - [ ] `~/.patina/secrets.toml` registry format
+- [ ] `patina secrets` - smart status (mothership + project)
+- [ ] `patina secrets add <name>` - register secret (non-interactive default)
+- [ ] `patina secrets run -- <cmd>` - execute with secrets (local)
+- [ ] `patina secrets run --ssh HOST -- <cmd>` - execute with secrets (remote)
 - [ ] `patina secrets init` - create Patina vault
-- [ ] `patina secrets` - list registered secrets
-- [ ] `patina secrets add <name>` - interactive add to registry
-- [ ] `patina secrets check` - validate all secrets
-- [ ] `patina secrets require <name>` - add to project
-- [ ] `patina secrets status` - project secrets status
-- [ ] `patina secrets migrate` - migrate .env to 1Password
-- [ ] `patina secrets run -- <cmd>` - execute with secrets
-- [ ] MCP gate - require secrets compliance
-- [ ] `patina init` integration
+- [ ] MCP gate - require secrets compliance before serving
 - [ ] `layer/core/secrets-boundary.md` - LLM teaching pattern
+
+**Deferred (v2):**
+- [ ] `patina secrets add -i` - interactive mode for humans
+- [ ] `patina secrets migrate` - migrate .env to 1Password
+- [ ] `patina init` integration - prompt for secrets during init
 
 ## What We Don't Build
 
@@ -642,21 +738,29 @@ No code changes. No config edits. Update 1Password, redeploy.
 - ~~Multi-backend support~~ - 1Password only, opinionated
 - ~~Project-level secrets.toml~~ - mothership only
 - ~~Separate `patina run` command~~ - consolidated under `patina secrets run`
+- ~~`patina secrets check`~~ - implicit in `run` (fails if missing)
+- ~~`patina secrets require`~~ - edit `.patina/config.toml` directly
+- ~~`patina secrets status`~~ - merged into bare `patina secrets`
 
 ---
 
 ## Acceptance Criteria
 
+**Core (v1):**
 1. [ ] `patina secrets init` creates Patina vault if needed
-2. [ ] `patina secrets` lists all registered secrets with status
-3. [ ] `patina secrets add` interactively registers without showing values
-4. [ ] `patina secrets check` exits 1 on any invalid secret
-5. [ ] `patina secrets require` adds to project config
-6. [ ] `patina secrets status` shows project requirements vs registry
-7. [ ] `patina secrets run -- <cmd>` injects required secrets
+2. [ ] `patina secrets` shows mothership + project status in one view
+3. [ ] `patina secrets add NAME --env VAR` registers without prompts (non-interactive)
+4. [ ] `patina secrets add` fails with clear error if 1Password item not found
+5. [ ] `patina secrets run -- <cmd>` injects required secrets locally
+6. [ ] `patina secrets run --ssh HOST -- <cmd>` injects secrets over SSH
+7. [ ] `patina secrets run` exits 1 with actionable error if secrets missing
 8. [ ] MCP refuses to start if project secrets don't resolve
-9. [ ] `patina init` offers to configure secrets
-10. [ ] LLMs learn pattern via `patina context`
+9. [ ] LLMs learn pattern via `patina context`
+
+**Deferred (v2):**
+10. [ ] `patina secrets add -i` interactive mode for humans
+11. [ ] `patina secrets migrate` converts .env to 1Password
+12. [ ] `patina init` offers to configure secrets
 
 ---
 
