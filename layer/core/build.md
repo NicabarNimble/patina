@@ -1,8 +1,8 @@
 # Build Recipe
 
-**Status:** Starting new feature work. Persona Fusion and Secrets Boundary specs ready for implementation.
+**Status:** Secrets Boundary complete. Persona Fusion spec ready for implementation.
 
-**Current Direction:** Two parallel tracks - improve cross-project knowledge (Persona Fusion) and secure secret handling (Secrets Boundary).
+**Current Direction:** Secrets Boundary shipped (`patina secrets` command family with 1Password integration). Next: Persona Fusion to improve cross-project knowledge.
 
 ---
 
@@ -68,7 +68,7 @@ A local-first RAG network: portable project knowledge + personal mothership.
 Active specs:
 
 - [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - **Current:** Make PersonaOracle visible, tag results by source
-- [spec-secrets-boundary.md](../surface/build/spec-secrets-boundary.md) - **Current:** LLMs never see secret values, op:// references
+- [spec-secrets-boundary.md](../surface/build/spec-secrets-boundary.md) - **Complete:** 1Password integration, `patina secrets` command family
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
 - [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
