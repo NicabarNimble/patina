@@ -218,15 +218,27 @@ fn decrypt_bytes(data: &[u8], identity: &x25519::Identity) -> Result<String> {
     String::from_utf8(decrypted).context("Decrypted content is not valid UTF-8")
 }
 
-/// Initialize a new vault with a generated identity.
+/// Initialize a new vault with an identity.
 ///
+/// Reuses existing identity from Keychain if available, otherwise generates new.
 /// Returns the recipient (public key) for the vault.
 pub fn init_vault(vault_path: &Path, recipients_path: &Path) -> Result<String> {
-    // Generate new identity
-    let (identity_str, recipient) = identity::generate_identity();
+    // Check if identity already exists
+    let recipient = if identity::has_identity() {
+        // Reuse existing identity
+        identity::get_recipient()?
+    } else {
+        // Generate new identity
+        let (identity_str, recipient) = identity::generate_identity();
 
-    // Store identity in Keychain
-    identity::store_identity(&identity_str)?;
+        // Store identity in Keychain
+        identity::store_identity(&identity_str)?;
+
+        println!("✓ Generated encryption key");
+        println!("✓ Stored in macOS Keychain (Touch ID protected)");
+
+        recipient
+    };
 
     // Create empty vault
     let vault = Vault::new();

@@ -164,8 +164,6 @@ pub fn add_secret(
     if !vault_path.exists() {
         println!("Vault not found. Creating...");
         let recipient = vault::init_vault(&vault_path, &recipients_path)?;
-        println!("✓ Generated encryption key");
-        println!("✓ Stored in macOS Keychain (Touch ID protected)");
         println!("✓ Saved public key: {}", recipient);
     }
 
