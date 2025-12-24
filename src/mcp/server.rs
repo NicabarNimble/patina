@@ -11,72 +11,49 @@ use crate::retrieval::{FusedResult, QueryEngine, QueryOptions};
 
 /// Check project secrets compliance before starting MCP server.
 ///
-/// If project requires secrets, validates:
-/// 1. 1Password is signed in
-/// 2. All required secrets are registered
-/// 3. All secrets resolve in 1Password
+/// For v2 (age-encrypted vaults), validates:
+/// 1. Identity is available (PATINA_IDENTITY env or Keychain)
+/// 2. Global or project vault exists
 ///
-/// Returns Ok(()) if compliant (or no secrets required).
+/// Returns Ok(()) if compliant (or no vaults configured).
 fn check_secrets_gate() -> Result<()> {
     use patina::secrets;
 
-    let project_root = std::env::current_dir()?;
-    let requirements = secrets::load_project_requirements(&project_root)?;
+    let project_root = std::env::current_dir().ok();
+    let status = secrets::check_status(project_root.as_deref())?;
 
-    // No secrets required - pass the gate
-    if requirements.is_empty() {
+    // Check if any vault exists
+    let has_global = status.global.exists;
+    let has_project = status.project.as_ref().map(|p| p.exists).unwrap_or(false);
+
+    // No vaults - pass the gate (no secrets configured)
+    if !has_global && !has_project {
         return Ok(());
     }
 
     eprintln!("Checking secrets...");
 
-    // Check 1Password status
-    let op_status = secrets::check_op_status()?;
-
-    if !op_status.installed {
-        eprintln!("  \u{2717} 1Password CLI not installed");
+    // Check identity
+    if status.identity_source.is_none() {
+        eprintln!("  ✗ No identity configured");
         anyhow::bail!(
-            "\n\u{274c} Cannot start MCP server.\n   Install 1Password CLI: brew install 1password-cli"
+            "\n❌ Cannot start MCP server.\n   Run: patina secrets add <name> to create vault and identity"
+        );
+    }
+    eprintln!("  ✓ Identity via {}", status.identity_source.unwrap());
+
+    if has_global {
+        eprintln!(
+            "  ✓ Global vault ({} recipients)",
+            status.global.recipient_count
         );
     }
 
-    if !op_status.signed_in {
-        eprintln!("  \u{2717} 1Password not signed in");
-        anyhow::bail!("\n\u{274c} Cannot start MCP server.\n   Run: op signin");
-    }
-    eprintln!("  \u{2713} 1Password signed in");
-
-    if !op_status.vault_exists {
-        eprintln!("  \u{2717} Patina vault not found");
-        anyhow::bail!("\n\u{274c} Cannot start MCP server.\n   Run: patina secrets init");
+    if has_project {
+        let project = status.project.unwrap();
+        eprintln!("  ✓ Project vault ({} recipients)", project.recipient_count);
     }
 
-    eprintln!("  \u{2713} Project requires {} secrets", requirements.len());
-
-    // Validate secrets
-    let registry = secrets::load_registry()?;
-    let report = secrets::validate_secrets(&requirements, &registry)?;
-
-    if !report.is_valid() {
-        for (name, err) in &report.invalid {
-            eprintln!("  \u{2717} {}: {}", name, err);
-        }
-
-        // Suggest fix
-        if let Some((name, err)) = report.invalid.first() {
-            let suggestion = if err.contains("not registered") {
-                let suggested_env = name.to_uppercase().replace('-', "_");
-                format!("patina secrets add {} --env {}", name, suggested_env)
-            } else {
-                format!("Update ~/.patina/secrets.toml or create item '{}' in 1Password", name)
-            };
-            anyhow::bail!("\n\u{274c} Cannot start MCP server.\n   Run: {}", suggestion);
-        } else {
-            anyhow::bail!("\n\u{274c} Cannot start MCP server.\n   Fix secrets configuration.");
-        }
-    }
-
-    eprintln!("  \u{2713} All secrets resolve");
     Ok(())
 }
 

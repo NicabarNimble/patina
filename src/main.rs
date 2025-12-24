@@ -313,10 +313,13 @@ enum Commands {
         command: Option<commands::model::ModelCommands>,
     },
 
-    /// Secure secret management with 1Password
+    /// Secure secret management with age encryption
     Secrets {
         #[command(subcommand)]
         command: Option<commands::secrets::SecretsCommands>,
+
+        #[command(flatten)]
+        flags: commands::secrets::SecretsFlags,
     },
 
     /// Generate YOLO devcontainer for autonomous AI development
@@ -1044,7 +1047,9 @@ fn main() -> Result<()> {
             with_issues,
         }) => commands::repo::execute_cli(command, url, contrib, with_issues)?,
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
-        Some(Commands::Secrets { command }) => commands::secrets::execute_cli(command)?,
+        Some(Commands::Secrets { command, flags }) => {
+            commands::secrets::execute_cli(command, flags)?
+        }
         Some(Commands::Yolo {
             interactive,
             defaults,
