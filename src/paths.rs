@@ -95,6 +95,16 @@ pub mod repos {
     }
 }
 
+/// Secrets management paths (1Password integration)
+pub mod secrets {
+    use super::*;
+
+    /// Mothership secrets registry: `~/.patina/secrets.toml`
+    pub fn registry_path() -> PathBuf {
+        patina_home().join("secrets.toml")
+    }
+}
+
 /// Model management paths (base models shared across projects)
 pub mod models {
     use super::*;
