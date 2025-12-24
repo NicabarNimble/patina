@@ -1,43 +1,48 @@
 {
-  "name": "patina - Patina YOLO",
   "build": {
-    "dockerfile": "Dockerfile",
-    "context": "."
+    "context": ".",
+    "dockerfile": "Dockerfile"
   },
-  "workspaceFolder": "/workspace",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
-
-  // Mount Patina patterns for access
-  "mounts": [
-    "source=${localWorkspaceFolder}/layer,target=/workspace/layer,type=bind"
-  ],
-
-  // Environment variables for safe experimentation
   "containerEnv": {
+    "AI_WORKSPACE": "1",
+    "CLAUDE_CONFIG_DIR": "/root/.claude-linux",
     "IS_SANDBOX": "1",
-    "PATINA_YOLO": "1"
+    "PATINA_YOLO": "1",
+    "SKIP_PERMISSIONS": "1"
   },
-
-  // VSCode/Claude Code extensions to install
   "customizations": {
     "vscode": {
       "extensions": [
-        "rust-lang.rust-analyzer",
-        "ms-python.python",
-        "golang.go"
+        "rust-lang.rust-analyzer"
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "bash"
       }
     }
   },
-
-  // Forward ports (can be customized per project)
-  "forwardPorts": [],
-
-  // Run as root for full control in sandbox
+  "dockerComposeFile": "docker-compose.yml",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "stable"
+    }
+  },
+  "forwardPorts": [
+    3000,
+    8000,
+    8080
+  ],
+  "mounts": [
+    "source=${localWorkspaceFolder}/layer,target=/workspace/layer,type=bind",
+    "source=${localEnv:HOME}/.patina/claude-linux,target=/root/.claude-linux,type=bind"
+  ],
+  "name": "patina - YOLO Workspace",
+  "overrideCommand": true,
+  "postCreateCommand": "bash /workspace/.devcontainer/yolo-setup.sh",
   "remoteUser": "root",
-
-  // Keep container running
-  "overrideCommand": true
+  "service": "workspace",
+  "shutdownAction": "stopCompose",
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind"
 }
