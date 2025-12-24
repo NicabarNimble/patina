@@ -37,10 +37,10 @@ The v1 1Password implementation works but has coverage gaps:
                               │ decrypt
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  Global Vault (personal)        Project Vault (team)        │
+│  Global Vault (personal)        Project Vault (shared)       │
 │  ~/.patina/                     .patina/                    │
 │  ├── secrets.toml               ├── secrets.toml            │
-│  ├── recipient.txt  (you)       ├── recipients.txt (team)   │
+│  ├── recipient.txt  (you)       ├── recipients.txt (shared) │
 │  └── vault.age                  └── vault.age               │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -54,9 +54,9 @@ The v1 1Password implementation works but has coverage gaps:
 
 **Key insights:**
 - **Mac is the trust boundary.** Containers and servers receive secrets via injection - they never have the key.
-- **Two vaults, merged at runtime.** Global for personal secrets, project for team secrets.
+- **Two vaults, merged at runtime.** Global for personal secrets, project for shared secrets.
 - **Project vault in git.** Encrypted, safe to commit. Travels with repo. CI just works.
-- **Multi-recipient.** Team members and CI each have their own identity.
+- **Multi-recipient.** Recipients and CI each have their own identity.
 
 ---
 
@@ -69,7 +69,7 @@ The v1 1Password implementation works but has coverage gaps:
 | Docker containers | ✓ Mac injects, container receives |
 | CI/CD | ✓ Vault in repo + identity in CI secrets |
 | Headless dev | ✓ PATINA_IDENTITY env var |
-| Team sharing | ✓ Multi-recipient encryption |
+| Multi-user access | ✓ Multi-recipient encryption |
 | Requires account | ✗ No account needed |
 | FOSS | ✓ Fully open source |
 
@@ -97,7 +97,7 @@ patina secrets run [--ssh H] -- C  # Merge vaults, inject, execute
 ### Recipient Management (Project Vault)
 
 ```
-patina secrets add-recipient KEY      # Add team member or CI
+patina secrets add-recipient KEY      # Add recipient (person or CI)
 patina secrets remove-recipient KEY   # Remove recipient, re-encrypt
 patina secrets list-recipients        # Show who can decrypt
 ```
@@ -130,11 +130,11 @@ patina secrets list-recipients        # Show who can decrypt
 ├── recipient.txt     # Your public key (just you)
 └── vault.age         # Your encrypted secrets
 
-# Project vault (team secrets, per-project)
+# Project vault (shared secrets, per-project)
 project/.patina/
 ├── secrets.toml      # Registry: names → env vars
-├── recipients.txt    # Team public keys (plural!)
-└── vault.age         # Team encrypted secrets (commit to git)
+├── recipients.txt    # Recipient public keys (plural!)
+└── vault.age         # Shared encrypted secrets (commit to git)
 
 # Identity storage
 macOS Keychain:
@@ -184,7 +184,7 @@ database-url = "postgres://user:pass@host/db"
 # .patina/recipients.txt
 # One age public key per line. Comments allowed.
 
-# Team members
+# Recipients
 age1alice0qwerty...   # Alice
 age1bob00asdfgh...    # Bob
 
@@ -337,10 +337,10 @@ steps:
   - run: patina secrets run -- cargo test
 ```
 
-### Team Onboarding
+### Recipient Onboarding
 
 ```bash
-# New team member generates identity
+# New recipient generates identity
 $ alice: age-keygen
 Public key: age1alice...
 # Alice shares public key (safe to share)
@@ -360,7 +360,7 @@ $ alice: patina secrets run -- cargo test
 ✓ Injecting 3 secrets
 ```
 
-### Team Offboarding
+### Recipient Offboarding
 
 ```bash
 $ patina secrets remove-recipient age1alice...
@@ -506,7 +506,7 @@ fn add_secret(name: &str, value: &str, env: Option<&str>, global: bool) -> Resul
 
     // Read recipients from file (no Touch ID)
     // Global: recipient.txt (singular, just you)
-    // Project: recipients.txt (plural, team)
+    // Project: recipients.txt (plural, shared)
     let recipients = read_recipients(&vault_path)?;
 
     // Decrypt current vault (Touch ID or PATINA_IDENTITY)
@@ -604,9 +604,9 @@ pub fn list_recipients(project_root: &Path) -> Result<Vec<String>>;
 
 ```toml
 [dependencies]
-age = "0.10"                    # age encryption (pure Rust)
-security-framework = "2.9"      # macOS Keychain access
-toml = "0.8"                    # Config parsing
+age = "0.11"                    # age encryption (pure Rust, str4d/rage library)
+security-framework = "3.5"      # macOS Keychain access
+toml = "0.8"                    # Config parsing (already in project)
 ```
 
 ---
@@ -621,7 +621,7 @@ toml = "0.8"                    # Config parsing
 | Repo leak / git push | vault.age is encrypted |
 | Accidental file exposure | Only encrypted blob on disk |
 | Cross-terminal prompts | Session cache |
-| Unauthorized team access | Must be added as recipient |
+| Unauthorized access | Must be added as recipient |
 | CI credential theft | Separate CI identity, can be rotated |
 
 ### NOT Protected Against
@@ -631,7 +631,7 @@ toml = "0.8"                    # Config parsing
 | Malware while session unlocked | Same as any password manager |
 | Memory scraping after decrypt | Secrets exist in memory during use |
 | Compromised Keychain access | If attacker has Touch ID, game over |
-| Removed team member + git history | Old secrets visible in git history - rotate if needed |
+| Removed recipient + git history | Old secrets visible in git history - rotate if needed |
 
 This is the same threat model as 1Password - we don't claim more.
 
@@ -666,8 +666,8 @@ cat /secure/location/patina.key | patina secrets --import-key
 | `--env` | Required | Optional (infer from name) |
 | Container support | Broken | Works (Mac injects) |
 | CI/CD support | Broken | Vault in repo + identity in CI secrets |
-| Team support | Via 1Password sharing | Multi-recipient encryption |
-| Vault scope | N/A | Global (personal) + Project (team) |
+| Multi-user | Via 1Password sharing | Multi-recipient encryption |
+| Vault scope | N/A | Global (personal) + Project (shared) |
 | FOSS | No | Yes |
 
 ---
@@ -692,7 +692,7 @@ cat /secure/location/patina.key | patina secrets --import-key
 11. [ ] `patina secrets --export-key --confirm` prints identity
 12. [ ] `patina secrets --import-key` stores identity in Keychain
 
-### Team & Recipients
+### Recipients
 13. [ ] `patina secrets add-recipient KEY` adds to project recipients.txt
 14. [ ] `patina secrets remove-recipient KEY` re-encrypts for remaining recipients
 15. [ ] `patina secrets list-recipients` shows project recipients
