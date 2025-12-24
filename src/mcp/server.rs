@@ -9,8 +9,82 @@ use super::protocol::{Request, Response};
 use crate::commands::assay::{AssayOptions, QueryType};
 use crate::retrieval::{FusedResult, QueryEngine, QueryOptions};
 
+/// Check project secrets compliance before starting MCP server.
+///
+/// If project requires secrets, validates:
+/// 1. 1Password is signed in
+/// 2. All required secrets are registered
+/// 3. All secrets resolve in 1Password
+///
+/// Returns Ok(()) if compliant (or no secrets required).
+fn check_secrets_gate() -> Result<()> {
+    use patina::secrets;
+
+    let project_root = std::env::current_dir()?;
+    let requirements = secrets::load_project_requirements(&project_root)?;
+
+    // No secrets required - pass the gate
+    if requirements.is_empty() {
+        return Ok(());
+    }
+
+    eprintln!("Checking secrets...");
+
+    // Check 1Password status
+    let op_status = secrets::check_op_status()?;
+
+    if !op_status.installed {
+        eprintln!("  \u{2717} 1Password CLI not installed");
+        anyhow::bail!(
+            "\n\u{274c} Cannot start MCP server.\n   Install 1Password CLI: brew install 1password-cli"
+        );
+    }
+
+    if !op_status.signed_in {
+        eprintln!("  \u{2717} 1Password not signed in");
+        anyhow::bail!("\n\u{274c} Cannot start MCP server.\n   Run: op signin");
+    }
+    eprintln!("  \u{2713} 1Password signed in");
+
+    if !op_status.vault_exists {
+        eprintln!("  \u{2717} Patina vault not found");
+        anyhow::bail!("\n\u{274c} Cannot start MCP server.\n   Run: patina secrets init");
+    }
+
+    eprintln!("  \u{2713} Project requires {} secrets", requirements.len());
+
+    // Validate secrets
+    let registry = secrets::load_registry()?;
+    let report = secrets::validate_secrets(&requirements, &registry)?;
+
+    if !report.is_valid() {
+        for (name, err) in &report.invalid {
+            eprintln!("  \u{2717} {}: {}", name, err);
+        }
+
+        // Suggest fix
+        if let Some((name, err)) = report.invalid.first() {
+            let suggestion = if err.contains("not registered") {
+                let suggested_env = name.to_uppercase().replace('-', "_");
+                format!("patina secrets add {} --env {}", name, suggested_env)
+            } else {
+                format!("Update ~/.patina/secrets.toml or create item '{}' in 1Password", name)
+            };
+            anyhow::bail!("\n\u{274c} Cannot start MCP server.\n   Run: {}", suggestion);
+        } else {
+            anyhow::bail!("\n\u{274c} Cannot start MCP server.\n   Fix secrets configuration.");
+        }
+    }
+
+    eprintln!("  \u{2713} All secrets resolve");
+    Ok(())
+}
+
 /// Run MCP server over stdio
 pub fn run_mcp_server() -> Result<()> {
+    // Gate: validate secrets before starting
+    check_secrets_gate()?;
+
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
     let reader = BufReader::new(stdin.lock());
