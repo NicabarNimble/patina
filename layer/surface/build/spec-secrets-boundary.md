@@ -1,6 +1,6 @@
 # Spec: Secrets Boundary
 
-**Status:** Ready for Implementation
+**Status:** Core v1 Complete (8/9 acceptance criteria)
 
 **Goal:** 1Password as first-class citizen in Patina. Secrets never in chat, never in git, never seen by LLMs.
 
@@ -716,14 +716,14 @@ No code changes. No config edits. Update 1Password, redeploy.
 ## What We Build
 
 **Core (v1):**
-- [ ] `~/.patina/secrets.toml` registry format
-- [ ] `patina secrets` - smart status (mothership + project)
-- [ ] `patina secrets add <name>` - register secret (non-interactive default)
-- [ ] `patina secrets run -- <cmd>` - execute with secrets (local)
-- [ ] `patina secrets run --ssh HOST -- <cmd>` - execute with secrets (remote)
-- [ ] `patina secrets init` - create Patina vault
-- [ ] MCP gate - require secrets compliance before serving
-- [ ] `layer/core/secrets-boundary.md` - LLM teaching pattern
+- [x] `~/.patina/secrets.toml` registry format
+- [x] `patina secrets` - smart status (mothership + project)
+- [x] `patina secrets add <name>` - register secret (non-interactive default)
+- [x] `patina secrets run -- <cmd>` - execute with secrets (local)
+- [x] `patina secrets run --ssh HOST -- <cmd>` - execute with secrets (remote)
+- [x] `patina secrets init` - create Patina vault
+- [x] MCP gate - require secrets compliance before serving
+- [ ] `layer/core/secrets-boundary.md` - LLM teaching pattern (deferred)
 
 **Deferred (v2):**
 - [ ] `patina secrets add -i` - interactive mode for humans
@@ -747,15 +747,15 @@ No code changes. No config edits. Update 1Password, redeploy.
 ## Acceptance Criteria
 
 **Core (v1):**
-1. [ ] `patina secrets init` creates Patina vault if needed
-2. [ ] `patina secrets` shows mothership + project status in one view
-3. [ ] `patina secrets add NAME --env VAR` registers without prompts (non-interactive)
-4. [ ] `patina secrets add` fails with clear error if 1Password item not found
-5. [ ] `patina secrets run -- <cmd>` injects required secrets locally
-6. [ ] `patina secrets run --ssh HOST -- <cmd>` injects secrets over SSH
-7. [ ] `patina secrets run` exits 1 with actionable error if secrets missing
-8. [ ] MCP refuses to start if project secrets don't resolve
-9. [ ] LLMs learn pattern via `patina context`
+1. [x] `patina secrets init` creates Patina vault if needed
+2. [x] `patina secrets` shows mothership + project status in one view
+3. [x] `patina secrets add NAME --env VAR` registers without prompts (non-interactive)
+4. [x] `patina secrets add` fails with clear error if 1Password item not found
+5. [x] `patina secrets run -- <cmd>` injects required secrets locally
+6. [x] `patina secrets run --ssh HOST -- <cmd>` injects secrets over SSH
+7. [x] `patina secrets run` exits 1 with actionable error if secrets missing
+8. [x] MCP refuses to start if project secrets don't resolve
+9. [ ] LLMs learn pattern via `patina context` (deferred)
 
 **Deferred (v2):**
 10. [ ] `patina secrets add -i` interactive mode for humans
