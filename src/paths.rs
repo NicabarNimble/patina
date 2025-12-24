@@ -95,13 +95,49 @@ pub mod repos {
     }
 }
 
-/// Secrets management paths (1Password integration)
+/// Secrets management paths (v2 - local age-encrypted vault)
 pub mod secrets {
     use super::*;
+    use std::path::Path;
 
-    /// Mothership secrets registry: `~/.patina/secrets.toml`
+    // =========================================================================
+    // Global (mothership) paths - ~/.patina/
+    // =========================================================================
+
+    /// Global secrets registry: `~/.patina/secrets.toml`
     pub fn registry_path() -> PathBuf {
         patina_home().join("secrets.toml")
+    }
+
+    /// Global vault (encrypted): `~/.patina/vault.age`
+    pub fn vault_path() -> PathBuf {
+        patina_home().join("vault.age")
+    }
+
+    /// Global recipient (your public key): `~/.patina/recipient.txt`
+    /// Note: singular - global vault has one recipient (you)
+    pub fn recipient_path() -> PathBuf {
+        patina_home().join("recipient.txt")
+    }
+
+    // =========================================================================
+    // Project paths - {project}/.patina/
+    // =========================================================================
+
+    /// Project secrets registry: `{root}/.patina/secrets.toml`
+    pub fn project_registry_path(root: &Path) -> PathBuf {
+        root.join(".patina").join("secrets.toml")
+    }
+
+    /// Project vault (encrypted): `{root}/.patina/vault.age`
+    pub fn project_vault_path(root: &Path) -> PathBuf {
+        root.join(".patina").join("vault.age")
+    }
+
+    /// Project recipients (shared): `{root}/.patina/recipients.txt`
+    /// Note: plural - project vault has multiple recipients
+    pub fn project_recipients_path(root: &Path) -> PathBuf {
+        root.join(".patina").join("recipients.txt")
     }
 }
 
