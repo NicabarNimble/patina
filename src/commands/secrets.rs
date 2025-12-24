@@ -1,35 +1,32 @@
-//! Secrets command - Secure secret management with 1Password
+//! Secrets command - Secure secret management with age encryption
 //!
-//! LLMs never see secret values. Only names and references.
-//! Values stored in 1Password "Patina" vault.
+//! Local-first secrets: age encryption + macOS Keychain + Touch ID.
+//! LLMs never see secret values.
 
-use anyhow::Result;
-use patina::paths;
+use anyhow::{bail, Result};
 use patina::secrets;
 use std::env;
+use std::io::{self, BufRead, Write};
 
 /// Secrets CLI subcommands
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum SecretsCommands {
-    /// One-time setup: create Patina vault in 1Password
-    Init,
-
-    /// Register a secret from 1Password to mothership
+    /// Add a secret to the vault
     Add {
         /// Secret name (lowercase-hyphen, e.g., "github-token")
         name: String,
 
-        /// 1Password item name (defaults to secret name)
+        /// Environment variable name (optional, inferred from name)
         #[arg(long)]
-        item: Option<String>,
+        env: Option<String>,
 
-        /// Field within item (defaults to "credential")
+        /// Secret value (if not provided, prompts or reads stdin)
         #[arg(long)]
-        field: Option<String>,
+        value: Option<String>,
 
-        /// Environment variable name (required, e.g., "GITHUB_TOKEN")
+        /// Add to global vault instead of project vault
         #[arg(long)]
-        env: String,
+        global: bool,
     },
 
     /// Execute command with secrets injected
@@ -42,175 +39,237 @@ pub enum SecretsCommands {
         #[arg(last = true, required = true)]
         command: Vec<String>,
     },
+
+    /// Add a recipient to the project vault
+    AddRecipient {
+        /// age public key (age1...)
+        key: String,
+    },
+
+    /// Remove a recipient from the project vault
+    RemoveRecipient {
+        /// age public key (age1...)
+        key: String,
+    },
+
+    /// List recipients for the project vault
+    ListRecipients,
+}
+
+/// Flags for bare `patina secrets` command
+#[derive(Debug, Clone, clap::Args)]
+pub struct SecretsFlags {
+    /// Remove a secret
+    #[arg(long)]
+    pub remove: Option<String>,
+
+    /// Export identity (requires --confirm)
+    #[arg(long)]
+    pub export_key: bool,
+
+    /// Import identity from stdin
+    #[arg(long)]
+    pub import_key: bool,
+
+    /// Clear session cache
+    #[arg(long)]
+    pub lock: bool,
+
+    /// Confirm dangerous operation
+    #[arg(long)]
+    pub confirm: bool,
+
+    /// Operate on global vault instead of project
+    #[arg(long)]
+    pub global: bool,
 }
 
 /// Execute secrets command from CLI
-pub fn execute_cli(command: Option<SecretsCommands>) -> Result<()> {
+pub fn execute_cli(command: Option<SecretsCommands>, flags: SecretsFlags) -> Result<()> {
+    // Handle flags first
+    if flags.lock {
+        return secrets::lock_session();
+    }
+
+    if flags.export_key {
+        return export_key(flags.confirm);
+    }
+
+    if flags.import_key {
+        return import_key();
+    }
+
+    if let Some(name) = flags.remove {
+        let project_root = env::current_dir().ok();
+        return secrets::remove_secret(&name, flags.global, project_root.as_deref());
+    }
+
+    // Handle subcommands
     match command {
         Some(cmd) => execute(cmd),
         None => status(), // Bare `patina secrets` shows status
     }
 }
 
-/// Execute secrets command
+/// Execute secrets subcommand
 pub fn execute(command: SecretsCommands) -> Result<()> {
     match command {
-        SecretsCommands::Init => init(),
         SecretsCommands::Add {
             name,
-            item,
-            field,
             env,
-        } => add(&name, item.as_deref(), field.as_deref(), &env),
+            value,
+            global,
+        } => add(&name, env.as_deref(), value.as_deref(), global),
         SecretsCommands::Run { ssh, command } => run(ssh.as_deref(), &command),
+        SecretsCommands::AddRecipient { key } => add_recipient(&key),
+        SecretsCommands::RemoveRecipient { key } => remove_recipient(&key),
+        SecretsCommands::ListRecipients => list_recipients(),
     }
 }
 
-/// Show status: mothership registry + project requirements
+/// Show status: global and project vaults
 fn status() -> Result<()> {
-    let op_status = secrets::check_op_status()?;
+    let project_root = env::current_dir().ok();
+    let status = secrets::check_status(project_root.as_deref())?;
 
-    // Vault status
-    if !op_status.installed {
-        println!("1Password CLI: \u{2717} not installed");
-        println!("\nInstall with: brew install 1password-cli");
-        return Ok(());
-    }
-
-    if !op_status.signed_in {
-        println!("Patina Vault: \u{2717} not signed in");
-        println!("\nRun: op signin");
-        return Ok(());
-    }
-
-    if op_status.vault_exists {
-        println!("Patina Vault: \u{2713} connected");
-    } else {
-        println!("Patina Vault: \u{2717} not found");
-        println!("\nRun: patina secrets init");
-        return Ok(());
-    }
-
-    // Load registry
-    let registry = secrets::load_registry()?;
-
-    // Determine project context
-    let project_root = env::current_dir()?;
-    let project_config = paths::project::config_path(&project_root);
-    let in_project = project_config.exists();
-
-    if in_project {
-        // Try to get project name
-        let project_name = project_root
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "project".to_string());
-        println!("Project: {}", project_name);
+    // Identity status
+    println!("Identity:");
+    match status.identity_source {
+        Some(source) => println!("  ✓ Available via {}", source),
+        None => {
+            println!("  ✗ Not configured");
+            println!("    Run: patina secrets add <name> to create vault and identity");
+        }
     }
 
     println!();
 
-    // Show registered secrets
-    println!("Registered (mothership):");
-    if registry.secrets.is_empty() {
-        println!("  (no secrets registered)");
+    // Global vault
+    println!("Global vault (~/.patina/):");
+    if status.global.exists {
+        println!("  ✓ Exists ({} recipients)", status.global.recipient_count);
     } else {
-        let mut secrets: Vec<_> = registry.secrets.iter().collect();
-        secrets.sort_by_key(|(name, _)| *name);
+        println!("  ✗ Not initialized");
+    }
 
-        for (name, def) in secrets {
-            // Check if secret resolves in 1Password
-            let report = secrets::validate_secrets(&[name.clone()], &registry)?;
-            let status_icon = if report.is_valid() {
-                "\u{2713}"
-            } else {
-                "\u{2717}"
-            };
-
-            let status_suffix = if !report.is_valid() {
-                "  NOT FOUND"
-            } else {
-                ""
-            };
-
-            println!(
-                "  {} {:<20} \u{2192} {}{}",
-                status_icon, name, def.env, status_suffix
-            );
+    // Project vault
+    if let Some(project) = &status.project {
+        println!();
+        println!("Project vault (.patina/):");
+        if project.exists {
+            println!("  ✓ Exists ({} recipients)", project.recipient_count);
+        } else {
+            println!("  ✗ Not initialized");
         }
     }
 
-    // Show project requirements if in a project
-    if in_project {
-        let requirements = secrets::load_project_requirements(&project_root)?;
+    println!();
+    println!("Commands:");
+    println!("  patina secrets add NAME [--value V]  Add a secret");
+    println!("  patina secrets run -- CMD            Run with secrets");
+    println!("  patina secrets --lock                Clear session cache");
 
-        println!();
-        println!("Required (project):");
+    Ok(())
+}
 
-        if requirements.is_empty() {
-            println!("  (no secrets required)");
-            println!();
-            println!("Add requirements to .patina/config.toml:");
-            println!("  [secrets]");
-            println!("  requires = [\"github-token\", \"database\"]");
-        } else {
-            for name in &requirements {
-                let (status_icon, status_text) = if registry.contains(name) {
-                    let report = secrets::validate_secrets(&[name.clone()], &registry)?;
-                    if report.is_valid() {
-                        ("\u{2713}", "(registered, resolves)")
-                    } else {
-                        ("\u{2717}", "(registered, NOT FOUND in 1Password)")
-                    }
-                } else {
-                    ("\u{2717}", "(not registered)")
-                };
+/// Add a secret to the vault
+fn add(name: &str, env: Option<&str>, value: Option<&str>, global: bool) -> Result<()> {
+    let project_root = env::current_dir().ok();
 
-                println!("  {} {:<20} {}", status_icon, name, status_text);
-            }
+    // Get value: from flag, stdin, or prompt
+    let secret_value = if let Some(v) = value {
+        v.to_string()
+    } else if atty::is(atty::Stream::Stdin) {
+        // Interactive: prompt
+        secrets::prompt_for_value(name)?
+    } else {
+        // Non-interactive: read stdin
+        let stdin = io::stdin();
+        let mut line = String::new();
+        stdin.lock().read_line(&mut line)?;
+        line.trim().to_string()
+    };
 
-            // Show action needed
-            let missing: Vec<_> = requirements
-                .iter()
-                .filter(|name| !registry.contains(name))
-                .collect();
+    if secret_value.is_empty() {
+        bail!("Secret value cannot be empty");
+    }
 
-            if !missing.is_empty() {
-                println!();
-                println!("Action needed:");
-                for name in missing {
-                    let suggested_env = name.to_uppercase().replace('-', "_");
-                    println!("  patina secrets add {} --env {}", name, suggested_env);
-                }
-            }
-        }
+    secrets::add_secret(name, &secret_value, env, global, project_root.as_deref())
+}
+
+/// Run command with secrets
+fn run(ssh: Option<&str>, command: &[String]) -> Result<()> {
+    let project_root = env::current_dir().ok();
+
+    let exit_code = if let Some(host) = ssh {
+        secrets::run_with_secrets_ssh(project_root.as_deref(), host, command)?
+    } else {
+        secrets::run_with_secrets(project_root.as_deref(), command)?
+    };
+
+    if exit_code != 0 {
+        std::process::exit(exit_code);
     }
 
     Ok(())
 }
 
-/// Initialize Patina vault
-fn init() -> Result<()> {
-    secrets::init_vault()
+/// Export identity key
+fn export_key(confirm: bool) -> Result<()> {
+    if !confirm {
+        println!("⚠️  This will print your private key.");
+        println!("  Add --confirm to proceed.");
+        return Ok(());
+    }
+
+    let identity = secrets::export_identity()?;
+    println!("⚠️  PRIVATE KEY - DO NOT SHARE");
+    println!("{}", identity);
+
+    Ok(())
 }
 
-/// Add a secret to the registry
-fn add(name: &str, item: Option<&str>, field: Option<&str>, env: &str) -> Result<()> {
-    secrets::add_secret(name, item, field, env)
+/// Import identity key
+fn import_key() -> Result<()> {
+    print!("Paste identity: ");
+    io::stdout().flush()?;
+
+    let stdin = io::stdin();
+    let mut line = String::new();
+    stdin.lock().read_line(&mut line)?;
+
+    let recipient = secrets::import_identity(line.trim())?;
+    println!("✓ Stored in macOS Keychain (Touch ID protected)");
+    println!("  Public key: {}", recipient);
+
+    Ok(())
 }
 
-/// Run command with secrets
-fn run(ssh: Option<&str>, command: &[String]) -> Result<()> {
+/// Add a recipient to project vault
+fn add_recipient(key: &str) -> Result<()> {
     let project_root = env::current_dir()?;
+    secrets::add_recipient(&project_root, key)
+}
 
-    let exit_code = if let Some(host) = ssh {
-        secrets::run_with_secrets_ssh(&project_root, host, command)?
+/// Remove a recipient from project vault
+fn remove_recipient(key: &str) -> Result<()> {
+    let project_root = env::current_dir()?;
+    secrets::remove_recipient(&project_root, key)
+}
+
+/// List recipients for project vault
+fn list_recipients() -> Result<()> {
+    let project_root = env::current_dir()?;
+    let recipients = secrets::list_recipients(&project_root)?;
+
+    if recipients.is_empty() {
+        println!("No recipients configured.");
+        println!("  Run: patina secrets add <name> to initialize vault");
     } else {
-        secrets::run_with_secrets(&project_root, command)?
-    };
-
-    if exit_code != 0 {
-        std::process::exit(exit_code);
+        println!("Recipients ({}):", recipients.len());
+        for r in recipients {
+            println!("  {}", r);
+        }
     }
 
     Ok(())
