@@ -800,6 +800,64 @@ LLM               ←── Sees names only, triggers workflows
 
 ---
 
+## Future Exploration: Headless & Container Support
+
+Current implementation requires GUI/biometric unlock (Touch ID on Mac). This is problematic for:
+
+1. **Touch ID popup every time** - Each new terminal/process triggers biometric
+2. **Running in containers locally** - No GUI available
+3. **Fully headless local dev** - No 1Password app
+
+### 1Password Options Explored
+
+| Option | How It Works | Limitations |
+|--------|--------------|-------------|
+| Session caching | 10-min session, auto-refreshes | New terminal = new prompt |
+| `OP_BIOMETRIC_UNLOCK_ENABLED=false` | CLI password auth | Still interactive |
+| 1Password Connect Server | Self-hosted REST API | Requires running server |
+| Service Accounts | Token-based, no GUI | **Read-only**, admin pre-setup |
+
+Service accounts break the workflow because they can't create vaults or items - an admin must pre-configure everything.
+
+### Bitwarden as Alternative
+
+Bitwarden's architecture is more automation-friendly:
+
+| Feature | Bitwarden | 1Password |
+|---------|-----------|-----------|
+| Self-hosted | ✓ Full support | ✗ No |
+| Open source CLI | ✓ Yes | ✗ No |
+| Session tokens | ✓ `BW_SESSION` env var, long-lived | 10-min, per-terminal |
+| Secrets Manager | ✓ Dedicated product for machines | Service Accounts only |
+| Container-friendly | ✓ Designed for it | Needs Connect server |
+
+Bitwarden session model:
+```bash
+# Unlock once, get session token
+export BW_SESSION=$(bw unlock --raw)
+
+# All subsequent calls use token - no prompts
+bw get password github-token
+```
+
+This session token can be long-lived and works in containers/headless environments.
+
+### Potential v2 Directions
+
+1. **Multi-backend support** - Abstract secrets provider, support both 1Password and Bitwarden
+2. **1Password Connect** - Add support for Connect server for container/CI use
+3. **Bitwarden-first** - Consider Bitwarden as primary backend for better automation story
+4. **Hybrid approach** - 1Password for local dev (Touch ID UX), Bitwarden for headless
+
+### Research Sources
+
+- [1Password CLI Docs](https://developer.1password.com/docs/cli/)
+- [1Password Biometric Security](https://developer.1password.com/docs/cli/app-integration-security/)
+- [1Password vs Bitwarden Comparison](https://alexn.org/blog/2024/08/20/1password-vs-bitwarden/)
+- [Bitwarden Secrets Manager](https://bitwarden.com/products/secrets-manager/)
+
+---
+
 ## References
 
 - 1Password CLI: https://developer.1password.com/docs/cli
