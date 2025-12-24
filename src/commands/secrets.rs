@@ -71,6 +71,10 @@ pub struct SecretsFlags {
     #[arg(long)]
     pub import_key: bool,
 
+    /// Reset identity - remove from Keychain (requires --confirm)
+    #[arg(long)]
+    pub reset: bool,
+
     /// Clear session cache
     #[arg(long)]
     pub lock: bool,
@@ -97,6 +101,10 @@ pub fn execute_cli(command: Option<SecretsCommands>, flags: SecretsFlags) -> Res
 
     if flags.import_key {
         return import_key();
+    }
+
+    if flags.reset {
+        return reset_identity(flags.confirm);
     }
 
     if let Some(name) = flags.remove {
@@ -135,7 +143,12 @@ fn status() -> Result<()> {
     // Identity status
     println!("Identity:");
     match status.identity_source {
-        Some(source) => println!("  ✓ Available via {}", source),
+        Some(source) => {
+            println!("  ✓ Available via {}", source);
+            if let Some(ref key) = status.recipient_key {
+                println!("  Public key: {}", key);
+            }
+        }
         None => {
             println!("  ✗ Not configured");
             println!("    Run: patina secrets add <name> to create vault and identity");
@@ -147,7 +160,13 @@ fn status() -> Result<()> {
     // Global vault
     println!("Global vault (~/.patina/):");
     if status.global.exists {
-        println!("  ✓ Exists ({} recipients)", status.global.recipient_count);
+        println!(
+            "  ✓ {} secrets, {} recipients",
+            status.global.secret_count, status.global.recipient_count
+        );
+        if !status.global.secret_names.is_empty() {
+            println!("  Secrets: {}", status.global.secret_names.join(", "));
+        }
     } else {
         println!("  ✗ Not initialized");
     }
@@ -157,7 +176,13 @@ fn status() -> Result<()> {
         println!();
         println!("Project vault (.patina/):");
         if project.exists {
-            println!("  ✓ Exists ({} recipients)", project.recipient_count);
+            println!(
+                "  ✓ {} secrets, {} recipients",
+                project.secret_count, project.recipient_count
+            );
+            if !project.secret_names.is_empty() {
+                println!("  Secrets: {}", project.secret_names.join(", "));
+            }
         } else {
             println!("  ✗ Not initialized");
         }
@@ -241,6 +266,21 @@ fn import_key() -> Result<()> {
     let recipient = secrets::import_identity(line.trim())?;
     println!("✓ Stored in macOS Keychain (Touch ID protected)");
     println!("  Public key: {}", recipient);
+
+    Ok(())
+}
+
+/// Reset identity - remove from Keychain
+fn reset_identity(confirm: bool) -> Result<()> {
+    if !confirm {
+        println!("⚠️  This will DELETE your private key from Keychain.");
+        println!("  You will lose access to all encrypted vaults unless you have a backup.");
+        println!("  Add --confirm to proceed.");
+        return Ok(());
+    }
+
+    secrets::reset_identity()?;
+    println!("✓ Identity removed from Keychain");
 
     Ok(())
 }

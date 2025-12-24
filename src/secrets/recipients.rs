@@ -100,19 +100,6 @@ pub fn is_valid_age_identity(key: &str) -> bool {
     key.starts_with("AGE-SECRET-KEY-1") && key.len() >= 60 && key.len() <= 100
 }
 
-/// Extract the public key (recipient) from an age identity.
-///
-/// Uses the age crate to derive the public key.
-pub fn identity_to_recipient(identity: &str) -> Result<String> {
-    use age::x25519;
-    use std::str::FromStr;
-
-    let identity = x25519::Identity::from_str(identity)
-        .map_err(|e| anyhow::anyhow!("Invalid age identity: {}", e))?;
-
-    Ok(identity.to_public().to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
