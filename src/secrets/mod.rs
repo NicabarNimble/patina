@@ -67,26 +67,38 @@ pub struct SecretsStatus {
     pub global: VaultStatus,
     pub project: Option<VaultStatus>,
     pub identity_source: Option<IdentitySource>,
+    /// Your public key (for sharing with others)
+    pub recipient_key: Option<String>,
 }
 
 /// Check vault status (both global and project).
 pub fn check_status(project_root: Option<&Path>) -> Result<SecretsStatus> {
     let global_vault = paths::secrets::vault_path();
     let global_recipients = paths::secrets::recipient_path();
-    let global = vault::check_status(&global_vault, &global_recipients);
+    let global_registry = paths::secrets::registry_path();
+    let global = vault::check_status(&global_vault, &global_recipients, &global_registry);
 
     let project = project_root.map(|root| {
         let project_vault = paths::secrets::project_vault_path(root);
         let project_recipients = paths::secrets::project_recipients_path(root);
-        vault::check_status(&project_vault, &project_recipients)
+        let project_registry = paths::secrets::project_registry_path(root);
+        vault::check_status(&project_vault, &project_recipients, &project_registry)
     });
 
     let identity_source = identity::get_identity_source();
+
+    // Get recipient key (public key) if identity exists - uses has_identity() to avoid Touch ID
+    let recipient_key = if identity::has_identity() {
+        identity::get_recipient().ok()
+    } else {
+        None
+    };
 
     Ok(SecretsStatus {
         global,
         project,
         identity_source,
+        recipient_key,
     })
 }
 
@@ -323,6 +335,13 @@ pub fn export_identity() -> Result<String> {
 /// Import an identity (for new machine setup).
 pub fn import_identity(identity_str: &str) -> Result<String> {
     identity::import_identity(identity_str)
+}
+
+/// Reset identity (remove from Keychain).
+///
+/// Warning: This deletes your private key. Make sure you have a backup!
+pub fn reset_identity() -> Result<()> {
+    keychain::delete_identity()
 }
 
 // =============================================================================

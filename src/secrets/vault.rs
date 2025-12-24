@@ -66,11 +66,6 @@ impl Vault {
         Self::default()
     }
 
-    /// Get a secret value.
-    pub fn get(&self, name: &str) -> Option<&str> {
-        self.values.get(name).map(|s| s.as_str())
-    }
-
     /// Insert a secret value.
     pub fn insert(&mut self, name: &str, value: &str) {
         self.values.insert(name.to_string(), value.to_string());
@@ -85,26 +80,6 @@ impl Vault {
         }
         removed
     }
-
-    /// Check if vault contains a secret.
-    pub fn contains(&self, name: &str) -> bool {
-        self.values.contains_key(name)
-    }
-
-    /// List all secret names.
-    pub fn list(&self) -> Vec<&str> {
-        self.values.keys().map(|s| s.as_str()).collect()
-    }
-
-    /// Number of secrets.
-    pub fn len(&self) -> usize {
-        self.values.len()
-    }
-
-    /// Check if empty.
-    pub fn is_empty(&self) -> bool {
-        self.values.is_empty()
-    }
 }
 
 /// Vault status for display.
@@ -112,33 +87,38 @@ impl Vault {
 pub struct VaultStatus {
     pub exists: bool,
     pub secret_count: usize,
+    pub secret_names: Vec<String>,
     pub recipient_count: usize,
-    pub identity_source: Option<identity::IdentitySource>,
+    pub recipients: Vec<String>,
 }
 
 /// Check vault status without decrypting.
-pub fn check_status(vault_path: &Path, recipients_path: &Path) -> VaultStatus {
+///
+/// Gets secret names from registry (no decryption needed).
+/// Gets recipient keys from recipients file.
+pub fn check_status(vault_path: &Path, recipients_path: &Path, registry_path: &Path) -> VaultStatus {
     let exists = vault_path.exists();
 
-    let recipient_count = if recipients_path.exists() {
-        recipients_mod::load_recipients(recipients_path)
-            .map(|r| r.len())
-            .unwrap_or(0)
+    // Load recipients
+    let recipients = if recipients_path.exists() {
+        recipients_mod::load_recipients(recipients_path).unwrap_or_default()
     } else {
-        0
+        Vec::new()
     };
+    let recipient_count = recipients.len();
 
-    // We can't know secret count without decrypting
-    // Return 0 if vault doesn't exist
-    let secret_count = 0;
-
-    let identity_source = identity::get_identity_source();
+    // Load secret names from registry (no decryption needed)
+    let registry = crate::secrets::registry::SecretsRegistry::load_from(registry_path)
+        .unwrap_or_default();
+    let secret_names: Vec<String> = registry.list().iter().map(|s| s.to_string()).collect();
+    let secret_count = secret_names.len();
 
     VaultStatus {
         exists,
         secret_count,
+        secret_names,
         recipient_count,
-        identity_source,
+        recipients,
     }
 }
 
@@ -304,13 +284,13 @@ mod tests {
         let mut vault = Vault::new();
 
         vault.insert("test-secret", "secret-value");
-        assert_eq!(vault.get("test-secret"), Some("secret-value"));
-        assert!(vault.contains("test-secret"));
-        assert_eq!(vault.len(), 1);
+        assert_eq!(vault.values.get("test-secret").map(|s| s.as_str()), Some("secret-value"));
+        assert!(vault.values.contains_key("test-secret"));
+        assert_eq!(vault.values.len(), 1);
 
         vault.remove("test-secret");
-        assert!(vault.get("test-secret").is_none());
-        assert!(vault.is_empty());
+        assert!(vault.values.get("test-secret").is_none());
+        assert!(vault.values.is_empty());
     }
 
     #[test]
@@ -325,7 +305,7 @@ mod tests {
         assert!(toml.contains("github-token"));
 
         let parsed: Vault = toml::from_str(&toml).unwrap();
-        assert_eq!(parsed.get("github-token"), Some("ghp_test123"));
-        assert_eq!(parsed.get("openai-key"), Some("sk-test456"));
+        assert_eq!(parsed.values.get("github-token").map(|s| s.as_str()), Some("ghp_test123"));
+        assert_eq!(parsed.values.get("openai-key").map(|s| s.as_str()), Some("sk-test456"));
     }
 }

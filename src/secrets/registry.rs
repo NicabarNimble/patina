@@ -96,11 +96,6 @@ impl SecretsRegistry {
         Ok(())
     }
 
-    /// Get a secret definition by name.
-    pub fn get(&self, name: &str) -> Option<&SecretDef> {
-        self.secrets.get(name)
-    }
-
     /// Insert a secret definition.
     pub fn insert(&mut self, name: &str, env: &str) {
         self.secrets.insert(
@@ -116,11 +111,6 @@ impl SecretsRegistry {
         self.secrets.remove(name).is_some()
     }
 
-    /// Check if a secret is registered.
-    pub fn contains(&self, name: &str) -> bool {
-        self.secrets.contains_key(name)
-    }
-
     /// List all registered secret names.
     pub fn list(&self) -> Vec<&str> {
         self.secrets.keys().map(|s| s.as_str()).collect()
@@ -131,16 +121,6 @@ impl SecretsRegistry {
         self.secrets
             .iter()
             .map(|(k, v)| (k.as_str(), v.env.as_str()))
-    }
-
-    /// Check if registry is empty.
-    pub fn is_empty(&self) -> bool {
-        self.secrets.is_empty()
-    }
-
-    /// Number of secrets in registry.
-    pub fn len(&self) -> usize {
-        self.secrets.len()
     }
 }
 
@@ -270,7 +250,7 @@ mod tests {
         assert!(toml_str.contains("env = \"GITHUB_TOKEN\""));
 
         let parsed: SecretsRegistry = toml::from_str(&toml_str).unwrap();
-        assert!(parsed.contains("github-token"));
-        assert_eq!(parsed.get("github-token").unwrap().env, "GITHUB_TOKEN");
+        assert!(parsed.secrets.contains_key("github-token"));
+        assert_eq!(parsed.secrets.get("github-token").unwrap().env, "GITHUB_TOKEN");
     }
 }
