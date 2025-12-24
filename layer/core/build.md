@@ -1,8 +1,8 @@
 # Build Recipe
 
-**Status:** Secrets Boundary complete. Persona Fusion spec ready for implementation.
+**Status:** Secrets v2 design complete. Ready for implementation.
 
-**Current Direction:** Secrets Boundary shipped (`patina secrets` command family with 1Password integration). Next: Persona Fusion to improve cross-project knowledge.
+**Current Direction:** Secrets v2 redesign - replacing 1Password backend with local age-encrypted vault. Touch ID + macOS Keychain for key storage. Full container/headless coverage.
 
 ---
 
@@ -67,18 +67,22 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 Active specs:
 
-- [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - **Current:** Make PersonaOracle visible, tag results by source
-- [spec-secrets-boundary.md](../surface/build/spec-secrets-boundary.md) - **Complete:** 1Password integration, `patina secrets` command family
+- [spec-secrets-v2.md](../surface/build/spec-secrets-v2.md) - **Current:** Local vault with age encryption, macOS Keychain, Touch ID
+- [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - Make PersonaOracle visible, tag results by source
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
 - [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
 
 Archived specs (preserved via git tags):
 
+- `spec/secrets-1password` - Secrets v1: 1Password integration (superseded by v2)
 - `spec/observable-scry` - Phase 1-3: Structured response, explicit modes, feedback logging
-- `spec/assay` - Phase 0: Structural query command (inventory, imports, callers)
+- `spec/robust-signals` - Structural signals experiments (Phase 1-2)
+- `spec/fts-deduplication` - FTS5 deduplication fix
+- `spec/code-audit` - Code audit analysis
 - `spec/feedback-loop` - Measure and learn from retrieval quality
 - `spec/model-management` - Base model download, caching, provenance
+- `spec/assay` - Phase 0: Structural query command (inventory, imports, callers)
 - `spec/mcp-retrieval-polish` - MCP tool rename, temporal oracle, hybrid mode
 
 Future specs (not yet planned):
