@@ -96,7 +96,11 @@ pub struct VaultStatus {
 ///
 /// Gets secret names from registry (no decryption needed).
 /// Gets recipient keys from recipients file.
-pub fn check_status(vault_path: &Path, recipients_path: &Path, registry_path: &Path) -> VaultStatus {
+pub fn check_status(
+    vault_path: &Path,
+    recipients_path: &Path,
+    registry_path: &Path,
+) -> VaultStatus {
     let exists = vault_path.exists();
 
     // Load recipients
@@ -108,8 +112,8 @@ pub fn check_status(vault_path: &Path, recipients_path: &Path, registry_path: &P
     let recipient_count = recipients.len();
 
     // Load secret names from registry (no decryption needed)
-    let registry = crate::secrets::registry::SecretsRegistry::load_from(registry_path)
-        .unwrap_or_default();
+    let registry =
+        crate::secrets::registry::SecretsRegistry::load_from(registry_path).unwrap_or_default();
     let secret_names: Vec<String> = registry.list().iter().map(|s| s.to_string()).collect();
     let secret_count = secret_names.len();
 
@@ -244,7 +248,7 @@ pub fn init_vault(vault_path: &Path, recipients_path: &Path) -> Result<String> {
     let vault = Vault::new();
 
     // Save recipient to file
-    recipients_mod::save_recipients(recipients_path, &[recipient.clone()])?;
+    recipients_mod::save_recipients(recipients_path, std::slice::from_ref(&recipient))?;
 
     // Encrypt and save vault
     encrypt_vault(&vault, vault_path, recipients_path)?;
@@ -296,7 +300,10 @@ mod tests {
         let mut vault = Vault::new();
 
         vault.insert("test-secret", "secret-value");
-        assert_eq!(vault.values.get("test-secret").map(|s| s.as_str()), Some("secret-value"));
+        assert_eq!(
+            vault.values.get("test-secret").map(|s| s.as_str()),
+            Some("secret-value")
+        );
         assert!(vault.values.contains_key("test-secret"));
         assert_eq!(vault.values.len(), 1);
 
@@ -317,7 +324,13 @@ mod tests {
         assert!(toml.contains("github-token"));
 
         let parsed: Vault = toml::from_str(&toml).unwrap();
-        assert_eq!(parsed.values.get("github-token").map(|s| s.as_str()), Some("ghp_test123"));
-        assert_eq!(parsed.values.get("openai-key").map(|s| s.as_str()), Some("sk-test456"));
+        assert_eq!(
+            parsed.values.get("github-token").map(|s| s.as_str()),
+            Some("ghp_test123")
+        );
+        assert_eq!(
+            parsed.values.get("openai-key").map(|s| s.as_str()),
+            Some("sk-test456")
+        );
     }
 }

@@ -251,6 +251,9 @@ mod tests {
 
         let parsed: SecretsRegistry = toml::from_str(&toml_str).unwrap();
         assert!(parsed.secrets.contains_key("github-token"));
-        assert_eq!(parsed.secrets.get("github-token").unwrap().env, "GITHUB_TOKEN");
+        assert_eq!(
+            parsed.secrets.get("github-token").unwrap().env,
+            "GITHUB_TOKEN"
+        );
     }
 }
