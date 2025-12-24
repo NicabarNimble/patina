@@ -313,6 +313,12 @@ enum Commands {
         command: Option<commands::model::ModelCommands>,
     },
 
+    /// Secure secret management with 1Password
+    Secrets {
+        #[command(subcommand)]
+        command: Option<commands::secrets::SecretsCommands>,
+    },
+
     /// Generate YOLO devcontainer for autonomous AI development
     Yolo {
         /// Use interactive mode to choose options
@@ -1038,6 +1044,7 @@ fn main() -> Result<()> {
             with_issues,
         }) => commands::repo::execute_cli(command, url, contrib, with_issues)?,
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
+        Some(Commands::Secrets { command }) => commands::secrets::execute_cli(command)?,
         Some(Commands::Yolo {
             interactive,
             defaults,
