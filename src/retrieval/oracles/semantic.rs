@@ -51,6 +51,8 @@ impl Oracle for SemanticOracle {
                 doc_id: r.source_id.clone(),
                 content: r.content,
                 source,
+                score: r.score,
+                score_type: "cosine",
                 metadata: OracleMetadata {
                     file_path: Some(r.source_id),
                     timestamp: if r.timestamp.is_empty() {
@@ -59,6 +61,7 @@ impl Oracle for SemanticOracle {
                         Some(r.timestamp)
                     },
                     event_type: Some(r.event_type),
+                    matches: None,
                 },
             })
             .collect())

@@ -32,12 +32,15 @@ impl Oracle for PersonaOracle {
             .into_iter()
             .map(|r| OracleResult {
                 doc_id: format!("{}:{}:{}", source, r.source, r.timestamp),
-                content: r.content,
+                content: r.content.clone(),
                 source,
+                score: r.score,
+                score_type: "cosine",
                 metadata: OracleMetadata {
                     file_path: None,
                     timestamp: Some(r.timestamp),
                     event_type: Some(r.source),
+                    matches: None,
                 },
             })
             .collect())

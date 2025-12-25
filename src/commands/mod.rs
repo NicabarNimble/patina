@@ -18,6 +18,7 @@ pub mod rebuild;
 pub mod repo;
 pub mod scrape;
 pub mod scry;
+pub mod secrets;
 pub mod serve;
 pub mod test;
 pub mod upgrade;
