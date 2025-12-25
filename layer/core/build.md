@@ -1,8 +1,8 @@
 # Build Recipe
 
-**Status:** Phase 1.5 signals complete (MRR 0.554). Phase 2 boost tried and removed — structural priors don't help relevance queries. Signals available via `assay derive`.
+**Status:** Secrets v2 design complete. Ready for implementation.
 
-**Current Direction:** Observable Scry — make scry explainable, steerable, and instrumented. See [spec-observable-scry.md](../surface/build/spec-observable-scry.md).
+**Current Direction:** Secrets v2 redesign - replacing 1Password backend with local age-encrypted vault. Touch ID + macOS Keychain for key storage. Full container/headless coverage.
 
 ---
 
@@ -56,8 +56,9 @@ A local-first RAG network: portable project knowledge + personal mothership.
 | scry | Deliver | Fuse and route knowledge to LLM |
 
 **Values alignment:**
-- unix-philosophy: One tool, one job
-- dependable-rust: Black box interfaces
+- [unix-philosophy](unix-philosophy.md): One tool, one job
+- [dependable-rust](dependable-rust.md): Black box interfaces
+- [adapter-pattern](adapter-pattern.md): Trait-based external system integration
 - local-first: No cloud, rebuild from git
 - git as memory: layer/ tracked, .patina/ derived
 
@@ -67,20 +68,27 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 Active specs:
 
-- [spec-observable-scry.md](../surface/build/spec-observable-scry.md) - **Current:** Make scry explainable, steerable, instrumented
+- [spec-secrets-v2.md](../surface/build/spec-secrets-v2.md) - **Current:** Local vault with age encryption, macOS Keychain, Touch ID
+- [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - Make PersonaOracle visible, tag results by source
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
 - [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
 
 Archived specs (preserved via git tags):
 
-- `spec/assay` - Phase 0: Structural query command (inventory, imports, callers)
+- `spec/secrets-1password` - Secrets v1: 1Password integration (superseded by v2)
+- `spec/observable-scry` - Phase 1-3: Structured response, explicit modes, feedback logging
+- `spec/robust-signals` - Structural signals experiments (Phase 1-2)
+- `spec/fts-deduplication` - FTS5 deduplication fix
+- `spec/code-audit` - Code audit analysis
 - `spec/feedback-loop` - Measure and learn from retrieval quality
 - `spec/model-management` - Base model download, caching, provenance
+- `spec/assay` - Phase 0: Structural query command (inventory, imports, callers)
 - `spec/mcp-retrieval-polish` - MCP tool rename, temporal oracle, hybrid mode
 
 Future specs (not yet planned):
 
+- [spec-lab-automation.md](../surface/build/spec-lab-automation.md) - Automated benchmarking, model comparison, metrics history
 - [spec-github-adapter.md](../surface/build/spec-github-adapter.md) - GitHub integration
 
 ---
@@ -88,6 +96,12 @@ Future specs (not yet planned):
 ## Completed
 
 Shipped phases (details preserved in git tags and specs):
+
+### Observable Scry (Phase 1 → 3)
+
+Made scry explainable, steerable, and instrumented. `--explain` flag shows per-oracle contributions. Explicit modes for intent (`orient`, `recent`, `why`). Feedback logging with query IDs, `scry open/copy/feedback` commands, MCP `use` mode callback. Gaps documented in spec-work-deferred.md.
+
+**Tag:** `spec/observable-scry`
 
 ### Structural Signals (Phase 1 → 1.5 → 2)
 
@@ -152,4 +166,4 @@ git tag -l 'spec/*'              # List archived specs
 git show spec/scry:layer/surface/build/spec-scry.md  # View archived spec
 ```
 
-**Tags:** `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`
+**Tags:** `spec/observable-scry`, `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`

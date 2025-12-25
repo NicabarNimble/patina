@@ -78,6 +78,10 @@ pub fn populate_fts5(conn: &Connection) -> Result<usize> {
     conn.execute("DELETE FROM code_fts", [])?;
 
     // Populate from code events in eventlog
+    // Note: Exclude 'code.symbol' to avoid duplication - functions/types already
+    // have richer fact types (code.function, code.struct, etc.) that are indexed.
+    // GROUP BY dedupes across multiple scrape runs (eventlog is append-only).
+    // See: spec-fts-deduplication.md for full context on this fix.
     let count = conn.execute(
         r#"
         INSERT INTO code_fts (symbol_name, file_path, content, event_type)
@@ -88,7 +92,9 @@ pub fn populate_fts5(conn: &Connection) -> Result<usize> {
             event_type
         FROM eventlog
         WHERE event_type LIKE 'code.%'
+          AND event_type != 'code.symbol'
           AND json_extract(data, '$.name') IS NOT NULL
+        GROUP BY source_id, event_type
         "#,
         [],
     )?;
@@ -154,6 +160,7 @@ pub fn create_feedback_views(conn: &Connection) -> Result<()> {
         CREATE VIEW IF NOT EXISTS feedback_session_queries AS
         SELECT
             json_extract(data, '$.session_id') as session_id,
+            json_extract(data, '$.query_id') as query_id,
             json_extract(data, '$.query') as query,
             json_extract(data, '$.mode') as mode,
             json_extract(data, '$.results') as results,
@@ -206,6 +213,54 @@ pub fn create_feedback_views(conn: &Connection) -> Result<()> {
             END as is_hit
         FROM feedback_session_queries q,
              json_each(q.results) as r;
+
+        -- View: scry.use events (Phase 3) - explicit result usage from agents
+        CREATE VIEW IF NOT EXISTS feedback_usage AS
+        SELECT
+            json_extract(data, '$.query_id') as query_id,
+            json_extract(data, '$.result_used') as doc_id,
+            json_extract(data, '$.rank') as rank,
+            json_extract(data, '$.session_id') as session_id,
+            timestamp
+        FROM eventlog
+        WHERE event_type = 'scry.use';
+
+        -- View: scry.feedback events (Phase 3) - explicit good/bad ratings
+        CREATE VIEW IF NOT EXISTS feedback_ratings AS
+        SELECT
+            json_extract(data, '$.query_id') as query_id,
+            json_extract(data, '$.signal') as signal,
+            json_extract(data, '$.comment') as comment,
+            json_extract(data, '$.session_id') as session_id,
+            timestamp
+        FROM eventlog
+        WHERE event_type = 'scry.feedback';
+
+        -- View: Combined query analysis with usage and feedback
+        CREATE VIEW IF NOT EXISTS feedback_query_analysis AS
+        SELECT
+            q.session_id,
+            json_extract(q.data, '$.query_id') as query_id,
+            json_extract(q.data, '$.query') as query,
+            json_extract(q.data, '$.mode') as mode,
+            q.timestamp as query_time,
+            (SELECT COUNT(*) FROM eventlog u
+             WHERE u.event_type = 'scry.use'
+               AND json_extract(u.data, '$.query_id') = json_extract(q.data, '$.query_id')
+            ) as use_count,
+            (SELECT json_group_array(json_extract(u.data, '$.rank'))
+             FROM eventlog u
+             WHERE u.event_type = 'scry.use'
+               AND json_extract(u.data, '$.query_id') = json_extract(q.data, '$.query_id')
+            ) as used_ranks,
+            (SELECT json_extract(f.data, '$.signal')
+             FROM eventlog f
+             WHERE f.event_type = 'scry.feedback'
+               AND json_extract(f.data, '$.query_id') = json_extract(q.data, '$.query_id')
+             LIMIT 1
+            ) as feedback_signal
+        FROM eventlog q
+        WHERE q.event_type = 'scry.query';
         "#,
     )?;
 

@@ -88,6 +88,14 @@ safetensors = "0.7"                                                  # Standard 
 zerocopy = "0.7"                                                     # Efficient vector byte conversion
 regex = "1.12.2"
 
+# Secrets v2 - age encryption and macOS Keychain
+age = { version = "0.11", features = ["armor"] }
+atty = "0.2"  # TTY detection for interactive prompts
+
+# macOS-only: Keychain integration for Touch ID protected secrets
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.5"
+
 [dev-dependencies]
 # Testing utilities
 tempfile = "3.14"

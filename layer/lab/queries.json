@@ -1,0 +1,31 @@
+{
+  "name": "patina-core",
+  "description": "Core retrieval queries for patina codebase",
+  "queries": [
+    {
+      "id": "rrf-impl",
+      "query": "Where is RRF fusion implemented?",
+      "relevant_docs": ["./src/retrieval/fusion.rs::rrf_fuse"]
+    },
+    {
+      "id": "mcp-server",
+      "query": "MCP server implementation",
+      "relevant_docs": ["./src/mcp/server.rs::run_mcp_server"]
+    },
+    {
+      "id": "semantic-oracle",
+      "query": "How does semantic oracle work?",
+      "relevant_docs": ["./src/retrieval/oracles/semantic.rs"]
+    },
+    {
+      "id": "scrape-entry",
+      "query": "scrape command entry point",
+      "relevant_docs": ["./src/commands/scrape/mod.rs"]
+    },
+    {
+      "id": "embedding-load",
+      "query": "embedding model loading",
+      "relevant_docs": ["./src/embeddings/onnx.rs"]
+    }
+  ]
+}

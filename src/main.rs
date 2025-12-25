@@ -194,11 +194,15 @@ enum Commands {
 
     /// Search knowledge base using vector similarity
     Scry {
+        #[command(subcommand)]
+        command: Option<ScryCommands>,
+
         /// Query text to search for (optional if --file is provided)
+        #[arg(conflicts_with = "command")]
         query: Option<String>,
 
         /// File path for temporal/dependency queries (e.g., src/auth.rs)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "command")]
         file: Option<String>,
 
         /// Maximum number of results (default: 10)
@@ -210,7 +214,7 @@ enum Commands {
         min_score: f32,
 
         /// Dimension to search (semantic, temporal, dependency)
-        #[arg(long, value_enum)]
+        #[arg(long, value_enum, conflicts_with = "command")]
         dimension: Option<Dimension>,
 
         /// Query a specific external repo (registered via 'patina repo')
@@ -230,8 +234,12 @@ enum Commands {
         no_persona: bool,
 
         /// Use hybrid search (fuse all oracles via RRF)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "command")]
         hybrid: bool,
+
+        /// Show detailed oracle contributions for each result
+        #[arg(long)]
+        explain: bool,
     },
 
     /// Evaluate retrieval quality across dimensions
@@ -303,6 +311,15 @@ enum Commands {
     Model {
         #[command(subcommand)]
         command: Option<commands::model::ModelCommands>,
+    },
+
+    /// Secure secret management with age encryption
+    Secrets {
+        #[command(subcommand)]
+        command: Option<commands::secrets::SecretsCommands>,
+
+        #[command(flatten)]
+        flags: commands::secrets::SecretsFlags,
     },
 
     /// Generate YOLO devcontainer for autonomous AI development
@@ -533,6 +550,73 @@ enum BenchCommands {
         /// Filter to specific oracle(s) for ablation testing (semantic, lexical, persona)
         #[arg(long)]
         oracle: Option<Vec<String>>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ScryCommands {
+    /// Orient to a directory - show important files ranked by structural signals
+    Orient {
+        /// Directory path to orient (e.g., src/retrieval/)
+        path: String,
+
+        /// Maximum number of results (default: 10)
+        #[arg(long, default_value = "10")]
+        limit: usize,
+    },
+
+    /// Recent changes - show files that changed recently, optionally filtered by query
+    Recent {
+        /// Optional query to filter files (e.g., "retrieval" to show recent retrieval changes)
+        query: Option<String>,
+
+        /// Number of days to look back (default: 7)
+        #[arg(long, default_value = "7")]
+        days: u32,
+
+        /// Maximum number of results (default: 10)
+        #[arg(long, default_value = "10")]
+        limit: usize,
+    },
+
+    /// Explain why a specific result was returned
+    Why {
+        /// Document ID to explain (e.g., "src/retrieval/engine.rs")
+        doc_id: String,
+
+        /// The query that returned this result
+        query: String,
+    },
+
+    /// Open a result file and log usage (Phase 3 feedback)
+    Open {
+        /// Query ID from previous scry command
+        query_id: String,
+
+        /// Result rank to open (1-based)
+        rank: usize,
+    },
+
+    /// Copy a result to clipboard and log usage (Phase 3 feedback)
+    Copy {
+        /// Query ID from previous scry command
+        query_id: String,
+
+        /// Result rank to copy (1-based)
+        rank: usize,
+    },
+
+    /// Record explicit feedback on query results (Phase 3 feedback)
+    Feedback {
+        /// Query ID from previous scry command
+        query_id: String,
+
+        /// Feedback signal: "good" or "bad"
+        signal: String,
+
+        /// Optional comment explaining the feedback
+        #[arg(long)]
+        comment: Option<String>,
     },
 }
 
@@ -804,6 +888,7 @@ fn main() -> Result<()> {
             commands::rebuild::execute(options)?;
         }
         Some(Commands::Scry {
+            command,
             query,
             file,
             limit,
@@ -814,19 +899,50 @@ fn main() -> Result<()> {
             include_issues,
             no_persona,
             hybrid,
+            explain,
         }) => {
-            let options = commands::scry::ScryOptions {
-                limit,
-                min_score,
-                dimension: dimension.map(|d| d.as_str().to_string()),
-                file,
-                repo,
-                all_repos,
-                include_issues,
-                include_persona: !no_persona,
-                hybrid,
-            };
-            commands::scry::execute(query.as_deref(), options)?;
+            // Handle subcommands first
+            if let Some(subcmd) = command {
+                match subcmd {
+                    ScryCommands::Orient { path, limit } => {
+                        commands::scry::execute_orient(&path, limit)?;
+                    }
+                    ScryCommands::Recent { query, days, limit } => {
+                        commands::scry::execute_recent(query.as_deref(), days, limit)?;
+                    }
+                    ScryCommands::Why { doc_id, query } => {
+                        commands::scry::execute_why(&doc_id, &query)?;
+                    }
+                    ScryCommands::Open { query_id, rank } => {
+                        commands::scry::execute_open(&query_id, rank)?;
+                    }
+                    ScryCommands::Copy { query_id, rank } => {
+                        commands::scry::execute_copy(&query_id, rank)?;
+                    }
+                    ScryCommands::Feedback {
+                        query_id,
+                        signal,
+                        comment,
+                    } => {
+                        commands::scry::execute_feedback(&query_id, &signal, comment.as_deref())?;
+                    }
+                }
+            } else {
+                // Default behavior: query-based search
+                let options = commands::scry::ScryOptions {
+                    limit,
+                    min_score,
+                    dimension: dimension.map(|d| d.as_str().to_string()),
+                    file,
+                    repo,
+                    all_repos,
+                    include_issues,
+                    include_persona: !no_persona,
+                    hybrid,
+                    explain,
+                };
+                commands::scry::execute(query.as_deref(), options)?;
+            }
         }
         Some(Commands::Eval {
             dimension,
@@ -931,6 +1047,9 @@ fn main() -> Result<()> {
             with_issues,
         }) => commands::repo::execute_cli(command, url, contrib, with_issues)?,
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
+        Some(Commands::Secrets { command, flags }) => {
+            commands::secrets::execute_cli(command, flags)?
+        }
         Some(Commands::Yolo {
             interactive,
             defaults,

@@ -1,8 +1,8 @@
 //! Git repository validation and branch management
 
 use super::operations::{
-    branch_exists, checkout_new_branch, commits_behind, current_branch, default_branch, is_clean,
-    status_count,
+    branch_exists, checkout_new_branch, commits_behind, current_branch, default_branch,
+    has_commits, is_clean, rename_current_branch, status_count,
 };
 use super::timestamp;
 use crate::git::operations::{branch_rename, is_git_repo};
@@ -19,6 +19,20 @@ pub fn ensure_patina_branch(force: bool) -> Result<()> {
              git add .\n\
              git commit -m \"Initial commit\""
         );
+    }
+
+    // === EDGE CASE 0: Empty repository (no commits yet) ===
+    // In an empty repo, HEAD points to a phantom branch (usually main/master)
+    // that doesn't really exist. We can simply rename it to 'patina'.
+    if !has_commits()? {
+        let current = current_branch()?;
+        if current == "patina" {
+            println!("ℹ️  Already on 'patina' branch (empty repository)");
+            return Ok(());
+        }
+        rename_current_branch("patina")?;
+        println!("✓ Renamed '{}' → 'patina' (empty repository)", current);
+        return Ok(());
     }
 
     let current = current_branch()?;

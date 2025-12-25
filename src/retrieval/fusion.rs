@@ -7,14 +7,49 @@ use std::collections::HashMap;
 
 use super::oracle::{OracleMetadata, OracleResult};
 
+/// Per-oracle contribution to a fused result
+#[derive(Debug, Clone)]
+pub struct OracleContribution {
+    /// Rank within this oracle's results (1-indexed for display)
+    pub rank: usize,
+    /// Raw score from the oracle (scale varies by oracle type)
+    pub raw_score: f32,
+    /// Type of score (cosine, bm25, co_change_count)
+    pub score_type: &'static str,
+    /// Lexical matches if applicable
+    pub matches: Option<Vec<String>>,
+}
+
+/// Structural annotations from module_signals table
+///
+/// Note: centrality_score intentionally omitted - raw value from call_graph
+/// is not normalized (project-specific scale). Will add when assay derive
+/// computes percentile rank like file_size_rank does.
+#[derive(Debug, Clone, Default)]
+pub struct StructuralAnnotations {
+    /// Number of files that import this module
+    pub importer_count: Option<i64>,
+    /// Activity level: high, medium, low, dormant
+    pub activity_level: Option<String>,
+    /// Is this an entry point (main, lib, etc)
+    pub is_entry_point: Option<bool>,
+    /// Is this a test file
+    pub is_test_file: Option<bool>,
+}
+
 /// Fused result with combined score and provenance
 #[derive(Debug)]
 pub struct FusedResult {
     pub doc_id: String,
     pub content: String,
     pub fused_score: f32,
+    /// Legacy: list of oracle names that contributed (for backward compatibility)
     pub sources: Vec<&'static str>,
+    /// Per-oracle contributions with rank and raw score
+    pub contributions: HashMap<&'static str, OracleContribution>,
     pub metadata: OracleMetadata,
+    /// Structural annotations from module_signals (if available)
+    pub annotations: StructuralAnnotations,
 }
 
 /// Reciprocal Rank Fusion
@@ -27,6 +62,8 @@ pub fn rrf_fuse(ranked_lists: Vec<Vec<OracleResult>>, k: usize, limit: usize) ->
     let mut scores: HashMap<String, f32> = HashMap::new();
     let mut docs: HashMap<String, OracleResult> = HashMap::new();
     let mut sources: HashMap<String, Vec<&'static str>> = HashMap::new();
+    let mut contributions: HashMap<String, HashMap<&'static str, OracleContribution>> =
+        HashMap::new();
 
     for list in ranked_lists {
         for (rank, result) in list.into_iter().enumerate() {
@@ -41,6 +78,20 @@ pub fn rrf_fuse(ranked_lists: Vec<Vec<OracleResult>>, k: usize, limit: usize) ->
                 .or_default()
                 .push(result.source);
 
+            // Track per-oracle contribution (rank is 1-indexed for display)
+            contributions
+                .entry(result.doc_id.clone())
+                .or_default()
+                .insert(
+                    result.source,
+                    OracleContribution {
+                        rank: rank + 1, // 1-indexed for display
+                        raw_score: result.score,
+                        score_type: result.score_type,
+                        matches: result.metadata.matches.clone(),
+                    },
+                );
+
             docs.entry(result.doc_id.clone()).or_insert(result);
         }
     }
@@ -51,12 +102,15 @@ pub fn rrf_fuse(ranked_lists: Vec<Vec<OracleResult>>, k: usize, limit: usize) ->
         .map(|(doc_id, fused_score)| {
             let doc = docs.remove(&doc_id).unwrap();
             let doc_sources = sources.remove(&doc_id).unwrap_or_default();
+            let doc_contributions = contributions.remove(&doc_id).unwrap_or_default();
             FusedResult {
                 doc_id,
                 content: doc.content,
                 fused_score,
                 sources: doc_sources,
+                contributions: doc_contributions,
                 metadata: doc.metadata,
+                annotations: StructuralAnnotations::default(),
             }
         })
         .collect();
@@ -79,6 +133,8 @@ mod tests {
             doc_id: doc_id.to_string(),
             content: format!("Content for {}", doc_id),
             source,
+            score: 0.5,
+            score_type: "cosine",
             metadata: OracleMetadata::default(),
         }
     }
