@@ -1,9 +1,16 @@
-//! macOS Keychain integration for age identity storage.
+//! Keychain integration for age identity storage.
 //!
-//! Stores the age identity (private key) in the macOS Keychain
-//! with Touch ID protection.
+//! Platform support:
+//! - macOS: Uses Keychain with Touch ID protection
+//! - Linux/Windows: Stubs that return errors (use PATINA_IDENTITY env var)
+//!
+//! This mirrors the embeddings test design: the workflow (get identity → encrypt/decrypt)
+//! works everywhere, but the underlying mechanism differs per platform.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
+
+#[cfg(not(target_os = "macos"))]
+use anyhow::bail;
 
 /// Keychain service name for Patina secrets.
 const KEYCHAIN_SERVICE: &str = "patina";
@@ -11,58 +18,166 @@ const KEYCHAIN_SERVICE: &str = "patina";
 /// Keychain account name for the age identity.
 const KEYCHAIN_ACCOUNT: &str = "Patina Secrets";
 
-/// Store an age identity in the macOS Keychain.
+// =============================================================================
+// macOS Implementation - Real Keychain with Touch ID
+// =============================================================================
+
+#[cfg(target_os = "macos")]
+mod platform {
+    use super::*;
+    use anyhow::Context;
+
+    /// Store an age identity in the macOS Keychain.
+    ///
+    /// The identity is stored as a generic password with Touch ID protection.
+    pub fn store_identity(identity: &str) -> Result<()> {
+        use security_framework::passwords::set_generic_password;
+
+        set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, identity.as_bytes())
+            .context("Failed to store identity in Keychain")?;
+
+        Ok(())
+    }
+
+    /// Retrieve the age identity from the macOS Keychain.
+    ///
+    /// This will trigger Touch ID if the item is protected.
+    pub fn get_identity() -> Result<String> {
+        use security_framework::passwords::get_generic_password;
+
+        let password = get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).context(
+            "Failed to retrieve identity from Keychain. Run: patina secrets --import-key",
+        )?;
+
+        String::from_utf8(password).context("Keychain identity is not valid UTF-8")
+    }
+
+    /// Delete the age identity from the macOS Keychain.
+    pub fn delete_identity() -> Result<()> {
+        use security_framework::passwords::delete_generic_password;
+
+        delete_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+            .context("Failed to delete identity from Keychain")?;
+
+        Ok(())
+    }
+
+    /// Check if an identity exists in the Keychain.
+    ///
+    /// Does not trigger Touch ID - just checks existence.
+    pub fn has_identity() -> bool {
+        use security_framework::passwords::get_generic_password;
+        get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).is_ok()
+    }
+}
+
+// =============================================================================
+// Non-macOS Stubs - Graceful degradation to env var
+// =============================================================================
+
+#[cfg(not(target_os = "macos"))]
+mod platform {
+    use super::*;
+
+    /// Keychain not available on this platform.
+    ///
+    /// Use PATINA_IDENTITY environment variable instead.
+    pub fn store_identity(_identity: &str) -> Result<()> {
+        bail!(
+            "Keychain storage is only available on macOS.\n\
+             On Linux/Windows, set the PATINA_IDENTITY environment variable:\n\
+             \n\
+             export PATINA_IDENTITY='AGE-SECRET-KEY-1...'"
+        )
+    }
+
+    /// Keychain not available on this platform.
+    ///
+    /// Use PATINA_IDENTITY environment variable instead.
+    pub fn get_identity() -> Result<String> {
+        bail!(
+            "Keychain is only available on macOS.\n\
+             Set the PATINA_IDENTITY environment variable:\n\
+             \n\
+             export PATINA_IDENTITY='AGE-SECRET-KEY-1...'"
+        )
+    }
+
+    /// Keychain not available on this platform.
+    pub fn delete_identity() -> Result<()> {
+        bail!("Keychain is only available on macOS")
+    }
+
+    /// Keychain not available on this platform.
+    ///
+    /// Always returns false - use PATINA_IDENTITY env var instead.
+    pub fn has_identity() -> bool {
+        false
+    }
+}
+
+// =============================================================================
+// Public API - delegates to platform-specific implementation
+// =============================================================================
+
+/// Store an age identity in the system keychain.
 ///
-/// The identity is stored as a generic password with Touch ID protection.
+/// - macOS: Uses Keychain with Touch ID protection
+/// - Linux/Windows: Returns error with guidance to use PATINA_IDENTITY env var
 pub fn store_identity(identity: &str) -> Result<()> {
-    use security_framework::passwords::set_generic_password;
-
-    set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, identity.as_bytes())
-        .context("Failed to store identity in Keychain")?;
-
-    Ok(())
+    platform::store_identity(identity)
 }
 
-/// Retrieve the age identity from the macOS Keychain.
+/// Retrieve the age identity from the system keychain.
 ///
-/// This will trigger Touch ID if the item is protected.
+/// - macOS: Retrieves from Keychain (may trigger Touch ID)
+/// - Linux/Windows: Returns error with guidance to use PATINA_IDENTITY env var
 pub fn get_identity() -> Result<String> {
-    use security_framework::passwords::get_generic_password;
-
-    let password = get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
-        .context("Failed to retrieve identity from Keychain. Run: patina secrets --import-key")?;
-
-    String::from_utf8(password).context("Keychain identity is not valid UTF-8")
+    platform::get_identity()
 }
 
-/// Delete the age identity from the macOS Keychain.
-pub fn delete_identity() -> Result<()> {
-    use security_framework::passwords::delete_generic_password;
-
-    delete_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
-        .context("Failed to delete identity from Keychain")?;
-
-    Ok(())
-}
-
-/// Check if an identity exists in the Keychain.
+/// Delete the age identity from the system keychain.
 ///
-/// Does not trigger Touch ID - just checks existence.
+/// - macOS: Deletes from Keychain
+/// - Linux/Windows: Returns error (no keychain to delete from)
+pub fn delete_identity() -> Result<()> {
+    platform::delete_identity()
+}
+
+/// Check if an identity exists in the system keychain.
+///
+/// - macOS: Checks Keychain
+/// - Linux/Windows: Always returns false (use PATINA_IDENTITY env var)
 pub fn has_identity() -> bool {
-    // Try to get the password - if it fails, no identity exists
-    // Note: This may trigger Touch ID on some systems
-    // A better approach would be to query keychain items without retrieving
-    // For now, we'll try to get and handle the error
-    use security_framework::passwords::get_generic_password;
-    get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).is_ok()
+    platform::has_identity()
 }
 
 #[cfg(test)]
 mod tests {
-    // Note: These tests interact with the actual macOS Keychain
+    use super::*;
+
+    #[test]
+    fn test_keychain_constants() {
+        // Verify constants are set correctly
+        assert_eq!(KEYCHAIN_SERVICE, "patina");
+        assert_eq!(KEYCHAIN_ACCOUNT, "Patina Secrets");
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn test_non_macos_stubs_return_errors() {
+        // On non-macOS, keychain operations should fail gracefully
+        assert!(store_identity("test").is_err());
+        assert!(get_identity().is_err());
+        assert!(delete_identity().is_err());
+        assert!(!has_identity());
+    }
+
+    // Note: macOS keychain tests interact with actual Keychain
     // They should be run manually, not in CI
     //
     // #[test]
+    // #[cfg(target_os = "macos")]
     // fn test_keychain_roundtrip() {
     //     let test_identity = "AGE-SECRET-KEY-1TEST...";
     //     store_identity(test_identity).unwrap();
