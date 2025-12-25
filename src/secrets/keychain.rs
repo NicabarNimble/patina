@@ -12,10 +12,10 @@ use anyhow::Result;
 #[cfg(not(target_os = "macos"))]
 use anyhow::bail;
 
-/// Keychain service name for Patina secrets.
+// macOS-only constants (used by security-framework)
+#[cfg(target_os = "macos")]
 const KEYCHAIN_SERVICE: &str = "patina";
-
-/// Keychain account name for the age identity.
+#[cfg(target_os = "macos")]
 const KEYCHAIN_ACCOUNT: &str = "Patina Secrets";
 
 // =============================================================================
@@ -157,8 +157,9 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn test_keychain_constants() {
-        // Verify constants are set correctly
+        // Verify constants are set correctly (macOS only)
         assert_eq!(KEYCHAIN_SERVICE, "patina");
         assert_eq!(KEYCHAIN_ACCOUNT, "Patina Secrets");
     }
