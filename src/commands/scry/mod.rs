@@ -1008,10 +1008,15 @@ fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> {
 
     for (i, result) in results.iter().enumerate() {
         let event_type = result.metadata.event_type.as_deref().unwrap_or("unknown");
+        let source_tag = if result.sources.contains(&"persona") {
+            "[PERSONA] "
+        } else {
+            ""
+        };
 
         if options.explain {
             // Detailed output with per-oracle contributions
-            println!("\n{}. {} ({})", i + 1, result.doc_id, event_type);
+            println!("\n{}. {}{} ({})", i + 1, source_tag, result.doc_id, event_type);
 
             // Show each oracle's contribution
             for (oracle_name, contrib) in &result.contributions {
@@ -1076,8 +1081,9 @@ fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> {
             }
 
             println!(
-                "\n[{}] {} (score: {:.3}) ({})",
+                "\n[{}] {}{} (score: {:.3}) ({})",
                 i + 1,
+                source_tag,
                 result.doc_id,
                 result.fused_score,
                 contributions_str
