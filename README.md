@@ -113,6 +113,58 @@ Within Claude, use these slash commands:
 - `/session-note <insight>` - Record insight
 - `/session-end` - Archive and distill learnings
 
+## Command Reference
+
+Patina has 23 commands totaling ~42k lines of Rust. Here's the full inventory:
+
+### Active Commands
+
+| Command | Lines | Module | Description |
+|---------|------:|--------|-------------|
+| `secrets` | 2,100 | `secrets/` | Age encryption, Touch ID, multi-recipient vaults |
+| `adapter` | 1,900 | `adapters/` | LLM frontend management (Claude, Gemini) |
+| `scrape` | 1,900 | `storage/`, `git/` | Extract code, git history, sessions to SQLite |
+| `serve` | 1,600 | `mcp/` | MCP server for LLM tool integration |
+| `scry` | 1,100 | `retrieval/` | Hybrid search (semantic + lexical + temporal) |
+| `oxidize` | 900 | `embeddings/` | Build vector embeddings from scraped data |
+| `init` | 800 | `project/` | Initialize project with LLM adapter |
+| `model` | 800 | `models/` | Manage embedding models in mothership cache |
+| `doctor` | 600 | `commands/` | Health check and diagnostics |
+| `persona` | 300 | `retrieval/` | Cross-project user knowledge |
+| `assay` | 200 | `retrieval/` | Structural queries (imports, callers, inventory) |
+| `repo` | 200 | `mothership/` | Register external repos for cross-project search |
+| `upgrade` | 160 | `commands/` | Check for new CLI versions |
+| `rebuild` | 100 | `main.rs` | Rebuild .patina/ from git-tracked sources |
+
+### Measurement Tools
+
+| Command | Lines | Purpose |
+|---------|------:|---------|
+| `eval` | 200 | Retrieval quality evaluation |
+| `bench` | 200 | Benchmarking with ground truth |
+
+### Niche / Legacy
+
+| Command | Lines | Status | Notes |
+|---------|------:|--------|-------|
+| `yolo` | 220 | Niche | Devcontainer generation |
+| `query` | 460 | Superseded | Use `scry` |
+| `ask` | 100 | Superseded | Use `scry` |
+| `embeddings` | - | Superseded | Use `oxidize` |
+| `belief` | 450 | Experimental | Neuro-symbolic, unused |
+| `build` | 30 | Stub | Docker wrapper |
+| `test` | 30 | Stub | Docker wrapper |
+
+### Codebase Summary
+
+| Category | Lines |
+|----------|------:|
+| Active commands | ~10,700 |
+| Measurement tools | ~400 |
+| Niche/legacy | ~2,200 |
+| Shared infrastructure | ~28,500 |
+| **Total** | **~41,800** |
+
 ## Architecture
 
 ```
