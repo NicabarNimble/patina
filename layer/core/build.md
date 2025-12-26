@@ -1,8 +1,8 @@
 # Build Recipe
 
-**Status:** Secrets v2 design complete. Ready for implementation.
+**Status:** Quality gates - measure before extending, clean before adding.
 
-**Current Direction:** Secrets v2 redesign - replacing 1Password backend with local age-encrypted vault. Touch ID + macOS Keychain for key storage. Full container/headless coverage.
+**Recent:** Persona fusion Phase 1 complete (observability). Retrieval regression detected (MRR 0.624 → 0.448). Shifting focus to measurement and cleanup before new features.
 
 ---
 
@@ -64,18 +64,36 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 ---
 
+## Measurement Tools
+
+Built-in quality measurement infrastructure:
+
+| Command | Purpose | Ground Truth |
+|---------|---------|--------------|
+| `patina eval` | Retrieval quality by dimension | - |
+| `patina eval --feedback` | Real-world precision from sessions | Session data |
+| `patina bench retrieval` | MRR, Recall@k benchmarking | `eval/retrieval-queryset.json` |
+
+**Baseline metrics:** MRR 0.624, Recall@10 67.5%, Latency ~135ms
+
+Run regularly to catch regressions.
+
+---
+
 ## Specs
 
 Active specs:
 
-- [spec-secrets-v2.md](../surface/build/spec-secrets-v2.md) - **Current:** Local vault with age encryption, macOS Keychain, Touch ID
-- [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - Make PersonaOracle visible, tag results by source
+- [spec-quality-gates.md](../surface/build/spec-quality-gates.md) - **Current:** Measurement-first, fix retrieval regression, cleanup legacy
+- [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - Phase 1 complete (observability), Phase 2 deferred
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
 - [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
+- [spec-hosts-deploy.md](../surface/build/spec-hosts-deploy.md) - Persistent server deployment (future exploration)
 
 Archived specs (preserved via git tags):
 
+- `spec/secrets-v2` - Secrets v2: Local age-encrypted vault with Touch ID (current)
 - `spec/secrets-1password` - Secrets v1: 1Password integration (superseded by v2)
 - `spec/observable-scry` - Phase 1-3: Structured response, explicit modes, feedback logging
 - `spec/robust-signals` - Structural signals experiments (Phase 1-2)
@@ -96,6 +114,20 @@ Future specs (not yet planned):
 ## Completed
 
 Shipped phases (details preserved in git tags and specs):
+
+### Secrets v2 (Local Vault)
+
+Replaced 1Password backend with local age-encrypted vault. Full implementation:
+- **Identity:** macOS Keychain with Touch ID, `PATINA_IDENTITY` env for CI/headless
+- **Vaults:** Global (`~/.patina/`) + Project (`.patina/`) with merge at runtime
+- **Multi-recipient:** Team members and CI can decrypt project vaults
+- **Session cache:** Via `patina serve` daemon, prevents repeated Touch ID prompts
+- **SSH injection:** `patina secrets run --ssh host -- cmd` for remote execution
+- **CLI:** `add`, `run`, `add-recipient`, `remove-recipient`, `list-recipients`, `--lock`, `--export-key`, `--import-key`, `--reset`
+
+Fixes container/CI gaps from v1. No external account required.
+
+**Tag:** `spec/secrets-v2`
 
 ### Observable Scry (Phase 1 → 3)
 
