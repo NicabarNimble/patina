@@ -166,6 +166,14 @@ Commands to remove:
 
 ---
 
+## Next Session Start
+
+1. Run `patina bench retrieval --query-set eval/retrieval-queryset.json`
+2. Check if ground truth paths in queryset are still valid
+3. Pick up from Phase 1 of Cleanup Plan
+
+---
+
 ## References
 
 - Andrew Ng: "Don't add features without data"
