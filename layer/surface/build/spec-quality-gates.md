@@ -4,6 +4,8 @@
 
 **Philosophy:** Andrew Ng's practical ML approach applied to dev tools - measure before optimizing, clean before extending, ship with confidence.
 
+**Scope note:** Through this quality gates work, we'll refine what Patina IS - an evolving layer of knowledge that covers projects and connects to a unifying system. Features like `yolo` and `hosts-deploy` may move to a future orchestration layer. Measurement first, then scope clarity.
+
 ---
 
 ## The Problem
