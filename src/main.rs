@@ -718,6 +718,9 @@ enum PersonaCommands {
 
     /// Process events into searchable index
     Materialize,
+
+    /// Check persona oracle status
+    Status,
 }
 
 // CLI subcommand enums are defined in their respective command modules
@@ -1024,6 +1027,9 @@ fn main() -> Result<()> {
             }
             PersonaCommands::Materialize => {
                 commands::persona::execute_materialize()?;
+            }
+            PersonaCommands::Status => {
+                commands::persona::execute_status()?;
             }
         },
         Some(Commands::Doctor {
