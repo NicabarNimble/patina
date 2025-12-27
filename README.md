@@ -115,7 +115,7 @@ Within Claude, use these slash commands:
 
 ## Command Reference
 
-Patina has 24 commands totaling ~42k lines of Rust. Here's the full inventory:
+Patina has 20 commands totaling ~42k lines of Rust. Here's the full inventory:
 
 ### Active Commands
 
@@ -159,16 +159,12 @@ The `scrape` command is the largest, with tree-sitter AST parsing for 9 language
 | `eval` | 600 | Retrieval quality evaluation |
 | `bench` | 450 | Benchmarking with ground truth |
 
-### Legacy (candidates for removal)
+### Build Wrappers
 
-| Command | Lines | Status | Notes |
-|---------|------:|--------|-------|
-| `query` | 140 | Superseded | Use `scry` |
-| `ask` | 350 | Superseded | Use `scry` |
-| `embeddings` | 160 | Superseded | Use `oxidize` |
-| `belief` | 165 | Experimental | Neuro-symbolic, unused |
-| `build` | 32 | Stub | Docker wrapper |
-| `test` | 31 | Stub | Docker wrapper |
+| Command | Lines | Purpose |
+|---------|------:|---------|
+| `build` | 32 | Build in dev environment (Docker/Dagger/Native) |
+| `test` | 31 | Run tests in dev environment |
 
 ### Shared Infrastructure
 
@@ -184,12 +180,12 @@ The `scrape` command is the largest, with tree-sitter AST parsing for 9 language
 
 | Category | Lines |
 |----------|------:|
-| Commands (24 total) | ~25,000 |
+| Commands (20 total) | ~24,000 |
 | Shared infrastructure | ~7,200 |
 | patina-metal crate | ~1,000 |
 | main.rs + lib glue | ~1,200 |
 | Tests | ~7,500 |
-| **Total** | **~42,000** |
+| **Total** | **~41,000** |
 
 ## Architecture
 

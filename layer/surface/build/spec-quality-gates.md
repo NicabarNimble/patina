@@ -10,7 +10,7 @@
 
 ## The Problem
 
-Patina has grown to ~42k lines across 24 commands. Before adding more features:
+Patina has grown to ~41k lines across 20 commands. Before adding more features:
 1. What do we actually have? (inventory)
 2. Does it work? (quality)
 3. Is it used? (value)
@@ -63,23 +63,18 @@ We have the infrastructure. We need to use it.
 - `bench` - ground truth benchmarking
 
 **Supporting:**
-- `init`, `doctor`, `rebuild`, `model`, `repo`, `adapter`, `secrets`, `persona`, `assay`, `upgrade`, `version`
+- `init`, `doctor`, `rebuild`, `model`, `repo`, `adapter`, `secrets`, `persona`, `assay`, `upgrade`, `version`, `build`, `test`
 
 **Niche:**
 - `yolo` - devcontainer generation
 
-**Legacy (candidates for removal):**
+**Archived (removed 2025-12-27):**
+- `query` (140 lines) - superseded by `scry`
+- `ask` (350 lines) - superseded by `scry`
+- `embeddings` (160 lines) - superseded by `oxidize`
+- `belief` (165 lines) - experimental, unused
 
-| Command | Lines | Reason |
-|---------|------:|--------|
-| `query` | 140 | Superseded by `scry` |
-| `ask` | 350 | Superseded by `scry` |
-| `embeddings` | 160 | Superseded by `oxidize` |
-| `belief` | 165 | Experimental, unused |
-| `build` | 32 | Docker stub, rarely used |
-| `test` | 31 | Docker stub, rarely used |
-
-**Total legacy:** ~880 lines (candidates for archival)
+**Total archived:** ~815 lines
 
 ---
 
@@ -129,21 +124,19 @@ Before archiving anything, understand why MRR dropped:
 - [ ] Compare current vs baseline scry behavior
 - [ ] Identify root cause
 
-### Phase 2: Archive Legacy Commands
+### Phase 2: Archive Legacy Commands ✅ COMPLETED
 
-Remove from CLI, preserve code via git tag:
+Removed from CLI, code preserved via git tag `archive/legacy-commands-20251227`:
 
-```bash
-git tag archive/legacy-commands
-```
+Commands removed (2025-12-27):
+- ✅ `query` (superseded by `scry`)
+- ✅ `ask` (superseded by `scry`)
+- ✅ `embeddings` (superseded by `oxidize`)
+- ✅ `belief` (experimental, unused)
 
-Commands to remove:
-- `query` (use `scry`)
-- `ask` (use `scry`)
-- `embeddings` (use `oxidize`)
-- `belief` (experimental)
-- `build` (docker stub)
-- `test` (docker stub)
+Kept as lightweight wrappers:
+- `build` - docker/dagger build wrapper (32 lines)
+- `test` - test runner wrapper (31 lines)
 
 ### Phase 3: Add CI Quality Gate
 
@@ -162,7 +155,7 @@ Commands to remove:
 |----------|--------|
 | Retrieval regression investigated | [ ] |
 | MRR restored to >= 0.55 | [ ] |
-| Legacy commands archived | [ ] |
+| Legacy commands archived | [x] |
 | CI gate for retrieval quality | [ ] |
 | README command list accurate | [x] |
 
