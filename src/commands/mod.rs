@@ -2,7 +2,6 @@ pub mod adapter;
 pub mod ask;
 pub mod assay;
 pub mod audit;
-pub mod belief;
 pub mod bench;
 pub mod build;
 pub mod doctor;

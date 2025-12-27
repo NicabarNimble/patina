@@ -265,12 +265,6 @@ enum Commands {
         command: EmbeddingsCommands,
     },
 
-    /// Validate beliefs using neuro-symbolic reasoning
-    Belief {
-        #[command(subcommand)]
-        command: BeliefCommands,
-    },
-
     /// Cross-project user knowledge (preferences, style, history)
     Persona {
         #[command(subcommand)]
@@ -628,23 +622,6 @@ enum EmbeddingsCommands {
 }
 
 #[derive(Subcommand)]
-enum BeliefCommands {
-    /// Validate a belief using semantic evidence and symbolic reasoning
-    Validate {
-        /// Belief statement to validate
-        query: String,
-
-        /// Minimum similarity score for evidence (0.0-1.0, default: 0.50)
-        #[arg(long, default_value = "0.50")]
-        min_score: f32,
-
-        /// Maximum number of observations to consider (default: 20)
-        #[arg(long, default_value = "20")]
-        limit: usize,
-    },
-}
-
-#[derive(Subcommand)]
 enum PersonaCommands {
     /// Capture knowledge directly
     Note {
@@ -958,15 +935,6 @@ fn main() -> Result<()> {
             }
             EmbeddingsCommands::Status => {
                 commands::embeddings::status()?;
-            }
-        },
-        Some(Commands::Belief { command }) => match command {
-            BeliefCommands::Validate {
-                query,
-                min_score,
-                limit,
-            } => {
-                commands::belief::validate::execute(&query, min_score, limit)?;
             }
         },
         Some(Commands::Persona { command }) => match command {
