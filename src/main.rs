@@ -265,12 +265,6 @@ enum Commands {
         command: EmbeddingsCommands,
     },
 
-    /// Query observations and beliefs using semantic search
-    Query {
-        #[command(subcommand)]
-        command: QueryCommands,
-    },
-
     /// Validate beliefs using neuro-symbolic reasoning
     Belief {
         #[command(subcommand)]
@@ -634,27 +628,6 @@ enum EmbeddingsCommands {
 }
 
 #[derive(Subcommand)]
-enum QueryCommands {
-    /// Search observations using semantic similarity
-    Semantic {
-        /// Query text to search for
-        query: String,
-
-        /// Filter by observation types (comma-separated: pattern,technology,decision,challenge)
-        #[arg(long, value_delimiter = ',')]
-        r#type: Option<Vec<String>>,
-
-        /// Minimum similarity score (0.0-1.0, default: 0.35)
-        #[arg(long, default_value = "0.35")]
-        min_score: f32,
-
-        /// Maximum number of results (default: 10)
-        #[arg(long, default_value = "10")]
-        limit: usize,
-    },
-}
-
-#[derive(Subcommand)]
 enum BeliefCommands {
     /// Validate a belief using semantic evidence and symbolic reasoning
     Validate {
@@ -985,16 +958,6 @@ fn main() -> Result<()> {
             }
             EmbeddingsCommands::Status => {
                 commands::embeddings::status()?;
-            }
-        },
-        Some(Commands::Query { command }) => match command {
-            QueryCommands::Semantic {
-                query,
-                r#type,
-                min_score,
-                limit,
-            } => {
-                commands::query::semantic::execute(&query, r#type.clone(), min_score, limit)?;
             }
         },
         Some(Commands::Belief { command }) => match command {
