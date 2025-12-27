@@ -166,19 +166,26 @@ Added to `.github/workflows/test.yml` (2025-12-27):
 2. **Build vector indices**: Runs oxidize to generate projections
 3. **Retrieval Quality Gate**: Benchmarks with MRR >= 0.55 threshold
 
-**Quality gate logic**:
+**Quality gate behavior**:
 ```bash
 # Run benchmark with JSON output
 patina bench retrieval --query-set eval/retrieval-queryset.json --json
 
-# Extract MRR and validate threshold
-if MRR >= 0.55: PASS
-else: FAIL (blocks merge)
+# Display metrics (MRR, Recall@5, Recall@10)
+if MRR >= 0.55: ✅ "Quality: MRR meets target"
+else: ⚠️  "Warning: MRR below target" (informational only)
 ```
+
+**Mode**: Informational (warning-only)
+- Does NOT block builds or merges
+- Provides visibility into quality trends
+- Alerts when MRR drops below 0.55 threshold
+- Balances quality awareness with development velocity
 
 **Implementation commits**:
 - a5423e94: Add retrieval quality gate to test pipeline
 - ff5e0e88: Improve JSON parsing and validation logic
+- 6ee7d502: Change from blocking to informational mode
 
 ---
 
