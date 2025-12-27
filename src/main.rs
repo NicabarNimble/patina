@@ -265,12 +265,6 @@ enum Commands {
         command: PersonaCommands,
     },
 
-    /// Ask questions about the codebase
-    Ask {
-        #[command(flatten)]
-        args: commands::ask::AskCommand,
-    },
-
     /// Manage external repositories for cross-project knowledge
     Repo {
         #[command(subcommand)]
@@ -946,9 +940,6 @@ fn main() -> Result<()> {
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
-        }
-        Some(Commands::Ask { args }) => {
-            commands::ask::run(args)?;
         }
         Some(Commands::Repo {
             command,
