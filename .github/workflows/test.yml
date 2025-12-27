@@ -76,3 +76,31 @@ jobs:
       
     - name: Build release
       run: cargo build --release
+
+    - name: Build knowledge database
+      run: |
+        ./target/release/patina scrape code
+        ./target/release/patina scrape git
+        ./target/release/patina scrape sessions
+        ./target/release/patina scrape layer
+
+    - name: Build vector indices
+      run: ./target/release/patina oxidize
+
+    - name: Retrieval Quality Gate
+      run: |
+        ./target/release/patina bench retrieval \
+          --query-set eval/retrieval-queryset.json \
+          --json > benchmark-results.json
+
+        # Extract MRR from JSON and check threshold
+        MRR=$(jq -r '.metrics.mrr' benchmark-results.json)
+        echo "MRR: $MRR"
+
+        # Check if MRR >= 0.55 (using bc for float comparison)
+        if (( $(echo "$MRR >= 0.55" | bc -l) )); then
+          echo "✅ Quality gate passed: MRR = $MRR (>= 0.55)"
+        else
+          echo "❌ Quality gate failed: MRR = $MRR (< 0.55)"
+          exit 1
+        fi
