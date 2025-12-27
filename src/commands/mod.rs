@@ -5,7 +5,6 @@ pub mod audit;
 pub mod bench;
 pub mod build;
 pub mod doctor;
-pub mod embeddings;
 pub mod eval;
 pub mod init;
 pub mod launch;

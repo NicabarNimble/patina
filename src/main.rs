@@ -259,12 +259,6 @@ enum Commands {
         command: BenchCommands,
     },
 
-    /// Generate and manage semantic embeddings
-    Embeddings {
-        #[command(subcommand)]
-        command: EmbeddingsCommands,
-    },
-
     /// Cross-project user knowledge (preferences, style, history)
     Persona {
         #[command(subcommand)]
@@ -609,19 +603,6 @@ enum ScryCommands {
 }
 
 #[derive(Subcommand)]
-enum EmbeddingsCommands {
-    /// Generate embeddings for all beliefs and observations
-    Generate {
-        /// Force regeneration of all embeddings
-        #[arg(long)]
-        force: bool,
-    },
-
-    /// Show embedding coverage status
-    Status,
-}
-
-#[derive(Subcommand)]
 enum PersonaCommands {
     /// Capture knowledge directly
     Note {
@@ -927,14 +908,6 @@ fn main() -> Result<()> {
                     oracle,
                 };
                 commands::bench::execute(options)?;
-            }
-        },
-        Some(Commands::Embeddings { command }) => match command {
-            EmbeddingsCommands::Generate { force } => {
-                commands::embeddings::generate(force)?;
-            }
-            EmbeddingsCommands::Status => {
-                commands::embeddings::status()?;
             }
         },
         Some(Commands::Persona { command }) => match command {
