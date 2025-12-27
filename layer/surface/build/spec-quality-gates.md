@@ -157,14 +157,28 @@ Kept as lightweight wrappers:
 - `build` - docker/dagger build wrapper (32 lines)
 - `test` - test runner wrapper (31 lines)
 
-### Phase 3: Add CI Quality Gate
+### Phase 3: Add CI Quality Gate ✅ COMPLETED
 
-```yaml
-# .github/workflows/ci.yml
-- name: Retrieval Quality
-  run: |
-    patina bench retrieval --query-set eval/retrieval-queryset.json --json
+Added to `.github/workflows/test.yml` (2025-12-27):
+
+**Three new CI steps**:
+1. **Build knowledge database**: Scrapes code, git, sessions, layer
+2. **Build vector indices**: Runs oxidize to generate projections
+3. **Retrieval Quality Gate**: Benchmarks with MRR >= 0.55 threshold
+
+**Quality gate logic**:
+```bash
+# Run benchmark with JSON output
+patina bench retrieval --query-set eval/retrieval-queryset.json --json
+
+# Extract MRR and validate threshold
+if MRR >= 0.55: PASS
+else: FAIL (blocks merge)
 ```
+
+**Implementation commits**:
+- a5423e94: Add retrieval quality gate to test pipeline
+- ff5e0e88: Improve JSON parsing and validation logic
 
 ---
 
@@ -175,16 +189,33 @@ Kept as lightweight wrappers:
 | Retrieval regression investigated | [x] |
 | MRR restored to >= 0.55 | [x] |
 | Legacy commands archived | [x] |
-| CI gate for retrieval quality | [ ] |
+| CI gate for retrieval quality | [x] |
 | README command list accurate | [x] |
+
+**Status**: ✅ **ALL COMPLETE** (2025-12-27)
 
 ---
 
-## Next Session Start
+## Completion Summary
 
-1. Add CI quality gate (Phase 3)
-2. Consider improving Recall@10 (currently 40.6%, baseline was 67.5%)
-3. Investigate q4-assay query (still at RR=0.00)
+**All phases complete** (2025-12-27):
+- ✅ Phase 1: MRR regression investigated and fixed (0.427 → 0.588)
+- ✅ Phase 2: 4 legacy commands archived (922 lines removed)
+- ✅ Phase 3: CI quality gate enforcing MRR >= 0.55
+
+**Commits this session**: 10 total
+- 2 documentation updates
+- 4 command removals (surgical, one per commit)
+- 1 queryset fix
+- 2 CI quality gate additions
+- 1 spec completion
+
+## Future Work
+
+Optional improvements (not blocking):
+1. Improve Recall@10 (currently 40.6%, baseline was 67.5%)
+2. Investigate q4-assay query (RR=0.00 - may need query rewording)
+3. Add test coverage % tracking
 
 ---
 
