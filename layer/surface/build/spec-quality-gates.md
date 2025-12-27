@@ -34,13 +34,16 @@ Patina has grown to ~41k lines across 20 commands. Before adding more features:
 
 ### Retrieval Quality
 
-| Metric | Baseline | Current | Notes |
-|--------|----------|---------|-------|
-| MRR | 0.624 | 0.448 | Regression detected |
-| Recall@10 | 67.5% | 24.0% | Regression detected |
-| Latency | ~135ms | ~161ms | Slight increase |
+| Metric | Baseline | Before Fix | After Fix | Notes |
+|--------|----------|------------|-----------|-------|
+| MRR | 0.624 | 0.448 | **0.588** | ✅ Restored (exceeds target 0.55) |
+| Recall@5 | - | 20.8% | **31.2%** | ✅ Improved +50% |
+| Recall@10 | 67.5% | 24.0% | **40.6%** | ⚠️ Still below baseline |
+| Latency | ~135ms | 177ms | **168ms** | ✅ Improved |
 
-**Gap:** No CI tracking. Quality regressed without notice.
+**Root cause (fixed 2025-12-27):** Stale database entries from deleted commands + outdated ground truth paths.
+
+**Gap:** No CI tracking. Need to add quality gate to prevent future regressions.
 
 ### Measurement Tools (Already Built)
 
@@ -117,12 +120,28 @@ cargo fmt --all -- --check
 
 ## Cleanup Plan
 
-### Phase 1: Investigate Retrieval Regression
+### Phase 1: Investigate Retrieval Regression ✅ COMPLETED
 
-Before archiving anything, understand why MRR dropped:
-- [ ] Verify ground truth paths are still valid
-- [ ] Compare current vs baseline scry behavior
-- [ ] Identify root cause
+Root causes identified and fixed (2025-12-27):
+
+**Cause 1: Stale database entries**
+- 154 entries from deleted commands (query, ask, embeddings, belief) polluting index
+- Queries returning deleted files as top results
+
+**Cause 2: Outdated ground truth paths**
+- Scrape refactored from flat files to modules (git.rs → git/mod.rs, sessions.rs → sessions/mod.rs)
+- Ground truth paths in queryset didn't match actual file structure
+
+**Actions taken**:
+- ✅ Rebuilt database: `patina scrape code --force` (removed stale entries)
+- ✅ Rebuilt indices: `patina oxidize` (regenerated all projections)
+- ✅ Updated queryset: Fixed ground truth paths (commit 98057220)
+
+**Results**:
+- MRR: 0.427 → **0.588** (+37.7%, exceeds target of 0.55)
+- Recall@5: 20.8% → 31.2% (+50.0%)
+- Recall@10: 24.0% → 40.6% (+69.2%)
+- Latency: 177ms → 168ms (-5.1%)
 
 ### Phase 2: Archive Legacy Commands ✅ COMPLETED
 
@@ -153,8 +172,8 @@ Kept as lightweight wrappers:
 
 | Criteria | Status |
 |----------|--------|
-| Retrieval regression investigated | [ ] |
-| MRR restored to >= 0.55 | [ ] |
+| Retrieval regression investigated | [x] |
+| MRR restored to >= 0.55 | [x] |
 | Legacy commands archived | [x] |
 | CI gate for retrieval quality | [ ] |
 | README command list accurate | [x] |
@@ -163,9 +182,9 @@ Kept as lightweight wrappers:
 
 ## Next Session Start
 
-1. Run `patina bench retrieval --query-set eval/retrieval-queryset.json`
-2. Check if ground truth paths in queryset are still valid
-3. Pick up from Phase 1 of Cleanup Plan
+1. Add CI quality gate (Phase 3)
+2. Consider improving Recall@10 (currently 40.6%, baseline was 67.5%)
+3. Investigate q4-assay query (still at RR=0.00)
 
 ---
 
