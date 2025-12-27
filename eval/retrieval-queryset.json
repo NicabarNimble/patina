@@ -30,7 +30,7 @@
     {
       "id": "q6-git",
       "query": "git commit scraping",
-      "relevant_docs": ["./src/commands/scrape/git.rs", "./src/git/operations.rs"]
+      "relevant_docs": ["./src/commands/scrape/git/mod.rs", "./src/git/operations.rs"]
     },
     {
       "id": "q7-oracle",
@@ -40,7 +40,7 @@
     {
       "id": "q8-session",
       "query": "session management and tracking",
-      "relevant_docs": ["./src/session.rs", "./src/commands/scrape/sessions.rs"]
+      "relevant_docs": ["./src/session.rs", "./src/commands/scrape/sessions/mod.rs"]
     }
   ]
 }
