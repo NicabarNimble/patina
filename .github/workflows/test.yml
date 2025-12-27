@@ -89,18 +89,26 @@ jobs:
 
     - name: Retrieval Quality Gate
       run: |
+        # Run benchmark and capture full output
         ./target/release/patina bench retrieval \
           --query-set eval/retrieval-queryset.json \
-          --json > benchmark-results.json
+          --json | tee benchmark-output.txt
 
-        # Extract MRR from JSON and check threshold
-        MRR=$(jq -r '.metrics.mrr' benchmark-results.json)
-        echo "MRR: $MRR"
+        # Extract JSON from output (last valid JSON object)
+        tail -n 10 benchmark-output.txt | grep -A 100 '^{' > benchmark-results.json
 
-        # Check if MRR >= 0.55 (using bc for float comparison)
-        if (( $(echo "$MRR >= 0.55" | bc -l) )); then
-          echo "✅ Quality gate passed: MRR = $MRR (>= 0.55)"
+        # Extract MRR and check threshold
+        MRR=$(jq -r '.mrr' benchmark-results.json)
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "MRR: $MRR (threshold: >= 0.55)"
+
+        # Check if MRR >= 0.55 (using awk for float comparison)
+        if awk "BEGIN {exit !($MRR >= 0.55)}"; then
+          echo "✅ Quality gate PASSED"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         else
-          echo "❌ Quality gate failed: MRR = $MRR (< 0.55)"
+          echo "❌ Quality gate FAILED"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           exit 1
         fi
