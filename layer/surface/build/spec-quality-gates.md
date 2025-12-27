@@ -10,7 +10,7 @@
 
 ## The Problem
 
-Patina has grown to ~42k lines across 23 commands. Before adding more features:
+Patina has grown to ~42k lines across 24 commands. Before adding more features:
 1. What do we actually have? (inventory)
 2. Does it work? (quality)
 3. Is it used? (value)
@@ -63,7 +63,7 @@ We have the infrastructure. We need to use it.
 - `bench` - ground truth benchmarking
 
 **Supporting:**
-- `init`, `doctor`, `rebuild`, `model`, `repo`, `adapter`, `secrets`, `persona`, `assay`, `upgrade`
+- `init`, `doctor`, `rebuild`, `model`, `repo`, `adapter`, `secrets`, `persona`, `assay`, `upgrade`, `version`
 
 **Niche:**
 - `yolo` - devcontainer generation
@@ -71,13 +71,15 @@ We have the infrastructure. We need to use it.
 **Legacy (candidates for removal):**
 
 | Command | Lines | Reason |
-|---------|-------|--------|
-| `query` | 460 | Superseded by `scry` |
-| `ask` | 100 | Superseded by `scry` |
-| `embeddings` | 900 | Superseded by `oxidize` |
-| `belief` | 450 | Experimental, unused |
-| `build` | 30 | Docker stub, rarely used |
-| `test` | 30 | Docker stub, rarely used |
+|---------|------:|--------|
+| `query` | 140 | Superseded by `scry` |
+| `ask` | 350 | Superseded by `scry` |
+| `embeddings` | 160 | Superseded by `oxidize` |
+| `belief` | 165 | Experimental, unused |
+| `build` | 32 | Docker stub, rarely used |
+| `test` | 31 | Docker stub, rarely used |
+
+**Total legacy:** ~880 lines (candidates for archival)
 
 ---
 

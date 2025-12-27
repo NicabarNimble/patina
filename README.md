@@ -115,55 +115,81 @@ Within Claude, use these slash commands:
 
 ## Command Reference
 
-Patina has 23 commands totaling ~42k lines of Rust. Here's the full inventory:
+Patina has 24 commands totaling ~42k lines of Rust. Here's the full inventory:
 
 ### Active Commands
 
 | Command | Lines | Module | Description |
 |---------|------:|--------|-------------|
+| `scrape` | 11,800 | `scrape/` | Extract code, git, sessions, layer to SQLite |
+| `scry` | 2,100 | `scry/` | Hybrid search (semantic + lexical + temporal) |
 | `secrets` | 2,100 | `secrets/` | Age encryption, Touch ID, multi-recipient vaults |
-| `adapter` | 1,900 | `adapters/` | LLM frontend management (Claude, Gemini) |
-| `scrape` | 1,900 | `storage/`, `git/` | Extract code, git history, sessions to SQLite |
-| `serve` | 1,600 | `mcp/` | MCP server for LLM tool integration |
-| `scry` | 1,100 | `retrieval/` | Hybrid search (semantic + lexical + temporal) |
-| `oxidize` | 900 | `embeddings/` | Build vector embeddings from scraped data |
-| `init` | 800 | `project/` | Initialize project with LLM adapter |
-| `model` | 800 | `models/` | Manage embedding models in mothership cache |
-| `doctor` | 600 | `commands/` | Health check and diagnostics |
-| `persona` | 300 | `retrieval/` | Cross-project user knowledge |
-| `assay` | 200 | `retrieval/` | Structural queries (imports, callers, inventory) |
-| `repo` | 200 | `mothership/` | Register external repos for cross-project search |
-| `upgrade` | 160 | `commands/` | Check for new CLI versions |
-| `rebuild` | 100 | `main.rs` | Rebuild .patina/ from git-tracked sources |
+| `oxidize` | 1,800 | `oxidize/` | Build vector embeddings from scraped data |
+| `yolo` | 1,600 | `yolo/` | AI-ready devcontainer generation |
+| `init` | 1,200 | `init/` | Initialize project with LLM adapter |
+| `repo` | 1,100 | `repo/` | Register external repos for cross-project search |
+| `assay` | 1,000 | `assay/` | Structural queries (imports, callers, inventory) |
+| `git` | 700 | `scrape/git/` | Git history and co-change extraction |
+| `doctor` | 600 | `doctor.rs` | Health check and diagnostics |
+| `persona` | 600 | `persona/` | Cross-project user knowledge |
+| `adapter` | 400 | `adapter.rs` | LLM frontend management (Claude, Gemini) |
+| `serve` | 300 | `serve/` | MCP server for LLM tool integration |
+| `rebuild` | 260 | `rebuild/` | Rebuild .patina/ from git-tracked sources |
+| `model` | 210 | `model.rs` | Manage embedding models in mothership cache |
+| `upgrade` | 160 | `upgrade.rs` | Check for new CLI versions |
+| `version` | 160 | `version.rs` | Show version and component info |
+
+### Scrape Sub-modules
+
+The `scrape` command is the largest, with tree-sitter AST parsing for 9 languages:
+
+| Sub-module | Lines | Purpose |
+|------------|------:|---------|
+| `code/languages/` | 5,600 | Language parsers (TS, C++, JS, Go, Sol, Py, Rust, C, Cairo) |
+| `code/` | 1,500 | Extraction pipeline, database, types |
+| `git/` | 700 | Git history, co-change relationships |
+| `sessions/` | 540 | Session markdown files |
+| `layer/` | 420 | Layer pattern markdown files |
+| `github/` | 340 | GitHub issues via `gh` CLI |
 
 ### Measurement Tools
 
 | Command | Lines | Purpose |
 |---------|------:|---------|
-| `eval` | 200 | Retrieval quality evaluation |
-| `bench` | 200 | Benchmarking with ground truth |
+| `eval` | 600 | Retrieval quality evaluation |
+| `bench` | 450 | Benchmarking with ground truth |
 
-### Niche / Legacy
+### Legacy (candidates for removal)
 
 | Command | Lines | Status | Notes |
 |---------|------:|--------|-------|
-| `yolo` | 220 | Niche | Devcontainer generation |
-| `query` | 460 | Superseded | Use `scry` |
-| `ask` | 100 | Superseded | Use `scry` |
-| `embeddings` | - | Superseded | Use `oxidize` |
-| `belief` | 450 | Experimental | Neuro-symbolic, unused |
-| `build` | 30 | Stub | Docker wrapper |
-| `test` | 30 | Stub | Docker wrapper |
+| `query` | 140 | Superseded | Use `scry` |
+| `ask` | 350 | Superseded | Use `scry` |
+| `embeddings` | 160 | Superseded | Use `oxidize` |
+| `belief` | 165 | Experimental | Neuro-symbolic, unused |
+| `build` | 32 | Stub | Docker wrapper |
+| `test` | 31 | Stub | Docker wrapper |
+
+### Shared Infrastructure
+
+| Crate/Module | Lines | Purpose |
+|--------------|------:|---------|
+| `patina-metal/` | 1,000 | Tree-sitter grammars, unified parser |
+| `retrieval/` | 2,500 | Oracle abstraction, RRF fusion |
+| `mcp/` | 1,600 | MCP protocol, JSON-RPC server |
+| `storage/` | 1,200 | SQLite eventlog, materialized views |
+| `embeddings/` | 900 | ONNX E5-base-v2, USearch HNSW |
 
 ### Codebase Summary
 
 | Category | Lines |
 |----------|------:|
-| Active commands | ~10,700 |
-| Measurement tools | ~400 |
-| Niche/legacy | ~2,200 |
-| Shared infrastructure | ~28,500 |
-| **Total** | **~41,800** |
+| Commands (24 total) | ~25,000 |
+| Shared infrastructure | ~7,200 |
+| patina-metal crate | ~1,000 |
+| main.rs + lib glue | ~1,200 |
+| Tests | ~7,500 |
+| **Total** | **~42,000** |
 
 ## Architecture
 
