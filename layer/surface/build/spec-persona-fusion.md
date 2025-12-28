@@ -1,6 +1,6 @@
 # Spec: Persona Fusion
 
-**Status:** Gap Analysis Complete - Implementation Partially Exists
+**Status:** Phase 1 Complete - Observability shipped
 
 **Vision:** PersonaOracle as a first-class oracle in scry, delivering cross-project user knowledge alongside code results.
 
@@ -132,7 +132,7 @@ Different retrieval strategies for different query types.
 
 ## Acceptance Criteria
 
-1. [ ] User can see if PersonaOracle is contributing (`--explain` or similar)
-2. [ ] Results tagged with source (`[PROJECT]` / `[PERSONA]`)
-3. [ ] `patina persona status` shows oracle health
+1. [x] User can see if PersonaOracle is contributing (`--explain` or similar)
+2. [x] Results tagged with source (`[PERSONA]` prefix in CLI and MCP)
+3. [x] `patina persona status` shows oracle health
 4. [ ] Documentation: how to capture persona for cross-project benefits

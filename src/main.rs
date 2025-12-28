@@ -259,34 +259,10 @@ enum Commands {
         command: BenchCommands,
     },
 
-    /// Generate and manage semantic embeddings
-    Embeddings {
-        #[command(subcommand)]
-        command: EmbeddingsCommands,
-    },
-
-    /// Query observations and beliefs using semantic search
-    Query {
-        #[command(subcommand)]
-        command: QueryCommands,
-    },
-
-    /// Validate beliefs using neuro-symbolic reasoning
-    Belief {
-        #[command(subcommand)]
-        command: BeliefCommands,
-    },
-
     /// Cross-project user knowledge (preferences, style, history)
     Persona {
         #[command(subcommand)]
         command: PersonaCommands,
-    },
-
-    /// Ask questions about the codebase
-    Ask {
-        #[command(flatten)]
-        args: commands::ask::AskCommand,
     },
 
     /// Manage external repositories for cross-project knowledge
@@ -621,57 +597,6 @@ enum ScryCommands {
 }
 
 #[derive(Subcommand)]
-enum EmbeddingsCommands {
-    /// Generate embeddings for all beliefs and observations
-    Generate {
-        /// Force regeneration of all embeddings
-        #[arg(long)]
-        force: bool,
-    },
-
-    /// Show embedding coverage status
-    Status,
-}
-
-#[derive(Subcommand)]
-enum QueryCommands {
-    /// Search observations using semantic similarity
-    Semantic {
-        /// Query text to search for
-        query: String,
-
-        /// Filter by observation types (comma-separated: pattern,technology,decision,challenge)
-        #[arg(long, value_delimiter = ',')]
-        r#type: Option<Vec<String>>,
-
-        /// Minimum similarity score (0.0-1.0, default: 0.35)
-        #[arg(long, default_value = "0.35")]
-        min_score: f32,
-
-        /// Maximum number of results (default: 10)
-        #[arg(long, default_value = "10")]
-        limit: usize,
-    },
-}
-
-#[derive(Subcommand)]
-enum BeliefCommands {
-    /// Validate a belief using semantic evidence and symbolic reasoning
-    Validate {
-        /// Belief statement to validate
-        query: String,
-
-        /// Minimum similarity score for evidence (0.0-1.0, default: 0.50)
-        #[arg(long, default_value = "0.50")]
-        min_score: f32,
-
-        /// Maximum number of observations to consider (default: 20)
-        #[arg(long, default_value = "20")]
-        limit: usize,
-    },
-}
-
-#[derive(Subcommand)]
 enum PersonaCommands {
     /// Capture knowledge directly
     Note {
@@ -718,6 +643,9 @@ enum PersonaCommands {
 
     /// Process events into searchable index
     Materialize,
+
+    /// Check persona oracle status
+    Status,
 }
 
 // CLI subcommand enums are defined in their respective command modules
@@ -976,33 +904,6 @@ fn main() -> Result<()> {
                 commands::bench::execute(options)?;
             }
         },
-        Some(Commands::Embeddings { command }) => match command {
-            EmbeddingsCommands::Generate { force } => {
-                commands::embeddings::generate(force)?;
-            }
-            EmbeddingsCommands::Status => {
-                commands::embeddings::status()?;
-            }
-        },
-        Some(Commands::Query { command }) => match command {
-            QueryCommands::Semantic {
-                query,
-                r#type,
-                min_score,
-                limit,
-            } => {
-                commands::query::semantic::execute(&query, r#type.clone(), min_score, limit)?;
-            }
-        },
-        Some(Commands::Belief { command }) => match command {
-            BeliefCommands::Validate {
-                query,
-                min_score,
-                limit,
-            } => {
-                commands::belief::validate::execute(&query, min_score, limit)?;
-            }
-        },
         Some(Commands::Persona { command }) => match command {
             PersonaCommands::Note {
                 content,
@@ -1025,6 +926,9 @@ fn main() -> Result<()> {
             PersonaCommands::Materialize => {
                 commands::persona::execute_materialize()?;
             }
+            PersonaCommands::Status => {
+                commands::persona::execute_status()?;
+            }
         },
         Some(Commands::Doctor {
             json,
@@ -1036,9 +940,6 @@ fn main() -> Result<()> {
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
-        }
-        Some(Commands::Ask { args }) => {
-            commands::ask::run(args)?;
         }
         Some(Commands::Repo {
             command,

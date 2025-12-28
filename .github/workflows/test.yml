@@ -17,6 +17,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for co_changes analysis
       
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
@@ -76,3 +78,47 @@ jobs:
       
     - name: Build release
       run: cargo build --release
+
+    - name: Build knowledge database
+      run: |
+        ./target/release/patina scrape code
+        ./target/release/patina scrape git
+        ./target/release/patina scrape sessions
+        ./target/release/patina scrape layer
+
+    - name: Build vector indices
+      run: ./target/release/patina oxidize
+
+    - name: Retrieval Quality Check (Informational)
+      run: |
+        # Run benchmark and capture full output
+        ./target/release/patina bench retrieval \
+          --query-set eval/retrieval-queryset.json \
+          --json | tee benchmark-output.txt
+
+        # Extract JSON from output (last valid JSON object)
+        tail -n 10 benchmark-output.txt | grep -A 100 '^{' > benchmark-results.json
+
+        # Extract metrics
+        MRR=$(jq -r '.mrr' benchmark-results.json)
+        RECALL_5=$(jq -r '.recall_at_5' benchmark-results.json)
+        RECALL_10=$(jq -r '.recall_at_10' benchmark-results.json)
+
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "📊 Retrieval Quality Metrics"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "MRR:        $MRR"
+        echo "Recall@5:   $RECALL_5"
+        echo "Recall@10:  $RECALL_10"
+        echo ""
+
+        # Check threshold and warn if below target (informational only)
+        if awk "BEGIN {exit !($MRR >= 0.55)}"; then
+          echo "✅ Quality: MRR meets target (>= 0.55)"
+        else
+          echo "⚠️  Warning: MRR below target (< 0.55)"
+          echo "   This is informational only - not blocking the build"
+          echo "   Consider investigating if this is unexpected"
+        fi
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

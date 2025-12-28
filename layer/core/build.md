@@ -1,8 +1,8 @@
 # Build Recipe
 
-**Status:** Secrets v2 design complete. Ready for implementation.
+**Status:** Architectural alignment - ensuring unmistakable adherence to layer/core values.
 
-**Current Direction:** Secrets v2 redesign - replacing 1Password backend with local age-encrypted vault. Touch ID + macOS Keychain for key storage. Full container/headless coverage.
+**Recent:** Evolved spec-command-refactoring into comprehensive spec-architectural-alignment. Documents two-layer architecture (binary/library split), alignment tiers, command/library matrices. Scry refactoring complete (-90%). Secrets refactoring cancelled (analysis showed command is appropriately thin, library already follows black-box pattern). Priority refactors: assay (997 lines), audit (797), doctor (602).
 
 ---
 
@@ -64,18 +64,38 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 ---
 
+## Measurement Tools
+
+Built-in quality measurement infrastructure:
+
+| Command | Purpose | Ground Truth |
+|---------|---------|--------------|
+| `patina eval` | Retrieval quality by dimension | - |
+| `patina eval --feedback` | Real-world precision from sessions | Session data |
+| `patina bench retrieval` | MRR, Recall@k benchmarking | `eval/retrieval-queryset.json` |
+
+**Baseline metrics:** MRR 0.624, Recall@10 67.5%, Latency ~135ms
+
+Run regularly to catch regressions.
+
+---
+
 ## Specs
 
 Active specs:
 
-- [spec-secrets-v2.md](../surface/build/spec-secrets-v2.md) - **Current:** Local vault with age encryption, macOS Keychain, Touch ID
-- [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - Make PersonaOracle visible, tag results by source
+- [spec-architectural-alignment.md](../surface/build/spec-architectural-alignment.md) - **Living document:** Command/library alignment matrices, enforcement checklist, planned refactors
+- [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - Phase 1 complete (observability), Phase 2 deferred
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
 - [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
+- [spec-hosts-deploy.md](../surface/build/spec-hosts-deploy.md) - Persistent server deployment (future exploration)
 
 Archived specs (preserved via git tags):
 
+- `spec/command-refactoring` - Scry refactoring (superseded by architectural-alignment)
+- `spec/quality-gates` - MRR regression fix (0.427→0.588), legacy cleanup, CI gate
+- `spec/secrets-v2` - Secrets v2: Local age-encrypted vault with Touch ID (current)
 - `spec/secrets-1password` - Secrets v1: 1Password integration (superseded by v2)
 - `spec/observable-scry` - Phase 1-3: Structured response, explicit modes, feedback logging
 - `spec/robust-signals` - Structural signals experiments (Phase 1-2)
@@ -96,6 +116,26 @@ Future specs (not yet planned):
 ## Completed
 
 Shipped phases (details preserved in git tags and specs):
+
+### Quality Gates
+
+Measurement-first cleanup before extending. Fixed MRR regression (0.427 → 0.588, +37.7%) caused by stale database entries from deleted commands. Archived 4 legacy commands (922 lines): `query`, `ask`, `embeddings`, `belief`. Added CI quality gate for retrieval benchmarks (informational mode, MRR >= 0.55 threshold).
+
+**Tag:** `spec/quality-gates`
+
+### Secrets v2 (Local Vault)
+
+Replaced 1Password backend with local age-encrypted vault. Full implementation:
+- **Identity:** macOS Keychain with Touch ID, `PATINA_IDENTITY` env for CI/headless
+- **Vaults:** Global (`~/.patina/`) + Project (`.patina/`) with merge at runtime
+- **Multi-recipient:** Team members and CI can decrypt project vaults
+- **Session cache:** Via `patina serve` daemon, prevents repeated Touch ID prompts
+- **SSH injection:** `patina secrets run --ssh host -- cmd` for remote execution
+- **CLI:** `add`, `run`, `add-recipient`, `remove-recipient`, `list-recipients`, `--lock`, `--export-key`, `--import-key`, `--reset`
+
+Fixes container/CI gaps from v1. No external account required.
+
+**Tag:** `spec/secrets-v2`
 
 ### Observable Scry (Phase 1 → 3)
 
@@ -166,4 +206,4 @@ git tag -l 'spec/*'              # List archived specs
 git show spec/scry:layer/surface/build/spec-scry.md  # View archived spec
 ```
 
-**Tags:** `spec/observable-scry`, `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`
+**Tags:** `spec/quality-gates`, `spec/observable-scry`, `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`

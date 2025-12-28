@@ -1,6 +1,6 @@
 # Spec: Secrets v2 (Local Vault)
 
-**Status:** Design Complete - Ready for Implementation
+**Status:** Complete
 
 **Goal:** Local-first secrets management. No cloud accounts, no SaaS dependencies. Touch ID for UX, age encryption for security, macOS Keychain for key storage.
 

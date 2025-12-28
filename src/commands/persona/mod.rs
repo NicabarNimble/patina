@@ -308,6 +308,57 @@ pub fn query(
     Ok(results)
 }
 
+/// Check persona oracle status
+pub fn status() -> Result<PersonaStatus> {
+    let events_dir = persona_paths::events_dir();
+    let cache_dir = persona_paths::cache_dir();
+    let db_path = cache_dir.join("persona.db");
+    let index_path = cache_dir.join("persona.usearch");
+
+    // Count event files
+    let event_count = if events_dir.exists() {
+        fs::read_dir(&events_dir)?
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "jsonl"))
+            .count()
+    } else {
+        0
+    };
+
+    // Check materialized state
+    let (materialized, knowledge_count) = if db_path.exists() && index_path.exists() {
+        let conn = Connection::open(&db_path)?;
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM knowledge WHERE superseded_by IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        (true, count as usize)
+    } else {
+        (false, 0)
+    };
+
+    Ok(PersonaStatus {
+        events_dir: events_dir.to_string_lossy().to_string(),
+        event_files: event_count,
+        materialized,
+        knowledge_count,
+        oracle_available: materialized && knowledge_count > 0,
+    })
+}
+
+/// Persona oracle status
+#[derive(Debug)]
+pub struct PersonaStatus {
+    pub events_dir: String,
+    pub event_files: usize,
+    pub materialized: bool,
+    pub knowledge_count: usize,
+    pub oracle_available: bool,
+}
+
 /// List recent persona entries from event files
 pub fn list(limit: usize, domains: Option<Vec<String>>) -> Result<Vec<PersonaResult>> {
     let events_dir = persona_paths::events_dir();
@@ -355,6 +406,39 @@ pub fn list(limit: usize, domains: Option<Vec<String>>) -> Result<Vec<PersonaRes
 }
 
 // === CLI execute functions ===
+
+/// Execute persona status command
+pub fn execute_status() -> Result<()> {
+    let s = status()?;
+
+    println!("🧠 Persona Oracle Status\n");
+
+    if s.oracle_available {
+        println!("   Status: ✓ Available");
+    } else {
+        println!("   Status: ✗ Not available");
+    }
+
+    println!("   Events: {} files in {}", s.event_files, s.events_dir);
+
+    if s.materialized {
+        println!("   Index:  ✓ Materialized ({} entries)", s.knowledge_count);
+    } else {
+        println!("   Index:  ✗ Not materialized");
+    }
+
+    if !s.oracle_available {
+        println!("\nTo enable persona in scry results:");
+        if s.event_files == 0 {
+            println!("   1. Capture knowledge: patina persona note \"...\"");
+            println!("   2. Build index:       patina persona materialize");
+        } else if !s.materialized {
+            println!("   Run: patina persona materialize");
+        }
+    }
+
+    Ok(())
+}
 
 /// Execute persona note command
 pub fn execute_note(

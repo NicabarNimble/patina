@@ -992,9 +992,15 @@ fn format_results(results: &[FusedResult]) -> String {
             contributions_str.push_str(" | entry");
         }
 
+        let source_tag = if result.sources.contains(&"persona") {
+            "[PERSONA] "
+        } else {
+            ""
+        };
         output.push_str(&format!(
-            "{}. [{}] (score: {:.3})",
+            "{}. {}[{}] (score: {:.3})",
             i + 1,
+            source_tag,
             contributions_str,
             result.fused_score
         ));
