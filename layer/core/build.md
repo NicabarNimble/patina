@@ -1,8 +1,8 @@
 # Build Recipe
 
-**Status:** Quality gates - measure before extending, clean before adding.
+**Status:** Command refactoring - aligning with dependable-rust pattern.
 
-**Recent:** Persona fusion Phase 1 complete (observability). Retrieval regression detected (MRR 0.624 → 0.448). Shifting focus to measurement and cleanup before new features.
+**Recent:** Quality gates archived (tag: spec/quality-gates). Command refactoring Phase 1 complete: scry reduced 2,141 → 221 lines (-90%) with 7 internal modules. Next: secrets (Phase 2).
 
 ---
 
@@ -84,7 +84,7 @@ Run regularly to catch regressions.
 
 Active specs:
 
-- [spec-quality-gates.md](../surface/build/spec-quality-gates.md) - **Current:** Measurement-first, fix retrieval regression, cleanup legacy
+- [spec-command-refactoring.md](../surface/build/spec-command-refactoring.md) - **Current:** Phase 1 complete (scry), Phase 2 pending (secrets)
 - [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - Phase 1 complete (observability), Phase 2 deferred
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
@@ -93,6 +93,7 @@ Active specs:
 
 Archived specs (preserved via git tags):
 
+- `spec/quality-gates` - MRR regression fix (0.427→0.588), legacy cleanup, CI gate
 - `spec/secrets-v2` - Secrets v2: Local age-encrypted vault with Touch ID (current)
 - `spec/secrets-1password` - Secrets v1: 1Password integration (superseded by v2)
 - `spec/observable-scry` - Phase 1-3: Structured response, explicit modes, feedback logging
@@ -114,6 +115,12 @@ Future specs (not yet planned):
 ## Completed
 
 Shipped phases (details preserved in git tags and specs):
+
+### Quality Gates
+
+Measurement-first cleanup before extending. Fixed MRR regression (0.427 → 0.588, +37.7%) caused by stale database entries from deleted commands. Archived 4 legacy commands (922 lines): `query`, `ask`, `embeddings`, `belief`. Added CI quality gate for retrieval benchmarks (informational mode, MRR >= 0.55 threshold).
+
+**Tag:** `spec/quality-gates`
 
 ### Secrets v2 (Local Vault)
 
@@ -198,4 +205,4 @@ git tag -l 'spec/*'              # List archived specs
 git show spec/scry:layer/surface/build/spec-scry.md  # View archived spec
 ```
 
-**Tags:** `spec/observable-scry`, `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`
+**Tags:** `spec/quality-gates`, `spec/observable-scry`, `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`
