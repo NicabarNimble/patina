@@ -1,8 +1,8 @@
 # Build Recipe
 
-**Status:** Command refactoring - aligning with dependable-rust pattern.
+**Status:** Architectural alignment - ensuring unmistakable adherence to layer/core values.
 
-**Recent:** Quality gates archived (tag: spec/quality-gates). Command refactoring Phase 1 complete: scry reduced 2,141 → 221 lines (-90%) with 7 internal modules. Next: secrets (Phase 2).
+**Recent:** Evolved spec-command-refactoring into comprehensive spec-architectural-alignment. Documents two-layer architecture (binary/library split), alignment tiers, command/library matrices. Scry refactoring complete (-90%). Secrets refactoring cancelled (analysis showed command is appropriately thin, library already follows black-box pattern). Priority refactors: assay (997 lines), audit (797), doctor (602).
 
 ---
 
@@ -84,7 +84,7 @@ Run regularly to catch regressions.
 
 Active specs:
 
-- [spec-command-refactoring.md](../surface/build/spec-command-refactoring.md) - **Current:** Phase 1 complete (scry), Phase 2 pending (secrets)
+- [spec-architectural-alignment.md](../surface/build/spec-architectural-alignment.md) - **Living document:** Command/library alignment matrices, enforcement checklist, planned refactors
 - [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - Phase 1 complete (observability), Phase 2 deferred
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
@@ -93,6 +93,7 @@ Active specs:
 
 Archived specs (preserved via git tags):
 
+- `spec/command-refactoring` - Scry refactoring (superseded by architectural-alignment)
 - `spec/quality-gates` - MRR regression fix (0.427→0.588), legacy cleanup, CI gate
 - `spec/secrets-v2` - Secrets v2: Local age-encrypted vault with Touch ID (current)
 - `spec/secrets-1password` - Secrets v1: 1Password integration (superseded by v2)
