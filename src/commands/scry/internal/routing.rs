@@ -10,9 +10,9 @@ use patina::mothership;
 
 use crate::commands::persona;
 
+use super::super::{ScryOptions, ScryResult};
 use super::enrichment::truncate_content;
 use super::search::scry_text;
-use super::super::{ScryOptions, ScryResult};
 
 /// Execute scry via mothership daemon
 pub fn execute_via_mothership(query: Option<&str>, options: &ScryOptions) -> Result<()> {

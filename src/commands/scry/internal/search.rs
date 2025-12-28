@@ -10,9 +10,9 @@ use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
 use patina::embeddings::create_embedder;
 
+use super::super::{ScryOptions, ScryResult};
 use super::enrichment::{enrich_results, SearchResults};
 use super::query_prep::prepare_fts_query;
-use super::super::{ScryOptions, ScryResult};
 
 /// Get database and embeddings paths (handles --repo flag)
 pub fn get_paths(options: &ScryOptions) -> Result<(String, String)> {
