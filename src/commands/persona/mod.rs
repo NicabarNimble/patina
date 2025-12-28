@@ -329,7 +329,11 @@ pub fn status() -> Result<PersonaStatus> {
     let (materialized, knowledge_count) = if db_path.exists() && index_path.exists() {
         let conn = Connection::open(&db_path)?;
         let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM knowledge WHERE superseded_by IS NULL", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM knowledge WHERE superseded_by IS NULL",
+                [],
+                |row| row.get(0),
+            )
             .unwrap_or(0);
         (true, count as usize)
     } else {

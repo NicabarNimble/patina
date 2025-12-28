@@ -7,9 +7,9 @@ use anyhow::Result;
 
 use crate::retrieval::{QueryEngine, QueryOptions};
 
+use super::super::{ScryOptions, ScryResult};
 use super::enrichment::truncate_content;
 use super::logging::log_scry_query;
-use super::super::{ScryOptions, ScryResult};
 
 /// Execute hybrid search using QueryEngine with RRF fusion
 pub fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> {
@@ -65,7 +65,13 @@ pub fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> 
 
         if options.explain {
             // Detailed output with per-oracle contributions
-            println!("\n{}. {}{} ({})", i + 1, source_tag, result.doc_id, event_type);
+            println!(
+                "\n{}. {}{} ({})",
+                i + 1,
+                source_tag,
+                result.doc_id,
+                event_type
+            );
 
             // Show each oracle's contribution
             for (oracle_name, contrib) in &result.contributions {
