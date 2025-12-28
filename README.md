@@ -122,7 +122,7 @@ Patina has 20 commands totaling ~42k lines of Rust. Here's the full inventory:
 | Command | Lines | Module | Description |
 |---------|------:|--------|-------------|
 | `scrape` | 11,800 | `scrape/` | Extract code, git, sessions, layer to SQLite |
-| `scry` | 2,100 | `scry/` | Hybrid search (semantic + lexical + temporal) |
+| `scry` | 2,200 | `scry/` | Hybrid search (semantic + lexical + temporal) - 7 internal modules |
 | `secrets` | 2,100 | `secrets/` | Age encryption, Touch ID, multi-recipient vaults |
 | `oxidize` | 1,800 | `oxidize/` | Build vector embeddings from scraped data |
 | `yolo` | 1,600 | `yolo/` | AI-ready devcontainer generation |
@@ -196,6 +196,11 @@ patina/
 │   │   ├── scrape/        # Code, git, sessions, GitHub extraction
 │   │   ├── oxidize/       # MLP training (semantic, temporal, dependency)
 │   │   ├── scry/          # Unified query interface
+│   │   │   ├── mod.rs     # Public API (~220 lines)
+│   │   │   └── internal/  # Implementation (7 modules)
+│   │   │       ├── search.rs, hybrid.rs, subcommands.rs
+│   │   │       ├── routing.rs, enrichment.rs, logging.rs
+│   │   │       └── query_prep.rs
 │   │   ├── repo/          # Cross-project knowledge
 │   │   └── serve/         # Mothership HTTP daemon
 │   ├── embeddings/        # ONNX E5-base-v2 embeddings
