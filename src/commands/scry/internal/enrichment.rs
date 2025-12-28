@@ -3,7 +3,7 @@
 //! Enriches vector search results with metadata from the SQLite database.
 //! Handles different content types (semantic, temporal, dependency).
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use rusqlite::Connection;
 
 use super::super::ScryResult;
