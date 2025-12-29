@@ -5,7 +5,10 @@
 //! - Import/importer relationships
 //! - Caller/callee relationships from call graph
 
+mod internal;
+
 use anyhow::{Context, Result};
+use internal::truncate;
 use rusqlite::Connection;
 use serde::Serialize;
 
@@ -976,22 +979,3 @@ fn compute_contributors(conn: &Connection, path: &str) -> (Vec<String>, i64) {
     (top_contributors, contributor_count)
 }
 
-/// Truncate string for display
-fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max_len - 3])
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_truncate() {
-        assert_eq!(truncate("short", 10), "short");
-        assert_eq!(truncate("a very long string", 10), "a very ..."); // 7 chars + "..."
-    }
-}
