@@ -6,8 +6,8 @@ use anyhow::Result;
 use rusqlite::Connection;
 use serde::Serialize;
 
-use super::truncate;
 use super::super::AssayOptions;
+use super::truncate;
 
 /// Import info
 #[derive(Debug, Serialize)]

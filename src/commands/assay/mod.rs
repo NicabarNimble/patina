@@ -132,5 +132,3 @@ fn execute_all_repos(options: &AssayOptions) -> Result<()> {
 
     Ok(())
 }
-
-
