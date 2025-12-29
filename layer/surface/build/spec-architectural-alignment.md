@@ -63,6 +63,7 @@ These commands perfectly embody our core values. Use as templates.
 | **init** | mod.rs (118) + internal/ (962) | 1,080 | Perfect: doctests in mod.rs, all logic in internal/ |
 | **scrape** | mod.rs (126) + subdirs | 5,600+ | Perfect: thin coordinator, domain subdirs |
 | **scry** | mod.rs (221) + internal/ (1,856) | 2,077 | Refactored 2025-12-28, 7 internal modules |
+| **assay** | mod.rs (134) + internal/ (924) | 1,058 | Refactored 2025-12-28, 6 internal modules |
 
 **What makes them exemplary:**
 - mod.rs contains: docs, public types, `execute()` entry point, `pub use` re-exports
@@ -125,7 +126,6 @@ These violate core values and need restructuring.
 
 | Command | Lines | Violation | Priority | Target Structure |
 |---------|------:|-----------|----------|------------------|
-| **assay** | 997 | Monolithic, multiple query types | HIGH | mod.rs + internal/{inventory,imports,functions,derive}.rs |
 | **audit** | 797 | Monolithic, complex scanning logic | MEDIUM | mod.rs + internal/{scanning,reporting,rules}.rs |
 | **doctor** | 602 | Monolithic, many independent checks | MEDIUM | mod.rs + internal/{system,tools,project}.rs |
 
@@ -285,182 +285,179 @@ src/commands/scry/
 2. Use `super::super::Type` for parent type references
 3. One commit per module extraction for clean history
 
----
+### 2025-12-28: assay refactoring
 
-## Planned Alignments
+**Trigger**: 997 lines in single file, 16 functions, multiple query types mixed
 
-### Priority 1: assay (997 lines, 16 functions) - HIGH
-
-**Current state**: Monolithic file with multiple query types mixed
-
-**Current functions** (by line number):
+**Before**:
 ```
- 92: pub fn execute()              - Entry point, dispatch
-124: fn execute_all_repos()        - Multi-repo routing
-183: fn collect_inventory_json()   - JSON inventory output
-239: fn execute_inventory()        - Inventory query
-321: fn execute_imports()          - Import relationship query
-367: fn execute_importers()        - Reverse import query
-417: fn execute_functions()        - Function listing
-509: fn execute_callers()          - Call graph (who calls)
-562: fn execute_callees()          - Call graph (what's called)
-648: fn is_entry_point()           - Entry point detection
-670: fn is_test_file()             - Test file detection
-693: fn compute_directory_depth()  - Path depth calculation
-698: fn execute_derive()           - Structural signal computation
-885: fn compute_activity()         - Git activity metrics
-936: fn compute_contributors()     - Contributor analysis
-980: fn truncate()                 - String truncation utility
+src/commands/assay.rs    # 997 lines, monolithic
 ```
 
-**Target structure**:
+**After**:
 ```
 src/commands/assay/
-├── mod.rs (~120 lines)
-│   ├── pub fn execute()
-│   ├── pub struct AssayOptions
-│   └── fn execute_all_repos()
+├── mod.rs (134 lines)
 └── internal/
-    ├── mod.rs
-    ├── inventory.rs (~150 lines)
-    │   ├── execute_inventory()
-    │   └── collect_inventory_json()
-    ├── imports.rs (~100 lines)
-    │   ├── execute_imports()
-    │   └── execute_importers()
-    ├── functions.rs (~200 lines)
-    │   ├── execute_functions()
-    │   ├── execute_callers()
-    │   └── execute_callees()
-    ├── derive.rs (~300 lines)
-    │   ├── execute_derive()
-    │   ├── is_entry_point()
-    │   ├── is_test_file()
-    │   ├── compute_directory_depth()
-    │   ├── compute_activity()
-    │   └── compute_contributors()
-    └── util.rs (~20 lines)
-        └── truncate()
+    ├── mod.rs (15)        - Re-exports
+    ├── util.rs (21)       - String truncation
+    ├── imports.rs (113)   - Import relationship queries
+    ├── inventory.rs (172) - File/module listing
+    ├── functions.rs (228) - Function definitions, call graph
+    └── derive.rs (375)    - Structural signal computation
 ```
 
+**Result**:
+- 86% reduction in mod.rs (997 → 134)
+- 6 focused internal modules
+- 6 surgical commits (one per module extraction)
+
 **"Do X" for each module**:
-- `inventory.rs`: "List files and modules in codebase"
+- `util.rs`: "Truncate strings to display width"
 - `imports.rs`: "Query import relationships between files"
+- `inventory.rs`: "List files and modules in codebase"
 - `functions.rs`: "Query function definitions and call graph"
 - `derive.rs`: "Compute structural signals from code facts"
 
 ---
 
-### Priority 2: audit (797 lines, 15 functions) - MEDIUM
+## Planned Alignments
 
-**Current state**: File auditing with multiple analysis types
+### Priority 1: doctor/audit/repo Architectural Cleanup - HIGH
 
-**Current functions** (by line number):
+**Analysis Date**: 2025-12-28
+
+**Discovery**: Deep analysis revealed doctor.rs violates unix-philosophy by doing three jobs:
+
 ```
- 88: pub fn execute()              - Entry point
- 97: fn scan_files()               - Main file scanner
-179: fn get_tracked_files()        - Git tracked files
-195: fn get_ignored_files()        - Gitignored files
-214: fn is_hidden_dir()            - Hidden dir detection
-250: fn categorize_file()          - File type categorization
-280: fn determine_safety()         - Safety level determination
-342: fn analyze_layer_directory()  - Layer dir analysis
-361: fn analyze_layer_subdir()     - Layer subdir analysis
-442: fn analyze_repos()            - Repo analysis
-493: fn analyze_sessions()         - Session analysis
-540: fn display_audit()            - Main display output
-642: fn display_layer_insights()   - Layer insights display
-771: fn format_date()              - Date formatting
-783: fn format_size()              - Size formatting
+doctor.rs (603 lines) - THREE COMMANDS IN ONE
+├── Health Checks (210 lines)         ← Core purpose
+│   ├── analyze_environment()
+│   ├── display_health_check()
+│   └── count_patterns/sessions()
+│
+├── Audit Delegation (4 lines)        ← Just calls audit::execute()
+│   └── if audit_files { audit::execute() }
+│
+└── Repo Management (305 lines)       ← Completely separate system
+    ├── handle_repos()                  targets layer/dust/repos/
+    ├── discover_repos()
+    ├── check_repo_status()
+    ├── update_repo()
+    └── log_repo_status()
 ```
 
-**Target structure**:
+**Critical Finding - Two Separate Repo Systems**:
+
+| System | Location | Purpose | Management |
+|--------|----------|---------|------------|
+| `doctor --repos` | `layer/dust/repos/` | Legacy research repos | Manual clones, unregistered |
+| `patina repo` | `~/.patina/cache/repos/` | Modern managed repos | Registry at `~/.patina/registry.yaml` |
+
+These systems don't communicate. `layer/dust/repos/` appears to be legacy from before `patina repo` existed.
+
+**audit.rs (797 lines) - Hidden Power Tool**:
+
+audit is NOT wired as a command - only accessible via `patina doctor --audit`. It's a full filesystem analyzer:
+
+```
+audit.rs (797 lines)
+├── Scanning (150 lines)
+│   ├── scan_files() - Walk tree, categorize
+│   ├── categorize_file() - Source/Doc/Config/Build/etc
+│   └── determine_safety() - Critical/Protected/ReviewNeeded/SafeToDelete
+│
+├── Layer Analysis (197 lines)
+│   ├── analyze_layer_directory()
+│   ├── analyze_layer_subdir() - core/surface/dust
+│   ├── analyze_repos() - count repos in dust/repos/
+│   └── analyze_sessions()
+│
+├── Display (230 lines)
+│   ├── display_audit()
+│   └── display_layer_insights()
+│
+└── Utils (27 lines)
+    ├── format_date()
+    └── format_size()
+```
+
+**patina repo (1,126 lines) - Already Well-Structured**:
+
+```
+repo/
+├── mod.rs (309 lines)           ← Public interface
+│   ├── RepoCommands enum (clap)
+│   ├── execute_cli() entry
+│   └── Public functions: add, list, update, remove, show
+│
+└── internal.rs (817 lines)      ← Implementation
+    ├── Registry management
+    ├── add_repo() - Clone, scaffold, scrape
+    ├── update_repo() - Pull, rescrape
+    ├── remove_repo()
+    └── Helpers
+```
+
+---
+
+#### Action Plan
+
+**Step 1: Promote audit to `patina audit` command**
+- audit.rs already exists and works
+- Add to main.rs CLI as standalone command
+- Remove `--audit` flag from doctor
+
+**Step 2: Deprecate doctor --repos**
+- `layer/dust/repos/` is legacy concept
+- Print deprecation message pointing to `patina repo`
+- Remove 305 lines of repo code from doctor
+
+**Step 3: Slim doctor to pure health checks (~250 lines)**
+After cleanup:
+```
+doctor.rs (~250 lines)
+├── Health Checks
+│   ├── analyze_environment()
+│   └── check project config
+│
+└── Display
+    └── display_health_check()
+```
+
+At ~250 lines, doctor becomes "Tier: Acceptable" - may not need internal/ pattern.
+
+**Step 4: Refactor audit to internal/ pattern**
+After promotion to command:
 ```
 src/commands/audit/
 ├── mod.rs (~100 lines)
 │   ├── pub fn execute()
 │   └── types (FileAudit, SafetyLevel, etc.)
 └── internal/
-    ├── mod.rs
-    ├── scanner.rs (~250 lines)
-    │   ├── scan_files()
-    │   ├── get_tracked_files()
-    │   ├── get_ignored_files()
-    │   ├── is_hidden_dir()
-    │   ├── categorize_file()
-    │   └── determine_safety()
-    ├── analysis.rs (~200 lines)
-    │   ├── analyze_layer_directory()
-    │   ├── analyze_layer_subdir()
-    │   ├── analyze_repos()
-    │   └── analyze_sessions()
-    ├── display.rs (~200 lines)
-    │   ├── display_audit()
-    │   └── display_layer_insights()
-    └── util.rs (~30 lines)
-        ├── format_date()
-        └── format_size()
+    ├── scanner.rs (~200 lines) - "Scan filesystem and categorize files"
+    ├── analysis.rs (~200 lines) - "Analyze layer structure"
+    ├── display.rs (~200 lines) - "Format and display results"
+    └── util.rs (~30 lines) - "Format dates and sizes"
 ```
 
-**"Do X" for each module**:
-- `scanner.rs`: "Scan filesystem and categorize files by safety"
-- `analysis.rs`: "Analyze layer, repos, and sessions structure"
-- `display.rs`: "Format and display audit results"
+**Optional Step 5: Migration path for layer/dust/repos/**
+```bash
+# Future command to discover unregistered repos
+patina repo discover layer/dust/repos/  # Find and register
+```
 
 ---
 
-### Priority 3: doctor (602 lines, 12 functions) - MEDIUM
+#### Summary Table
 
-**Current state**: Health checks with repo management mixed in
-
-**Current functions** (by line number):
-```
- 41: pub fn execute()              - Entry point
-135: fn analyze_environment()      - Environment analysis
-207: fn is_tool_required()         - Tool requirement check
-216: fn get_install_command()      - Install command lookup
-225: fn count_patterns()           - Pattern counting
-241: fn count_sessions()           - Session counting
-252: fn display_health_check()     - Health display
-317: fn handle_repos()             - Repo handling (update flag)
-427: fn discover_repos()           - Repo discovery
-451: fn check_repo_status()        - Repo status check
-515: fn update_repo()              - Repo update
-568: fn log_repo_status()          - Repo status logging
-```
-
-**Target structure**:
-```
-src/commands/doctor/
-├── mod.rs (~80 lines)
-│   ├── pub fn execute()
-│   └── pub struct HealthCheck
-└── internal/
-    ├── mod.rs
-    ├── environment.rs (~120 lines)
-    │   ├── analyze_environment()
-    │   ├── is_tool_required()
-    │   └── get_install_command()
-    ├── project.rs (~60 lines)
-    │   ├── count_patterns()
-    │   └── count_sessions()
-    ├── display.rs (~80 lines)
-    │   └── display_health_check()
-    └── repos.rs (~250 lines)
-        ├── handle_repos()
-        ├── discover_repos()
-        ├── check_repo_status()
-        ├── update_repo()
-        └── log_repo_status()
-```
-
-**"Do X" for each module**:
-- `environment.rs`: "Check system environment and tool availability"
-- `project.rs`: "Count project artifacts (patterns, sessions)"
-- `display.rs`: "Display health check results"
-- `repos.rs`: "Manage and update registered repos"
-
-**Note**: The repos functionality (250+ lines) might be better extracted to a separate command or library module. It's tangentially related to "doctor" health checks.
+| Component | Current State | Action | Result |
+|-----------|--------------|--------|--------|
+| audit | Hidden behind --audit flag | Promote to `patina audit` | Standalone command |
+| doctor --repos | 305 lines, legacy system | Deprecate, remove | Cleaner doctor |
+| doctor health | 210 lines, core purpose | Keep, simplify | ~250 line command |
+| patina repo | 1,126 lines, well-structured | Keep as-is | Reference impl |
+| layer/dust/repos/ | Legacy manual repos | Deprecate concept | Use patina repo |
 
 ### Deferred: oxidize/yolo peer modules
 
