@@ -45,8 +45,9 @@ pub struct RepoEntry {
     #[serde(default)]
     pub fork: Option<String>,
     pub registered: String,
+    /// SHA of HEAD when we last synced (add or update)
     #[serde(default)]
-    pub last_updated: Option<String>,
+    pub synced_commit: Option<String>,
     #[serde(default)]
     pub domains: Vec<String>,
 }
@@ -167,6 +168,7 @@ pub fn add_repo(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
     // Register in registry
     let timestamp = chrono::Utc::now().to_rfc3339();
     let domains = detect_domains(&repo_path);
+    let synced_commit = get_head_sha(&repo_path);
 
     registry.repos.insert(
         repo_name.clone(),
@@ -177,7 +179,7 @@ pub fn add_repo(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
             contrib: fork.is_some(),
             fork,
             registered: timestamp,
-            last_updated: None,
+            synced_commit,
             domains,
         },
     );
@@ -245,9 +247,9 @@ pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
         oxidize_repo(repo_path)?;
     }
 
-    // Record update timestamp
+    // Record synced commit
     if let Some(entry) = registry.repos.get_mut(name) {
-        entry.last_updated = Some(chrono::Utc::now().to_rfc3339());
+        entry.synced_commit = get_head_sha(repo_path);
         registry.save()?;
     }
 
@@ -319,6 +321,8 @@ pub fn show_repo(name: &str) -> Result<()> {
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", name))?;
 
+    let repo_path = Path::new(&entry.path);
+
     println!("📚 Repository: {}\n", name);
     println!("  GitHub:     {}", entry.github);
     println!("  Path:       {}", entry.path);
@@ -328,14 +332,35 @@ pub fn show_repo(name: &str) -> Result<()> {
     }
     println!("  Domains:    {}", entry.domains.join(", "));
     println!("  Registered: {}", format_timestamp(&entry.registered));
-    if let Some(updated) = &entry.last_updated {
-        println!("  Updated:    {}", format_timestamp(updated));
-    } else {
-        println!("  Updated:    never");
+
+    // Show upstream status
+    if let Some(upstream) = get_upstream_head(repo_path) {
+        let commit_date = get_commit_date_relative(repo_path, &upstream)
+            .unwrap_or_else(|| "unknown".to_string());
+        println!("  Last commit: {}", commit_date);
+
+        // Check if synced
+        let synced = entry
+            .synced_commit
+            .as_ref()
+            .map(|s| s == &upstream)
+            .unwrap_or(false);
+
+        if synced {
+            println!("  Synced:     ✓ up to date");
+        } else {
+            // Count commits behind
+            let behind = count_commits_behind(repo_path, entry.synced_commit.as_deref());
+            if behind > 0 {
+                println!("  Synced:     ⚠ {} commits behind", behind);
+            } else {
+                println!("  Synced:     ⚠ needs update");
+            }
+        }
     }
 
     // Show event count from database
-    let db_path = Path::new(&entry.path).join(".patina/data/patina.db");
+    let db_path = repo_path.join(".patina/data/patina.db");
     if db_path.exists() {
         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
             if let Ok(count) = conn.query_row("SELECT COUNT(*) FROM eventlog", [], |row| {
@@ -791,6 +816,86 @@ fn detect_domains(repo_path: &Path) -> Vec<String> {
     domains
 }
 
+/// Get HEAD commit SHA for a repo
+fn get_head_sha(repo_path: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_path)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        None
+    }
+}
+
+/// Get the date of a commit as relative time (e.g., "2 hours ago")
+fn get_commit_date_relative(repo_path: &Path, commit: &str) -> Option<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo_path)
+        .args(["log", "-1", "--format=%cr", commit])
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        None
+    }
+}
+
+/// Count how many commits we're behind upstream
+fn count_commits_behind(repo_path: &Path, synced_commit: Option<&str>) -> usize {
+    let Some(synced) = synced_commit else {
+        return 0;
+    };
+
+    // Count commits from synced to upstream
+    for remote_ref in ["origin/HEAD", "origin/main", "origin/master"] {
+        if let Ok(output) = Command::new("git")
+            .arg("-C")
+            .arg(repo_path)
+            .args(["rev-list", "--count", &format!("{}..{}", synced, remote_ref)])
+            .output()
+        {
+            if output.status.success() {
+                let count_str = String::from_utf8_lossy(&output.stdout);
+                return count_str.trim().parse().unwrap_or(0);
+            }
+        }
+    }
+    0
+}
+
+/// Get upstream HEAD after fetching
+fn get_upstream_head(repo_path: &Path) -> Option<String> {
+    // Fetch first
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(repo_path)
+        .args(["fetch", "origin", "--quiet"])
+        .output();
+
+    // Try origin/HEAD, then origin/main, then origin/master
+    for remote_ref in ["origin/HEAD", "origin/main", "origin/master"] {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(repo_path)
+            .args(["rev-parse", remote_ref])
+            .output()
+            .ok()?;
+
+        if output.status.success() {
+            return Some(String::from_utf8_lossy(&output.stdout).trim().to_string());
+        }
+    }
+    None
+}
+
 /// Format an ISO timestamp as a human-readable relative time
 fn format_timestamp(iso: &str) -> String {
     use chrono::{DateTime, Utc};
@@ -818,56 +923,37 @@ fn format_timestamp(iso: &str) -> String {
 /// Check git status for a repo (behind/up-to-date)
 ///
 /// Returns a human-readable status string for display.
-/// Prioritizes "behind" status over "dirty" since dirty is expected
-/// (patina scaffolding creates local changes).
-pub fn check_repo_status(repo_path: &str) -> String {
+/// Compares synced_commit against current upstream HEAD.
+pub fn check_repo_status(repo_path: &str, synced_commit: Option<&str>) -> String {
     let path = Path::new(repo_path);
 
     if !path.exists() {
         return "✗ not found".to_string();
     }
 
-    // Check if on a branch (not detached HEAD)
-    let branch_output = Command::new("git")
-        .arg("-C")
-        .arg(path)
-        .args(["symbolic-ref", "-q", "HEAD"])
-        .output();
-
-    if branch_output.is_err() || !branch_output.unwrap().status.success() {
-        return "⚠ detached HEAD".to_string();
-    }
-
-    // Fetch from origin (quietly)
-    let fetch_result = Command::new("git")
-        .arg("-C")
-        .arg(path)
-        .args(["fetch", "origin", "--quiet"])
-        .output();
-
-    if fetch_result.is_err() {
+    // Fetch and get upstream HEAD
+    let Some(upstream) = get_upstream_head(path) else {
         return "✗ fetch failed".to_string();
-    }
-
-    // Check how many commits behind (primary concern)
-    let behind_output = Command::new("git")
-        .arg("-C")
-        .arg(path)
-        .args(["rev-list", "HEAD..@{u}", "--count"])
-        .output();
-
-    let behind_count = match behind_output {
-        Ok(output) if output.status.success() => {
-            let count_str = String::from_utf8_lossy(&output.stdout);
-            count_str.trim().parse().unwrap_or(0)
-        }
-        _ => 0, // No upstream tracking, assume current
     };
 
-    if behind_count > 0 {
-        format!("⚠ {} behind", behind_count)
+    // Get last commit date
+    let commit_date = get_commit_date_relative(path, &upstream)
+        .unwrap_or_else(|| "?".to_string());
+
+    // Check if synced
+    let is_synced = synced_commit
+        .map(|s| s == upstream)
+        .unwrap_or(false);
+
+    if is_synced {
+        format!("✓ synced ({})", commit_date)
     } else {
-        "✓ up to date".to_string()
+        let behind = count_commits_behind(path, synced_commit);
+        if behind > 0 {
+            format!("⚠ {} behind ({})", behind, commit_date)
+        } else {
+            format!("⚠ needs sync ({})", commit_date)
+        }
     }
 }
 

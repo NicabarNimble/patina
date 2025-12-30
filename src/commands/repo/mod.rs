@@ -255,7 +255,8 @@ pub fn execute(command: RepoCommand) -> Result<()> {
 
                 for repo in repos {
                     let contrib_str = if repo.contrib { "✓ fork" } else { "-" };
-                    let status_str = internal::check_repo_status(&repo.path);
+                    let status_str =
+                        internal::check_repo_status(&repo.path, repo.synced_commit.as_deref());
                     println!(
                         "{:<20} {:<35} {:<8} {}",
                         repo.name, repo.github, contrib_str, status_str
