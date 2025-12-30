@@ -1,6 +1,6 @@
 # Spec: Remove Legacy Repos and Audit
 
-**Status**: Ready for Implementation
+**Status**: ✅ Complete
 **Created**: 2025-12-29
 **Purpose**: Remove deprecated layer/dust/repos system and audit command
 
@@ -135,12 +135,12 @@ src/main.rs                 # Remove CLI flags
 
 ## Success Criteria
 
-- [ ] `patina repo list --status` shows behind/dirty status
-- [ ] `patina doctor` works (no --repos, --audit flags)
-- [ ] `cargo build --release` succeeds
-- [ ] `cargo test` passes
-- [ ] `cargo clippy` clean
-- [ ] Git tag preserves old code for reference
+- [x] `patina repo list --status` shows behind/dirty status
+- [x] `patina doctor` works (no --repos, --audit flags)
+- [x] `cargo build --release` succeeds
+- [x] `cargo test` passes
+- [x] `cargo clippy` clean
+- [x] Git tag preserves old code for reference (`legacy-repo-audit-v1`)
 
 ---
 
