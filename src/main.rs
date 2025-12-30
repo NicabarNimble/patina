@@ -140,14 +140,6 @@ enum Commands {
         #[arg(short, long)]
         json: bool,
 
-        /// Check reference repositories in layer/dust/repos
-        #[arg(long)]
-        repos: bool,
-
-        /// Update stale repositories (requires --repos)
-        #[arg(long, requires = "repos")]
-        update: bool,
-
         /// Audit project files and directories for cleanup
         #[arg(long)]
         audit: bool,
@@ -930,13 +922,8 @@ fn main() -> Result<()> {
                 commands::persona::execute_status()?;
             }
         },
-        Some(Commands::Doctor {
-            json,
-            repos,
-            update,
-            audit,
-        }) => {
-            let exit_code = commands::doctor::execute(json, repos, update, audit)?;
+        Some(Commands::Doctor { json, audit }) => {
+            let exit_code = commands::doctor::execute(json, audit)?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
