@@ -46,6 +46,8 @@ pub struct RepoEntry {
     pub fork: Option<String>,
     pub registered: String,
     #[serde(default)]
+    pub last_updated: Option<String>,
+    #[serde(default)]
     pub domains: Vec<String>,
 }
 
@@ -175,6 +177,7 @@ pub fn add_repo(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
             contrib: fork.is_some(),
             fork,
             registered: timestamp,
+            last_updated: None,
             domains,
         },
     );
@@ -217,11 +220,12 @@ pub fn list_repos() -> Result<Vec<RepoEntry>> {
 
 /// Update a specific repository
 pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
-    let registry = Registry::load()?;
+    let mut registry = Registry::load()?;
     let entry = registry
         .repos
         .get(name)
-        .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", name))?;
+        .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", name))?
+        .clone();
 
     println!("🔄 Updating {}...\n", name);
 
@@ -239,6 +243,12 @@ pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
     if oxidize {
         println!("\n🧪 Building semantic indices...");
         oxidize_repo(repo_path)?;
+    }
+
+    // Record update timestamp
+    if let Some(entry) = registry.repos.get_mut(name) {
+        entry.last_updated = Some(chrono::Utc::now().to_rfc3339());
+        registry.save()?;
     }
 
     println!("\n✅ Updated {} ({} events)", name, event_count);
@@ -317,7 +327,12 @@ pub fn show_repo(name: &str) -> Result<()> {
         println!("  Fork:       {}", fork);
     }
     println!("  Domains:    {}", entry.domains.join(", "));
-    println!("  Registered: {}", entry.registered);
+    println!("  Registered: {}", format_timestamp(&entry.registered));
+    if let Some(updated) = &entry.last_updated {
+        println!("  Updated:    {}", format_timestamp(updated));
+    } else {
+        println!("  Updated:    never");
+    }
 
     // Show event count from database
     let db_path = Path::new(&entry.path).join(".patina/data/patina.db");
@@ -774,6 +789,30 @@ fn detect_domains(repo_path: &Path) -> Vec<String> {
     domains.sort();
     domains.dedup();
     domains
+}
+
+/// Format an ISO timestamp as a human-readable relative time
+fn format_timestamp(iso: &str) -> String {
+    use chrono::{DateTime, Utc};
+
+    let Ok(dt) = iso.parse::<DateTime<Utc>>() else {
+        return iso.to_string(); // Fallback to raw if parse fails
+    };
+
+    let now = Utc::now();
+    let duration = now.signed_duration_since(dt);
+
+    if duration.num_days() > 30 {
+        dt.format("%Y-%m-%d").to_string()
+    } else if duration.num_days() > 0 {
+        format!("{} days ago", duration.num_days())
+    } else if duration.num_hours() > 0 {
+        format!("{} hours ago", duration.num_hours())
+    } else if duration.num_minutes() > 0 {
+        format!("{} minutes ago", duration.num_minutes())
+    } else {
+        "just now".to_string()
+    }
 }
 
 /// Check git status for a repo (behind/up-to-date)
