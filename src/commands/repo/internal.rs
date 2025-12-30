@@ -776,29 +776,16 @@ fn detect_domains(repo_path: &Path) -> Vec<String> {
     domains
 }
 
-/// Check git status for a repo (behind/dirty/up-to-date)
+/// Check git status for a repo (behind/up-to-date)
 ///
 /// Returns a human-readable status string for display.
+/// Prioritizes "behind" status over "dirty" since dirty is expected
+/// (patina scaffolding creates local changes).
 pub fn check_repo_status(repo_path: &str) -> String {
     let path = Path::new(repo_path);
 
     if !path.exists() {
         return "✗ not found".to_string();
-    }
-
-    // Check if working tree is clean
-    let status_output = Command::new("git")
-        .arg("-C")
-        .arg(path)
-        .args(["status", "--porcelain"])
-        .output();
-
-    if let Ok(output) = status_output {
-        if !output.stdout.is_empty() {
-            return "⚠ dirty".to_string();
-        }
-    } else {
-        return "✗ git error".to_string();
     }
 
     // Check if on a branch (not detached HEAD)
@@ -823,24 +810,25 @@ pub fn check_repo_status(repo_path: &str) -> String {
         return "✗ fetch failed".to_string();
     }
 
-    // Check how many commits behind
+    // Check how many commits behind (primary concern)
     let behind_output = Command::new("git")
         .arg("-C")
         .arg(path)
         .args(["rev-list", "HEAD..@{u}", "--count"])
         .output();
 
-    match behind_output {
+    let behind_count = match behind_output {
         Ok(output) if output.status.success() => {
             let count_str = String::from_utf8_lossy(&output.stdout);
-            let count: usize = count_str.trim().parse().unwrap_or(0);
-            if count > 0 {
-                format!("⚠ {} behind", count)
-            } else {
-                "✓ up to date".to_string()
-            }
+            count_str.trim().parse().unwrap_or(0)
         }
-        _ => "✓ up to date".to_string(), // No upstream tracking, assume ok
+        _ => 0, // No upstream tracking, assume current
+    };
+
+    if behind_count > 0 {
+        format!("⚠ {} behind", behind_count)
+    } else {
+        "✓ up to date".to_string()
     }
 }
 
