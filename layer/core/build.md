@@ -1,8 +1,8 @@
 # Build Recipe
 
-**Status:** Architectural alignment - ensuring unmistakable adherence to layer/core values.
+**Status:** Legacy cleanup - removing deprecated systems before architectural evolution.
 
-**Recent:** Evolved spec-command-refactoring into comprehensive spec-architectural-alignment. Documents two-layer architecture (binary/library split), alignment tiers, command/library matrices. Scry refactoring complete (-90%). Secrets refactoring cancelled (analysis showed command is appropriately thin, library already follows black-box pattern). Priority refactors: assay (997 lines), audit (797), doctor (602).
+**Recent:** Assay refactoring complete (997→134 lines, -86%). Now removing legacy layer/dust/repos system (replaced by `patina repo`) and audit command (low-value hidden tool). This cleans ~1,100 lines and simplifies doctor to pure health checks (~290 lines). See spec-remove-legacy-repos-and-audit.md.
 
 ---
 
@@ -84,7 +84,8 @@ Run regularly to catch regressions.
 
 Active specs:
 
-- [spec-architectural-alignment.md](../surface/build/spec-architectural-alignment.md) - **Living document:** Command/library alignment matrices, enforcement checklist, planned refactors
+- [spec-remove-legacy-repos-and-audit.md](../surface/build/spec-remove-legacy-repos-and-audit.md) - **Current work:** Remove layer/dust/repos and audit.rs
+- [spec-architectural-alignment.md](../surface/build/spec-architectural-alignment.md) - **Living document:** Command/library alignment matrices, enforcement checklist
 - [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - Phase 1 complete (observability), Phase 2 deferred
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
@@ -116,6 +117,10 @@ Future specs (not yet planned):
 ## Completed
 
 Shipped phases (details preserved in git tags and specs):
+
+### Assay Refactoring
+
+Refactored assay command from monolithic 997-line file to black-box pattern with internal/ modules. Result: mod.rs 134 lines (-86%), 6 focused internal modules (util, imports, inventory, functions, derive). Follows dependable-rust pattern established in scry refactoring. Tracked in spec-architectural-alignment.md.
 
 ### Quality Gates
 

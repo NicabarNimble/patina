@@ -2,8 +2,10 @@
 
 **Status**: Living Document
 **Created**: 2025-12-27
-**Updated**: 2025-12-28
+**Updated**: 2025-12-29
 **Purpose**: Ensure patina is unmistakably designed to layer/core values
+
+> **North Star**: See [spec-three-layers.md](./spec-three-layers.md) for the guiding vision of mother/patina/awaken architecture. This spec focuses on internal code quality; the three-layers spec defines the external architecture.
 
 ---
 
