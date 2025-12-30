@@ -1,6 +1,5 @@
 pub mod adapter;
 pub mod assay;
-pub mod audit;
 pub mod bench;
 pub mod build;
 pub mod doctor;

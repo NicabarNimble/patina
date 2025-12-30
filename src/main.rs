@@ -139,10 +139,6 @@ enum Commands {
         /// Output results as JSON
         #[arg(short, long)]
         json: bool,
-
-        /// Audit project files and directories for cleanup
-        #[arg(long)]
-        audit: bool,
     },
 
     /// Show version information
@@ -922,8 +918,8 @@ fn main() -> Result<()> {
                 commands::persona::execute_status()?;
             }
         },
-        Some(Commands::Doctor { json, audit }) => {
-            let exit_code = commands::doctor::execute(json, audit)?;
+        Some(Commands::Doctor { json }) => {
+            let exit_code = commands::doctor::execute(json)?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
