@@ -776,6 +776,74 @@ fn detect_domains(repo_path: &Path) -> Vec<String> {
     domains
 }
 
+/// Check git status for a repo (behind/dirty/up-to-date)
+///
+/// Returns a human-readable status string for display.
+pub fn check_repo_status(repo_path: &str) -> String {
+    let path = Path::new(repo_path);
+
+    if !path.exists() {
+        return "✗ not found".to_string();
+    }
+
+    // Check if working tree is clean
+    let status_output = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["status", "--porcelain"])
+        .output();
+
+    if let Ok(output) = status_output {
+        if !output.stdout.is_empty() {
+            return "⚠ dirty".to_string();
+        }
+    } else {
+        return "✗ git error".to_string();
+    }
+
+    // Check if on a branch (not detached HEAD)
+    let branch_output = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["symbolic-ref", "-q", "HEAD"])
+        .output();
+
+    if branch_output.is_err() || !branch_output.unwrap().status.success() {
+        return "⚠ detached HEAD".to_string();
+    }
+
+    // Fetch from origin (quietly)
+    let fetch_result = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["fetch", "origin", "--quiet"])
+        .output();
+
+    if fetch_result.is_err() {
+        return "✗ fetch failed".to_string();
+    }
+
+    // Check how many commits behind
+    let behind_output = Command::new("git")
+        .arg("-C")
+        .arg(path)
+        .args(["rev-list", "HEAD..@{u}", "--count"])
+        .output();
+
+    match behind_output {
+        Ok(output) if output.status.success() => {
+            let count_str = String::from_utf8_lossy(&output.stdout);
+            let count: usize = count_str.trim().parse().unwrap_or(0);
+            if count > 0 {
+                format!("⚠ {} behind", count)
+            } else {
+                "✓ up to date".to_string()
+            }
+        }
+        _ => "✓ up to date".to_string(), // No upstream tracking, assume ok
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
