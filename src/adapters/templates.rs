@@ -48,6 +48,7 @@ mod gemini_templates {
         include_str!("../../resources/gemini/session-update.toml");
     pub const SESSION_NOTE_TOML: &str = include_str!("../../resources/gemini/session-note.toml");
     pub const SESSION_END_TOML: &str = include_str!("../../resources/gemini/session-end.toml");
+    pub const PATINA_REVIEW_TOML: &str = include_str!("../../resources/gemini/patina-review.toml");
 
     // Context template
     pub const GEMINI_MD: &str = include_str!("../../resources/gemini/GEMINI.md");
@@ -223,6 +224,10 @@ fn install_gemini_templates(adapters_dir: &Path) -> Result<()> {
     fs::write(
         commands_dir.join("session-end.toml"),
         gemini_templates::SESSION_END_TOML,
+    )?;
+    fs::write(
+        commands_dir.join("patina-review.toml"),
+        gemini_templates::PATINA_REVIEW_TOML,
     )?;
 
     // Write GEMINI.md template
