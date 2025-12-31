@@ -37,7 +37,9 @@ if [ -z "$SESSION_ID" ]; then
 fi
 
 # Create end session tag
-SESSION_END_TAG="session-${SESSION_ID}-end"
+# Extract frontend name from directory (.opencode → opencode)
+FRONTEND=$(basename $(dirname $(dirname "$0")) | sed 's/^\.//')
+SESSION_END_TAG="session-${SESSION_ID}-${FRONTEND}-end"
 
 # Git integration: Check and classify work
 if command -v git &> /dev/null && [ -d .git ] && [ "$SESSION_TAG" != "none" ]; then
