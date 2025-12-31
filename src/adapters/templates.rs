@@ -22,16 +22,12 @@ mod claude_templates {
     pub const SESSION_UPDATE_SH: &str = include_str!("../../resources/claude/session-update.sh");
     pub const SESSION_NOTE_SH: &str = include_str!("../../resources/claude/session-note.sh");
     pub const SESSION_END_SH: &str = include_str!("../../resources/claude/session-end.sh");
-    pub const LAUNCH_SH: &str = include_str!("../../resources/claude/launch.sh");
-    pub const PERSONA_START_SH: &str = include_str!("../../resources/claude/persona-start.sh");
 
     // Commands (markdown)
     pub const SESSION_START_MD: &str = include_str!("../../resources/claude/session-start.md");
     pub const SESSION_UPDATE_MD: &str = include_str!("../../resources/claude/session-update.md");
     pub const SESSION_NOTE_MD: &str = include_str!("../../resources/claude/session-note.md");
     pub const SESSION_END_MD: &str = include_str!("../../resources/claude/session-end.md");
-    pub const LAUNCH_MD: &str = include_str!("../../resources/claude/launch.md");
-    pub const PERSONA_START_MD: &str = include_str!("../../resources/claude/persona-start.md");
     pub const PATINA_REVIEW_MD: &str = include_str!("../../resources/claude/patina-review.md");
 }
 
@@ -132,11 +128,6 @@ fn install_claude_templates(adapters_dir: &Path) -> Result<()> {
         &bin_dir.join("session-end.sh"),
         claude_templates::SESSION_END_SH,
     )?;
-    write_executable(&bin_dir.join("launch.sh"), claude_templates::LAUNCH_SH)?;
-    write_executable(
-        &bin_dir.join("persona-start.sh"),
-        claude_templates::PERSONA_START_SH,
-    )?;
 
     // Write commands
     fs::write(
@@ -154,11 +145,6 @@ fn install_claude_templates(adapters_dir: &Path) -> Result<()> {
     fs::write(
         commands_dir.join("session-end.md"),
         claude_templates::SESSION_END_MD,
-    )?;
-    fs::write(commands_dir.join("launch.md"), claude_templates::LAUNCH_MD)?;
-    fs::write(
-        commands_dir.join("persona-start.md"),
-        claude_templates::PERSONA_START_MD,
     )?;
     fs::write(
         commands_dir.join("patina-review.md"),
@@ -317,6 +303,12 @@ mod tests {
         assert!(templates_dir
             .join(".claude/commands/session-start.md")
             .exists());
+        assert!(templates_dir
+            .join(".claude/commands/patina-review.md")
+            .exists());
+        // Deprecated commands should not exist
+        assert!(!templates_dir.join(".claude/bin/launch.sh").exists());
+        assert!(!templates_dir.join(".claude/bin/persona-start.sh").exists());
     }
 
     #[test]
