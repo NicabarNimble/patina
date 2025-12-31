@@ -48,8 +48,16 @@ impl LLMAdapter for GeminiAdapter {
     }
 
     fn get_custom_commands(&self) -> Vec<(&'static str, &'static str)> {
-        // Gemini doesn't have custom commands yet
-        vec![]
+        vec![
+            (
+                "/session-start [name]",
+                "Start session with Git branch creation",
+            ),
+            ("/session-update", "Update session with Git awareness"),
+            ("/session-note [insight]", "Add insight with Git context"),
+            ("/session-end", "End session with Git classification"),
+            ("/patina-review", "Review recent sessions and git history"),
+        ]
     }
 
     fn get_context_file_path(&self, project_path: &Path) -> PathBuf {
@@ -84,4 +92,22 @@ impl LLMAdapter for GeminiAdapter {
     }
 }
 
-// Exactly 106 lines - well under 150 limit! ✅
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_adapter_name() {
+        let adapter = GeminiAdapter::new();
+        assert_eq!(adapter.name(), "gemini");
+    }
+
+    #[test]
+    fn test_custom_commands() {
+        let adapter = GeminiAdapter::new();
+        let commands = adapter.get_custom_commands();
+        assert_eq!(commands.len(), 5);
+        assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/session-")));
+        assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/patina-review")));
+    }
+}
