@@ -1,6 +1,7 @@
 pub mod claude;
 pub mod gemini;
 pub mod launch;
+pub mod opencode;
 pub mod templates;
 
 use crate::environment::Environment;
@@ -77,6 +78,7 @@ pub fn get_adapter(llm_name: &str) -> Box<dyn LLMAdapter> {
     match llm_name.to_lowercase().as_str() {
         "claude" => Box::new(claude::ClaudeAdapter),
         "gemini" => Box::new(gemini::GeminiAdapter::new()),
+        "opencode" => Box::new(opencode::OpenCodeAdapter::new()),
         _ => Box::new(claude::ClaudeAdapter),
     }
 }
