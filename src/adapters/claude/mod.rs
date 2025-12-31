@@ -59,14 +59,7 @@ impl LLMAdapter for ClaudeAdapter {
             ("/session-update", "Update session with Git awareness"),
             ("/session-note [insight]", "Add insight with Git context"),
             ("/session-end", "End session with Git classification"),
-            (
-                "/launch [branch]",
-                "Create experimental branch for testing ideas",
-            ),
-            (
-                "/persona-start",
-                "Start belief extraction session with neuro-symbolic validation",
-            ),
+            ("/patina-review", "Review recent sessions and git history"),
         ]
     }
 
@@ -113,10 +106,9 @@ mod tests {
     fn test_custom_commands() {
         let adapter = ClaudeAdapter::new();
         let commands = adapter.get_custom_commands();
-        assert_eq!(commands.len(), 6);
+        assert_eq!(commands.len(), 5);
         assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/session-")));
-        assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/launch")));
-        assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/persona-")));
+        assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/patina-review")));
     }
 }
 
