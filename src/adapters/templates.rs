@@ -54,6 +54,25 @@ mod gemini_templates {
 }
 
 // =============================================================================
+// Embedded Templates - OpenCode
+// =============================================================================
+
+mod opencode_templates {
+    // Shell scripts (git-integrated)
+    pub const SESSION_START_SH: &str = include_str!("../../resources/opencode/session-start.sh");
+    pub const SESSION_UPDATE_SH: &str = include_str!("../../resources/opencode/session-update.sh");
+    pub const SESSION_NOTE_SH: &str = include_str!("../../resources/opencode/session-note.sh");
+    pub const SESSION_END_SH: &str = include_str!("../../resources/opencode/session-end.sh");
+
+    // Commands (markdown format, same as Claude)
+    pub const SESSION_START_MD: &str = include_str!("../../resources/opencode/session-start.md");
+    pub const SESSION_UPDATE_MD: &str = include_str!("../../resources/opencode/session-update.md");
+    pub const SESSION_NOTE_MD: &str = include_str!("../../resources/opencode/session-note.md");
+    pub const SESSION_END_MD: &str = include_str!("../../resources/opencode/session-end.md");
+    pub const PATINA_REVIEW_MD: &str = include_str!("../../resources/opencode/patina-review.md");
+}
+
+// =============================================================================
 // Public API
 // =============================================================================
 
@@ -64,6 +83,7 @@ mod gemini_templates {
 pub fn install_all(adapters_dir: &Path) -> Result<()> {
     install_claude_templates(adapters_dir)?;
     install_gemini_templates(adapters_dir)?;
+    install_opencode_templates(adapters_dir)?;
     Ok(())
 }
 
@@ -207,6 +227,64 @@ fn install_gemini_templates(adapters_dir: &Path) -> Result<()> {
 
     // Write GEMINI.md template
     fs::write(templates_dir.join("GEMINI.md"), gemini_templates::GEMINI_MD)?;
+
+    Ok(())
+}
+
+// =============================================================================
+// OpenCode Templates Installation
+// =============================================================================
+
+fn install_opencode_templates(adapters_dir: &Path) -> Result<()> {
+    let templates_dir = adapters_dir.join("opencode").join("templates");
+    // Create .opencode/ structure inside templates/ so copy_to_project works correctly
+    let opencode_dir = templates_dir.join(".opencode");
+    let bin_dir = opencode_dir.join("bin");
+    let commands_dir = opencode_dir.join("commands");
+
+    // Create directories
+    fs::create_dir_all(&bin_dir)?;
+    fs::create_dir_all(&commands_dir)?;
+
+    // Write shell scripts
+    write_executable(
+        &bin_dir.join("session-start.sh"),
+        opencode_templates::SESSION_START_SH,
+    )?;
+    write_executable(
+        &bin_dir.join("session-update.sh"),
+        opencode_templates::SESSION_UPDATE_SH,
+    )?;
+    write_executable(
+        &bin_dir.join("session-note.sh"),
+        opencode_templates::SESSION_NOTE_SH,
+    )?;
+    write_executable(
+        &bin_dir.join("session-end.sh"),
+        opencode_templates::SESSION_END_SH,
+    )?;
+
+    // Write commands (markdown format, same as Claude)
+    fs::write(
+        commands_dir.join("session-start.md"),
+        opencode_templates::SESSION_START_MD,
+    )?;
+    fs::write(
+        commands_dir.join("session-update.md"),
+        opencode_templates::SESSION_UPDATE_MD,
+    )?;
+    fs::write(
+        commands_dir.join("session-note.md"),
+        opencode_templates::SESSION_NOTE_MD,
+    )?;
+    fs::write(
+        commands_dir.join("session-end.md"),
+        opencode_templates::SESSION_END_MD,
+    )?;
+    fs::write(
+        commands_dir.join("patina-review.md"),
+        opencode_templates::PATINA_REVIEW_MD,
+    )?;
 
     Ok(())
 }
