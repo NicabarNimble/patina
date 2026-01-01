@@ -496,12 +496,13 @@ After each phase, record:
 
 | Metric | Baseline | Phase 1 | Phase 2 | Phase 3 | Phase 4 |
 |--------|----------|---------|---------|---------|---------|
-| Query latency (first) | TBD | | | | |
-| Query latency (subsequent) | TBD | | | | |
-| Semantic P@5 | TBD | | | | |
-| Semantic P@10 | TBD | | | | |
-| Temporal file→file P@10 | TBD | | | | |
-| Feedback precision | TBD | | | | |
+| MRR | 0.519 | | | | |
+| Query latency (p50) | 150ms | | | | |
+| Query latency (p95) | 198ms | | | | |
+| Semantic P@5 | 4.0% | | | | |
+| Semantic P@10 | 4.0% | | | | |
+| Temporal file→file P@10 | 29.5% | | | | |
+| Feedback precision | 0% | | | | |
 | Tokens/response | TBD | | | | |
 | Cache hit rate | 0% | | | | |
 
@@ -520,6 +521,24 @@ After each phase, examine:
 1. **Slowest 5 queries** - Why slow? Cache miss? Large result set?
 2. **Lowest precision queries** - What's missing? Wrong oracle? Bad ranking?
 3. **Highest token queries** - Truncation not working? Too many results?
+
+**Workflow (manual for Phase 0):**
+
+```bash
+# Slowest queries - run bench with timing
+PATINA_LOG=1 patina bench retrieval --query-set eval/retrieval-queryset.json 2>&1 | grep DEBUG
+
+# Lowest precision - check bench output for R@10=0%
+patina bench retrieval --query-set eval/retrieval-queryset.json
+# Look for queries with RR=0.00
+
+# Oracle contributions - see which oracles miss
+PATINA_LOG=1 patina scry --hybrid "your query" 2>&1 | grep "retrieval::oracle"
+```
+
+**Phase 0 findings:**
+- q3-scry (RR=0.00): Semantic returns sessions, lexical finds code but ranks it #7
+- 99.7% of query time is oracle execution (confirms model-loading bottleneck)
 
 ---
 
@@ -557,10 +576,10 @@ Deferred until we have data proving need:
 
 | Criteria | Status |
 |----------|--------|
-| Phase 0: Baseline recorded via `patina eval` | [ ] |
-| Phase 0: Query timing added | [ ] |
-| Phase 0: Oracle contribution logging active | [ ] |
-| Phase 0: Error analysis workflow documented | [ ] |
+| Phase 0: Baseline recorded via `patina eval` | [x] |
+| Phase 0: Query timing added | [x] |
+| Phase 0: Oracle contribution logging active | [x] |
+| Phase 0: Error analysis workflow documented | [x] |
 | Phase 1: SemanticOracle owns embedder + projection + index | [ ] |
 | Phase 1: PersonaOracle owns embedder + index | [ ] |
 | Phase 1: Subsequent query latency significantly reduced | [ ] |
