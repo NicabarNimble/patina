@@ -7,6 +7,7 @@ use anyhow::Result;
 use rayon::prelude::*;
 use rusqlite::Connection;
 use std::path::Path;
+use std::time::Instant;
 
 use super::fusion::{rrf_fuse, FusedResult, StructuralAnnotations};
 use super::oracle::Oracle;
@@ -122,6 +123,8 @@ impl QueryEngine {
 
     /// Query local project only (current directory) - uses default oracles
     fn query_local(&self, query: &str, limit: usize) -> Result<Vec<FusedResult>> {
+        let start = Instant::now();
+
         // Over-fetch from each oracle for better fusion
         let fetch_limit = limit * self.config.fetch_multiplier;
 
@@ -134,11 +137,28 @@ impl QueryEngine {
             .filter_map(|oracle| oracle.query(query, fetch_limit).ok())
             .collect();
 
+        let oracle_elapsed = start.elapsed();
+
+        // Log per-oracle contributions before fusion
+        if std::env::var("PATINA_LOG").is_ok() {
+            log_oracle_contributions(&oracle_results, query);
+        }
+
         // Fuse with RRF
         let mut results = rrf_fuse(oracle_results, self.config.rrf_k, limit);
 
         // Populate structural annotations from module_signals
         populate_annotations(&mut results);
+
+        // Log timing if PATINA_LOG is set
+        if std::env::var("PATINA_LOG").is_ok() {
+            eprintln!(
+                "[DEBUG retrieval::engine] query complete: {} results in {:?} (oracles: {:?})",
+                results.len(),
+                start.elapsed(),
+                oracle_elapsed
+            );
+        }
 
         Ok(results)
     }
@@ -153,6 +173,7 @@ impl QueryEngine {
         // If include_issues, create oracles with that config
         // Otherwise use default oracles for efficiency
         if options.include_issues {
+            let start = Instant::now();
             let oracles = Self::create_oracles(true);
             let fetch_limit = limit * self.config.fetch_multiplier;
 
@@ -163,8 +184,25 @@ impl QueryEngine {
                 .filter_map(|oracle| oracle.query(query, fetch_limit).ok())
                 .collect();
 
+            let oracle_elapsed = start.elapsed();
+
+            // Log per-oracle contributions before fusion
+            if std::env::var("PATINA_LOG").is_ok() {
+                log_oracle_contributions(&oracle_results, query);
+            }
+
             let mut results = rrf_fuse(oracle_results, self.config.rrf_k, limit);
             populate_annotations(&mut results);
+
+            if std::env::var("PATINA_LOG").is_ok() {
+                eprintln!(
+                    "[DEBUG retrieval::engine] query (with issues) complete: {} results in {:?} (oracles: {:?})",
+                    results.len(),
+                    start.elapsed(),
+                    oracle_elapsed
+                );
+            }
+
             Ok(results)
         } else {
             self.query_local(query, limit)
@@ -426,6 +464,49 @@ fn populate_annotations(results: &mut [FusedResult]) {
             }
         }
     }
+}
+
+/// Log per-oracle contributions before RRF fusion
+///
+/// This data enables future intent analysis (Phase 3 of retrieval optimization).
+/// Logs: query, oracle_name, doc_id, rank for each result
+fn log_oracle_contributions(
+    oracle_results: &[Vec<super::oracle::OracleResult>],
+    query: &str,
+) {
+    // Count results per oracle
+    let mut oracle_counts: Vec<(String, usize)> = Vec::new();
+
+    for results in oracle_results {
+        if let Some(first) = results.first() {
+            let oracle_name = first.source;
+            oracle_counts.push((oracle_name.to_string(), results.len()));
+
+            // Log top-3 doc_ids from each oracle for debugging
+            eprintln!(
+                "[DEBUG retrieval::oracle] {} returned {} results, top-3: {:?}",
+                oracle_name,
+                results.len(),
+                results
+                    .iter()
+                    .take(3)
+                    .map(|r| &r.doc_id)
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    // Summary line
+    let counts_str: String = oracle_counts
+        .iter()
+        .map(|(name, count)| format!("{}:{}", name, count))
+        .collect::<Vec<_>>()
+        .join(", ");
+    eprintln!(
+        "[DEBUG retrieval::engine] oracle contributions for \"{}\": [{}]",
+        &query[..query.len().min(50)],
+        counts_str
+    );
 }
 
 /// Extract file path from doc_id
