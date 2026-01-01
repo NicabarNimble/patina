@@ -75,7 +75,7 @@ impl Frontend {
         match self {
             Frontend::Claude => "CLAUDE.md",
             Frontend::Gemini => "GEMINI.md",
-            Frontend::Codex => "CODEX.md",
+            Frontend::Codex => "AGENTS.md",
         }
     }
 
@@ -325,7 +325,7 @@ mod tests {
     fn test_bootstrap_files() {
         assert_eq!(Frontend::Claude.bootstrap_file(), "CLAUDE.md");
         assert_eq!(Frontend::Gemini.bootstrap_file(), "GEMINI.md");
-        assert_eq!(Frontend::Codex.bootstrap_file(), "CODEX.md");
+        assert_eq!(Frontend::Codex.bootstrap_file(), "AGENTS.md");
     }
 
     #[test]

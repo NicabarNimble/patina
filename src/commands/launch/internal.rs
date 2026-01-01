@@ -121,7 +121,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
     let bootstrap_file = match frontend_name.as_str() {
         "claude" => "CLAUDE.md",
         "gemini" => "GEMINI.md",
-        "codex" => "CODEX.md",
+        "codex" => "AGENTS.md",
         _ => "CLAUDE.md",
     };
     let bootstrap_path = project_path.join(bootstrap_file);
