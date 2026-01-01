@@ -1,8 +1,8 @@
 # Build Recipe
 
-**Status:** Legacy cleanup - removing deprecated systems before architectural evolution.
+**Status:** Architectural alignment - internal code quality meets core values.
 
-**Recent:** Assay refactoring complete (997→134 lines, -86%). Now removing legacy layer/dust/repos system (replaced by `patina repo`) and audit command (low-value hidden tool). This cleans ~1,100 lines and simplifies doctor to pure health checks (~290 lines). See spec-remove-legacy-repos-and-audit.md.
+**Recent:** Legacy cleanup complete (2025-12-30). Removed ~1,100 lines: layer/dust/repos system and audit.rs. Doctor slimmed to 278 lines (pure health checks). All priority refactors done - scry, assay, doctor now in Exemplary/Acceptable tiers. See spec-architectural-alignment.md for living alignment matrix.
 
 ---
 
@@ -84,8 +84,9 @@ Run regularly to catch regressions.
 
 Active specs:
 
-- [spec-remove-legacy-repos-and-audit.md](../surface/build/spec-remove-legacy-repos-and-audit.md) - **Current work:** Remove layer/dust/repos and audit.rs
 - [spec-architectural-alignment.md](../surface/build/spec-architectural-alignment.md) - **Living document:** Command/library alignment matrices, enforcement checklist
+- [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** Responsibility separation (mother/patina/awaken)
+- [spec-llm-frontends.md](../surface/build/spec-llm-frontends.md) - **Draft:** LLM frontend awareness, minimal surface, mother coordination
 - [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - Phase 1 complete (observability), Phase 2 deferred
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
@@ -94,6 +95,7 @@ Active specs:
 
 Archived specs (preserved via git tags):
 
+- `spec/remove-legacy-repos-and-audit` - Removed layer/dust/repos and audit.rs (~1,100 lines)
 - `spec/command-refactoring` - Scry refactoring (superseded by architectural-alignment)
 - `spec/quality-gates` - MRR regression fix (0.427→0.588), legacy cleanup, CI gate
 - `spec/secrets-v2` - Secrets v2: Local age-encrypted vault with Touch ID (current)
@@ -117,6 +119,12 @@ Future specs (not yet planned):
 ## Completed
 
 Shipped phases (details preserved in git tags and specs):
+
+### Legacy Cleanup (doctor/audit/repos)
+
+Removed deprecated systems: layer/dust/repos (replaced by `patina repo`) and audit.rs (low-value hidden tool). Doctor slimmed from 602→278 lines, now pure health checks. Total: ~1,100 lines removed. Tracked in spec-architectural-alignment.md.
+
+**Tag:** `spec/remove-legacy-repos-and-audit`
 
 ### Assay Refactoring
 
