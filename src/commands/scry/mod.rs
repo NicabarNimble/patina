@@ -7,7 +7,7 @@
 //! If `PATINA_MOTHERSHIP` is set, queries are routed to a remote daemon.
 //! This enables containers to query the Mac mothership.
 
-mod internal;
+pub mod internal;
 
 use anyhow::Result;
 use patina::mothership;
