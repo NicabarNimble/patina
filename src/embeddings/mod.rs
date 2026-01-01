@@ -16,7 +16,9 @@ pub use similarity::{cosine_similarity, euclidean_distance};
 use anyhow::Result;
 
 /// Trait for embedding generation engines
-pub trait EmbeddingEngine {
+///
+/// Requires Send for use in cached oracles (parallel query execution via rayon)
+pub trait EmbeddingEngine: Send {
     /// Generate embedding for a single text
     fn embed(&mut self, text: &str) -> Result<Vec<f32>>;
 
