@@ -262,7 +262,7 @@ fn backup_frontend_files(project_root: &std::path::Path, name: &str) -> Result<(
     let bootstrap_file = match name {
         "claude" => "CLAUDE.md",
         "gemini" => "GEMINI.md",
-        "codex" => "CODEX.md",
+        "codex" => "AGENTS.md",
         _ => "",
     };
     if !bootstrap_file.is_empty() {
