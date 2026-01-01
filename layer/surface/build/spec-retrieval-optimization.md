@@ -496,15 +496,17 @@ After each phase, record:
 
 | Metric | Baseline | Phase 1 | Phase 2 | Phase 3 | Phase 4 |
 |--------|----------|---------|---------|---------|---------|
-| MRR | 0.519 | | | | |
-| Query latency (p50) | 150ms | | | | |
-| Query latency (p95) | 198ms | | | | |
-| Semantic P@5 | 4.0% | | | | |
-| Semantic P@10 | 4.0% | | | | |
-| Temporal file→file P@10 | 29.5% | | | | |
-| Feedback precision | 0% | | | | |
-| Tokens/response | TBD | | | | |
-| Cache hit rate | 0% | | | | |
+| MRR | 0.519 | 0.519 | | | |
+| Query latency (p50) | 150ms | **22ms** | | | |
+| Query latency (p95) | 198ms | 184ms | | | |
+| Query latency (mean) | 159ms | **41ms** | | | |
+| Subsequent query | ~150ms | **17-26ms** | | | |
+| Semantic P@5 | 4.0% | 4.0% | | | |
+| Semantic P@10 | 4.0% | 4.0% | | | |
+| Temporal file→file P@10 | 29.5% | 29.5% | | | |
+| Feedback precision | 0% | 0% | | | |
+| Tokens/response | TBD | TBD | | | |
+| Cache hit rate | 0% | N/A | | | |
 
 ### Success Criteria
 
@@ -580,9 +582,9 @@ Deferred until we have data proving need:
 | Phase 0: Query timing added | [x] |
 | Phase 0: Oracle contribution logging active | [x] |
 | Phase 0: Error analysis workflow documented | [x] |
-| Phase 1: SemanticOracle owns embedder + projection + index | [ ] |
-| Phase 1: PersonaOracle owns embedder + index | [ ] |
-| Phase 1: Subsequent query latency significantly reduced | [ ] |
+| Phase 1: SemanticOracle owns embedder + projection + index | [x] |
+| Phase 1: PersonaOracle owns embedder + index | [x] |
+| Phase 1: Subsequent query latency significantly reduced | [x] (6.8x faster) |
 | Phase 2: Cache module created | [ ] |
 | Phase 2: Truncation implemented | [ ] |
 | Phase 2: File dedup implemented | [ ] |
