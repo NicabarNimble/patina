@@ -38,9 +38,9 @@ When a user asks Claude Code a question, Patina's retrieval determines what cont
 
 | Dimension | Current State | Target | How We'll Measure |
 |-----------|--------------|--------|-------------------|
-| **Latency** | Unknown (not instrumented) | <100ms p50 | Add timing to QueryEngine |
-| **Tokens** | ~2000/query | ~1400 | Character count in format_results |
-| **Accuracy** | Unknown baseline | +15% MRR | Run existing `patina eval` |
+| **Latency** | Unknown (not instrumented) | TBD (verify in Phase 0) | Add timing to QueryEngine |
+| **Tokens** | Unknown | TBD after baseline | Character count in format_results |
+| **Accuracy** | Unknown baseline | TBD after baseline | Run existing `patina eval` |
 
 ---
 
@@ -82,8 +82,8 @@ Also in PersonaOracle:
 let mut embedder = create_embedder()?;  // Same issue
 ```
 
-Loading ONNX model from disk: **200-500ms per query**
-Actual embedding inference: **~50-100ms**
+Loading ONNX model from disk: **estimated 200-500ms per query** (verify in Phase 0)
+Actual embedding inference: **estimated ~50-100ms** (verify in Phase 0)
 
 This violates **dependable-rust**: The SemanticOracle should own its embedder, not recreate it per query.
 
@@ -184,23 +184,26 @@ pub struct SemanticOracle {
 let cache: LruCache<String, Vec<f32>> = LruCache::new(100);
 ```
 
-### Decision 3: Intent Classification → Heuristics First
+### Decision 3: Intent Classification → Data First
 
-**Choice:** Rule-based classification with comprehensive logging.
+**Choice:** Collect oracle contribution data, analyze patterns, then build classifier IF data supports it.
 
 **Rationale:**
-- Heuristics ship in 30 minutes
-- Classifier needs training data we don't have
-- Logging builds the dataset for future classifier IF needed
+- We have only 6 logged queries - not enough to design heuristics
+- Guessing keywords without data violates "measure first" principle
+- Logging oracle contributions builds the dataset we need
+- Classifier implementation is conditional on observed patterns
 
+**Interface (stable):**
 ```rust
-fn classify_intent(query: &str) -> QueryIntent {
-    let lower = query.to_lowercase();
-    if lower.contains("where") || lower.contains("find") { Location }
-    else if lower.contains("recent") || lower.contains("changed") { Temporal }
-    else { Conceptual }
+pub trait IntentClassifier {
+    fn classify(&self, query: &str) -> QueryIntent;
 }
 ```
+
+**Implementation:** TBD after analyzing 100+ queries with oracle contribution data.
+
+**Fallback:** If no clear patterns emerge, keep all-oracle default (no wasted effort).
 
 ### Decision 4: StructuralOracle Scoring → Reuse Orient Composite
 
@@ -249,7 +252,8 @@ results.retain(|r| {
 - Collect data now, evaluate L2R in 4+ weeks
 
 ```rust
-let boost = 1.0 + 0.1 * (1.0 + use_count as f32).ln();
+// Boost factor 0.1 is initial estimate - verify impact in Phase 4
+let boost = 1.0 + config.usage_boost_factor * (1.0 + use_count as f32).ln();
 result.fused_score *= boost;
 ```
 
@@ -257,13 +261,21 @@ result.fused_score *= boost;
 
 **Choice:** High-score results get full content, low-score get path only.
 
+**Thresholds:** The score thresholds below are initial estimates. Verify against actual score distributions in Phase 0 error analysis (Task 0.4). Adjust based on observed data.
+
 ```rust
-fn format_result_content(result: &FusedResult) -> String {
+fn format_result_content(result: &FusedResult, config: &TruncationConfig) -> String {
     match result.fused_score {
-        s if s > 0.08 => truncate_content(&result.content, 300),
-        s if s > 0.05 => truncate_content(&result.content, 100),
+        s if s > config.full_threshold => truncate_content(&result.content, 300),
+        s if s > config.summary_threshold => truncate_content(&result.content, 100),
         _ => String::new(),  // Path only
     }
+}
+
+// Initial values - verify in Phase 0
+struct TruncationConfig {
+    full_threshold: f32,     // Start with 0.08, adjust based on score distribution
+    summary_threshold: f32,  // Start with 0.05, adjust based on score distribution
 }
 ```
 
@@ -296,7 +308,32 @@ pub fn query(&self, query: &str, limit: usize) -> Result<Vec<FusedResult>> {
 }
 ```
 
-**Exit criteria:** Baseline latency and accuracy recorded.
+**Task 0.3:** Add per-oracle contribution logging
+
+Before RRF fusion, log which oracle returned each doc_id and at what rank.
+This data enables future intent analysis (Phase 3).
+
+```rust
+// src/retrieval/engine.rs, before rrf_fuse()
+fn log_oracle_contributions(oracle_results: &[Vec<OracleResult>], query: &str) {
+    // Log: query, oracle_name, doc_id, rank for each result
+    // Enables analysis: "Which oracles find results that get used?"
+}
+```
+
+Minimal code (~20 lines). Starts collecting immediately.
+
+**Task 0.4:** Establish error analysis workflow
+
+After baseline, identify:
+- 5 slowest queries → investigate why (cache miss? large result set?)
+- 5 lowest precision queries → what's missing? wrong oracle?
+- 5 highest token responses → truncation working?
+
+Action: Create `patina eval --errors` or document manual analysis steps.
+This is not optional - error analysis drives Phase 1-4 priorities.
+
+**Exit criteria:** Baseline latency and accuracy recorded. Oracle contribution logging active. Error analysis workflow documented.
 
 ---
 
@@ -319,7 +356,7 @@ Apply same pattern to `src/commands/persona/mod.rs`.
 
 Handle oracle creation failures gracefully (oracle unavailable, not server crash).
 
-**Expected impact:** Query latency drops from ~500ms+ to ~100ms (model already loaded).
+**Expected impact:** Significant latency reduction (model already loaded). Measure before/after.
 
 ---
 
@@ -341,33 +378,42 @@ Modify `format_results()` in server.rs (~20 lines).
 
 Add after RRF fusion in engine.rs (~20 lines).
 
-**Expected impact:** -30% tokens, -30ms on cache hits.
+**Expected impact:** Reduced tokens, faster cache hits. Measure before/after.
 
 ---
 
-### Phase 3: Intent Routing (~100 lines, 1-2 sessions)
+### Phase 3: Intent Analysis (~60 lines, 1 session)
 
-**Why this phase matters:** Intent routing is the precondition for future structural signal integration (see spec-work-deferred.md). It also improves latency by skipping irrelevant oracles.
+**Precondition:** 100+ queries logged with oracle contributions (from Phase 0 instrumentation).
 
-**Task 3.1:** Intent classification with logging
+**Why this phase matters:** Intent-based routing could improve latency by skipping irrelevant oracles. But we need data to know IF patterns exist and WHAT they are.
 
-Create `src/retrieval/intent.rs`:
-- Heuristic classifier (temporal, location, conceptual)
-- Log classifications to eventlog for future analysis
-- Track which oracles contributed to successful results
+**Task 3.1:** Analyze collected query data
 
-**Task 3.2:** Wire intent → oracle selection
+Query the eventlog to answer:
+- Which oracles contribute to results that get used (scry.use)?
+- Are there query patterns that favor specific oracles?
+- What's the distribution of query types?
 
-Modify QueryEngine to filter oracles based on intent:
-- `Temporal` → temporal oracle only (skip semantic/lexical)
-- `Location` → lexical + semantic (skip temporal/persona)
-- `Conceptual` → all oracles (default)
+```bash
+# Example analysis queries
+patina eval --oracle-contributions  # New flag: analyze oracle hit rates
+```
 
-**Task 3.3:** Collect usage data for future structural reintegration
+**Task 3.2:** Build classifier IF data supports it
 
-Log when structural priors would help (orientation queries, ambiguous results). This data informs whether/how to reintroduce structural signals.
+Based on analysis:
+- If clear patterns exist → implement routing based on observed patterns
+- If no patterns → document finding, keep all-oracle default (no wasted work)
 
-**Expected impact:** -30ms latency (skip irrelevant oracles), data for future improvements.
+**Task 3.3:** A/B comparison (if routing implemented)
+
+Route subset of queries with new logic, compare precision to baseline.
+Only ship if measurable improvement.
+
+**Fallback behavior:** If classification is uncertain or fails, default to all oracles (current behavior). Never reduce oracle coverage without confidence.
+
+**Expected impact:** Data-driven decision on routing. Measure before/after IF routing implemented.
 
 **Note:** StructuralOracle was previously tried and removed (see Gaps section). Don't re-add to RRF without solving granularity mismatch.
 
@@ -381,7 +427,7 @@ Create `src/retrieval/learning.rs`:
 - Query eventlog for scry.use events
 - Log-dampened boost based on usage count
 
-**Expected impact:** +5-10% accuracy as usage data accumulates.
+**Expected impact:** Improved accuracy as usage data accumulates. Measure before/after.
 
 ---
 
@@ -396,7 +442,7 @@ Create `src/retrieval/learning.rs`:
 | Build L2R ranker now | No training data yet |
 | Implement MMR diversity | Complexity without proven need |
 | Persist cache across sessions | Session scope sufficient for v1 |
-| Train intent classifier | Heuristics + logging first |
+| Build intent classifier without data | Collect 100+ queries with oracle contributions first |
 | Skip baseline measurement | Flying blind is the real risk |
 | Polish before shipping | Deploy teaches more than spec |
 
@@ -404,17 +450,41 @@ Create `src/retrieval/learning.rs`:
 
 ---
 
-## Timeline
+## Rollback Strategy
 
-| Day | Tasks | Exit Criteria |
-|-----|-------|---------------|
-| 1 | Phase 0: Run eval, add timing | Baseline recorded |
-| 1-2 | Phase 1: Fix model loading | SemanticOracle + PersonaOracle own resources |
-| 2 | Phase 2: Cache, truncation, dedup | Tokens reduced |
-| 3-4 | Phase 3: Intent routing | Selective oracle calls, logging |
-| 5 | Phase 4: Usage boosting | Learning active |
+> Ng principle: "Don't break prod"
 
-**Total: 5 focused sessions, not weeks.**
+Each phase must be reversible. If a change degrades performance, roll back immediately.
+
+| Phase | Risk | Rollback Plan |
+|-------|------|---------------|
+| 0 | None (instrumentation only) | Remove logging code |
+| 1 | Oracle fails to load model at startup | Graceful degradation: oracle reports unavailable, QueryEngine continues with remaining oracles |
+| 2 | Cache causes memory issues or stale results | Disable cache via config flag, fall back to no-cache |
+| 3 | Intent routing skips needed oracles | Fallback to all-oracle default (already documented) |
+| 4 | Usage boosting over-weights old results | Disable boost via config, scores unchanged |
+
+**Implementation:** Each new module should have a feature flag or config option to disable it without code changes.
+
+```rust
+// Example: cache.rs
+pub fn get_embedding(query: &str, config: &Config) -> Option<Vec<f32>> {
+    if !config.cache_enabled { return None; }
+    // ... cache logic
+}
+```
+
+---
+
+## Phase Summary
+
+| Phase | Tasks | Exit Criteria |
+|-------|-------|---------------|
+| 0 | Run eval, add timing, add oracle logging, establish error analysis | Baseline + instrumentation + error workflow |
+| 1 | Fix model loading | SemanticOracle + PersonaOracle own resources |
+| 2 | Cache, truncation, dedup | Tokens reduced |
+| 3 | Analyze query data, build classifier IF patterns exist | Data-driven routing OR "no patterns" documented |
+| 4 | Usage boosting | Learning active |
 
 ---
 
@@ -439,10 +509,10 @@ After each phase, record:
 
 | Metric | Target | Rationale |
 |--------|--------|-----------|
-| Subsequent query latency | <100ms | Model already loaded |
-| Tokens/response | -30% | Truncation + dedup |
-| Cache hit rate | >30% | Validates cache value |
-| P@10 | +10% | Meaningful improvement |
+| Subsequent query latency | Significant reduction vs baseline | Model already loaded |
+| Tokens/response | Measurable reduction | Truncation + dedup |
+| Cache hit rate | TBD after Phase 0 | Validates cache value |
+| P@10 | Improvement vs baseline | Meaningful improvement |
 
 ### Error Analysis
 
@@ -469,15 +539,17 @@ Deferred until we have data proving need:
 
 ## Files to Modify/Create
 
-| File | Action | Aligns With |
-|------|--------|-------------|
-| `src/retrieval/oracles/semantic.rs` | **Modify** - own embedder, projection, index | dependable-rust |
-| `src/commands/persona/mod.rs` | **Modify** - own embedder, index | dependable-rust |
-| `src/retrieval/cache.rs` | **Create** - embedding cache | unix-philosophy |
-| `src/retrieval/intent.rs` | **Create** - classification + logging | unix-philosophy |
-| `src/retrieval/learning.rs` | **Create** - usage boost | unix-philosophy |
-| `src/retrieval/engine.rs` | **Modify** - timing, dedup, intent routing | - |
-| `src/mcp/server.rs` | **Modify** - truncation | - |
+| File | Action | "Do X" | Aligns With |
+|------|--------|--------|-------------|
+| `src/retrieval/oracles/semantic.rs` | **Modify** | Own embedder, projection, index | dependable-rust |
+| `src/commands/persona/mod.rs` | **Modify** | Own embedder, index | dependable-rust |
+| `src/retrieval/cache.rs` | **Create** | Cache query embeddings | unix-philosophy |
+| `src/retrieval/intent.rs` | **Create** (IF data supports) | Classify query intent | unix-philosophy |
+| `src/retrieval/learning.rs` | **Create** | Boost scores by usage | unix-philosophy |
+| `src/retrieval/engine.rs` | **Modify** | Coordinate oracle queries, fuse results | unix-philosophy |
+| `src/mcp/server.rs` | **Modify** | Format results for MCP response | - |
+
+**Note on engine.rs:** The "Do X" is "coordinate oracle queries and fuse results." Timing and oracle logging are instrumentation (internal). Dedup is post-fusion cleanup (internal). Intent routing delegates to `intent.rs` if it exists. Engine.rs remains a coordinator, not a dumping ground.
 
 ---
 
@@ -487,17 +559,20 @@ Deferred until we have data proving need:
 |----------|--------|
 | Phase 0: Baseline recorded via `patina eval` | [ ] |
 | Phase 0: Query timing added | [ ] |
+| Phase 0: Oracle contribution logging active | [ ] |
+| Phase 0: Error analysis workflow documented | [ ] |
 | Phase 1: SemanticOracle owns embedder + projection + index | [ ] |
 | Phase 1: PersonaOracle owns embedder + index | [ ] |
-| Phase 1: Subsequent query latency <100ms | [ ] |
+| Phase 1: Subsequent query latency significantly reduced | [ ] |
 | Phase 2: Cache module created | [ ] |
 | Phase 2: Truncation implemented | [ ] |
 | Phase 2: File dedup implemented | [ ] |
-| Phase 2: Token reduction >25% | [ ] |
-| Phase 3: Intent classification with logging | [ ] |
-| Phase 3: Intent-based oracle routing | [ ] |
+| Phase 2: Token reduction measurable | [ ] |
+| Phase 3: 100+ queries with oracle contributions logged | [ ] |
+| Phase 3: Query pattern analysis complete | [ ] |
+| Phase 3: Routing implemented OR documented "no patterns found" | [ ] |
 | Phase 4: Usage boosting active | [ ] |
-| Overall: MRR improvement >0.08 | [ ] |
+| Overall: MRR improvement vs baseline | [ ] |
 
 ---
 
