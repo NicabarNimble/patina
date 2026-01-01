@@ -1,13 +1,13 @@
 # Spec: GitHub Adapter
 
-**Status:** Phase 1 Complete, Phase 2+ Pending
+**Status:** Phase 1 Partial (issues work, bounty detection removed)
 **Location:** `src/commands/scrape/github/`
 
 ---
 
 ## Purpose
 
-Index GitHub metadata (issues, PRs, discussions) for context enrichment. Currently supports issues with bounty detection.
+Index GitHub metadata (issues, PRs, discussions) for context enrichment. Currently supports basic issue scraping and FTS5 search.
 
 ---
 
@@ -33,7 +33,6 @@ patina repo add <url> --with-issues
              ┌─────────────────────────────────┐
              │         patina scry             │
              │  --include-issues               │
-             │  --label bounty                 │
              └─────────────────────────────────┘
 ```
 
@@ -48,9 +47,6 @@ patina repo add <url> --with-issues
 | Feature | Status | Location |
 |---------|--------|----------|
 | `gh issue list` fetching | ✅ | `github/mod.rs:fetch_issues()` |
-| Bounty detection (labels) | ✅ | `github/opportunity/detector.rs` |
-| Bounty detection (body regex) | ✅ | `github/opportunity/detector.rs` |
-| Provider system (Algora, DoraHacks, etc.) | ✅ | `github/opportunity/provider.rs` |
 | `github_issues` table | ✅ | `github/mod.rs:create_materialized_views()` |
 | FTS5 indexing | ✅ | `github/mod.rs:populate_fts5_github()` |
 | Incremental updates | ✅ | `github/mod.rs:get_last_scrape()` |
@@ -60,7 +56,8 @@ patina repo add <url> --with-issues
 
 | Feature | Status | Issue |
 |---------|--------|-------|
-| Expose bounty fields in ScryResult | ❌ | Bounty data in DB but not surfaced |
+| Bounty detection | 🗑️ | Removed 2025-12-06, stub returns false. Will return as plugin. |
+| Expose bounty fields in ScryResult | ❌ | Schema preserved but not populated |
 | `--label` filter in scry | ❌ | Documented but not implemented |
 | `repo update` calls github scraper | ❌ | Currently skipped |
 | `--sort bounty` option | ❌ | Not started |
@@ -131,48 +128,30 @@ patina scry "bounty cairo" --all-repos --include-issues
 
 ---
 
-## Bounty Detection
+## Bounty Detection (REMOVED)
 
-### Provider System
+**Status:** Removed from core on 2025-12-06. Will return as plugin when module system is designed.
 
-Configured via `.patina/opportunity_providers.toml`:
-
-```toml
-[[providers]]
-name = "algora"
-labels = ["💎 Bounty", "bounty", "Bounty"]
-body_patterns = ['Bounty:\s*\$?(\d+)', 'reward[:\s]+\$?(\d+)']
-default_currency = "USD"
-
-[[providers]]
-name = "dorahacks"
-labels = ["hackathon", "DoraHacks"]
-body_patterns = ['prize[:\s]+\$?(\d+)']
-default_currency = "USD"
-```
-
-### Detection Logic
+The `detect_bounty()` function in `github/mod.rs` is now a stub that always returns `is_bounty: false`. The database schema preserves bounty columns for future compatibility:
 
 ```rust
-pub fn detect_opportunity(issue: &GitHubIssue, providers: &[Provider]) -> OpportunityInfo {
-    for provider in providers {
-        // 1. Check labels
-        if issue.labels.iter().any(|l| provider.labels.contains(&l.name)) {
-            return match_found(provider, extract_amount(issue, provider));
-        }
-
-        // 2. Check body patterns
-        if let Some(body) = &issue.body {
-            for pattern in &provider.body_patterns {
-                if let Some(amount) = pattern.captures(body) {
-                    return match_found(provider, Some(amount));
-                }
-            }
-        }
+// Current stub (github/mod.rs:140-152)
+fn detect_bounty(_issue: &GitHubIssue) -> BountyInfo {
+    BountyInfo {
+        is_bounty: false,
+        amount: None,
+        provider: None,
+        currency: None,
     }
-    OpportunityInfo::none()
 }
 ```
+
+### Original Design (Archived)
+
+The provider system and detection logic were removed but documented here for future reference. When re-implemented as a plugin, consider:
+- Provider config via `.patina/opportunity_providers.toml`
+- Label-based detection (Algora, DoraHacks patterns)
+- Body regex for amount extraction
 
 ---
 
@@ -218,28 +197,26 @@ CREATE TABLE github_discussions (
 
 ```
 src/commands/scrape/github/
-├── mod.rs              # Main scraper, fetch_issues(), insert_issues()
-└── opportunity/
-    ├── mod.rs          # Public interface
-    ├── provider.rs     # Provider struct, load_providers()
-    └── detector.rs     # detect_opportunity()
+└── mod.rs              # Main scraper: fetch_issues(), insert_issues(), detect_bounty() stub
 ```
+
+Note: The `opportunity/` subdirectory was removed on 2025-12-06 when bounty detection was extracted from core.
 
 ---
 
 ## Validation Criteria
 
-**Phase 1 (Current) complete when:**
+**Phase 1 (Current) - Partial:**
 - [x] Can scrape issues via `patina repo add --with-issues`
-- [x] Bounty detection works (labels + body patterns)
 - [x] FTS5 search includes issues
-- [ ] ScryResult exposes bounty fields ← **blocking**
+- [ ] ~~Bounty detection works~~ (removed 2025-12-06, will return as plugin)
+- [ ] ScryResult exposes bounty fields
 - [ ] `repo update` includes github scrape
 
-**Phase 2 complete when:**
+**Phase 2:**
 - [ ] PRs and discussions scraped
 - [ ] `--include-prs`, `--include-discussions` flags work
 
-**Phase 3 complete when:**
+**Phase 3:**
 - [ ] Semantic search works across code + issues
-- [ ] Cross-repo bounty discovery via `--all-repos`
+- [ ] Cross-repo discovery via `--all-repos`
