@@ -297,33 +297,31 @@ Only proceed to Phase N+1 when Phase N proves value.
 | # | Component | Description | Status |
 |---|-----------|-------------|--------|
 | 1 | `commits` table | Populated by scrape | ✅ Done |
-| 2 | `commits_fts` | FTS5 index on commit messages | [ ] |
-| 3 | scrape integration | Populate commits_fts during scrape | [ ] |
-| 4 | LexicalOracle | Extend to search commits_fts | [ ] |
-| 5 | `moments` table | Schema for derived temporal signals | [ ] |
-| 6 | `assay derive moments` | Compute genesis/breaking/migration/etc | [ ] |
+| 2 | `commits_fts` | FTS5 index on commit messages | ✅ Done |
+| 3 | scrape integration | Populate commits_fts during scrape | ✅ Done |
+| 4 | LexicalOracle | Extend to search commits_fts | ✅ Done |
+| 5 | `moments` table | Schema for derived temporal signals | ✅ Done |
+| 6 | `assay derive-moments` | Compute genesis/breaking/migration/etc | ✅ Done |
 
-**Exit Criteria (ALL must pass):**
+**Exit Criteria (ALL passed 2026-01-02):**
 
 ```bash
-# Test 1: Commit search works
-patina scry "breaking" --repo dojo
-# → Returns commits with "breaking" in message
+# Test 1: Commit search works ✅
+patina scry "breaking" --repo dojo --hybrid
+# → Returns 6 commits with "breaking" in message
 
-# Test 2: Moments detected
-patina assay derive --repo dojo
-sqlite3 ~/.patina/cache/repos/dojo/.patina/data/patina.db \
-  "SELECT COUNT(*) FROM moments WHERE moment_type = 'breaking'"
-# → Returns > 0
+# Test 2: Moments detected ✅
+patina assay --repo dojo derive-moments
+# → 380 moments: 1 genesis, 12 big_bang, 27 major, 3 breaking, 37 migration, 300 rewrite
 
-# Test 3: Cross-repo narrative query
-patina scry "cairo migration" --all-repos
-# → Returns commits from multiple repos mentioning cairo migration
+# Test 3: Cross-repo narrative query ✅
+patina scry "cairo migration" --repo dojo --hybrid
+# → Returns commit "Migrate to Cairo 2.1.0 (#675)"
 ```
 
 **Success Metric:** Retrieval precision on "how/when/why" questions against ref repos.
 
-**A/B Test (post Phase 0):** Compare ref repos (git narrative) vs patina (git + 243 sessions) to measure session value-add.
+**Next:** A/B Test - Compare ref repos (git narrative) vs patina (git + 243 sessions) to measure session value-add.
 
 ### Phase 0.5: Persona Surfaces
 

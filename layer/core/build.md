@@ -98,13 +98,13 @@ Currently being worked on:
 
 | Phase | Build | Exit |
 |-------|-------|------|
-| **0** | Git Narrative | `scry "breaking" --repo dojo` returns commits, moments detected |
+| **0** | Git Narrative | ✅ Complete (2026-01-02) |
 | **0.5** | Persona surfaces | `[PERSONA]` + `[PROJECT]` sections in scry |
 | **1** | Federated query | Local miss → Mother routes → cross-project results |
 | **2** | Knowledge graph | project USES project, project HAS pattern |
 | **3** | Extraction loop | Session → extract patterns → update Mother |
 
-**Current:** Phase 0 - Make ref repo commit messages searchable. See spec-mothership.md for full deliverables table.
+**Current:** Phase 0 complete. Next: A/B test (ref repos git-only vs patina git+sessions) or Phase 0.5 (persona surfaces).
 
 ### Reference
 
