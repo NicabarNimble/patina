@@ -86,8 +86,60 @@ Run regularly to catch regressions.
 
 Currently being worked on:
 
-- [spec-observability.md](../surface/build/spec-observability.md) - **Phase 0:** Unified logging for three-layer architecture
+- [spec-observability.md](../surface/build/spec-observability.md) - **Phase 0 complete**, Phase 1 deferred
 - [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** Responsibility separation (mother/patina/awaken)
+
+---
+
+## Next: Mothership
+
+**Vision:** Central orchestration daemon - persona hub, project registry, query coordination.
+
+**Current state:** MCP works. HTTP daemon proxies to scry. Persona exists but doesn't surface in fusion.
+
+**Diagnostic (2026-01-01):**
+```
+Persona events:     ✅ 6 beliefs captured
+Persona query:      ✅ Direct query works (0.719 score)
+Persona in scry:    ❌ Drowned by semantic (0.86+ scores)
+```
+
+**Root cause:** Persona results exist but RRF fusion ranks them below higher-scoring semantic matches.
+
+### Phased Approach (Ng-style)
+
+Only proceed to Phase N+1 when Phase N proves value.
+
+| Phase | Goal | Exit Criteria |
+|-------|------|---------------|
+| **0** | Persona surfaces in scry | Query returns `[PERSONA]` results when relevant |
+| **1** | Daemon owns persona | `patina serve` loads PersonaOracle once, keeps warm |
+| **2** | Registry unification | `patina repo` + persona = unified mothership registry |
+| **3** | Lazy loading | Unknown repo query → suggestion → scrape → works |
+
+### Phase 0: Make Persona Surface
+
+**Problem:** PersonaOracle returns results (verified), but they don't appear in scry output.
+
+**Hypothesis:** RRF fusion drowns persona (score 0.719) below semantic (score 0.86+).
+
+**Options:**
+1. ~~Boost persona in RRF~~ - Already tried with structural signals, doesn't work
+2. **Dedicated persona section** - Show `[PERSONA]` results separately from `[PROJECT]`
+3. **Query routing** - "What do I believe about X" → persona-only mode
+
+**Insight:** Persona is context, not competition. Don't fuse - display alongside.
+
+**Phase 0 tasks:**
+- [ ] Add `[PERSONA]` section to scry output (top-N persona results, separate from fusion)
+- [ ] MCP: include persona results with `source: "persona"` tag
+- [ ] Verify: `patina scry "error handling"` shows persona belief in dedicated section
+
+**Exit:** Persona belief about error handling surfaces in scry results.
+
+### Phase 1+: Deferred
+
+Documented in spec-three-layers.md. Resume after Phase 0 proves persona value.
 
 ### Reference
 
