@@ -1,9 +1,22 @@
 # Spec: Lab Automation
 
-**Status:** Draft (Dec 2025)
-**Parent:** [build.md](../../core/build.md)
+**Status:** Ideas (Draft Only)
+**Parent:** [build.md](../../../core/build.md)
 **Depends on:** Model management complete, bench retrieval working
 **Origin:** Observable Scry Phase 3 review — identified need for systematic measurement
+
+---
+
+> **Why Deferred:**
+>
+> Draft spec for automating benchmarking workflows. No implementation started.
+>
+> **Reason:**
+> - Manual `patina bench` workflow is sufficient for current scale
+> - Model comparison is infrequent (E5-base-v2 is working well)
+> - Higher priority: observability, mothership design
+>
+> **Resume trigger:** When model experimentation becomes frequent, or when retrieval quality regression tracking is needed.
 
 ---
 

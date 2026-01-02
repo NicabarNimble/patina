@@ -1,8 +1,22 @@
 # Spec: Persona Fusion
 
-**Status:** Phase 1 Complete - Observability shipped
+**Status:** Parked (Phase 1 Complete)
 
 **Vision:** PersonaOracle as a first-class oracle in scry, delivering cross-project user knowledge alongside code results.
+
+---
+
+> **Why Deferred:**
+>
+> Phase 1 shipped observability for persona contributions in scry results.
+> PersonaOracle is wired and working.
+>
+> **Phase 2 (explicit persona mode, answer synthesis) is parked:**
+> - Lower priority than observability and mothership design
+> - Current persona contribution is sufficient for now
+> - Need usage data to understand how users interact with persona results
+>
+> **Resume trigger:** User feedback indicates persona results need better surfacing.
 
 ---
 

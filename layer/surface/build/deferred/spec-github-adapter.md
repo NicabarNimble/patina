@@ -1,7 +1,21 @@
 # Spec: GitHub Adapter
 
-**Status:** Phase 1 Partial (issues work, bounty detection removed)
+**Status:** Backlog (Phase 1 Partial)
 **Location:** `src/commands/scrape/github/`
+
+---
+
+> **Why Deferred:**
+>
+> Phase 1 partially implemented: basic issue scraping works via `patina repo add <url> --with-issues`.
+> Bounty detection was removed (over-engineered for current needs).
+>
+> **Remaining work not prioritized:**
+> - PR/discussion indexing
+> - Semantic search over issues
+> - Integration with scry results
+>
+> **Resume trigger:** When GitHub issues become a meaningful knowledge source for projects using patina.
 
 ---
 
