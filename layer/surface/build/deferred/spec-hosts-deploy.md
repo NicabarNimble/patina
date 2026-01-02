@@ -1,8 +1,24 @@
 # Spec: Hosts and Deploy Architecture
 
+**Status:** Ideas (Design Only)
+
 **Purpose:** Define how Patina manages deployment targets (hosts) and deploys projects to them.
 
 **Origin:** Session 20251225 - Design discussion about persistent servers, remote docker-compose workflows, and the relationship between projects and infrastructure.
+
+---
+
+> **Why Deferred:**
+>
+> This is design exploration for the "awaken" layer - the shipping/deployment story.
+> No implementation exists yet.
+>
+> **Reason:**
+> - Need to clarify three-layer architecture (mother/patina/awaken) first
+> - Current yolo command generates containers but doesn't deploy
+> - Deploy story depends on understanding target use cases
+>
+> **Resume trigger:** When spec-three-layers.md clarifies awaken responsibilities and user has deployment needs.
 
 ---
 

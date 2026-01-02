@@ -1,8 +1,21 @@
 # Spec: Build Tracking System
 
-**Phase:** 4
-**Status:** Planned
+**Status:** Backlog (Never Started)
+
 **Goal:** Track build tasks across sessions with a TOML file, commit trailers for history, and documentation for LLM guidance.
+
+---
+
+> **Why Deferred:**
+>
+> This was planned as Phase 4 but never started. Current `build.md` + session workflow is working.
+>
+> **Reason:**
+> - Manual markdown tracking is sufficient for current scale
+> - Higher priority work: observability, mothership design, retrieval optimization
+> - Over-engineering risk: adding structured task tracking before proving manual approach is insufficient
+>
+> **Resume trigger:** When session/spec workflow friction becomes a bottleneck, or when LLM task querying would provide clear value.
 
 ---
 
