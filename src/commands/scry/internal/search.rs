@@ -318,7 +318,38 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
         })?;
     collected.extend(code_results.filter_map(|r| r.ok()));
 
-    // 2. Search pattern_fts (layer docs)
+    // 2. Search commits_fts (git narrative)
+    let commits_sql = "SELECT
+            sha,
+            snippet(commits_fts, 1, '>>>', '<<<', '...', 64) as snippet,
+            author_name,
+            bm25(commits_fts) as score
+         FROM commits_fts
+         WHERE commits_fts MATCH ?
+         ORDER BY score
+         LIMIT ?";
+
+    if let Ok(mut stmt) = conn.prepare(commits_sql) {
+        let commit_results =
+            stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
+                let sha: String = row.get(0)?;
+                let snippet: String = row.get(1)?;
+                let author: String = row.get(2)?;
+                let bm25_score: f64 = row.get(3)?;
+
+                Ok(ScryResult {
+                    id: 0,
+                    content: format!("{} ({})", snippet, author),
+                    score: -bm25_score as f32,
+                    event_type: "git.commit".to_string(),
+                    source_id: sha,
+                    timestamp: String::new(),
+                })
+            })?;
+        collected.extend(commit_results.filter_map(|r| r.ok()));
+    }
+
+    // 3. Search pattern_fts (layer docs)
     let pattern_sql = "SELECT
             id,
             title,
