@@ -489,13 +489,20 @@ Audit existing `eprintln!` calls:
 
 ## Validation
 
-### Phase 0 Success
+### Phase 0 Success (2026-01-01)
 
 | Question | Answer |
 |----------|--------|
-| Did logs reveal keychain mystery? | TBD |
-| What was missing? | TBD |
-| Proceed to Phase 1? | TBD |
+| Did logs reveal keychain mystery? | **Yes** - logs show `has_identity` (no Touch ID) vs `get_generic_password` (Touch ID) distinction clearly |
+| What was missing? | Nothing critical for keychain debugging. Consider adding vault.rs logging in Phase 1. |
+| Proceed to Phase 1? | **Yes** - inline logging validated the approach |
+
+**Phase 0 Observations:**
+
+1. **has_identity is called twice** before the actual get - this is the status check path (no Touch ID triggered)
+2. **Empty PATINA_IDENTITY** edge case caught - logs show "set but empty, falling back"
+3. **Log format works well** - `[DEBUG secrets::keychain]` domain prefix is clear
+4. **Pattern matches retrieval** - same `if std::env::var("PATINA_LOG").is_ok()` pattern as engine.rs
 
 ### Overall Success Criteria
 
