@@ -286,23 +286,44 @@ Session extraction detects patterns:
 
 Only proceed to Phase N+1 when Phase N proves value.
 
-### Phase 0: Git Narrative (NEW - Current Focus)
+### Phase 0: Git Narrative (Current Focus)
 
 **Problem:** Ref repos have full git history (47k commits, 540k co-change) but we can't search it effectively.
 
 **Solution:** Add commit messages to FTS5, compute moments as temporal signals.
 
-**Tasks:**
-- [x] Full clone by default (remove `--depth 1`)
-- [x] Re-scrape existing repos with full history
-- [ ] Add commit messages to FTS5 lexical index
-- [ ] Implement `assay derive moments` to compute temporal signals
-- [ ] Add moments table schema
-- [ ] Verify: `patina scry "breaking change" --repo dojo` returns commits
+**Deliverables (ALL required, no deferrals):**
 
-**Exit:** Can search commit messages. Moments detected and stored.
+| # | Component | Description | Status |
+|---|-----------|-------------|--------|
+| 1 | `commits` table | Populated by scrape | ✅ Done |
+| 2 | `commits_fts` | FTS5 index on commit messages | [ ] |
+| 3 | scrape integration | Populate commits_fts during scrape | [ ] |
+| 4 | LexicalOracle | Extend to search commits_fts | [ ] |
+| 5 | `moments` table | Schema for derived temporal signals | [ ] |
+| 6 | `assay derive moments` | Compute genesis/breaking/migration/etc | [ ] |
 
-**A/B Test:** Compare ref repos (git only) vs patina (git + sessions) to measure session value.
+**Exit Criteria (ALL must pass):**
+
+```bash
+# Test 1: Commit search works
+patina scry "breaking" --repo dojo
+# → Returns commits with "breaking" in message
+
+# Test 2: Moments detected
+patina assay derive --repo dojo
+sqlite3 ~/.patina/cache/repos/dojo/.patina/data/patina.db \
+  "SELECT COUNT(*) FROM moments WHERE moment_type = 'breaking'"
+# → Returns > 0
+
+# Test 3: Cross-repo narrative query
+patina scry "cairo migration" --all-repos
+# → Returns commits from multiple repos mentioning cairo migration
+```
+
+**Success Metric:** Retrieval precision on "how/when/why" questions against ref repos.
+
+**A/B Test (post Phase 0):** Compare ref repos (git narrative) vs patina (git + 243 sessions) to measure session value-add.
 
 ### Phase 0.5: Persona Surfaces
 
