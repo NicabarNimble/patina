@@ -10,6 +10,8 @@
 
 Mother is not a database. Mother is a **federation layer** with a **knowledge graph** that connects all your projects.
 
+> "README is marketing, git is truth." — Commit history tells the real story of a project.
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    MOTHER (Central)                         │
@@ -158,7 +160,8 @@ Events Generated:
 |------------|----------|--------|
 | `session.content` | Full embedding | Summary only |
 | `code.function` | Full embedding | Pattern extraction |
-| `git.commit` | Temporal index | — |
+| `git.commit` | Temporal index + FTS5 | — |
+| `moment.detected` | Moments table | Moment semantic |
 | `belief.captured` | — | Belief semantic |
 | `pattern.detected` | — | Pattern semantic + graph |
 | `project.uses` | — | Graph edge |
@@ -179,12 +182,76 @@ Events Generated:
       patterns.usearch    # Embedded pattern summaries
       projects.usearch    # Embedded project summaries
       domains.usearch     # Embedded domain concepts
+      moments.usearch     # Embedded temporal moments (git narrative)
 
   registry.yaml           # Catalog of all known projects
 
   personas/default/       # User persona
     events/               # Persona events
     persona.db            # Materialized persona
+```
+
+---
+
+## Temporal Narrative: Moments
+
+**Moments** are significant points in a project's git history. They tell the story of how a project evolved.
+
+### Moment Types
+
+| Type | Detection | Example |
+|------|-----------|---------|
+| `genesis` | First commit | "dojo init" |
+| `big_bang` | >50 files changed | "feat: namespaces (#2148)" - 265 files |
+| `breaking` | Message contains "breaking", "BREAKING" | "Felt type migration + breaking" |
+| `migration` | Message contains "migrate", "migration" | "Migrate to Cairo 2.1.0" |
+| `rewrite` | Message contains "rewrite", "refactor" | "ERC1155/ERC721 rewrite" |
+| `release` | Tags or "v1.0", "v2.0" in message | "dojo 1.0.0-rc.0" |
+
+### Moment Detection Query
+
+```sql
+WITH file_counts AS (
+    SELECT sha, COUNT(*) as files FROM commit_files GROUP BY sha
+),
+moments AS (
+    SELECT c.sha, c.message, c.timestamp, fc.files,
+        CASE
+            WHEN c.timestamp = (SELECT MIN(timestamp) FROM commits) THEN 'genesis'
+            WHEN fc.files > 100 THEN 'big_bang'
+            WHEN fc.files > 50 THEN 'major'
+            WHEN c.message LIKE '%breaking%' THEN 'breaking'
+            WHEN c.message LIKE '%rewrite%' THEN 'rewrite'
+            WHEN c.message LIKE '%migrate%' THEN 'migration'
+            ELSE NULL
+        END as moment_type
+    FROM commits c LEFT JOIN file_counts fc ON c.sha = fc.sha
+)
+SELECT * FROM moments WHERE moment_type IS NOT NULL;
+```
+
+### Moments in Pipeline
+
+Moments are **temporal signals** computed by `assay derive`:
+
+```
+scrape (git)     → commits table (raw facts)
+                        │
+                        ▼
+assay derive     → moments table (signals)
+                        │
+                        ▼
+repo update      → mother/semantic/moments.usearch (cross-project)
+```
+
+### Querying Temporal Narrative
+
+```bash
+# Local: when did this project make breaking changes?
+patina scry "breaking changes" --moments
+
+# Cross-project: how do other projects handle Cairo migrations?
+patina scry "cairo migration" --all --moments
 ```
 
 ---
@@ -219,7 +286,25 @@ Session extraction detects patterns:
 
 Only proceed to Phase N+1 when Phase N proves value.
 
-### Phase 0: Persona Surfaces
+### Phase 0: Git Narrative (NEW - Current Focus)
+
+**Problem:** Ref repos have full git history (47k commits, 540k co-change) but we can't search it effectively.
+
+**Solution:** Add commit messages to FTS5, compute moments as temporal signals.
+
+**Tasks:**
+- [x] Full clone by default (remove `--depth 1`)
+- [x] Re-scrape existing repos with full history
+- [ ] Add commit messages to FTS5 lexical index
+- [ ] Implement `assay derive moments` to compute temporal signals
+- [ ] Add moments table schema
+- [ ] Verify: `patina scry "breaking change" --repo dojo` returns commits
+
+**Exit:** Can search commit messages. Moments detected and stored.
+
+**A/B Test:** Compare ref repos (git only) vs patina (git + sessions) to measure session value.
+
+### Phase 0.5: Persona Surfaces
 
 **Problem:** PersonaOracle works but drowns in RRF fusion.
 
