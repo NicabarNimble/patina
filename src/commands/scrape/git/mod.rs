@@ -544,6 +544,10 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     let co_change_count = rebuild_co_changes(&conn)?;
     println!("  Built {} co-change relationships", co_change_count);
 
+    // Populate commits FTS5 index for narrative search
+    let fts_count = database::populate_commits_fts5(&conn)?;
+    println!("  Indexed {} commit messages for search", fts_count);
+
     let elapsed = start.elapsed();
     let db_size = std::fs::metadata(db_path)
         .map(|m| m.len() / 1024)
