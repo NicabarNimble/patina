@@ -12,6 +12,13 @@ use anyhow::Result;
 #[cfg(not(target_os = "macos"))]
 use anyhow::bail;
 
+/// Debug logging for secrets module (Phase 0 observability)
+fn log_debug(msg: &str) {
+    if std::env::var("PATINA_LOG").is_ok() {
+        eprintln!("[DEBUG secrets::keychain] {}", msg);
+    }
+}
+
 // macOS-only constants (used by security-framework)
 #[cfg(target_os = "macos")]
 const KEYCHAIN_SERVICE: &str = "patina";
@@ -33,9 +40,15 @@ mod platform {
     pub fn store_identity(identity: &str) -> Result<()> {
         use security_framework::passwords::set_generic_password;
 
-        set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, identity.as_bytes())
-            .context("Failed to store identity in Keychain")?;
+        log_debug("set_generic_password: attempting");
+        let result = set_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT, identity.as_bytes());
 
+        match &result {
+            Ok(()) => log_debug("set_generic_password: success"),
+            Err(e) => log_debug(&format!("set_generic_password: error: {}", e)),
+        }
+
+        result.context("Failed to store identity in Keychain")?;
         Ok(())
     }
 
@@ -45,7 +58,15 @@ mod platform {
     pub fn get_identity() -> Result<String> {
         use security_framework::passwords::get_generic_password;
 
-        let password = get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).context(
+        log_debug("get_generic_password: attempting (may trigger Touch ID)");
+        let result = get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
+
+        match &result {
+            Ok(_) => log_debug("get_generic_password: success"),
+            Err(e) => log_debug(&format!("get_generic_password: error: {}", e)),
+        }
+
+        let password = result.context(
             "Failed to retrieve identity from Keychain. Run: patina secrets --import-key",
         )?;
 
@@ -56,9 +77,15 @@ mod platform {
     pub fn delete_identity() -> Result<()> {
         use security_framework::passwords::delete_generic_password;
 
-        delete_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
-            .context("Failed to delete identity from Keychain")?;
+        log_debug("delete_generic_password: attempting");
+        let result = delete_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT);
 
+        match &result {
+            Ok(()) => log_debug("delete_generic_password: success"),
+            Err(e) => log_debug(&format!("delete_generic_password: error: {}", e)),
+        }
+
+        result.context("Failed to delete identity from Keychain")?;
         Ok(())
     }
 
@@ -67,7 +94,11 @@ mod platform {
     /// Does not trigger Touch ID - just checks existence.
     pub fn has_identity() -> bool {
         use security_framework::passwords::get_generic_password;
-        get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).is_ok()
+
+        log_debug("has_identity: checking existence (no Touch ID)");
+        let exists = get_generic_password(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).is_ok();
+        log_debug(&format!("has_identity: {}", exists));
+        exists
     }
 }
 
