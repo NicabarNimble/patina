@@ -62,6 +62,18 @@ pub fn initialize(db_path: &Path) -> Result<Connection> {
             author_name,
             tokenize='porter unicode61'
         );
+
+        -- Moments table for derived temporal signals (assay derive)
+        CREATE TABLE IF NOT EXISTS moments (
+            sha TEXT PRIMARY KEY,
+            moment_type TEXT NOT NULL,
+            file_count INTEGER,
+            timestamp TEXT,
+            message TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_moments_type ON moments(moment_type);
+        CREATE INDEX IF NOT EXISTS idx_moments_timestamp ON moments(timestamp);
         "#,
     )?;
 
