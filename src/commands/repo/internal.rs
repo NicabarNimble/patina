@@ -335,8 +335,8 @@ pub fn show_repo(name: &str) -> Result<()> {
 
     // Show upstream status
     if let Some(upstream) = get_upstream_head(repo_path) {
-        let commit_date = get_commit_date_relative(repo_path, &upstream)
-            .unwrap_or_else(|| "unknown".to_string());
+        let commit_date =
+            get_commit_date_relative(repo_path, &upstream).unwrap_or_else(|| "unknown".to_string());
         println!("  Last commit: {}", commit_date);
 
         // Check if synced
@@ -460,14 +460,10 @@ fn clone_repo(url: &str, target: &Path) -> Result<()> {
         format!("https://github.com/{}", url)
     };
 
+    // Full clone - we want commit history for knowledge extraction
+    // Commit messages are rich "why" context, especially in LLM-assisted codebases
     let output = Command::new("git")
-        .args([
-            "clone",
-            "--depth",
-            "1",
-            &clone_url,
-            &target.to_string_lossy(),
-        ])
+        .args(["clone", &clone_url, &target.to_string_lossy()])
         .output()
         .context("Failed to execute git clone")?;
 
@@ -618,21 +614,28 @@ fn oxidize_repo(repo_path: &Path) -> Result<()> {
     }
 
     // Create oxidize.yaml if it doesn't exist
-    // Reference repos only get dependency dimension (no sessions → no semantic, shallow clone → no temporal)
+    // Reference repos get dependency + temporal dimensions (full clone has git history)
+    // No semantic dimension (no layer/sessions/ with session pairs)
     let recipe_path = repo_path.join(".patina/oxidize.yaml");
     if !recipe_path.exists() {
-        println!("   Creating oxidize.yaml recipe (dependency only)...");
+        println!("   Creating oxidize.yaml recipe (dependency + temporal)...");
         let recipe_content = r#"# Oxidize Recipe for reference repo
-# Reference repos only support dependency dimension:
-# - No layer/sessions/ → no semantic (no session pairs)
-# - Shallow clone → no temporal (no co-change history)
+# Reference repos support dependency + temporal dimensions:
+# - Full clone → temporal works (co-change history available)
 # - Call graph from AST → dependency works
+# - No layer/sessions/ → no semantic (no session pairs)
 version: 1
 embedding_model: e5-base-v2
 
 projections:
   # Dependency projection - functions that call each other are related
   dependency:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
+
+  # Temporal projection - files that change together are related
+  temporal:
     layers: [768, 1024, 256]
     epochs: 10
     batch_size: 32
@@ -859,7 +862,11 @@ fn count_commits_behind(repo_path: &Path, synced_commit: Option<&str>) -> usize 
         if let Ok(output) = Command::new("git")
             .arg("-C")
             .arg(repo_path)
-            .args(["rev-list", "--count", &format!("{}..{}", synced, remote_ref)])
+            .args([
+                "rev-list",
+                "--count",
+                &format!("{}..{}", synced, remote_ref),
+            ])
             .output()
         {
             if output.status.success() {
@@ -937,13 +944,10 @@ pub fn check_repo_status(repo_path: &str, synced_commit: Option<&str>) -> String
     };
 
     // Get last commit date
-    let commit_date = get_commit_date_relative(path, &upstream)
-        .unwrap_or_else(|| "?".to_string());
+    let commit_date = get_commit_date_relative(path, &upstream).unwrap_or_else(|| "?".to_string());
 
     // Check if synced
-    let is_synced = synced_commit
-        .map(|s| s == upstream)
-        .unwrap_or(false);
+    let is_synced = synced_commit.map(|s| s == upstream).unwrap_or(false);
 
     if is_synced {
         format!("✓ synced ({})", commit_date)
