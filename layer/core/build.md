@@ -82,37 +82,52 @@ Run regularly to catch regressions.
 
 ## Specs
 
-Active specs:
+### Active
 
-- [spec-architectural-alignment.md](../surface/build/spec-architectural-alignment.md) - **Living document:** Command/library alignment matrices, enforcement checklist
+Currently being worked on:
+
+- [spec-observability.md](../surface/build/spec-observability.md) - **Phase 0:** Unified logging for three-layer architecture
 - [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** Responsibility separation (mother/patina/awaken)
-- [spec-llm-frontends.md](../surface/build/spec-llm-frontends.md) - **Draft:** LLM frontend awareness, minimal surface, mother coordination
-- [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - Phase 1 complete (observability), Phase 2 deferred
+
+### Reference
+
+Living documentation (not phased work):
+
+- [spec-architectural-alignment.md](../surface/build/spec-architectural-alignment.md) - Command/library alignment matrices
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
-- [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
-- [spec-hosts-deploy.md](../surface/build/spec-hosts-deploy.md) - Persistent server deployment (future exploration)
 
-Archived specs (preserved via git tags):
+### Deferred
 
+See [deferred/](../surface/build/deferred/) folder. Categories:
+
+- **Parked** - Started, got partial win, waiting for conditions
+- **Blocked** - Ready to start, waiting for dependency
+- **Backlog** - Will do, lower priority than current focus
+- **Ideas** - Might do, not planned
+
+Key items:
+- `spec-retrieval-optimization.md` - Phase 0-1 complete (6.8x faster), Phase 2-4 need 100+ queries
+- `spec-persona-fusion.md` - Phase 1 complete, Phase 2 deferred
+- `spec-work-deferred.md` - Legacy backlog (needs rebuild into proper specs)
+
+### Archived (git tags)
+
+Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
+
+- `spec/llm-frontends` - Unified 5-command experience across Claude, Gemini, OpenCode
 - `spec/remove-legacy-repos-and-audit` - Removed layer/dust/repos and audit.rs (~1,100 lines)
-- `spec/command-refactoring` - Scry refactoring (superseded by architectural-alignment)
 - `spec/quality-gates` - MRR regression fix (0.427→0.588), legacy cleanup, CI gate
-- `spec/secrets-v2` - Secrets v2: Local age-encrypted vault with Touch ID (current)
-- `spec/secrets-1password` - Secrets v1: 1Password integration (superseded by v2)
-- `spec/observable-scry` - Phase 1-3: Structured response, explicit modes, feedback logging
-- `spec/robust-signals` - Structural signals experiments (Phase 1-2)
-- `spec/fts-deduplication` - FTS5 deduplication fix
-- `spec/code-audit` - Code audit analysis
+- `spec/secrets-v2` - Local age-encrypted vault with Touch ID
+- `spec/observable-scry` - Structured response, explicit modes, feedback logging
+- `spec/robust-signals` - Structural signals experiments
 - `spec/feedback-loop` - Measure and learn from retrieval quality
 - `spec/model-management` - Base model download, caching, provenance
-- `spec/assay` - Phase 0: Structural query command (inventory, imports, callers)
+- `spec/assay` - Structural query command
 - `spec/mcp-retrieval-polish` - MCP tool rename, temporal oracle, hybrid mode
+- `spec/agentic-rag` - Oracle abstraction, hybrid retrieval, MCP server
 
-Future specs (not yet planned):
-
-- [spec-lab-automation.md](../surface/build/spec-lab-automation.md) - Automated benchmarking, model comparison, metrics history
-- [spec-github-adapter.md](../surface/build/spec-github-adapter.md) - GitHub integration
+Full list: `git tag -l 'spec/*'`
 
 ---
 
@@ -162,7 +177,7 @@ Added structural signal computation to assay (`assay derive`): is_used, importer
 
 Phase 2 experiment: tried boosting RRF scores with structural priors. Result: no improvement for relevance queries. Boost layer removed. Key lesson: structural signals are priors (importance), not relevance signals. Useful for orientation queries, not "where is X" queries.
 
-**Spec:** [spec-robust-signals.md](../surface/build/spec-robust-signals.md), [spec-work-deferred.md](../surface/build/spec-work-deferred.md)
+**Tag:** `spec/robust-signals`
 
 ### Assay Command (Phase 0)
 Structural query interface for codebase facts. Inventory, imports/importers, callers/callees queries. MCP tool integration. Reduces 40+ shell calls to 1-3 patina commands.
@@ -219,4 +234,4 @@ git tag -l 'spec/*'              # List archived specs
 git show spec/scry:layer/surface/build/spec-scry.md  # View archived spec
 ```
 
-**Tags:** `spec/quality-gates`, `spec/observable-scry`, `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`
+**Tags:** `spec/llm-frontends`, `spec/quality-gates`, `spec/secrets-v2`, `spec/observable-scry`, `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`, `spec/remove-legacy-repos-and-audit`, `spec/robust-signals`
