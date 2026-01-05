@@ -9,7 +9,8 @@ use rusqlite::Connection;
 use std::path::Path;
 use std::time::Instant;
 
-use super::fusion::{rrf_fuse, FusedResult, StructuralAnnotations};
+use super::fusion::{rrf_fuse, rrf_fuse_weighted, FusedResult, StructuralAnnotations};
+use super::intent::{detect_intent, IntentWeights, QueryIntent};
 use super::oracle::Oracle;
 use super::oracles::{LexicalOracle, PersonaOracle, SemanticOracle, TemporalOracle};
 
@@ -125,6 +126,19 @@ impl QueryEngine {
     fn query_local(&self, query: &str, limit: usize) -> Result<Vec<FusedResult>> {
         let start = Instant::now();
 
+        // Detect intent from query for weighted fusion
+        let intent = detect_intent(query);
+        let weights = IntentWeights::for_intent(intent);
+
+        // Log intent detection if PATINA_LOG is set
+        if std::env::var("PATINA_LOG").is_ok() {
+            eprintln!(
+                "[DEBUG retrieval::engine] detected intent: {:?} for query: \"{}\"",
+                intent,
+                &query[..query.len().min(50)]
+            );
+        }
+
         // Over-fetch from each oracle for better fusion
         let fetch_limit = limit * self.config.fetch_multiplier;
 
@@ -144,8 +158,8 @@ impl QueryEngine {
             log_oracle_contributions(&oracle_results, query);
         }
 
-        // Fuse with RRF
-        let mut results = rrf_fuse(oracle_results, self.config.rrf_k, limit);
+        // Fuse with RRF using intent-aware weights
+        let mut results = rrf_fuse_weighted(oracle_results, self.config.rrf_k, limit, Some(&weights));
 
         // Populate structural annotations from module_signals
         populate_annotations(&mut results);
@@ -174,6 +188,11 @@ impl QueryEngine {
         // Otherwise use default oracles for efficiency
         if options.include_issues {
             let start = Instant::now();
+
+            // Detect intent from query for weighted fusion
+            let intent = detect_intent(query);
+            let weights = IntentWeights::for_intent(intent);
+
             let oracles = Self::create_oracles(true);
             let fetch_limit = limit * self.config.fetch_multiplier;
 
@@ -191,7 +210,7 @@ impl QueryEngine {
                 log_oracle_contributions(&oracle_results, query);
             }
 
-            let mut results = rrf_fuse(oracle_results, self.config.rrf_k, limit);
+            let mut results = rrf_fuse_weighted(oracle_results, self.config.rrf_k, limit, Some(&weights));
             populate_annotations(&mut results);
 
             if std::env::var("PATINA_LOG").is_ok() {
