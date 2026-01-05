@@ -521,6 +521,29 @@ enum BenchCommands {
         /// Filter to specific oracle(s) for ablation testing (semantic, lexical, persona)
         #[arg(long)]
         oracle: Option<Vec<String>>,
+
+        /// Query a specific registered repo instead of current project
+        #[arg(long)]
+        repo: Option<String>,
+    },
+
+    /// Generate queryset from git commits (deterministic ground truth)
+    Generate {
+        /// Generate from commits (default source)
+        #[arg(long, default_value = "true")]
+        from_commits: bool,
+
+        /// Repository name (omit for current project)
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Maximum number of queries to generate
+        #[arg(long, default_value = "100")]
+        limit: usize,
+
+        /// Output file path (omit for stdout)
+        #[arg(long, short)]
+        output: Option<String>,
     },
 }
 
@@ -886,6 +909,7 @@ fn main() -> Result<()> {
                 rrf_k,
                 fetch_multiplier,
                 oracle,
+                repo,
             } => {
                 let options = commands::bench::BenchOptions {
                     query_set,
@@ -895,8 +919,18 @@ fn main() -> Result<()> {
                     rrf_k,
                     fetch_multiplier,
                     oracle,
+                    repo,
                 };
                 commands::bench::execute(options)?;
+            }
+            BenchCommands::Generate {
+                from_commits: _,
+                repo,
+                limit,
+                output,
+            } => {
+                let options = commands::bench::GenerateOptions { repo, limit, output };
+                commands::bench::generate(options)?;
             }
         },
         Some(Commands::Persona { command }) => match command {
