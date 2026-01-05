@@ -34,11 +34,14 @@ From layer/core:
 | **dependable-rust** | Small interface: `add_edge()`, `get_related()`, `traverse()` |
 | **local-first** | SQLite graph.db, no external dependencies |
 | **git as memory** | Edges can be rebuilt from project configs |
+| **measure-first** | Baseline before building (Andrew Ng) |
 
 From RAG best practices (video):
 - Node size = document importance
 - Edge color = relationship type (Citation, Topic Overlap, Temporal)
 - Query traversal follows edges, not just vector similarity
+
+**Andrew Ng Principle:** "Don't build infrastructure before proving the problem exists with data."
 
 ---
 
@@ -82,6 +85,10 @@ CREATE INDEX idx_edges_type ON edges(edge_type);
 
 ## Relationship Types
 
+**Note**: These are hypothesized types. Phase G0 error analysis will reveal what relationships actually matter for routing. Don't over-engineer until data confirms.
+
+### Hypothesized Types (to be validated)
+
 | Type | Meaning | Example | Query Pattern |
 |------|---------|---------|---------------|
 | `USES` | Project depends on/uses reference | patina USES dojo | "how does dojo do X" from patina |
@@ -90,13 +97,150 @@ CREATE INDEX idx_edges_type ON edges(edge_type);
 | `SIBLING` | Projects share domains | cairo-game SIBLING starknet-foundry | "how did sibling solve Z" |
 | `DOMAIN` | Node belongs to domain | dojo DOMAIN cairo | Domain-based routing |
 
+### Data-Driven Discovery
+
+**Don't invent relationship types. Let the data reveal them.**
+
+Sources for discovering real relationships:
+1. **Session mentions**: "looked at dojo", "borrowed from SDL" → actual usage
+2. **Query logs**: Which repos get queried together? → implicit relationship
+3. **Import graph**: Which projects import which? → code-level dependency
+4. **Error analysis**: Which wrong-routing cases would be fixed by which relationship type?
+
+**Start simple**: G1 may only need `DOMAIN` (from registry.yaml) and `TESTS_WITH` (from bench commands). Add types only when error analysis proves they're needed.
+
 **Direction matters:**
 - `patina USES dojo` means queries FROM patina can route TO dojo
 - Reverse: `dojo` doesn't automatically route to `patina`
 
 ---
 
+## Phase G0: Cross-Project Measurement (Ng-Style)
+
+**Goal**: Prove the problem exists. Measure dumb routing. Establish baseline.
+
+**Principle**: "If you can't show me the failure cases, you don't understand the problem." — Andrew Ng
+
+### The Question We Must Answer
+
+> "What's the MRR of `--all-repos` on cross-project queries right now?"
+
+If we don't know this, we can't prove graph routing helps.
+
+### Tasks
+
+| Task | Effort | Deliverable |
+|------|--------|-------------|
+| Create cross-project queryset | ~2 hours | `eval/cross-project-queryset.json` |
+| Measure dumb routing baseline | ~30 min | MRR, Recall@K, Routing Waste |
+| Error analysis | ~1 hour | Categorized failure modes |
+| Simulate smart routing | ~30 min | Upper bound on improvement |
+
+### Cross-Project Queryset
+
+**Source**: Real queries that SHOULD route cross-project. Options:
+1. Sessions that mention other projects ("looked at dojo for this")
+2. Import graph (code that uses external repos)
+3. Manual curation from actual usage
+
+**Format**:
+
+```json
+{
+  "name": "cross-project-v1",
+  "source": "session-derived + manual",
+  "queries": [
+    {
+      "id": "xp_001",
+      "query": "how does dojo handle ECS components",
+      "source_project": "patina",
+      "expected_repos": ["dojo"],
+      "expected_docs": ["crates/dojo-core/src/world.cairo"],
+      "derivation": "session 20251203 mentioned dojo ECS"
+    },
+    {
+      "id": "xp_002",
+      "query": "cairo felt252 type system",
+      "source_project": "patina",
+      "expected_repos": ["dojo", "starknet-foundry"],
+      "expected_docs": ["..."],
+      "derivation": "domain overlap: cairo"
+    }
+  ]
+}
+```
+
+**Key insight**: `expected_repos` is the ground truth for routing. This is what we're measuring.
+
+### Metrics
+
+| Metric | Definition | Baseline Target |
+|--------|------------|-----------------|
+| **Source Recall@K** | Did we search the right repos? | Measure current |
+| **Doc Recall@K** | Did we find the right files? | Measure current |
+| **Routing Waste** | How many irrelevant repos searched? | 13 (all) → ? |
+| **MRR** | Where does first relevant result appear? | Measure current |
+
+### Baseline Measurement
+
+```bash
+# Dumb routing (current)
+patina scry "how does dojo handle ECS" --all-repos
+# → Searches 13 repos
+# → Returns N results
+# → X% from relevant repos, Y% noise
+
+# Simulate smart routing (manual --repo)
+patina scry "how does dojo handle ECS" --repo dojo
+# → Searches 1 repo
+# → Compare quality
+```
+
+### Error Analysis
+
+Categorize failures from `--all-repos`:
+
+| Error Type | Example | Root Cause |
+|------------|---------|------------|
+| **Noise drowning signal** | dojo result at rank 15, SDL at rank 1 | No relevance weighting |
+| **Wrong domain** | cairo query returns javascript | Domain not considered |
+| **Missing repo** | Relevant repo not searched | N/A (searches all) |
+| **Relevant but scattered** | Results from 8 repos when 2 are relevant | No relationship awareness |
+
+### Simulated Smart Routing
+
+Before building graph, simulate what perfect routing would achieve:
+
+```bash
+# For each query in cross-project-queryset:
+# 1. Run with --all-repos (dumb)
+# 2. Run with --repo <expected_repos> (smart simulation)
+# 3. Compare MRR, Recall
+
+# This gives us the CEILING - maximum possible improvement
+```
+
+### Exit Criteria
+
+- [ ] `eval/cross-project-queryset.json` with 10+ queries
+- [ ] Dumb routing baseline: MRR, Recall@10, Routing Waste
+- [ ] Error analysis: top 3 failure modes identified
+- [ ] Simulated smart routing: upper bound on improvement
+- [ ] **Decision point**: Is the gap large enough to justify G1?
+
+### Why This Matters
+
+If dumb routing MRR is 0.6 and simulated smart routing is 0.65, building graph.db is over-engineering.
+
+If dumb routing MRR is 0.2 and simulated smart routing is 0.7, graph is clearly needed.
+
+**The data decides.**
+
+---
+
 ## Phase G1: Graph Foundation
+
+**Prerequisite**: Phase G0 complete. Data shows graph routing will meaningfully improve metrics.
 
 **Goal**: Create graph.db, populate from registry, enable manual edges.
 
@@ -158,16 +302,26 @@ patina mother sync                     # Rebuild nodes from registry.yaml
 
 ### Exit Criteria
 
+**Functional (does it work):**
 - [ ] `~/.patina/mother/graph.db` created on first use
 - [ ] `patina mother graph` shows nodes from registry
 - [ ] `patina mother link` creates edges
 - [ ] `patina mother sync` rebuilds from registry
 
+**Ng checkpoint (does it represent the problem):**
+- [ ] Graph can encode the relationships identified in G0 error analysis
+- [ ] Manual edges added for top 3 failure cases from G0
+- [ ] Verify: `patina mother graph` shows edges that WOULD have fixed G0 failures
+
+**Note**: G1 is infrastructure. It doesn't improve metrics yet. But it MUST be able to represent what G0 revealed as the fix.
+
 ---
 
 ## Phase G2: Smart Routing
 
-**Goal**: Use graph to route queries intelligently.
+**Prerequisite**: G1 complete. Graph populated with edges for G0 failure cases.
+
+**Goal**: Use graph to route queries. Measure improvement against G0 baseline.
 
 ### Tasks
 
@@ -176,7 +330,7 @@ patina mother sync                     # Rebuild nodes from registry.yaml
 | Integrate graph into routing.rs | ~80 lines | Query graph before federation |
 | Domain-based routing | ~50 lines | Use domain edges for initial filter |
 | Relationship-based weights | ~40 lines | Weight results by edge strength |
-| Cross-project measurement | ~100 lines | Queryset + benchmark |
+| Benchmark comparison | ~50 lines | Compare to G0 baseline |
 
 ### Query Flow
 
@@ -192,45 +346,54 @@ Query: "how does dojo handle ECS components"
    │    → "ECS" matches dojo (cairo, rust)
    │    → Returns: [dojo]
    │
-   ├─4. Execute federated search on [patina, dojo]
+   ├─4. Execute federated search on [patina, dojo] (not all 13)
    │
    └─5. Weight results by relationship
-        → dojo results get 1.5x boost (USES relationship)
+        → Weight TBD from G0 error analysis (not arbitrary 1.5x)
 ```
 
-### Measurement
+### Measurement (Against G0 Baseline)
 
-New queryset format for cross-project:
+**Use the same queryset from G0.** No new queryset needed.
 
-```json
-{
-  "queries": [
-    {
-      "query": "how does dojo handle world storage",
-      "source_project": "patina",
-      "expected_sources": ["dojo"],
-      "expected_docs": ["crates/dojo-world/src/storage.rs"],
-      "relationship": "TESTS_WITH"
-    }
-  ]
-}
+```bash
+# G0 established baseline:
+#   Dumb routing: MRR X, Recall@10 Y%, searched 13 repos
+#   Simulated smart: MRR X', Recall@10 Y'%
+
+# G2 measures actual improvement:
+patina bench retrieval -q eval/cross-project-queryset.json --routing graph
+# → Smart routing: MRR Z, Recall@10 W%, searched N repos (N < 13)
 ```
 
-Metrics:
-- **Source Recall@K**: Did we route to the right repos?
-- **Doc Recall@K**: Did we find the right files?
-- **Routing Precision**: How many irrelevant repos did we search?
+**Metrics (same as G0, now comparing):**
+
+| Metric | G0 Dumb | G0 Simulated | G2 Actual | Target |
+|--------|---------|--------------|-----------|--------|
+| MRR | ? | ? | ? | ≥ 80% of simulated |
+| Recall@10 | ? | ? | ? | ≥ 80% of simulated |
+| Repos searched | 13 | manual | auto | < 5 avg |
 
 ### Exit Criteria
 
-- [ ] Queries use graph for routing decisions
-- [ ] Cross-project queryset with 10+ queries
-- [ ] Source Recall@10 measured
-- [ ] Baseline established for smart vs dumb routing
+**Functional:**
+- [ ] `--routing graph` flag added to scry
+- [ ] Graph consulted before federation
+- [ ] Results tagged with routing source
+
+**Ng checkpoint (did it help):**
+- [ ] MRR improved over G0 dumb baseline
+- [ ] Recall@10 improved over G0 dumb baseline
+- [ ] Routing Waste reduced (fewer irrelevant repos searched)
+- [ ] **Gap closed**: Actual approaches simulated upper bound from G0
+
+**Anti-pattern**: If G2 metrics don't approach G0 simulated ceiling, the graph isn't the right fix. Revisit error analysis.
 
 ---
 
 ## Phase G3: Graph Intelligence (Future)
+
+**Prerequisite**: G2 proves graph routing helps. Metrics justify automation investment.
 
 **Goal**: Auto-populate edges, learn from usage.
 
@@ -283,13 +446,23 @@ With graph in place:
 
 ## Files to Create/Modify
 
+**Phase G0 (Measurement):**
+| File | Action | Purpose |
+|------|--------|---------|
+| `eval/cross-project-queryset.json` | Create | Ground truth for routing |
+
+**Phase G1 (Infrastructure):**
 | File | Action | Purpose |
 |------|--------|---------|
 | `src/mother/mod.rs` | Create | Mother module entry |
 | `src/mother/graph.rs` | Create | Graph implementation |
 | `src/commands/mother/mod.rs` | Create | CLI commands |
+
+**Phase G2 (Integration):**
+| File | Action | Purpose |
+|------|--------|---------|
 | `src/commands/scry/internal/routing.rs` | Modify | Use graph for routing |
-| `eval/cross-project-queryset.json` | Create | Measurement |
+| `src/commands/bench/mod.rs` | Modify | Add `--routing` flag |
 
 ---
 

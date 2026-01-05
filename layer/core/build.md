@@ -102,12 +102,13 @@ Currently being worked on:
 | Phase | Build | Exit |
 |-------|-------|------|
 | **0-0.25c** | Git Narrative + Measurement | ✅ Complete (2026-01-05) |
+| **G0** | Cross-Project Measurement | Baseline for `--all-repos`, error analysis, prove gap |
 | **G1** | Graph Foundation | `graph.db` schema, nodes from registry, manual edges |
-| **G2** | Smart Routing | Use graph for query routing, cross-project measurement |
+| **G2** | Smart Routing | Use graph for query routing, measure improvement |
 | **0.5** | Persona surfaces | `[PERSONA]` + `[PROJECT]` sections in scry (deferred) |
 | **1-3** | Federation + Extraction | Deferred until graph foundation works |
 
-**Current:** Phase 0.25c complete (+169% Recall). **Now: Phase G1** - Build graph.db to enable cross-project awareness. Focus is connecting mothership to everything via explicit relationships.
+**Current:** Phase 0.25c complete (+169% Recall). **Now: Phase G0** - Measure dumb routing baseline before building graph. Andrew Ng principle: prove the problem exists with data before building infrastructure.
 
 ### Reference
 
