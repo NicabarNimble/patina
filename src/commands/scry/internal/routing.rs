@@ -6,7 +6,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use patina::mothership;
+use patina::mother;
 
 use crate::commands::persona;
 
@@ -16,7 +16,7 @@ use super::search::scry_text;
 
 /// Execute scry via mothership daemon
 pub fn execute_via_mothership(query: Option<&str>, options: &ScryOptions) -> Result<()> {
-    let address = mothership::get_address().unwrap_or_else(|| "unknown".to_string());
+    let address = mother::get_address().unwrap_or_else(|| "unknown".to_string());
     println!("🔮 Scry - Querying mothership at {}\n", address);
 
     // File-based queries not supported via mothership yet
@@ -28,7 +28,7 @@ pub fn execute_via_mothership(query: Option<&str>, options: &ScryOptions) -> Res
     println!("Query: \"{}\"\n", query);
 
     // Build request
-    let request = mothership::ScryRequest {
+    let request = mother::ScryRequest {
         query: query.to_string(),
         dimension: options.dimension.clone(),
         repo: options.repo.clone(),
@@ -40,7 +40,7 @@ pub fn execute_via_mothership(query: Option<&str>, options: &ScryOptions) -> Res
     };
 
     // Execute query
-    let response = mothership::scry(request)?;
+    let response = mother::scry(request)?;
 
     if response.results.is_empty() {
         println!("No results found.");

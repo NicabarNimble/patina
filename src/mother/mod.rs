@@ -1,16 +1,39 @@
-//! Mothership client for Patina
+//! Mother - Cross-project awareness layer
 //!
-//! Provides HTTP client for communicating with a running `patina serve` daemon.
-//! Used by containers to query the Mac mothership.
+//! This module consolidates mothership functionality:
+//! - **Client**: HTTP client for communicating with `patina serve` daemon
+//! - **Graph**: Local SQLite storage for project relationships
 //!
-//! # Environment Variable
+//! # Client Usage (containers → mothership)
+//!
 //! Set `PATINA_MOTHERSHIP=host:port` to enable remote queries.
-//! Example: `PATINA_MOTHERSHIP=host.docker.internal:50051`
+//! ```ignore
+//! use patina::mother;
+//!
+//! if mother::is_configured() {
+//!     let response = mother::scry(request)?;
+//! }
+//! ```
+//!
+//! # Graph Usage (local relationship storage)
+//!
+//! ```ignore
+//! use patina::mother::{Graph, EdgeType};
+//!
+//! let graph = Graph::open()?;
+//! graph.add_edge("patina", "dojo", EdgeType::TestsWith, Some("benchmark"))?;
+//! let related = graph.get_related("patina", &[EdgeType::Uses, EdgeType::TestsWith])?;
+//! ```
 
+mod graph;
 mod internal;
 
 use anyhow::Result;
 
+// Graph exports
+pub use graph::{Edge, EdgeType, Graph, Node, NodeType};
+
+// Client exports
 pub use internal::{Client, ScryRequest, ScryResponse, ScryResultJson};
 
 /// Default port for mothership daemon
