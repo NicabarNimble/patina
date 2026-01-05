@@ -1,0 +1,122 @@
+{
+  "name": "patina-temporal-retrieval",
+  "description": "Temporal/narrative retrieval benchmark derived from real sessions. Tests 'when/why/how' questions that require git narrative + session context.",
+  "methodology": "Queries extracted from session goals and activity logs. Ground truth includes commits (SHA), sessions (ID), patterns (ID), and code (path).",
+  "queries": [
+    {
+      "id": "t1-git-narrative",
+      "query": "when did we add commit message search",
+      "type": "when",
+      "relevant_docs": [
+        "37e4c87f",
+        "de774e92",
+        "20260102-061346"
+      ],
+      "notes": "Phase 0 Git Narrative - commits_fts and LexicalOracle integration"
+    },
+    {
+      "id": "t2-moments",
+      "query": "how does moment detection work",
+      "type": "how",
+      "relevant_docs": [
+        "0ccbf6a8",
+        "./src/commands/assay/internal/derive.rs",
+        "20260102-061346"
+      ],
+      "notes": "derive-moments command, temporal signals from git history"
+    },
+    {
+      "id": "t3-mothership-design",
+      "query": "why is mother a federation layer not a database",
+      "type": "why",
+      "relevant_docs": [
+        "3c83cd89",
+        "spec-mothership",
+        "20260101-194122"
+      ],
+      "notes": "Session captures the design rationale that commits don't"
+    },
+    {
+      "id": "t4-full-clone",
+      "query": "why did we switch to full git clone for repos",
+      "type": "why",
+      "relevant_docs": [
+        "ba15c7c6",
+        "20260101-223127"
+      ],
+      "notes": "Shallow clone missed co-change history - session explains rationale"
+    },
+    {
+      "id": "t5-observability",
+      "query": "how does secrets logging work",
+      "type": "how",
+      "relevant_docs": [
+        "631ab5e8",
+        "./src/commands/secrets/keychain.rs",
+        "20260101-194122"
+      ],
+      "notes": "PATINA_LOG=1 inline logging pattern"
+    },
+    {
+      "id": "t6-dependable-rust",
+      "query": "what is the dependable rust pattern",
+      "type": "what",
+      "relevant_docs": [
+        "dependable-rust",
+        "20250809-145646",
+        "20250811-184121"
+      ],
+      "notes": "Core pattern - sessions captured evolution across multiple applications"
+    },
+    {
+      "id": "t7-adapter-refactor",
+      "query": "when was the adapters module refactored to use internal",
+      "type": "when",
+      "relevant_docs": [
+        "20250811-184121",
+        "./src/adapters/mod.rs"
+      ],
+      "notes": "Split 800+ line claude.rs into modular structure"
+    },
+    {
+      "id": "t8-context-strategy",
+      "query": "why did we reduce CLAUDE.md file size",
+      "type": "why",
+      "relevant_docs": [
+        "20250811-184121"
+      ],
+      "notes": "1129 lines eating context window - session captures the problem/solution"
+    },
+    {
+      "id": "t9-persona-problem",
+      "query": "why does persona drown in RRF fusion results",
+      "type": "why",
+      "relevant_docs": [
+        "20260101-194122",
+        "spec-mothership"
+      ],
+      "notes": "Persona surfacing issue - diagnosis only in session, not commits"
+    },
+    {
+      "id": "t10-query-performance",
+      "query": "what caused the query performance speedup",
+      "type": "what",
+      "relevant_docs": [
+        "20260101-194122",
+        "ba795139"
+      ],
+      "notes": "Model-loading bottleneck fix (150ms → 22ms) - rationale in session"
+    }
+  ],
+  "query_types": {
+    "when": "Temporal queries - find point in time (2 queries)",
+    "why": "Rationale queries - understand decisions (4 queries, session-heavy)",
+    "how": "Mechanism queries - understand implementation (2 queries)",
+    "what": "Definition queries - understand concepts (2 queries)"
+  },
+  "hypothesis": {
+    "git_handles_well": ["when", "what"],
+    "sessions_add_value": ["why", "how"],
+    "rationale": "Git commits show WHAT changed and WHEN. Sessions capture WHY decisions were made and HOW problems were diagnosed."
+  }
+}
