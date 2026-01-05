@@ -1,0 +1,777 @@
+{
+  "name": "SDL-commits-v1",
+  "description": "Auto-generated from SDL git commits (50 queries)",
+  "source": "git commits (auto-generated)",
+  "repo": "SDL",
+  "generated": "2026-01-05T15:48:49Z",
+  "queries": [
+    {
+      "id": "q_a0307589",
+      "query": "if the file doesn't exist in the pref path, use the current directory",
+      "relevant_docs": [
+        "src/filesystem/posix/SDL_sysfsops.c",
+        "src/io/SDL_iostream.c"
+      ],
+      "relevant_commits": [
+        "a0307589bde010f4942d1620b821e535be708dc9"
+      ],
+      "source_commit": "a0307589bde010f4942d1620b821e535be708dc9",
+      "relevant": []
+    },
+    {
+      "id": "q_fc4f45f0",
+      "query": "Updated to version 3.5.0 for development",
+      "relevant_docs": [
+        "CMakeLists.txt",
+        "Xcode/SDL/Info-Framework.plist",
+        "Xcode/SDL/SDL.xcodeproj/project.pbxproj",
+        "Xcode/SDL/pkg-support/SDL.info",
+        "android-project/app/src/main/java/org/libsdl/app/SDLActivity.java",
+        "include/SDL3/SDL.h",
+        "include/SDL3/SDL_version.h",
+        "src/core/windows/version.rc"
+      ],
+      "relevant_commits": [
+        "fc4f45f0e369c30b5e6a0fb0de58f692dc3e17d4"
+      ],
+      "source_commit": "fc4f45f0e369c30b5e6a0fb0de58f692dc3e17d4",
+      "relevant": []
+    },
+    {
+      "id": "q_d15ecb21",
+      "query": "Updated to version 3.4.1 for development",
+      "relevant_docs": [
+        "CMakeLists.txt",
+        "Xcode/SDL/Info-Framework.plist",
+        "Xcode/SDL/SDL.xcodeproj/project.pbxproj",
+        "Xcode/SDL/pkg-support/SDL.info",
+        "android-project/app/src/main/java/org/libsdl/app/SDLActivity.java",
+        "include/SDL3/SDL.h",
+        "include/SDL3/SDL_version.h",
+        "src/core/windows/version.rc"
+      ],
+      "relevant_commits": [
+        "d15ecb21bead102489cb2180ac48a43dfe2e2676"
+      ],
+      "source_commit": "d15ecb21bead102489cb2180ac48a43dfe2e2676",
+      "relevant": []
+    },
+    {
+      "id": "q_a962f40b",
+      "query": "Updated to version 3.4.0 for release",
+      "relevant_docs": [
+        "CMakeLists.txt",
+        "Xcode/SDL/Info-Framework.plist",
+        "Xcode/SDL/SDL.xcodeproj/project.pbxproj",
+        "Xcode/SDL/pkg-support/SDL.info",
+        "android-project/app/src/main/java/org/libsdl/app/SDLActivity.java",
+        "include/SDL3/SDL.h",
+        "include/SDL3/SDL_version.h",
+        "src/core/windows/version.rc"
+      ],
+      "relevant_commits": [
+        "a962f40bbba175e9716557a25d5d7965f134a3d3"
+      ],
+      "source_commit": "a962f40bbba175e9716557a25d5d7965f134a3d3",
+      "relevant": []
+    },
+    {
+      "id": "q_cb4f33b6",
+      "query": "Use the window event watcher list for Vulkan and D3D12",
+      "relevant_docs": [
+        "src/gpu/d3d12/SDL_gpu_d3d12.c",
+        "src/gpu/vulkan/SDL_gpu_vulkan.c"
+      ],
+      "relevant_commits": [
+        "cb4f33b6448d07b06c1185a526cd161333853017"
+      ],
+      "source_commit": "cb4f33b6448d07b06c1185a526cd161333853017",
+      "relevant": []
+    },
+    {
+      "id": "q_3d354eea",
+      "query": "Prefer SDL_arraysize()",
+      "relevant_docs": [
+        "src/core/freebsd/SDL_evdev_kbd_freebsd.c",
+        "src/core/linux/SDL_evdev_kbd.c",
+        "src/haptic/hidapi/SDL_hidapihaptic_lg4ff.c",
+        "src/joystick/hidapi/SDL_hidapi_lg4ff.c",
+        "src/time/windows/SDL_systime.c",
+        "src/video/SDL_egl.c",
+        "src/video/openvr/SDL_openvrvideo.c",
+        "src/video/psp/SDL_pspevents.c",
+        "src/video/windows/SDL_windowskeyboard.c",
+        "src/video/x11/SDL_x11window.c"
+      ],
+      "relevant_commits": [
+        "3d354eeaade4ec55aadba65d47a453967c6441a3"
+      ],
+      "source_commit": "3d354eeaade4ec55aadba65d47a453967c6441a3",
+      "relevant": []
+    },
+    {
+      "id": "q_128b9260",
+      "query": "Added SDL_HINT_HIDAPI_LIBUSB_GAMECUBE",
+      "relevant_docs": [
+        "include/SDL3/SDL_hints.h",
+        "src/hidapi/SDL_hidapi.c"
+      ],
+      "relevant_commits": [
+        "128b9260ec02f090b746fb1c28a0596dc96744d8"
+      ],
+      "source_commit": "128b9260ec02f090b746fb1c28a0596dc96744d8",
+      "relevant": []
+    },
+    {
+      "id": "q_d33642b7",
+      "query": "Filter libusb devices early in enumeration",
+      "relevant_docs": [
+        "src/hidapi/SDL_hidapi.c",
+        "src/hidapi/SDL_hidapi_c.h",
+        "src/hidapi/android/hid.cpp",
+        "src/hidapi/ios/hid.m",
+        "src/hidapi/libusb/hid.c",
+        "src/hidapi/linux/hid.c",
+        "src/hidapi/mac/hid.c",
+        "src/hidapi/windows/hid.c"
+      ],
+      "relevant_commits": [
+        "d33642b710d8cb4ae8e5a63d92a953ee9fee7c61"
+      ],
+      "source_commit": "d33642b710d8cb4ae8e5a63d92a953ee9fee7c61",
+      "relevant": []
+    },
+    {
+      "id": "q_76352f29",
+      "query": "Document SDL's policy on setuid/setgid executables",
+      "relevant_docs": [
+        "docs/README-bsd.md",
+        "docs/README-linux.md",
+        "docs/README-macos.md",
+        "docs/README-platforms.md"
+      ],
+      "relevant_commits": [
+        "76352f2931e7eca6e596ea290a227314e7248ba7"
+      ],
+      "source_commit": "76352f2931e7eca6e596ea290a227314e7248ba7",
+      "relevant": []
+    },
+    {
+      "id": "q_b6f4e10b",
+      "query": "If setuid or setgid, don't use GTK",
+      "relevant_docs": [
+        "CMakeLists.txt",
+        "include/build_config/SDL_build_config.h.cmake",
+        "src/core/unix/SDL_gtk.c"
+      ],
+      "relevant_commits": [
+        "b6f4e10bf9f189b0d29008ffce1c4d3404cae901"
+      ],
+      "source_commit": "b6f4e10bf9f189b0d29008ffce1c4d3404cae901",
+      "relevant": []
+    },
+    {
+      "id": "q_9e0b31b2",
+      "query": "Factor out the check for GTK into an internal function",
+      "relevant_docs": [
+        "src/core/unix/SDL_gtk.c",
+        "src/core/unix/SDL_gtk.h"
+      ],
+      "relevant_commits": [
+        "9e0b31b297e85c1a1d8f48c05231b3bcd3b2f80e"
+      ],
+      "source_commit": "9e0b31b297e85c1a1d8f48c05231b3bcd3b2f80e",
+      "relevant": []
+    },
+    {
+      "id": "q_89dd2426",
+      "query": "Add SDL_PROP_TEXTURE_CREATE_VULKAN_LAYOUT_NUMBER",
+      "relevant_docs": [
+        "include/SDL3/SDL_render.h",
+        "src/render/vulkan/SDL_render_vulkan.c"
+      ],
+      "relevant_commits": [
+        "89dd2426cf9603e43b2a7cf09bbc55aaf30f11d9"
+      ],
+      "source_commit": "89dd2426cf9603e43b2a7cf09bbc55aaf30f11d9",
+      "relevant": []
+    },
+    {
+      "id": "q_efc33633",
+      "query": "Allow the offscreen and dummy drivers to be used as fallback",
+      "relevant_docs": [
+        "src/video/dummy/SDL_nullvideo.c",
+        "src/video/offscreen/SDL_offscreenvideo.c"
+      ],
+      "relevant_commits": [
+        "efc33633e3c4363989b467a1a6ab267f413cd016"
+      ],
+      "source_commit": "efc33633e3c4363989b467a1a6ab267f413cd016",
+      "relevant": []
+    },
+    {
+      "id": "q_ce0da587",
+      "query": "Made udev hwdb functionality optional",
+      "relevant_docs": [
+        "src/core/linux/SDL_udev.c",
+        "src/core/linux/SDL_udev.h",
+        "src/hidapi/linux/hid.c"
+      ],
+      "relevant_commits": [
+        "ce0da58755c492f848a1d574e2eeeec86e67d97f"
+      ],
+      "source_commit": "ce0da58755c492f848a1d574e2eeeec86e67d97f",
+      "relevant": []
+    },
+    {
+      "id": "q_4984eb8c",
+      "query": "Use udev to get the manufacturer name if possible (thanks gdb!)",
+      "relevant_docs": [
+        "src/core/linux/SDL_udev.c",
+        "src/core/linux/SDL_udev.h",
+        "src/hidapi/SDL_hidapi_linux.h",
+        "src/hidapi/linux/hid.c"
+      ],
+      "relevant_commits": [
+        "4984eb8c168d8c595d0fb0d1d62b47eec2da6f75"
+      ],
+      "source_commit": "4984eb8c168d8c595d0fb0d1d62b47eec2da6f75",
+      "relevant": []
+    },
+    {
+      "id": "q_235f4176",
+      "query": "Update the HDR data on placeholder displays",
+      "relevant_docs": [
+        "src/video/wayland/SDL_waylandcolor.c",
+        "src/video/wayland/SDL_waylandvideo.c"
+      ],
+      "relevant_commits": [
+        "235f417616b46cfca1db3f79250240ba9ed9df33"
+      ],
+      "source_commit": "235f417616b46cfca1db3f79250240ba9ed9df33",
+      "relevant": []
+    },
+    {
+      "id": "q_d028d8bc",
+      "query": "Fix minor typos in headers.",
+      "relevant_docs": [
+        "include/SDL3/SDL_keycode.h",
+        "include/SDL3/SDL_mouse.h",
+        "include/SDL3/SDL_surface.h",
+        "include/SDL3/SDL_video.h"
+      ],
+      "relevant_commits": [
+        "d028d8bc3b2ec7dcb439f9cde22634c6ff7388ca"
+      ],
+      "source_commit": "d028d8bc3b2ec7dcb439f9cde22634c6ff7388ca",
+      "relevant": []
+    },
+    {
+      "id": "q_0ac6f972",
+      "query": "Added enhanced support for the Flydigi Vader 5 Pro controller",
+      "relevant_docs": [
+        "src/SDL_utils.c",
+        "src/joystick/SDL_gamepad.c",
+        "src/joystick/hidapi/SDL_hidapi_flydigi.c",
+        "src/joystick/hidapi/SDL_hidapi_flydigi.h"
+      ],
+      "relevant_commits": [
+        "0ac6f972f92acf93f02498e10c1d7e56d497827a"
+      ],
+      "source_commit": "0ac6f972f92acf93f02498e10c1d7e56d497827a",
+      "relevant": []
+    },
+    {
+      "id": "q_d583fc88",
+      "query": "Updated to version 3.3.7 for development",
+      "relevant_docs": [
+        "CMakeLists.txt",
+        "Xcode/SDL/Info-Framework.plist",
+        "Xcode/SDL/SDL.xcodeproj/project.pbxproj",
+        "Xcode/SDL/pkg-support/SDL.info",
+        "android-project/app/src/main/java/org/libsdl/app/SDLActivity.java",
+        "include/SDL3/SDL.h",
+        "include/SDL3/SDL_version.h",
+        "src/core/windows/version.rc"
+      ],
+      "relevant_commits": [
+        "d583fc88bee0a5c3fb05e2709f0dfd1468924aa4"
+      ],
+      "source_commit": "d583fc88bee0a5c3fb05e2709f0dfd1468924aa4",
+      "relevant": []
+    },
+    {
+      "id": "q_ef0a604d",
+      "query": "Updated to version 3.3.6 for preview release",
+      "relevant_docs": [
+        "CMakeLists.txt",
+        "Xcode/SDL/Info-Framework.plist",
+        "Xcode/SDL/SDL.xcodeproj/project.pbxproj",
+        "Xcode/SDL/pkg-support/SDL.info",
+        "android-project/app/src/main/java/org/libsdl/app/SDLActivity.java",
+        "include/SDL3/SDL.h",
+        "include/SDL3/SDL_version.h",
+        "src/core/windows/version.rc"
+      ],
+      "relevant_commits": [
+        "ef0a604d44f5e44d4c1b34c215d68be5a985cd7e"
+      ],
+      "source_commit": "ef0a604d44f5e44d4c1b34c215d68be5a985cd7e",
+      "relevant": []
+    },
+    {
+      "id": "q_aeb4b3d2",
+      "query": "Reverted Vita cliprect changes",
+      "relevant_docs": [
+        "src/render/vitagxm/SDL_render_vita_gxm.c",
+        "src/render/vitagxm/SDL_render_vita_gxm_types.h"
+      ],
+      "relevant_commits": [
+        "aeb4b3d2fc2af3c8fb48c56e7fd1aa6800496769"
+      ],
+      "source_commit": "aeb4b3d2fc2af3c8fb48c56e7fd1aa6800496769",
+      "relevant": []
+    },
+    {
+      "id": "q_09a2283b",
+      "query": "Fix SDL_EnumerateDirectory(/) failing on POSIX and Windows.",
+      "relevant_docs": [
+        "src/filesystem/posix/SDL_sysfsops.c",
+        "src/filesystem/windows/SDL_sysfsops.c"
+      ],
+      "relevant_commits": [
+        "09a2283b53d541c57ded373a0954b1e2f8a8428a"
+      ],
+      "source_commit": "09a2283b53d541c57ded373a0954b1e2f8a8428a",
+      "relevant": []
+    },
+    {
+      "id": "q_9092ddff",
+      "query": "Update the color management protocol",
+      "relevant_docs": [
+        "src/video/wayland/SDL_waylandcolor.c",
+        "src/video/wayland/SDL_waylandvideo.c",
+        "src/video/wayland/SDL_waylandwindow.c",
+        "wayland-protocols/color-management-v1.xml"
+      ],
+      "relevant_commits": [
+        "9092ddff3c4092c8e47ec7ea01da9a829b0313f3"
+      ],
+      "source_commit": "9092ddff3c4092c8e47ec7ea01da9a829b0313f3",
+      "relevant": []
+    },
+    {
+      "id": "q_db84b948",
+      "query": "Default to a swap interval of 0.",
+      "relevant_docs": [
+        "src/video/SDL_egl.c",
+        "src/video/android/SDL_androidevents.c"
+      ],
+      "relevant_commits": [
+        "db84b948f90d274cbe1b104a336b0dce4a3819be"
+      ],
+      "source_commit": "db84b948f90d274cbe1b104a336b0dce4a3819be",
+      "relevant": []
+    },
+    {
+      "id": "q_517a3d20",
+      "query": "Support calling SteamAPI_InitEx() before SDL_Init(SDL_INIT_GAMEPAD)",
+      "relevant_docs": [
+        "include/SDL3/SDL_gamepad.h",
+        "src/joystick/SDL_gamepad.c",
+        "src/joystick/SDL_joystick.c",
+        "src/joystick/SDL_steam_virtual_gamepad.c"
+      ],
+      "relevant_commits": [
+        "517a3d20e8cf52cbd7bc3b9ae48349017e87c095"
+      ],
+      "source_commit": "517a3d20e8cf52cbd7bc3b9ae48349017e87c095",
+      "relevant": []
+    },
+    {
+      "id": "q_ec19f1e1",
+      "query": "Use Uint32 instead of unsigned int for descriptor values",
+      "relevant_docs": [
+        "src/joystick/hidapi/SDL_hidapi_xboxone.c",
+        "src/joystick/hidapi/SDL_report_descriptor.c",
+        "src/joystick/hidapi/SDL_report_descriptor.h"
+      ],
+      "relevant_commits": [
+        "ec19f1e12f11e08dbb6be5eba7ebabdbce17c740"
+      ],
+      "source_commit": "ec19f1e12f11e08dbb6be5eba7ebabdbce17c740",
+      "relevant": []
+    },
+    {
+      "id": "q_bdb72bb3",
+      "query": "add reftable ref storage support to GetGitRevisionDescription",
+      "relevant_docs": [
+        "cmake/GetGitRevisionDescription.cmake",
+        "cmake/GetGitRevisionDescription.cmake.in"
+      ],
+      "relevant_commits": [
+        "bdb72bb3f051de32c91f5deb439a50bfd51499dc"
+      ],
+      "source_commit": "bdb72bb3f051de32c91f5deb439a50bfd51499dc",
+      "relevant": []
+    },
+    {
+      "id": "q_d6f64219",
+      "query": "Revert \"Don't enable the text-input protocol when using Fcitx\"",
+      "relevant_docs": [
+        "src/video/wayland/SDL_waylandevents.c",
+        "src/video/wayland/SDL_waylandevents_c.h",
+        "src/video/wayland/SDL_waylandvideo.c"
+      ],
+      "relevant_commits": [
+        "d6f64219730748cb7b97d50696f527bed6856818"
+      ],
+      "source_commit": "d6f64219730748cb7b97d50696f527bed6856818",
+      "relevant": []
+    },
+    {
+      "id": "q_450a2cb5",
+      "query": "Added support for parsing the Xbox report descriptor",
+      "relevant_docs": [
+        "VisualC-GDK/SDL/SDL.vcxproj",
+        "VisualC-GDK/SDL/SDL.vcxproj.filters",
+        "VisualC/SDL/SDL.vcxproj",
+        "VisualC/SDL/SDL.vcxproj.filters",
+        "Xcode/SDL/SDL.xcodeproj/project.pbxproj",
+        "src/joystick/hidapi/SDL_hidapi_xboxone.c",
+        "src/joystick/hidapi/SDL_report_descriptor.c",
+        "src/joystick/hidapi/SDL_report_descriptor.h",
+        "src/joystick/usb_ids.h"
+      ],
+      "relevant_commits": [
+        "450a2cb5e485455c5b05dd8cfc1d3cb10cd7452b"
+      ],
+      "source_commit": "450a2cb5e485455c5b05dd8cfc1d3cb10cd7452b",
+      "relevant": []
+    },
+    {
+      "id": "q_5bbf1dcb",
+      "query": "Sync SDL3 wiki -> header",
+      "relevant_docs": [
+        "include/SDL3/SDL_hints.h",
+        "include/SDL3/SDL_mouse.h"
+      ],
+      "relevant_commits": [
+        "5bbf1dcb44512b8855c36d649487f3384bbe7ba8"
+      ],
+      "source_commit": "5bbf1dcb44512b8855c36d649487f3384bbe7ba8",
+      "relevant": []
+    },
+    {
+      "id": "q_466ca58b",
+      "query": "Added SDL_HINT_MOUSE_DPI_SCALE_CURSORS",
+      "relevant_docs": [
+        "WhatsNew.txt",
+        "include/SDL3/SDL_hints.h",
+        "include/SDL3/SDL_mouse.h",
+        "src/video/wayland/SDL_waylandmouse.c",
+        "src/video/windows/SDL_windowsmouse.c"
+      ],
+      "relevant_commits": [
+        "466ca58b040ab9bc7f9f208d144e8b5993fa9f57"
+      ],
+      "source_commit": "466ca58b040ab9bc7f9f208d144e8b5993fa9f57",
+      "relevant": []
+    },
+    {
+      "id": "q_a296c408",
+      "query": "isfinite is not available on all platforms, so add a bitmasking alternative",
+      "relevant_docs": [
+        "test/testautomation_audio.c",
+        "test/testautomation_suites.h"
+      ],
+      "relevant_commits": [
+        "a296c40867b98ca8c93bcddcee6a80298c008529"
+      ],
+      "source_commit": "a296c40867b98ca8c93bcddcee6a80298c008529",
+      "relevant": []
+    },
+    {
+      "id": "q_b3cdeb94",
+      "query": "default to vsync=0 everywhere.",
+      "relevant_docs": [
+        "src/render/SDL_render.c",
+        "src/video/SDL_egl.c"
+      ],
+      "relevant_commits": [
+        "b3cdeb942ae86a19c3a511b91d83d4d6c8fbbe4b"
+      ],
+      "source_commit": "b3cdeb942ae86a19c3a511b91d83d4d6c8fbbe4b",
+      "relevant": []
+    },
+    {
+      "id": "q_69255b87",
+      "query": "Dedup the X11_FindWindow() function",
+      "relevant_docs": [
+        "src/video/x11/SDL_x11events.c",
+        "src/video/x11/SDL_x11events.h",
+        "src/video/x11/SDL_x11xinput2.c"
+      ],
+      "relevant_commits": [
+        "69255b870d805a5cf7feb81748c9ab521f413100"
+      ],
+      "source_commit": "69255b870d805a5cf7feb81748c9ab521f413100",
+      "relevant": []
+    },
+    {
+      "id": "q_6f774908",
+      "query": "SDL_GetAudioDeviceName() now works with the default device IDs.",
+      "relevant_docs": [
+        "include/SDL3/SDL_audio.h",
+        "src/audio/SDL_audio.c",
+        "test/loopwave.c"
+      ],
+      "relevant_commits": [
+        "6f774908feee5263ae1fe5b0ae5a81b2157207e0"
+      ],
+      "source_commit": "6f774908feee5263ae1fe5b0ae5a81b2157207e0",
+      "relevant": []
+    },
+    {
+      "id": "q_9b36a76e",
+      "query": "Fixed supported pixel formats on big endian systems (thanks @ccawley2011!)",
+      "relevant_docs": [
+        "src/render/gpu/SDL_render_gpu.c",
+        "src/render/opengl/SDL_render_gl.c",
+        "src/render/opengles2/SDL_render_gles2.c"
+      ],
+      "relevant_commits": [
+        "9b36a76ee6ced316bcad8cbd6b4530ddd79f547e"
+      ],
+      "source_commit": "9b36a76ee6ced316bcad8cbd6b4530ddd79f547e",
+      "relevant": []
+    },
+    {
+      "id": "q_5813d0ec",
+      "query": "SDL_RotateSurface should update SDL_PROP_SURFACE_ROTATION_FLOAT.",
+      "relevant_docs": [
+        "include/SDL3/SDL_surface.h",
+        "src/video/SDL_surface.c"
+      ],
+      "relevant_commits": [
+        "5813d0ec0aab618189eaa3ab33d8beaf5a9544d4"
+      ],
+      "source_commit": "5813d0ec0aab618189eaa3ab33d8beaf5a9544d4",
+      "relevant": []
+    },
+    {
+      "id": "q_4194879d",
+      "query": "Surface rotation property should be float, not int.",
+      "relevant_docs": [
+        "WhatsNew.txt",
+        "include/SDL3/SDL_surface.h",
+        "src/camera/SDL_camera.c",
+        "src/camera/SDL_syscamera.h",
+        "src/camera/android/SDL_camera_android.c",
+        "src/camera/coremedia/SDL_camera_coremedia.m",
+        "src/camera/dummy/SDL_camera_dummy.c",
+        "src/camera/emscripten/SDL_camera_emscripten.c",
+        "src/camera/mediafoundation/SDL_camera_mediafoundation.c",
+        "src/camera/pipewire/SDL_camera_pipewire.c",
+        "src/camera/v4l2/SDL_camera_v4l2.c",
+        "src/camera/vita/SDL_camera_vita.c",
+        "test/testcamera.c"
+      ],
+      "relevant_commits": [
+        "4194879df1b6dd1be5109cdf818a007cc2c85496"
+      ],
+      "source_commit": "4194879df1b6dd1be5109cdf818a007cc2c85496",
+      "relevant": []
+    },
+    {
+      "id": "q_9918d6cb",
+      "query": "Move fill-document from hint/property to a window flag.",
+      "relevant_docs": [
+        "WhatsNew.txt",
+        "include/SDL3/SDL_hints.h",
+        "include/SDL3/SDL_video.h",
+        "src/dynapi/SDL_dynapi.sym",
+        "src/dynapi/SDL_dynapi_overrides.h",
+        "src/dynapi/SDL_dynapi_procs.h",
+        "src/test/SDL_test_common.c",
+        "src/video/SDL_sysvideo.h",
+        "src/video/SDL_video.c",
+        "src/video/emscripten/SDL_emscriptenvideo.c"
+      ],
+      "relevant_commits": [
+        "9918d6cb5e0dcc4d255f9a7f5de9d95d0f6875fe"
+      ],
+      "source_commit": "9918d6cb5e0dcc4d255f9a7f5de9d95d0f6875fe",
+      "relevant": []
+    },
+    {
+      "id": "q_5fe69e73",
+      "query": "Use XInput2 to handle pointer input while grabbed and touches are active",
+      "relevant_docs": [
+        "src/video/x11/SDL_x11events.c",
+        "src/video/x11/SDL_x11xinput2.c",
+        "src/video/x11/SDL_x11xinput2.h"
+      ],
+      "relevant_commits": [
+        "5fe69e73ba0f0cb44e265592df2dd9b4f4a5f1bf"
+      ],
+      "source_commit": "5fe69e73ba0f0cb44e265592df2dd9b4f4a5f1bf",
+      "relevant": []
+    },
+    {
+      "id": "q_7773157f",
+      "query": "Updated to version 3.3.5 for development",
+      "relevant_docs": [
+        "CMakeLists.txt",
+        "Xcode/SDL/Info-Framework.plist",
+        "Xcode/SDL/SDL.xcodeproj/project.pbxproj",
+        "Xcode/SDL/pkg-support/SDL.info",
+        "android-project/app/src/main/java/org/libsdl/app/SDLActivity.java",
+        "include/SDL3/SDL.h",
+        "include/SDL3/SDL_version.h",
+        "src/core/windows/version.rc"
+      ],
+      "relevant_commits": [
+        "7773157fae69c54589dcf03c0f05a865b301c9e1"
+      ],
+      "source_commit": "7773157fae69c54589dcf03c0f05a865b301c9e1",
+      "relevant": []
+    },
+    {
+      "id": "q_f173fd28",
+      "query": "Updated to version 3.3.4 for preview release",
+      "relevant_docs": [
+        "CMakeLists.txt",
+        "Xcode/SDL/Info-Framework.plist",
+        "Xcode/SDL/SDL.xcodeproj/project.pbxproj",
+        "Xcode/SDL/pkg-support/SDL.info",
+        "android-project/app/src/main/java/org/libsdl/app/SDLActivity.java",
+        "include/SDL3/SDL.h",
+        "include/SDL3/SDL_version.h",
+        "src/core/windows/version.rc"
+      ],
+      "relevant_commits": [
+        "f173fd28f04cb64ae054d6a97edb5d33925f539b"
+      ],
+      "source_commit": "f173fd28f04cb64ae054d6a97edb5d33925f539b",
+      "relevant": []
+    },
+    {
+      "id": "q_eea8090f",
+      "query": "Steam storage improvements",
+      "relevant_docs": [
+        "src/storage/steam/SDL_steamstorage.c",
+        "src/storage/steam/SDL_steamstorage_proc.h"
+      ],
+      "relevant_commits": [
+        "eea8090f8422ad3545d024042e91990f11a0c721"
+      ],
+      "source_commit": "eea8090f8422ad3545d024042e91990f11a0c721",
+      "relevant": []
+    },
+    {
+      "id": "q_f5ea8805",
+      "query": "Change how WinPixEventRuntime.dll is used under D3D12/Windows.",
+      "relevant_docs": [
+        "include/SDL3/SDL_gpu.h",
+        "src/gpu/d3d12/SDL_gpu_d3d12.c"
+      ],
+      "relevant_commits": [
+        "f5ea8805e1b679f4e478334008441528757e5db9"
+      ],
+      "source_commit": "f5ea8805e1b679f4e478334008441528757e5db9",
+      "relevant": []
+    },
+    {
+      "id": "q_37715c40",
+      "query": "Document need to include SDL_revision.h",
+      "relevant_docs": [
+        "include/SDL3/SDL_revision.h",
+        "include/SDL3/SDL_version.h"
+      ],
+      "relevant_commits": [
+        "37715c4029d9e8605bbbe5dd1867cae6f120481a"
+      ],
+      "source_commit": "37715c4029d9e8605bbbe5dd1867cae6f120481a",
+      "relevant": []
+    },
+    {
+      "id": "q_bc17a892",
+      "query": "Allow SDL_HINT_EMSCRIPTEN_FILL_DOCUMENT to be toggled on a window.",
+      "relevant_docs": [
+        "include/SDL3/SDL_hints.h",
+        "src/video/emscripten/SDL_emscriptenevents.c",
+        "src/video/emscripten/SDL_emscriptenvideo.c",
+        "src/video/emscripten/SDL_emscriptenvideo.h"
+      ],
+      "relevant_commits": [
+        "bc17a8922bbf022eaf6eae65257798a1232905b3"
+      ],
+      "source_commit": "bc17a8922bbf022eaf6eae65257798a1232905b3",
+      "relevant": []
+    },
+    {
+      "id": "q_09304831",
+      "query": "Fixed issues with YUV texture updates in the 2D renderer",
+      "relevant_docs": [
+        "src/render/direct3d11/SDL_render_d3d11.c",
+        "src/render/direct3d12/SDL_render_d3d12.c",
+        "src/render/gpu/SDL_render_gpu.c",
+        "src/render/vulkan/SDL_render_vulkan.c"
+      ],
+      "relevant_commits": [
+        "09304831f600c4bde992125dd7d910673c547aa7"
+      ],
+      "source_commit": "09304831f600c4bde992125dd7d910673c547aa7",
+      "relevant": []
+    },
+    {
+      "id": "q_70c2f576",
+      "query": "fixed issue where video events could be posted while system was quitting",
+      "relevant_docs": [
+        "src/events/SDL_displayevents.c",
+        "src/events/SDL_windowevents.c",
+        "src/video/SDL_sysvideo.h",
+        "src/video/SDL_video.c"
+      ],
+      "relevant_commits": [
+        "70c2f576c83fffb4176b728f58783ec58c530c76"
+      ],
+      "source_commit": "70c2f576c83fffb4176b728f58783ec58c530c76",
+      "relevant": []
+    },
+    {
+      "id": "q_cc681ffe",
+      "query": "build-scripts: Include SDL- prefix in SDL_REVISION when built from tarball",
+      "relevant_docs": [
+        "build-scripts/pkg-support/source/SDL_revision.h.cmake.in",
+        "build-scripts/pkg-support/source/SDL_revision.h.in"
+      ],
+      "relevant_commits": [
+        "cc681ffeda4f2e7a4663a1674483f2a5ab10f0ac"
+      ],
+      "source_commit": "cc681ffeda4f2e7a4663a1674483f2a5ab10f0ac",
+      "relevant": []
+    },
+    {
+      "id": "q_6665ebaa",
+      "query": "SDL_test: allow disabling colorized output",
+      "relevant_docs": [
+        "CMakeLists.txt",
+        "VisualC-GDK/SDL_test/SDL_test.vcxproj",
+        "VisualC/SDL_test/SDL_test.vcxproj",
+        "include/SDL3/SDL_test_log.h",
+        "src/test/SDL_test_assert.c",
+        "src/test/SDL_test_common.c",
+        "src/test/SDL_test_harness.c",
+        "src/test/SDL_test_internal.h",
+        "src/test/SDL_test_log.c"
+      ],
+      "relevant_commits": [
+        "6665ebaa2e9ccad6bc426ab3694a4c067dda5d91"
+      ],
+      "source_commit": "6665ebaa2e9ccad6bc426ab3694a4c067dda5d91",
+      "relevant": []
+    }
+  ]
+}
