@@ -278,30 +278,45 @@ If dumb routing MRR is 0.2 and simulated smart routing is 0.7, graph is clearly 
 | CLI: `patina mother graph` | ~100 lines | Show graph state |
 | CLI: `patina mother link` | ~80 lines | Add/remove edges manually |
 
+### Module Structure
+
+Consolidate mothership layer into `src/mother/` (follows dependable-rust):
+
+```
+src/mother/
+├── mod.rs       # Public interface: client + graph exports
+├── internal.rs  # HTTP client implementation (unchanged)
+└── graph.rs     # Graph storage + traversal (new)
+```
+
+**Rationale**: "Mother" is the layer, "mothership" is the daemon name. One module owns the layer.
+
 ### Interface
 
 ```rust
 // src/mother/graph.rs
-pub struct MotherGraph {
-    db: Connection,
+pub struct Graph {
+    conn: Connection,
 }
 
-impl MotherGraph {
+impl Graph {
     pub fn open() -> Result<Self>;
 
     // Node operations
-    pub fn add_node(&self, id: &str, node_type: NodeType, path: &Path) -> Result<()>;
+    pub fn add_node(&self, id: &str, node_type: NodeType, path: &Path, domains: &[String]) -> Result<()>;
     pub fn get_node(&self, id: &str) -> Result<Option<Node>>;
     pub fn list_nodes(&self) -> Result<Vec<Node>>;
+    pub fn node_count(&self) -> Result<usize>;
 
     // Edge operations
-    pub fn add_edge(&self, from: &str, to: &str, edge_type: EdgeType) -> Result<()>;
-    pub fn remove_edge(&self, from: &str, to: &str, edge_type: EdgeType) -> Result<()>;
-    pub fn get_edges(&self, node: &str) -> Result<Vec<Edge>>;
+    pub fn add_edge(&self, from: &str, to: &str, edge_type: EdgeType, evidence: Option<&str>) -> Result<()>;
+    pub fn remove_edge(&self, from: &str, to: &str, edge_type: EdgeType) -> Result<bool>;
+    pub fn get_edges_from(&self, node: &str) -> Result<Vec<Edge>>;
+    pub fn list_edges(&self) -> Result<Vec<Edge>>;
+    pub fn edge_count(&self) -> Result<usize>;
 
-    // Traversal
+    // Traversal (G1: single-hop only, defer depth traversal to G2)
     pub fn get_related(&self, node: &str, edge_types: &[EdgeType]) -> Result<Vec<Node>>;
-    pub fn traverse(&self, start: &str, depth: usize) -> Result<Vec<(Node, Vec<Edge>)>>;
 }
 ```
 
@@ -478,8 +493,10 @@ With graph in place:
 **Phase G1 (Infrastructure):**
 | File | Action | Purpose |
 |------|--------|---------|
-| `src/mother/mod.rs` | Create | Mother module entry |
-| `src/mother/graph.rs` | Create | Graph implementation |
+| `src/mothership/` | Rename | → `src/mother/` (consolidate layer) |
+| `src/mother/mod.rs` | Rewrite | Unified interface: client + graph |
+| `src/mother/internal.rs` | Keep | HTTP client (follows dependable-rust) |
+| `src/mother/graph.rs` | Create | Graph storage + traversal |
 | `src/commands/mother/mod.rs` | Create | CLI commands |
 
 **Phase G2 (Integration):**
