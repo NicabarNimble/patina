@@ -1,6 +1,10 @@
 //! Lexical oracle - BM25/FTS5 text search
+//!
+//! Searches code_fts, commits_fts, and pattern_fts using FTS5.
+//! When commits are found, expands to include files touched by those commits.
 
 use anyhow::Result;
+use rusqlite::Connection;
 use std::path::PathBuf;
 
 use crate::commands::scry::{scry_lexical, ScryOptions};
@@ -20,6 +24,74 @@ impl LexicalOracle {
         Self {
             db_path: PathBuf::from(".patina/data/patina.db"),
             include_issues,
+        }
+    }
+}
+
+impl LexicalOracle {
+    /// Expand git.commit results to include files touched by those commits
+    ///
+    /// When a commit matches via commits_fts, this follows the commit→file
+    /// relationship by looking up commit_files and adding those files as
+    /// additional results with a derived score.
+    fn expand_commit_files(
+        &self,
+        results: &mut Vec<OracleResult>,
+        source: &'static str,
+        query_terms: &[String],
+    ) {
+        // Open database connection
+        let conn = match Connection::open(&self.db_path) {
+            Ok(c) => c,
+            Err(_) => return, // No database, skip expansion
+        };
+
+        // Collect commit SHAs and their scores for expansion
+        let commit_results: Vec<(String, f32)> = results
+            .iter()
+            .filter_map(|r| {
+                if r.metadata.event_type.as_deref() == Some("git.commit") {
+                    Some((r.doc_id.clone(), r.score))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // For each commit, look up its files and add as results
+        for (sha, parent_score) in commit_results {
+            let file_query = conn.prepare(
+                "SELECT file_path FROM commit_files WHERE sha = ? LIMIT 15",
+            );
+
+            let mut stmt = match file_query {
+                Ok(s) => s,
+                Err(_) => continue, // Table might not exist
+            };
+
+            let file_paths: Vec<String> = stmt
+                .query_map([&sha], |row| row.get(0))
+                .ok()
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+                .unwrap_or_default();
+
+            // Add file results with derived score (parent * 0.9)
+            let derived_score = parent_score * 0.9;
+            for file_path in file_paths {
+                results.push(OracleResult {
+                    doc_id: file_path.clone(),
+                    content: format!("Changed in commit {}", &sha[..sha.len().min(7)]),
+                    source,
+                    score: derived_score,
+                    score_type: "bm25_derived",
+                    metadata: OracleMetadata {
+                        file_path: Some(file_path),
+                        timestamp: None,
+                        event_type: Some("commit_file".to_string()),
+                        matches: Some(query_terms.to_vec()),
+                    },
+                });
+            }
         }
     }
 }
@@ -47,7 +119,7 @@ impl Oracle for LexicalOracle {
             .map(|t| t.to_string())
             .collect();
 
-        Ok(results
+        let mut oracle_results: Vec<OracleResult> = results
             .into_iter()
             .map(|r| OracleResult {
                 doc_id: r.source_id.clone(),
@@ -66,7 +138,12 @@ impl Oracle for LexicalOracle {
                     matches: Some(query_terms.clone()),
                 },
             })
-            .collect())
+            .collect();
+
+        // Expand git.commit results to include touched files
+        self.expand_commit_files(&mut oracle_results, source, &query_terms);
+
+        Ok(oracle_results)
     }
 
     fn is_available(&self) -> bool {
