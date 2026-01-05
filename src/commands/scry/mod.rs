@@ -10,7 +10,7 @@
 pub mod internal;
 
 use anyhow::Result;
-use patina::mothership;
+use patina::mother;
 
 use crate::commands::persona;
 
@@ -74,7 +74,7 @@ impl Default for ScryOptions {
 /// Execute scry command
 pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     // Check if we should route to mothership
-    if mothership::is_configured() {
+    if mother::is_configured() {
         return execute_via_mothership(query, &options);
     }
 
