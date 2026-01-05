@@ -943,7 +943,16 @@ CREATE TABLE project_relationships (
 
 ## Open Questions
 
-1. **Graph DB choice** - SQLite with JSON? Dedicated graph DB?
+1. **Graph DB choice** - SQLite with JSON? Dedicated graph DB? → **Answered in spec-mothership-graph.md: SQLite**
 2. **Pattern extraction** - LLM-based? Rule-based? Hybrid?
 3. **Distillation frequency** - Real-time? Batch? On session end?
 4. **Cross-project privacy** - All projects visible to Mother? Opt-in?
+
+---
+
+## Related Specs
+
+- [spec-mothership-graph.md](./spec-mothership-graph.md) - **Phase G1-G2**: Graph foundation and smart routing (NEW)
+- [spec-three-layers.md](./spec-three-layers.md) - Mother layer architecture
+- [spec-pipeline.md](./spec-pipeline.md) - Data pipeline (scrape→oxidize/assay→scry)
+- [concept-rag-network.md](../concept-rag-network.md) - Projects as RAG nodes vision

@@ -86,26 +86,28 @@ Run regularly to catch regressions.
 
 Currently being worked on:
 
-- [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 0:** Graph + federation + distilled semantic
+- [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 0 complete:** Git narrative + measurement
+- [spec-mothership-graph.md](../surface/build/spec-mothership-graph.md) - **NEW:** Graph layer for cross-project awareness
 - [spec-observability.md](../surface/build/spec-observability.md) - **Phase 0 complete**, Phase 1 deferred
 - [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** Responsibility separation (mother/patina/awaken)
 
 ---
 
-## Next: Mothership
+## Next: Mothership Graph
 
-**Spec:** [spec-mothership.md](../surface/build/spec-mothership.md) - Full architecture (graph, semantic, federation, events)
+**Specs:**
+- [spec-mothership.md](../surface/build/spec-mothership.md) - Full architecture (phases 0-3)
+- [spec-mothership-graph.md](../surface/build/spec-mothership-graph.md) - **ACTIVE:** Graph layer for cross-project awareness
 
 | Phase | Build | Exit |
 |-------|-------|------|
-| **0** | Git Narrative | ✅ Complete (2026-01-02) |
-| **0.25c** | Commit-Derived Measurement | ✅ Complete (2026-01-05) |
-| **0.5** | Persona surfaces | `[PERSONA]` + `[PROJECT]` sections in scry |
-| **1** | Federated query | Local miss → Mother routes → cross-project results |
-| **2** | Knowledge graph | project USES project, project HAS pattern |
-| **3** | Extraction loop | Session → extract patterns → update Mother |
+| **0-0.25c** | Git Narrative + Measurement | ✅ Complete (2026-01-05) |
+| **G1** | Graph Foundation | `graph.db` schema, nodes from registry, manual edges |
+| **G2** | Smart Routing | Use graph for query routing, cross-project measurement |
+| **0.5** | Persona surfaces | `[PERSONA]` + `[PROJECT]` sections in scry (deferred) |
+| **1-3** | Federation + Extraction | Deferred until graph foundation works |
 
-**Current:** Phase 0.25c complete. Commit→file expansion improved Recall@10 from 17% to 46% (+169%). Baselines established for 4 repos. One item remains: `context topic` semantic search fix. Next: Phase 0.5 (Persona surfaces) or complete `context topic`.
+**Current:** Phase 0.25c complete (+169% Recall). **Now: Phase G1** - Build graph.db to enable cross-project awareness. Focus is connecting mothership to everything via explicit relationships.
 
 ### Reference
 
