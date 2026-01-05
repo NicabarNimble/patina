@@ -1,0 +1,753 @@
+{
+  "name": "local-commits-v1",
+  "description": "Auto-generated from local git commits (50 queries)",
+  "source": "git commits (auto-generated)",
+  "generated": "2026-01-05T14:43:28Z",
+  "queries": [
+    {
+      "id": "q_c0b0833d",
+      "query": "mark Phase 0 Git Narrative complete",
+      "relevant_docs": [
+        "layer/core/build.md",
+        "layer/surface/build/spec-mothership.md"
+      ],
+      "relevant_commits": [
+        "c0b0833db9fa78f2f1a99ee7e89cf0f318ff3083"
+      ],
+      "source_commit": "c0b0833db9fa78f2f1a99ee7e89cf0f318ff3083",
+      "relevant": []
+    },
+    {
+      "id": "q_0ccbf6a8",
+      "query": "add derive-moments command for temporal signals",
+      "relevant_docs": [
+        "src/commands/assay/internal/derive.rs",
+        "src/commands/assay/internal/mod.rs",
+        "src/commands/assay/mod.rs",
+        "src/commands/scrape/database.rs",
+        "src/main.rs",
+        "src/mcp/server.rs"
+      ],
+      "relevant_commits": [
+        "0ccbf6a82b7ff966e82f0d68c0f1cbbcff6f836e"
+      ],
+      "source_commit": "0ccbf6a82b7ff966e82f0d68c0f1cbbcff6f836e",
+      "relevant": []
+    },
+    {
+      "id": "q_37e4c87f",
+      "query": "add commits_fts table for git narrative search",
+      "relevant_docs": [
+        "src/commands/scrape/database.rs",
+        "src/commands/scrape/git/mod.rs"
+      ],
+      "relevant_commits": [
+        "37e4c87f531cef2548c890ae9ae11503795b79b5"
+      ],
+      "source_commit": "37e4c87f531cef2548c890ae9ae11503795b79b5",
+      "relevant": []
+    },
+    {
+      "id": "q_72ac033b",
+      "query": "define Phase 0 Git Narrative with explicit deliverables",
+      "relevant_docs": [
+        "layer/core/build.md",
+        "layer/surface/build/spec-mothership.md"
+      ],
+      "relevant_commits": [
+        "72ac033b06582a8d490a524719dcfdaa5e2df7cd"
+      ],
+      "source_commit": "72ac033b06582a8d490a524719dcfdaa5e2df7cd",
+      "relevant": []
+    },
+    {
+      "id": "q_ac197a75",
+      "query": "archive previous sessions",
+      "relevant_docs": [
+        "layer/sessions/20260101-161602.md",
+        "layer/sessions/20260101-194122.md"
+      ],
+      "relevant_commits": [
+        "ac197a75ca884395bede7c31c8b67490e3211197"
+      ],
+      "source_commit": "ac197a75ca884395bede7c31c8b67490e3211197",
+      "relevant": []
+    },
+    {
+      "id": "q_3c83cd89",
+      "query": "add mothership architecture spec",
+      "relevant_docs": [
+        "layer/core/build.md",
+        "layer/surface/build/spec-mothership.md"
+      ],
+      "relevant_commits": [
+        "3c83cd89be88ed65e61be89176035883c8aa1ece"
+      ],
+      "source_commit": "3c83cd89be88ed65e61be89176035883c8aa1ece",
+      "relevant": []
+    },
+    {
+      "id": "q_631ab5e8",
+      "query": "Phase 0 - inline logging for secrets/keychain",
+      "relevant_docs": [
+        "layer/surface/build/spec-observability.md",
+        "src/secrets/identity.rs",
+        "src/secrets/keychain.rs"
+      ],
+      "relevant_commits": [
+        "631ab5e821fe4bb29cef9a1f52fda661395b6059"
+      ],
+      "source_commit": "631ab5e821fe4bb29cef9a1f52fda661395b6059",
+      "relevant": []
+    },
+    {
+      "id": "q_f1c5c408",
+      "query": "complete deferred folder migration",
+      "relevant_docs": [
+        "layer/surface/build/deferred/spec-build-system.md",
+        "layer/surface/build/deferred/spec-github-adapter.md",
+        "layer/surface/build/deferred/spec-hosts-deploy.md",
+        "layer/surface/build/deferred/spec-lab-automation.md",
+        "layer/surface/build/deferred/spec-persona-fusion.md",
+        "layer/surface/build/spec-build-system.md",
+        "layer/surface/build/spec-github-adapter.md",
+        "layer/surface/build/spec-hosts-deploy.md",
+        "layer/surface/build/spec-lab-automation.md",
+        "layer/surface/build/spec-model-runtime.md",
+        "layer/surface/build/spec-persona-fusion.md",
+        "layer/surface/build/spec-retrieval-optimization.md",
+        "layer/surface/build/spec-work-deferred.md"
+      ],
+      "relevant_commits": [
+        "f1c5c408e1dd4ee6a634dc584afed767b5f203ca"
+      ],
+      "source_commit": "f1c5c408e1dd4ee6a634dc584afed767b5f203ca",
+      "relevant": []
+    },
+    {
+      "id": "q_e565fdea",
+      "query": "archive completed specs",
+      "relevant_docs": [
+        "layer/surface/build/deferred/spec-build-system.md",
+        "layer/surface/build/deferred/spec-github-adapter.md",
+        "layer/surface/build/deferred/spec-hosts-deploy.md",
+        "layer/surface/build/deferred/spec-lab-automation.md",
+        "layer/surface/build/deferred/spec-model-runtime.md",
+        "layer/surface/build/deferred/spec-persona-fusion.md",
+        "layer/surface/build/deferred/spec-retrieval-optimization.md",
+        "layer/surface/build/deferred/spec-work-deferred.md",
+        "layer/surface/build/spec-llm-frontends.md",
+        "layer/surface/build/spec-quality-gates.md",
+        "layer/surface/build/spec-remove-legacy-repos-and-audit.md",
+        "layer/surface/build/spec-secrets-v2.md"
+      ],
+      "relevant_commits": [
+        "e565fdeab795f6ffd77362472d798da8cdbed469"
+      ],
+      "source_commit": "e565fdeab795f6ffd77362472d798da8cdbed469",
+      "relevant": []
+    },
+    {
+      "id": "q_e2a21ef9",
+      "query": "archive session logs for retrieval-optimization and secrets",
+      "relevant_docs": [
+        "layer/sessions/20260101-080748.md",
+        "layer/sessions/20260101-121513.md"
+      ],
+      "relevant_commits": [
+        "e2a21ef9aa53ec03ecaf2d15dbc6991c2140055c"
+      ],
+      "source_commit": "e2a21ef9aa53ec03ecaf2d15dbc6991c2140055c",
+      "relevant": []
+    },
+    {
+      "id": "q_163d8c8c",
+      "query": "archive session logs from 2025-12-30 to 2026-01-01",
+      "relevant_docs": [
+        "layer/sessions/20251230-061838.md",
+        "layer/sessions/20251230-101022.md",
+        "layer/sessions/20251230-180841.md",
+        "layer/sessions/20251230-192904.md",
+        "layer/sessions/20251231-155307.md",
+        "layer/sessions/20260101-064951.md"
+      ],
+      "relevant_commits": [
+        "163d8c8c6313ef589be071d54a4b3f8ad028d9c1"
+      ],
+      "source_commit": "163d8c8c6313ef589be071d54a4b3f8ad028d9c1",
+      "relevant": []
+    },
+    {
+      "id": "q_9262ff99",
+      "query": "update build.md and alignment spec for completed cleanup",
+      "relevant_docs": [
+        "layer/core/build.md",
+        "layer/surface/build/spec-architectural-alignment.md"
+      ],
+      "relevant_commits": [
+        "9262ff990f86b7e8a3adebfdd71886c165894721"
+      ],
+      "source_commit": "9262ff990f86b7e8a3adebfdd71886c165894721",
+      "relevant": []
+    },
+    {
+      "id": "q_a85f291a",
+      "query": "rename bootstrap file CODEX.md to AGENTS.md",
+      "relevant_docs": [
+        "src/adapters/launch.rs",
+        "src/commands/adapter.rs",
+        "src/commands/launch/internal.rs"
+      ],
+      "relevant_commits": [
+        "a85f291a89e643682273f9ddd97c623bb1634d26"
+      ],
+      "source_commit": "a85f291a89e643682273f9ddd97c623bb1634d26",
+      "relevant": []
+    },
+    {
+      "id": "q_5d449f25",
+      "query": "include frontend identifier in git tags",
+      "relevant_docs": [
+        "resources/claude/session-end.sh",
+        "resources/claude/session-start.sh",
+        "resources/gemini/session-end.sh",
+        "resources/gemini/session-start.sh",
+        "resources/opencode/session-end.sh",
+        "resources/opencode/session-start.sh"
+      ],
+      "relevant_commits": [
+        "5d449f2502cf93ef31d0ff9ebf5de5e04a0e3130"
+      ],
+      "source_commit": "5d449f2502cf93ef31d0ff9ebf5de5e04a0e3130",
+      "relevant": []
+    },
+    {
+      "id": "q_95133fad",
+      "query": "complete adapter with patina-review command",
+      "relevant_docs": [
+        "resources/gemini/patina-review.toml",
+        "src/adapters/gemini/mod.rs",
+        "src/adapters/templates.rs"
+      ],
+      "relevant_commits": [
+        "95133fad35259f2b35869d9f15e77d21ae2b1814"
+      ],
+      "source_commit": "95133fad35259f2b35869d9f15e77d21ae2b1814",
+      "relevant": []
+    },
+    {
+      "id": "q_168e7be2",
+      "query": "add OpenCode adapter for multi-provider support",
+      "relevant_docs": [
+        "resources/opencode/patina-review.md",
+        "resources/opencode/session-end.md",
+        "resources/opencode/session-end.sh",
+        "resources/opencode/session-note.md",
+        "resources/opencode/session-note.sh",
+        "resources/opencode/session-start.md",
+        "resources/opencode/session-start.sh",
+        "resources/opencode/session-update.md",
+        "resources/opencode/session-update.sh",
+        "src/adapters/mod.rs",
+        "src/adapters/opencode/internal/mod.rs",
+        "src/adapters/opencode/mod.rs",
+        "src/adapters/templates.rs"
+      ],
+      "relevant_commits": [
+        "168e7be26ce87b655173d4183be5c84893c846ae"
+      ],
+      "source_commit": "168e7be26ce87b655173d4183be5c84893c846ae",
+      "relevant": []
+    },
+    {
+      "id": "q_98fe8e8d",
+      "query": "remove code references to deprecated slash commands",
+      "relevant_docs": [
+        "src/adapters/claude/internal/session_scripts.rs",
+        "src/adapters/claude/mod.rs",
+        "src/adapters/templates.rs"
+      ],
+      "relevant_commits": [
+        "98fe8e8d67373b19e446b8a379839a19298f9801"
+      ],
+      "source_commit": "98fe8e8d67373b19e446b8a379839a19298f9801",
+      "relevant": []
+    },
+    {
+      "id": "q_e9b28d7c",
+      "query": "remove deprecated /launch and /persona-start slash commands",
+      "relevant_docs": [
+        "resources/claude/launch.md",
+        "resources/claude/launch.sh",
+        "resources/claude/persona-start.md",
+        "resources/claude/persona-start.sh"
+      ],
+      "relevant_commits": [
+        "e9b28d7c7c8e2adb18d2d752d47e3da9e1fb1eda"
+      ],
+      "source_commit": "e9b28d7c7c8e2adb18d2d752d47e3da9e1fb1eda",
+      "relevant": []
+    },
+    {
+      "id": "q_c9b145e3",
+      "query": "archive spec-remove-legacy-repos-and-audit",
+      "relevant_docs": [
+        "layer/sessions/20251229-201837.md",
+        "layer/sessions/20251230-045456.md"
+      ],
+      "relevant_commits": [
+        "c9b145e3656c8d7323fa260a658806fb1158094e"
+      ],
+      "source_commit": "c9b145e3656c8d7323fa260a658806fb1158094e",
+      "relevant": []
+    },
+    {
+      "id": "q_7e28d81f",
+      "query": "track synced_commit, show upstream activity",
+      "relevant_docs": [
+        "src/commands/repo/internal.rs",
+        "src/commands/repo/mod.rs"
+      ],
+      "relevant_commits": [
+        "7e28d81fc3d515ff5afc0a02bfb0c4be181f30fa"
+      ],
+      "source_commit": "7e28d81fc3d515ff5afc0a02bfb0c4be181f30fa",
+      "relevant": []
+    },
+    {
+      "id": "q_dbf61472",
+      "query": "remove audit command",
+      "relevant_docs": [
+        "src/commands/audit.rs",
+        "src/commands/doctor.rs",
+        "src/commands/mod.rs",
+        "src/main.rs"
+      ],
+      "relevant_commits": [
+        "dbf61472ad7374b0b5efcab5c33300b63bb21dab"
+      ],
+      "source_commit": "dbf61472ad7374b0b5efcab5c33300b63bb21dab",
+      "relevant": []
+    },
+    {
+      "id": "q_d028fbf3",
+      "query": "remove legacy layer/dust/repos support",
+      "relevant_docs": [
+        ".gitattributes",
+        "src/commands/doctor.rs",
+        "src/commands/scrape/code/mod.rs",
+        "src/main.rs"
+      ],
+      "relevant_commits": [
+        "d028fbf354f529b2d720b5c236700b6c2ed18bc4"
+      ],
+      "source_commit": "d028fbf354f529b2d720b5c236700b6c2ed18bc4",
+      "relevant": []
+    },
+    {
+      "id": "q_af2a780d",
+      "query": "add --status flag to list command",
+      "relevant_docs": [
+        "src/commands/repo/internal.rs",
+        "src/commands/repo/mod.rs"
+      ],
+      "relevant_commits": [
+        "af2a780de44637f2efbf2b2327cd66144d953f77"
+      ],
+      "source_commit": "af2a780de44637f2efbf2b2327cd66144d953f77",
+      "relevant": []
+    },
+    {
+      "id": "q_cb91c649",
+      "query": "create spec-remove-legacy-repos-and-audit, update build.md",
+      "relevant_docs": [
+        "layer/core/build.md",
+        "layer/sessions/20251228-070251.md",
+        "layer/sessions/20251228-090127.md",
+        "layer/sessions/20251228-172148.md",
+        "layer/sessions/20251228-190031.md",
+        "layer/sessions/20251228-220911.md",
+        "layer/sessions/20251229-063748.md",
+        "layer/sessions/20251229-072613.md",
+        "layer/sessions/20251229-083031.md",
+        "layer/sessions/20251229-130443.md",
+        "layer/surface/build/spec-architectural-alignment.md",
+        "layer/surface/build/spec-remove-legacy-repos-and-audit.md",
+        "layer/surface/build/spec-three-layers.md"
+      ],
+      "relevant_commits": [
+        "cb91c6498764ea395edb39b14364cf21285ce2ab"
+      ],
+      "source_commit": "cb91c6498764ea395edb39b14364cf21285ce2ab",
+      "relevant": []
+    },
+    {
+      "id": "q_4d39c6ea",
+      "query": "rename crate to patina-ai to avoid crates.io collision",
+      "relevant_docs": [
+        "Cargo.toml",
+        "patina-metal/Cargo.toml"
+      ],
+      "relevant_commits": [
+        "4d39c6ea55d2b3546601c34ea36562b9af78f443"
+      ],
+      "source_commit": "4d39c6ea55d2b3546601c34ea36562b9af78f443",
+      "relevant": []
+    },
+    {
+      "id": "q_9ec0a768",
+      "query": "reduce mod.rs to thin coordinator (997→135 lines)",
+      "relevant_docs": [
+        "src/commands/assay/internal/derive.rs",
+        "src/commands/assay/internal/functions.rs",
+        "src/commands/assay/internal/imports.rs",
+        "src/commands/assay/internal/inventory.rs",
+        "src/commands/assay/mod.rs"
+      ],
+      "relevant_commits": [
+        "9ec0a768651675152aa65b529fdae139eac716f6"
+      ],
+      "source_commit": "9ec0a768651675152aa65b529fdae139eac716f6",
+      "relevant": []
+    },
+    {
+      "id": "q_3a21f6b3",
+      "query": "extract derive.rs module",
+      "relevant_docs": [
+        "src/commands/assay/internal/derive.rs",
+        "src/commands/assay/internal/mod.rs",
+        "src/commands/assay/mod.rs"
+      ],
+      "relevant_commits": [
+        "3a21f6b3027ce2e2368185efd11ed09552733ddd"
+      ],
+      "source_commit": "3a21f6b3027ce2e2368185efd11ed09552733ddd",
+      "relevant": []
+    },
+    {
+      "id": "q_937cd59a",
+      "query": "extract functions.rs module",
+      "relevant_docs": [
+        "src/commands/assay/internal/functions.rs",
+        "src/commands/assay/internal/mod.rs",
+        "src/commands/assay/mod.rs"
+      ],
+      "relevant_commits": [
+        "937cd59a8acd292a7dfa8aa933fac8c70ecf8d8d"
+      ],
+      "source_commit": "937cd59a8acd292a7dfa8aa933fac8c70ecf8d8d",
+      "relevant": []
+    },
+    {
+      "id": "q_f6f92d77",
+      "query": "extract inventory.rs module",
+      "relevant_docs": [
+        "src/commands/assay/internal/inventory.rs",
+        "src/commands/assay/internal/mod.rs",
+        "src/commands/assay/mod.rs"
+      ],
+      "relevant_commits": [
+        "f6f92d77938c017173f24c6e8526b08afab5e118"
+      ],
+      "source_commit": "f6f92d77938c017173f24c6e8526b08afab5e118",
+      "relevant": []
+    },
+    {
+      "id": "q_7166e069",
+      "query": "extract imports.rs module",
+      "relevant_docs": [
+        "src/commands/assay/internal/imports.rs",
+        "src/commands/assay/internal/mod.rs",
+        "src/commands/assay/mod.rs"
+      ],
+      "relevant_commits": [
+        "7166e069324a2dfed456e7afc0d3c370b9a49950"
+      ],
+      "source_commit": "7166e069324a2dfed456e7afc0d3c370b9a49950",
+      "relevant": []
+    },
+    {
+      "id": "q_6c9e3d08",
+      "query": "create internal/ directory, extract util.rs",
+      "relevant_docs": [
+        "src/commands/assay/internal/mod.rs",
+        "src/commands/assay/internal/util.rs",
+        "src/commands/assay/mod.rs"
+      ],
+      "relevant_commits": [
+        "6c9e3d089cfe17b8f743cd056a6fc96edae6cac7"
+      ],
+      "source_commit": "6c9e3d089cfe17b8f743cd056a6fc96edae6cac7",
+      "relevant": []
+    },
+    {
+      "id": "q_6c6eeb10",
+      "query": "evolve command-refactoring into architectural-alignment spec",
+      "relevant_docs": [
+        "layer/core/build.md",
+        "layer/surface/build/spec-architectural-alignment.md",
+        "layer/surface/build/spec-command-refactoring.md"
+      ],
+      "relevant_commits": [
+        "6c6eeb103a99c6802727e2d0a1b60510bdcb2978"
+      ],
+      "source_commit": "6c6eeb103a99c6802727e2d0a1b60510bdcb2978",
+      "relevant": []
+    },
+    {
+      "id": "q_93b94997",
+      "query": "update README with scry internal module structure",
+      "relevant_docs": [
+        "README.md",
+        "layer/sessions/20251227-122051.md",
+        "layer/sessions/20251228-062007.md"
+      ],
+      "relevant_commits": [
+        "93b94997e750381785cbe7e1556065f822cc13c4"
+      ],
+      "source_commit": "93b94997e750381785cbe7e1556065f822cc13c4",
+      "relevant": []
+    },
+    {
+      "id": "q_85e43bb3",
+      "query": "archive quality-gates, update command-refactoring progress",
+      "relevant_docs": [
+        "layer/core/build.md",
+        "layer/surface/build/spec-command-refactoring.md"
+      ],
+      "relevant_commits": [
+        "85e43bb30bf64f8423be2eb58284cf5f9958a235"
+      ],
+      "source_commit": "85e43bb30bf64f8423be2eb58284cf5f9958a235",
+      "relevant": []
+    },
+    {
+      "id": "q_861439bd",
+      "query": "apply rustfmt to scry internal modules",
+      "relevant_docs": [
+        "src/commands/persona/mod.rs",
+        "src/commands/scry/internal/hybrid.rs",
+        "src/commands/scry/internal/routing.rs",
+        "src/commands/scry/internal/search.rs"
+      ],
+      "relevant_commits": [
+        "861439bd2e1088ca565540b98086d70770c26320"
+      ],
+      "source_commit": "861439bd2e1088ca565540b98086d70770c26320",
+      "relevant": []
+    },
+    {
+      "id": "q_32cc0866",
+      "query": "reduce mod.rs to thin coordinator (2141→221 lines)",
+      "relevant_docs": [
+        "src/commands/scry/internal/enrichment.rs",
+        "src/commands/scry/mod.rs"
+      ],
+      "relevant_commits": [
+        "32cc0866255b1730b881b027d0f81f20a7ad9e86"
+      ],
+      "source_commit": "32cc0866255b1730b881b027d0f81f20a7ad9e86",
+      "relevant": []
+    },
+    {
+      "id": "q_72f712bb",
+      "query": "update inventory after legacy command removal",
+      "relevant_docs": [
+        "README.md",
+        "layer/surface/build/spec-quality-gates.md"
+      ],
+      "relevant_commits": [
+        "72f712bb8d35c55bf2c561bb52dce24e3dc4ff63"
+      ],
+      "source_commit": "72f712bb8d35c55bf2c561bb52dce24e3dc4ff63",
+      "relevant": []
+    },
+    {
+      "id": "q_69a3684c",
+      "query": "remove ask command (low usage, superseded by scry)",
+      "relevant_docs": [
+        "src/commands/ask/mod.rs",
+        "src/commands/ask/patterns.rs",
+        "src/commands/mod.rs",
+        "src/main.rs"
+      ],
+      "relevant_commits": [
+        "69a3684c03a0f7479a88b2490795a88eaf1f53aa"
+      ],
+      "source_commit": "69a3684c03a0f7479a88b2490795a88eaf1f53aa",
+      "relevant": []
+    },
+    {
+      "id": "q_61dcaac6",
+      "query": "remove embeddings command (superseded by oxidize)",
+      "relevant_docs": [
+        "src/commands/embeddings/mod.rs",
+        "src/commands/mod.rs",
+        "src/main.rs"
+      ],
+      "relevant_commits": [
+        "61dcaac6cee8e59feb4ec9051af899c2171751b8"
+      ],
+      "source_commit": "61dcaac6cee8e59feb4ec9051af899c2171751b8",
+      "relevant": []
+    },
+    {
+      "id": "q_745420d1",
+      "query": "remove belief command (experimental, unused)",
+      "relevant_docs": [
+        "src/commands/belief/mod.rs",
+        "src/commands/belief/validate.rs",
+        "src/commands/mod.rs",
+        "src/main.rs"
+      ],
+      "relevant_commits": [
+        "745420d1e9d5f13e4b9f2b7d10fe26f292bbf216"
+      ],
+      "source_commit": "745420d1e9d5f13e4b9f2b7d10fe26f292bbf216",
+      "relevant": []
+    },
+    {
+      "id": "q_a3ca3ab6",
+      "query": "remove query command (superseded by scry)",
+      "relevant_docs": [
+        "src/commands/mod.rs",
+        "src/commands/query/mod.rs",
+        "src/commands/query/semantic.rs",
+        "src/main.rs"
+      ],
+      "relevant_commits": [
+        "a3ca3ab681a99dab9934696d697faed0ddb38931"
+      ],
+      "source_commit": "a3ca3ab681a99dab9934696d697faed0ddb38931",
+      "relevant": []
+    },
+    {
+      "id": "q_588c5c94",
+      "query": "archive recent development sessions",
+      "relevant_docs": [
+        "layer/sessions/20251225-074902.md",
+        "layer/sessions/20251225-152409.md",
+        "layer/sessions/20251226-131315.md"
+      ],
+      "relevant_commits": [
+        "588c5c94033b652761ea9b577c469cd15c470b07"
+      ],
+      "source_commit": "588c5c94033b652761ea9b577c469cd15c470b07",
+      "relevant": []
+    },
+    {
+      "id": "q_a0b033c4",
+      "query": "update command inventory with accurate counts",
+      "relevant_docs": [
+        "README.md",
+        "layer/surface/build/spec-quality-gates.md"
+      ],
+      "relevant_commits": [
+        "a0b033c4dcfa51a61877882ca988d89bfeceae3a"
+      ],
+      "source_commit": "a0b033c4dcfa51a61877882ca988d89bfeceae3a",
+      "relevant": []
+    },
+    {
+      "id": "q_37615ea6",
+      "query": "add quality gates spec, update build direction",
+      "relevant_docs": [
+        "README.md",
+        "layer/core/build.md",
+        "layer/surface/build/spec-persona-fusion.md",
+        "layer/surface/build/spec-quality-gates.md",
+        "layer/surface/build/spec-secrets-v2.md"
+      ],
+      "relevant_commits": [
+        "37615ea695929acc23dcd595542a87034512840c"
+      ],
+      "source_commit": "37615ea695929acc23dcd595542a87034512840c",
+      "relevant": []
+    },
+    {
+      "id": "q_89cf446b",
+      "query": "add status subcommand",
+      "relevant_docs": [
+        "src/commands/persona/mod.rs",
+        "src/main.rs"
+      ],
+      "relevant_commits": [
+        "89cf446bde012784647c7139b79b9165f8f8afdc"
+      ],
+      "source_commit": "89cf446bde012784647c7139b79b9165f8f8afdc",
+      "relevant": []
+    },
+    {
+      "id": "q_af50e2b1",
+      "query": "make keychain macOS-only for CI compatibility",
+      "relevant_docs": [
+        "Cargo.toml",
+        "src/secrets/keychain.rs"
+      ],
+      "relevant_commits": [
+        "af50e2b1457fbc5fe7a49c77e2c61b8501d46401"
+      ],
+      "source_commit": "af50e2b1457fbc5fe7a49c77e2c61b8501d46401",
+      "relevant": []
+    },
+    {
+      "id": "q_b55cdf46",
+      "query": "fix formatting and clippy warnings",
+      "relevant_docs": [
+        "layer/sessions/20251224-162015.md",
+        "src/secrets/registry.rs",
+        "src/secrets/vault.rs"
+      ],
+      "relevant_commits": [
+        "b55cdf465937e0b818e34e6c2bee10270f0dec7a"
+      ],
+      "source_commit": "b55cdf465937e0b818e34e6c2bee10270f0dec7a",
+      "relevant": []
+    },
+    {
+      "id": "q_629e0fd3",
+      "query": "reuse identity when creating second vault",
+      "relevant_docs": [
+        "src/secrets/mod.rs",
+        "src/secrets/vault.rs"
+      ],
+      "relevant_commits": [
+        "629e0fd3ddf10db76265ec948073d1684b6f0570"
+      ],
+      "source_commit": "629e0fd3ddf10db76265ec948073d1684b6f0570",
+      "relevant": []
+    },
+    {
+      "id": "q_123fc3a7",
+      "query": "archive recent development sessions",
+      "relevant_docs": [
+        "layer/sessions/20251223-081330.md",
+        "layer/sessions/20251223-212213.md",
+        "layer/sessions/20251224-071100.md",
+        "layer/sessions/20251224-121305.md",
+        "layer/sessions/20251224-153901.md"
+      ],
+      "relevant_commits": [
+        "123fc3a70ee0a40b4264c0d86f33b6b1722e722d"
+      ],
+      "source_commit": "123fc3a70ee0a40b4264c0d86f33b6b1722e722d",
+      "relevant": []
+    },
+    {
+      "id": "q_0a242183",
+      "query": "add secure credential handling and yolo setup",
+      "relevant_docs": [
+        ".devcontainer/Dockerfile",
+        ".devcontainer/devcontainer.json",
+        ".devcontainer/docker-compose.yml",
+        ".devcontainer/launch-secure.sh",
+        ".devcontainer/yolo-setup.sh"
+      ],
+      "relevant_commits": [
+        "0a242183162cfec0be2656fbebe92cfaf8cadf24"
+      ],
+      "source_commit": "0a242183162cfec0be2656fbebe92cfaf8cadf24",
+      "relevant": []
+    }
+  ]
+}

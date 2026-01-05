@@ -1,0 +1,722 @@
+{
+  "name": "opencode-commits-v1",
+  "description": "Auto-generated from opencode git commits (50 queries)",
+  "source": "git commits (auto-generated)",
+  "repo": "opencode",
+  "generated": "2026-01-05T15:48:43Z",
+  "queries": [
+    {
+      "id": "q_d8753cda",
+      "query": "use Bun.sleep instead of Promise setTimeout",
+      "relevant_docs": [
+        "github/index.ts",
+        "packages/opencode/src/cli/cmd/auth.ts",
+        "packages/opencode/src/cli/cmd/github.ts"
+      ],
+      "relevant_commits": [
+        "d8753cda02f41e5c6264effdcfe6accd2778bc62"
+      ],
+      "source_commit": "d8753cda02f41e5c6264effdcfe6accd2778bc62",
+      "relevant": []
+    },
+    {
+      "id": "q_2685de2a",
+      "query": "add Osaka Jade theme",
+      "relevant_docs": [
+        "packages/opencode/src/cli/cmd/tui/context/theme.tsx",
+        "packages/opencode/src/cli/cmd/tui/context/theme/osaka-jade.json"
+      ],
+      "relevant_commits": [
+        "2685de2a335d374af7377cd3cb382608cde7e155"
+      ],
+      "source_commit": "2685de2a335d374af7377cd3cb382608cde7e155",
+      "relevant": []
+    },
+    {
+      "id": "q_7a3ff5b9",
+      "query": "check for context overflow mid-turn in finish-step",
+      "relevant_docs": [
+        "packages/opencode/src/session/processor.ts",
+        "packages/opencode/src/session/prompt.ts",
+        "packages/opencode/test/session/compaction.test.ts"
+      ],
+      "relevant_commits": [
+        "7a3ff5b98f5b8fbe69c217daebaef6bccb7d9a2c"
+      ],
+      "source_commit": "7a3ff5b98f5b8fbe69c217daebaef6bccb7d9a2c",
+      "relevant": []
+    },
+    {
+      "id": "q_389a5fc0",
+      "query": "add reload functionality and improve lazy utility with reset capability",
+      "relevant_docs": [
+        "packages/opencode/src/cli/cmd/tui/context/sync.tsx",
+        "packages/opencode/src/cli/cmd/tui/context/theme.tsx",
+        "packages/opencode/src/cli/cmd/tui/thread.ts",
+        "packages/opencode/src/cli/cmd/tui/worker.ts",
+        "packages/opencode/src/util/lazy.ts"
+      ],
+      "relevant_commits": [
+        "389a5fc017823feafcaa1344414bc67aa3afd7b1"
+      ],
+      "source_commit": "389a5fc017823feafcaa1344414bc67aa3afd7b1",
+      "relevant": []
+    },
+    {
+      "id": "q_b84a1f71",
+      "query": "remove memory leak fixes documentation after implementation",
+      "relevant_docs": [
+        "packages/opencode/src/cli/cmd/tui/routes/session/index.tsx",
+        "packages/opencode/src/session/MEMORY_LEAK_FIXES.md"
+      ],
+      "relevant_commits": [
+        "b84a1f714bf0b81efdf89a0dd6e35fa2b3e8692a"
+      ],
+      "source_commit": "b84a1f714bf0b81efdf89a0dd6e35fa2b3e8692a",
+      "relevant": []
+    },
+    {
+      "id": "q_dad9c917",
+      "query": "fix memory leaks in session management and improve permission error handling",
+      "relevant_docs": [
+        "packages/opencode/src/permission/next.ts",
+        "packages/opencode/src/session/MEMORY_LEAK_FIXES.md",
+        "packages/opencode/src/session/prompt.ts",
+        "packages/opencode/src/session/retry.ts",
+        "packages/opencode/test/permission/next.test.ts"
+      ],
+      "relevant_commits": [
+        "dad9c917d2fba1bd42503995ca2561dc868c98a1"
+      ],
+      "source_commit": "dad9c917d2fba1bd42503995ca2561dc868c98a1",
+      "relevant": []
+    },
+    {
+      "id": "q_680db7b9",
+      "query": "Improve Resize Handle",
+      "relevant_docs": [
+        "packages/app/src/pages/layout.tsx",
+        "packages/ui/src/components/resize-handle.css"
+      ],
+      "relevant_commits": [
+        "680db7b9e4a9dbcaadbd25cf2220fb5d7f538c05"
+      ],
+      "source_commit": "680db7b9e4a9dbcaadbd25cf2220fb5d7f538c05",
+      "relevant": []
+    },
+    {
+      "id": "q_db8d83b5",
+      "query": "fix permission tests for new evaluate function signature",
+      "relevant_docs": [
+        "packages/opencode/test/agent/agent.test.ts",
+        "packages/opencode/test/permission/next.test.ts"
+      ],
+      "relevant_commits": [
+        "db8d83b53d12690ed8034d7670ad3782a2a399d0"
+      ],
+      "source_commit": "db8d83b53d12690ed8034d7670ad3782a2a399d0",
+      "relevant": []
+    },
+    {
+      "id": "q_963f4070",
+      "query": "improve permission error handling and evaluation logic",
+      "relevant_docs": [
+        ".opencode/opencode.jsonc",
+        "packages/opencode/src/cli/cmd/tui/routes/session/index.tsx",
+        "packages/opencode/src/permission/next.ts"
+      ],
+      "relevant_commits": [
+        "963f407062ccde868b6abb5a21178dea861bc4ca"
+      ],
+      "source_commit": "963f407062ccde868b6abb5a21178dea861bc4ca",
+      "relevant": []
+    },
+    {
+      "id": "q_cd2c160c",
+      "query": "startup time",
+      "relevant_docs": [
+        "packages/app/src/context/global-sync.tsx",
+        "packages/app/src/context/sync.tsx"
+      ],
+      "relevant_commits": [
+        "cd2c160cf6c6012429a97e3541886bf4725dc74e"
+      ],
+      "source_commit": "cd2c160cf6c6012429a97e3541886bf4725dc74e",
+      "relevant": []
+    },
+    {
+      "id": "q_05eee679",
+      "query": "add assistant metadata to session export",
+      "relevant_docs": [
+        "packages/opencode/src/cli/cmd/tui/routes/session/index.tsx",
+        "packages/opencode/src/cli/cmd/tui/ui/dialog-export-options.tsx",
+        "packages/opencode/src/cli/cmd/tui/util/transcript.ts",
+        "packages/opencode/test/cli/tui/transcript.test.ts"
+      ],
+      "relevant_commits": [
+        "05eee679a33a5e6c07534037d725705f2b5807b0"
+      ],
+      "source_commit": "05eee679a33a5e6c07534037d725705f2b5807b0",
+      "relevant": []
+    },
+    {
+      "id": "q_76186d19",
+      "query": "ensure new permissions changes work for special case bash commands like rm, cd, etc",
+      "relevant_docs": [
+        "packages/opencode/src/tool/bash.ts",
+        "packages/opencode/test/tool/bash.test.ts"
+      ],
+      "relevant_commits": [
+        "76186d19f3d45134ce5d2fac5959e1b02aadbb21"
+      ],
+      "source_commit": "76186d19f3d45134ce5d2fac5959e1b02aadbb21",
+      "relevant": []
+    },
+    {
+      "id": "q_e5036542",
+      "query": "make installdeps non blocking",
+      "relevant_docs": [
+        "packages/opencode/src/cli/cmd/acp.ts",
+        "packages/opencode/src/config/config.ts",
+        "packages/opencode/src/index.ts"
+      ],
+      "relevant_commits": [
+        "e50365425246ea94cebfaefaf2d65c49ddb2b9ff"
+      ],
+      "source_commit": "e50365425246ea94cebfaefaf2d65c49ddb2b9ff",
+      "relevant": []
+    },
+    {
+      "id": "q_c131dd08",
+      "query": "Windows support for PTY and cross-platform build scripts",
+      "relevant_docs": [
+        "bun.lock",
+        "packages/desktop/scripts/predev.ts",
+        "packages/opencode/package.json",
+        "packages/opencode/src/pty/index.ts"
+      ],
+      "relevant_commits": [
+        "c131dd08295a0a061fe603bca6d22af53e335e9b"
+      ],
+      "source_commit": "c131dd08295a0a061fe603bca6d22af53e335e9b",
+      "relevant": []
+    },
+    {
+      "id": "q_6e7fc30f",
+      "query": "context window window",
+      "relevant_docs": [
+        "packages/app/src/components/session-context-usage.tsx",
+        "packages/app/src/context/layout.tsx",
+        "packages/app/src/pages/session.tsx"
+      ],
+      "relevant_commits": [
+        "6e7fc30f9407f48074852415e2c35958b82b78ed"
+      ],
+      "source_commit": "6e7fc30f9407f48074852415e2c35958b82b78ed",
+      "relevant": []
+    },
+    {
+      "id": "q_d59357c8",
+      "query": "Update Nix flake.lock and hashes",
+      "relevant_docs": [
+        "flake.lock",
+        "nix/hashes.json"
+      ],
+      "relevant_commits": [
+        "d59357c89b242c58594f15b569b91855b8244f87"
+      ],
+      "source_commit": "d59357c89b242c58594f15b569b91855b8244f87",
+      "relevant": []
+    },
+    {
+      "id": "q_b97d20f2",
+      "query": "New debug agent <name> subcommand",
+      "relevant_docs": [
+        "packages/opencode/src/cli/cmd/debug/agent.ts",
+        "packages/opencode/src/cli/cmd/debug/index.ts"
+      ],
+      "relevant_commits": [
+        "b97d20f2529889ef71316649ca2c042856a7e40d"
+      ],
+      "source_commit": "b97d20f2529889ef71316649ca2c042856a7e40d",
+      "relevant": []
+    },
+    {
+      "id": "q_87978b1c",
+      "query": "Add Subagents Mention Support",
+      "relevant_docs": [
+        "packages/app/src/components/prompt-input.tsx",
+        "packages/app/src/context/prompt.tsx",
+        "packages/ui/src/components/message-part.tsx"
+      ],
+      "relevant_commits": [
+        "87978b1c172626e7a70134f485dd68896f75a594"
+      ],
+      "source_commit": "87978b1c172626e7a70134f485dd68896f75a594",
+      "relevant": []
+    },
+    {
+      "id": "q_5249f04e",
+      "query": "display MCP tag for prompts in autocomplete but not in prompt",
+      "relevant_docs": [
+        "packages/opencode/src/cli/cmd/tui/component/prompt/autocomplete.tsx",
+        "packages/opencode/src/command/index.ts",
+        "packages/opencode/src/mcp/index.ts",
+        "packages/sdk/js/src/v2/gen/types.gen.ts",
+        "packages/sdk/openapi.json"
+      ],
+      "relevant_commits": [
+        "5249f04ea067600df73b13589b815a844f7029a6"
+      ],
+      "source_commit": "5249f04ea067600df73b13589b815a844f7029a6",
+      "relevant": []
+    },
+    {
+      "id": "q_9a1dc1ff",
+      "query": "prevent TimeoutOverflowWarning by capping setTimeout delay to max 32-bit signed integer",
+      "relevant_docs": [
+        "packages/opencode/src/session/retry.ts",
+        "packages/opencode/test/session/retry.test.ts"
+      ],
+      "relevant_commits": [
+        "9a1dc1ffe410ba4ce745b1bf65a15f21d9f9abfa"
+      ],
+      "source_commit": "9a1dc1ffe410ba4ce745b1bf65a15f21d9f9abfa",
+      "relevant": []
+    },
+    {
+      "id": "q_b2aa3873",
+      "query": "better model selector",
+      "relevant_docs": [
+        "packages/app/src/components/dialog-select-model.tsx",
+        "packages/app/src/components/prompt-input.tsx"
+      ],
+      "relevant_commits": [
+        "b2aa387376ccc667f16443ffea1fdc16779933f8"
+      ],
+      "source_commit": "b2aa387376ccc667f16443ffea1fdc16779933f8",
+      "relevant": []
+    },
+    {
+      "id": "q_16957fd1",
+      "query": "auto-accept colors",
+      "relevant_docs": [
+        "packages/app/src/components/prompt-input.tsx",
+        "packages/ui/src/theme/themes/oc-1.json"
+      ],
+      "relevant_commits": [
+        "16957fd10780fabed58349d138166ec4b6768568"
+      ],
+      "source_commit": "16957fd10780fabed58349d138166ec4b6768568",
+      "relevant": []
+    },
+    {
+      "id": "q_7f3a0b8e",
+      "query": "tooltip colors",
+      "relevant_docs": [
+        "packages/app/src/components/prompt-input.tsx",
+        "packages/app/src/components/session-context-usage.tsx",
+        "packages/ui/src/components/tooltip.css"
+      ],
+      "relevant_commits": [
+        "7f3a0b8e5c1fe664547e28e473d234d39921e248"
+      ],
+      "source_commit": "7f3a0b8e5c1fe664547e28e473d234d39921e248",
+      "relevant": []
+    },
+    {
+      "id": "q_d4a2652e",
+      "query": "better affordance for auto-accept",
+      "relevant_docs": [
+        "packages/app/src/app.tsx",
+        "packages/app/src/components/prompt-input.tsx",
+        "packages/app/src/context/permission.tsx",
+        "packages/app/src/pages/session.tsx",
+        "packages/ui/src/components/icon.tsx"
+      ],
+      "relevant_commits": [
+        "d4a2652eda926dbfa03878ef3e46e55ef53517ca"
+      ],
+      "source_commit": "d4a2652eda926dbfa03878ef3e46e55ef53517ca",
+      "relevant": []
+    },
+    {
+      "id": "q_7a4bfbe5",
+      "query": "text selection",
+      "relevant_docs": [
+        "packages/ui/src/components/message-part.css",
+        "packages/ui/src/components/session-review.css",
+        "packages/ui/src/components/session-turn.css"
+      ],
+      "relevant_commits": [
+        "7a4bfbe56d0115996dd37ccf9d73f95716571ecf"
+      ],
+      "source_commit": "7a4bfbe56d0115996dd37ccf9d73f95716571ecf",
+      "relevant": []
+    },
+    {
+      "id": "q_93845db4",
+      "query": "don't show notifs if auto-accepting",
+      "relevant_docs": [
+        "packages/app/src/app.tsx",
+        "packages/app/src/context/permission.tsx",
+        "packages/app/src/pages/directory-layout.tsx",
+        "packages/app/src/pages/layout.tsx",
+        "packages/app/src/pages/session.tsx"
+      ],
+      "relevant_commits": [
+        "93845db4623f157dff96a3a1ef440e21ab865769"
+      ],
+      "source_commit": "93845db4623f157dff96a3a1ef440e21ab865769",
+      "relevant": []
+    },
+    {
+      "id": "q_65bc7209",
+      "query": "more defensive access",
+      "relevant_docs": [
+        "packages/app/src/context/global-sync.tsx",
+        "packages/app/src/context/sync.tsx",
+        "packages/desktop/src/index.tsx"
+      ],
+      "relevant_commits": [
+        "65bc72098b737bee12f388215913808fa1629a4d"
+      ],
+      "source_commit": "65bc72098b737bee12f388215913808fa1629a4d",
+      "relevant": []
+    },
+    {
+      "id": "q_3807364e",
+      "query": "tool args cleanup",
+      "relevant_docs": [
+        "packages/ui/src/components/basic-tool.css",
+        "packages/ui/src/components/collapsible.css",
+        "packages/ui/src/components/message-part.tsx"
+      ],
+      "relevant_commits": [
+        "3807364e730772172d73b97e916fe2c57f159cc5"
+      ],
+      "source_commit": "3807364e730772172d73b97e916fe2c57f159cc5",
+      "relevant": []
+    },
+    {
+      "id": "q_3a1cfa6c",
+      "query": "keybind tooltip component",
+      "relevant_docs": [
+        "packages/app/src/components/prompt-input.tsx",
+        "packages/app/src/pages/layout.tsx",
+        "packages/app/src/pages/session.tsx",
+        "packages/ui/src/components/tooltip.css",
+        "packages/ui/src/components/tooltip.tsx"
+      ],
+      "relevant_commits": [
+        "3a1cfa6c731bc4c33348034cb918b7a4dbe2af8b"
+      ],
+      "source_commit": "3a1cfa6c731bc4c33348034cb918b7a4dbe2af8b",
+      "relevant": []
+    },
+    {
+      "id": "q_c42bd492",
+      "query": "new configurable CORS option",
+      "relevant_docs": [
+        "packages/web/src/content/docs/cli.mdx",
+        "packages/web/src/content/docs/config.mdx",
+        "packages/web/src/content/docs/server.mdx"
+      ],
+      "relevant_commits": [
+        "c42bd492eae1178dae438e8509ddfb942ca116dc"
+      ],
+      "source_commit": "c42bd492eae1178dae438e8509ddfb942ca116dc",
+      "relevant": []
+    },
+    {
+      "id": "q_a2857bba",
+      "query": "prompt input cleanup",
+      "relevant_docs": [
+        "packages/app/src/components/prompt-input.tsx",
+        "packages/app/src/components/session-context-usage.tsx",
+        "packages/ui/src/components/tooltip.css",
+        "packages/ui/src/styles/tailwind/colors.css"
+      ],
+      "relevant_commits": [
+        "a2857bba8305976761c55fda269d7fb79c951b8c"
+      ],
+      "source_commit": "a2857bba8305976761c55fda269d7fb79c951b8c",
+      "relevant": []
+    },
+    {
+      "id": "q_a7c4f83c",
+      "query": "remove status bar, new elements in header",
+      "relevant_docs": [
+        "packages/app/src/components/header.tsx",
+        "packages/app/src/components/status-bar.tsx",
+        "packages/app/src/pages/layout.tsx",
+        "packages/app/src/pages/session.tsx",
+        "packages/ui/src/components/icon.tsx"
+      ],
+      "relevant_commits": [
+        "a7c4f83ca2e4d5da94de3df0c210dbb36b0bae86"
+      ],
+      "source_commit": "a7c4f83ca2e4d5da94de3df0c210dbb36b0bae86",
+      "relevant": []
+    },
+    {
+      "id": "q_2ec6a21c",
+      "query": "unified diff toggle",
+      "relevant_docs": [
+        "packages/app/src/context/layout.tsx",
+        "packages/app/src/pages/session.tsx",
+        "packages/enterprise/src/routes/share/[shareID].tsx",
+        "packages/ui/src/components/code.tsx",
+        "packages/ui/src/components/diff-ssr.tsx",
+        "packages/ui/src/components/diff.tsx",
+        "packages/ui/src/components/session-review.tsx",
+        "packages/ui/src/context/worker-pool.tsx",
+        "packages/ui/src/pierre/worker.ts"
+      ],
+      "relevant_commits": [
+        "2ec6a21cc0018be6677e4cbad6bf48dbf8b37786"
+      ],
+      "source_commit": "2ec6a21cc0018be6677e4cbad6bf48dbf8b37786",
+      "relevant": []
+    },
+    {
+      "id": "q_57a2b5f4",
+      "query": "mcp prompts as slash commands (alternative)",
+      "relevant_docs": [
+        "packages/opencode/src/command/index.ts",
+        "packages/opencode/src/mcp/index.ts",
+        "packages/opencode/src/session/prompt.ts",
+        "packages/sdk/js/src/v2/gen/types.gen.ts"
+      ],
+      "relevant_commits": [
+        "57a2b5f4441e3ea4e23f65f45b5fd2e8454c7af9"
+      ],
+      "source_commit": "57a2b5f4441e3ea4e23f65f45b5fd2e8454c7af9",
+      "relevant": []
+    },
+    {
+      "id": "q_0b1f6a7d",
+      "query": "bundle in @ai-sdk/vercel version 1.0.31 for aisdk v5 support",
+      "relevant_docs": [
+        "bun.lock",
+        "packages/opencode/package.json",
+        "packages/opencode/src/provider/provider.ts"
+      ],
+      "relevant_commits": [
+        "0b1f6a7d2d33a51aac22aed06679fd04ef00e599"
+      ],
+      "source_commit": "0b1f6a7d2d33a51aac22aed06679fd04ef00e599",
+      "relevant": []
+    },
+    {
+      "id": "q_a6d22555",
+      "query": "cleaner view subagents hint text",
+      "relevant_docs": [
+        "packages/opencode/src/cli/cmd/tui/routes/session/index.tsx",
+        "packages/opencode/src/provider/transform.ts"
+      ],
+      "relevant_commits": [
+        "a6d225558cddffdc9720724b044c3c7780a87ea0"
+      ],
+      "source_commit": "a6d225558cddffdc9720724b044c3c7780a87ea0",
+      "relevant": []
+    },
+    {
+      "id": "q_b1a6333d",
+      "query": "configurable cors hosts",
+      "relevant_docs": [
+        "packages/opencode/src/cli/network.ts",
+        "packages/opencode/src/config/config.ts",
+        "packages/opencode/src/server/server.ts"
+      ],
+      "relevant_commits": [
+        "b1a6333d1736e33ce9b763c349272fd368723b9a"
+      ],
+      "source_commit": "b1a6333d1736e33ce9b763c349272fd368723b9a",
+      "relevant": []
+    },
+    {
+      "id": "q_76c25ef2",
+      "query": "add rustfmt formatter for Rust files",
+      "relevant_docs": [
+        "packages/opencode/src/format/formatter.ts",
+        "packages/web/src/content/docs/formatters.mdx"
+      ],
+      "relevant_commits": [
+        "76c25ef286b5d52f4ba78216ea8b5757ad5ec8f5"
+      ],
+      "source_commit": "76c25ef286b5d52f4ba78216ea8b5757ad5ec8f5",
+      "relevant": []
+    },
+    {
+      "id": "q_5c9d6196",
+      "query": "add variants docs",
+      "relevant_docs": [
+        "packages/web/src/content/docs/keybinds.mdx",
+        "packages/web/src/content/docs/models.mdx"
+      ],
+      "relevant_commits": [
+        "5c9d6196207f8364a643df71b7dff88309602b18"
+      ],
+      "source_commit": "5c9d6196207f8364a643df71b7dff88309602b18",
+      "relevant": []
+    },
+    {
+      "id": "q_ed4ce67c",
+      "query": "add configurable timeout for MCP tool calls to prevent hanging requests",
+      "relevant_docs": [
+        "packages/opencode/src/config/config.ts",
+        "packages/opencode/src/mcp/index.ts"
+      ],
+      "relevant_commits": [
+        "ed4ce67cdc24e4e9324a00cf176a45ccd267a584"
+      ],
+      "source_commit": "ed4ce67cdc24e4e9324a00cf176a45ccd267a584",
+      "relevant": []
+    },
+    {
+      "id": "q_94453eb1",
+      "query": "Add prisma language server",
+      "relevant_docs": [
+        "packages/opencode/src/lsp/server.ts",
+        "packages/web/src/content/docs/lsp.mdx"
+      ],
+      "relevant_commits": [
+        "94453eb1bdcf59e078cbab8c977100e60d7a50e6"
+      ],
+      "source_commit": "94453eb1bdcf59e078cbab8c977100e60d7a50e6",
+      "relevant": []
+    },
+    {
+      "id": "q_94dca309",
+      "query": "don't open native folder select with remote server",
+      "relevant_docs": [
+        "packages/app/src/context/server.tsx",
+        "packages/app/src/pages/home.tsx",
+        "packages/app/src/pages/layout.tsx"
+      ],
+      "relevant_commits": [
+        "94dca309e93dc85b22eb3fc2b2ea9481580269d5"
+      ],
+      "source_commit": "94dca309e93dc85b22eb3fc2b2ea9481580269d5",
+      "relevant": []
+    },
+    {
+      "id": "q_1e745607",
+      "query": "model variants",
+      "relevant_docs": [
+        "packages/app/src/components/prompt-input.tsx",
+        "packages/app/src/context/local.tsx"
+      ],
+      "relevant_commits": [
+        "1e74560796da159d393210a150ba4fb9d41b8792"
+      ],
+      "source_commit": "1e74560796da159d393210a150ba4fb9d41b8792",
+      "relevant": []
+    },
+    {
+      "id": "q_b9ef09a0",
+      "query": "read plurals too and stop erroring on them",
+      "relevant_docs": [
+        "packages/opencode/src/config/config.ts",
+        "packages/opencode/src/skill/skill.ts"
+      ],
+      "relevant_commits": [
+        "b9ef09a0f4e8c96b4549352b53a64cee4be32aa7"
+      ],
+      "source_commit": "b9ef09a0f4e8c96b4549352b53a64cee4be32aa7",
+      "relevant": []
+    },
+    {
+      "id": "q_8b708242",
+      "query": "fix various typos",
+      "relevant_docs": [
+        "packages/opencode/src/session/prompt/codex.txt",
+        "packages/opencode/src/session/prompt/plan.txt",
+        "packages/opencode/src/tool/bash.ts",
+        "packages/opencode/src/tool/task.txt",
+        "packages/opencode/src/tool/todowrite.txt"
+      ],
+      "relevant_commits": [
+        "8b708242f1eb21e40af5ef24e6e3eb4b7683a45e"
+      ],
+      "source_commit": "8b708242f1eb21e40af5ef24e6e3eb4b7683a45e",
+      "relevant": []
+    },
+    {
+      "id": "q_cfcb2c1f",
+      "query": "upgrade opentui to v0.1.67, fixing split diff alignment and markdown jitter",
+      "relevant_docs": [
+        "bun.lock",
+        "packages/opencode/package.json"
+      ],
+      "relevant_commits": [
+        "cfcb2c1fd8a8a3b4d748da63070f17eeb488739e"
+      ],
+      "source_commit": "cfcb2c1fd8a8a3b4d748da63070f17eeb488739e",
+      "relevant": []
+    },
+    {
+      "id": "q_81fef602",
+      "query": "ensure variants also work for completely custom models",
+      "relevant_docs": [
+        "AGENTS.md",
+        "packages/opencode/src/cli/cmd/tui/context/local.tsx",
+        "packages/opencode/src/config/config.ts",
+        "packages/opencode/src/provider/models.ts",
+        "packages/opencode/src/provider/provider.ts",
+        "packages/opencode/src/provider/transform.ts",
+        "packages/opencode/src/session/llm.ts",
+        "packages/opencode/test/provider/provider.test.ts",
+        "packages/opencode/test/provider/transform.test.ts",
+        "packages/sdk/js/src/v2/gen/types.gen.ts"
+      ],
+      "relevant_commits": [
+        "81fef60266b3e5abdc9480e19effa8db411c5eec"
+      ],
+      "source_commit": "81fef60266b3e5abdc9480e19effa8db411c5eec",
+      "relevant": []
+    },
+    {
+      "id": "q_8fa1af85",
+      "query": "use idiomatic inherit syntax",
+      "relevant_docs": [
+        "flake.nix",
+        "nix/node-modules.nix",
+        "nix/opencode.nix"
+      ],
+      "relevant_commits": [
+        "8fa1af851c4bb73bc53017fa57067b780ccb5626"
+      ],
+      "source_commit": "8fa1af851c4bb73bc53017fa57067b780ccb5626",
+      "relevant": []
+    },
+    {
+      "id": "q_cb0e05db",
+      "query": "add auto-reload and monthly limits documentation to Zen guide",
+      "relevant_docs": [
+        "packages/web/src/content/docs/zen.mdx",
+        "scripts/analyze-first-time-contributors.sh",
+        "scripts/analyze-recent-weeks.sh"
+      ],
+      "relevant_commits": [
+        "cb0e05db2688a660e721fad712c425bb787aae9f"
+      ],
+      "source_commit": "cb0e05db2688a660e721fad712c425bb787aae9f",
+      "relevant": []
+    },
+    {
+      "id": "q_c88c2da9",
+      "query": "move variant toggle to command bar",
+      "relevant_docs": [
+        "packages/opencode/src/cli/cmd/tui/app.tsx",
+        "packages/opencode/src/cli/cmd/tui/component/prompt/index.tsx"
+      ],
+      "relevant_commits": [
+        "c88c2da9be9bf98f2a2d585e5b1ae47afcd2a37f"
+      ],
+      "source_commit": "c88c2da9be9bf98f2a2d585e5b1ae47afcd2a37f",
+      "relevant": []
+    }
+  ]
+}
