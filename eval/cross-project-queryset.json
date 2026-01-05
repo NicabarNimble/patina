@@ -1,0 +1,104 @@
+{
+  "name": "cross-project-v1",
+  "description": "Cross-project routing ground truth for Phase G0 measurement",
+  "source": "session-derived + domain knowledge",
+  "created": "2026-01-05",
+  "queries": [
+    {
+      "id": "xp_001",
+      "query": "how does dojo handle ECS world storage",
+      "source_project": "patina",
+      "expected_repos": ["dojo"],
+      "expected_docs": ["crates/dojo-core/src/world.cairo", "crates/dojo-world/src/contracts/world.cairo"],
+      "derivation": "dojo is Cairo ECS framework - world storage is core concept"
+    },
+    {
+      "id": "xp_002",
+      "query": "Cairo function extraction parsing",
+      "source_project": "patina",
+      "expected_repos": ["dojo", "starknet-foundry"],
+      "expected_docs": [],
+      "derivation": "sessions 20250901-20250905 used dojo to test Cairo parser"
+    },
+    {
+      "id": "xp_003",
+      "query": "C parser symbol extraction large codebase",
+      "source_project": "patina",
+      "expected_repos": ["SDL"],
+      "expected_docs": [],
+      "derivation": "session 20250905 - SDL used as C parser stress test (84k symbols)"
+    },
+    {
+      "id": "xp_004",
+      "query": "CLI tool architecture for AI coding assistant",
+      "source_project": "patina",
+      "expected_repos": ["opencode", "gemini-cli", "codex"],
+      "expected_docs": [],
+      "derivation": "opencode/gemini-cli/codex are similar AI CLI tools"
+    },
+    {
+      "id": "xp_005",
+      "query": "how does opencode handle MCP server",
+      "source_project": "patina",
+      "expected_repos": ["opencode"],
+      "expected_docs": ["packages/opencode/src/mcp"],
+      "derivation": "opencode has MCP implementation similar to patina"
+    },
+    {
+      "id": "xp_006",
+      "query": "vector similarity search implementation",
+      "source_project": "patina",
+      "expected_repos": ["USearch"],
+      "expected_docs": ["rust/lib.rs"],
+      "derivation": "USearch is vector search library - domain overlap with patina retrieval"
+    },
+    {
+      "id": "xp_007",
+      "query": "starknet contract testing framework",
+      "source_project": "patina",
+      "expected_repos": ["starknet-foundry", "dojo"],
+      "expected_docs": [],
+      "derivation": "domain overlap: cairo/starknet testing"
+    },
+    {
+      "id": "xp_008",
+      "query": "TypeScript SQLite state management",
+      "source_project": "patina",
+      "expected_repos": ["livestore"],
+      "expected_docs": [],
+      "derivation": "livestore is TypeScript + SQLite state management"
+    },
+    {
+      "id": "xp_009",
+      "query": "Prolog interpreter implementation in Rust",
+      "source_project": "patina",
+      "expected_repos": ["scryer-prolog"],
+      "expected_docs": ["src/lib.rs", "src/machine"],
+      "derivation": "scryer-prolog is Rust Prolog implementation"
+    },
+    {
+      "id": "xp_010",
+      "query": "game engine JavaScript canvas rendering",
+      "source_project": "patina",
+      "expected_repos": ["game-engine"],
+      "expected_docs": [],
+      "derivation": "game-engine is JS canvas game framework"
+    },
+    {
+      "id": "xp_011",
+      "query": "AI agent infrastructure personal knowledge",
+      "source_project": "patina",
+      "expected_repos": ["Personal_AI_Infrastructure", "daydreams"],
+      "expected_docs": [],
+      "derivation": "PAI and daydreams are AI agent projects"
+    },
+    {
+      "id": "xp_012",
+      "query": "dojo moment detection breaking changes",
+      "source_project": "patina",
+      "expected_repos": ["dojo"],
+      "expected_docs": [],
+      "derivation": "patina uses dojo for temporal/moment testing (bench generate)"
+    }
+  ]
+}
