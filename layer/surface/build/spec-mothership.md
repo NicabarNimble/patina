@@ -943,16 +943,20 @@ CREATE TABLE project_relationships (
 
 ## Open Questions
 
-1. **Graph DB choice** - SQLite with JSON? Dedicated graph DB? → **Answered in spec-mothership-graph.md: SQLite**
-2. **Pattern extraction** - LLM-based? Rule-based? Hybrid?
-3. **Distillation frequency** - Real-time? Batch? On session end?
-4. **Cross-project privacy** - All projects visible to Mother? Opt-in?
+1. **Graph DB choice** - SQLite with JSON? Dedicated graph DB? → **Answered: SQLite** (spec-mothership-graph.md)
+2. **Cross-project measurement** - How to prove graph helps? → **Answered: Phase G0** (measure dumb routing first)
+3. **Relationship types** - Which types matter? → **Answered: Data-driven** (let error analysis reveal)
+4. **Pattern extraction** - LLM-based? Rule-based? Hybrid?
+5. **Distillation frequency** - Real-time? Batch? On session end?
+6. **Cross-project privacy** - All projects visible to Mother? Opt-in?
 
 ---
 
 ## Related Specs
 
-- [spec-mothership-graph.md](./spec-mothership-graph.md) - **Phase G1-G2**: Graph foundation and smart routing (NEW)
+- [spec-mothership-graph.md](./spec-mothership-graph.md) - **Phase G0-G2**: Cross-project measurement → graph foundation → smart routing
 - [spec-three-layers.md](./spec-three-layers.md) - Mother layer architecture
 - [spec-pipeline.md](./spec-pipeline.md) - Data pipeline (scrape→oxidize/assay→scry)
 - [concept-rag-network.md](../concept-rag-network.md) - Projects as RAG nodes vision
+
+**Note on Phase G0 (Andrew Ng alignment)**: Before building graph infrastructure (G1), we measure current `--all-repos` performance and prove the gap exists. See spec-mothership-graph.md Phase G0 for cross-project queryset format and baseline methodology.
