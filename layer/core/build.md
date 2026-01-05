@@ -99,12 +99,13 @@ Currently being worked on:
 | Phase | Build | Exit |
 |-------|-------|------|
 | **0** | Git Narrative | ✅ Complete (2026-01-02) |
+| **0.25c** | Commit-Derived Measurement | ✅ Complete (2026-01-05) |
 | **0.5** | Persona surfaces | `[PERSONA]` + `[PROJECT]` sections in scry |
 | **1** | Federated query | Local miss → Mother routes → cross-project results |
 | **2** | Knowledge graph | project USES project, project HAS pattern |
 | **3** | Extraction loop | Session → extract patterns → update Mother |
 
-**Current:** Phase 0 complete. Next: A/B test (ref repos git-only vs patina git+sessions) or Phase 0.5 (persona surfaces).
+**Current:** Phase 0.25c complete. Commit→file expansion improved Recall@10 from 17% to 46% (+169%). Baselines established for 4 repos. One item remains: `context topic` semantic search fix. Next: Phase 0.5 (Persona surfaces) or complete `context topic`.
 
 ### Reference
 
