@@ -270,13 +270,13 @@ If dumb routing MRR is 0.2 and simulated smart routing is 0.7, graph is clearly 
 
 ### Tasks
 
-| Task | Effort | Deliverable |
-|------|--------|-------------|
-| Create `src/mother/graph.rs` | ~150 lines | Graph struct with SQLite backend |
-| Schema migration | ~30 lines | Create tables on first access |
-| Populate from registry | ~50 lines | Convert registry.yaml → nodes |
-| CLI: `patina mother graph` | ~100 lines | Show graph state |
-| CLI: `patina mother link` | ~80 lines | Add/remove edges manually |
+| Task | Effort | Deliverable | Status |
+|------|--------|-------------|--------|
+| Create `src/mother/graph.rs` | ~150 lines | Graph struct with SQLite backend | ✅ Done (350 lines) |
+| Schema migration | ~30 lines | Create tables on first access | ✅ Done |
+| Populate from registry | ~50 lines | Convert registry.yaml → nodes | ⏳ Next |
+| CLI: `patina mother graph` | ~100 lines | Show graph state | |
+| CLI: `patina mother link` | ~80 lines | Add/remove edges manually | |
 
 ### Module Structure
 

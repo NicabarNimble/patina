@@ -108,7 +108,7 @@ Currently being worked on:
 | **0.5** | Persona surfaces | `[PERSONA]` + `[PROJECT]` sections in scry (deferred) |
 | **1-3** | Federation + Extraction | Deferred until graph foundation works |
 
-**Current:** Phase G0 complete - dumb routing fails badly (expected repos not in top 5). **Now: Phase G1** - Build graph.db to enable relationship-aware routing.
+**Current:** Phase G1 in progress. `src/mother/graph.rs` done (schema + tests). Next: populate from registry, CLI commands.
 
 ### Reference
 
