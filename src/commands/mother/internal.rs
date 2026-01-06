@@ -242,6 +242,71 @@ fn truncate(s: &str, max_len: usize) -> String {
     }
 }
 
+/// Learn edge weights from usage data
+pub fn learn_weights(alpha: f32) -> Result<()> {
+    let graph = Graph::open()?;
+
+    println!(
+        "📈 Learning edge weights (α={:.2}, min_samples={})\n",
+        alpha, MIN_SAMPLES
+    );
+
+    let report = graph.learn_weights(alpha)?;
+
+    if report.edges_updated == 0 && report.edges_skipped_insufficient == 0 {
+        println!("   No edges in graph. Run 'patina mother sync' first.");
+        return Ok(());
+    }
+
+    println!(
+        "   Updated: {} edge{}",
+        report.edges_updated,
+        if report.edges_updated == 1 { "" } else { "s" }
+    );
+    println!(
+        "   Skipped: {} edge{} (insufficient data)",
+        report.edges_skipped_insufficient,
+        if report.edges_skipped_insufficient == 1 {
+            ""
+        } else {
+            "s"
+        }
+    );
+
+    if !report.changes.is_empty() {
+        println!("\n   Changes:");
+        for change in &report.changes {
+            let pct_change = if change.old_weight != 0.0 {
+                ((change.new_weight - change.old_weight) / change.old_weight) * 100.0
+            } else {
+                0.0
+            };
+
+            let sign = if pct_change >= 0.0 { "+" } else { "" };
+
+            println!(
+                "     {} → {} ({}): {:.2} → {:.2} ({}{:.1}%, precision={:.0}%)",
+                change.from_node,
+                change.to_node,
+                change.edge_type.as_str(),
+                change.old_weight,
+                change.new_weight,
+                sign,
+                pct_change,
+                change.precision * 100.0
+            );
+        }
+    }
+
+    println!();
+    if report.edges_skipped_insufficient > 0 {
+        println!("   Need {} more uses per edge to enable learning.", MIN_SAMPLES);
+        println!("   Use 'patina scry --routing graph' and act on results.");
+    }
+
+    Ok(())
+}
+
 /// Show edge usage statistics
 pub fn show_stats() -> Result<()> {
     let graph = Graph::open()?;

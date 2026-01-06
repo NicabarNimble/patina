@@ -84,6 +84,18 @@ pub enum MotherCommands {
     /// Displays usage statistics for all edges: how often each edge
     /// was used in graph routing, and how often it led to useful results.
     Stats,
+
+    /// Learn edge weights from usage data
+    ///
+    /// Updates edge weights based on how often they led to useful results.
+    /// Edges need at least 5 uses before their weights can be updated.
+    Learn {
+        /// Learning rate (0.0-1.0, default 0.1)
+        ///
+        /// Higher values make weights change faster but may oscillate.
+        #[arg(long, default_value = "0.1")]
+        alpha: f32,
+    },
 }
 
 /// Execute mother command from CLI
@@ -108,7 +120,13 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             edge_type,
         } => unlink(&from, &to, &edge_type),
         MotherCommands::Stats => stats(),
+        MotherCommands::Learn { alpha } => learn(alpha),
     }
+}
+
+/// Learn edge weights from usage data
+pub fn learn(alpha: f32) -> Result<()> {
+    internal::learn_weights(alpha)
 }
 
 /// Show edge usage statistics
