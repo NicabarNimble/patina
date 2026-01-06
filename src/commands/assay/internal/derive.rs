@@ -485,7 +485,7 @@ pub fn execute_derive_moments(conn: &Connection, options: &AssayOptions) -> Resu
         );
 
         if !moments.is_empty() {
-            println!("{:<12} {:<10} {:>6} {}", "Type", "SHA", "Files", "Message");
+            println!("{:<12} {:<10} {:>6} Message", "Type", "SHA", "Files");
             println!("{}", "-".repeat(80));
             for m in &moments {
                 println!(

@@ -19,19 +19,6 @@ pub enum QueryIntent {
     Definition,
 }
 
-impl QueryIntent {
-    /// Parse intent from string (for CLI/MCP parameter)
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "temporal" | "when" | "history" => Self::Temporal,
-            "rationale" | "why" | "decision" => Self::Rationale,
-            "mechanism" | "how" | "implementation" => Self::Mechanism,
-            "definition" | "what" => Self::Definition,
-            _ => Self::General,
-        }
-    }
-}
-
 /// Oracle weights for intent-aware RRF fusion
 #[derive(Debug, Clone)]
 pub struct IntentWeights {

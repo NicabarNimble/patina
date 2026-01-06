@@ -18,8 +18,7 @@ mod oracle;
 mod oracles;
 
 pub use engine::{QueryEngine, QueryOptions, RetrievalConfig};
-pub use fusion::{rrf_fuse_weighted, FusedResult};
-pub use intent::{detect_intent, IntentWeights, QueryIntent};
+pub use fusion::FusedResult;
 
 // Re-export types for MCP JSON serialization and annotations
 #[allow(unused_imports)]
