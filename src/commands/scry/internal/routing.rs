@@ -16,6 +16,7 @@ use crate::commands::persona;
 
 use super::super::{ScryOptions, ScryResult};
 use super::enrichment::truncate_content;
+use super::logging::{log_scry_query_with_routing, EdgeInfo, RoutedResult, RoutingContext};
 use super::search::scry_text;
 
 /// Routing strategy for cross-project queries
@@ -276,13 +277,33 @@ pub fn execute_graph_routing(query: Option<&str>, options: &ScryOptions) -> Resu
         related_nodes.clone()
     };
 
+    // Build list of repos to search (for routing context)
+    let repos_to_search: Vec<String> = filtered_nodes.iter().map(|n| n.id.clone()).collect();
+
     // Get edges for weighting
     let edges = graph.get_edges_from(&current_project)?;
+
+    // Build EdgeInfo for routing context (G2.5)
+    let edges_used: Vec<EdgeInfo> = edges
+        .iter()
+        .filter(|e| repos_to_search.contains(&e.to_node))
+        .map(|e| EdgeInfo {
+            id: e.id,
+            from_node: e.from_node.clone(),
+            to_node: e.to_node.clone(),
+            edge_type: e.edge_type.as_str().to_string(),
+            weight: e.weight,
+        })
+        .collect();
+
+    // Track whether domain filtering was applied
+    let domain_filter_applied = filtered_nodes.len() < related_nodes.len();
 
     println!();
 
     // 4. Execute federated search
-    let mut all_results: Vec<(String, f32, ScryResult)> = Vec::new();
+    // Tuple: (source_label, repo_id, weight, result)
+    let mut all_results: Vec<(String, String, f32, ScryResult)> = Vec::new();
 
     // Search current project
     let in_project = Path::new(".patina/data/patina.db").exists();
@@ -298,7 +319,12 @@ pub fn execute_graph_routing(query: Option<&str>, options: &ScryOptions) -> Resu
                 println!("   Found {} results", results.len());
                 for r in results {
                     // Current project gets weight 1.0 (baseline)
-                    all_results.push(("[PROJECT]".to_string(), 1.0, r));
+                    all_results.push((
+                        "[PROJECT]".to_string(),
+                        current_project.clone(),
+                        1.0,
+                        r,
+                    ));
                 }
             }
             Err(e) => {
@@ -307,8 +333,7 @@ pub fn execute_graph_routing(query: Option<&str>, options: &ScryOptions) -> Resu
         }
     }
 
-    // Search related repos (filtered)
-    let repos_to_search: Vec<_> = filtered_nodes.iter().map(|n| n.id.clone()).collect();
+    // Search related repos
     let repos_searched = repos_to_search.len();
 
     for repo_id in &repos_to_search {
@@ -326,7 +351,12 @@ pub fn execute_graph_routing(query: Option<&str>, options: &ScryOptions) -> Resu
                 let weight = get_relationship_weight(&edges, repo_id);
 
                 for r in results {
-                    all_results.push((format!("[{}]", repo_id.to_uppercase()), weight, r));
+                    all_results.push((
+                        format!("[{}]", repo_id.to_uppercase()),
+                        repo_id.clone(),
+                        weight,
+                        r,
+                    ));
                 }
             }
             Err(e) => {
@@ -343,7 +373,8 @@ pub fn execute_graph_routing(query: Option<&str>, options: &ScryOptions) -> Resu
             for p in persona_results {
                 all_results.push((
                     "[PERSONA]".to_string(),
-                    1.0, // Persona gets baseline weight
+                    "persona".to_string(), // Persona is a special source
+                    1.0,                   // Persona gets baseline weight
                     ScryResult {
                         id: 0,
                         content: p.content,
@@ -358,14 +389,54 @@ pub fn execute_graph_routing(query: Option<&str>, options: &ScryOptions) -> Resu
     }
 
     // Sort by weighted score and take top limit
+    // Tuple: (source_label, repo_id, weight, result)
     all_results.sort_by(|a, b| {
-        let weighted_a = a.2.score * a.1;
-        let weighted_b = b.2.score * b.1;
+        let weighted_a = a.3.score * a.2;
+        let weighted_b = b.3.score * b.2;
         weighted_b
             .partial_cmp(&weighted_a)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     all_results.truncate(options.limit);
+
+    // Build routing context for logging (G2.5)
+    let total_repos = crate::commands::repo::list().map(|r| r.len()).unwrap_or(0);
+    let routing_context = RoutingContext {
+        strategy: "graph".to_string(),
+        source_project: current_project.clone(),
+        edges_used,
+        repos_searched: repos_to_search.clone(),
+        repos_available: total_repos + 1, // +1 for current project
+        domain_filter_applied,
+    };
+
+    // Convert to RoutedResult for logging
+    let routed_results: Vec<RoutedResult> = all_results
+        .iter()
+        .map(|(_, repo_id, weight, result)| RoutedResult {
+            source_repo: repo_id.clone(),
+            weight: *weight,
+            result: result.clone(),
+        })
+        .collect();
+
+    // Log query with routing context (G2.5)
+    let query_id = log_scry_query_with_routing(query, &routed_results, &routing_context);
+
+    // Record edge usage for each edge that contributed (G2.5)
+    if let Some(ref qid) = query_id {
+        for edge in &routing_context.edges_used {
+            // Find best rank for this edge's target repo in results
+            let best_rank = routed_results
+                .iter()
+                .enumerate()
+                .find(|(_, r)| r.source_repo == edge.to_node)
+                .map(|(i, _)| i + 1);
+
+            // Record usage (best-effort, don't fail on error)
+            let _ = graph.record_edge_usage(edge.id, qid, &edge.to_node, best_rank);
+        }
+    }
 
     println!();
 
@@ -375,7 +446,6 @@ pub fn execute_graph_routing(query: Option<&str>, options: &ScryOptions) -> Resu
     }
 
     // Report routing efficiency
-    let total_repos = crate::commands::repo::list().map(|r| r.len()).unwrap_or(0);
     println!(
         "Found {} results (searched {} of {} repos):\n",
         all_results.len(),
@@ -384,7 +454,7 @@ pub fn execute_graph_routing(query: Option<&str>, options: &ScryOptions) -> Resu
     );
     println!("{}", "─".repeat(60));
 
-    for (i, (source, weight, result)) in all_results.iter().enumerate() {
+    for (i, (source, _repo_id, weight, result)) in all_results.iter().enumerate() {
         let timestamp_display = if result.timestamp.is_empty() {
             String::new()
         } else {
@@ -409,6 +479,11 @@ pub fn execute_graph_routing(query: Option<&str>, options: &ScryOptions) -> Resu
     }
 
     println!("\n{}", "─".repeat(60));
+
+    // Show query_id for feedback commands
+    if let Some(ref qid) = query_id {
+        println!("\nQuery ID: {} (use with 'scry open/copy/feedback')", qid);
+    }
 
     Ok(())
 }

@@ -32,7 +32,7 @@ pub use internal::subcommands::{
 pub use internal::search::{scry, scry_lexical, scry_text};
 
 /// Result from a scry query
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ScryResult {
     pub id: i64,
     pub content: String,
