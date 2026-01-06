@@ -100,11 +100,24 @@ pub struct Node {
 /// An edge between nodes
 #[derive(Debug, Clone)]
 pub struct Edge {
+    pub id: i64,
     pub from_node: String,
     pub to_node: String,
     pub edge_type: EdgeType,
     pub weight: f32,
     pub evidence: Option<String>,
+}
+
+/// Usage statistics for an edge
+#[derive(Debug, Clone)]
+pub struct EdgeUsageStats {
+    pub edge_id: i64,
+    pub from_node: String,
+    pub to_node: String,
+    pub edge_type: EdgeType,
+    pub total_uses: usize,
+    pub useful_uses: usize,
+    pub current_weight: f32,
 }
 
 /// The relationship graph
@@ -165,6 +178,22 @@ impl Graph {
             CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_node);
             CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_node);
             CREATE INDEX IF NOT EXISTS idx_edges_type ON edges(edge_type);
+
+            -- Edge usage tracking for weight learning (G2.5)
+            -- Records which edges contributed to queries and whether results were useful
+            CREATE TABLE IF NOT EXISTS edge_usage (
+                id INTEGER PRIMARY KEY,
+                edge_id INTEGER NOT NULL,
+                query_id TEXT NOT NULL,
+                result_repo TEXT NOT NULL,
+                result_rank INTEGER,
+                was_useful INTEGER DEFAULT 0,
+                created TEXT NOT NULL,
+                FOREIGN KEY (edge_id) REFERENCES edges(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_edge_usage_edge ON edge_usage(edge_id);
+            CREATE INDEX IF NOT EXISTS idx_edge_usage_query ON edge_usage(query_id);
             "#,
         )?;
 
@@ -310,17 +339,18 @@ impl Graph {
     /// Get all edges from a node
     pub fn get_edges_from(&self, node: &str) -> Result<Vec<Edge>> {
         let mut stmt = self.conn.prepare(
-            "SELECT from_node, to_node, edge_type, weight, evidence FROM edges WHERE from_node = ?1",
+            "SELECT id, from_node, to_node, edge_type, weight, evidence FROM edges WHERE from_node = ?1",
         )?;
 
         let edges = stmt
             .query_map(params![node], |row| {
                 Ok(Edge {
-                    from_node: row.get(0)?,
-                    to_node: row.get(1)?,
-                    edge_type: EdgeType::parse(&row.get::<_, String>(2)?).unwrap_or(EdgeType::Uses),
-                    weight: row.get(3)?,
-                    evidence: row.get(4)?,
+                    id: row.get(0)?,
+                    from_node: row.get(1)?,
+                    to_node: row.get(2)?,
+                    edge_type: EdgeType::parse(&row.get::<_, String>(3)?).unwrap_or(EdgeType::Uses),
+                    weight: row.get(4)?,
+                    evidence: row.get(5)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -331,17 +361,18 @@ impl Graph {
     /// Get all edges (for display)
     pub fn list_edges(&self) -> Result<Vec<Edge>> {
         let mut stmt = self.conn.prepare(
-            "SELECT from_node, to_node, edge_type, weight, evidence FROM edges ORDER BY from_node, to_node",
+            "SELECT id, from_node, to_node, edge_type, weight, evidence FROM edges ORDER BY from_node, to_node",
         )?;
 
         let edges = stmt
             .query_map([], |row| {
                 Ok(Edge {
-                    from_node: row.get(0)?,
-                    to_node: row.get(1)?,
-                    edge_type: EdgeType::parse(&row.get::<_, String>(2)?).unwrap_or(EdgeType::Uses),
-                    weight: row.get(3)?,
-                    evidence: row.get(4)?,
+                    id: row.get(0)?,
+                    from_node: row.get(1)?,
+                    to_node: row.get(2)?,
+                    edge_type: EdgeType::parse(&row.get::<_, String>(3)?).unwrap_or(EdgeType::Uses),
+                    weight: row.get(4)?,
+                    evidence: row.get(5)?,
                 })
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
@@ -409,6 +440,127 @@ impl Graph {
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         Ok(nodes)
+    }
+
+    // =========================================================================
+    // Edge Usage (G2.5 - Feedback Loop)
+    // =========================================================================
+
+    /// Record that an edge contributed to a query's routing
+    ///
+    /// Called when graph routing uses an edge to include a repo in the search.
+    /// The result_rank is the best rank achieved by any result from that repo.
+    pub fn record_edge_usage(
+        &self,
+        edge_id: i64,
+        query_id: &str,
+        result_repo: &str,
+        result_rank: Option<usize>,
+    ) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        self.conn.execute(
+            r#"
+            INSERT INTO edge_usage (edge_id, query_id, result_repo, result_rank, created)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            "#,
+            params![
+                edge_id,
+                query_id,
+                result_repo,
+                result_rank.map(|r| r as i64),
+                now
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    /// Mark edge usage as useful (called when scry.use event occurs)
+    ///
+    /// Finds edge_usage records for the query that led to the used repo
+    /// and marks them as useful.
+    pub fn mark_usage_useful(&self, query_id: &str, result_repo: &str) -> Result<usize> {
+        let updated = self.conn.execute(
+            "UPDATE edge_usage SET was_useful = 1 WHERE query_id = ?1 AND result_repo = ?2",
+            params![query_id, result_repo],
+        )?;
+
+        Ok(updated)
+    }
+
+    /// Get usage statistics for an edge
+    ///
+    /// Returns (useful_count, total_count) for the edge.
+    pub fn get_edge_usage_stats(&self, edge_id: i64) -> Result<(usize, usize)> {
+        let result: (i64, i64) = self.conn.query_row(
+            r#"
+            SELECT
+                COALESCE(SUM(was_useful), 0) as useful,
+                COUNT(*) as total
+            FROM edge_usage
+            WHERE edge_id = ?1
+            "#,
+            params![edge_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+
+        Ok((result.0 as usize, result.1 as usize))
+    }
+
+    /// Get usage statistics for all edges
+    ///
+    /// Returns stats for edges that have at least one usage record.
+    pub fn get_all_usage_stats(&self) -> Result<Vec<EdgeUsageStats>> {
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT
+                e.id,
+                e.from_node,
+                e.to_node,
+                e.edge_type,
+                e.weight,
+                COALESCE(SUM(eu.was_useful), 0) as useful,
+                COUNT(eu.id) as total
+            FROM edges e
+            LEFT JOIN edge_usage eu ON e.id = eu.edge_id
+            GROUP BY e.id
+            ORDER BY total DESC, e.from_node, e.to_node
+            "#,
+        )?;
+
+        let stats = stmt
+            .query_map([], |row| {
+                Ok(EdgeUsageStats {
+                    edge_id: row.get(0)?,
+                    from_node: row.get(1)?,
+                    to_node: row.get(2)?,
+                    edge_type: EdgeType::parse(&row.get::<_, String>(3)?).unwrap_or(EdgeType::Uses),
+                    current_weight: row.get(4)?,
+                    useful_uses: row.get::<_, i64>(5)? as usize,
+                    total_uses: row.get::<_, i64>(6)? as usize,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(stats)
+    }
+
+    /// Get edge ID by from/to/type
+    ///
+    /// Used by routing to look up edge IDs when recording usage.
+    pub fn get_edge_id(&self, from: &str, to: &str, edge_type: EdgeType) -> Result<Option<i64>> {
+        let result = self.conn.query_row(
+            "SELECT id FROM edges WHERE from_node = ?1 AND to_node = ?2 AND edge_type = ?3",
+            params![from, to, edge_type.as_str()],
+            |row| row.get(0),
+        );
+
+        match result {
+            Ok(id) => Ok(Some(id)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
     }
 }
 
@@ -521,6 +673,63 @@ mod tests {
         // Query: get both
         let related = graph.get_related("patina", &[EdgeType::TestsWith, EdgeType::LearnsFrom])?;
         assert_eq!(related.len(), 2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_edge_usage() -> Result<()> {
+        let dir = tempdir()?;
+        let db_path = dir.path().join("graph.db");
+        let conn = Connection::open(&db_path)?;
+        let graph = Graph { conn };
+        graph.init_schema()?;
+
+        // Setup: patina -> dojo edge
+        graph.add_node(
+            "patina",
+            NodeType::Project,
+            std::path::Path::new("/patina"),
+            &[],
+        )?;
+        graph.add_node(
+            "dojo",
+            NodeType::Reference,
+            std::path::Path::new("/dojo"),
+            &[],
+        )?;
+        graph.add_edge("patina", "dojo", EdgeType::TestsWith, None)?;
+
+        // Get edge ID
+        let edge_id = graph
+            .get_edge_id("patina", "dojo", EdgeType::TestsWith)?
+            .expect("edge should exist");
+
+        // Record usage
+        graph.record_edge_usage(edge_id, "q_001", "dojo", Some(1))?;
+        graph.record_edge_usage(edge_id, "q_002", "dojo", Some(3))?;
+        graph.record_edge_usage(edge_id, "q_003", "dojo", Some(5))?;
+
+        // Check stats before marking useful
+        let (useful, total) = graph.get_edge_usage_stats(edge_id)?;
+        assert_eq!(total, 3);
+        assert_eq!(useful, 0);
+
+        // Mark some as useful
+        graph.mark_usage_useful("q_001", "dojo")?;
+        graph.mark_usage_useful("q_002", "dojo")?;
+
+        // Check stats after marking useful
+        let (useful, total) = graph.get_edge_usage_stats(edge_id)?;
+        assert_eq!(total, 3);
+        assert_eq!(useful, 2);
+
+        // Check get_all_usage_stats
+        let all_stats = graph.get_all_usage_stats()?;
+        assert_eq!(all_stats.len(), 1);
+        assert_eq!(all_stats[0].edge_id, edge_id);
+        assert_eq!(all_stats[0].total_uses, 3);
+        assert_eq!(all_stats[0].useful_uses, 2);
 
         Ok(())
     }

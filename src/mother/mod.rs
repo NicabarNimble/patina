@@ -31,7 +31,7 @@ mod internal;
 use anyhow::Result;
 
 // Graph exports
-pub use graph::{Edge, EdgeType, Graph, Node, NodeType};
+pub use graph::{Edge, EdgeType, EdgeUsageStats, Graph, Node, NodeType};
 
 // Client exports
 pub use internal::{Client, ScryRequest, ScryResponse, ScryResultJson};
