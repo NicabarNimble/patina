@@ -5,7 +5,7 @@
 use anyhow::{bail, Result};
 use std::path::Path;
 
-use patina::mother::{EdgeType, Graph, NodeType};
+use patina::mother::{EdgeType, Graph, NodeType, MIN_SAMPLES};
 
 use crate::commands::repo::internal::Registry;
 
@@ -240,6 +240,86 @@ fn truncate(s: &str, max_len: usize) -> String {
     } else {
         s[..max_len].to_string()
     }
+}
+
+/// Show edge usage statistics
+pub fn show_stats() -> Result<()> {
+    let graph = Graph::open()?;
+    let stats = graph.get_all_usage_stats()?;
+
+    if stats.is_empty() {
+        println!("📊 Edge Usage Statistics\n");
+        println!("   No usage data yet.\n");
+        println!("   Usage is recorded when:");
+        println!("   1. scry queries use --routing graph");
+        println!("   2. Users act on results (scry use <query_id> <rank>)");
+        return Ok(());
+    }
+
+    println!("📊 Edge Usage Statistics\n");
+    println!("┌────────────────────────────────────────────────────────────────────────────┐");
+    println!(
+        "│ {:<30} {:>8} {:>8} {:>8} {:>10} {:>8} │",
+        "EDGE", "USES", "USEFUL", "PREC%", "WEIGHT", "STATUS"
+    );
+    println!("├────────────────────────────────────────────────────────────────────────────┤");
+
+    let mut total_uses = 0;
+    let mut total_useful = 0;
+
+    for stat in &stats {
+        total_uses += stat.total_uses;
+        total_useful += stat.useful_uses;
+
+        let edge_label = format!(
+            "{} → {} ({})",
+            stat.from_node,
+            stat.to_node,
+            stat.edge_type.as_str()
+        );
+
+        let precision = if stat.total_uses > 0 {
+            (stat.useful_uses as f32 / stat.total_uses as f32) * 100.0
+        } else {
+            0.0
+        };
+
+        let status = if stat.total_uses >= MIN_SAMPLES {
+            "ready"
+        } else {
+            "needs data"
+        };
+
+        println!(
+            "│ {:<30} {:>8} {:>8} {:>7.1}% {:>10.2} {:>8} │",
+            truncate(&edge_label, 30),
+            stat.total_uses,
+            stat.useful_uses,
+            precision,
+            stat.current_weight,
+            status
+        );
+    }
+
+    println!("├────────────────────────────────────────────────────────────────────────────┤");
+
+    let overall_precision = if total_uses > 0 {
+        (total_useful as f32 / total_uses as f32) * 100.0
+    } else {
+        0.0
+    };
+
+    println!(
+        "│ {:<30} {:>8} {:>8} {:>7.1}%                    │",
+        "TOTAL", total_uses, total_useful, overall_precision
+    );
+    println!("└────────────────────────────────────────────────────────────────────────────┘");
+
+    println!();
+    println!("   Edges with {} or more uses are 'ready' for weight learning.", MIN_SAMPLES);
+    println!("   Run 'patina mother learn' to update weights from usage data.");
+
+    Ok(())
 }
 
 #[cfg(test)]
