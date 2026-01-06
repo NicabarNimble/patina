@@ -342,15 +342,18 @@ patina mother sync                     # Rebuild nodes from registry.yaml
 ### Exit Criteria
 
 **Functional (does it work):**
-- [ ] `~/.patina/mother/graph.db` created on first use
-- [ ] `patina mother graph` shows nodes from registry
-- [ ] `patina mother link` creates edges
-- [ ] `patina mother sync` rebuilds from registry
+- [x] `~/.patina/mother/graph.db` created on first use
+- [x] `patina mother graph` shows nodes from registry
+- [x] `patina mother link` creates edges
+- [x] `patina mother sync` rebuilds from registry (+ auto-detects current project)
 
 **Ng checkpoint (does it represent the problem):**
-- [ ] Graph can encode the relationships identified in G0 error analysis
-- [ ] Manual edges added for top 3 failure cases from G0
-- [ ] Verify: `patina mother graph` shows edges that WOULD have fixed G0 failures
+- [x] Graph can encode the relationships identified in G0 error analysis
+- [x] Manual edges added for top 3 failure cases from G0:
+  - patina TESTS_WITH dojo (Cairo parser benchmark - xp_001)
+  - patina LEARNS_FROM USearch (vector search domain - xp_006)
+  - patina LEARNS_FROM opencode (MCP implementation - xp_005)
+- [x] Verify: `patina mother graph` shows edges that WOULD have fixed G0 failures
 
 **Note**: G1 is infrastructure. It doesn't improve metrics yet. But it MUST be able to represent what G0 revealed as the fix.
 

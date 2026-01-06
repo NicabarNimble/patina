@@ -103,12 +103,12 @@ Currently being worked on:
 |-------|-------|------|
 | **0-0.25c** | Git Narrative + Measurement | ✅ Complete (2026-01-05) |
 | **G0** | Cross-Project Measurement | ✅ Complete (2026-01-05) - gap proven |
-| **G1** | Graph Foundation | `graph.db` schema, nodes from registry, manual edges |
+| **G1** | Graph Foundation | ✅ Complete (2026-01-06) - CLI, sync, edges |
 | **G2** | Smart Routing | Use graph for query routing, measure improvement |
 | **0.5** | Persona surfaces | `[PERSONA]` + `[PROJECT]` sections in scry (deferred) |
 | **1-3** | Federation + Extraction | Deferred until graph foundation works |
 
-**Current:** Phase G1 in progress. `src/mother/graph.rs` done (schema + tests). Next: populate from registry, CLI commands.
+**Current:** Phase G1 complete. CLI commands working, G0-fix edges added. Next: G2 (graph-based query routing).
 
 ### Reference
 
