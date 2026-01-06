@@ -78,6 +78,12 @@ pub enum MotherCommands {
         /// Relationship type
         edge_type: String,
     },
+
+    /// Show edge usage statistics
+    ///
+    /// Displays usage statistics for all edges: how often each edge
+    /// was used in graph routing, and how often it led to useful results.
+    Stats,
 }
 
 /// Execute mother command from CLI
@@ -101,7 +107,13 @@ pub fn execute_cli(command: Option<MotherCommands>) -> Result<()> {
             to,
             edge_type,
         } => unlink(&from, &to, &edge_type),
+        MotherCommands::Stats => stats(),
     }
+}
+
+/// Show edge usage statistics
+pub fn stats() -> Result<()> {
+    internal::show_stats()
 }
 
 /// Sync graph nodes from registry
