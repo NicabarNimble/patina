@@ -213,6 +213,10 @@ enum Commands {
         #[arg(long)]
         all_repos: bool,
 
+        /// Routing strategy for --all-repos: 'all' (search everything) or 'graph' (use mother graph)
+        #[arg(long, default_value = "all")]
+        routing: String,
+
         /// Include GitHub issues in search results
         #[arg(long)]
         include_issues: bool,
@@ -851,6 +855,7 @@ fn main() -> Result<()> {
             dimension,
             repo,
             all_repos,
+            routing,
             include_issues,
             no_persona,
             hybrid,
@@ -883,6 +888,10 @@ fn main() -> Result<()> {
                     }
                 }
             } else {
+                // Parse routing strategy
+                let routing_strategy = commands::scry::RoutingStrategy::parse(&routing)
+                    .unwrap_or(commands::scry::RoutingStrategy::All);
+
                 // Default behavior: query-based search
                 let options = commands::scry::ScryOptions {
                     limit,
@@ -895,6 +904,7 @@ fn main() -> Result<()> {
                     include_persona: !no_persona,
                     hybrid,
                     explain,
+                    routing: routing_strategy,
                 };
                 commands::scry::execute(query.as_deref(), options)?;
             }
