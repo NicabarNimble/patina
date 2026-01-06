@@ -12,6 +12,33 @@ use crate::commands::scrape::database;
 
 use super::super::ScryResult;
 
+/// Edge info for routing context logging
+#[derive(Debug, Clone)]
+pub struct EdgeInfo {
+    pub id: i64,
+    pub from_node: String,
+    pub to_node: String,
+    pub edge_type: String,
+    pub weight: f32,
+}
+
+/// Routing context captured during graph-based routing
+#[derive(Debug, Clone, Default)]
+pub struct RoutingContext {
+    /// Routing strategy used ("graph" or "all")
+    pub strategy: String,
+    /// Source project for the query
+    pub source_project: String,
+    /// Edges that contributed to routing decisions
+    pub edges_used: Vec<EdgeInfo>,
+    /// Repos that were actually searched
+    pub repos_searched: Vec<String>,
+    /// Total repos available
+    pub repos_available: usize,
+    /// Whether domain filtering was applied
+    pub domain_filter_applied: bool,
+}
+
 /// Last query ID for use by scry open/copy/feedback commands
 pub static LAST_QUERY_ID: Mutex<Option<String>> = Mutex::new(None);
 
@@ -78,6 +105,100 @@ pub fn log_scry_query(query: &str, mode: &str, results: &[ScryResult]) -> Option
             "scry.query",
             &timestamp,
             &query_id, // Use query_id as source_id for lookup
+            None,
+            &query_data.to_string(),
+        )?;
+        Ok(())
+    })();
+
+    if insert_result.is_ok() {
+        // Store as last query for open/copy/feedback without explicit query_id
+        if let Ok(mut last) = LAST_QUERY_ID.lock() {
+            *last = Some(query_id.clone());
+        }
+        Some(query_id)
+    } else {
+        None
+    }
+}
+
+/// Result with source repo for routing-aware logging
+#[derive(Debug, Clone)]
+pub struct RoutedResult {
+    pub source_repo: String,
+    pub weight: f32,
+    pub result: ScryResult,
+}
+
+/// Log a scry query with routing context for feedback loop analysis
+///
+/// Extended version of log_scry_query that includes graph routing metadata.
+/// Returns the query_id for reference by open/copy/feedback commands.
+pub fn log_scry_query_with_routing(
+    query: &str,
+    results: &[RoutedResult],
+    routing: &RoutingContext,
+) -> Option<String> {
+    let session_id = get_active_session_id()?;
+
+    let query_id = generate_query_id();
+
+    // Build results array with source repo info
+    let results_json: Vec<serde_json::Value> = results
+        .iter()
+        .enumerate()
+        .map(|(i, r)| {
+            serde_json::json!({
+                "doc_id": r.result.source_id,
+                "score": r.result.score,
+                "rank": i + 1,
+                "event_type": r.result.event_type,
+                "source_repo": r.source_repo,
+                "weight": r.weight
+            })
+        })
+        .collect();
+
+    // Build edges array
+    let edges_json: Vec<serde_json::Value> = routing
+        .edges_used
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "id": e.id,
+                "from": e.from_node,
+                "to": e.to_node,
+                "type": e.edge_type,
+                "weight": e.weight
+            })
+        })
+        .collect();
+
+    let query_data = serde_json::json!({
+        "query": query,
+        "query_id": query_id,
+        "mode": "graph",
+        "session_id": session_id,
+        "routing": {
+            "strategy": routing.strategy,
+            "source_project": routing.source_project,
+            "edges_used": edges_json,
+            "repos_searched": routing.repos_searched,
+            "repos_available": routing.repos_available,
+            "domain_filter_applied": routing.domain_filter_applied
+        },
+        "results": results_json
+    });
+
+    // Best-effort insert into eventlog
+    let insert_result = (|| -> Result<()> {
+        let conn = Connection::open(database::PATINA_DB)?;
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        database::insert_event(
+            &conn,
+            "scry.query",
+            &timestamp,
+            &query_id,
             None,
             &query_data.to_string(),
         )?;
