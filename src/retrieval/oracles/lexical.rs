@@ -60,9 +60,8 @@ impl LexicalOracle {
 
         // For each commit, look up its files and add as results
         for (sha, parent_score) in commit_results {
-            let file_query = conn.prepare(
-                "SELECT file_path FROM commit_files WHERE sha = ? LIMIT 15",
-            );
+            let file_query =
+                conn.prepare("SELECT file_path FROM commit_files WHERE sha = ? LIMIT 15");
 
             let mut stmt = match file_query {
                 Ok(s) => s,

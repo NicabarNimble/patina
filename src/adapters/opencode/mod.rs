@@ -108,6 +108,8 @@ mod tests {
         let commands = adapter.get_custom_commands();
         assert_eq!(commands.len(), 5);
         assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/session-")));
-        assert!(commands.iter().any(|(cmd, _)| cmd.starts_with("/patina-review")));
+        assert!(commands
+            .iter()
+            .any(|(cmd, _)| cmd.starts_with("/patina-review")));
     }
 }

@@ -89,9 +89,7 @@ pub fn rrf_fuse_weighted(
             let base_rrf_score = 1.0 / (k + rank + 1) as f32;
 
             // Apply oracle-specific weight if provided
-            let weight = weights
-                .map(|w| w.weight_for(result.source))
-                .unwrap_or(1.0);
+            let weight = weights.map(|w| w.weight_for(result.source)).unwrap_or(1.0);
             let rrf_score = weight * base_rrf_score;
 
             *scores.entry(result.doc_id.clone()).or_default() += rrf_score;

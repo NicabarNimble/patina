@@ -220,7 +220,8 @@ impl Graph {
 
             Ok(Node {
                 id: row.get(0)?,
-                node_type: NodeType::from_str(&row.get::<_, String>(1)?).unwrap_or(NodeType::Reference),
+                node_type: NodeType::from_str(&row.get::<_, String>(1)?)
+                    .unwrap_or(NodeType::Reference),
                 path: PathBuf::from(row.get::<_, String>(2)?),
                 domains,
                 summary: row.get(4)?,
@@ -389,20 +390,24 @@ impl Graph {
         }
 
         let nodes = stmt
-            .query_map(rusqlite::params_from_iter(params_vec.iter().map(|p| p.as_ref())), |row| {
-                let domains_json: String = row.get(3)?;
-                let domains: Vec<String> = serde_json::from_str(&domains_json).unwrap_or_default();
+            .query_map(
+                rusqlite::params_from_iter(params_vec.iter().map(|p| p.as_ref())),
+                |row| {
+                    let domains_json: String = row.get(3)?;
+                    let domains: Vec<String> =
+                        serde_json::from_str(&domains_json).unwrap_or_default();
 
-                Ok(Node {
-                    id: row.get(0)?,
-                    node_type: NodeType::from_str(&row.get::<_, String>(1)?)
-                        .unwrap_or(NodeType::Reference),
-                    path: PathBuf::from(row.get::<_, String>(2)?),
-                    domains,
-                    summary: row.get(4)?,
-                    importance: row.get(5)?,
-                })
-            })?
+                    Ok(Node {
+                        id: row.get(0)?,
+                        node_type: NodeType::from_str(&row.get::<_, String>(1)?)
+                            .unwrap_or(NodeType::Reference),
+                        path: PathBuf::from(row.get::<_, String>(2)?),
+                        domains,
+                        summary: row.get(4)?,
+                        importance: row.get(5)?,
+                    })
+                },
+            )?
             .collect::<std::result::Result<Vec<_>, _>>()?;
 
         Ok(nodes)
@@ -449,11 +454,26 @@ mod tests {
         graph.init_schema()?;
 
         // Add nodes first
-        graph.add_node("patina", NodeType::Project, std::path::Path::new("/patina"), &[])?;
-        graph.add_node("dojo", NodeType::Reference, std::path::Path::new("/dojo"), &[])?;
+        graph.add_node(
+            "patina",
+            NodeType::Project,
+            std::path::Path::new("/patina"),
+            &[],
+        )?;
+        graph.add_node(
+            "dojo",
+            NodeType::Reference,
+            std::path::Path::new("/dojo"),
+            &[],
+        )?;
 
         // Add edge
-        graph.add_edge("patina", "dojo", EdgeType::TestsWith, Some("benchmark subject"))?;
+        graph.add_edge(
+            "patina",
+            "dojo",
+            EdgeType::TestsWith,
+            Some("benchmark subject"),
+        )?;
 
         let edges = graph.get_edges_from("patina")?;
         assert_eq!(edges.len(), 1);
@@ -473,9 +493,24 @@ mod tests {
         graph.init_schema()?;
 
         // Setup: patina -> dojo (TESTS_WITH), patina -> SDL (LEARNS_FROM)
-        graph.add_node("patina", NodeType::Project, std::path::Path::new("/patina"), &[])?;
-        graph.add_node("dojo", NodeType::Reference, std::path::Path::new("/dojo"), &[])?;
-        graph.add_node("SDL", NodeType::Reference, std::path::Path::new("/SDL"), &[])?;
+        graph.add_node(
+            "patina",
+            NodeType::Project,
+            std::path::Path::new("/patina"),
+            &[],
+        )?;
+        graph.add_node(
+            "dojo",
+            NodeType::Reference,
+            std::path::Path::new("/dojo"),
+            &[],
+        )?;
+        graph.add_node(
+            "SDL",
+            NodeType::Reference,
+            std::path::Path::new("/SDL"),
+            &[],
+        )?;
 
         graph.add_edge("patina", "dojo", EdgeType::TestsWith, None)?;
         graph.add_edge("patina", "SDL", EdgeType::LearnsFrom, None)?;
