@@ -120,6 +120,43 @@ pub struct EdgeUsageStats {
     pub current_weight: f32,
 }
 
+// =========================================================================
+// Weight Learning Constants (G2.5)
+// =========================================================================
+
+/// Minimum samples before updating weight (prevents noisy updates)
+pub const MIN_SAMPLES: usize = 5;
+
+/// Default learning rate (conservative to prevent oscillation)
+pub const DEFAULT_ALPHA: f32 = 0.1;
+
+/// Minimum weight bound (never completely ignore an edge)
+pub const WEIGHT_MIN: f32 = 0.5;
+
+/// Maximum weight bound (never over-amplify)
+pub const WEIGHT_MAX: f32 = 2.0;
+
+/// Report from weight learning run
+#[derive(Debug, Clone)]
+pub struct WeightLearningReport {
+    pub edges_updated: usize,
+    pub edges_skipped_insufficient: usize,
+    pub changes: Vec<WeightChange>,
+}
+
+/// A single weight change
+#[derive(Debug, Clone)]
+pub struct WeightChange {
+    pub edge_id: i64,
+    pub from_node: String,
+    pub to_node: String,
+    pub edge_type: EdgeType,
+    pub old_weight: f32,
+    pub new_weight: f32,
+    pub precision: f32,
+    pub sample_count: usize,
+}
+
 /// The relationship graph
 pub struct Graph {
     conn: Connection,
@@ -562,6 +599,123 @@ impl Graph {
             Err(e) => Err(e.into()),
         }
     }
+
+    // =========================================================================
+    // Weight Learning (G2.5)
+    // =========================================================================
+
+    /// Get current weight for an edge
+    pub fn get_edge_weight(&self, edge_id: i64) -> Result<f32> {
+        let weight: f32 = self.conn.query_row(
+            "SELECT weight FROM edges WHERE id = ?1",
+            params![edge_id],
+            |row| row.get(0),
+        )?;
+        Ok(weight)
+    }
+
+    /// Set weight for an edge (clamped to bounds)
+    pub fn set_edge_weight(&self, edge_id: i64, weight: f32) -> Result<()> {
+        let clamped = weight.clamp(WEIGHT_MIN, WEIGHT_MAX);
+        self.conn.execute(
+            "UPDATE edges SET weight = ?1 WHERE id = ?2",
+            params![clamped, edge_id],
+        )?;
+        Ok(())
+    }
+
+    /// Update edge weight based on usage precision
+    ///
+    /// Algorithm:
+    ///   precision = useful_uses / total_uses
+    ///   weight_new = (1 - α) × weight_old + α × (1.0 + precision)
+    ///
+    /// Result: edges that lead to useful results get higher weight over time.
+    /// Returns None if insufficient samples.
+    pub fn update_edge_weight(&self, edge_id: i64, alpha: f32) -> Result<Option<WeightChange>> {
+        // Get usage stats
+        let (useful, total) = self.get_edge_usage_stats(edge_id)?;
+
+        // Require minimum samples
+        if total < MIN_SAMPLES {
+            return Ok(None);
+        }
+
+        // Calculate precision
+        let precision = useful as f32 / total as f32;
+
+        // Get current weight
+        let old_weight = self.get_edge_weight(edge_id)?;
+
+        // Exponential moving average update
+        // Base of 1.0 means: precision=0 → weight→1.0, precision=1 → weight→2.0
+        let new_weight = (1.0 - alpha) * old_weight + alpha * (1.0 + precision);
+        let clamped_weight = new_weight.clamp(WEIGHT_MIN, WEIGHT_MAX);
+
+        // Update in database
+        self.set_edge_weight(edge_id, clamped_weight)?;
+
+        // Get edge info for report
+        let edge = self.get_edge_by_id(edge_id)?;
+
+        Ok(Some(WeightChange {
+            edge_id,
+            from_node: edge.from_node,
+            to_node: edge.to_node,
+            edge_type: edge.edge_type,
+            old_weight,
+            new_weight: clamped_weight,
+            precision,
+            sample_count: total,
+        }))
+    }
+
+    /// Learn weights for all edges with sufficient data
+    ///
+    /// Iterates all edges, updates weights for those with >= MIN_SAMPLES usage.
+    pub fn learn_weights(&self, alpha: f32) -> Result<WeightLearningReport> {
+        let edges = self.list_edges()?;
+        let mut updated = 0;
+        let mut skipped = 0;
+        let mut changes = Vec::new();
+
+        for edge in edges {
+            match self.update_edge_weight(edge.id, alpha)? {
+                Some(change) => {
+                    updated += 1;
+                    changes.push(change);
+                }
+                None => {
+                    skipped += 1;
+                }
+            }
+        }
+
+        Ok(WeightLearningReport {
+            edges_updated: updated,
+            edges_skipped_insufficient: skipped,
+            changes,
+        })
+    }
+
+    /// Get edge by ID (for reporting)
+    fn get_edge_by_id(&self, edge_id: i64) -> Result<Edge> {
+        let edge = self.conn.query_row(
+            "SELECT id, from_node, to_node, edge_type, weight, evidence FROM edges WHERE id = ?1",
+            params![edge_id],
+            |row| {
+                Ok(Edge {
+                    id: row.get(0)?,
+                    from_node: row.get(1)?,
+                    to_node: row.get(2)?,
+                    edge_type: EdgeType::parse(&row.get::<_, String>(3)?).unwrap_or(EdgeType::Uses),
+                    weight: row.get(4)?,
+                    evidence: row.get(5)?,
+                })
+            },
+        )?;
+        Ok(edge)
+    }
 }
 
 #[cfg(test)]
@@ -730,6 +884,138 @@ mod tests {
         assert_eq!(all_stats[0].edge_id, edge_id);
         assert_eq!(all_stats[0].total_uses, 3);
         assert_eq!(all_stats[0].useful_uses, 2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_weight_learning() -> Result<()> {
+        let dir = tempdir()?;
+        let db_path = dir.path().join("graph.db");
+        let conn = Connection::open(&db_path)?;
+        let graph = Graph { conn };
+        graph.init_schema()?;
+
+        // Setup: patina -> dojo edge
+        graph.add_node(
+            "patina",
+            NodeType::Project,
+            std::path::Path::new("/patina"),
+            &[],
+        )?;
+        graph.add_node(
+            "dojo",
+            NodeType::Reference,
+            std::path::Path::new("/dojo"),
+            &[],
+        )?;
+        graph.add_edge("patina", "dojo", EdgeType::TestsWith, None)?;
+
+        let edge_id = graph
+            .get_edge_id("patina", "dojo", EdgeType::TestsWith)?
+            .expect("edge should exist");
+
+        // Initial weight should be 1.0
+        let initial = graph.get_edge_weight(edge_id)?;
+        assert!((initial - 1.0).abs() < 0.001);
+
+        // With only 3 samples, should skip (MIN_SAMPLES = 5)
+        graph.record_edge_usage(edge_id, "q_001", "dojo", Some(1))?;
+        graph.record_edge_usage(edge_id, "q_002", "dojo", Some(2))?;
+        graph.record_edge_usage(edge_id, "q_003", "dojo", Some(3))?;
+
+        let result = graph.update_edge_weight(edge_id, 0.1)?;
+        assert!(result.is_none(), "Should skip with < MIN_SAMPLES");
+
+        // Add 2 more samples to reach MIN_SAMPLES
+        graph.record_edge_usage(edge_id, "q_004", "dojo", Some(4))?;
+        graph.record_edge_usage(edge_id, "q_005", "dojo", Some(5))?;
+
+        // Mark 4 of 5 as useful (80% precision)
+        graph.mark_usage_useful("q_001", "dojo")?;
+        graph.mark_usage_useful("q_002", "dojo")?;
+        graph.mark_usage_useful("q_003", "dojo")?;
+        graph.mark_usage_useful("q_004", "dojo")?;
+
+        // Now update should work
+        let result = graph.update_edge_weight(edge_id, 0.1)?;
+        assert!(result.is_some(), "Should update with >= MIN_SAMPLES");
+
+        let change = result.unwrap();
+        assert_eq!(change.sample_count, 5);
+        assert!((change.precision - 0.8).abs() < 0.001); // 4/5 = 0.8
+
+        // New weight: (1 - 0.1) * 1.0 + 0.1 * (1.0 + 0.8) = 0.9 + 0.18 = 1.08
+        assert!((change.new_weight - 1.08).abs() < 0.001);
+
+        // Weight in DB should match
+        let db_weight = graph.get_edge_weight(edge_id)?;
+        assert!((db_weight - 1.08).abs() < 0.001);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_learn_weights_batch() -> Result<()> {
+        let dir = tempdir()?;
+        let db_path = dir.path().join("graph.db");
+        let conn = Connection::open(&db_path)?;
+        let graph = Graph { conn };
+        graph.init_schema()?;
+
+        // Setup: two edges
+        graph.add_node(
+            "patina",
+            NodeType::Project,
+            std::path::Path::new("/patina"),
+            &[],
+        )?;
+        graph.add_node(
+            "dojo",
+            NodeType::Reference,
+            std::path::Path::new("/dojo"),
+            &[],
+        )?;
+        graph.add_node(
+            "SDL",
+            NodeType::Reference,
+            std::path::Path::new("/SDL"),
+            &[],
+        )?;
+
+        graph.add_edge("patina", "dojo", EdgeType::TestsWith, None)?;
+        graph.add_edge("patina", "SDL", EdgeType::LearnsFrom, None)?;
+
+        let edge1 = graph
+            .get_edge_id("patina", "dojo", EdgeType::TestsWith)?
+            .unwrap();
+        let edge2 = graph
+            .get_edge_id("patina", "SDL", EdgeType::LearnsFrom)?
+            .unwrap();
+
+        // Edge1: 5 uses, 5 useful (100% precision)
+        for i in 0..5 {
+            graph.record_edge_usage(edge1, &format!("q1_{}", i), "dojo", Some(i))?;
+            graph.mark_usage_useful(&format!("q1_{}", i), "dojo")?;
+        }
+
+        // Edge2: only 2 uses (insufficient)
+        graph.record_edge_usage(edge2, "q2_0", "SDL", Some(1))?;
+        graph.record_edge_usage(edge2, "q2_1", "SDL", Some(2))?;
+
+        // Learn all weights
+        let report = graph.learn_weights(0.1)?;
+
+        assert_eq!(report.edges_updated, 1);
+        assert_eq!(report.edges_skipped_insufficient, 1);
+        assert_eq!(report.changes.len(), 1);
+
+        // Edge1 should have been updated: 100% precision -> weight increases
+        let change = &report.changes[0];
+        assert_eq!(change.edge_id, edge1);
+        assert!((change.precision - 1.0).abs() < 0.001);
+        // (1 - 0.1) * 1.0 + 0.1 * 2.0 = 0.9 + 0.2 = 1.1
+        assert!((change.new_weight - 1.1).abs() < 0.001);
 
         Ok(())
     }
