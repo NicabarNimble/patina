@@ -181,7 +181,7 @@ pub fn add_link(from: &str, to: &str, edge_type_str: &str, evidence: Option<&str
     let graph = Graph::open()?;
 
     // Parse edge type
-    let edge_type = EdgeType::from_str(edge_type_str).ok_or_else(|| {
+    let edge_type = EdgeType::parse(edge_type_str).ok_or_else(|| {
         anyhow::anyhow!(
             "Unknown edge type: '{}'. Valid types: USES, LEARNS_FROM, TESTS_WITH, SIBLING, DOMAIN",
             edge_type_str
@@ -212,7 +212,7 @@ pub fn remove_link(from: &str, to: &str, edge_type_str: &str) -> Result<()> {
     let graph = Graph::open()?;
 
     // Parse edge type
-    let edge_type = EdgeType::from_str(edge_type_str).ok_or_else(|| {
+    let edge_type = EdgeType::parse(edge_type_str).ok_or_else(|| {
         anyhow::anyhow!(
             "Unknown edge type: '{}'. Valid types: USES, LEARNS_FROM, TESTS_WITH, SIBLING, DOMAIN",
             edge_type_str
