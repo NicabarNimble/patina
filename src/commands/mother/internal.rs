@@ -12,6 +12,7 @@ use crate::commands::repo::internal::Registry;
 /// Sync graph nodes from registry
 ///
 /// Creates nodes for all projects and repos in ~/.patina/registry.yaml.
+/// Also adds the current project if we're in a patina project directory.
 pub fn sync_from_registry() -> Result<()> {
     println!("🔄 Syncing graph from registry...\n");
 
@@ -21,7 +22,22 @@ pub fn sync_from_registry() -> Result<()> {
     let mut projects_added = 0;
     let mut repos_added = 0;
 
-    // Add projects
+    // Add current project if we're in one
+    if let Ok(project_root) = patina::session::SessionManager::find_project_root() {
+        let project_name = project_root
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown");
+
+        // Detect domains from project (simple heuristic)
+        let domains = detect_project_domains(&project_root);
+
+        graph.add_node(project_name, NodeType::Project, &project_root, &domains)?;
+        projects_added += 1;
+        println!("  + {} (current project)", project_name);
+    }
+
+    // Add registered projects
     for (name, entry) in &registry.projects {
         let path = Path::new(&entry.path);
         graph.add_node(name, NodeType::Project, path, &entry.domains)?;
@@ -49,6 +65,26 @@ pub fn sync_from_registry() -> Result<()> {
     );
 
     Ok(())
+}
+
+/// Detect project domains from file extensions
+fn detect_project_domains(project_root: &Path) -> Vec<String> {
+    let mut domains = Vec::new();
+
+    // Check for Cargo.toml → rust
+    if project_root.join("Cargo.toml").exists() {
+        domains.push("rust".to_string());
+    }
+    // Check for package.json → javascript/typescript
+    if project_root.join("package.json").exists() {
+        domains.push("javascript".to_string());
+    }
+    // Check for Scarb.toml → cairo
+    if project_root.join("Scarb.toml").exists() {
+        domains.push("cairo".to_string());
+    }
+
+    domains
 }
 
 /// Show graph state
