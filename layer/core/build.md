@@ -109,20 +109,22 @@ Currently being worked on:
 | **G3** | Auto-Detection | Auto-populate edges from code/sessions |
 | **0.5** | Persona surfaces | `[PERSONA]` + `[PROJECT]` sections in scry (deferred) |
 
-**Current:** G2 proof of concept complete. Graph routing works (100% vs 0% repo recall on 3 test queries).
+**Current:** G2.5 in progress. Data collection infrastructure complete, CLI commands next.
 
-**Honest assessment (Andrew Ng lens):**
-- ✅ Hypothesis validated: graph routing helps
-- ⚠️ Measurement weak: 3 manual queries, not full queryset with MRR/Recall
-- ❌ Weights guessed: 1.2x/1.1x not learned from data
-- ❌ Won't scale: manual edge creation bottleneck
+**G2.5 Progress (session 20260106-092302):**
+- ✅ edge_usage table + routing context logging (475 lines)
+- ✅ scry.use → edge_usage linking (feedback signal connected)
+- 🔲 `patina mother stats` and `patina mother learn` commands
+- 🔲 Weight learning algorithm
+- 🔲 Bench repo recall metric
 
-**Next (G2.5):** Close the loop before G3 - [Full spec](../surface/build/spec-mothership-graph.md#phase-g25-measurement--learning)
-1. Add edge_usage table + routing context logging (~100 lines)
-2. Link scry.use to edge_usage for feedback signal (~30 lines)
+**Next:** [Full spec](../surface/build/spec-mothership-graph.md#phase-g25-measurement--learning)
+1. ~~Add edge_usage table + routing context logging~~ ✅
+2. ~~Link scry.use to edge_usage for feedback signal~~ ✅
 3. Implement `patina mother stats` and `patina mother learn` (~90 lines)
-4. Extend bench with repo recall metric (~60 lines)
-5. Run full queryset, validate learned weights beat guessed weights
+4. Implement weight learning algorithm (~80 lines)
+5. Extend bench with repo recall metric (~60 lines)
+6. Run full queryset, validate learned weights beat guessed weights
 
 ### Reference
 
