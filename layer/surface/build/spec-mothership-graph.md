@@ -451,6 +451,41 @@ patina bench retrieval -q eval/cross-project-queryset.json --routing graph
 
 **Anti-pattern**: If G2 metrics don't approach G0 simulated ceiling, the graph isn't the right fix. Revisit error analysis.
 
+### G2 Retrospective (Andrew Ng Lens)
+
+**What worked:**
+- Measured before building (G0 proved the gap)
+- Started simple (3 edge types, manual creation, term matching)
+- Validated hypothesis: graph routing beats dumb routing
+
+**Honest gaps:**
+
+| Aspect | Status | Issue |
+|--------|--------|-------|
+| Measurement rigor | ⚠️ | 3 manual queries, not full 12-query queryset with MRR/Recall |
+| Weight optimization | ❌ | 1.2x/1.1x are guesses, not learned from data |
+| Sustainability | ❌ | Manual `patina mother link` won't scale past ~20 repos |
+| Production ready | ❌ | Proof of concept, not self-improving system |
+
+**The weights problem:**
+```rust
+EdgeType::TestsWith => 1.2,    // Why 1.2? No data.
+EdgeType::LearnsFrom => 1.1,   // Why 1.1? Reasonable guess.
+```
+
+**The scaling problem:**
+- Current: 14 nodes, 3 edges (human-curated)
+- At 100 repos: Who adds edges? Nobody.
+- Without G3 auto-detection, graph becomes stale
+
+**Next steps to close the loop:**
+1. Run full queryset: `patina bench retrieval -q eval/cross-project-queryset.json --routing graph`
+2. Log edge usage: which edges led to successful queries?
+3. Learn weights from usage data (not guesses)
+4. Auto-detect edges (G3) using usage patterns as ground truth
+
+**Ng verdict:** "Good proof of concept. Graph routing helps. Now make it self-improving."
+
 ---
 
 ## Phase G3: Graph Intelligence (Future)
