@@ -111,19 +111,21 @@ Currently being worked on:
 
 **Current:** G2.5 in progress. Data collection infrastructure complete, CLI commands next.
 
-**G2.5 Progress (session 20260106-092302):**
+**G2.5 Progress:**
 - ✅ edge_usage table + routing context logging (475 lines)
 - ✅ scry.use → edge_usage linking (feedback signal connected)
-- 🔲 `patina mother stats` and `patina mother learn` commands
-- 🔲 Weight learning algorithm
-- 🔲 Bench repo recall metric
+- ✅ Weight learning algorithm (290 lines)
+- ✅ `patina mother stats` command (93 lines)
+- ✅ `patina mother learn` command (83 lines)
+- ✅ Bench repo recall metric (89 lines)
+- 🔲 Run full queryset and validate learned weights
 
 **Next:** [Full spec](../surface/build/spec-mothership-graph.md#phase-g25-measurement--learning)
 1. ~~Add edge_usage table + routing context logging~~ ✅
 2. ~~Link scry.use to edge_usage for feedback signal~~ ✅
-3. Implement `patina mother stats` and `patina mother learn` (~90 lines)
-4. Implement weight learning algorithm (~80 lines)
-5. Extend bench with repo recall metric (~60 lines)
+3. ~~Implement `patina mother stats` and `patina mother learn`~~ ✅
+4. ~~Implement weight learning algorithm~~ ✅
+5. ~~Extend bench with repo recall metric~~ ✅
 6. Run full queryset, validate learned weights beat guessed weights
 
 ### Reference

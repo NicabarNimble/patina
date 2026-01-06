@@ -782,22 +782,22 @@ fn routing_efficiency(repos_searched: usize, repos_available: usize) -> f64 {
 | Add edge_usage table to graph.rs | ~40 lines | Schema + record/mark functions | ✅ Done (222 lines) |
 | Extend scry.query logging with routing context | ~60 lines | Routing metadata in eventlog | ✅ Done (207 lines) |
 | Link scry.use to edge_usage | ~30 lines | mark_usage_useful() call | ✅ Done (48 lines) |
-| Implement weight learning | ~80 lines | update_edge_weight(), learn_weights() | |
-| Add `patina mother stats` command | ~50 lines | Usage statistics display | |
-| Add `patina mother learn` command | ~40 lines | Trigger learning, show changes | |
-| Extend bench with repo recall | ~60 lines | New metrics for cross-project | |
+| Implement weight learning | ~80 lines | update_edge_weight(), learn_weights() | ✅ Done (290 lines) |
+| Add `patina mother stats` command | ~50 lines | Usage statistics display | ✅ Done (93 lines) |
+| Add `patina mother learn` command | ~40 lines | Trigger learning, show changes | ✅ Done (83 lines) |
+| Extend bench with repo recall | ~60 lines | New metrics for cross-project | ✅ Done (89 lines) |
 | Run full queryset, record baseline | ~30 min | G2.5 baseline metrics | |
 
-**Progress: ~475 lines completed, ~230 lines remaining**
+**Progress: Implementation complete (~1000 lines). Awaiting usage data for weight learning validation.**
 
 ### Exit Criteria
 
 **Functional:**
 - [x] `scry --routing graph` logs routing context (edges used, repos searched)
 - [x] `scry use` updates edge_usage table
-- [ ] `patina mother stats` shows usage statistics per edge
-- [ ] `patina mother learn` updates weights from data
-- [ ] `patina bench retrieval -q eval/cross-project-queryset.json --routing graph` shows repo recall
+- [x] `patina mother stats` shows usage statistics per edge
+- [x] `patina mother learn` updates weights from data
+- [x] `patina bench retrieval` shows repo recall for cross-project querysets
 
 **Ng checkpoint (did we close the loop):**
 - [ ] Baseline recorded: MRR, Recall@10, Repo Recall for cross-project queryset
