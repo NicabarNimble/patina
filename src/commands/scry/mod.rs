@@ -17,8 +17,11 @@ use crate::commands::persona;
 use internal::enrichment::truncate_content;
 use internal::hybrid::execute_hybrid;
 use internal::logging::log_scry_query;
-use internal::routing::{execute_all_repos, execute_via_mothership};
+use internal::routing::{execute_all_repos, execute_graph_routing, execute_via_mothership};
 use internal::search::{is_lexical_query, scry_file};
+
+// Re-export routing strategy for CLI
+pub use internal::routing::RoutingStrategy;
 
 // Re-export subcommands for CLI
 pub use internal::subcommands::{
@@ -52,6 +55,8 @@ pub struct ScryOptions {
     pub include_persona: bool,
     pub hybrid: bool,
     pub explain: bool,
+    /// Routing strategy for cross-project queries (default: All)
+    pub routing: RoutingStrategy,
 }
 
 impl Default for ScryOptions {
@@ -67,6 +72,7 @@ impl Default for ScryOptions {
             include_persona: true, // Include persona by default
             hybrid: false,
             explain: false,
+            routing: RoutingStrategy::default(),
         }
     }
 }
@@ -80,9 +86,17 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
 
     println!("🔮 Scry - Searching knowledge base\n");
 
-    // Handle --all-repos mode
+    // Handle cross-project routing modes
     if options.all_repos {
-        return execute_all_repos(query, &options);
+        // Check routing strategy
+        match options.routing {
+            RoutingStrategy::Graph => {
+                return execute_graph_routing(query, &options);
+            }
+            RoutingStrategy::All => {
+                return execute_all_repos(query, &options);
+            }
+        }
     }
 
     // Handle --hybrid mode (uses QueryEngine with RRF fusion)
