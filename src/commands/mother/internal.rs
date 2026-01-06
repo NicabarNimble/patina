@@ -300,7 +300,10 @@ pub fn learn_weights(alpha: f32) -> Result<()> {
 
     println!();
     if report.edges_skipped_insufficient > 0 {
-        println!("   Need {} more uses per edge to enable learning.", MIN_SAMPLES);
+        println!(
+            "   Need {} more uses per edge to enable learning.",
+            MIN_SAMPLES
+        );
         println!("   Use 'patina scry --routing graph' and act on results.");
     }
 
@@ -381,7 +384,10 @@ pub fn show_stats() -> Result<()> {
     println!("└────────────────────────────────────────────────────────────────────────────┘");
 
     println!();
-    println!("   Edges with {} or more uses are 'ready' for weight learning.", MIN_SAMPLES);
+    println!(
+        "   Edges with {} or more uses are 'ready' for weight learning.",
+        MIN_SAMPLES
+    );
     println!("   Run 'patina mother learn' to update weights from usage data.");
 
     Ok(())

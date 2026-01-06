@@ -319,12 +319,7 @@ pub fn execute_graph_routing(query: Option<&str>, options: &ScryOptions) -> Resu
                 println!("   Found {} results", results.len());
                 for r in results {
                     // Current project gets weight 1.0 (baseline)
-                    all_results.push((
-                        "[PROJECT]".to_string(),
-                        current_project.clone(),
-                        1.0,
-                        r,
-                    ));
+                    all_results.push(("[PROJECT]".to_string(), current_project.clone(), 1.0, r));
                 }
             }
             Err(e) => {

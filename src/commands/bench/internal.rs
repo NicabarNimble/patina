@@ -29,6 +29,9 @@ pub struct BenchQuery {
     /// Legacy: keywords for substring matching (deprecated, use relevant_docs)
     #[serde(default)]
     pub relevant: Vec<String>,
+    /// Expected repos for cross-project queries (G2.5)
+    #[serde(default)]
+    pub expected_repos: Vec<String>,
 }
 
 /// Query set for benchmarking
@@ -69,6 +72,8 @@ struct QueryResult {
     reciprocal_rank: f64,
     recall_at_5: f64,
     recall_at_10: f64,
+    /// Repo recall for cross-project queries (None if no expected_repos)
+    repo_recall: Option<f64>,
 }
 
 /// Aggregate benchmark results
@@ -82,6 +87,9 @@ struct BenchmarkResults {
     latency_p50_ms: f64,
     latency_p95_ms: f64,
     latency_mean_ms: f64,
+    /// Repo recall for cross-project queries (None if not applicable)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repo_recall: Option<f64>,
 }
 
 /// Ground truth for a benchmark query
@@ -179,6 +187,35 @@ fn recall_at_k(retrieved: &[String], ground_truth: &GroundTruth, k: usize) -> f6
             .count();
         found as f64 / expected as f64
     }
+}
+
+/// Calculate repo recall for cross-project queries (G2.5)
+///
+/// Measures: did we find results from the expected repos?
+/// Returns None if no expected_repos specified.
+fn repo_recall(retrieved: &[String], expected_repos: &[String]) -> Option<f64> {
+    if expected_repos.is_empty() {
+        return None;
+    }
+
+    // Extract repos from doc_ids (format: "repo:path" or just "path")
+    // Local docs (no colon) are skipped - they don't contribute to cross-project recall
+    let found_repos: std::collections::HashSet<String> = retrieved
+        .iter()
+        .filter_map(|doc_id| doc_id.find(':').map(|idx| doc_id[..idx].to_string()))
+        .collect();
+
+    // Count how many expected repos had results
+    let matched = expected_repos
+        .iter()
+        .filter(|exp| {
+            found_repos
+                .iter()
+                .any(|found| found.eq_ignore_ascii_case(exp) || found.contains(exp.as_str()))
+        })
+        .count();
+
+    Some(matched as f64 / expected_repos.len() as f64)
 }
 
 /// Print detailed analysis for a query (verbose mode)
@@ -350,14 +387,27 @@ pub fn run_benchmark(
         let rr = reciprocal_rank(&retrieved_docs, &ground_truth);
         let r5 = recall_at_k(&retrieved_docs, &ground_truth, 5);
         let r10 = recall_at_k(&retrieved_docs, &ground_truth, 10);
+        let rrepo = repo_recall(&retrieved_docs, &bench_query.expected_repos);
 
-        println!(
-            "{:.0}ms (RR={:.2}, R@5={:.0}%, R@10={:.0}%)",
-            latency.as_millis(),
-            rr,
-            r5 * 100.0,
-            r10 * 100.0
-        );
+        // Show repo recall if this is a cross-project query
+        if let Some(repo_r) = rrepo {
+            println!(
+                "{:.0}ms (RR={:.2}, R@5={:.0}%, R@10={:.0}%, Repo={:.0}%)",
+                latency.as_millis(),
+                rr,
+                r5 * 100.0,
+                r10 * 100.0,
+                repo_r * 100.0
+            );
+        } else {
+            println!(
+                "{:.0}ms (RR={:.2}, R@5={:.0}%, R@10={:.0}%)",
+                latency.as_millis(),
+                rr,
+                r5 * 100.0,
+                r10 * 100.0
+            );
+        }
 
         // Verbose: show detailed analysis for failures or all queries
         if verbose {
@@ -369,6 +419,7 @@ pub fn run_benchmark(
             reciprocal_rank: rr,
             recall_at_5: r5,
             recall_at_10: r10,
+            repo_recall: rrepo,
         });
     }
 
@@ -377,6 +428,14 @@ pub fn run_benchmark(
     let mrr = results.iter().map(|r| r.reciprocal_rank).sum::<f64>() / num_queries as f64;
     let recall_5 = results.iter().map(|r| r.recall_at_5).sum::<f64>() / num_queries as f64;
     let recall_10 = results.iter().map(|r| r.recall_at_10).sum::<f64>() / num_queries as f64;
+
+    // Calculate repo recall if any queries had expected_repos
+    let repo_recalls: Vec<f64> = results.iter().filter_map(|r| r.repo_recall).collect();
+    let avg_repo_recall = if !repo_recalls.is_empty() {
+        Some(repo_recalls.iter().sum::<f64>() / repo_recalls.len() as f64)
+    } else {
+        None
+    };
 
     let mut latencies: Vec<Duration> = results.iter().map(|r| r.latency).collect();
     latencies.sort();
@@ -394,6 +453,7 @@ pub fn run_benchmark(
         latency_p50_ms: latency_p50.as_secs_f64() * 1000.0,
         latency_p95_ms: latency_p95.as_secs_f64() * 1000.0,
         latency_mean_ms: latency_mean.as_secs_f64() * 1000.0,
+        repo_recall: avg_repo_recall,
     };
 
     if json_output {
@@ -408,6 +468,19 @@ pub fn run_benchmark(
         println!("   ├─ MRR:        {:.3}", mrr);
         println!("   ├─ Recall@5:   {:.1}%", recall_5 * 100.0);
         println!("   └─ Recall@10:  {:.1}%", recall_10 * 100.0);
+
+        // Show routing metrics if this is a cross-project queryset
+        if let Some(repo_r) = avg_repo_recall {
+            println!();
+            println!("   Routing Metrics (cross-project):");
+            println!(
+                "   └─ Repo Recall: {:.1}% ({}/{} queries with expected_repos)",
+                repo_r * 100.0,
+                repo_recalls.len(),
+                num_queries
+            );
+        }
+
         println!();
         println!("   Latency:");
         println!("   ├─ p50:  {:.0}ms", latency_p50.as_millis());
@@ -535,7 +608,8 @@ pub fn generate_from_commits(config: GenerateConfig) -> Result<QuerySet> {
             relevant_docs: files,
             relevant_commits: vec![sha.clone()],
             source_commit: Some(sha),
-            relevant: vec![], // No legacy keywords
+            relevant: vec![],       // No legacy keywords
+            expected_repos: vec![], // No cross-project expectations for commit-derived queries
         });
     }
 
