@@ -277,6 +277,15 @@ enum Commands {
         command: Option<commands::model::ModelCommands>,
     },
 
+    /// Cross-project relationship graph
+    ///
+    /// Manages the relationship graph between projects and reference repos.
+    /// Used for smart query routing in Phase G2.
+    Mother {
+        #[command(subcommand)]
+        command: Option<commands::mother::MotherCommands>,
+    },
+
     /// Secure secret management with age encryption
     Secrets {
         #[command(subcommand)]
@@ -929,7 +938,11 @@ fn main() -> Result<()> {
                 limit,
                 output,
             } => {
-                let options = commands::bench::GenerateOptions { repo, limit, output };
+                let options = commands::bench::GenerateOptions {
+                    repo,
+                    limit,
+                    output,
+                };
                 commands::bench::generate(options)?;
             }
         },
@@ -972,6 +985,7 @@ fn main() -> Result<()> {
             with_issues,
         }) => commands::repo::execute_cli(command, url, contrib, with_issues)?,
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
+        Some(Commands::Mother { command }) => commands::mother::execute_cli(command)?,
         Some(Commands::Secrets { command, flags }) => {
             commands::secrets::execute_cli(command, flags)?
         }

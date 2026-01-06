@@ -7,6 +7,7 @@ pub mod eval;
 pub mod init;
 pub mod launch;
 pub mod model;
+pub mod mother;
 pub mod oxidize;
 pub mod persona;
 pub mod rebuild;
