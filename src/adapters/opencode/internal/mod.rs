@@ -81,7 +81,9 @@ fn generate_minimal_context(project_name: &str, environment: &Environment) -> St
     content.push_str("**`context`** - Get project patterns\n");
     content.push_str("- USE to understand design rules before making changes\n");
     content.push_str("- Returns core patterns (eternal principles) and surface patterns (active architecture)\n\n");
-    content.push_str("💡 These tools search pre-indexed knowledge - faster than manual file exploration.\n\n");
+    content.push_str(
+        "💡 These tools search pre-indexed knowledge - faster than manual file exploration.\n\n",
+    );
 
     // Footer
     content.push_str(&format!(

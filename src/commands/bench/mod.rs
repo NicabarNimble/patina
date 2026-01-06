@@ -76,7 +76,11 @@ pub fn generate(options: GenerateOptions) -> Result<()> {
 
     if let Some(output_path) = options.output {
         std::fs::write(&output_path, &json)?;
-        println!("Generated {} queries → {}", query_set.queries.len(), output_path);
+        println!(
+            "Generated {} queries → {}",
+            query_set.queries.len(),
+            output_path
+        );
     } else {
         println!("{}", json);
     }

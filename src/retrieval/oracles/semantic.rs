@@ -50,7 +50,8 @@ impl SemanticOracle {
     /// Initialize cache (embedder, projection, index) - called once
     fn init_cache(&self) -> Result<SemanticCache, String> {
         // Create embedder
-        let embedder = create_embedder().map_err(|e| format!("Failed to create embedder: {}", e))?;
+        let embedder =
+            create_embedder().map_err(|e| format!("Failed to create embedder: {}", e))?;
 
         // Load projection (optional)
         let projection = if self.projection_path.exists() {

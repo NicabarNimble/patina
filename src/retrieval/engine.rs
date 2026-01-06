@@ -159,7 +159,8 @@ impl QueryEngine {
         }
 
         // Fuse with RRF using intent-aware weights
-        let mut results = rrf_fuse_weighted(oracle_results, self.config.rrf_k, limit, Some(&weights));
+        let mut results =
+            rrf_fuse_weighted(oracle_results, self.config.rrf_k, limit, Some(&weights));
 
         // Populate structural annotations from module_signals
         populate_annotations(&mut results);
@@ -210,7 +211,8 @@ impl QueryEngine {
                 log_oracle_contributions(&oracle_results, query);
             }
 
-            let mut results = rrf_fuse_weighted(oracle_results, self.config.rrf_k, limit, Some(&weights));
+            let mut results =
+                rrf_fuse_weighted(oracle_results, self.config.rrf_k, limit, Some(&weights));
             populate_annotations(&mut results);
 
             if std::env::var("PATINA_LOG").is_ok() {
@@ -489,10 +491,7 @@ fn populate_annotations(results: &mut [FusedResult]) {
 ///
 /// This data enables future intent analysis (Phase 3 of retrieval optimization).
 /// Logs: query, oracle_name, doc_id, rank for each result
-fn log_oracle_contributions(
-    oracle_results: &[Vec<super::oracle::OracleResult>],
-    query: &str,
-) {
+fn log_oracle_contributions(oracle_results: &[Vec<super::oracle::OracleResult>], query: &str) {
     // Count results per oracle
     let mut oracle_counts: Vec<(String, usize)> = Vec::new();
 
