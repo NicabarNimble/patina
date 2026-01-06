@@ -10,7 +10,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use super::fusion::{rrf_fuse, rrf_fuse_weighted, FusedResult, StructuralAnnotations};
-use super::intent::{detect_intent, IntentWeights, QueryIntent};
+use super::intent::{detect_intent, IntentWeights};
 use super::oracle::Oracle;
 use super::oracles::{LexicalOracle, PersonaOracle, SemanticOracle, TemporalOracle};
 
