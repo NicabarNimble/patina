@@ -25,7 +25,7 @@ impl NodeType {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "project" => Some(NodeType::Project),
             "reference" => Some(NodeType::Reference),
@@ -63,7 +63,7 @@ impl EdgeType {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_uppercase().as_str() {
             "USES" => Some(EdgeType::Uses),
             "LEARNS_FROM" => Some(EdgeType::LearnsFrom),
@@ -220,7 +220,7 @@ impl Graph {
 
             Ok(Node {
                 id: row.get(0)?,
-                node_type: NodeType::from_str(&row.get::<_, String>(1)?)
+                node_type: NodeType::parse(&row.get::<_, String>(1)?)
                     .unwrap_or(NodeType::Reference),
                 path: PathBuf::from(row.get::<_, String>(2)?),
                 domains,
@@ -249,7 +249,7 @@ impl Graph {
 
                 Ok(Node {
                     id: row.get(0)?,
-                    node_type: NodeType::from_str(&row.get::<_, String>(1)?)
+                    node_type: NodeType::parse(&row.get::<_, String>(1)?)
                         .unwrap_or(NodeType::Reference),
                     path: PathBuf::from(row.get::<_, String>(2)?),
                     domains,
@@ -318,8 +318,7 @@ impl Graph {
                 Ok(Edge {
                     from_node: row.get(0)?,
                     to_node: row.get(1)?,
-                    edge_type: EdgeType::from_str(&row.get::<_, String>(2)?)
-                        .unwrap_or(EdgeType::Uses),
+                    edge_type: EdgeType::parse(&row.get::<_, String>(2)?).unwrap_or(EdgeType::Uses),
                     weight: row.get(3)?,
                     evidence: row.get(4)?,
                 })
@@ -340,8 +339,7 @@ impl Graph {
                 Ok(Edge {
                     from_node: row.get(0)?,
                     to_node: row.get(1)?,
-                    edge_type: EdgeType::from_str(&row.get::<_, String>(2)?)
-                        .unwrap_or(EdgeType::Uses),
+                    edge_type: EdgeType::parse(&row.get::<_, String>(2)?).unwrap_or(EdgeType::Uses),
                     weight: row.get(3)?,
                     evidence: row.get(4)?,
                 })
@@ -399,7 +397,7 @@ impl Graph {
 
                     Ok(Node {
                         id: row.get(0)?,
-                        node_type: NodeType::from_str(&row.get::<_, String>(1)?)
+                        node_type: NodeType::parse(&row.get::<_, String>(1)?)
                             .unwrap_or(NodeType::Reference),
                         path: PathBuf::from(row.get::<_, String>(2)?),
                         domains,
