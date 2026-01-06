@@ -219,6 +219,7 @@ pub fn log_scry_query_with_routing(
 /// Log usage of a scry result (scry.use event)
 ///
 /// Called by scry open, scry copy, and MCP callback.
+/// Also marks edge_usage as useful for graph routing feedback loop (G2.5).
 pub fn log_scry_use(query_id: &str, doc_id: &str, rank: usize) {
     let session_id = get_active_session_id();
 
@@ -243,6 +244,53 @@ pub fn log_scry_use(query_id: &str, doc_id: &str, rank: usize) {
         )?;
         Ok(())
     })();
+
+    // Mark edge_usage as useful for feedback loop (G2.5)
+    // Best-effort - don't fail if this doesn't work
+    let _ = mark_edge_usage_from_query(query_id, rank);
+}
+
+/// Mark edge_usage as useful based on query results
+///
+/// Looks up the query's results to find the source_repo for the used result,
+/// then marks the corresponding edge_usage record as useful.
+fn mark_edge_usage_from_query(query_id: &str, rank: usize) -> Result<()> {
+    use patina::mother::Graph;
+
+    // Look up the query from eventlog
+    let conn = Connection::open(database::PATINA_DB)?;
+    let data: String = conn.query_row(
+        "SELECT data FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
+        [query_id],
+        |row| row.get(0),
+    )?;
+
+    let parsed: serde_json::Value = serde_json::from_str(&data)?;
+
+    // Check if this was a graph-routed query (has routing context)
+    if parsed.get("routing").is_none() {
+        return Ok(()); // Not a graph-routed query, nothing to update
+    }
+
+    // Find the result at the given rank and get its source_repo
+    let results = parsed["results"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("No results in query"))?;
+
+    let result = results
+        .iter()
+        .find(|r| r["rank"].as_u64() == Some(rank as u64))
+        .ok_or_else(|| anyhow::anyhow!("Result not found at rank {}", rank))?;
+
+    let source_repo = result["source_repo"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("No source_repo in result"))?;
+
+    // Mark edge_usage as useful
+    let graph = Graph::open()?;
+    graph.mark_usage_useful(query_id, source_repo)?;
+
+    Ok(())
 }
 
 /// Log explicit feedback on a scry result (scry.feedback event)
