@@ -104,11 +104,23 @@ Currently being worked on:
 | **0-0.25c** | Git Narrative + Measurement | ✅ Complete (2026-01-05) |
 | **G0** | Cross-Project Measurement | ✅ Complete (2026-01-05) - gap proven |
 | **G1** | Graph Foundation | ✅ Complete (2026-01-06) - CLI, sync, edges |
-| **G2** | Smart Routing | ✅ Complete (2026-01-06) - `--routing graph` working |
+| **G2** | Smart Routing | ✅ Complete (2026-01-06) - proof of concept working |
+| **G2.5** | Measurement + Learning | Rigorous eval, weight learning, usage logging |
+| **G3** | Auto-Detection | Auto-populate edges from code/sessions |
 | **0.5** | Persona surfaces | `[PERSONA]` + `[PROJECT]` sections in scry (deferred) |
-| **1-3** | Federation + Extraction | Deferred until graph foundation works |
 
-**Current:** Phase G2 complete. Graph routing working with 100% repo recall vs 0% for dumb routing. Next: G3 (auto-detection) or 0.5 (persona surfaces).
+**Current:** G2 proof of concept complete. Graph routing works (100% vs 0% repo recall on 3 test queries).
+
+**Honest assessment (Andrew Ng lens):**
+- ✅ Hypothesis validated: graph routing helps
+- ⚠️ Measurement weak: 3 manual queries, not full queryset with MRR/Recall
+- ❌ Weights guessed: 1.2x/1.1x not learned from data
+- ❌ Won't scale: manual edge creation bottleneck
+
+**Next (G2.5):** Close the loop before G3
+1. Run full 12-query queryset with actual metrics
+2. Add usage logging (which edges helped?)
+3. Learn weights from data, not guesses
 
 ### Reference
 
