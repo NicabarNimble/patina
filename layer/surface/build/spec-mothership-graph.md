@@ -488,6 +488,338 @@ EdgeType::LearnsFrom => 1.1,   // Why 1.1? Reasonable guess.
 
 ---
 
+## Phase G2.5: Measurement + Learning
+
+**Prerequisite**: G2 proof of concept complete. Graph routing demonstrably helps.
+
+**Goal**: Close the loop - measure rigorously, log usage, learn weights from data.
+
+**Principle (Andrew Ng)**: "A model that doesn't learn from its mistakes isn't a model, it's a guess."
+
+### The Problem
+
+G2 shipped with guessed weights:
+
+```rust
+// routing.rs:498-507 - These are hypotheses, not learned values
+EdgeType::TestsWith => 1.2,   // Why 1.2? No data.
+EdgeType::LearnsFrom => 1.1,  // Why 1.1? Reasonable guess.
+EdgeType::Uses => 1.1,        // Why not 1.3? Unknown.
+```
+
+And the measurement was weak:
+- 3 manual queries, not the full 12-query queryset
+- No MRR/Recall metrics computed
+- No tracking of which edges contributed to good results
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        FEEDBACK LOOP                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Query ──► Graph Routing ──► Results ──► User Action            │
+│               │                              │                  │
+│               ▼                              ▼                  │
+│         Log Routing              Log Usage (scry.use)           │
+│         Context                         │                       │
+│               │                         │                       │
+│               ▼                         ▼                       │
+│         ┌─────────────────────────────────┐                     │
+│         │        edge_usage table         │                     │
+│         │   (edge_id, query_id, useful)   │                     │
+│         └─────────────────────────────────┘                     │
+│                         │                                       │
+│                         ▼                                       │
+│               patina mother learn                               │
+│                         │                                       │
+│                         ▼                                       │
+│               Updated edge.weight                               │
+│                         │                                       │
+│                         ▼                                       │
+│               Better Routing ◄──────────────────────────────────┘
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Design Decisions
+
+| Decision | Choice | Rationale |
+|----------|--------|-----------|
+| Where to store edge_usage? | `graph.db` | Keeps graph layer self-contained (dependable-rust) |
+| Learning trigger? | Log always + batch command | Real-time logging, explicit learning via `patina mother learn` |
+| Learning rate (α)? | 0.1 default | Conservative - prevents oscillation from noisy data |
+| Minimum samples? | 5 uses per edge | Don't update weight from insufficient data |
+
+### Schema Extension
+
+Add to `graph.db` (in `src/mother/graph.rs`):
+
+```sql
+-- Track which edges contributed to queries and whether results were useful
+CREATE TABLE edge_usage (
+    id INTEGER PRIMARY KEY,
+    edge_id INTEGER NOT NULL,           -- FK to edges.id
+    query_id TEXT NOT NULL,             -- Links to scry.query event in eventlog
+    result_repo TEXT NOT NULL,          -- Which repo the result came from
+    result_rank INTEGER,                -- Rank of best result from this edge's target
+    was_useful INTEGER DEFAULT 0,       -- 1 if user acted on result (scry.use)
+    created TEXT NOT NULL,
+    FOREIGN KEY (edge_id) REFERENCES edges(id)
+);
+
+CREATE INDEX idx_edge_usage_edge ON edge_usage(edge_id);
+CREATE INDEX idx_edge_usage_query ON edge_usage(query_id);
+```
+
+### Extended Logging
+
+**1. Routing Context in scry.query** (modify `routing.rs` → `logging.rs`)
+
+When graph routing executes, include routing decisions in the query log:
+
+```json
+{
+  "query": "how does dojo handle ECS",
+  "query_id": "q_20260106_093000_abc",
+  "mode": "find",
+  "session_id": "20260106-092302",
+  "routing": {
+    "strategy": "graph",
+    "source_project": "patina",
+    "edges_used": [
+      {"id": 1, "from": "patina", "to": "dojo", "type": "TESTS_WITH", "weight": 1.2},
+      {"id": 2, "from": "patina", "to": "USearch", "type": "LEARNS_FROM", "weight": 1.1}
+    ],
+    "repos_searched": ["patina", "dojo", "USearch"],
+    "repos_available": 14,
+    "domain_filter_applied": true
+  },
+  "results": [
+    {"doc_id": "dojo:crates/dojo-core/src/world.cairo", "score": 0.85, "rank": 1, "source_repo": "dojo"},
+    {"doc_id": "patina:src/retrieval/fusion.rs", "score": 0.72, "rank": 2, "source_repo": "patina"}
+  ]
+}
+```
+
+**2. Edge Usage Recording** (new function in `graph.rs`)
+
+After logging query with routing context, record edge contributions:
+
+```rust
+impl Graph {
+    /// Record that an edge contributed to a query's routing
+    pub fn record_edge_usage(
+        &self,
+        edge_id: i64,
+        query_id: &str,
+        result_repo: &str,
+        result_rank: Option<usize>,
+    ) -> Result<()>;
+
+    /// Mark edge usage as useful (called when scry.use event occurs)
+    pub fn mark_usage_useful(&self, query_id: &str, result_repo: &str) -> Result<()>;
+}
+```
+
+**3. Linking scry.use to edges** (modify `logging.rs`)
+
+When `log_scry_use()` is called:
+1. Look up the query's routing context from eventlog
+2. Find which edge led to the used result's repo
+3. Call `graph.mark_usage_useful(query_id, repo)`
+
+### Weight Learning Algorithm
+
+**Simple precision-based update:**
+
+```rust
+impl Graph {
+    /// Update edge weight based on usage precision
+    ///
+    /// precision = useful_uses / total_uses (for this edge)
+    /// weight_new = (1 - α) × weight_old + α × (1.0 + precision)
+    ///
+    /// Result: edges that lead to useful results get higher weight over time
+    pub fn update_edge_weight(&self, edge_id: i64, alpha: f32) -> Result<Option<f32>> {
+        // 1. Count uses for this edge
+        let (useful, total) = self.get_usage_stats(edge_id)?;
+
+        // 2. Require minimum samples
+        if total < MIN_SAMPLES {
+            return Ok(None); // Not enough data
+        }
+
+        // 3. Calculate precision
+        let precision = useful as f32 / total as f32;
+
+        // 4. Get current weight
+        let current_weight = self.get_edge_weight(edge_id)?;
+
+        // 5. Exponential moving average update
+        // Base of 1.0 means precision=0 → weight→1.0, precision=1 → weight→2.0
+        let new_weight = (1.0 - alpha) * current_weight + alpha * (1.0 + precision);
+
+        // 6. Update and return
+        self.set_edge_weight(edge_id, new_weight)?;
+        Ok(Some(new_weight))
+    }
+
+    /// Learn weights for all edges with sufficient data
+    pub fn learn_weights(&self, alpha: f32) -> Result<WeightLearningReport> {
+        let edges = self.list_edges()?;
+        let mut updated = 0;
+        let mut skipped_insufficient = 0;
+
+        for edge in edges {
+            match self.update_edge_weight(edge.id, alpha)? {
+                Some(_) => updated += 1,
+                None => skipped_insufficient += 1,
+            }
+        }
+
+        Ok(WeightLearningReport {
+            edges_updated: updated,
+            edges_skipped: skipped_insufficient,
+            timestamp: Utc::now(),
+        })
+    }
+}
+
+const MIN_SAMPLES: usize = 5;
+const DEFAULT_ALPHA: f32 = 0.1;
+```
+
+**Weight bounds:**
+- Minimum: 0.5 (don't completely ignore an edge)
+- Maximum: 2.0 (don't over-amplify)
+- Default: 1.0 (neutral)
+
+### CLI Commands
+
+```bash
+# View edge usage statistics
+patina mother stats
+# Output:
+#   Edge Usage Statistics
+#   ─────────────────────
+#   patina → dojo (TESTS_WITH): 12 uses, 8 useful (67%), weight: 1.34
+#   patina → USearch (LEARNS_FROM): 5 uses, 4 useful (80%), weight: 1.18
+#   patina → opencode (LEARNS_FROM): 3 uses, 1 useful (33%), weight: 1.0 (insufficient data)
+
+# Learn weights from usage data
+patina mother learn
+# Output:
+#   Learning edge weights (α=0.1, min_samples=5)
+#   ─────────────────────────────────────────────
+#   Updated: 2 edges
+#   Skipped: 1 edge (insufficient data)
+#
+#   Changes:
+#     patina → dojo: 1.2 → 1.27 (+5.8%)
+#     patina → USearch: 1.1 → 1.18 (+7.3%)
+
+# Learn with custom alpha
+patina mother learn --alpha 0.2
+```
+
+### Bench Extension: Repo Recall
+
+The cross-project queryset already has `expected_repos`. Add repo-level metrics:
+
+```rust
+// bench/internal.rs - new metric
+
+/// Calculate repo recall for cross-project queries
+/// Did we search the right repos?
+fn repo_recall(repos_searched: &[String], expected_repos: &[String]) -> f64 {
+    if expected_repos.is_empty() {
+        return 1.0; // No expectation = success
+    }
+
+    let found = expected_repos
+        .iter()
+        .filter(|exp| repos_searched.iter().any(|s| s == *exp))
+        .count();
+
+    found as f64 / expected_repos.len() as f64
+}
+
+/// Routing efficiency: how many repos were searched vs. available
+fn routing_efficiency(repos_searched: usize, repos_available: usize) -> f64 {
+    if repos_available == 0 {
+        return 1.0;
+    }
+    1.0 - (repos_searched as f64 / repos_available as f64)
+}
+```
+
+**Extended bench output:**
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Results: cross-project-v1 (--routing graph)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   Relevance Metrics:
+   ├─ MRR:           0.583
+   ├─ Recall@5:      58.3%
+   └─ Recall@10:     75.0%
+
+   Routing Metrics:
+   ├─ Repo Recall:   91.7%  (11/12 expected repos searched)
+   ├─ Efficiency:    78.6%  (avg 3 of 14 repos searched)
+   └─ Edge Usage:    8 edges contributed
+
+   Quality: ✅ Good
+```
+
+### Tasks
+
+| Task | Effort | Deliverable | Status |
+|------|--------|-------------|--------|
+| Add edge_usage table to graph.rs | ~40 lines | Schema + record/mark functions | |
+| Extend scry.query logging with routing context | ~60 lines | Routing metadata in eventlog | |
+| Link scry.use to edge_usage | ~30 lines | mark_usage_useful() call | |
+| Implement weight learning | ~80 lines | update_edge_weight(), learn_weights() | |
+| Add `patina mother stats` command | ~50 lines | Usage statistics display | |
+| Add `patina mother learn` command | ~40 lines | Trigger learning, show changes | |
+| Extend bench with repo recall | ~60 lines | New metrics for cross-project | |
+| Run full queryset, record baseline | ~30 min | G2.5 baseline metrics | |
+
+**Estimated total: ~360 lines of code + measurement**
+
+### Exit Criteria
+
+**Functional:**
+- [ ] `scry --routing graph` logs routing context (edges used, repos searched)
+- [ ] `scry use` updates edge_usage table
+- [ ] `patina mother stats` shows usage statistics per edge
+- [ ] `patina mother learn` updates weights from data
+- [ ] `patina bench retrieval -q eval/cross-project-queryset.json --routing graph` shows repo recall
+
+**Ng checkpoint (did we close the loop):**
+- [ ] Baseline recorded: MRR, Recall@10, Repo Recall for cross-project queryset
+- [ ] After 20+ queries with usage: weights have diverged from initial guesses
+- [ ] Learned weights improve MRR over guessed weights (A/B comparison)
+- [ ] System is self-improving: more usage → better routing
+
+**Anti-pattern**: If learned weights don't improve metrics, the signal (usage) isn't correlated with relevance. Revisit what "useful" means.
+
+### Files to Create/Modify
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `src/mother/graph.rs` | Modify | Add edge_usage table, record/mark/learn functions |
+| `src/commands/scry/internal/routing.rs` | Modify | Log routing context, record edge usage |
+| `src/commands/scry/internal/logging.rs` | Modify | Link scry.use to edge_usage |
+| `src/commands/mother/mod.rs` | Modify | Add stats and learn subcommands |
+| `src/commands/bench/internal.rs` | Modify | Add repo recall metric |
+| `src/commands/bench/mod.rs` | Modify | Add --routing flag |
+
+---
+
 ## Phase G3: Graph Intelligence (Future)
 
 **Prerequisite**: G2 proves graph routing helps. Metrics justify automation investment.

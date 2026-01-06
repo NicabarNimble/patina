@@ -105,7 +105,7 @@ Currently being worked on:
 | **G0** | Cross-Project Measurement | ✅ Complete (2026-01-05) - gap proven |
 | **G1** | Graph Foundation | ✅ Complete (2026-01-06) - CLI, sync, edges |
 | **G2** | Smart Routing | ✅ Complete (2026-01-06) - proof of concept working |
-| **G2.5** | Measurement + Learning | Rigorous eval, weight learning, usage logging |
+| **G2.5** | Measurement + Learning | **ACTIVE** - Usage logging, weight learning, repo recall metrics |
 | **G3** | Auto-Detection | Auto-populate edges from code/sessions |
 | **0.5** | Persona surfaces | `[PERSONA]` + `[PROJECT]` sections in scry (deferred) |
 
@@ -117,10 +117,12 @@ Currently being worked on:
 - ❌ Weights guessed: 1.2x/1.1x not learned from data
 - ❌ Won't scale: manual edge creation bottleneck
 
-**Next (G2.5):** Close the loop before G3
-1. Run full 12-query queryset with actual metrics
-2. Add usage logging (which edges helped?)
-3. Learn weights from data, not guesses
+**Next (G2.5):** Close the loop before G3 - [Full spec](../surface/build/spec-mothership-graph.md#phase-g25-measurement--learning)
+1. Add edge_usage table + routing context logging (~100 lines)
+2. Link scry.use to edge_usage for feedback signal (~30 lines)
+3. Implement `patina mother stats` and `patina mother learn` (~90 lines)
+4. Extend bench with repo recall metric (~60 lines)
+5. Run full queryset, validate learned weights beat guessed weights
 
 ### Reference
 
