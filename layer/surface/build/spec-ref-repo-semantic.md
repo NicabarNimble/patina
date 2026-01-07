@@ -1,6 +1,6 @@
 # Spec: Ref Repo Semantic Training
 
-**Status:** Phase 1 Complete, Phase 2 Defined
+**Status:** Phase 1-2 Complete, Phase 3 Next
 **Created:** 2026-01-07
 **Prerequisite:** [analysis-commit-training-signal.md](../analysis-commit-training-signal.md) (complete)
 **Goal:** Enable semantic search on ref repos via first-class commit signal
@@ -312,11 +312,11 @@ patina scry "telemetry best practices" --routing graph
 
 ---
 
-## Phase 2: First-Class Commit Signal
+## Phase 2: First-Class Commit Signal (Complete)
 
 **Insight from implementation:** Commits are a first-class training signal, not a fallback.
 
-Current code frames commits as "use when sessions don't exist." But commits capture **code cohesion** (what changes together) — valuable in its own right, available in ALL repos.
+Commits capture **code cohesion** (what changes together) — valuable in its own right, available in ALL repos.
 
 ```
 SIGNAL          WHERE IT EXISTS       WHAT IT CAPTURES
@@ -325,31 +325,34 @@ Commits         Projects + Ref repos  Code cohesion (what changes together)
 Sessions        Projects only         User intent (what user thinks about together)
 ```
 
-**Current design (fallback framing):**
-```rust
-if has_sessions → use sessions only
-else if has_commits → use commits only  // "fallback"
-```
-
-**Proposed design (first-class):**
-```rust
-// Commits are always valuable when available
-if has_commits → use commit pairs
-// Sessions are a separate signal (future phase)
-```
-
 ### Phase 2 Tasks
 
 | Task | Effort | Status |
 |------|--------|--------|
-| Refactor: commits as first-class (not fallback) | ~20 lines | 🔲 |
-| Update output messages (remove "fallback" framing) | ~5 lines | 🔲 |
-| Validate on ref repos (no regression) | ~10 min | 🔲 |
-| Measure commit signal quality (Ng method) | ~30 min | 🔲 |
+| Refactor: commits as first-class (not fallback) | ~20 lines | ✅ |
+| Update output messages (remove "fallback" framing) | ~5 lines | ✅ |
+| Validate on ref repos (no regression) | ~10 min | ✅ |
+
+**Commits:**
+```
+f25bf4a5 refactor(oxidize): commits as first-class signal, not fallback
+```
+
+---
+
+## Phase 3: Measure & Optimize (Next)
+
+Apply Ng method to commit signal quality.
+
+| Task | Effort | Status |
+|------|--------|--------|
+| Build eval queries for ref repos | ~20 min | 🔲 |
+| Measure commit signal quality | ~30 min | 🔲 |
+| Identify weaknesses, iterate | TBD | 🔲 |
 
 ### Future: Session Signal Interaction
 
-How do sessions alter/complement commits? To be explored after commits are first-class and measured.
+How do sessions alter/complement commits? To be explored after measurement phase.
 
 ---
 
