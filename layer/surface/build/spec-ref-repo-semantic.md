@@ -1,9 +1,37 @@
 # Spec: Ref Repo Semantic Training
 
-**Status:** Active
+**Status:** Phase 1 Complete
 **Created:** 2026-01-07
 **Prerequisite:** [analysis-commit-training-signal.md](../analysis-commit-training-signal.md) (complete)
 **Goal:** Enable semantic search on ref repos via commit-based training
+
+---
+
+## Progress
+
+**Phase 1 Complete (2026-01-07):**
+- ✅ `src/commands/oxidize/commits.rs` created (372 lines)
+- ✅ Fallback logic added to `oxidize semantic`
+- ✅ Path normalization fix (`./foo` vs `foo`)
+- ✅ Patterns table check for ref repos (graceful skip)
+- ✅ Tier 1 validated: gemini-cli returns actual telemetry functions
+- ✅ Tier 2 complete: dojo, opencode, codex (livestore hit token limit)
+
+**Commits:**
+```
+d89d03e2 feat(oxidize): add commit-based semantic training for ref repos
+9eebc9e9 feat(oxidize): fallback to commits when no sessions exist
+```
+
+**Results:**
+
+| Repo | Semantic Vectors | Training Pairs |
+|------|-----------------|----------------|
+| gemini-cli | 3,736 | 100 |
+| dojo | 2,231 | 72 |
+| opencode | 2,680 | 100 |
+| codex | 9,062 | 100 |
+| livestore | weights only | 100 (index failed: token length) |
 
 ---
 
@@ -250,13 +278,15 @@ patina scry "telemetry best practices" --routing graph
 
 | Task | Effort | Status |
 |------|--------|--------|
-| Create `src/commands/oxidize/commits.rs` | ~100 lines | 🔲 |
-| Add `generate_commit_pairs()` function | included | 🔲 |
-| Add fallback in `oxidize semantic` | ~20 lines | 🔲 |
-| Add `has_sessions()` / `has_commits()` helpers | ~10 lines | 🔲 |
-| Run on gemini-cli (Tier 1) | ~10 min | 🔲 |
-| Measure before/after on gemini-cli | ~10 min | 🔲 |
-| Run on Tier 2 repos (dojo, opencode, codex, livestore) | ~20 min | 🔲 |
+| Create `src/commands/oxidize/commits.rs` | 372 lines | ✅ |
+| Add `generate_commit_pairs()` function | included | ✅ |
+| Add fallback in `oxidize semantic` | ~30 lines | ✅ |
+| Add `has_sessions()` / `has_commits()` helpers | ~15 lines | ✅ |
+| Path normalization (`./` prefix handling) | ~10 lines | ✅ |
+| Patterns table check (ref repo compat) | ~15 lines | ✅ |
+| Run on gemini-cli (Tier 1) | ~10 min | ✅ |
+| Measure before/after on gemini-cli | ~10 min | ✅ Validated |
+| Run on Tier 2 repos (dojo, opencode, codex, livestore) | ~20 min | ✅ (livestore partial) |
 | Cross-project query test with graph routing | ~10 min | 🔲 |
 
 ---
@@ -264,19 +294,66 @@ patina scry "telemetry best practices" --routing graph
 ## Exit Criteria
 
 **Functional:**
-- [ ] `semantic.usearch` exists for Tier 1-2 repos after oxidize
-- [ ] `oxidize semantic` auto-detects commit fallback when no sessions
-- [ ] No changes to scry interface (just better data)
+- [x] `semantic.usearch` exists for Tier 1-2 repos after oxidize
+- [x] `oxidize semantic` auto-detects commit fallback when no sessions
+- [x] No changes to scry interface (just better data)
 
 **Measurement:**
-- [ ] Ref repo scry returns semantic results (not just dependency)
+- [x] Ref repo scry returns semantic results (not just dependency)
+  - Before: FTS5 text matches on "telemetry"
+  - After: `updateTelemetryTokenCount`, `ActivityMonitor`, `MemoryMonitor`
 - [ ] Cross-project queries with `--routing graph` find relevant ref repo code
 - [ ] At least one user query marked useful (scry.use) from ref repo result
 
 **Quality:**
-- [ ] Follows dependable-rust (internal implementation, same interface)
-- [ ] Follows unix-philosophy (extends oxidize, doesn't create new command)
-- [ ] Follows measure-first (baseline recorded before changes)
+- [x] Follows dependable-rust (internal implementation, same interface)
+- [x] Follows unix-philosophy (extends oxidize, doesn't create new command)
+- [x] Follows measure-first (baseline recorded before changes)
+
+---
+
+## Observation: First-Class Signals (Phase 2)
+
+**Insight from implementation:** The current fallback design treats sessions as primary and commits as secondary. But these are **different signals**, not alternatives:
+
+```
+SIGNAL          WHERE IT EXISTS       WHAT IT CAPTURES
+──────          ───────────────       ────────────────
+Commits         Projects + Ref repos  Code cohesion (what changes together)
+Sessions        Projects only         User intent (what user thinks about together)
+```
+
+**Current design (fallback):**
+```rust
+if has_sessions → use sessions only
+else if has_commits → use commits only
+```
+
+**Proposed design (first-class):**
+```rust
+// Use ALL available signals
+if has_commits → add commit pairs
+if has_sessions → add session pairs
+// Train on combined set
+```
+
+**Benefits:**
+- Projects get BOTH signals (richer training)
+- Ref repos get commits (only option, but first-class)
+- No "fallback" framing - each signal is valuable
+
+**Impact:**
+- Ref repos: same behavior (commits only available)
+- Projects: improved behavior (commits + sessions combined)
+
+### Phase 2 Tasks
+
+| Task | Effort | Status |
+|------|--------|--------|
+| Change fallback to additive signal combination | ~20 lines | 🔲 |
+| Update output messages (Signal 1, Signal 2 vs fallback) | ~5 lines | 🔲 |
+| Test on patina project (has both signals) | ~10 min | 🔲 |
+| Measure: does combined signal improve MRR? | ~30 min | 🔲 |
 
 ---
 
