@@ -86,7 +86,7 @@ Run regularly to catch regressions.
 
 Currently being worked on:
 
-- [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **CURRENT:** Phase 1-2 complete, Phase 3: Measure & optimize
+- [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **COMPLETE (Phase 1-3):** 13/13 repos with semantic indexes
 - [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 0 complete:** Git narrative + measurement
 - [spec-mothership-graph.md](../surface/build/spec-mothership-graph.md) - **COMPLETE (G0-G2.5):** Graph routing, weight learning (see `spec/mothership-graph` tag)
 - [spec-observability.md](../surface/build/spec-observability.md) - **Phase 0 complete**, Phase 1 deferred
@@ -125,7 +125,7 @@ Commits capture **code cohesion** (what changes together) — valuable in its ow
 | Update output messages (remove "fallback" framing) | ~5 lines | ✅ |
 | Validate on ref repos (no regression) | ~10 min | ✅ |
 
-### Phase 3: Measure & Optimize (In Progress)
+### Phase 3: Measure & Optimize (Complete)
 
 Apply Ng method to commit signal quality.
 
@@ -135,9 +135,9 @@ Apply Ng method to commit signal quality.
 | Measure commit signal quality | ~30 min | ✅ |
 | Fix recipe creation gap | ~20 lines | ✅ |
 | Rebuild all repos with semantic | ~15 min | ✅ |
-| Fix token length issue | TBD | 🔲 |
+| Fix token length issue | ~10 lines | ✅ |
 
-**Results:** 11/13 repos now have semantic indexes (66-83% hit rate). SDL and livestore fail due to ONNX token length error (functions > 512 tokens).
+**Results:** 13/13 repos now have semantic indexes (66-83% hit rate). Token truncation fix enabled SDL (12,137 vectors) and livestore (2,984 vectors).
 
 **Design principle (Ng/Sutton):** Simplest fix that closes the loop. Don't build Codex Q&A Agent infrastructure—implement commit-based training pairs and measure.
 
