@@ -86,18 +86,38 @@ Run regularly to catch regressions.
 
 Currently being worked on:
 
+- [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **CURRENT:** Commit-based semantic training for ref repos
 - [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 0 complete:** Git narrative + measurement
-- [spec-mothership-graph.md](../surface/build/spec-mothership-graph.md) - **NEW:** Graph layer for cross-project awareness
+- [spec-mothership-graph.md](../surface/build/spec-mothership-graph.md) - **COMPLETE (G0-G2.5):** Graph routing, weight learning (see `spec/mothership-graph` tag)
 - [spec-observability.md](../surface/build/spec-observability.md) - **Phase 0 complete**, Phase 1 deferred
 - [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** Responsibility separation (mother/patina/awaken)
 
 ---
 
-## Next: Mothership Graph
+## Next: Ref Repo Semantic Gap
+
+**Problem:** Ref repos have `dependency.usearch` but NO `semantic.usearch`. Root cause: `oxidize semantic` trains on session observations ("same session = similar"), but ref repos have no sessions.
+
+**Solution:** Use commit messages as training signal. Analysis complete in [analysis-commit-training-signal.md](../surface/analysis-commit-training-signal.md).
+
+**Spec:** [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md)
+
+| Task | Effort | Status |
+|------|--------|--------|
+| Implement `generate_commit_pairs()` | ~100 lines | 🔲 |
+| Add fallback in oxidize (commits when no sessions) | ~20 lines | 🔲 |
+| Run oxidize on Tier 1-2 repos | ~30 min | 🔲 |
+| Measure semantic quality before/after | ~30 min | 🔲 |
+
+**Design principle (Ng/Sutton):** Simplest fix that closes the loop. Don't build Codex Q&A Agent infrastructure—implement commit-based training pairs and measure.
+
+---
+
+## Completed: Mothership Graph (G2.5)
 
 **Specs:**
 - [spec-mothership.md](../surface/build/spec-mothership.md) - Full architecture (phases 0-3)
-- [spec-mothership-graph.md](../surface/build/spec-mothership-graph.md) - **ACTIVE:** Graph layer for cross-project awareness
+- [spec-mothership-graph.md](../surface/build/spec-mothership-graph.md) - Graph layer for cross-project awareness
 
 | Phase | Build | Exit |
 |-------|-------|------|
@@ -105,28 +125,21 @@ Currently being worked on:
 | **G0** | Cross-Project Measurement | ✅ Complete (2026-01-05) - gap proven |
 | **G1** | Graph Foundation | ✅ Complete (2026-01-06) - CLI, sync, edges |
 | **G2** | Smart Routing | ✅ Complete (2026-01-06) - proof of concept working |
-| **G2.5** | Measurement + Learning | **ACTIVE** - Usage logging, weight learning, repo recall metrics |
-| **G3** | Auto-Detection | Auto-populate edges from code/sessions |
-| **0.5** | Persona surfaces | `[PERSONA]` + `[PROJECT]` sections in scry (deferred) |
+| **G2.5** | Measurement + Learning | ✅ Complete (2026-01-06) - ~1000 lines implementation |
+| **G3** | Auto-Detection | Deferred - auto-populate edges from code/sessions |
+| **0.5** | Persona surfaces | Deferred - `[PERSONA]` + `[PROJECT]` sections in scry |
 
-**Current:** G2.5 in progress. Data collection infrastructure complete, CLI commands next.
-
-**G2.5 Progress:**
+**G2.5 Delivered:**
 - ✅ edge_usage table + routing context logging (475 lines)
 - ✅ scry.use → edge_usage linking (feedback signal connected)
 - ✅ Weight learning algorithm (290 lines)
 - ✅ `patina mother stats` command (93 lines)
 - ✅ `patina mother learn` command (83 lines)
 - ✅ Bench repo recall metric (89 lines)
-- 🔲 Run full queryset and validate learned weights
+- ✅ Graph routing: 100% repo recall vs 0% dumb routing
+- ✅ Weights learned from usage: 1.0 → 1.02-1.06
 
-**Next:** [Full spec](../surface/build/spec-mothership-graph.md#phase-g25-measurement--learning)
-1. ~~Add edge_usage table + routing context logging~~ ✅
-2. ~~Link scry.use to edge_usage for feedback signal~~ ✅
-3. ~~Implement `patina mother stats` and `patina mother learn`~~ ✅
-4. ~~Implement weight learning algorithm~~ ✅
-5. ~~Extend bench with repo recall metric~~ ✅
-6. Run full queryset, validate learned weights beat guessed weights
+**Key insight:** Graph routing works. Now fix semantic gap in ref repos so routing has good content to find.
 
 ### Reference
 
@@ -262,6 +275,11 @@ release-plz workflow for automated GitHub releases. v0.1.0 baseline created. Con
 
 **Tags:** `spec/release-automation`
 
+### Mothership Graph (G0-G2.5)
+Cross-project awareness via relationship graph. Phases G0-G2.5 delivered ~1000 lines: graph foundation (graph.db, nodes, edges, CLI), smart routing (100% repo recall vs 0% dumb), learning loop (edge_usage, weight learning). Key commands: `patina mother graph/link/sync/stats/learn`. G3 (auto-detection) deferred.
+
+**Tag:** `spec/mothership-graph`
+
 ---
 
 ## Archive
@@ -273,4 +291,4 @@ git tag -l 'spec/*'              # List archived specs
 git show spec/scry:layer/surface/build/spec-scry.md  # View archived spec
 ```
 
-**Tags:** `spec/llm-frontends`, `spec/quality-gates`, `spec/secrets-v2`, `spec/observable-scry`, `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`, `spec/remove-legacy-repos-and-audit`, `spec/robust-signals`
+**Tags:** `spec/llm-frontends`, `spec/quality-gates`, `spec/secrets-v2`, `spec/observable-scry`, `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`, `spec/remove-legacy-repos-and-audit`, `spec/robust-signals`, `spec/mothership-graph`
