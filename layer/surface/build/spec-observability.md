@@ -455,6 +455,18 @@ These ideas are preserved, not scheduled. Revisit when triggers occur.
 | Log-based alerting | Production monitoring needs |
 | Distributed tracing | Cross-service debugging |
 | EventSink trait | Need swappable outputs |
+| Convergence signals | Need to verify agent task completion mechanically |
+
+### Convergence Signals (Future)
+
+Observability isn't just for debugging—it enables **mechanical verification**.
+
+When agents claim "done," we need data to verify. Events could capture:
+- Iteration counts (how many attempts before success?)
+- Failure modes (what went wrong, how often?)
+- Invariant checks (did tests pass? did MRR hold?)
+
+This transforms observability from "see what happened" to "verify what succeeded." See `spec-three-layers.md` for the authority model this supports.
 
 ---
 

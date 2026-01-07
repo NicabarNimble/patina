@@ -2,7 +2,7 @@
 
 **Status**: Workshop
 **Created**: 2025-12-29
-**Updated**: 2025-12-30
+**Updated**: 2026-01-07
 **Purpose**: Define the separation of concerns across mother, patina, and awaken
 
 ---
@@ -90,6 +90,54 @@ mother          patina          awaken
 - **mother** provides: identity, secrets, coordination, daemon
 - **patina** provides: knowledge about the project
 - **awaken** consumes: knowledge + infra to ship
+
+---
+
+## Authority: Who Declares "Done"?
+
+A critical question for agent-assisted development: **who owns the authority to declare a task complete?**
+
+### The Problem
+
+Models operating inside patina (via LLM frontends) can claim:
+- "Done"
+- "Finished"
+- "Correct"
+
+But model self-report is unreliable. Local plausibility masquerades as task completion. The model can be articulate, confident, and wrong.
+
+### The Principle
+
+> Authority to declare completion must live outside the model.
+
+This means:
+- Models propose, systems verify
+- "Done" requires mechanical validation, not assertion
+- Termination is gated by invariants, not confidence
+
+### Where Authority Lives
+
+| Layer | Authority Role |
+|-------|----------------|
+| **mother** | Could own cross-project verification, CI gates, quality thresholds |
+| **patina** | Owns knowledge but NOT completion authority - provides facts for verification |
+| **awaken** | Natural home for shipping gates - nothing deploys without passing invariants |
+
+### Implications
+
+1. **Specs need machine-checkable exit criteria** - not just prose descriptions
+2. **Session-end could verify invariants** - forced convergence before archive
+3. **Failures become first-class data** - iteration count, failure modes, convergence signals
+
+### The Diagnostic Question
+
+> "If an agent claims this task is done, what mechanically happens next?"
+
+- Human review → pre-convergence design
+- System verification → convergence-aware design
+- Forced continuation until invariants pass → convergence-first design
+
+Patina should be convergence-first where possible, convergence-aware everywhere else.
 
 ---
 
