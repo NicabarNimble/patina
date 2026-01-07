@@ -125,15 +125,19 @@ Commits capture **code cohesion** (what changes together) — valuable in its ow
 | Update output messages (remove "fallback" framing) | ~5 lines | ✅ |
 | Validate on ref repos (no regression) | ~10 min | ✅ |
 
-### Phase 3: Measure & Optimize (Next)
+### Phase 3: Measure & Optimize (In Progress)
 
 Apply Ng method to commit signal quality.
 
 | Task | Effort | Status |
 |------|--------|--------|
-| Build eval queries for ref repos | ~20 min | 🔲 |
-| Measure commit signal quality | ~30 min | 🔲 |
-| Identify weaknesses, iterate | TBD | 🔲 |
+| Build eval queries for ref repos | ~20 min | ✅ |
+| Measure commit signal quality | ~30 min | ✅ |
+| Fix recipe creation gap | ~20 lines | ✅ |
+| Rebuild all repos with semantic | ~15 min | ✅ |
+| Fix token length issue | TBD | 🔲 |
+
+**Results:** 11/13 repos now have semantic indexes (66-83% hit rate). SDL and livestore fail due to ONNX token length error (functions > 512 tokens).
 
 **Design principle (Ng/Sutton):** Simplest fix that closes the loop. Don't build Codex Q&A Agent infrastructure—implement commit-based training pairs and measure.
 
