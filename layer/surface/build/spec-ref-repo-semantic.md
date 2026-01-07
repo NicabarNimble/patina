@@ -349,7 +349,7 @@ Apply Ng method to commit signal quality.
 | Build eval queries for ref repos | ~20 min | ✅ |
 | Measure commit signal quality | ~30 min | ✅ |
 | Identify weaknesses, iterate | TBD | 🔲 |
-| Fix recipe creation gap | ~20 lines | 🔲 |
+| Fix recipe creation gap | ~20 lines | ✅ |
 
 ### Eval Results (2026-01-07)
 
