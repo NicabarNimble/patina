@@ -86,7 +86,7 @@ Run regularly to catch regressions.
 
 Currently being worked on:
 
-- [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **CURRENT:** Commit-based semantic training for ref repos
+- [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **CURRENT:** Phase 1 complete, Phase 2: First-class commit signal
 - [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 0 complete:** Git narrative + measurement
 - [spec-mothership-graph.md](../surface/build/spec-mothership-graph.md) - **COMPLETE (G0-G2.5):** Graph routing, weight learning (see `spec/mothership-graph` tag)
 - [spec-observability.md](../surface/build/spec-observability.md) - **Phase 0 complete**, Phase 1 deferred
@@ -102,12 +102,29 @@ Currently being worked on:
 
 **Spec:** [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md)
 
+### Phase 1: Commit-Based Training (Complete)
+
 | Task | Effort | Status |
 |------|--------|--------|
-| Implement `generate_commit_pairs()` | ~100 lines | 🔲 |
-| Add fallback in oxidize (commits when no sessions) | ~20 lines | 🔲 |
-| Run oxidize on Tier 1-2 repos | ~30 min | 🔲 |
-| Measure semantic quality before/after | ~30 min | 🔲 |
+| Implement `generate_commit_pairs()` | 372 lines | ✅ |
+| Add fallback in oxidize (commits when no sessions) | ~30 lines | ✅ |
+| Run oxidize on Tier 1-2 repos | ~30 min | ✅ |
+| Measure semantic quality before/after | ~30 min | ✅ |
+
+**Results:** Tier 1 (gemini-cli) and Tier 2 (dojo, opencode, codex) now have semantic search. Before: FTS5 text matches. After: actual telemetry functions (`updateTelemetryTokenCount`, `ActivityMonitor`).
+
+### Phase 2: First-Class Commit Signal (Current)
+
+**Insight:** Commits are a first-class training signal, not a fallback.
+
+Current code frames commits as "use when sessions don't exist." But commits capture **code cohesion** (what changes together) — valuable in its own right, available in ALL repos.
+
+| Task | Effort | Status |
+|------|--------|--------|
+| Refactor: commits as first-class (not fallback) | ~20 lines | 🔲 |
+| Update output messages (remove "fallback" framing) | ~5 lines | 🔲 |
+| Validate on ref repos (no regression) | ~10 min | 🔲 |
+| Measure commit signal quality (Ng method) | ~30 min | 🔲 |
 
 **Design principle (Ng/Sutton):** Simplest fix that closes the loop. Don't build Codex Q&A Agent infrastructure—implement commit-based training pairs and measure.
 

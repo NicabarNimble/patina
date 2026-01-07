@@ -1,9 +1,9 @@
 # Spec: Ref Repo Semantic Training
 
-**Status:** Phase 1 Complete
+**Status:** Phase 1 Complete, Phase 2 Defined
 **Created:** 2026-01-07
 **Prerequisite:** [analysis-commit-training-signal.md](../analysis-commit-training-signal.md) (complete)
-**Goal:** Enable semantic search on ref repos via commit-based training
+**Goal:** Enable semantic search on ref repos via first-class commit signal
 
 ---
 
@@ -312,9 +312,11 @@ patina scry "telemetry best practices" --routing graph
 
 ---
 
-## Observation: First-Class Signals (Phase 2)
+## Phase 2: First-Class Commit Signal
 
-**Insight from implementation:** The current fallback design treats sessions as primary and commits as secondary. But these are **different signals**, not alternatives:
+**Insight from implementation:** Commits are a first-class training signal, not a fallback.
+
+Current code frames commits as "use when sessions don't exist." But commits capture **code cohesion** (what changes together) — valuable in its own right, available in ALL repos.
 
 ```
 SIGNAL          WHERE IT EXISTS       WHAT IT CAPTURES
@@ -323,37 +325,31 @@ Commits         Projects + Ref repos  Code cohesion (what changes together)
 Sessions        Projects only         User intent (what user thinks about together)
 ```
 
-**Current design (fallback):**
+**Current design (fallback framing):**
 ```rust
 if has_sessions → use sessions only
-else if has_commits → use commits only
+else if has_commits → use commits only  // "fallback"
 ```
 
 **Proposed design (first-class):**
 ```rust
-// Use ALL available signals
-if has_commits → add commit pairs
-if has_sessions → add session pairs
-// Train on combined set
+// Commits are always valuable when available
+if has_commits → use commit pairs
+// Sessions are a separate signal (future phase)
 ```
-
-**Benefits:**
-- Projects get BOTH signals (richer training)
-- Ref repos get commits (only option, but first-class)
-- No "fallback" framing - each signal is valuable
-
-**Impact:**
-- Ref repos: same behavior (commits only available)
-- Projects: improved behavior (commits + sessions combined)
 
 ### Phase 2 Tasks
 
 | Task | Effort | Status |
 |------|--------|--------|
-| Change fallback to additive signal combination | ~20 lines | 🔲 |
-| Update output messages (Signal 1, Signal 2 vs fallback) | ~5 lines | 🔲 |
-| Test on patina project (has both signals) | ~10 min | 🔲 |
-| Measure: does combined signal improve MRR? | ~30 min | 🔲 |
+| Refactor: commits as first-class (not fallback) | ~20 lines | 🔲 |
+| Update output messages (remove "fallback" framing) | ~5 lines | 🔲 |
+| Validate on ref repos (no regression) | ~10 min | 🔲 |
+| Measure commit signal quality (Ng method) | ~30 min | 🔲 |
+
+### Future: Session Signal Interaction
+
+How do sessions alter/complement commits? To be explored after commits are first-class and measured.
 
 ---
 
