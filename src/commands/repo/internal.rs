@@ -614,16 +614,18 @@ fn oxidize_repo(repo_path: &Path) -> Result<()> {
     }
 
     // Create oxidize.yaml if it doesn't exist
-    // Reference repos get dependency + temporal dimensions (full clone has git history)
-    // No semantic dimension (no layer/sessions/ with session pairs)
+    // Reference repos get all three dimensions:
+    // - dependency: call graph from AST
+    // - temporal: co-change history from git
+    // - semantic: commit messages as training signal (NL → code pairs)
     let recipe_path = repo_path.join(".patina/oxidize.yaml");
     if !recipe_path.exists() {
-        println!("   Creating oxidize.yaml recipe (dependency + temporal)...");
+        println!("   Creating oxidize.yaml recipe (dependency + temporal + semantic)...");
         let recipe_content = r#"# Oxidize Recipe for reference repo
-# Reference repos support dependency + temporal dimensions:
-# - Full clone → temporal works (co-change history available)
-# - Call graph from AST → dependency works
-# - No layer/sessions/ → no semantic (no session pairs)
+# Reference repos support all three dimensions:
+# - dependency: call graph from AST (functions that call each other)
+# - temporal: co-change history from git (files that change together)
+# - semantic: commit messages as training signal (NL → code similarity)
 version: 1
 embedding_model: e5-base-v2
 
@@ -636,6 +638,12 @@ projections:
 
   # Temporal projection - files that change together are related
   temporal:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
+
+  # Semantic projection - commit messages train NL → code similarity
+  semantic:
     layers: [768, 1024, 256]
     epochs: 10
     batch_size: 32
