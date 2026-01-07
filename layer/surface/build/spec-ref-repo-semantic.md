@@ -340,15 +340,65 @@ f25bf4a5 refactor(oxidize): commits as first-class signal, not fallback
 
 ---
 
-## Phase 3: Measure & Optimize (Next)
+## Phase 3: Measure & Optimize (In Progress)
 
 Apply Ng method to commit signal quality.
 
 | Task | Effort | Status |
 |------|--------|--------|
-| Build eval queries for ref repos | ~20 min | 🔲 |
-| Measure commit signal quality | ~30 min | 🔲 |
+| Build eval queries for ref repos | ~20 min | ✅ |
+| Measure commit signal quality | ~30 min | ✅ |
 | Identify weaknesses, iterate | TBD | 🔲 |
+| Fix recipe creation gap | ~20 lines | 🔲 |
+
+### Eval Results (2026-01-07)
+
+Created `eval/ref-repo-queryset.json` with ground truth queries and `eval/run-ref-repo-eval.sh`.
+
+| Repo | Hit Rate | MRR | Queries |
+|------|----------|-----|---------|
+| gemini-cli | 75.0% | 0.750 | 8 |
+| opencode | 66.6% | 0.444 | 6 |
+| dojo | 83.3% | 0.566 | 6 |
+| codex | 83.3% | 0.625 | 6 |
+
+**Key finding:** All 6 "failures" were ground truth issues, not semantic search issues. The semantic search returned correct results, just different files than expected (e.g., `memory-monitor.ts` instead of `telemetry-utils.ts` for "telemetry" query—both valid).
+
+### Training Data Analysis
+
+| Repo | Signal Rate | Funcs/File | Avg Msg Len | Quality |
+|------|-------------|------------|-------------|---------|
+| gemini-cli | 36.0% | 4.9 | 58 chars | Good |
+| opencode | 5.3% | 5.4 | 32 chars | Excellent |
+| dojo | 6.2% | 8.6 | 46 chars | Good |
+| codex | 21.1% | 12.7 | 53 chars | Mixed |
+
+**Surprise:** Low signal rate (5-6%) doesn't correlate with poor results. opencode has best semantic quality despite lowest signal rate.
+
+### Recipe Creation Gap (Bug Found)
+
+**Problem:** `patina repo update --oxidize` creates default recipe with `[dependency, temporal]` only. New repos don't get semantic projection enabled despite having commits.
+
+**Result:** Only 4/13 repos have semantic indexes (the ones that already had it in oxidize.yaml from Phase 1).
+
+**Fix needed:** Update recipe creation in `src/commands/repo/internal.rs` to include semantic when commits exist.
+
+### Static Values in commits.rs
+
+Current implementation uses hardcoded values:
+
+| Parameter | Value | Concern |
+|-----------|-------|---------|
+| Message length | `> 30` | Fixed threshold |
+| Moment weights | `3.0/2.0/1.5/1.2/1.0` | Unused, never validated |
+| Conv prefixes | `feat/fix/refactor/perf` | May miss non-conventional repos |
+| Training pairs | `100` | Fixed regardless of repo size |
+
+### Three Failure Scenarios
+
+1. **Verbose Enterprise Repo**: Long template commits bury the actual change description
+2. **Tiny Focused Library**: < 50 usable commits → repeated anchors, contradictory signal
+3. **Monorepo Mixed Conventions**: Only catches one team's commit style
 
 ### Future: Session Signal Interaction
 
