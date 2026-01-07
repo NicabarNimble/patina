@@ -85,8 +85,18 @@ impl OnnxEmbedder {
             );
         }
 
-        let tokenizer = Tokenizer::from_file(tokenizer_path)
+        let mut tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| anyhow!("Failed to load tokenizer: {}", e))?;
+
+        // Enable truncation to 512 tokens (ONNX model limit for e5/bge/minilm)
+        // This prevents "Attempting to broadcast an axis by a dimension other than 1"
+        // errors when embedding large functions
+        tokenizer
+            .with_truncation(Some(tokenizers::TruncationParams {
+                max_length: 512,
+                ..Default::default()
+            }))
+            .map_err(|e| anyhow!("Failed to configure truncation: {}", e))?;
 
         Ok(Self {
             session,
