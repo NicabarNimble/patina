@@ -86,7 +86,7 @@ Run regularly to catch regressions.
 
 Currently being worked on:
 
-- [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **CURRENT:** Phase 1 complete, Phase 2: First-class commit signal
+- [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **CURRENT:** Phase 1-2 complete, Phase 3: Measure & optimize
 - [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 0 complete:** Git narrative + measurement
 - [spec-mothership-graph.md](../surface/build/spec-mothership-graph.md) - **COMPLETE (G0-G2.5):** Graph routing, weight learning (see `spec/mothership-graph` tag)
 - [spec-observability.md](../surface/build/spec-observability.md) - **Phase 0 complete**, Phase 1 deferred
@@ -113,18 +113,27 @@ Currently being worked on:
 
 **Results:** Tier 1 (gemini-cli) and Tier 2 (dojo, opencode, codex) now have semantic search. Before: FTS5 text matches. After: actual telemetry functions (`updateTelemetryTokenCount`, `ActivityMonitor`).
 
-### Phase 2: First-Class Commit Signal (Current)
+### Phase 2: First-Class Commit Signal (Complete)
 
 **Insight:** Commits are a first-class training signal, not a fallback.
 
-Current code frames commits as "use when sessions don't exist." But commits capture **code cohesion** (what changes together) — valuable in its own right, available in ALL repos.
+Commits capture **code cohesion** (what changes together) — valuable in its own right, available in ALL repos.
 
 | Task | Effort | Status |
 |------|--------|--------|
-| Refactor: commits as first-class (not fallback) | ~20 lines | 🔲 |
-| Update output messages (remove "fallback" framing) | ~5 lines | 🔲 |
-| Validate on ref repos (no regression) | ~10 min | 🔲 |
-| Measure commit signal quality (Ng method) | ~30 min | 🔲 |
+| Refactor: commits as first-class (not fallback) | ~20 lines | ✅ |
+| Update output messages (remove "fallback" framing) | ~5 lines | ✅ |
+| Validate on ref repos (no regression) | ~10 min | ✅ |
+
+### Phase 3: Measure & Optimize (Next)
+
+Apply Ng method to commit signal quality.
+
+| Task | Effort | Status |
+|------|--------|--------|
+| Build eval queries for ref repos | ~20 min | 🔲 |
+| Measure commit signal quality | ~30 min | 🔲 |
+| Identify weaknesses, iterate | TBD | 🔲 |
 
 **Design principle (Ng/Sutton):** Simplest fix that closes the loop. Don't build Codex Q&A Agent infrastructure—implement commit-based training pairs and measure.
 
