@@ -26,13 +26,12 @@ pub fn generate_commit_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<Trai
     let commits = query_filtered_commits(&conn, num_pairs * 2)?;
 
     if commits.is_empty() {
-        anyhow::bail!("No suitable commits found for training (need conventional commits with length > 30)");
+        anyhow::bail!(
+            "No suitable commits found for training (need conventional commits with length > 30)"
+        );
     }
 
-    println!(
-        "   Found {} filtered commits for training",
-        commits.len()
-    );
+    println!("   Found {} filtered commits for training", commits.len());
 
     // Get all functions for positive/negative sampling
     let all_functions = query_all_functions(&conn)?;
