@@ -100,13 +100,13 @@ fn train_projection(
                 .with_context(|| format!("Failed to open database: {}", db_path))?;
 
             if has_sessions(&conn)? {
-                // User project: use session observations
-                println!("   Strategy: observations from same session are similar");
+                // Sessions capture user intent (what user thinks about together)
+                println!("   Strategy: session observations capture user intent");
                 drop(conn);
                 generate_same_session_pairs(db_path, num_pairs)?
             } else if has_commits(&conn)? {
-                // Ref repo: use commit messages as training signal
-                println!("   Strategy: commit messages describe related code (fallback for repos without sessions)");
+                // Commits capture code cohesion (what changes together)
+                println!("   Strategy: commit messages capture code cohesion");
                 drop(conn);
                 generate_commit_pairs(db_path, num_pairs)?
             } else {

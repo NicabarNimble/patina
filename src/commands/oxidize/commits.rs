@@ -238,7 +238,7 @@ fn moment_to_weight(moment_type: Option<&str>) -> f32 {
     }
 }
 
-/// Check if database has sessions (for fallback detection)
+/// Check if database has session events (user intent signal)
 pub fn has_sessions(conn: &Connection) -> Result<bool> {
     let count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM eventlog WHERE event_type LIKE 'session.%'",
@@ -248,7 +248,7 @@ pub fn has_sessions(conn: &Connection) -> Result<bool> {
     Ok(count > 0)
 }
 
-/// Check if database has commits (for fallback detection)
+/// Check if database has commits (code cohesion signal)
 pub fn has_commits(conn: &Connection) -> Result<bool> {
     let count: i64 = conn.query_row("SELECT COUNT(*) FROM commits", [], |row| row.get(0))?;
     Ok(count > 0)
