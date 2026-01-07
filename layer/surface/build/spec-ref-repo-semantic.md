@@ -340,7 +340,7 @@ f25bf4a5 refactor(oxidize): commits as first-class signal, not fallback
 
 ---
 
-## Phase 3: Measure & Optimize (In Progress)
+## Phase 3: Measure & Optimize (Complete)
 
 Apply Ng method to commit signal quality.
 
@@ -348,8 +348,9 @@ Apply Ng method to commit signal quality.
 |------|--------|--------|
 | Build eval queries for ref repos | ~20 min | ✅ |
 | Measure commit signal quality | ~30 min | ✅ |
-| Identify weaknesses, iterate | TBD | 🔲 |
 | Fix recipe creation gap | ~20 lines | ✅ |
+| Fix token length issue | ~10 lines | ✅ |
+| Verify 13/13 repos have semantic | ~15 min | ✅ |
 
 ### Eval Results (2026-01-07)
 
@@ -398,24 +399,32 @@ Created `eval/ref-repo-queryset.json` with ground truth queries and `eval/run-re
 | opencode | ✅ | 2,797 vectors |
 | scryer-prolog | ✅ | 1,903 vectors |
 | starknet-foundry | ✅ | 4,251 vectors |
-| SDL | ✗ | Token length error |
-| livestore | ✗ | Token length error |
+| SDL | ✅ | 12,137 vectors |
+| livestore | ✅ | 2,984 vectors |
 
-**11/13 repos now have semantic indexes.**
+**13/13 repos now have semantic indexes.**
 
-### Token Length Issue (New Finding)
+### Token Length Issue (Fixed)
 
-SDL and livestore fail during USearch index building with ONNX error:
+SDL and livestore were failing during USearch index building with ONNX error:
 ```
 Attempting to broadcast an axis by a dimension other than 1. 512 by 554
 ```
 
 **Root cause:** Some functions exceed the 512 token limit of e5-base-v2.
 
-**Potential fixes (deferred):**
-- Truncate long inputs before embedding
-- Chunk large functions
-- Filter out oversized items during indexing
+**Fix applied:** Configured tokenizer to truncate at 512 tokens in `src/embeddings/onnx.rs`.
+
+```rust
+tokenizer.with_truncation(Some(tokenizers::TruncationParams {
+    max_length: 512,
+    ..Default::default()
+}))
+```
+
+**Commit:** `bd3018f0 fix(embeddings): truncate tokens to 512 for ONNX model limit`
+
+**Quality verified:** Semantic search on SDL/livestore returns highly relevant results (scores 0.85-0.92). Truncation preserves function signatures and early logic—sufficient for semantic matching.
 
 ### Static Values in commits.rs
 
