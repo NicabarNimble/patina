@@ -375,13 +375,47 @@ Created `eval/ref-repo-queryset.json` with ground truth queries and `eval/run-re
 
 **Surprise:** Low signal rate (5-6%) doesn't correlate with poor results. opencode has best semantic quality despite lowest signal rate.
 
-### Recipe Creation Gap (Bug Found)
+### Recipe Creation Gap (Fixed)
 
-**Problem:** `patina repo update --oxidize` creates default recipe with `[dependency, temporal]` only. New repos don't get semantic projection enabled despite having commits.
+**Problem:** `patina repo update --oxidize` created default recipe with `[dependency, temporal]` only.
 
-**Result:** Only 4/13 repos have semantic indexes (the ones that already had it in oxidize.yaml from Phase 1).
+**Fix:** Updated `src/commands/repo/internal.rs` to include semantic in default template.
 
-**Fix needed:** Update recipe creation in `src/commands/repo/internal.rs` to include semantic when commits exist.
+**Commit:** `9cd241c7 fix(repo): auto-enable semantic in recipe when commits exist`
+
+**Result after fix (2026-01-07):**
+
+| Repo | Status | Notes |
+|------|--------|-------|
+| Personal_AI_Infrastructure | ✅ | 246 vectors |
+| USearch | ✅ | 1,192 vectors |
+| codex | ✅ | 9,330 vectors |
+| daydreams | ✅ | 800 vectors |
+| dojo | ✅ | 2,231 vectors |
+| dust | ✅ | 2,678 vectors |
+| game-engine | ✅ | 310 vectors |
+| gemini-cli | ✅ | 3,804 vectors |
+| opencode | ✅ | 2,797 vectors |
+| scryer-prolog | ✅ | 1,903 vectors |
+| starknet-foundry | ✅ | 4,251 vectors |
+| SDL | ✗ | Token length error |
+| livestore | ✗ | Token length error |
+
+**11/13 repos now have semantic indexes.**
+
+### Token Length Issue (New Finding)
+
+SDL and livestore fail during USearch index building with ONNX error:
+```
+Attempting to broadcast an axis by a dimension other than 1. 512 by 554
+```
+
+**Root cause:** Some functions exceed the 512 token limit of e5-base-v2.
+
+**Potential fixes (deferred):**
+- Truncate long inputs before embedding
+- Chunk large functions
+- Filter out oversized items during indexing
 
 ### Static Values in commits.rs
 
