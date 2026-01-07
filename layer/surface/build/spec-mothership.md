@@ -1,8 +1,30 @@
 # Spec: Mothership Architecture
 
-**Status:** Design
+**Status:** Active (Parent Spec)
 **Created:** 2026-01-01
 **Purpose:** Define Mother as the nervous system connecting all project islands
+
+## Spec Hierarchy
+
+This is the **parent architecture spec**. Implementation is done via focused child specs:
+
+```
+spec-mothership.md (this file - vision + phases)
+│
+├── Phase 0-0.25c: Git Narrative + Measurement ✅ (implemented here)
+│
+├── Phase 2: Knowledge Graph
+│   └── spec-mothership-graph.md ✅ COMPLETE
+│       Tag: spec/mothership-graph
+│       Delivered: graph.db, routing, weight learning (~1000 lines)
+│
+└── Content Layer (complements routing)
+    └── spec-ref-repo-semantic.md ← CURRENT FOCUS
+        Fixes: ref repos lack semantic.usearch
+        Solution: commit-based training pairs
+```
+
+**Key insight:** Graph routing (WHERE to search) needs semantic content (WHAT to find). Both specs are required for cross-project queries to work well.
 
 ---
 
@@ -825,16 +847,21 @@ Commit→file expansion in `LexicalOracle` follows relationships (like TemporalO
 
 **Exit:** Query in Project X returns relevant results from Project Y.
 
-### Phase 2: Knowledge Graph
+### Phase 2: Knowledge Graph ✅ COMPLETE
 
 **Goal:** Graph captures relationships.
 
-**Tasks:**
-- [ ] Graph schema (projects, patterns, domains, relationships)
-- [ ] Graph populated from events
-- [ ] Graph traversal in query routing
+**Implementation:** See [spec-mothership-graph.md](./spec-mothership-graph.md) (archived as `spec/mothership-graph`)
 
-**Exit:** "Project X uses dojo" influences query routing.
+**Delivered:**
+- [x] Graph schema (nodes, edges, edge_usage in graph.db)
+- [x] Graph populated from registry + manual edges
+- [x] Graph traversal in query routing (`--routing graph`)
+- [x] Weight learning from usage (`patina mother learn`)
+
+**Result:** 100% repo recall vs 0% dumb routing. ~1000 lines implementation.
+
+**Exit:** ✅ "Project X uses dojo" influences query routing.
 
 ### Phase 3: Extraction Loop
 
@@ -954,9 +981,17 @@ CREATE TABLE project_relationships (
 
 ## Related Specs
 
-- [spec-mothership-graph.md](./spec-mothership-graph.md) - **Phase G0-G2**: Cross-project measurement → graph foundation → smart routing
+**Child Specs (implementations of this vision):**
+- [spec-mothership-graph.md](./spec-mothership-graph.md) - **✅ COMPLETE** Phase 2 implementation (tag: `spec/mothership-graph`)
+- [spec-ref-repo-semantic.md](./spec-ref-repo-semantic.md) - **CURRENT** Content layer for ref repos
+
+**Architecture:**
 - [spec-three-layers.md](./spec-three-layers.md) - Mother layer architecture
 - [spec-pipeline.md](./spec-pipeline.md) - Data pipeline (scrape→oxidize/assay→scry)
 - [concept-rag-network.md](../concept-rag-network.md) - Projects as RAG nodes vision
 
-**Note on Phase G0 (Andrew Ng alignment)**: Before building graph infrastructure (G1), we measure current `--all-repos` performance and prove the gap exists. See spec-mothership-graph.md Phase G0 for cross-project queryset format and baseline methodology.
+**How the specs connect:**
+```
+User Query → Graph Routing (mothership-graph) → Semantic Search (ref-repo-semantic)
+             "route to dojo"                    "find relevant code in dojo"
+```
