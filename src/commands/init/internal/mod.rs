@@ -671,13 +671,14 @@ fn check_hierarchy_conflicts(force: bool) -> Result<()> {
     let child_projects = find_child_patina_projects(&current_dir)?;
 
     if !child_projects.is_empty() {
-        eprintln!("Error: Found existing Patina projects in subdirectories:");
+        eprintln!("Error: Found Patina project(s) in subdirectories (checked 2 levels):");
         for p in &child_projects {
             eprintln!("  → {}", p.display());
         }
         eprintln!();
         eprintln!("Initializing here would create a parent project over existing ones,");
         eprintln!("causing duplicate commands and configuration conflicts.");
+        eprintln!("(Note: there may be more projects deeper in the tree)");
         eprintln!();
         eprintln!("To fix:");
         eprintln!("  1. Initialize in a different directory");
