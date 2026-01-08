@@ -343,6 +343,21 @@ enum Commands {
         command: Option<AdapterCommands>,
     },
 
+    /// Generate project state report using patina's own tools
+    Report {
+        /// Output path (default: layer/surface/reports/YYYY-MM-DD-state.md)
+        #[arg(long, short)]
+        output: Option<String>,
+
+        /// Query a specific registered repo
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Output as JSON instead of markdown
+        #[arg(long)]
+        json: bool,
+    },
+
     /// Query codebase structure (modules, imports, call graph)
     Assay {
         #[command(subcommand)]
@@ -1020,6 +1035,10 @@ fn main() -> Result<()> {
             }
         }
         Some(Commands::Adapter { command }) => commands::adapter::execute(command)?,
+        Some(Commands::Report { output, repo, json }) => {
+            let options = commands::report::ReportOptions { output, repo, json };
+            commands::report::execute(options)?;
+        }
         Some(Commands::Assay {
             command,
             pattern,
