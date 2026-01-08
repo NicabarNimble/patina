@@ -13,6 +13,7 @@ use anyhow::Result;
 use anyhow::bail;
 
 /// Debug logging for secrets module (Phase 0 observability)
+#[cfg(target_os = "macos")]
 fn log_debug(msg: &str) {
     if std::env::var("PATINA_LOG").is_ok() {
         eprintln!("[DEBUG secrets::keychain] {}", msg);
