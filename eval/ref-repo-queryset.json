@@ -1,0 +1,253 @@
+{
+  "version": "1.0",
+  "description": "Eval queries for ref repo semantic search (Phase 3)",
+  "created": "2026-01-07",
+  "repos": {
+    "gemini-cli": {
+      "queries": [
+        {
+          "query": "how does telemetry work",
+          "expected_files": [
+            "packages/core/src/telemetry/telemetry-utils.ts",
+            "packages/core/src/telemetry/uiTelemetry.ts",
+            "packages/core/src/telemetry/telemetryAttributes.ts",
+            "packages/core/src/code_assist/telemetry.ts"
+          ],
+          "category": "feature"
+        },
+        {
+          "query": "configuration and settings management",
+          "expected_files": [
+            "packages/core/src/config/config.ts",
+            "packages/cli/src/config/config.ts",
+            "packages/core/src/policy/config.ts"
+          ],
+          "category": "feature"
+        },
+        {
+          "query": "hook system and event handling",
+          "expected_files": [
+            "packages/core/src/hooks/hookSystem.ts",
+            "packages/core/src/hooks/hookRunner.ts",
+            "packages/core/src/hooks/hookRegistry.ts",
+            "packages/core/src/hooks/hookEventHandler.ts"
+          ],
+          "category": "feature"
+        },
+        {
+          "query": "MCP server client connection",
+          "expected_files": [
+            "packages/core/src/tools/mcp-client.ts",
+            "packages/core/src/tools/mcp-client-manager.ts",
+            "packages/core/src/tools/mcp-tool.ts"
+          ],
+          "category": "feature"
+        },
+        {
+          "query": "session management and cleanup",
+          "expected_files": [
+            "packages/core/src/utils/session.ts",
+            "packages/cli/src/utils/sessionUtils.ts",
+            "packages/cli/src/utils/sessionCleanup.ts",
+            "packages/cli/src/utils/sessions.ts"
+          ],
+          "category": "feature"
+        },
+        {
+          "query": "file reading and writing tools",
+          "expected_files": [
+            "packages/core/src/tools/read-file.ts",
+            "packages/core/src/tools/write-file.ts",
+            "packages/core/src/tools/read-many-files.ts",
+            "packages/core/src/tools/edit.ts"
+          ],
+          "category": "tool"
+        },
+        {
+          "query": "grep and search functionality",
+          "expected_files": [
+            "packages/core/src/tools/grep.ts",
+            "packages/core/src/tools/ripGrep.ts",
+            "packages/core/src/tools/glob.ts"
+          ],
+          "category": "tool"
+        },
+        {
+          "query": "IDE integration and detection",
+          "expected_files": [
+            "packages/core/src/ide/detect-ide.ts",
+            "packages/core/src/ide/ide-client.ts",
+            "packages/core/src/ide/ide-installer.ts",
+            "packages/core/src/ide/ideContext.ts"
+          ],
+          "category": "feature"
+        }
+      ]
+    },
+    "opencode": {
+      "queries": [
+        {
+          "query": "authentication and OAuth flow",
+          "expected_files": [
+            "packages/opencode/src/mcp/auth.ts",
+            "packages/opencode/src/mcp/oauth-provider.ts",
+            "packages/opencode/src/mcp/oauth-callback.ts",
+            "packages/opencode/src/provider/auth.ts",
+            "packages/opencode/src/cli/cmd/auth.ts"
+          ],
+          "category": "feature"
+        },
+        {
+          "query": "terminal UI component rendering",
+          "expected_files": [
+            "packages/app/src/components/terminal.tsx",
+            "packages/app/src/context/terminal.tsx",
+            "packages/app/src/components/session/session-sortable-terminal-tab.tsx",
+            "packages/opencode/src/cli/cmd/tui/util/terminal.ts"
+          ],
+          "category": "ui"
+        },
+        {
+          "query": "autocomplete and suggestions",
+          "expected_files": [
+            "packages/opencode/src/cli/cmd/tui/component/prompt/autocomplete.tsx"
+          ],
+          "category": "ui"
+        },
+        {
+          "query": "dialog and modal components",
+          "expected_files": [
+            "packages/ui/src/context/dialog.tsx",
+            "packages/opencode/src/cli/cmd/tui/ui/dialog-select.tsx",
+            "packages/opencode/src/cli/cmd/tui/component/dialog-status.tsx"
+          ],
+          "category": "ui"
+        },
+        {
+          "query": "diff viewer and code comparison",
+          "expected_files": [
+            "packages/ui/src/components/diff.tsx",
+            "packages/ui/src/context/diff.tsx",
+            "packages/ui/src/components/diff-ssr.tsx"
+          ],
+          "category": "ui"
+        },
+        {
+          "query": "markdown rendering",
+          "expected_files": [
+            "packages/ui/src/components/markdown.tsx",
+            "packages/ui/src/context/marked.tsx"
+          ],
+          "category": "ui"
+        }
+      ]
+    },
+    "dojo": {
+      "queries": [
+        {
+          "query": "world storage and state management",
+          "expected_files": [
+            "crates/dojo/core/src/world/storage.cairo",
+            "crates/dojo/core/src/storage/storage.cairo",
+            "crates/dojo/types/src/storage.rs"
+          ],
+          "category": "core"
+        },
+        {
+          "query": "model definition and handling",
+          "expected_files": [
+            "crates/dojo/core/src/model/model.cairo",
+            "crates/dojo/world/src/contracts/model.rs",
+            "crates/dojo/macros/src/attributes/model.rs"
+          ],
+          "category": "core"
+        },
+        {
+          "query": "TypeScript code generation bindgen",
+          "expected_files": [
+            "crates/dojo/bindgen/src/plugins/typescript/generator/schema.rs",
+            "crates/dojo/bindgen/src/plugins/typescript/generator/models.rs"
+          ],
+          "category": "codegen"
+        },
+        {
+          "query": "Unity game engine bindings",
+          "expected_files": [
+            "crates/dojo/bindgen/src/plugins/unity/mod.rs"
+          ],
+          "category": "codegen"
+        },
+        {
+          "query": "configuration and environment",
+          "expected_files": [
+            "crates/dojo/world/src/config/mod.rs",
+            "crates/dojo/world/src/config/world_config.rs",
+            "crates/dojo/world/src/config/environment.rs"
+          ],
+          "category": "config"
+        },
+        {
+          "query": "transaction error handling",
+          "expected_files": [
+            "crates/dojo/utils/src/tx/error.rs"
+          ],
+          "category": "error"
+        }
+      ]
+    },
+    "codex": {
+      "queries": [
+        {
+          "query": "tool execution and handlers",
+          "expected_files": [
+            "codex-rs/core/src/tools",
+            "codex-rs/core/src/function_tool.rs",
+            "codex-rs/core/src/mcp_tool_call.rs"
+          ],
+          "category": "core"
+        },
+        {
+          "query": "sandbox security and isolation",
+          "expected_files": [
+            "codex-rs/core/src/tools/sandboxing.rs",
+            "codex-rs/core/src/sandboxing",
+            "codex-rs/linux-sandbox",
+            "codex-rs/windows-sandbox-rs"
+          ],
+          "category": "security"
+        },
+        {
+          "query": "agent message parsing and events",
+          "expected_files": [
+            "codex-rs/core/src/event_mapping.rs"
+          ],
+          "category": "core"
+        },
+        {
+          "query": "OAuth and authentication",
+          "expected_files": [
+            "codex-rs/rmcp-client/src/oauth.rs",
+            "codex-rs/rmcp-client/src/perform_oauth_login.rs",
+            "codex-rs/rmcp-client/src/auth_status.rs"
+          ],
+          "category": "auth"
+        },
+        {
+          "query": "TUI chat widget display",
+          "expected_files": [
+            "codex-rs/tui/src/chatwidget",
+            "codex-rs/tui2/src/chatwidget"
+          ],
+          "category": "ui"
+        },
+        {
+          "query": "API client and SSE streaming",
+          "expected_files": [
+            "codex-rs/codex-api/src/sse/chat.rs"
+          ],
+          "category": "api"
+        }
+      ]
+    }
+  }
+}
