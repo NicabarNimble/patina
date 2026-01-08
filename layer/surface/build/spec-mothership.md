@@ -13,15 +13,19 @@ spec-mothership.md (this file - vision + phases)
 │
 ├── Phase 0-0.25c: Git Narrative + Measurement ✅ (implemented here)
 │
-├── Phase 2: Knowledge Graph
-│   └── spec-mothership-graph.md ✅ COMPLETE
-│       Tag: spec/mothership-graph
+├── Phase 0.25b: Intent-Aware Retrieval ⏳ (mostly complete, needs MRR measurement)
+│   Delivered: QueryIntent, IntentWeights, detect_intent(), rrf_fuse_weighted()
+│
+├── Phase 0.5: Persona Surfaces ✅ COMPLETE (2026-01-08)
+│   Fixed: PersonaOracle table bug, [PERSONA] tags in CLI/MCP
+│
+├── Phase 2: Knowledge Graph ✅ COMPLETE
+│   └── spec-mothership-graph.md (tag: spec/mothership-graph)
 │       Delivered: graph.db, routing, weight learning (~1000 lines)
 │
 └── Content Layer (complements routing)
-    └── spec-ref-repo-semantic.md ← CURRENT FOCUS
-        Fixes: ref repos lack semantic.usearch
-        Solution: commit-based training pairs
+    └── spec-ref-repo-semantic.md ✅ COMPLETE (Phase 1-3)
+        Delivered: 13/13 repos with semantic indexes
 ```
 
 **Key insight:** Graph routing (WHERE to search) needs semantic content (WHAT to find). Both specs are required for cross-project queries to work well.
@@ -581,16 +585,22 @@ Oracles with higher weight for this intent contribute more to final ranking.
 
 | # | Component | Description | Status |
 |---|-----------|-------------|--------|
-| 1 | `QueryIntent` enum | temporal, rationale, mechanism, definition, general | |
-| 2 | `IntentWeights` | Per-intent oracle weight matrix | |
-| 3 | `rrf_fuse_weighted` | RRF with oracle-specific weights | |
-| 4 | MCP `intent` param | Expose intent in scry tool | |
-| 5 | Benchmark by intent | Measure MRR for each intent category | |
+| 1 | `QueryIntent` enum | temporal, rationale, mechanism, definition, general | ✅ Done |
+| 2 | `IntentWeights` | Per-intent oracle weight matrix | ✅ Done |
+| 3 | `rrf_fuse_weighted` | RRF with oracle-specific weights | ✅ Done |
+| 4 | MCP `intent` param | Expose intent in scry tool | Pending (auto-detection works) |
+| 5 | Benchmark by intent | Measure MRR for each intent category | Pending |
+
+**Implementation (2026-01-08):**
+- `src/retrieval/intent.rs`: `QueryIntent`, `IntentWeights`, `detect_intent()`
+- `src/retrieval/fusion.rs`: `rrf_fuse_weighted()` applies per-oracle weights
+- `src/retrieval/engine.rs`: Auto-detects intent, passes weights to RRF
 
 **Exit Criteria:**
-- [ ] Temporal intent MRR > 0.4 (baseline: 0.133)
-- [ ] Other intents don't regress from general baseline
-- [ ] LLM naturally uses intent parameter
+- [ ] Temporal intent MRR > 0.4 (baseline: 0.133) ← needs measurement
+- [x] Intent detection implemented and wired
+- [x] Weighted RRF implemented
+- [ ] LLM naturally uses intent parameter (pending MCP schema change)
 
 **Why This Is Durable:**
 1. Intent categories are stable (how humans ask questions)
@@ -823,18 +833,31 @@ Commit→file expansion in `LexicalOracle` follows relationships (like TemporalO
 
 ---
 
-### Phase 0.5: Persona Surfaces
+### Phase 0.5: Persona Surfaces ✅ COMPLETE
 
 **Problem:** PersonaOracle works but drowns in RRF fusion.
 
 **Solution:** Display separately. Persona is context, not competition.
 
-**Tasks:**
-- [ ] Add `[PERSONA]` section to scry output
-- [ ] MCP: include persona with `source: "persona"` tag
-- [ ] Verify: `patina scry "error handling"` shows belief
+**Implementation (2026-01-08):**
+- Fixed PersonaOracle table name bug (`beliefs` → `knowledge`)
+- `[PERSONA]` tag added to CLI hybrid output (`scry/internal/hybrid.rs:60-64`)
+- `[PERSONA]` tag added to MCP output (`mcp/server.rs:1001-1005`)
+- Persona results show source oracle contribution (`per #1`)
 
-**Exit:** Persona surfaces in scry results.
+**Tasks:**
+- [x] Add `[PERSONA]` section to scry output
+- [x] MCP: include persona with `source: "persona"` tag
+- [x] Verify: `patina scry "error handling"` shows belief
+
+**Exit:** ✅ Persona surfaces in scry results.
+
+**Verified (2026-01-08):**
+```bash
+patina scry "rust error handling" --hybrid
+# → [6] [PERSONA] persona:direct:2025-12-08T17:01:08+00:00 (score: 0.016) (per #1)
+#       I prefer unwrap() for quick prototyping
+```
 
 ### Phase 1: Federated Query
 
