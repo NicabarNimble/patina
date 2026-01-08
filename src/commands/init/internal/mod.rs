@@ -662,7 +662,10 @@ fn check_hierarchy_conflicts(force: bool) -> Result<()> {
         eprintln!(".claude/commands/ it finds. This would cause duplicate slash commands.");
         eprintln!();
         eprintln!("To fix:");
-        eprintln!("  1. Remove the parent .claude/: rm -rf {}/.claude", conflicting_parents[0].display());
+        eprintln!(
+            "  1. Remove the parent .claude/: rm -rf {}/.claude",
+            conflicting_parents[0].display()
+        );
         eprintln!("  2. Or use --force to ignore this check (not recommended)");
 
         if !force {
@@ -729,7 +732,13 @@ fn find_child_patina_projects(dir: &Path) -> Result<Vec<PathBuf>> {
         // Check for patina markers
         let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
-        if file_name == ".patina" || (file_name == "commands" && path.parent().map(|p| p.ends_with(".claude")).unwrap_or(false)) {
+        if file_name == ".patina"
+            || (file_name == "commands"
+                && path
+                    .parent()
+                    .map(|p| p.ends_with(".claude"))
+                    .unwrap_or(false))
+        {
             // Found a marker - return the project directory (parent of .patina or .claude)
             if let Some(project_dir) = path.parent() {
                 let project_dir = if file_name == "commands" {
