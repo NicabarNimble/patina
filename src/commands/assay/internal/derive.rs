@@ -329,6 +329,179 @@ fn compute_activity(conn: &Connection, path: &str) -> (String, Option<i64>, i64)
     }
 }
 
+// ============================================================================
+// Moments: Temporal signals from git history
+// ============================================================================
+
+/// Moment result
+#[derive(Debug, Serialize)]
+pub struct Moment {
+    pub sha: String,
+    pub moment_type: String,
+    pub file_count: i64,
+    pub timestamp: String,
+    pub message: String,
+}
+
+/// Moments summary
+#[derive(Debug, Serialize)]
+pub struct MomentsSummary {
+    pub total_commits: i64,
+    pub genesis: i64,
+    pub big_bang: i64,
+    pub major: i64,
+    pub breaking: i64,
+    pub migration: i64,
+    pub rewrite: i64,
+}
+
+/// Derive moments from git commits
+pub fn execute_derive_moments(conn: &Connection, options: &AssayOptions) -> Result<()> {
+    // Ensure moments table exists
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS moments (
+            sha TEXT PRIMARY KEY,
+            moment_type TEXT NOT NULL,
+            file_count INTEGER,
+            timestamp TEXT,
+            message TEXT
+        )",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_moments_type ON moments(moment_type)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_moments_timestamp ON moments(timestamp)",
+        [],
+    )?;
+
+    // Clear existing moments
+    conn.execute("DELETE FROM moments", [])?;
+
+    // Detect moments using SQL
+    // Priority order matters: genesis > big_bang > major > breaking/migration/rewrite
+    let moments_sql = r#"
+        WITH file_counts AS (
+            SELECT sha, COUNT(*) as files FROM commit_files GROUP BY sha
+        ),
+        genesis_sha AS (
+            SELECT sha FROM commits ORDER BY timestamp ASC LIMIT 1
+        ),
+        classified AS (
+            SELECT
+                c.sha,
+                c.message,
+                c.timestamp,
+                COALESCE(fc.files, 0) as file_count,
+                CASE
+                    WHEN c.sha = (SELECT sha FROM genesis_sha) THEN 'genesis'
+                    WHEN fc.files > 100 THEN 'big_bang'
+                    WHEN fc.files > 50 THEN 'major'
+                    WHEN LOWER(c.message) LIKE '%breaking%' THEN 'breaking'
+                    WHEN LOWER(c.message) LIKE '%rewrite%' THEN 'rewrite'
+                    WHEN LOWER(c.message) LIKE '%refactor%' THEN 'rewrite'
+                    WHEN LOWER(c.message) LIKE '%migrate%' THEN 'migration'
+                    WHEN LOWER(c.message) LIKE '%migration%' THEN 'migration'
+                    ELSE NULL
+                END as moment_type
+            FROM commits c
+            LEFT JOIN file_counts fc ON c.sha = fc.sha
+        )
+        SELECT sha, message, timestamp, file_count, moment_type
+        FROM classified
+        WHERE moment_type IS NOT NULL
+        ORDER BY timestamp ASC
+    "#;
+
+    let mut stmt = conn.prepare(moments_sql)?;
+    let moments: Vec<Moment> = stmt
+        .query_map([], |row| {
+            Ok(Moment {
+                sha: row.get(0)?,
+                message: row.get(1)?,
+                timestamp: row.get(2)?,
+                file_count: row.get(3)?,
+                moment_type: row.get(4)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Insert into moments table
+    let mut insert_stmt = conn.prepare(
+        "INSERT INTO moments (sha, moment_type, file_count, timestamp, message) VALUES (?, ?, ?, ?, ?)",
+    )?;
+
+    for m in &moments {
+        insert_stmt.execute(rusqlite::params![
+            &m.sha,
+            &m.moment_type,
+            m.file_count,
+            &m.timestamp,
+            &m.message,
+        ])?;
+    }
+
+    // Compute summary
+    let total_commits: i64 = conn.query_row("SELECT COUNT(*) FROM commits", [], |r| r.get(0))?;
+    let count_type = |t: &str| -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM moments WHERE moment_type = ?",
+            [t],
+            |r| r.get(0),
+        )
+        .unwrap_or(0)
+    };
+
+    let summary = MomentsSummary {
+        total_commits,
+        genesis: count_type("genesis"),
+        big_bang: count_type("big_bang"),
+        major: count_type("major"),
+        breaking: count_type("breaking"),
+        migration: count_type("migration"),
+        rewrite: count_type("rewrite"),
+    };
+
+    if options.json {
+        let result = serde_json::json!({
+            "moments": moments,
+            "summary": summary,
+        });
+        println!("{}", serde_json::to_string_pretty(&result)?);
+    } else {
+        println!("Moments Derived (Temporal Signals)\n");
+        println!(
+            "Summary: {} commits → {} genesis, {} big_bang, {} major, {} breaking, {} migration, {} rewrite\n",
+            summary.total_commits,
+            summary.genesis,
+            summary.big_bang,
+            summary.major,
+            summary.breaking,
+            summary.migration,
+            summary.rewrite,
+        );
+
+        if !moments.is_empty() {
+            println!("{:<12} {:<10} {:>6} Message", "Type", "SHA", "Files");
+            println!("{}", "-".repeat(80));
+            for m in &moments {
+                println!(
+                    "{:<12} {:<10} {:>6} {}",
+                    m.moment_type,
+                    &m.sha[..10.min(m.sha.len())],
+                    m.file_count,
+                    truncate(&m.message, 45),
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Get top contributors for a file
 /// Returns (top_contributors, contributor_count)
 fn compute_contributors(conn: &Connection, path: &str) -> (Vec<String>, i64) {

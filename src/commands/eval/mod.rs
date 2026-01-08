@@ -136,13 +136,8 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
             limit: 10,
             min_score: 0.0,
             dimension: Some("semantic".to_string()),
-            file: None,
-            repo: None,
-            all_repos: false,
-            include_issues: false,
             include_persona: false, // Eval doesn't need persona
-            hybrid: false,
-            explain: false,
+            ..Default::default()
         };
 
         if let Ok(results) = scry(query, &options) {
@@ -240,13 +235,8 @@ fn eval_temporal_text(conn: &Connection) -> Result<EvalResults> {
             limit: 10,
             min_score: 0.0,
             dimension: Some("temporal".to_string()),
-            file: None,
-            repo: None,
-            all_repos: false,
-            include_issues: false,
             include_persona: false,
-            hybrid: false,
-            explain: false,
+            ..Default::default()
         };
 
         if let Ok(results) = scry(query, &options) {
@@ -336,13 +326,8 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
             limit: 10,
             min_score: 0.0,
             dimension: Some("temporal".to_string()),
-            file: None,
-            repo: None,
-            all_repos: false,
-            include_issues: false,
             include_persona: false,
-            hybrid: false,
-            explain: false,
+            ..Default::default()
         };
 
         if let Ok(results) = scry(&query, &options) {

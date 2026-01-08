@@ -2,6 +2,7 @@
 //!
 //! Phase 2: Training + safetensors export + USearch index building
 
+pub mod commits;
 pub mod dependency;
 pub mod pairs;
 pub mod recipe;
@@ -9,6 +10,7 @@ pub mod temporal;
 pub mod trainer;
 
 use anyhow::{Context, Result};
+use commits::{generate_commit_pairs, has_commits, has_sessions};
 use dependency::generate_dependency_pairs;
 use pairs::{generate_same_session_pairs, TrainingPair};
 use recipe::{OxidizeRecipe, ProjectionConfig};
@@ -93,8 +95,23 @@ fn train_projection(
     // Generate pairs based on projection type
     let pairs: Vec<TrainingPair> = match name {
         "semantic" => {
-            println!("   Strategy: observations from same session are similar");
-            generate_same_session_pairs(db_path, num_pairs)?
+            // Check which training signal is available
+            let conn = rusqlite::Connection::open(db_path)
+                .with_context(|| format!("Failed to open database: {}", db_path))?;
+
+            if has_sessions(&conn)? {
+                // Sessions capture user intent (what user thinks about together)
+                println!("   Strategy: session observations capture user intent");
+                drop(conn);
+                generate_same_session_pairs(db_path, num_pairs)?
+            } else if has_commits(&conn)? {
+                // Commits capture code cohesion (what changes together)
+                println!("   Strategy: commit messages capture code cohesion");
+                drop(conn);
+                generate_commit_pairs(db_path, num_pairs)?
+            } else {
+                anyhow::bail!("No training signal: neither sessions nor commits found")
+            }
         }
         "temporal" => {
             println!("   Strategy: files that co-change are related");
@@ -290,42 +307,54 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
     let code_count = events.len() - session_count;
 
     // 3. Layer patterns from patterns + pattern_fts tables (use offset to avoid ID collision)
+    // Note: patterns table may not exist in ref repos - skip gracefully
     const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
-    let mut stmt = conn.prepare(
-        "SELECT p.rowid, p.id, p.title, p.purpose, f.content, p.tags, p.file_path
-         FROM patterns p
-         LEFT JOIN pattern_fts f ON p.id = f.id",
-    )?;
+    let has_patterns: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='patterns'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
 
-    let mut rows = stmt.query([])?;
-    while let Some(row) = rows.next()? {
-        let rowid: i64 = row.get(0)?;
-        let id: String = row.get(1)?;
-        let title: String = row.get(2)?;
-        let purpose: Option<String> = row.get(3)?;
-        let content: Option<String> = row.get(4)?;
-        let tags: Option<String> = row.get(5)?;
-        let file_path: String = row.get(6)?;
+    if has_patterns {
+        let mut stmt = conn.prepare(
+            "SELECT p.rowid, p.id, p.title, p.purpose, f.content, p.tags, p.file_path
+             FROM patterns p
+             LEFT JOIN pattern_fts f ON p.id = f.id",
+        )?;
 
-        // Create embeddable text for the pattern
-        // Include title, purpose, tags, and content for rich semantic matching
-        let mut desc = format!("Pattern: {} - {}", title, id);
-        if let Some(p) = purpose {
-            desc.push_str(&format!(". Purpose: {}", p));
-        }
-        if let Some(t) = tags {
-            if !t.is_empty() {
-                desc.push_str(&format!(". Tags: {}", t));
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let rowid: i64 = row.get(0)?;
+            let id: String = row.get(1)?;
+            let title: String = row.get(2)?;
+            let purpose: Option<String> = row.get(3)?;
+            let content: Option<String> = row.get(4)?;
+            let tags: Option<String> = row.get(5)?;
+            let file_path: String = row.get(6)?;
+
+            // Create embeddable text for the pattern
+            // Include title, purpose, tags, and content for rich semantic matching
+            let mut desc = format!("Pattern: {} - {}", title, id);
+            if let Some(p) = purpose {
+                desc.push_str(&format!(". Purpose: {}", p));
             }
-        }
-        // Include first ~500 chars of content for context
-        if let Some(c) = content {
-            let content_preview: String = c.chars().take(500).collect();
-            desc.push_str(&format!(". Content: {}", content_preview));
-        }
-        desc.push_str(&format!(". File: {}", file_path));
+            if let Some(t) = tags {
+                if !t.is_empty() {
+                    desc.push_str(&format!(". Tags: {}", t));
+                }
+            }
+            // Include first ~500 chars of content for context
+            if let Some(c) = content {
+                let content_preview: String = c.chars().take(500).collect();
+                desc.push_str(&format!(". Content: {}", content_preview));
+            }
+            desc.push_str(&format!(". File: {}", file_path));
 
-        events.push((PATTERN_ID_OFFSET + rowid, desc));
+            events.push((PATTERN_ID_OFFSET + rowid, desc));
+        }
     }
 
     let pattern_count = events.len() - session_count - code_count;

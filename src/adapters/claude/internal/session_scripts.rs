@@ -16,14 +16,6 @@ const SESSION_NOTE_MD: &str = include_str!("../../../../resources/claude/session
 const SESSION_END_SH: &str = include_str!("../../../../resources/claude/session-end.sh");
 const SESSION_END_MD: &str = include_str!("../../../../resources/claude/session-end.md");
 
-// Embed launch command from resources
-const LAUNCH_SH: &str = include_str!("../../../../resources/claude/launch.sh");
-const LAUNCH_MD: &str = include_str!("../../../../resources/claude/launch.md");
-
-// Embed persona-start command from resources
-const PERSONA_START_SH: &str = include_str!("../../../../resources/claude/persona-start.sh");
-const PERSONA_START_MD: &str = include_str!("../../../../resources/claude/persona-start.md");
-
 // Embed patina-review command from resources
 const PATINA_REVIEW_MD: &str = include_str!("../../../../resources/claude/patina-review.md");
 
@@ -51,14 +43,6 @@ pub fn create_session_scripts(project_path: &Path) -> Result<()> {
     // Create session-end
     write_script(&bin_path.join("session-end.sh"), SESSION_END_SH)?;
     fs::write(commands_path.join("session-end.md"), SESSION_END_MD)?;
-
-    // launch command
-    write_script(&bin_path.join("launch.sh"), LAUNCH_SH)?;
-    fs::write(commands_path.join("launch.md"), LAUNCH_MD)?;
-
-    // persona-start command
-    write_script(&bin_path.join("persona-start.sh"), PERSONA_START_SH)?;
-    fs::write(commands_path.join("persona-start.md"), PERSONA_START_MD)?;
 
     // patina-review command (no shell script, just prompt)
     fs::write(commands_path.join("patina-review.md"), PATINA_REVIEW_MD)?;

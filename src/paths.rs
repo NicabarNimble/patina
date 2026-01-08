@@ -141,6 +141,21 @@ pub mod secrets {
     }
 }
 
+/// Mother paths (cross-project graph and federation)
+pub mod mother {
+    use super::*;
+
+    /// Mother data directory: `~/.patina/mother/`
+    pub fn data_dir() -> PathBuf {
+        patina_home().join("mother")
+    }
+
+    /// Relationship graph: `~/.patina/mother/graph.db`
+    pub fn graph_db() -> PathBuf {
+        data_dir().join("graph.db")
+    }
+}
+
 /// Model management paths (base models shared across projects)
 pub mod models {
     use super::*;

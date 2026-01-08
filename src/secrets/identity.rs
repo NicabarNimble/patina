@@ -14,6 +14,13 @@ use std::str::FromStr;
 /// Environment variable for identity (CI/headless path).
 pub const IDENTITY_ENV_VAR: &str = "PATINA_IDENTITY";
 
+/// Debug logging for secrets module (Phase 0 observability)
+fn log_debug(msg: &str) {
+    if std::env::var("PATINA_LOG").is_ok() {
+        eprintln!("[DEBUG secrets::identity] {}", msg);
+    }
+}
+
 /// Get the age identity for decryption.
 ///
 /// Checks env var first (CI/headless), then Keychain (Mac with Touch ID).
@@ -31,11 +38,14 @@ pub fn get_identity_string() -> Result<String> {
     // 1. Check env first (CI/headless path)
     if let Ok(identity) = std::env::var(IDENTITY_ENV_VAR) {
         if !identity.is_empty() {
+            log_debug("source = PATINA_IDENTITY (env var)");
             return Ok(identity);
         }
+        log_debug("PATINA_IDENTITY set but empty, falling back to Keychain");
     }
 
     // 2. Fall back to Keychain (Mac with Touch ID)
+    log_debug("source = Keychain");
     keychain::get_identity()
 }
 

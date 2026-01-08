@@ -1,8 +1,8 @@
 # Build Recipe
 
-**Status:** Architectural alignment - ensuring unmistakable adherence to layer/core values.
+**Status:** Architectural alignment - internal code quality meets core values.
 
-**Recent:** Evolved spec-command-refactoring into comprehensive spec-architectural-alignment. Documents two-layer architecture (binary/library split), alignment tiers, command/library matrices. Scry refactoring complete (-90%). Secrets refactoring cancelled (analysis showed command is appropriately thin, library already follows black-box pattern). Priority refactors: assay (997 lines), audit (797), doctor (602).
+**Recent:** Legacy cleanup complete (2025-12-30). Removed ~1,100 lines: layer/dust/repos system and audit.rs. Doctor slimmed to 278 lines (pure health checks). All priority refactors done - scry, assay, doctor now in Exemplary/Acceptable tiers. See spec-architectural-alignment.md for living alignment matrix.
 
 ---
 
@@ -82,40 +82,150 @@ Run regularly to catch regressions.
 
 ## Specs
 
-Active specs:
+### Active
 
-- [spec-architectural-alignment.md](../surface/build/spec-architectural-alignment.md) - **Living document:** Command/library alignment matrices, enforcement checklist, planned refactors
-- [spec-persona-fusion.md](../surface/build/spec-persona-fusion.md) - Phase 1 complete (observability), Phase 2 deferred
+Currently being worked on:
+
+- [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **COMPLETE (Phase 1-3):** 13/13 repos with semantic indexes
+- [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 0 complete:** Git narrative + measurement
+- [spec-mothership-graph.md](../surface/build/spec-mothership-graph.md) - **COMPLETE (G0-G2.5):** Graph routing, weight learning (see `spec/mothership-graph` tag)
+- [spec-observability.md](../surface/build/spec-observability.md) - **Phase 0 complete**, Phase 1 deferred
+- [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** Responsibility separation (mother/patina/awaken)
+
+---
+
+## Next: Ref Repo Semantic Gap
+
+**Problem:** Ref repos have `dependency.usearch` but NO `semantic.usearch`. Root cause: `oxidize semantic` trains on session observations ("same session = similar"), but ref repos have no sessions.
+
+**Solution:** Use commit messages as training signal. Analysis complete in [analysis-commit-training-signal.md](../surface/analysis-commit-training-signal.md).
+
+**Spec:** [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md)
+
+### Phase 1: Commit-Based Training (Complete)
+
+| Task | Effort | Status |
+|------|--------|--------|
+| Implement `generate_commit_pairs()` | 372 lines | ✅ |
+| Add fallback in oxidize (commits when no sessions) | ~30 lines | ✅ |
+| Run oxidize on Tier 1-2 repos | ~30 min | ✅ |
+| Measure semantic quality before/after | ~30 min | ✅ |
+
+**Results:** Tier 1 (gemini-cli) and Tier 2 (dojo, opencode, codex) now have semantic search. Before: FTS5 text matches. After: actual telemetry functions (`updateTelemetryTokenCount`, `ActivityMonitor`).
+
+### Phase 2: First-Class Commit Signal (Complete)
+
+**Insight:** Commits are a first-class training signal, not a fallback.
+
+Commits capture **code cohesion** (what changes together) — valuable in its own right, available in ALL repos.
+
+| Task | Effort | Status |
+|------|--------|--------|
+| Refactor: commits as first-class (not fallback) | ~20 lines | ✅ |
+| Update output messages (remove "fallback" framing) | ~5 lines | ✅ |
+| Validate on ref repos (no regression) | ~10 min | ✅ |
+
+### Phase 3: Measure & Optimize (Complete)
+
+Apply Ng method to commit signal quality.
+
+| Task | Effort | Status |
+|------|--------|--------|
+| Build eval queries for ref repos | ~20 min | ✅ |
+| Measure commit signal quality | ~30 min | ✅ |
+| Fix recipe creation gap | ~20 lines | ✅ |
+| Rebuild all repos with semantic | ~15 min | ✅ |
+| Fix token length issue | ~10 lines | ✅ |
+
+**Results:** 13/13 repos now have semantic indexes (66-83% hit rate). Token truncation fix enabled SDL (12,137 vectors) and livestore (2,984 vectors).
+
+**Design principle (Ng/Sutton):** Simplest fix that closes the loop. Don't build Codex Q&A Agent infrastructure—implement commit-based training pairs and measure.
+
+---
+
+## Completed: Mothership Graph (G2.5)
+
+**Specs:**
+- [spec-mothership.md](../surface/build/spec-mothership.md) - Full architecture (phases 0-3)
+- [spec-mothership-graph.md](../surface/build/spec-mothership-graph.md) - Graph layer for cross-project awareness
+
+| Phase | Build | Exit |
+|-------|-------|------|
+| **0-0.25c** | Git Narrative + Measurement | ✅ Complete (2026-01-05) |
+| **G0** | Cross-Project Measurement | ✅ Complete (2026-01-05) - gap proven |
+| **G1** | Graph Foundation | ✅ Complete (2026-01-06) - CLI, sync, edges |
+| **G2** | Smart Routing | ✅ Complete (2026-01-06) - proof of concept working |
+| **G2.5** | Measurement + Learning | ✅ Complete (2026-01-06) - ~1000 lines implementation |
+| **G3** | Auto-Detection | Deferred - auto-populate edges from code/sessions |
+| **0.5** | Persona surfaces | Deferred - `[PERSONA]` + `[PROJECT]` sections in scry |
+
+**G2.5 Delivered:**
+- ✅ edge_usage table + routing context logging (475 lines)
+- ✅ scry.use → edge_usage linking (feedback signal connected)
+- ✅ Weight learning algorithm (290 lines)
+- ✅ `patina mother stats` command (93 lines)
+- ✅ `patina mother learn` command (83 lines)
+- ✅ Bench repo recall metric (89 lines)
+- ✅ Graph routing: 100% repo recall vs 0% dumb routing
+- ✅ Weights learned from usage: 1.0 → 1.02-1.06
+
+**Key insight:** Graph routing works. Now fix semantic gap in ref repos so routing has good content to find.
+
+### Reference
+
+Living documentation (not phased work):
+
+- [spec-architectural-alignment.md](../surface/build/spec-architectural-alignment.md) - Command/library alignment matrices
 - [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
 - [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
-- [spec-work-deferred.md](../surface/build/spec-work-deferred.md) - Deferred work with context for why/when
-- [spec-hosts-deploy.md](../surface/build/spec-hosts-deploy.md) - Persistent server deployment (future exploration)
 
-Archived specs (preserved via git tags):
+### Deferred
 
-- `spec/command-refactoring` - Scry refactoring (superseded by architectural-alignment)
+See [deferred/](../surface/build/deferred/) folder. Categories:
+
+- **Parked** - Started, got partial win, waiting for conditions
+- **Blocked** - Ready to start, waiting for dependency
+- **Backlog** - Will do, lower priority than current focus
+- **Ideas** - Might do, not planned
+
+Key items:
+- `spec-retrieval-optimization.md` - Phase 0-1 complete (6.8x faster), Phase 2-4 need 100+ queries
+- `spec-persona-fusion.md` - Phase 1 complete, Phase 2 deferred
+- `spec-work-deferred.md` - Legacy backlog (needs rebuild into proper specs)
+
+### Archived (git tags)
+
+Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
+
+- `spec/llm-frontends` - Unified 5-command experience across Claude, Gemini, OpenCode
+- `spec/remove-legacy-repos-and-audit` - Removed layer/dust/repos and audit.rs (~1,100 lines)
 - `spec/quality-gates` - MRR regression fix (0.427→0.588), legacy cleanup, CI gate
-- `spec/secrets-v2` - Secrets v2: Local age-encrypted vault with Touch ID (current)
-- `spec/secrets-1password` - Secrets v1: 1Password integration (superseded by v2)
-- `spec/observable-scry` - Phase 1-3: Structured response, explicit modes, feedback logging
-- `spec/robust-signals` - Structural signals experiments (Phase 1-2)
-- `spec/fts-deduplication` - FTS5 deduplication fix
-- `spec/code-audit` - Code audit analysis
+- `spec/secrets-v2` - Local age-encrypted vault with Touch ID
+- `spec/observable-scry` - Structured response, explicit modes, feedback logging
+- `spec/robust-signals` - Structural signals experiments
 - `spec/feedback-loop` - Measure and learn from retrieval quality
 - `spec/model-management` - Base model download, caching, provenance
-- `spec/assay` - Phase 0: Structural query command (inventory, imports, callers)
+- `spec/assay` - Structural query command
 - `spec/mcp-retrieval-polish` - MCP tool rename, temporal oracle, hybrid mode
+- `spec/agentic-rag` - Oracle abstraction, hybrid retrieval, MCP server
 
-Future specs (not yet planned):
-
-- [spec-lab-automation.md](../surface/build/spec-lab-automation.md) - Automated benchmarking, model comparison, metrics history
-- [spec-github-adapter.md](../surface/build/spec-github-adapter.md) - GitHub integration
+Full list: `git tag -l 'spec/*'`
 
 ---
 
 ## Completed
 
 Shipped phases (details preserved in git tags and specs):
+
+### Legacy Cleanup (doctor/audit/repos)
+
+Removed deprecated systems: layer/dust/repos (replaced by `patina repo`) and audit.rs (low-value hidden tool). Doctor slimmed from 602→278 lines, now pure health checks. Total: ~1,100 lines removed. Tracked in spec-architectural-alignment.md.
+
+**Tag:** `spec/remove-legacy-repos-and-audit`
+
+### Assay Refactoring
+
+Refactored assay command from monolithic 997-line file to black-box pattern with internal/ modules. Result: mod.rs 134 lines (-86%), 6 focused internal modules (util, imports, inventory, functions, derive). Follows dependable-rust pattern established in scry refactoring. Tracked in spec-architectural-alignment.md.
 
 ### Quality Gates
 
@@ -149,7 +259,7 @@ Added structural signal computation to assay (`assay derive`): is_used, importer
 
 Phase 2 experiment: tried boosting RRF scores with structural priors. Result: no improvement for relevance queries. Boost layer removed. Key lesson: structural signals are priors (importance), not relevance signals. Useful for orientation queries, not "where is X" queries.
 
-**Spec:** [spec-robust-signals.md](../surface/build/spec-robust-signals.md), [spec-work-deferred.md](../surface/build/spec-work-deferred.md)
+**Tag:** `spec/robust-signals`
 
 ### Assay Command (Phase 0)
 Structural query interface for codebase facts. Inventory, imports/importers, callers/callees queries. MCP tool integration. Reduces 40+ shell calls to 1-3 patina commands.
@@ -195,6 +305,11 @@ release-plz workflow for automated GitHub releases. v0.1.0 baseline created. Con
 
 **Tags:** `spec/release-automation`
 
+### Mothership Graph (G0-G2.5)
+Cross-project awareness via relationship graph. Phases G0-G2.5 delivered ~1000 lines: graph foundation (graph.db, nodes, edges, CLI), smart routing (100% repo recall vs 0% dumb), learning loop (edge_usage, weight learning). Key commands: `patina mother graph/link/sync/stats/learn`. G3 (auto-detection) deferred.
+
+**Tag:** `spec/mothership-graph`
+
 ---
 
 ## Archive
@@ -206,4 +321,4 @@ git tag -l 'spec/*'              # List archived specs
 git show spec/scry:layer/surface/build/spec-scry.md  # View archived spec
 ```
 
-**Tags:** `spec/quality-gates`, `spec/observable-scry`, `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`
+**Tags:** `spec/llm-frontends`, `spec/quality-gates`, `spec/secrets-v2`, `spec/observable-scry`, `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`, `spec/remove-legacy-repos-and-audit`, `spec/robust-signals`, `spec/mothership-graph`

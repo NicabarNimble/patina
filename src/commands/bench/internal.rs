@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::{Duration, Instant};
 
-use crate::retrieval::{QueryEngine, RetrievalConfig};
+use crate::retrieval::{QueryEngine, QueryOptions, RetrievalConfig};
 use patina::project;
 
 /// A single benchmark query with ground truth
@@ -20,9 +20,18 @@ pub struct BenchQuery {
     /// Relevant documents by path/ID (preferred - explicit document matching)
     #[serde(default)]
     pub relevant_docs: Vec<String>,
+    /// Relevant commits (for commit-derived querysets)
+    #[serde(default)]
+    pub relevant_commits: Vec<String>,
+    /// Source commit SHA (for commit-derived querysets)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_commit: Option<String>,
     /// Legacy: keywords for substring matching (deprecated, use relevant_docs)
     #[serde(default)]
     pub relevant: Vec<String>,
+    /// Expected repos for cross-project queries (G2.5)
+    #[serde(default)]
+    pub expected_repos: Vec<String>,
 }
 
 /// Query set for benchmarking
@@ -33,6 +42,15 @@ pub struct QuerySet {
     /// Optional description
     #[serde(default)]
     pub description: String,
+    /// Source of the queryset (e.g., "git commits", "sessions", "manual")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    /// Repository name (for ref repo querysets)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    /// When this queryset was generated
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generated: Option<String>,
     /// Benchmark queries with ground truth
     pub queries: Vec<BenchQuery>,
 }
@@ -54,6 +72,8 @@ struct QueryResult {
     reciprocal_rank: f64,
     recall_at_5: f64,
     recall_at_10: f64,
+    /// Repo recall for cross-project queries (None if no expected_repos)
+    repo_recall: Option<f64>,
 }
 
 /// Aggregate benchmark results
@@ -67,6 +87,9 @@ struct BenchmarkResults {
     latency_p50_ms: f64,
     latency_p95_ms: f64,
     latency_mean_ms: f64,
+    /// Repo recall for cross-project queries (None if not applicable)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    repo_recall: Option<f64>,
 }
 
 /// Ground truth for a benchmark query
@@ -164,6 +187,35 @@ fn recall_at_k(retrieved: &[String], ground_truth: &GroundTruth, k: usize) -> f6
             .count();
         found as f64 / expected as f64
     }
+}
+
+/// Calculate repo recall for cross-project queries (G2.5)
+///
+/// Measures: did we find results from the expected repos?
+/// Returns None if no expected_repos specified.
+fn repo_recall(retrieved: &[String], expected_repos: &[String]) -> Option<f64> {
+    if expected_repos.is_empty() {
+        return None;
+    }
+
+    // Extract repos from doc_ids (format: "repo:path" or just "path")
+    // Local docs (no colon) are skipped - they don't contribute to cross-project recall
+    let found_repos: std::collections::HashSet<String> = retrieved
+        .iter()
+        .filter_map(|doc_id| doc_id.find(':').map(|idx| doc_id[..idx].to_string()))
+        .collect();
+
+    // Count how many expected repos had results
+    let matched = expected_repos
+        .iter()
+        .filter(|exp| {
+            found_repos
+                .iter()
+                .any(|found| found.eq_ignore_ascii_case(exp) || found.contains(exp.as_str()))
+        })
+        .count();
+
+    Some(matched as f64 / expected_repos.len() as f64)
 }
 
 /// Print detailed analysis for a query (verbose mode)
@@ -274,6 +326,7 @@ pub fn run_benchmark(
     json_output: bool,
     verbose: bool,
     config: RetrievalConfig,
+    repo: Option<String>,
 ) -> Result<()> {
     println!("🔬 Patina Retrieval Benchmark");
     println!(
@@ -293,10 +346,21 @@ pub fn run_benchmark(
         None => "all".to_string(),
     };
     println!("   Oracles: {}", oracle_desc);
+
+    // Show repo if specified
+    if let Some(ref repo_name) = repo {
+        println!("   Repo: {}", repo_name);
+    }
     println!();
 
     // Initialize query engine with config
     let engine = QueryEngine::with_config(config);
+
+    // Build query options for repo-specific queries
+    let query_options = QueryOptions {
+        repo: repo.clone(),
+        ..Default::default()
+    };
 
     // Run each query
     let mut results: Vec<QueryResult> = Vec::new();
@@ -310,7 +374,11 @@ pub fn run_benchmark(
         );
 
         let start = Instant::now();
-        let fused_results = engine.query(&bench_query.query, limit)?;
+        let fused_results = if repo.is_some() {
+            engine.query_with_options(&bench_query.query, limit, &query_options)?
+        } else {
+            engine.query(&bench_query.query, limit)?
+        };
         let latency = start.elapsed();
 
         let retrieved_docs: Vec<String> = fused_results.iter().map(|r| r.doc_id.clone()).collect();
@@ -319,14 +387,27 @@ pub fn run_benchmark(
         let rr = reciprocal_rank(&retrieved_docs, &ground_truth);
         let r5 = recall_at_k(&retrieved_docs, &ground_truth, 5);
         let r10 = recall_at_k(&retrieved_docs, &ground_truth, 10);
+        let rrepo = repo_recall(&retrieved_docs, &bench_query.expected_repos);
 
-        println!(
-            "{:.0}ms (RR={:.2}, R@5={:.0}%, R@10={:.0}%)",
-            latency.as_millis(),
-            rr,
-            r5 * 100.0,
-            r10 * 100.0
-        );
+        // Show repo recall if this is a cross-project query
+        if let Some(repo_r) = rrepo {
+            println!(
+                "{:.0}ms (RR={:.2}, R@5={:.0}%, R@10={:.0}%, Repo={:.0}%)",
+                latency.as_millis(),
+                rr,
+                r5 * 100.0,
+                r10 * 100.0,
+                repo_r * 100.0
+            );
+        } else {
+            println!(
+                "{:.0}ms (RR={:.2}, R@5={:.0}%, R@10={:.0}%)",
+                latency.as_millis(),
+                rr,
+                r5 * 100.0,
+                r10 * 100.0
+            );
+        }
 
         // Verbose: show detailed analysis for failures or all queries
         if verbose {
@@ -338,6 +419,7 @@ pub fn run_benchmark(
             reciprocal_rank: rr,
             recall_at_5: r5,
             recall_at_10: r10,
+            repo_recall: rrepo,
         });
     }
 
@@ -346,6 +428,14 @@ pub fn run_benchmark(
     let mrr = results.iter().map(|r| r.reciprocal_rank).sum::<f64>() / num_queries as f64;
     let recall_5 = results.iter().map(|r| r.recall_at_5).sum::<f64>() / num_queries as f64;
     let recall_10 = results.iter().map(|r| r.recall_at_10).sum::<f64>() / num_queries as f64;
+
+    // Calculate repo recall if any queries had expected_repos
+    let repo_recalls: Vec<f64> = results.iter().filter_map(|r| r.repo_recall).collect();
+    let avg_repo_recall = if !repo_recalls.is_empty() {
+        Some(repo_recalls.iter().sum::<f64>() / repo_recalls.len() as f64)
+    } else {
+        None
+    };
 
     let mut latencies: Vec<Duration> = results.iter().map(|r| r.latency).collect();
     latencies.sort();
@@ -363,6 +453,7 @@ pub fn run_benchmark(
         latency_p50_ms: latency_p50.as_secs_f64() * 1000.0,
         latency_p95_ms: latency_p95.as_secs_f64() * 1000.0,
         latency_mean_ms: latency_mean.as_secs_f64() * 1000.0,
+        repo_recall: avg_repo_recall,
     };
 
     if json_output {
@@ -377,6 +468,19 @@ pub fn run_benchmark(
         println!("   ├─ MRR:        {:.3}", mrr);
         println!("   ├─ Recall@5:   {:.1}%", recall_5 * 100.0);
         println!("   └─ Recall@10:  {:.1}%", recall_10 * 100.0);
+
+        // Show routing metrics if this is a cross-project queryset
+        if let Some(repo_r) = avg_repo_recall {
+            println!();
+            println!("   Routing Metrics (cross-project):");
+            println!(
+                "   └─ Repo Recall: {:.1}% ({}/{} queries with expected_repos)",
+                repo_r * 100.0,
+                repo_recalls.len(),
+                num_queries
+            );
+        }
+
         println!();
         println!("   Latency:");
         println!("   ├─ p50:  {:.0}ms", latency_p50.as_millis());
@@ -396,4 +500,165 @@ pub fn run_benchmark(
     }
 
     Ok(())
+}
+
+/// Internal configuration for queryset generation
+/// (Public interface is in mod.rs::GenerateOptions)
+pub struct GenerateConfig {
+    /// Repository name (None = current project)
+    pub repo: Option<String>,
+    /// Maximum number of queries to generate
+    pub limit: usize,
+    /// Minimum commit message length (implementation detail)
+    pub min_message_len: usize,
+    /// Maximum commit message length (implementation detail)
+    pub max_message_len: usize,
+    /// Minimum files changed per commit (implementation detail)
+    pub min_files: usize,
+    /// Maximum files changed per commit (implementation detail)
+    pub max_files: usize,
+}
+
+impl Default for GenerateConfig {
+    fn default() -> Self {
+        Self {
+            repo: None,
+            limit: 100,
+            min_message_len: 20,
+            max_message_len: 200,
+            min_files: 2,
+            max_files: 15,
+        }
+    }
+}
+
+/// Generate a queryset from git commits
+pub fn generate_from_commits(config: GenerateConfig) -> Result<QuerySet> {
+    use chrono::Utc;
+    use rusqlite::Connection;
+
+    // Determine database path
+    let db_path = if let Some(ref repo_name) = config.repo {
+        crate::commands::repo::get_db_path(repo_name)?
+    } else {
+        ".patina/data/patina.db".to_string()
+    };
+
+    let conn = Connection::open(&db_path)
+        .with_context(|| format!("Failed to open database: {}", db_path))?;
+
+    // Query for good commits
+    let sql = r#"
+        SELECT
+            c.sha,
+            c.message,
+            GROUP_CONCAT(cf.file_path, '|') as files
+        FROM commits c
+        JOIN commit_files cf ON c.sha = cf.sha
+        WHERE length(c.message) > ?
+          AND length(c.message) < ?
+          AND c.message NOT LIKE 'Merge%'
+          AND c.message NOT LIKE 'WIP%'
+          AND c.message NOT LIKE 'wip%'
+          AND c.message NOT LIKE 'fixup%'
+          AND c.message NOT LIKE 'squash%'
+        GROUP BY c.sha
+        HAVING COUNT(cf.file_path) >= ? AND COUNT(cf.file_path) <= ?
+        ORDER BY c.timestamp DESC
+        LIMIT ?
+    "#;
+
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map(
+        rusqlite::params![
+            config.min_message_len,
+            config.max_message_len,
+            config.min_files,
+            config.max_files,
+            config.limit
+        ],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?, // sha
+                row.get::<_, String>(1)?, // message
+                row.get::<_, String>(2)?, // files (pipe-separated)
+            ))
+        },
+    )?;
+
+    let mut queries = Vec::new();
+    for row in rows {
+        let (sha, message, files_str) = row?;
+
+        // Clean the commit message (take first line, remove conventional commit prefix)
+        let query = clean_commit_message(&message);
+        if query.is_empty() {
+            continue;
+        }
+
+        // Parse files
+        let files: Vec<String> = files_str.split('|').map(|s| s.to_string()).collect();
+
+        // Create short SHA for ID
+        let short_sha = &sha[..8.min(sha.len())];
+
+        queries.push(BenchQuery {
+            id: format!("q_{}", short_sha),
+            query,
+            relevant_docs: files,
+            relevant_commits: vec![sha.clone()],
+            source_commit: Some(sha),
+            relevant: vec![],       // No legacy keywords
+            expected_repos: vec![], // No cross-project expectations for commit-derived queries
+        });
+    }
+
+    let repo_name = config.repo.clone().unwrap_or_else(|| "local".to_string());
+    let timestamp = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    Ok(QuerySet {
+        name: format!("{}-commits-v1", repo_name),
+        description: format!(
+            "Auto-generated from {} git commits ({} queries)",
+            repo_name,
+            queries.len()
+        ),
+        source: Some("git commits (auto-generated)".to_string()),
+        repo: config.repo,
+        generated: Some(timestamp),
+        queries,
+    })
+}
+
+/// Clean a commit message for use as a query
+fn clean_commit_message(message: &str) -> String {
+    // Take first line only
+    let first_line = message.lines().next().unwrap_or(message);
+
+    // Remove conventional commit prefix (feat:, fix:, docs:, etc.)
+    let cleaned = if let Some(idx) = first_line.find(':') {
+        let prefix = &first_line[..idx];
+        // Check if it looks like a conventional commit prefix
+        if prefix.len() < 20
+            && prefix
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '(' || c == ')')
+        {
+            first_line[idx + 1..].trim()
+        } else {
+            first_line
+        }
+    } else {
+        first_line
+    };
+
+    // Remove PR references like (#123)
+    let cleaned = cleaned
+        .split(" (#")
+        .next()
+        .unwrap_or(cleaned)
+        .trim()
+        .to_string();
+
+    cleaned
 }

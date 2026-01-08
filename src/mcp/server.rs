@@ -782,6 +782,12 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
             });
             Ok(serde_json::to_string_pretty(&result)?)
         }
+        QueryType::DeriveMoments => {
+            // DeriveMoments not yet supported in MCP - use CLI instead
+            Ok(serde_json::to_string_pretty(&serde_json::json!({
+                "error": "derive-moments not yet supported in MCP, use 'patina assay derive-moments' CLI"
+            }))?)
+        }
     }
 }
 

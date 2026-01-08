@@ -1,0 +1,4 @@
+description = "Review recent layer/sessions and git history"
+prompt = """
+Review recent layer/sessions and git history. Let's discuss.
+"""

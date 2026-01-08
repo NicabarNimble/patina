@@ -7,7 +7,7 @@ pub mod git;
 pub mod layer;
 pub mod migration;
 pub mod models;
-pub mod mothership;
+pub mod mother;
 pub mod paths;
 pub mod project;
 pub mod query;

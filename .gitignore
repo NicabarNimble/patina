@@ -3,7 +3,6 @@
 libduckdb/
 libduckdb-*.zip
 **/*.rs.bk
-Cargo.lock
 .DS_Store
 *.swp
 *.swo

@@ -46,7 +46,7 @@ pub fn initialize(db_path: &Path) -> Result<Connection> {
             value TEXT
         );
 
-        -- FTS5 virtual table for exact-match lexical search
+        -- FTS5 virtual table for exact-match lexical search (code)
         CREATE VIRTUAL TABLE IF NOT EXISTS code_fts USING fts5(
             symbol_name,
             file_path,
@@ -54,6 +54,26 @@ pub fn initialize(db_path: &Path) -> Result<Connection> {
             event_type,
             tokenize='porter unicode61'
         );
+
+        -- FTS5 virtual table for commit message search (git narrative)
+        CREATE VIRTUAL TABLE IF NOT EXISTS commits_fts USING fts5(
+            sha,
+            message,
+            author_name,
+            tokenize='porter unicode61'
+        );
+
+        -- Moments table for derived temporal signals (assay derive)
+        CREATE TABLE IF NOT EXISTS moments (
+            sha TEXT PRIMARY KEY,
+            moment_type TEXT NOT NULL,
+            file_count INTEGER,
+            timestamp TEXT,
+            message TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_moments_type ON moments(moment_type);
+        CREATE INDEX IF NOT EXISTS idx_moments_timestamp ON moments(timestamp);
         "#,
     )?;
 
@@ -95,6 +115,36 @@ pub fn populate_fts5(conn: &Connection) -> Result<usize> {
           AND event_type != 'code.symbol'
           AND json_extract(data, '$.name') IS NOT NULL
         GROUP BY source_id, event_type
+        "#,
+        [],
+    )?;
+
+    Ok(count)
+}
+
+/// Populate FTS5 index for commit messages (git narrative search)
+pub fn populate_commits_fts5(conn: &Connection) -> Result<usize> {
+    // Create FTS5 table if it doesn't exist (migration for existing databases)
+    conn.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS commits_fts USING fts5(
+            sha,
+            message,
+            author_name,
+            tokenize='porter unicode61'
+        )",
+        [],
+    )?;
+
+    // Clear existing FTS5 data
+    conn.execute("DELETE FROM commits_fts", [])?;
+
+    // Populate from commits table (materialized view)
+    let count = conn.execute(
+        r#"
+        INSERT INTO commits_fts (sha, message, author_name)
+        SELECT sha, message, author_name
+        FROM commits
+        WHERE message IS NOT NULL
         "#,
         [],
     )?;

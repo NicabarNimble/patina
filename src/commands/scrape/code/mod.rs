@@ -18,8 +18,8 @@
 //! patina scrape code --force  # Rebuild from scratch
 //! ```
 
-use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
+use anyhow::Result;
+use std::path::Path;
 
 use super::ScrapeConfig;
 
@@ -64,19 +64,7 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
     let start = std::time::Instant::now();
 
     // Determine work directory
-    let work_dir = determine_work_directory(&config)?;
-
-    // Print repo info if scraping a repository
-    if config.db_path.contains("layer/dust/repos/") {
-        if let Some(repo_name) = config
-            .db_path
-            .split('/')
-            .find(|s| s.ends_with(".db"))
-            .and_then(|s| s.strip_suffix(".db"))
-        {
-            println!("📦 Repository: {}", repo_name);
-        }
-    }
+    let work_dir = std::env::current_dir()?;
     println!("📂 Working directory: {}", work_dir.display());
 
     // Initialize database if needed
@@ -108,30 +96,6 @@ pub fn run(config: ScrapeConfig) -> Result<super::ScrapeStats> {
 // ============================================================================
 // INTERNAL IMPLEMENTATION
 // ============================================================================
-
-fn determine_work_directory(config: &ScrapeConfig) -> Result<PathBuf> {
-    // Extract repo name from db_path if it's in layer/dust/repos/
-    if config.db_path.contains("layer/dust/repos/") {
-        let repo_name = config
-            .db_path
-            .strip_prefix("layer/dust/repos/")
-            .and_then(|s| s.strip_suffix(".db"))
-            .context("Invalid repo database path")?;
-
-        // The repo_name in db_path already has the correct case from for_repo()
-        let repo_dir = PathBuf::from("layer/dust/repos").join(repo_name);
-        if !repo_dir.exists() {
-            anyhow::bail!(
-                "Repository '{}' not found. Clone it first to layer/dust/repos/",
-                repo_name
-            );
-        }
-
-        Ok(std::env::current_dir()?.join(repo_dir))
-    } else {
-        Ok(std::env::current_dir()?)
-    }
-}
 
 /// Initialize SQLite database with embedded library
 fn initialize_database(db_path: &str) -> Result<()> {

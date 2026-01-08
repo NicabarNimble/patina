@@ -139,18 +139,6 @@ enum Commands {
         /// Output results as JSON
         #[arg(short, long)]
         json: bool,
-
-        /// Check reference repositories in layer/dust/repos
-        #[arg(long)]
-        repos: bool,
-
-        /// Update stale repositories (requires --repos)
-        #[arg(long, requires = "repos")]
-        update: bool,
-
-        /// Audit project files and directories for cleanup
-        #[arg(long)]
-        audit: bool,
     },
 
     /// Show version information
@@ -225,6 +213,10 @@ enum Commands {
         #[arg(long)]
         all_repos: bool,
 
+        /// Routing strategy for --all-repos: 'all' (search everything) or 'graph' (use mother graph)
+        #[arg(long, default_value = "all")]
+        routing: String,
+
         /// Include GitHub issues in search results
         #[arg(long)]
         include_issues: bool,
@@ -287,6 +279,15 @@ enum Commands {
     Model {
         #[command(subcommand)]
         command: Option<commands::model::ModelCommands>,
+    },
+
+    /// Cross-project relationship graph
+    ///
+    /// Manages the relationship graph between projects and reference repos.
+    /// Used for smart query routing in Phase G2.
+    Mother {
+        #[command(subcommand)]
+        command: Option<commands::mother::MotherCommands>,
     },
 
     /// Secure secret management with age encryption
@@ -454,6 +455,13 @@ enum AssayCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Derive temporal moments from git history (genesis, breaking, migration, etc.)
+    #[command(name = "derive-moments")]
+    DeriveMoments {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Common arguments for all scrape subcommands
@@ -526,6 +534,29 @@ enum BenchCommands {
         /// Filter to specific oracle(s) for ablation testing (semantic, lexical, persona)
         #[arg(long)]
         oracle: Option<Vec<String>>,
+
+        /// Query a specific registered repo instead of current project
+        #[arg(long)]
+        repo: Option<String>,
+    },
+
+    /// Generate queryset from git commits (deterministic ground truth)
+    Generate {
+        /// Generate from commits (default source)
+        #[arg(long, default_value = "true")]
+        from_commits: bool,
+
+        /// Repository name (omit for current project)
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Maximum number of queries to generate
+        #[arg(long, default_value = "100")]
+        limit: usize,
+
+        /// Output file path (omit for stdout)
+        #[arg(long, short)]
+        output: Option<String>,
     },
 }
 
@@ -824,6 +855,7 @@ fn main() -> Result<()> {
             dimension,
             repo,
             all_repos,
+            routing,
             include_issues,
             no_persona,
             hybrid,
@@ -856,6 +888,10 @@ fn main() -> Result<()> {
                     }
                 }
             } else {
+                // Parse routing strategy
+                let routing_strategy = commands::scry::RoutingStrategy::parse(&routing)
+                    .unwrap_or(commands::scry::RoutingStrategy::All);
+
                 // Default behavior: query-based search
                 let options = commands::scry::ScryOptions {
                     limit,
@@ -868,6 +904,7 @@ fn main() -> Result<()> {
                     include_persona: !no_persona,
                     hybrid,
                     explain,
+                    routing: routing_strategy,
                 };
                 commands::scry::execute(query.as_deref(), options)?;
             }
@@ -891,6 +928,7 @@ fn main() -> Result<()> {
                 rrf_k,
                 fetch_multiplier,
                 oracle,
+                repo,
             } => {
                 let options = commands::bench::BenchOptions {
                     query_set,
@@ -900,8 +938,22 @@ fn main() -> Result<()> {
                     rrf_k,
                     fetch_multiplier,
                     oracle,
+                    repo,
                 };
                 commands::bench::execute(options)?;
+            }
+            BenchCommands::Generate {
+                from_commits: _,
+                repo,
+                limit,
+                output,
+            } => {
+                let options = commands::bench::GenerateOptions {
+                    repo,
+                    limit,
+                    output,
+                };
+                commands::bench::generate(options)?;
             }
         },
         Some(Commands::Persona { command }) => match command {
@@ -930,13 +982,8 @@ fn main() -> Result<()> {
                 commands::persona::execute_status()?;
             }
         },
-        Some(Commands::Doctor {
-            json,
-            repos,
-            update,
-            audit,
-        }) => {
-            let exit_code = commands::doctor::execute(json, repos, update, audit)?;
+        Some(Commands::Doctor { json }) => {
+            let exit_code = commands::doctor::execute(json)?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
@@ -948,6 +995,7 @@ fn main() -> Result<()> {
             with_issues,
         }) => commands::repo::execute_cli(command, url, contrib, with_issues)?,
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
+        Some(Commands::Mother { command }) => commands::mother::execute_cli(command)?,
         Some(Commands::Secrets { command, flags }) => {
             commands::secrets::execute_cli(command, flags)?
         }
@@ -1063,6 +1111,14 @@ fn main() -> Result<()> {
                 },
                 Some(AssayCommands::Derive { json }) => commands::assay::AssayOptions {
                     query_type: commands::assay::QueryType::Derive,
+                    pattern: None,
+                    limit: 0,
+                    json,
+                    repo,
+                    all_repos,
+                },
+                Some(AssayCommands::DeriveMoments { json }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::DeriveMoments,
                     pattern: None,
                     limit: 0,
                     json,

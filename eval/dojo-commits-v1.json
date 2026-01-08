@@ -1,0 +1,334 @@
+{
+  "name": "dojo-commits-v1",
+  "description": "Auto-generated from dojo git commits (20 queries)",
+  "source": "git commits (auto-generated)",
+  "repo": "dojo",
+  "generated": "2026-01-05T14:44:15Z",
+  "queries": [
+    {
+      "id": "q_c8495844",
+      "query": "release-sozo(prepare): v1.8.5",
+      "relevant_docs": [
+        "Cargo.lock",
+        "bin/sozo/Cargo.toml",
+        "crates/sozo/mcp/Cargo.toml",
+        "crates/sozo/ops/Cargo.toml",
+        "crates/sozo/signers/Cargo.toml",
+        "crates/sozo/ui/Cargo.toml",
+        "crates/sozo/walnut/Cargo.toml"
+      ],
+      "relevant_commits": [
+        "c8495844ea68e524a89f9ca6a8beb4fd4870f985"
+      ],
+      "source_commit": "c8495844ea68e524a89f9ca6a8beb4fd4870f985",
+      "relevant": []
+    },
+    {
+      "id": "q_e8d8b44f",
+      "query": "add parameter to control abi format in manifest",
+      "relevant_docs": [
+        "bin/sozo/src/commands/migrate.rs",
+        "crates/dojo/world/src/config/migration_config.rs",
+        "crates/dojo/world/src/diff/manifest.rs",
+        "examples/simple/manifest_dev.json"
+      ],
+      "relevant_commits": [
+        "e8d8b44fb2ab4295be8fb362d63d6992d2c0d28e"
+      ],
+      "source_commit": "e8d8b44fb2ab4295be8fb362d63d6992d2c0d28e",
+      "relevant": []
+    },
+    {
+      "id": "q_7c52a419",
+      "query": "release-sozo(prepare): v1.8.4",
+      "relevant_docs": [
+        "Cargo.lock",
+        "bin/sozo/Cargo.toml",
+        "crates/sozo/mcp/Cargo.toml",
+        "crates/sozo/ops/Cargo.toml",
+        "crates/sozo/signers/Cargo.toml",
+        "crates/sozo/ui/Cargo.toml",
+        "crates/sozo/walnut/Cargo.toml"
+      ],
+      "relevant_commits": [
+        "7c52a4191f88f6a329cdc32e4a8242a8f9763507"
+      ],
+      "source_commit": "7c52a4191f88f6a329cdc32e4a8242a8f9763507",
+      "relevant": []
+    },
+    {
+      "id": "q_6e24cfa7",
+      "query": "enable autodetect for blake2s on mainnet",
+      "relevant_docs": [
+        "bin/sozo/src/commands/declare.rs",
+        "crates/dojo/world/src/local/artifact_to_local.rs"
+      ],
+      "relevant_commits": [
+        "6e24cfa704f5568189b43a0f274d8766d00dc316"
+      ],
+      "source_commit": "6e24cfa704f5568189b43a0f274d8766d00dc316",
+      "relevant": []
+    },
+    {
+      "id": "q_2e295da9",
+      "query": "release-sozo(prepare): v1.8.3",
+      "relevant_docs": [
+        "Cargo.lock",
+        "bin/sozo/Cargo.toml",
+        "crates/sozo/mcp/Cargo.toml",
+        "crates/sozo/ops/Cargo.toml",
+        "crates/sozo/signers/Cargo.toml",
+        "crates/sozo/ui/Cargo.toml",
+        "crates/sozo/walnut/Cargo.toml"
+      ],
+      "relevant_commits": [
+        "2e295da9eda41b760ed6789b0c98ef70579e6de9"
+      ],
+      "source_commit": "2e295da9eda41b760ed6789b0c98ef70579e6de9",
+      "relevant": []
+    },
+    {
+      "id": "q_d4cd04e9",
+      "query": "add invoke command for standalone contract",
+      "relevant_docs": [
+        "bin/sozo/src/commands/execute.rs",
+        "bin/sozo/src/commands/invoke.rs",
+        "bin/sozo/src/commands/mod.rs",
+        "bin/sozo/src/main.rs",
+        "crates/dojo/world/src/config/calldata_decoder.rs"
+      ],
+      "relevant_commits": [
+        "d4cd04e96ca01754e7f08bf36592e542b96003f7"
+      ],
+      "source_commit": "d4cd04e96ca01754e7f08bf36592e542b96003f7",
+      "relevant": []
+    },
+    {
+      "id": "q_9b360530",
+      "query": "release-sozo(prepare): v1.8.2",
+      "relevant_docs": [
+        "Cargo.lock",
+        "bin/sozo/Cargo.toml",
+        "crates/sozo/mcp/Cargo.toml",
+        "crates/sozo/ops/Cargo.toml",
+        "crates/sozo/signers/Cargo.toml",
+        "crates/sozo/ui/Cargo.toml",
+        "crates/sozo/walnut/Cargo.toml"
+      ],
+      "relevant_commits": [
+        "9b3605301211cb8a7888022298f883ec14b2145d"
+      ],
+      "source_commit": "9b3605301211cb8a7888022298f883ec14b2145d",
+      "relevant": []
+    },
+    {
+      "id": "q_54544bca",
+      "query": "add declare and deploy for standalone contracts",
+      "relevant_docs": [
+        "Cargo.lock",
+        "bin/sozo/Cargo.toml",
+        "bin/sozo/src/commands/declare.rs",
+        "bin/sozo/src/commands/deploy.rs",
+        "bin/sozo/src/commands/mod.rs",
+        "bin/sozo/src/commands/options/account/mod.rs",
+        "bin/sozo/src/commands/options/signer.rs",
+        "bin/sozo/src/commands/options/starknet.rs",
+        "bin/sozo/src/main.rs",
+        "bin/sozo/src/utils.rs"
+      ],
+      "relevant_commits": [
+        "54544bca3200a181ce4443f51879b0c269b09a8f"
+      ],
+      "source_commit": "54544bca3200a181ce4443f51879b0c269b09a8f",
+      "relevant": []
+    },
+    {
+      "id": "q_2bb9d208",
+      "query": "separate sozo releases from dojo",
+      "relevant_docs": [
+        ".devcontainer/Dockerfile",
+        ".github/workflows/devcontainer.yml",
+        ".github/workflows/release-dispatch-sozo.yml",
+        ".github/workflows/release-sozo.yml",
+        ".github/workflows/release.yml",
+        "bin/sozo/.tool-versions",
+        "bin/sozo/Dockerfile"
+      ],
+      "relevant_commits": [
+        "2bb9d208d0f443c9c792c7b7942c6e198f7f3a62"
+      ],
+      "source_commit": "2bb9d208d0f443c9c792c7b7942c6e198f7f3a62",
+      "relevant": []
+    },
+    {
+      "id": "q_965c92ac",
+      "query": "release-sozo(prepare): v1.8.1",
+      "relevant_docs": [
+        "Cargo.lock",
+        "bin/sozo/Cargo.toml",
+        "crates/sozo/mcp/Cargo.toml",
+        "crates/sozo/ops/Cargo.toml",
+        "crates/sozo/signers/Cargo.toml",
+        "crates/sozo/ui/Cargo.toml",
+        "crates/sozo/walnut/Cargo.toml"
+      ],
+      "relevant_commits": [
+        "965c92ac3bd0f4dd92b7d0d7fb2128d45d0c64a1"
+      ],
+      "source_commit": "965c92ac3bd0f4dd92b7d0d7fb2128d45d0c64a1",
+      "relevant": []
+    },
+    {
+      "id": "q_4c0f6fb6",
+      "query": "add sozo docker and release files",
+      "relevant_docs": [
+        ".github/workflows/release-dispatch-sozo.yml",
+        ".github/workflows/release-sozo.yml",
+        "bin/sozo/Dockerfile"
+      ],
+      "relevant_commits": [
+        "4c0f6fb6e144cd69b2924b3341f5f3b263f55662"
+      ],
+      "source_commit": "4c0f6fb6e144cd69b2924b3341f5f3b263f55662",
+      "relevant": []
+    },
+    {
+      "id": "q_3a1970e0",
+      "query": "update rust to 1.89",
+      "relevant_docs": [
+        ".devcontainer/Dockerfile",
+        ".tool-versions"
+      ],
+      "relevant_commits": [
+        "3a1970e026bb8384986e86a221b2be898d8dc5a8"
+      ],
+      "source_commit": "3a1970e026bb8384986e86a221b2be898d8dc5a8",
+      "relevant": []
+    },
+    {
+      "id": "q_b3c2e829",
+      "query": "release-macros(prepare): v1.8.0",
+      "relevant_docs": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "crates/dojo/core/Scarb.lock",
+        "crates/dojo/macros/Cargo.lock",
+        "crates/dojo/macros/Cargo.toml",
+        "crates/dojo/macros/Scarb.lock",
+        "crates/dojo/macros/Scarb.toml",
+        "crates/dojo/types/Cargo.toml"
+      ],
+      "relevant_commits": [
+        "b3c2e8297073903d69c9a9bf139a64b17eef23ce"
+      ],
+      "source_commit": "b3c2e8297073903d69c9a9bf139a64b17eef23ce",
+      "relevant": []
+    },
+    {
+      "id": "q_fbac2d2c",
+      "query": "use dojo-cairo-macros 1.8.0",
+      "relevant_docs": [
+        "crates/dojo/core-tests/Scarb.lock",
+        "crates/dojo/core/Scarb.toml",
+        "examples/simple/Scarb.lock",
+        "examples/spawn-and-move/Scarb.lock",
+        "spawn-and-move-db.tar.gz"
+      ],
+      "relevant_commits": [
+        "fbac2d2cf9885480eb1d68ac6430e2612e5980f0"
+      ],
+      "source_commit": "fbac2d2cf9885480eb1d68ac6430e2612e5980f0",
+      "relevant": []
+    },
+    {
+      "id": "q_25ce2021",
+      "query": "feat(dojo-world): change manifest format including members for events and models",
+      "relevant_docs": [
+        "bin/sozo/tests/test_data/policies.json",
+        "crates/dojo/world/src/contracts/contract_info.rs",
+        "crates/dojo/world/src/diff/manifest.rs",
+        "crates/dojo/world/src/local/artifact_to_local.rs",
+        "examples/spawn-and-move/manifest_dev.json"
+      ],
+      "relevant_commits": [
+        "25ce2021d6041b6fa4f62cfb70acbbec96d06b7a"
+      ],
+      "source_commit": "25ce2021d6041b6fa4f62cfb70acbbec96d06b7a",
+      "relevant": []
+    },
+    {
+      "id": "q_5ee74061",
+      "query": "ensure the dojo package is correctly checked",
+      "relevant_docs": [
+        ".github/workflows/release.yml",
+        "crates/dojo/dojo-snf-test/Scarb.toml",
+        "spawn-and-move-db.tar.gz"
+      ],
+      "relevant_commits": [
+        "5ee740611b4d00945169e74eb900415837bea450"
+      ],
+      "source_commit": "5ee740611b4d00945169e74eb900415837bea450",
+      "relevant": []
+    },
+    {
+      "id": "q_30f89664",
+      "query": "support all kind of gas",
+      "relevant_docs": [
+        "bin/sozo/src/commands/options/transaction.rs",
+        "crates/dojo/utils/src/tx/mod.rs"
+      ],
+      "relevant_commits": [
+        "30f8966465903d7d102177af4d5839118582956e"
+      ],
+      "source_commit": "30f8966465903d7d102177af4d5839118582956e",
+      "relevant": []
+    },
+    {
+      "id": "q_26d962c1",
+      "query": "update snforge version in all Scarb.toml",
+      "relevant_docs": [
+        "crates/dojo/core-tests/Scarb.lock",
+        "crates/dojo/core-tests/Scarb.toml",
+        "crates/dojo/core-tests/src/tests/world/world.cairo",
+        "crates/dojo/dojo-snf-test/Scarb.lock",
+        "crates/dojo/dojo-snf-test/Scarb.toml",
+        "examples/spawn-and-move/Scarb.lock",
+        "examples/spawn-and-move/Scarb.toml",
+        "spawn-and-move-db.tar.gz"
+      ],
+      "relevant_commits": [
+        "26d962c161a92665eb1fdd95d95ca07e96208c15"
+      ],
+      "source_commit": "26d962c161a92665eb1fdd95d95ca07e96208c15",
+      "relevant": []
+    },
+    {
+      "id": "q_b3e5fb94",
+      "query": "improve asdf installer script",
+      "relevant_docs": [
+        ".tool-versions",
+        "dojoup/asdf-install",
+        "dojoup/dojoup-install",
+        "dojoup/install"
+      ],
+      "relevant_commits": [
+        "b3e5fb946953a247cdf3864ffcaeb50c4761dedd"
+      ],
+      "source_commit": "b3e5fb946953a247cdf3864ffcaeb50c4761dedd",
+      "relevant": []
+    },
+    {
+      "id": "q_0afeb1bc",
+      "query": "fix(test-utils): update dev-dependencies to ignore path when it applies",
+      "relevant_docs": [
+        "crates/dojo/macros/Cargo.lock",
+        "crates/dojo/test-utils/src/setup.rs"
+      ],
+      "relevant_commits": [
+        "0afeb1bc63f04bf6716e4a294366232f594edb78"
+      ],
+      "source_commit": "0afeb1bc63f04bf6716e4a294366232f594edb78",
+      "relevant": []
+    }
+  ]
+}
