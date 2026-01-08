@@ -596,11 +596,29 @@ Oracles with higher weight for this intent contribute more to final ranking.
 - `src/retrieval/fusion.rs`: `rrf_fuse_weighted()` applies per-oracle weights
 - `src/retrieval/engine.rs`: Auto-detects intent, passes weights to RRF
 
+**Benchmark Results (2026-01-08):**
+
+| Metric | Baseline | With Intent Weights |
+|--------|----------|---------------------|
+| MRR | 0.133 | 0.100 |
+| Recall@5 | 15% | 10% |
+| Recall@10 | 23% | 23% |
+
+**Analysis:** Intent weights are applied but MRR didn't improve because:
+1. **Vocabulary mismatch**: User says "commit message search", code says "commits_fts"
+2. **LexicalOracle returns code+commits mixed**: Code symbols with "add", "search" outrank commits
+3. **Weights boost lexical globally**, not commits specifically
+
+**Root cause:** This is the **same domain terminology gap** found in ref repo semantic eval. FTS5 keyword matching fails when user vocabulary differs from codebase vocabulary.
+
+**Actual fix needed:** Query expansion (LLM rewrites query) or semantic search over commits (not just FTS5).
+
 **Exit Criteria:**
-- [ ] Temporal intent MRR > 0.4 (baseline: 0.133) ← needs measurement
+- [ ] Temporal intent MRR > 0.4 (baseline: 0.133) ← blocked by vocabulary gap
 - [x] Intent detection implemented and wired
 - [x] Weighted RRF implemented
 - [ ] LLM naturally uses intent parameter (pending MCP schema change)
+- [ ] Query expansion or commit semantic search (new requirement)
 
 **Why This Is Durable:**
 1. Intent categories are stable (how humans ask questions)
