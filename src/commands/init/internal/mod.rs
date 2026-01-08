@@ -30,6 +30,10 @@ pub fn execute_init(
 ) -> Result<()> {
     let json_output = false; // For init command, always false
 
+    // === STEP 0: CHECK FOR HIERARCHY CONFLICTS (BEFORE ANYTHING ELSE) ===
+    // Jon Gjengset principle: fail fast with clear errors
+    check_hierarchy_conflicts(force)?;
+
     // === STEP 1: GIT SETUP (FIRST - BEFORE ANY DESTRUCTIVE CHANGES) ===
     println!("🎨 Initializing Patina...\n");
 
@@ -212,7 +216,20 @@ pub fn execute_init(
     if name == "." {
         // Only commit if we're initializing in current directory
         println!("\n📦 Committing Patina setup...");
-        patina::git::add_all()?;
+        // Only add patina-created files (not everything - avoids nested git repo issues)
+        patina::git::add_paths(&[
+            ".gitignore",
+            ".patina",
+            ".claude",
+            ".devcontainer",
+            "layer",
+            "CLAUDE.md",
+            "GEMINI.md",
+            "AGENTS.md",
+            "ENVIRONMENT.toml",
+            "Dockerfile",
+            "docker-compose.yml",
+        ])?;
 
         let commit_msg = if is_reinit {
             "chore: update Patina configuration"
@@ -608,6 +625,121 @@ fn ensure_model_available() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Check for hierarchy conflicts before init
+/// Prevents creating nested patina projects that cause duplicate slash commands
+fn check_hierarchy_conflicts(force: bool) -> Result<()> {
+    let current_dir = std::env::current_dir()?;
+
+    // Check 1: Parent directories with .claude/ (would cause duplicate commands)
+    let mut parent = current_dir.parent();
+    let mut conflicting_parents = Vec::new();
+
+    while let Some(p) = parent {
+        let claude_dir = p.join(".claude");
+        let commands_dir = claude_dir.join("commands");
+
+        if commands_dir.exists() {
+            conflicting_parents.push(p.to_path_buf());
+        }
+
+        parent = p.parent();
+    }
+
+    if !conflicting_parents.is_empty() {
+        eprintln!("Error: Found .claude/commands/ in parent directory:");
+        for p in &conflicting_parents {
+            eprintln!("  → {}", p.display());
+        }
+        eprintln!();
+        eprintln!("Claude Code walks up the directory tree and loads commands from each");
+        eprintln!(".claude/commands/ it finds. This would cause duplicate slash commands.");
+        eprintln!();
+        eprintln!("To fix:");
+        eprintln!("  1. Remove the parent .claude/: rm -rf {}/.claude", conflicting_parents[0].display());
+        eprintln!("  2. Or use --force to ignore this check (not recommended)");
+
+        if !force {
+            anyhow::bail!("Hierarchy conflict: parent directory has .claude/commands/");
+        }
+        eprintln!();
+        eprintln!("⚠️  Proceeding anyway due to --force flag...");
+    }
+
+    // Check 2: Child directories with .patina/ (would be nested projects)
+    let child_projects = find_child_patina_projects(&current_dir)?;
+
+    if !child_projects.is_empty() {
+        eprintln!("Error: Found existing Patina projects in subdirectories:");
+        for p in &child_projects {
+            eprintln!("  → {}", p.display());
+        }
+        eprintln!();
+        eprintln!("Initializing here would create a parent project over existing ones,");
+        eprintln!("causing duplicate commands and configuration conflicts.");
+        eprintln!();
+        eprintln!("To fix:");
+        eprintln!("  1. Initialize in a different directory");
+        eprintln!("  2. Or use --force to ignore this check (not recommended)");
+
+        if !force {
+            anyhow::bail!("Hierarchy conflict: child directories contain Patina projects");
+        }
+        eprintln!();
+        eprintln!("⚠️  Proceeding anyway due to --force flag...");
+    }
+
+    Ok(())
+}
+
+/// Find child directories that already have .patina/ or .claude/commands/
+fn find_child_patina_projects(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut projects = Vec::new();
+
+    // Don't recurse too deep - just check immediate and one level down
+    // to avoid scanning huge trees
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        if !path.is_dir() {
+            continue;
+        }
+
+        // Skip hidden dirs (except we want to find .patina/.claude)
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if name.starts_with('.') {
+            continue;
+        }
+
+        // Check if this child has patina markers
+        if path.join(".patina").exists() || path.join(".claude/commands").exists() {
+            projects.push(path.clone());
+            continue; // Don't recurse into found projects
+        }
+
+        // Check one level deeper
+        if let Ok(entries) = fs::read_dir(&path) {
+            for sub_entry in entries.flatten() {
+                let sub_path = sub_entry.path();
+                if !sub_path.is_dir() {
+                    continue;
+                }
+
+                let sub_name = sub_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if sub_name.starts_with('.') {
+                    continue;
+                }
+
+                if sub_path.join(".patina").exists() || sub_path.join(".claude/commands").exists() {
+                    projects.push(sub_path);
+                }
+            }
+        }
+    }
+
+    Ok(projects)
 }
 
 /// Ensure critical entries exist in an existing .gitignore
