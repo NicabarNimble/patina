@@ -3,6 +3,9 @@
 libduckdb/
 libduckdb-*.zip
 **/*.rs.bk
+
+# Ignore vendored grammar Cargo.lock (we compile C sources directly, not via cargo)
+patina-metal/grammars/**/Cargo.lock
 .DS_Store
 *.swp
 *.swo
