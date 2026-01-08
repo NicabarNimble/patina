@@ -9,8 +9,9 @@ mod internal;
 
 use anyhow::{Context, Result};
 use internal::{
-    collect_inventory_json, execute_callees, execute_callers, execute_derive, execute_functions,
-    execute_importers, execute_imports, execute_inventory,
+    collect_inventory_json, execute_callees, execute_callers, execute_derive,
+    execute_derive_moments, execute_functions, execute_importers, execute_imports,
+    execute_inventory,
 };
 use rusqlite::Connection;
 
@@ -27,6 +28,7 @@ pub enum QueryType {
     Callers,
     Callees,
     Derive,
+    DeriveMoments,
 }
 
 /// Options for assay command
@@ -71,6 +73,7 @@ pub fn execute(options: AssayOptions) -> Result<()> {
         QueryType::Callers => execute_callers(&conn, &options),
         QueryType::Callees => execute_callees(&conn, &options),
         QueryType::Derive => execute_derive(&conn, &options),
+        QueryType::DeriveMoments => execute_derive_moments(&conn, &options),
     }
 }
 

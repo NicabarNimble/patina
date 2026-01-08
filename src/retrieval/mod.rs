@@ -5,6 +5,7 @@
 //! - `RetrievalConfig` for tuning RRF parameters
 //! - `FusedResult` for query results (includes per-oracle contributions)
 //! - `OracleContribution` for per-oracle rank and score details
+//! - `QueryIntent` for intent-aware retrieval
 //!
 //! Internal (not exported):
 //! - `Oracle` trait and implementations (semantic, lexical, persona)
@@ -12,6 +13,7 @@
 
 mod engine;
 mod fusion;
+mod intent;
 mod oracle;
 mod oracles;
 

@@ -2,6 +2,7 @@
 //!
 //! Public interface:
 //! - `execute()` - run retrieval benchmarks
+//! - `generate()` - generate querysets from git commits
 //! - `QuerySet` - benchmark query set format
 //!
 //! Follows dependable-rust: metrics calculation is internal
@@ -29,6 +30,8 @@ pub struct BenchOptions {
     pub fetch_multiplier: Option<usize>,
     /// Filter to specific oracle(s) for ablation testing
     pub oracle: Option<Vec<String>>,
+    /// Query a specific registered repo instead of current project
+    pub repo: Option<String>,
 }
 
 /// Execute retrieval benchmark
@@ -45,5 +48,42 @@ pub fn execute(options: BenchOptions) -> Result<()> {
         options.json,
         options.verbose,
         config,
+        options.repo,
     )
+}
+
+/// Options for generating querysets from git commits
+pub struct GenerateOptions {
+    /// Repository name (None = current project)
+    pub repo: Option<String>,
+    /// Maximum number of queries to generate
+    pub limit: usize,
+    /// Output file path (None = stdout)
+    pub output: Option<String>,
+}
+
+/// Generate a queryset from git commits
+pub fn generate(options: GenerateOptions) -> Result<()> {
+    let config = internal::GenerateConfig {
+        repo: options.repo,
+        limit: options.limit,
+        ..Default::default()
+    };
+
+    let query_set = internal::generate_from_commits(config)?;
+
+    let json = serde_json::to_string_pretty(&query_set)?;
+
+    if let Some(output_path) = options.output {
+        std::fs::write(&output_path, &json)?;
+        println!(
+            "Generated {} queries → {}",
+            query_set.queries.len(),
+            output_path
+        );
+    } else {
+        println!("{}", json);
+    }
+
+    Ok(())
 }

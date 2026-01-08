@@ -207,6 +207,7 @@ fn handle_scry(request: &Request) -> Response {
             include_persona: body.include_persona,
             hybrid: false,
             explain: false,
+            ..Default::default()
         };
 
         let mut results: Vec<ScryResult> = match scry::scry_text(&body.query, &options) {

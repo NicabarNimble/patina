@@ -2,8 +2,10 @@
 
 **Status**: Living Document
 **Created**: 2025-12-27
-**Updated**: 2025-12-28
+**Updated**: 2025-12-30
 **Purpose**: Ensure patina is unmistakably designed to layer/core values
+
+Tracks internal code quality: module structure, alignment tiers, refactoring history, and enforcement checklists.
 
 ---
 
@@ -11,7 +13,7 @@
 
 Patina follows two core architectural principles:
 
-1. **dependable-rust**: Small, stable public interfaces; hide implementation in internal/
+1. **dependable-rust**: Small public interface; implementation in internal/
 2. **unix-philosophy**: Single responsibility; composition over monolith
 
 This document maps every module to these values and tracks alignment.
@@ -89,6 +91,7 @@ These are appropriately simple - complexity lives in library modules.
 | Command | Lines | Delegates To | Library Lines | Notes |
 |---------|------:|--------------|---------------|-------|
 | **secrets** | 325 | src/secrets/ | 1,764 | Correctly thin - library has complexity |
+| **doctor** | 278 | - | - | Slimmed 2025-12-30 (was 602), pure health checks |
 | build | 32 | workspace | - | Minimal glue |
 | test | 31 | workspace | - | Minimal glue |
 | version | 160 | version lib | - | Appropriate size |
@@ -122,12 +125,7 @@ pub use internal::TrainerResult;  // Curated exports only
 
 ### Tier: Refactor (Priority Work)
 
-These violate core values and need restructuring.
-
-| Command | Lines | Violation | Priority | Target Structure |
-|---------|------:|-----------|----------|------------------|
-| **audit** | 797 | Monolithic, complex scanning logic | MEDIUM | mod.rs + internal/{scanning,reporting,rules}.rs |
-| **doctor** | 602 | Monolithic, many independent checks | MEDIUM | mod.rs + internal/{system,tools,project}.rs |
+*Currently empty - all priority refactors completed.*
 
 ---
 
@@ -319,145 +317,33 @@ src/commands/assay/
 - `functions.rs`: "Query function definitions and call graph"
 - `derive.rs`: "Compute structural signals from code facts"
 
+### 2025-12-30: Legacy cleanup (doctor/audit/repos)
+
+**Trigger**: doctor.rs violated unix-philosophy (3 commands in 1), audit.rs was 797 lines of hidden functionality behind `--audit` flag, layer/dust/repos was legacy system superseded by `patina repo`.
+
+**Analysis revealed:**
+- doctor.rs (602 lines) combined health checks + audit delegation + repo management
+- audit.rs provided low-value filesystem categorization (overlaps with other tools)
+- layer/dust/repos/ was legacy concept replaced by `patina repo` with registry
+
+**Actions taken:**
+1. Created git tag `legacy-repo-audit-v1` to preserve old code
+2. Added `patina repo list --status` for feature parity
+3. Removed layer/dust/repos code from doctor.rs (-374 lines)
+4. Removed audit.rs entirely (-812 lines)
+5. Verified build/test/clippy clean
+
+**Result:**
+- ~1,100 lines removed
+- doctor.rs: 602 → 278 lines (now pure health checks, "Acceptable" tier)
+- audit.rs: removed (low value, not promoted to command)
+- layer/dust/repos/: deprecated in favor of `patina repo`
+
+**Spec:** [spec-remove-legacy-repos-and-audit.md](./spec-remove-legacy-repos-and-audit.md)
+
 ---
 
 ## Planned Alignments
-
-### Priority 1: doctor/audit/repo Architectural Cleanup - HIGH
-
-**Analysis Date**: 2025-12-28
-
-**Discovery**: Deep analysis revealed doctor.rs violates unix-philosophy by doing three jobs:
-
-```
-doctor.rs (603 lines) - THREE COMMANDS IN ONE
-├── Health Checks (210 lines)         ← Core purpose
-│   ├── analyze_environment()
-│   ├── display_health_check()
-│   └── count_patterns/sessions()
-│
-├── Audit Delegation (4 lines)        ← Just calls audit::execute()
-│   └── if audit_files { audit::execute() }
-│
-└── Repo Management (305 lines)       ← Completely separate system
-    ├── handle_repos()                  targets layer/dust/repos/
-    ├── discover_repos()
-    ├── check_repo_status()
-    ├── update_repo()
-    └── log_repo_status()
-```
-
-**Critical Finding - Two Separate Repo Systems**:
-
-| System | Location | Purpose | Management |
-|--------|----------|---------|------------|
-| `doctor --repos` | `layer/dust/repos/` | Legacy research repos | Manual clones, unregistered |
-| `patina repo` | `~/.patina/cache/repos/` | Modern managed repos | Registry at `~/.patina/registry.yaml` |
-
-These systems don't communicate. `layer/dust/repos/` appears to be legacy from before `patina repo` existed.
-
-**audit.rs (797 lines) - Hidden Power Tool**:
-
-audit is NOT wired as a command - only accessible via `patina doctor --audit`. It's a full filesystem analyzer:
-
-```
-audit.rs (797 lines)
-├── Scanning (150 lines)
-│   ├── scan_files() - Walk tree, categorize
-│   ├── categorize_file() - Source/Doc/Config/Build/etc
-│   └── determine_safety() - Critical/Protected/ReviewNeeded/SafeToDelete
-│
-├── Layer Analysis (197 lines)
-│   ├── analyze_layer_directory()
-│   ├── analyze_layer_subdir() - core/surface/dust
-│   ├── analyze_repos() - count repos in dust/repos/
-│   └── analyze_sessions()
-│
-├── Display (230 lines)
-│   ├── display_audit()
-│   └── display_layer_insights()
-│
-└── Utils (27 lines)
-    ├── format_date()
-    └── format_size()
-```
-
-**patina repo (1,126 lines) - Already Well-Structured**:
-
-```
-repo/
-├── mod.rs (309 lines)           ← Public interface
-│   ├── RepoCommands enum (clap)
-│   ├── execute_cli() entry
-│   └── Public functions: add, list, update, remove, show
-│
-└── internal.rs (817 lines)      ← Implementation
-    ├── Registry management
-    ├── add_repo() - Clone, scaffold, scrape
-    ├── update_repo() - Pull, rescrape
-    ├── remove_repo()
-    └── Helpers
-```
-
----
-
-#### Action Plan
-
-**Step 1: Promote audit to `patina audit` command**
-- audit.rs already exists and works
-- Add to main.rs CLI as standalone command
-- Remove `--audit` flag from doctor
-
-**Step 2: Deprecate doctor --repos**
-- `layer/dust/repos/` is legacy concept
-- Print deprecation message pointing to `patina repo`
-- Remove 305 lines of repo code from doctor
-
-**Step 3: Slim doctor to pure health checks (~250 lines)**
-After cleanup:
-```
-doctor.rs (~250 lines)
-├── Health Checks
-│   ├── analyze_environment()
-│   └── check project config
-│
-└── Display
-    └── display_health_check()
-```
-
-At ~250 lines, doctor becomes "Tier: Acceptable" - may not need internal/ pattern.
-
-**Step 4: Refactor audit to internal/ pattern**
-After promotion to command:
-```
-src/commands/audit/
-├── mod.rs (~100 lines)
-│   ├── pub fn execute()
-│   └── types (FileAudit, SafetyLevel, etc.)
-└── internal/
-    ├── scanner.rs (~200 lines) - "Scan filesystem and categorize files"
-    ├── analysis.rs (~200 lines) - "Analyze layer structure"
-    ├── display.rs (~200 lines) - "Format and display results"
-    └── util.rs (~30 lines) - "Format dates and sizes"
-```
-
-**Optional Step 5: Migration path for layer/dust/repos/**
-```bash
-# Future command to discover unregistered repos
-patina repo discover layer/dust/repos/  # Find and register
-```
-
----
-
-#### Summary Table
-
-| Component | Current State | Action | Result |
-|-----------|--------------|--------|--------|
-| audit | Hidden behind --audit flag | Promote to `patina audit` | Standalone command |
-| doctor --repos | 305 lines, legacy system | Deprecate, remove | Cleaner doctor |
-| doctor health | 210 lines, core purpose | Keep, simplify | ~250 line command |
-| patina repo | 1,126 lines, well-structured | Keep as-is | Reference impl |
-| layer/dust/repos/ | Legacy manual repos | Deprecate concept | Use patina repo |
 
 ### Deferred: oxidize/yolo peer modules
 

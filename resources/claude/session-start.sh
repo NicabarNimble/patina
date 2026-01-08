@@ -27,7 +27,9 @@ SAFE_TITLE=$(echo "$SESSION_TITLE" | tr ' ' '-' | tr '[:upper:]' '[:lower:]' | s
 # Git integration: Use work branch + tags (not session branches!)
 CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "none")
 STARTING_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "none")
-SESSION_TAG="session-${SESSION_ID}-start"
+# Extract frontend name from directory (.claude → claude)
+FRONTEND=$(basename $(dirname $(dirname "$0")) | sed 's/^\.//')
+SESSION_TAG="session-${SESSION_ID}-${FRONTEND}-start"
 
 # Check for uncommitted changes
 if [[ -n $(git status --porcelain 2>/dev/null) ]]; then

@@ -46,7 +46,11 @@ pub enum RepoCommands {
     },
 
     /// List registered repositories
-    List,
+    List {
+        /// Show git status (behind/dirty) for each repo
+        #[arg(long)]
+        status: bool,
+    },
 
     /// Update a repository (git pull + rescrape)
     Update {
@@ -100,7 +104,7 @@ pub fn execute_cli(
             contrib,
             with_issues,
         },
-        (Some(RepoCommands::List), _) => RepoCommand::List,
+        (Some(RepoCommands::List { status }), _) => RepoCommand::List { status },
         (Some(RepoCommands::Update { name, all, oxidize }), _) => {
             if all {
                 RepoCommand::Update {
@@ -122,7 +126,7 @@ pub fn execute_cli(
         },
 
         // No args: show list
-        (None, None) => RepoCommand::List,
+        (None, None) => RepoCommand::List { status: false },
     };
 
     execute(cmd)
@@ -235,7 +239,7 @@ pub fn execute(command: RepoCommand) -> Result<()> {
             contrib,
             with_issues,
         } => add(&url, contrib, with_issues),
-        RepoCommand::List => {
+        RepoCommand::List { status } => {
             let repos = list()?;
             if repos.is_empty() {
                 println!("No repositories registered.");
@@ -244,16 +248,32 @@ pub fn execute(command: RepoCommand) -> Result<()> {
             }
 
             println!("📚 Registered Repositories\n");
-            println!("{:<20} {:<35} {:<8} DOMAINS", "NAME", "GITHUB", "CONTRIB");
-            println!("{}", "─".repeat(80));
 
-            for repo in repos {
-                let contrib_str = if repo.contrib { "✓ fork" } else { "-" };
-                let domains = repo.domains.join(", ");
-                println!(
-                    "{:<20} {:<35} {:<8} {}",
-                    repo.name, repo.github, contrib_str, domains
-                );
+            if status {
+                println!("{:<20} {:<35} {:<8} STATUS", "NAME", "GITHUB", "CONTRIB");
+                println!("{}", "─".repeat(80));
+
+                for repo in repos {
+                    let contrib_str = if repo.contrib { "✓ fork" } else { "-" };
+                    let status_str =
+                        internal::check_repo_status(&repo.path, repo.synced_commit.as_deref());
+                    println!(
+                        "{:<20} {:<35} {:<8} {}",
+                        repo.name, repo.github, contrib_str, status_str
+                    );
+                }
+            } else {
+                println!("{:<20} {:<35} {:<8} DOMAINS", "NAME", "GITHUB", "CONTRIB");
+                println!("{}", "─".repeat(80));
+
+                for repo in repos {
+                    let contrib_str = if repo.contrib { "✓ fork" } else { "-" };
+                    let domains = repo.domains.join(", ");
+                    println!(
+                        "{:<20} {:<35} {:<8} {}",
+                        repo.name, repo.github, contrib_str, domains
+                    );
+                }
             }
             Ok(())
         }
@@ -277,7 +297,9 @@ pub enum RepoCommand {
         contrib: bool,
         with_issues: bool,
     },
-    List,
+    List {
+        status: bool,
+    },
     Update {
         name: Option<String>,
         oxidize: bool,
@@ -303,7 +325,7 @@ mod tests {
         };
         assert!(matches!(add, RepoCommand::Add { .. }));
 
-        let list = RepoCommand::List;
-        assert!(matches!(list, RepoCommand::List));
+        let list = RepoCommand::List { status: false };
+        assert!(matches!(list, RepoCommand::List { .. }));
     }
 }

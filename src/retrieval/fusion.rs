@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 
+use super::intent::IntentWeights;
 use super::oracle::{OracleMetadata, OracleResult};
 
 /// Per-oracle contribution to a fused result
@@ -59,6 +60,22 @@ pub struct FusedResult {
 ///
 /// k=60 is standard (higher k reduces impact of top ranks)
 pub fn rrf_fuse(ranked_lists: Vec<Vec<OracleResult>>, k: usize, limit: usize) -> Vec<FusedResult> {
+    // Default: uniform weights
+    rrf_fuse_weighted(ranked_lists, k, limit, None)
+}
+
+/// Weighted Reciprocal Rank Fusion
+///
+/// Like RRF, but applies per-oracle weights to boost/reduce oracle contributions.
+/// Score for document d = Σ weight_i * 1/(k + rank_i)
+///
+/// Used for intent-aware retrieval where temporal queries boost commits/sessions.
+pub fn rrf_fuse_weighted(
+    ranked_lists: Vec<Vec<OracleResult>>,
+    k: usize,
+    limit: usize,
+    weights: Option<&IntentWeights>,
+) -> Vec<FusedResult> {
     let mut scores: HashMap<String, f32> = HashMap::new();
     let mut docs: HashMap<String, OracleResult> = HashMap::new();
     let mut sources: HashMap<String, Vec<&'static str>> = HashMap::new();
@@ -69,7 +86,11 @@ pub fn rrf_fuse(ranked_lists: Vec<Vec<OracleResult>>, k: usize, limit: usize) ->
         for (rank, result) in list.into_iter().enumerate() {
             // RRF score: 1 / (k + rank + 1)
             // rank is 0-indexed, so rank 0 -> 1/(k+1)
-            let rrf_score = 1.0 / (k + rank + 1) as f32;
+            let base_rrf_score = 1.0 / (k + rank + 1) as f32;
+
+            // Apply oracle-specific weight if provided
+            let weight = weights.map(|w| w.weight_for(result.source)).unwrap_or(1.0);
+            let rrf_score = weight * base_rrf_score;
 
             *scores.entry(result.doc_id.clone()).or_default() += rrf_score;
 
