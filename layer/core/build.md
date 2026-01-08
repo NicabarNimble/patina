@@ -73,6 +73,7 @@ Built-in quality measurement infrastructure:
 | `patina eval` | Retrieval quality by dimension | - |
 | `patina eval --feedback` | Real-world precision from sessions | Session data |
 | `patina bench retrieval` | MRR, Recall@k benchmarking | `eval/retrieval-queryset.json` |
+| `patina report` | **NEW:** Full state report using own tools | Tool quality = report quality |
 
 **Baseline metrics:** MRR 0.624, Recall@10 67.5%, Latency ~135ms
 
@@ -84,13 +85,26 @@ Run regularly to catch regressions.
 
 ### Active
 
-- [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - **NEW:** LLM query expansion for terminology mismatch
+- [spec-report.md](../surface/build/spec-report.md) - **NEW:** Self-analysis reports using patina's own tools
+- [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - LLM query expansion for terminology mismatch
 - [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 1 next:** Federated query (0.5 persona complete)
 - [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** mother/patina/awaken separation
 
 ---
 
 ## Current Focus
+
+### Project Reports (NEW)
+
+**Problem:** No way to get a comprehensive "state of the repo" that uses patina's own tools. Want to dogfood scry, assay, scrape data to generate reports - tool quality = report quality.
+
+**Solution:** `patina report` command that internally runs scry queries, assay commands, reads knowledge.db, and assembles a timestamped markdown report.
+
+**Dual purpose:**
+1. Useful output (what's the state of this codebase?)
+2. Tool validation (if scry can't answer "main modules", fix scry)
+
+**Spec:** [spec-report.md](../surface/build/spec-report.md)
 
 ### Vocabulary Gap
 
