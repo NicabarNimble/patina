@@ -627,6 +627,11 @@ fn ensure_model_available() -> Result<()> {
     Ok(())
 }
 
+/// Maximum depth to search for child patina projects
+/// 6 levels covers most real project structures (monorepos go 5-6 deep)
+/// TODO: Make configurable via .patina/config.toml
+const CHILD_PROJECT_SEARCH_DEPTH: usize = 6;
+
 /// Check for hierarchy conflicts before init
 /// Prevents creating nested patina projects that cause duplicate slash commands
 fn check_hierarchy_conflicts(force: bool) -> Result<()> {
@@ -671,14 +676,16 @@ fn check_hierarchy_conflicts(force: bool) -> Result<()> {
     let child_projects = find_child_patina_projects(&current_dir)?;
 
     if !child_projects.is_empty() {
-        eprintln!("Error: Found Patina project(s) in subdirectories (checked 2 levels):");
+        eprintln!(
+            "Error: Found Patina project(s) in subdirectories (checked {} levels):",
+            CHILD_PROJECT_SEARCH_DEPTH
+        );
         for p in &child_projects {
             eprintln!("  → {}", p.display());
         }
         eprintln!();
         eprintln!("Initializing here would create a parent project over existing ones,");
         eprintln!("causing duplicate commands and configuration conflicts.");
-        eprintln!("(Note: there may be more projects deeper in the tree)");
         eprintln!();
         eprintln!("To fix:");
         eprintln!("  1. Initialize in a different directory");
@@ -695,52 +702,48 @@ fn check_hierarchy_conflicts(force: bool) -> Result<()> {
 }
 
 /// Find child directories that already have .patina/ or .claude/commands/
+/// Uses ignore crate for fast walking (respects .gitignore, skips node_modules etc.)
+/// Returns on first match - we only need to find one to block init
 fn find_child_patina_projects(dir: &Path) -> Result<Vec<PathBuf>> {
-    let mut projects = Vec::new();
+    use ignore::WalkBuilder;
 
-    // Don't recurse too deep - just check immediate and one level down
-    // to avoid scanning huge trees
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
+    let walker = WalkBuilder::new(dir)
+        .max_depth(Some(CHILD_PROJECT_SEARCH_DEPTH))
+        .hidden(false) // Need to see .patina and .claude
+        .git_ignore(true) // Skip node_modules, target, etc.
+        .build();
+
+    for entry in walker {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue, // Skip permission errors etc.
+        };
+
         let path = entry.path();
 
-        if !path.is_dir() {
+        // Skip the root directory itself
+        if path == dir {
             continue;
         }
 
-        // Skip hidden dirs (except we want to find .patina/.claude)
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if name.starts_with('.') {
-            continue;
-        }
+        // Check for patina markers
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
-        // Check if this child has patina markers
-        if path.join(".patina").exists() || path.join(".claude/commands").exists() {
-            projects.push(path.clone());
-            continue; // Don't recurse into found projects
-        }
-
-        // Check one level deeper
-        if let Ok(entries) = fs::read_dir(&path) {
-            for sub_entry in entries.flatten() {
-                let sub_path = sub_entry.path();
-                if !sub_path.is_dir() {
-                    continue;
-                }
-
-                let sub_name = sub_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if sub_name.starts_with('.') {
-                    continue;
-                }
-
-                if sub_path.join(".patina").exists() || sub_path.join(".claude/commands").exists() {
-                    projects.push(sub_path);
-                }
+        if file_name == ".patina" || (file_name == "commands" && path.parent().map(|p| p.ends_with(".claude")).unwrap_or(false)) {
+            // Found a marker - return the project directory (parent of .patina or .claude)
+            if let Some(project_dir) = path.parent() {
+                let project_dir = if file_name == "commands" {
+                    // .claude/commands -> go up two levels
+                    project_dir.parent().unwrap_or(project_dir)
+                } else {
+                    project_dir
+                };
+                return Ok(vec![project_dir.to_path_buf()]);
             }
         }
     }
 
-    Ok(projects)
+    Ok(vec![])
 }
 
 /// Ensure critical entries exist in an existing .gitignore
