@@ -90,6 +90,7 @@ Run regularly to catch regressions.
 
 ### Active
 
+- [spec-surface-layer.md](../surface/build/spec-surface-layer.md) - **Next:** Distillation layer, federation interface, `patina surface` command
 - [spec-session-prompts.md](../surface/build/spec-session-prompts.md) - **Design:** Capture user prompts in session files (reads from ~/.claude/history.jsonl)
 - [spec-report.md](../surface/build/spec-report.md) - **NEW:** Self-analysis reports using patina's own tools
 - [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - LLM query expansion for terminology mismatch
@@ -99,6 +100,20 @@ Run regularly to catch regressions.
 ---
 
 ## Current Focus
+
+### Surface Layer (Next)
+
+**Problem:** Accumulated project wisdom is locked in eventlog/embeddings (local, not portable). When starting a new project, past learnings aren't visible or transferable. Other projects can't query your knowledge.
+
+**Solution:** `patina surface` command that distills knowledge into atomic markdown files with wikilinks. Surface is:
+- **Derived**: Extracted by querying scry/assay
+- **Committed**: Lives in git (`layer/surface/`)
+- **Portable**: Federation interface for cross-project queries
+- **Queryable**: Scry can search surface nodes
+
+**Phase 1 scope:** Basic generation - query scry for decisions/patterns, assay for components, generate atomic nodes with wikilinks from co-occurrence.
+
+**Spec:** [spec-surface-layer.md](../surface/build/spec-surface-layer.md)
 
 ### Project Reports (NEW)
 
