@@ -25,9 +25,12 @@ A local-first RAG network: portable project knowledge + personal mothership.
 ```
                             GIT (source of truth)
                                     │
-                                    ▼
-                                 scrape
-                        (extract facts from reality)
+                   ┌────────────────┼────────────────┐
+                   ▼                ▼                ▼
+             scrape git      scrape code      scrape forge
+           (commits+parsed)   (symbols)      (issues, PRs)
+                   │                │                │
+                   └────────────────┴────────────────┘
                                     │
                                     ▼
                                SQLite DB
@@ -50,7 +53,9 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 | Command | Role | "Do X" |
 |---------|------|--------|
-| scrape | Extract | Capture raw → structured facts |
+| scrape git | Extract | Capture commits, co-changes, parsed conventional commits |
+| scrape code | Extract | Capture symbols, functions, types |
+| scrape forge | Extract | Capture issues, PRs from GitHub/Gitea |
 | oxidize | Prepare (semantic) | Build embeddings from facts |
 | assay | Prepare (structural) | Build signals from facts |
 | scry | Deliver | Fuse and route knowledge to LLM |
@@ -85,6 +90,7 @@ Run regularly to catch regressions.
 
 ### Active
 
+- [spec-forge-abstraction.md](../surface/build/spec-forge-abstraction.md) - **Phase 1 ready:** Conventional commit parsing, ForgeReader trait
 - [spec-report.md](../surface/build/spec-report.md) - **NEW:** Self-analysis reports using patina's own tools
 - [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - LLM query expansion for terminology mismatch
 - [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 1 next:** Federated query (0.5 persona complete)
@@ -93,6 +99,21 @@ Run regularly to catch regressions.
 ---
 
 ## Current Focus
+
+### Forge Abstraction (Phase 1 Ready)
+
+**Problem:** GitHub-specific code scattered across codebase (`scrape/github/`, `git/fork.rs`, `repo/internal.rs`). No path to Gitea/Codeberg. Commits have PR refs we don't extract.
+
+**Solution:**
+1. Parse conventional commits during git scrape (extract type, scope, pr_ref)
+2. `ForgeReader` trait for read-only forge data (issues, PRs)
+3. `ForgeWriter` trait for repo operations (fork, create) - separate module
+
+**Phase 1 (ready now):** Add `parse_conventional()` to scrape/git. Zero network, zero risk. Enables PR ref discovery.
+
+**Measurement:** Before Phase 3, validate PR ref density (>20% of commits) and PR body quality (>100 chars avg).
+
+**Spec:** [spec-forge-abstraction.md](../surface/build/spec-forge-abstraction.md)
 
 ### Project Reports (NEW)
 
