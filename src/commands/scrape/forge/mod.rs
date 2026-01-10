@@ -16,7 +16,7 @@ use std::time::Instant;
 
 use super::database;
 use super::ScrapeStats;
-use patina::forge::{self, ForgeKind, ForgeReader, Issue, IssueState};
+use patina::forge::{self, ForgeKind, Issue, IssueState, PrState, PullRequest};
 
 /// Create materialized views for forge events.
 fn create_materialized_views(conn: &Connection) -> Result<()> {
@@ -37,9 +37,28 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
             FOREIGN KEY (event_seq) REFERENCES eventlog(seq)
         );
 
+        -- Forge PRs view (materialized from forge.pr events)
+        CREATE TABLE IF NOT EXISTS forge_prs (
+            number INTEGER PRIMARY KEY,
+            title TEXT NOT NULL,
+            body TEXT,
+            state TEXT NOT NULL,
+            labels TEXT,           -- JSON array of label names
+            author TEXT,
+            created_at TEXT NOT NULL,
+            merged_at TEXT,
+            url TEXT NOT NULL,
+            linked_issues TEXT,    -- JSON array of issue numbers
+            approvals INTEGER DEFAULT 0,
+            event_seq INTEGER,     -- Link back to eventlog
+            FOREIGN KEY (event_seq) REFERENCES eventlog(seq)
+        );
+
         -- Indexes for common queries
         CREATE INDEX IF NOT EXISTS idx_forge_issues_state ON forge_issues(state);
         CREATE INDEX IF NOT EXISTS idx_forge_issues_updated ON forge_issues(updated_at);
+        CREATE INDEX IF NOT EXISTS idx_forge_prs_state ON forge_prs(state);
+        CREATE INDEX IF NOT EXISTS idx_forge_prs_merged ON forge_prs(merged_at);
         "#,
     )?;
 
@@ -103,8 +122,102 @@ fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<usize> {
     Ok(count)
 }
 
+/// Collect unique PR refs from git.commit events that haven't been fetched yet.
+fn collect_pr_refs(conn: &Connection) -> Result<Vec<i64>> {
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT DISTINCT json_extract(data, '$.parsed.pr_ref') as pr_ref
+        FROM eventlog
+        WHERE event_type = 'git.commit'
+          AND json_extract(data, '$.parsed.pr_ref') IS NOT NULL
+          AND json_extract(data, '$.parsed.pr_ref') NOT IN (
+              SELECT number FROM forge_prs
+          )
+        ORDER BY pr_ref DESC
+        "#,
+    )?;
+
+    let pr_refs: Vec<i64> = stmt
+        .query_map([], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(pr_refs)
+}
+
+/// Insert PRs into eventlog and materialized views.
+fn insert_prs(conn: &Connection, prs: &[PullRequest]) -> Result<usize> {
+    let mut count = 0;
+
+    let mut pr_stmt = conn.prepare(
+        "INSERT OR REPLACE INTO forge_prs
+         (number, title, body, state, labels, author, created_at, merged_at, url, linked_issues, approvals, event_seq)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+    )?;
+
+    for pr in prs {
+        let labels_str = serde_json::to_string(&pr.labels)?;
+        let linked_issues_str = serde_json::to_string(&pr.linked_issues)?;
+        let state_str = match pr.state {
+            PrState::Open => "open",
+            PrState::Merged => "merged",
+            PrState::Closed => "closed",
+        };
+
+        // Combine comments into single text for storage
+        let comments_text: Vec<String> = pr
+            .comments
+            .iter()
+            .map(|c| format!("{}: {}", c.author, c.body))
+            .collect();
+
+        // 1. Insert into eventlog (source of truth)
+        let event_data = json!({
+            "number": pr.number,
+            "title": &pr.title,
+            "body": &pr.body,
+            "state": state_str,
+            "labels": &pr.labels,
+            "author": &pr.author,
+            "url": &pr.url,
+            "linked_issues": &pr.linked_issues,
+            "comments": comments_text,
+            "approvals": pr.approvals,
+        });
+
+        let seq = database::insert_event(
+            conn,
+            "forge.pr",
+            &pr.created_at,
+            &pr.number.to_string(),
+            Some(&pr.url),
+            &event_data.to_string(),
+        )?;
+
+        // 2. Update materialized view
+        pr_stmt.execute(rusqlite::params![
+            pr.number,
+            &pr.title,
+            &pr.body,
+            state_str,
+            &labels_str,
+            &pr.author,
+            &pr.created_at,
+            &pr.merged_at,
+            &pr.url,
+            &linked_issues_str,
+            pr.approvals,
+            seq,
+        ])?;
+
+        count += 1;
+    }
+
+    Ok(count)
+}
+
 /// Populate FTS5 index with forge issues.
-pub fn populate_fts5_forge(conn: &Connection) -> Result<usize> {
+pub fn populate_fts5_issues(conn: &Connection) -> Result<usize> {
     let count = conn.execute(
         r#"
         INSERT INTO code_fts (symbol_name, file_path, content, event_type)
@@ -115,6 +228,27 @@ pub fn populate_fts5_forge(conn: &Connection) -> Result<usize> {
             'forge.issue' as event_type
         FROM eventlog
         WHERE event_type = 'forge.issue'
+        "#,
+        [],
+    )?;
+
+    Ok(count)
+}
+
+/// Populate FTS5 index with forge PRs.
+pub fn populate_fts5_prs(conn: &Connection) -> Result<usize> {
+    // Include PR body and comments for rich search
+    let count = conn.execute(
+        r#"
+        INSERT INTO code_fts (symbol_name, file_path, content, event_type)
+        SELECT
+            json_extract(data, '$.title') as symbol_name,
+            json_extract(data, '$.url') as file_path,
+            COALESCE(json_extract(data, '$.body'), '') || ' ' ||
+            COALESCE(json_extract(data, '$.comments'), '') as content,
+            'forge.pr' as event_type
+        FROM eventlog
+        WHERE event_type = 'forge.pr'
         "#,
         [],
     )?;
@@ -273,9 +407,37 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
         update_last_scrape(&conn, &latest.updated_at)?;
     }
 
-    // Populate FTS5 index
-    let fts_count = populate_fts5_forge(&conn)?;
-    println!("  Indexed {} issues in FTS5", fts_count);
+    // Populate FTS5 index for issues
+    let issue_fts_count = populate_fts5_issues(&conn)?;
+    println!("  Indexed {} issues in FTS5", issue_fts_count);
+
+    // Phase 3: Fetch PRs referenced in commits
+    let pr_refs = collect_pr_refs(&conn)?;
+    let mut pr_count = 0;
+
+    if !pr_refs.is_empty() {
+        println!("  Found {} PR refs to fetch from commits", pr_refs.len());
+
+        let mut prs = Vec::new();
+        for pr_num in &pr_refs {
+            match reader.get_pull_request(*pr_num) {
+                Ok(pr) => prs.push(pr),
+                Err(e) => {
+                    // PR might be deleted or inaccessible - skip but don't fail
+                    println!("  ⚠️  Could not fetch PR #{}: {}", pr_num, e);
+                }
+            }
+        }
+
+        if !prs.is_empty() {
+            pr_count = insert_prs(&conn, &prs)?;
+            println!("  Inserted {} PRs", pr_count);
+
+            // Populate FTS5 index for PRs
+            let pr_fts_count = populate_fts5_prs(&conn)?;
+            println!("  Indexed {} PRs in FTS5", pr_fts_count);
+        }
+    }
 
     let elapsed = start.elapsed();
     let db_size = std::fs::metadata(db_path)
@@ -283,7 +445,7 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
         .unwrap_or(0);
 
     Ok(ScrapeStats {
-        items_processed: issue_count,
+        items_processed: issue_count + pr_count,
         time_elapsed: elapsed,
         database_size_kb: db_size,
     })
@@ -384,7 +546,7 @@ pub fn run_legacy(config: GitHubScrapeConfig) -> Result<ScrapeStats> {
     }
 
     // Populate FTS5
-    let fts_count = populate_fts5_forge(&conn)?;
+    let fts_count = populate_fts5_issues(&conn)?;
     println!("  Indexed {} issues in FTS5", fts_count);
 
     let elapsed = start.elapsed();
