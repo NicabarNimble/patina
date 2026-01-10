@@ -3,7 +3,7 @@
 **Status:** Active (Next on deck)
 **Created:** 2026-01-08
 **Updated:** 2026-01-10
-**Origin:** Sessions 20260108-124107, 20260108-200725
+**Origin:** Sessions 20260108-124107, 20260108-200725, 20260109-063849, 20260110-154224
 
 ---
 
@@ -15,109 +15,96 @@ Not queryable. Not "run scry and hope." **Visible. In files I can read.**
 
 ---
 
-## Position in the Stack
+## Where We Are Today
 
-Surface is the **distillation layer** above scry/assay/oxidize.
+### The Architecture (Hub & Spoke)
 
 ```
-                      ┌─────────────────────┐
-                      │   FUTURE TOOLS      │  ← Higher insights
-                      │   (not yet built)   │
-                      └──────────┬──────────┘
-                                 │
-                      ┌──────────▼──────────┐
-                      │      SURFACE        │  ← The patina
-                      │  (git, portable,    │  ← Federation interface
-                      │   queryable)        │  ← Other projects query this
-                      └──────────┬──────────┘
-                                 │
-           ┌─────────────────────┼─────────────────────┐
-           │                     │                     │
-  ┌────────▼────────┐   ┌────────▼────────┐   ┌────────▼────────┐
-  │    SCRY         │   │    ASSAY        │   │   OXIDIZE       │
-  │  (query)        │   │  (structure)    │   │  (embeddings)   │
-  └────────┬────────┘   └────────┬────────┘   └────────┬────────┘
-           │                     │                     │
-           └─────────────────────┼─────────────────────┘
-                                 │
-                      ┌──────────▼──────────┐
-                      │     EVENTLOG        │  ← Local, rebuilt
-                      └──────────┬──────────┘
-                                 │
-                      ┌──────────▼──────────┐
-                      │        GIT          │  ← Source of truth
-                      │   (sessions, code,  │
-                      │    surface, core)   │
-                      └─────────────────────┘
+                         GIT (source of truth)
+                                │
+                                ▼
+                             SCRAPE
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          PATINA.DB (Hub)                                    │
+│                                                                             │
+│  eventlog ──────────────────────────────────────────────────────────────►  │
+│       │                                                                     │
+│       ├──► commits, commit_files        (materialized from git.commit)     │
+│       ├──► function_facts, import_facts (materialized from code.*)         │
+│       ├──► patterns                     (materialized from pattern.*)      │
+│       ├──► forge_prs, forge_issues      (materialized from forge.*)        │
+│       ├──► sessions, goals, observations (materialized from session.*)     │
+│       │                                                                     │
+│       └──► FTS5: code_fts, commits_fts, pattern_fts                        │
+│                                                                             │
+│  call_graph, co_changes, module_signals (structural)                       │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                │
+          ┌─────────────────────┼─────────────────────┐
+          │                     │                     │
+          ▼                     ▼                     ▼
+    ┌───────────┐        ┌───────────┐        ┌───────────┐
+    │  OXIDIZE  │        │   SCRY    │        │   ASSAY   │
+    │           │        │           │        │           │
+    │ reads db  │        │ reads db  │        │ reads db  │
+    │ writes    │        │ reads     │        │           │
+    │ embeddings│───────►│ embeddings│        │           │
+    └───────────┘        └───────────┘        └───────────┘
 ```
 
-Surface is **output** of scry/assay/oxidize, not a parallel input. It's the crystallization layer.
+### Current State of Surface
+
+**What exists:**
+- `layer/surface/` contains ~16 **manually written** markdown files
+- These get **scraped** into `pattern.surface` events in eventlog
+- They're **queryable** via `pattern_fts` (lexical) and semantic index
+- They're **peers** to code/git as inputs, not outputs
+
+**What's missing:**
+- No `patina surface` command to generate nodes
+- No automated extraction from scry/assay queries
+- No cycle where surface is both input AND output
+
+### The Gap
+
+| Aspect | Today | Vision |
+|--------|-------|--------|
+| Content | Manual markdown | Auto-generated nodes |
+| Source | Human writes | scry/assay queries |
+| Format | Freeform docs | Atomic nodes with wikilinks |
+| Cycle | Input only | Input → query → generate → input |
 
 ---
 
-## Three Raw File Types
+## Where We Want To Be
 
-| Type | Captures | Written When |
-|------|----------|--------------|
-| **Sessions** | User ↔ LLM conversation | During/after interaction |
-| **Git** | User/LLM ↔ Code | When code changes |
-| **Surface** | Distilled understanding | When knowledge is extracted |
+### The Cycle
 
-- Sessions are the raw log of *talking*
-- Commits are the raw log of *doing*
-- Surface is the raw log of *understanding*
-
-We built the extraction layer for code and git. Sessions got added to that pipeline. Surface is the **next level up** - distilled understanding extracted from querying the stack.
-
----
-
-## The Cycle
-
-Surface is both derived and committed:
+Surface becomes both derived and committed:
 
 ```
-Git → eventlog → scry/assay → SURFACE → Git (cycle)
+Git → scrape → eventlog → scry/assay ──┐
+                                       │
+                            ┌──────────▼──────────┐
+                            │   patina surface    │
+                            │   (generates nodes) │
+                            └──────────┬──────────┘
+                                       │
+                                       ▼
+                               layer/surface/*.md
+                                       │
+                                       ▼
+                                  git commit
+                                       │
+                                       └──────────→ (back to top)
 ```
 
-- **Derived**: Extracted by querying the stack below
-- **Committed**: Becomes part of source of truth
-- **Queryable**: Future scry can search surface too
-- **Portable**: Travels via git, enables federation
+### Node Format
 
----
-
-## What Surface Captures
-
-| Type | Example | Source |
-|------|---------|--------|
-| **Decision** | why-rouille, why-sqlite | Session decisions, commit rationale |
-| **Pattern** | measure-first, scalpel-not-shotgun | Session patterns observed |
-| **Concept** | sync-first, borrow-checker | Recurring ideas across sessions/commits |
-| **Component** | scry, eventlog, oxidize | Code structure (assay) |
-
----
-
-## Structure
-
-Flat namespace. Let links carry structure, not folders.
-
-```
-layer/surface/
-├── sync-first.md
-├── rouille.md
-├── measure-first.md
-├── eventlog.md
-├── scry.md
-└── ...
-```
-
-No subdirectories. Importance emerges from connectivity, not hierarchy.
-
----
-
-## Node Format
-
-Minimum viable surface node:
+Atomic markdown with frontmatter:
 
 ```markdown
 ---
@@ -137,21 +124,20 @@ Prefer synchronous, blocking code over async.
 ## Links
 - [[rouille]] - chosen because of this
 - [[tokio]] - explicitly avoided
-- [[borrow-checker]] - key enabler
 ```
 
-**Key elements:**
-- **Frontmatter**: type, extraction date, sources
-- **Title**: node name (matches filename)
-- **Description**: one sentence (or brief paragraph)
-- **Why**: rationale (optional but valuable)
-- **Links**: wikilinks to related nodes
+### What Gets Generated
 
----
+| Type | Example | Source |
+|------|---------|--------|
+| **Decision** | why-rouille, why-sqlite | Session "Key Decisions", commit rationale |
+| **Pattern** | measure-first, scalpel-not-shotgun | Session "Patterns Observed" |
+| **Concept** | sync-first, borrow-checker | Recurring ideas across sessions/commits |
+| **Component** | scry, eventlog, oxidize | assay inventory (key modules) |
 
-## The Graph
+### The Graph
 
-Wikilinks ARE the graph:
+Wikilinks ARE the graph. No graph database needed.
 
 ```
 sync-first ────────> rouille
@@ -161,117 +147,167 @@ sync-first ────────> rouille
     └──────────────> borrow-checker
 ```
 
-No graph database. Just files linking to files.
-
-**Backlinks emerge**: When you open `rouille.md`, tools can show what links TO it.
+**Links from co-occurrence**: If two concepts appear in the same session or commit, they're related.
 
 ---
 
-## Generation
+## Options to Get There
 
-### Command: `patina surface`
+Three approaches identified in session 20260109-063849:
 
-```bash
-patina surface              # Generate/update surface from stack
-patina surface --dry-run    # Preview what would be created/changed
+### Option A: Deterministic Extraction
+
+Query scry/assay with fixed queries, format results directly.
+
+```
+assay inventory → component nodes
+scry "decisions" → decision nodes
+scry "patterns" → pattern nodes
 ```
 
-### How It Works
+**Pros:**
+- Simple to implement
+- Reproducible output
+- No LLM dependency
 
-`patina surface` queries the tools we already built:
+**Cons:**
+- Raw scry results are noisy (snippets, scores)
+- No synthesis - just reformatted query results
+- May produce low-quality nodes
 
-1. **Query scry**: "What decisions were made?" → decision nodes
-2. **Query scry**: "What patterns recur?" → pattern nodes
-3. **Query assay**: "What are the key modules?" → component nodes
-4. **Query scry**: "What concepts appear frequently?" → concept nodes
-5. **Extract links**: Co-occurrence in same session/commit → wikilinks
-6. **Write files**: Atomic markdown to `layer/surface/`
-7. **Commit**: Surface goes into git
+**Best for:** Component nodes (assay data is already structured)
 
-The extraction is automated. The tools do the heavy lifting. Surface is the **materialized view** of what they know.
+### Option B: LLM Synthesis
 
-### What Gets Extracted
+Use local LLM to transform query results into clean nodes.
 
-**From sessions (via scry):**
-- "Key Decisions" sections
-- "Patterns Observed" sections
-- Concepts that recur across sessions
+```
+┌─────────────────┐
+│  Query Results  │  ← Raw, noisy
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Local LLM      │  ← Gemma 270M via ort
+│  (cartridge)    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Surface Node   │  ← Clean, formatted, linked
+└─────────────────┘
+```
 
-**From commits (via scry):**
-- Messages with decision language ("because", "instead of", "prefer")
-- Conventional commit types as context
+**Pros:**
+- High-quality synthesis
+- Can extract meaning from noisy results
+- Natural language to structured output
 
-**From code (via assay):**
-- Key modules/components
-- Architectural relationships (imports, callers)
+**Cons:**
+- Requires local LLM infrastructure
+- Non-deterministic (same input → slightly different output)
+- Adds complexity (model cartridges, inference)
+
+**Best for:** Decision and pattern nodes (need synthesis)
+
+### Option C: Hybrid (Recommended)
+
+Combine both approaches based on node type.
+
+| Node Type | Approach | Rationale |
+|-----------|----------|-----------|
+| **Component** | Deterministic | assay data is structured |
+| **Decision** | LLM synthesis | needs interpretation |
+| **Pattern** | LLM synthesis | needs interpretation |
+| **Concept** | Deterministic | frequency-based extraction |
+
+**Phase 1:** Start with deterministic (components + concepts)
+**Phase 2:** Add LLM synthesis for decisions/patterns
 
 ---
 
-## The LLM as Driver
+## Infrastructure That Exists
 
-Surface exists to make LLMs smarter. The flow:
+| Component | Status | Location |
+|-----------|--------|----------|
+| scry queries | ✅ Working | `src/commands/scry/` |
+| assay queries | ✅ Working | `src/commands/assay/` |
+| ort (ONNX runtime) | ✅ In use | embeddings |
+| patina model | ⚠️ Partial | model download/management |
+| Gemma ONNX models | ✅ Available | HuggingFace |
+| persona (template) | ✅ Working | LiveStore pattern for writes |
 
-```
-User: "How should I structure entities in dojo?"
-                │
-                ▼
-Claude calls: mcp__patina__scry("dojo entity structure")
-                │
-                ▼
-Scry queries: local surface + eventlog + (federated mothership)
-                │
-                ▼
-Returns: Decisions, patterns, concepts with provenance
-                │
-                ▼
-Claude: "Based on your past patterns, you typically..."
-```
+### What Needs to Be Built
 
-Surface is queryable via the existing MCP tools. No new interface needed.
+| Component | Description |
+|-----------|-------------|
+| `src/commands/surface/mod.rs` | Command scaffolding |
+| Surface node schema | Rust struct for node format |
+| Deterministic extractors | Query → node for each type |
+| (Optional) LLM cartridge | Gemma 270M for synthesis |
+| MCP tool: `surface_add` | For LLM-driven surface updates |
 
 ---
 
-## Federation
+## Implementation Path
 
-### Surface vs Persona
+### Phase 1: Deterministic Components
 
-| Aspect | Project Surface | Mothership Persona |
-|--------|-----------------|-------------------|
-| Scope | This project | All projects |
-| Location | `layer/surface/` (in git) | `~/.patina/persona/` (local) |
-| Content | Project-specific knowledge | User beliefs across projects |
-| Federation | Exports to persona | Imports to new projects |
+**Scope:** Generate component nodes from assay.
 
-**Surface → Persona**: Project learnings bubble up to user beliefs
-**Persona → Surface**: User beliefs seed new project surface
+| Task | Description |
+|------|-------------|
+| Create `src/commands/surface/mod.rs` | Command scaffolding |
+| Query `assay inventory` | Get key modules |
+| Generate component nodes | One file per module |
+| Extract links from imports | `import_facts` → wikilinks |
 
-### Cross-Project Flow
+**Exit criteria:**
+- `patina surface` creates component nodes
+- Nodes have wikilinks from import relationships
 
-```
-Project A surface ──┐
-                    ├──merge──> Mothership ──bootstrap──> New Project
-Project B surface ──┘
-```
+### Phase 2: Concept Extraction
 
-Surface is the **federation interface**. Other projects can't query your:
-- eventlog (not in git)
-- embeddings (local, machine-specific)
+**Scope:** Extract recurring concepts from sessions/commits.
 
-Other projects CAN query your:
-- surface (in git, portable, readable)
+| Task | Description |
+|------|-------------|
+| Query sessions for recurring terms | Frequency analysis |
+| Query commits for decision language | "because", "prefer", "instead of" |
+| Generate concept nodes | Co-occurrence → links |
 
-### Transfer Commands
+**Exit criteria:**
+- Concept nodes generated from session/commit patterns
+- Links from co-occurrence in same session
 
-```bash
-# Bootstrap new project from past project's surface
-patina init new-game --surface-from ~/projects/past-game
+### Phase 3: LLM Synthesis (Optional)
 
-# Merge multiple surfaces
-patina surface merge --from game-1 --from game-2
+**Scope:** Add local LLM for decision/pattern synthesis.
 
-# Generate surface from ref repo
-patina surface --from-ref dojo
-```
+| Task | Description |
+|------|-------------|
+| Gemma cartridge setup | manifest + model + tokenizer |
+| Synthesis prompts | Query results → structured node |
+| Decision node generation | LLM interprets session decisions |
+| Pattern node generation | LLM interprets observed patterns |
+
+**Exit criteria:**
+- Local LLM synthesizes high-quality nodes
+- Decisions and patterns extracted with rationale
+
+### Phase 4: Federation
+
+**Scope:** Enable surface transfer between projects.
+
+| Task | Description |
+|------|-------------|
+| `--surface-from` on init | Copy surface from path |
+| `surface merge` command | Combine multiple surfaces |
+| Federated scry | Query across project surfaces |
+
+**Exit criteria:**
+- New project bootstraps from past project's surface
+- Cross-project queries work
 
 ---
 
@@ -289,14 +325,14 @@ cat layer/surface/sync-first.md
 # Open in Obsidian
 open layer/surface/ -a Obsidian
 # Graph view shows connected concepts
-# Any LLM can read and understand
 ```
 
-**3. Bootstrap Test**
+**3. Generation Test**
 ```bash
-patina init test-project --surface-from ~/projects/past-project
-ls layer/surface/
-# Has content from day 1
+patina surface
+# Creates nodes from scry/assay queries
+git status
+# Shows new/modified files in layer/surface/
 ```
 
 **4. Query Test**
@@ -307,115 +343,32 @@ patina scry "why did we choose rouille?"
 
 ---
 
-## Implementation Phases
-
-### Phase 1: Basic Generation
-
-**Scope:** Generate surface nodes by querying scry/assay.
-
-| Task | Description |
-|------|-------------|
-| Create `src/commands/surface/mod.rs` | Command scaffolding |
-| Query scry for decisions | Extract from sessions/commits |
-| Query assay for components | Extract key modules |
-| Generate atomic markdown | One file per node |
-| Extract links from co-occurrence | Same session = related |
-
-**Exit criteria:**
-- `patina surface` creates node files
-- Files have wikilinks from co-occurrence
-
-### Phase 2: Incremental Updates
-
-**Scope:** Update surface without full regeneration.
-
-| Task | Description |
-|------|-------------|
-| Track extraction state | What's already processed |
-| Incremental extraction | Only new sessions/commits |
-| Merge into existing nodes | Update sources, add links |
-
-**Exit criteria:**
-- `patina surface` is incremental
-- Existing nodes grow with new sources
-
-### Phase 3: Federation
-
-**Scope:** Enable surface transfer between projects.
-
-| Task | Description |
-|------|-------------|
-| `--surface-from` on init | Copy surface from path |
-| `surface merge` command | Combine multiple surfaces |
-| Mothership project registry | Track project surfaces |
-| Federated scry | Query across project surfaces |
-
-**Exit criteria:**
-- New project bootstraps from past project
-- Scry queries federated surface
-
----
-
 ## Design Principles
 
 - **Distilled over raw** - Surface is extracted, not logged
 - **Atomic over comprehensive** - One idea per file
 - **Links over prose** - Wikilinks carry meaning
-- **Queryable over readable** - Optimized for LLM access
 - **Portable over powerful** - Plain markdown, works anywhere
-- **Flat over hierarchical** - Links create structure
-
----
-
-## What Surface Is
-
-- **Distillation layer** above scry/assay/oxidize
-- **Materialized view** of extracted knowledge
-- **Federation interface** for cross-project queries
-- **LLM memory** - externalized understanding
-
-## What Surface Is NOT
-
-- **Not a log** - That's sessions
-- **Not a query system** - That's scry
-- **Not a database** - That's eventlog
-- **Not manual docs** - It's generated
-- **Not persona** - That's user-level, surface is project-level
+- **Flat over hierarchical** - Links create structure, not folders
+- **Deterministic first** - Add LLM synthesis only where needed
 
 ---
 
 ## Open Questions
 
-1. **Extraction quality**: How to extract meaningful nodes vs noise?
+1. **Extraction quality**: How to filter meaningful nodes vs noise?
 2. **Link typing**: Should links be typed (implements, avoids) or just connected?
 3. **Manual edits**: Can users edit surface? Do edits survive regeneration?
 4. **Staleness**: How to identify nodes no longer relevant?
+5. **Incremental updates**: How to update existing nodes vs overwrite?
 
 ---
 
 ## References
 
 - [Obsidian](https://obsidian.md) - Knowledge garden model
-- [spec-three-layers.md](./spec-three-layers.md) - mother/patina/awaken separation
 - [spec-pipeline.md](./spec-pipeline.md) - scrape/oxidize/scry pipeline
 - Session 20260108-124107 - Initial design exploration
 - Session 20260108-200725 - Refined as distillation layer
-
----
-
-## Session Context
-
-**Journey to this spec:**
-
-1. "Why rouille?" wasn't answerable → fixed with 23 lines (commits in semantic index)
-2. Built distill (500 lines) → realized it duplicated indexed content
-3. Explored fancy typed graph → grounded back to simplicity
-4. Realized: we built great extraction for code/git, now need same for knowledge
-5. Key insight: Surface is the **next level up** in the distillation path
-
-**The pattern:**
-- Git + code → scrape → eventlog → scry (we built this)
-- Sessions → scrape → eventlog → scry (we added this)
-- Knowledge → **surface** → scry (this is next)
-
-Surface is to understanding what eventlog is to facts.
+- Session 20260109-063849 - LLM synthesis and model cartridge design
+- Session 20260110-154224 - Corrected to hub & spoke architecture
