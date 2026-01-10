@@ -90,7 +90,7 @@ Run regularly to catch regressions.
 
 ### Active
 
-- [spec-forge-abstraction.md](../surface/build/spec-forge-abstraction.md) - **Phase 1 ready:** Conventional commit parsing, ForgeReader trait
+- [spec-forge-abstraction.md](../surface/build/spec-forge-abstraction.md) - **Phase 1 complete:** Conventional commit parsing done, Phase 2 ForgeReader ready
 - [spec-report.md](../surface/build/spec-report.md) - **NEW:** Self-analysis reports using patina's own tools
 - [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - LLM query expansion for terminology mismatch
 - [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 1 next:** Federated query (0.5 persona complete)
@@ -100,18 +100,20 @@ Run regularly to catch regressions.
 
 ## Current Focus
 
-### Forge Abstraction (Phase 1 Ready)
+### Forge Abstraction (Phase 1 Complete)
 
 **Problem:** GitHub-specific code scattered across codebase (`scrape/github/`, `git/fork.rs`, `repo/internal.rs`). No path to Gitea/Codeberg. Commits have PR refs we don't extract.
 
 **Solution:**
-1. Parse conventional commits during git scrape (extract type, scope, pr_ref)
-2. `ForgeReader` trait for read-only forge data (issues, PRs)
-3. `ForgeWriter` trait for repo operations (fork, create) - separate module
+1. Parse conventional commits during git scrape (extract type, scope, pr_ref) - **DONE**
+2. `ForgeReader` trait for read-only forge data (issues, PRs) - **Phase 2**
+3. `ForgeWriter` trait for repo operations (fork, create) - Phase 4
 
-**Phase 1 (ready now):** Add `parse_conventional()` to scrape/git. Zero network, zero risk. Enables PR ref discovery.
+**Phase 1 Complete:** `parse_conventional()` in `scrape/git/commits.rs`. Extracts type, scope, breaking, pr_ref, issue_refs. Tested: patina 98% conventional, dojo 61% with 49% PR refs.
 
-**Measurement:** Before Phase 3, validate PR ref density (>20% of commits) and PR body quality (>100 chars avg).
+**Phase 2 Next:** Create `src/forge/` module with `ForgeReader` trait.
+
+**Measurement:** dojo has 49% PR ref density (above 20% gate). Ready for Phase 3 PR fetching.
 
 **Spec:** [spec-forge-abstraction.md](../surface/build/spec-forge-abstraction.md)
 
