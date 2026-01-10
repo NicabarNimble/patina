@@ -90,7 +90,6 @@ Run regularly to catch regressions.
 
 ### Active
 
-- [spec-forge-abstraction.md](../surface/build/spec-forge-abstraction.md) - **Phase 1 complete:** Conventional commit parsing done, Phase 2 ForgeReader ready
 - [spec-session-prompts.md](../surface/build/spec-session-prompts.md) - **Design:** Capture user prompts in session files (reads from ~/.claude/history.jsonl)
 - [spec-report.md](../surface/build/spec-report.md) - **NEW:** Self-analysis reports using patina's own tools
 - [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - LLM query expansion for terminology mismatch
@@ -100,27 +99,6 @@ Run regularly to catch regressions.
 ---
 
 ## Current Focus
-
-### Forge Abstraction (Phase 4 Complete)
-
-**Problem:** GitHub-specific code scattered across codebase (`scrape/github/`, `git/fork.rs`, `repo/internal.rs`). No path to Gitea/Codeberg. Commits have PR refs we don't extract.
-
-**Solution:**
-1. Parse conventional commits during git scrape (extract type, scope, pr_ref) - **DONE**
-2. `ForgeReader` trait for read-only forge data (issues, PRs) - **DONE**
-3. `ForgeWriter` trait for repo operations (fork, create) - **DONE**
-
-**Phase 1 Complete:** `parse_conventional()` in `scrape/git/commits.rs`. Extracts type, scope, breaking, pr_ref, issue_refs. Tested: patina 98% conventional, dojo 61% with 49% PR refs.
-
-**Phase 2 Complete:** `src/forge/` module with ForgeReader trait (3 methods), GitHubReader using gh CLI, NoneReader for graceful degradation. `scrape/github/` migrated to `scrape/forge/` using trait.
-
-**Phase 3 Complete:** `patina scrape forge` command. Collects pr_refs from commits, fetches PR details via ForgeReader, stores as forge.pr events with FTS5 indexing.
-
-**Phase 4 Complete:** ForgeWriter trait (5 methods) in `src/forge/writer.rs`. GitHubWriter replaces direct gh CLI calls in `git/fork.rs` and `repo/internal.rs`. NoneWriter for graceful degradation.
-
-**Phase 5 Next:** Gitea support (GiteaReader, GiteaWriter).
-
-**Spec:** [spec-forge-abstraction.md](../surface/build/spec-forge-abstraction.md)
 
 ### Project Reports (NEW)
 
@@ -168,6 +146,7 @@ Key items:
 
 Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 
+- `spec/forge-abstraction` - ForgeReader + ForgeWriter traits, conventional commits, GitHub impl
 - `spec/llm-frontends` - Unified 5-command experience across Claude, Gemini, OpenCode
 - `spec/remove-legacy-repos-and-audit` - Removed layer/dust/repos and audit.rs (~1,100 lines)
 - `spec/quality-gates` - MRR regression fix (0.427→0.588), legacy cleanup, CI gate
@@ -189,6 +168,7 @@ Full list: `git tag -l 'spec/*'`
 Completed specs preserved via git tags. View with: `git show spec/<name>:layer/surface/build/spec-<name>.md`
 
 **Recent completions:**
+- `spec/forge-abstraction` - ForgeReader + ForgeWriter traits, conventional commits, GitHub impl (Gitea deferred)
 - `spec/mothership-graph` - Graph routing, 100% repo recall (~1000 lines)
 - `spec/ref-repo-semantic` - 13/13 repos with semantic indexes
 - `spec/quality-gates` - MRR regression fix (0.427→0.588)
