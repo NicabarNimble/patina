@@ -674,7 +674,7 @@ projections:
 
 /// Scrape GitHub issues for a repo
 fn scrape_github_issues(repo_path: &Path, github: &str) -> Result<usize> {
-    use crate::commands::scrape::github::{run as github_run, GitHubScrapeConfig};
+    use crate::commands::scrape::forge::{run_legacy, GitHubScrapeConfig};
 
     let db_path = repo_path.join(".patina/data/patina.db");
 
@@ -685,7 +685,7 @@ fn scrape_github_issues(repo_path: &Path, github: &str) -> Result<usize> {
         db_path: db_path.to_string_lossy().to_string(),
     };
 
-    let stats = github_run(config)?;
+    let stats = run_legacy(config)?;
     Ok(stats.items_processed)
 }
 
