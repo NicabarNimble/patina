@@ -91,6 +91,7 @@ Run regularly to catch regressions.
 ### Active
 
 - [spec-forge-abstraction.md](../surface/build/spec-forge-abstraction.md) - **Phase 1 complete:** Conventional commit parsing done, Phase 2 ForgeReader ready
+- [spec-session-prompts.md](../surface/build/spec-session-prompts.md) - **Design:** Capture user prompts in session files (reads from ~/.claude/history.jsonl)
 - [spec-report.md](../surface/build/spec-report.md) - **NEW:** Self-analysis reports using patina's own tools
 - [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - LLM query expansion for terminology mismatch
 - [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 1 next:** Federated query (0.5 persona complete)
