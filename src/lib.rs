@@ -3,6 +3,7 @@ pub mod db;
 pub mod dev_env;
 pub mod embeddings;
 pub mod environment;
+pub mod forge;
 pub mod git;
 pub mod layer;
 pub mod migration;
