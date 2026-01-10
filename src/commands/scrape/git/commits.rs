@@ -143,7 +143,8 @@ mod tests {
 
     #[test]
     fn test_issue_refs_various_formats() {
-        let msg = "chore: cleanup\n\nFixes: #1\nfixes #2\nCloses #3\nclosed #4\nResolves #5\nresolved #6";
+        let msg =
+            "chore: cleanup\n\nFixes: #1\nfixes #2\nCloses #3\nclosed #4\nResolves #5\nresolved #6";
         let parsed = parse_conventional(msg);
         assert_eq!(parsed.issue_refs, vec![1, 2, 3, 4, 5, 6]);
     }
