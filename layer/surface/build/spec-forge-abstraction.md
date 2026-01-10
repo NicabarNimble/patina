@@ -1,9 +1,10 @@
 # Spec: Forge Abstraction
 
-**Status:** Phase 4 Complete, Phase 5 Ready
+**Status:** ARCHIVED (tag: `spec/forge-abstraction`) - Phases 1-4 Complete, Phase 5 (Gitea) Deferred
 **Created:** 2026-01-09
 **Revised:** 2026-01-10
-**Origin:** Sessions 20260109-170426, 20260110-061843, 20260110-101440
+**Archived:** 2026-01-10
+**Origin:** Sessions 20260109-170426, 20260110-061843, 20260110-101440, 20260110-143305
 
 ---
 
@@ -644,9 +645,12 @@ Session 20260110-101440: Added `patina scrape forge` CLI command, 190 lines
 
 Session 20260110-143305: 2 commits (feat + refactor), removed ~73 lines of duplication
 
-### Phase 5: Gitea Support
+### Phase 5: Gitea Support - DEFERRED
 1. Implement `GiteaReader` using tea CLI or API
-2. Auto-detect Codeberg, Forgejo instances
+2. Implement `GiteaWriter` for fork/create operations
+3. Auto-detect Codeberg, Forgejo instances
+
+**Deferred reason:** Phases 1-4 provide complete GitHub abstraction. Gitea support adds breadth but current focus shifts to other priorities. Reactivate when working with Gitea/Codeberg repos.
 
 ---
 
