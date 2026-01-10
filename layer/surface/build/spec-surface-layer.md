@@ -1,8 +1,8 @@
 # Spec: Surface Layer
 
-**Status:** Design
+**Status:** Active (Next on deck)
 **Created:** 2026-01-08
-**Updated:** 2026-01-08
+**Updated:** 2026-01-10
 **Origin:** Sessions 20260108-124107, 20260108-200725
 
 ---
