@@ -123,8 +123,8 @@ pub(crate) fn fetch_issues(repo: &str, limit: usize, since: Option<&str>) -> Res
         bail!("gh issue list failed: {}", stderr);
     }
 
-    let gh_issues: Vec<GhIssue> = serde_json::from_slice(&output.stdout)
-        .context("Failed to parse GitHub issues JSON")?;
+    let gh_issues: Vec<GhIssue> =
+        serde_json::from_slice(&output.stdout).context("Failed to parse GitHub issues JSON")?;
 
     Ok(gh_issues.into_iter().map(into_issue).collect())
 }
@@ -162,8 +162,8 @@ pub(crate) fn fetch_pull_requests(
         bail!("gh pr list failed: {}", stderr);
     }
 
-    let gh_prs: Vec<GhPullRequest> = serde_json::from_slice(&output.stdout)
-        .context("Failed to parse GitHub PRs JSON")?;
+    let gh_prs: Vec<GhPullRequest> =
+        serde_json::from_slice(&output.stdout).context("Failed to parse GitHub PRs JSON")?;
 
     Ok(gh_prs.into_iter().map(into_pull_request).collect())
 }
@@ -188,8 +188,8 @@ pub(crate) fn fetch_pull_request(repo: &str, number: i64) -> Result<PullRequest>
         bail!("gh pr view #{} failed: {}", number, stderr);
     }
 
-    let gh_pr: GhPullRequest = serde_json::from_slice(&output.stdout)
-        .context("Failed to parse GitHub PR JSON")?;
+    let gh_pr: GhPullRequest =
+        serde_json::from_slice(&output.stdout).context("Failed to parse GitHub PR JSON")?;
 
     Ok(into_pull_request(gh_pr))
 }
@@ -236,11 +236,7 @@ fn into_pull_request(gh: GhPullRequest) -> PullRequest {
     }
 
     // Count approvals
-    let approvals = gh
-        .reviews
-        .iter()
-        .filter(|r| r.state == "APPROVED")
-        .count() as i32;
+    let approvals = gh.reviews.iter().filter(|r| r.state == "APPROVED").count() as i32;
 
     PullRequest {
         number: gh.number,
