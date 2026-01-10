@@ -1,6 +1,6 @@
 # Spec: Forge Abstraction
 
-**Status:** Phase 3 Complete, Phase 4 Ready
+**Status:** Phase 4 Complete, Phase 5 Ready
 **Created:** 2026-01-09
 **Revised:** 2026-01-10
 **Origin:** Sessions 20260109-170426, 20260110-061843, 20260110-101440
@@ -636,10 +636,13 @@ Session 20260110-101440: 2 commits (feat + refactor), 600+ lines
 
 Session 20260110-101440: Added `patina scrape forge` CLI command, 190 lines
 
-### Phase 4: ForgeWriter (if needed) - NEXT
-1. Create `src/repo/forge.rs` with trait
-2. Move fork/create operations
-3. Update `repo` and `git/fork` commands
+### Phase 4: ForgeWriter - DONE
+1. Create `src/forge/writer.rs` with ForgeWriter trait (5 methods) ✓
+2. Implement GitHubWriter using gh CLI ✓
+3. Migrate `git/fork.rs` to use ForgeWriter ✓
+4. Migrate `repo/internal.rs` to use ForgeWriter ✓
+
+Session 20260110-143305: 2 commits (feat + refactor), removed ~73 lines of duplication
 
 ### Phase 5: Gitea Support
 1. Implement `GiteaReader` using tea CLI or API
