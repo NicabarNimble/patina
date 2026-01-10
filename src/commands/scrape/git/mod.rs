@@ -3,6 +3,11 @@
 //! Uses unified eventlog pattern:
 //! - Inserts git.commit events into eventlog table
 //! - Creates materialized views (commits, commit_files, co_changes) from eventlog
+//!
+//! Phase 1 of forge abstraction: includes conventional commit parsing to extract
+//! type, scope, PR references, and issue references from commit messages.
+
+pub mod commits;
 
 use anyhow::{Context, Result};
 use chrono;
@@ -316,6 +321,9 @@ fn insert_commits(conn: &Connection, commits: &[GitCommit]) -> Result<usize> {
     )?;
 
     for commit in commits {
+        // Parse conventional commit format (Phase 1 forge abstraction)
+        let parsed = commits::parse_conventional(&commit.message);
+
         // 1. Insert into eventlog (source of truth)
         // Phase 3: Include session_id for feedback loop
         let mut event_data = json!({
@@ -330,6 +338,17 @@ fn insert_commits(conn: &Connection, commits: &[GitCommit]) -> Result<usize> {
                 "lines_removed": f.lines_removed,
             })).collect::<Vec<_>>(),
         });
+
+        // Add parsed conventional commit fields if present
+        if parsed.has_structure() {
+            event_data["parsed"] = json!({
+                "type": &parsed.commit_type,
+                "scope": &parsed.scope,
+                "breaking": parsed.breaking,
+                "pr_ref": parsed.pr_ref,
+                "issue_refs": &parsed.issue_refs,
+            });
+        }
 
         // Add session_id if commit was made during a session
         if let Some(ref session_id) = commit.session_id {
@@ -531,9 +550,28 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         }
     }
 
+    // Count commits with conventional format (Phase 1 measurement)
+    let conventional_count = commits
+        .iter()
+        .filter(|c| commits::parse_conventional(&c.message).has_structure())
+        .count();
+    let pr_ref_count = commits
+        .iter()
+        .filter(|c| commits::parse_conventional(&c.message).pr_ref.is_some())
+        .count();
+
     // Insert commits
     let commit_count = insert_commits(&conn, &commits)?;
     println!("  Inserted {} commits", commit_count);
+
+    // Report conventional commit stats
+    if conventional_count > 0 {
+        let pct = (conventional_count * 100) / commits.len();
+        println!(
+            "  Parsed {} conventional commits ({}%), {} with PR refs",
+            conventional_count, pct, pr_ref_count
+        );
+    }
 
     // Update last SHA
     if let Some(latest) = commits.first() {
