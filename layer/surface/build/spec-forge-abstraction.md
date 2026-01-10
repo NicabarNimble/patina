@@ -1,6 +1,6 @@
 # Spec: Forge Abstraction
 
-**Status:** Phase 2 Complete, Phase 3 Ready
+**Status:** Phase 3 Complete, Phase 4 Ready
 **Created:** 2026-01-09
 **Revised:** 2026-01-10
 **Origin:** Sessions 20260109-170426, 20260110-061843, 20260110-101440
@@ -629,12 +629,14 @@ Stored in `git.commit` event:
 
 Session 20260110-101440: 2 commits (feat + refactor), 600+ lines
 
-### Phase 3: PR Context Fetching - NEXT
-1. After git scrape, collect pr_refs
-2. Fetch PR details for each ref
-3. Store as `forge.pr` events
+### Phase 3: PR Context Fetching - DONE
+1. After git scrape, collect pr_refs ✓
+2. Fetch PR details for each ref ✓
+3. Store as `forge.pr` events ✓
 
-### Phase 4: ForgeWriter (if needed)
+Session 20260110-101440: Added `patina scrape forge` CLI command, 190 lines
+
+### Phase 4: ForgeWriter (if needed) - NEXT
 1. Create `src/repo/forge.rs` with trait
 2. Move fork/create operations
 3. Update `repo` and `git/fork` commands
