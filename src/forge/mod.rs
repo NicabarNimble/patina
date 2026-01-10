@@ -21,11 +21,13 @@
 //! ```
 
 mod types;
+pub mod writer;
 
 pub mod github;
 mod none;
 
 pub use types::*;
+pub use writer::{ForgeWriter, GitHubWriter, NoneWriter};
 
 use anyhow::Result;
 
