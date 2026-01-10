@@ -124,3 +124,17 @@ pub fn execute_layer(full: bool) -> Result<()> {
     println!("  • Database size: {} KB", stats.database_size_kb);
     Ok(())
 }
+
+/// Execute forge scraper (issues and PRs from GitHub/Gitea)
+pub fn execute_forge(full: bool) -> Result<()> {
+    let config = forge::ForgeScrapeConfig {
+        force: full,
+        ..Default::default()
+    };
+    let stats = forge::run(config)?;
+    println!("\n📊 Forge Scrape Summary:");
+    println!("  • Items processed: {}", stats.items_processed);
+    println!("  • Time elapsed: {:?}", stats.time_elapsed);
+    println!("  • Database size: {} KB", stats.database_size_kb);
+    Ok(())
+}

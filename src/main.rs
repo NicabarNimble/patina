@@ -516,6 +516,12 @@ enum ScrapeCommands {
         #[arg(long)]
         full: bool,
     },
+    /// Fetch issues and PRs from forge (GitHub, Gitea, etc.)
+    Forge {
+        /// Full rebuild (ignore incremental)
+        #[arg(long)]
+        full: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -843,6 +849,7 @@ fn main() -> Result<()> {
             Some(ScrapeCommands::Git { full }) => commands::scrape::execute_git(full)?,
             Some(ScrapeCommands::Sessions { full }) => commands::scrape::execute_sessions(full)?,
             Some(ScrapeCommands::Layer { full }) => commands::scrape::execute_layer(full)?,
+            Some(ScrapeCommands::Forge { full }) => commands::scrape::execute_forge(full)?,
         },
         Some(Commands::Oxidize) => {
             commands::oxidize::oxidize()?;
