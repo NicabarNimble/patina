@@ -101,18 +101,20 @@ Run regularly to catch regressions.
 
 ## Current Focus
 
-### Forge Abstraction (Phase 1 Complete)
+### Forge Abstraction (Phase 2 Complete)
 
 **Problem:** GitHub-specific code scattered across codebase (`scrape/github/`, `git/fork.rs`, `repo/internal.rs`). No path to Gitea/Codeberg. Commits have PR refs we don't extract.
 
 **Solution:**
 1. Parse conventional commits during git scrape (extract type, scope, pr_ref) - **DONE**
-2. `ForgeReader` trait for read-only forge data (issues, PRs) - **Phase 2**
+2. `ForgeReader` trait for read-only forge data (issues, PRs) - **DONE**
 3. `ForgeWriter` trait for repo operations (fork, create) - Phase 4
 
 **Phase 1 Complete:** `parse_conventional()` in `scrape/git/commits.rs`. Extracts type, scope, breaking, pr_ref, issue_refs. Tested: patina 98% conventional, dojo 61% with 49% PR refs.
 
-**Phase 2 Next:** Create `src/forge/` module with `ForgeReader` trait.
+**Phase 2 Complete:** `src/forge/` module with ForgeReader trait (3 methods), GitHubReader using gh CLI, NoneReader for graceful degradation. `scrape/github/` migrated to `scrape/forge/` using trait.
+
+**Phase 3 Next:** Wire PR fetching into scrape flow using pr_refs from commits.
 
 **Measurement:** dojo has 49% PR ref density (above 20% gate). Ready for Phase 3 PR fetching.
 

@@ -1,9 +1,9 @@
 # Spec: Forge Abstraction
 
-**Status:** Phase 1 Complete, Phase 2 Ready
+**Status:** Phase 2 Complete, Phase 3 Ready
 **Created:** 2026-01-09
 **Revised:** 2026-01-10
-**Origin:** Sessions 20260109-170426, 20260110-061843
+**Origin:** Sessions 20260109-170426, 20260110-061843, 20260110-101440
 
 ---
 
@@ -616,18 +616,20 @@ Stored in `git.commit` event:
 
 ## Migration Plan
 
-### Phase 1: Conventional Commit Parsing
-1. Add `parse_conventional()` to `scrape/git/`
-2. Enrich `git.commit` events with parsed fields
-3. No new dependencies, no network calls
+### Phase 1: Conventional Commit Parsing - DONE
+1. Add `parse_conventional()` to `scrape/git/` ✓
+2. Enrich `git.commit` events with parsed fields ✓
+3. No new dependencies, no network calls ✓
 
-### Phase 2: ForgeReader Module
-1. Create `src/forge/` with trait and types
-2. Move issue fetching from `scrape/github/` to `forge/github/`
-3. Add `get_pull_request()` method
-4. `scrape/github/` → `scrape/forge/` using trait
+### Phase 2: ForgeReader Module - DONE
+1. Create `src/forge/` with trait and types ✓
+2. Move issue fetching from `scrape/github/` to `forge/github/` ✓
+3. Add `get_pull_request()` method ✓
+4. `scrape/github/` → `scrape/forge/` using trait ✓
 
-### Phase 3: PR Context Fetching
+Session 20260110-101440: 2 commits (feat + refactor), 600+ lines
+
+### Phase 3: PR Context Fetching - NEXT
 1. After git scrape, collect pr_refs
 2. Fetch PR details for each ref
 3. Store as `forge.pr` events
