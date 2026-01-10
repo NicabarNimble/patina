@@ -9,6 +9,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use patina::forge::{ForgeWriter, GitHubWriter};
 use patina::paths;
 
 /// Registry schema (persisted to ~/.patina/registry.yaml)
@@ -724,41 +725,16 @@ fn git_pull(repo_path: &Path) -> Result<()> {
 
 /// Create a GitHub fork
 fn create_fork(repo_path: &Path, _owner: &str, _repo: &str) -> Result<String> {
-    // Use gh CLI to create fork
-    let output = Command::new("gh")
-        .args(["repo", "fork", "--clone=false"])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to execute gh repo fork. Is GitHub CLI installed?")?;
-
-    if !output.status.success() {
-        bail!(
-            "gh repo fork failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    // Get the fork name from gh
-    let output = Command::new("gh")
-        .args(["repo", "view", "--json", "name,owner"])
-        .current_dir(repo_path)
-        .output()?;
-
-    // Parse output to get fork name
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let writer = GitHubWriter;
+    let fork_url = writer.fork(repo_path)?;
 
     // Add fork as remote
     let _ = Command::new("git")
-        .args([
-            "remote",
-            "add",
-            "fork",
-            &format!("git@github.com:{}", stdout.trim()),
-        ])
+        .args(["remote", "add", "fork", &fork_url])
         .current_dir(repo_path)
         .output();
 
-    Ok(stdout.trim().to_string())
+    Ok(fork_url)
 }
 
 /// Upgrade existing repo to contributor mode
