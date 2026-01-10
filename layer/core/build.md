@@ -101,7 +101,7 @@ Run regularly to catch regressions.
 
 ## Current Focus
 
-### Forge Abstraction (Phase 2 Complete)
+### Forge Abstraction (Phase 3 Complete)
 
 **Problem:** GitHub-specific code scattered across codebase (`scrape/github/`, `git/fork.rs`, `repo/internal.rs`). No path to Gitea/Codeberg. Commits have PR refs we don't extract.
 
@@ -114,9 +114,9 @@ Run regularly to catch regressions.
 
 **Phase 2 Complete:** `src/forge/` module with ForgeReader trait (3 methods), GitHubReader using gh CLI, NoneReader for graceful degradation. `scrape/github/` migrated to `scrape/forge/` using trait.
 
-**Phase 3 Next:** Wire PR fetching into scrape flow using pr_refs from commits.
+**Phase 3 Complete:** `patina scrape forge` command. Collects pr_refs from commits, fetches PR details via ForgeReader, stores as forge.pr events with FTS5 indexing.
 
-**Measurement:** dojo has 49% PR ref density (above 20% gate). Ready for Phase 3 PR fetching.
+**Phase 4 Next:** ForgeWriter trait for repo operations (if needed).
 
 **Spec:** [spec-forge-abstraction.md](../surface/build/spec-forge-abstraction.md)
 
