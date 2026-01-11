@@ -43,3 +43,11 @@ pub fn run(conn: &Connection, reader: &dyn ForgeReader, repo: &str) -> Result<Sy
 pub fn status(conn: &Connection, repo: &str) -> Result<SyncStats> {
     internal::get_status(conn, repo)
 }
+
+/// Drain the backlog - keep syncing until all refs are resolved.
+///
+/// Still respects rate limiting (500ms between API calls).
+/// Use this when you need complete history, not just recent refs.
+pub fn drain(conn: &Connection, reader: &dyn ForgeReader, repo: &str) -> Result<SyncStats> {
+    internal::drain_forge(conn, reader, repo)
+}

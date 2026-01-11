@@ -525,6 +525,10 @@ enum ScrapeCommands {
         /// Show sync status without making changes
         #[arg(long)]
         status: bool,
+
+        /// Keep syncing until backlog is empty (still rate-limited)
+        #[arg(long)]
+        drain: bool,
     },
 }
 
@@ -853,9 +857,11 @@ fn main() -> Result<()> {
             Some(ScrapeCommands::Git { full }) => commands::scrape::execute_git(full)?,
             Some(ScrapeCommands::Sessions { full }) => commands::scrape::execute_sessions(full)?,
             Some(ScrapeCommands::Layer { full }) => commands::scrape::execute_layer(full)?,
-            Some(ScrapeCommands::Forge { full, status }) => {
-                commands::scrape::execute_forge(full, status)?
-            }
+            Some(ScrapeCommands::Forge {
+                full,
+                status,
+                drain,
+            }) => commands::scrape::execute_forge(full, status, drain)?,
         },
         Some(Commands::Oxidize) => {
             commands::oxidize::oxidize()?;
