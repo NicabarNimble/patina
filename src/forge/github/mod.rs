@@ -42,6 +42,10 @@ impl ForgeReader for GitHubReader {
     fn get_pull_request(&self, number: i64) -> Result<PullRequest> {
         internal::fetch_pull_request(&self.repo_spec(), number)
     }
+
+    fn get_issue(&self, number: i64) -> Result<Issue> {
+        internal::fetch_issue(&self.repo_spec(), number)
+    }
 }
 
 /// Check if `gh` CLI is authenticated.

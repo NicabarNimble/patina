@@ -46,6 +46,9 @@ pub trait ForgeReader {
 
     /// Get single PR with full details (body, comments, reviews, linked issues).
     fn get_pull_request(&self, number: i64) -> Result<PullRequest>;
+
+    /// Get single issue by number.
+    fn get_issue(&self, number: i64) -> Result<Issue>;
 }
 
 /// Detect forge from git remote URL.

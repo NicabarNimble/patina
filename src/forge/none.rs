@@ -20,7 +20,10 @@ impl ForgeReader for NoneReader {
     }
 
     fn get_pull_request(&self, number: i64) -> Result<PullRequest> {
-        // Can't fetch what doesn't exist
         bail!("No forge configured, cannot fetch PR #{}", number)
+    }
+
+    fn get_issue(&self, number: i64) -> Result<Issue> {
+        bail!("No forge configured, cannot fetch issue #{}", number)
     }
 }
