@@ -126,7 +126,12 @@ pub fn execute_layer(full: bool) -> Result<()> {
 }
 
 /// Execute forge scraper (issues and PRs from GitHub/Gitea)
-pub fn execute_forge(full: bool) -> Result<()> {
+pub fn execute_forge(full: bool, status: bool) -> Result<()> {
+    if status {
+        // Just show status, don't scrape
+        return execute_forge_status();
+    }
+
     let config = forge::ForgeScrapeConfig {
         force: full,
         ..Default::default()
@@ -136,5 +141,52 @@ pub fn execute_forge(full: bool) -> Result<()> {
     println!("  • Items processed: {}", stats.items_processed);
     println!("  • Time elapsed: {:?}", stats.time_elapsed);
     println!("  • Database size: {} KB", stats.database_size_kb);
+    Ok(())
+}
+
+/// Show forge sync status without making changes.
+fn execute_forge_status() -> Result<()> {
+    use std::path::Path;
+    use std::process::Command;
+
+    // Get repo from git remote
+    let output = Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .output()?;
+
+    if !output.status.success() {
+        println!("No git remote configured.");
+        return Ok(());
+    }
+
+    let remote_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detected = patina::forge::detect(&remote_url);
+
+    if detected.owner.is_empty() {
+        println!("Could not detect forge from remote URL.");
+        return Ok(());
+    }
+
+    let repo_spec = format!("{}/{}", detected.owner, detected.repo);
+    let db_path = Path::new(database::PATINA_DB);
+
+    if !db_path.exists() {
+        println!("No patina.db found. Run `patina scrape` first.");
+        return Ok(());
+    }
+
+    let conn = database::initialize(db_path)?;
+    let stats = patina::forge::sync::status(&conn, &repo_spec)?;
+
+    println!("📊 Forge Sync Status for {}:", repo_spec);
+    println!("  • Resolved: {}", stats.resolved);
+    println!("  • Pending: {}", stats.pending);
+    println!("  • Errors: {}", stats.errors);
+
+    if stats.pending > 0 {
+        let batches = (stats.pending + 49) / 50; // Ceiling division
+        println!("\n  Est. completion: ~{} more runs (50 refs/run)", batches);
+    }
+
     Ok(())
 }
