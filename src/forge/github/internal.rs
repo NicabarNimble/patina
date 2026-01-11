@@ -220,6 +220,41 @@ pub(crate) fn fetch_pull_request(repo: &str, number: i64) -> Result<PullRequest>
     Ok(into_pull_request(gh_pr))
 }
 
+/// Fetch the highest issue number (for backlog population).
+/// Returns 0 if no issues exist.
+pub(crate) fn fetch_max_issue_number(repo: &str) -> Result<i64> {
+    let output = Command::new("gh")
+        .args([
+            "issue",
+            "list",
+            "--repo",
+            repo,
+            "--limit",
+            "1",
+            "--state",
+            "all",
+            "--json",
+            "number",
+        ])
+        .output()
+        .context("Failed to run `gh issue list`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("gh issue list failed: {}", stderr);
+    }
+
+    #[derive(serde::Deserialize)]
+    struct IssueNum {
+        number: i64,
+    }
+
+    let issues: Vec<IssueNum> =
+        serde_json::from_slice(&output.stdout).context("Failed to parse GitHub issues JSON")?;
+
+    Ok(issues.first().map(|i| i.number).unwrap_or(0))
+}
+
 // ============================================================================
 // Conversion functions
 // ============================================================================

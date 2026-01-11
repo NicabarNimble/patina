@@ -46,6 +46,10 @@ impl ForgeReader for GitHubReader {
     fn get_issue(&self, number: i64) -> Result<Issue> {
         internal::fetch_issue(&self.repo_spec(), number)
     }
+
+    fn get_max_issue_number(&self) -> Result<i64> {
+        internal::fetch_max_issue_number(&self.repo_spec())
+    }
 }
 
 /// Check if `gh` CLI is authenticated.
