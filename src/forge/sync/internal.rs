@@ -35,8 +35,13 @@ pub(crate) fn sync_forge(
     reader: &dyn ForgeReader,
     repo: &str,
 ) -> Result<SyncStats> {
-    // Step 1: Discover new refs (instant, local)
-    let discovered = discover_refs(conn, repo)?;
+    // Step 1a: Discover PR refs from commits (instant, local)
+    let pr_discovered = discover_refs(conn, repo)?;
+
+    // Step 1b: Discover all issues (one API call to get max number)
+    let issue_discovered = discover_all_issues(conn, reader, repo)?;
+
+    let discovered = pr_discovered + issue_discovered;
 
     // Step 2: Get pending refs to resolve (newest first - walk-back pattern)
     let pending_refs = get_pending_refs(conn, repo, BATCH_SIZE)?;
@@ -167,6 +172,56 @@ fn discover_refs(conn: &Connection, repo: &str) -> Result<usize> {
         "#,
         rusqlite::params![repo],
     )?;
+
+    Ok(count)
+}
+
+/// Discover all issues by populating forge_refs with 1..max_issue_number.
+/// Uses INSERT OR IGNORE - safe to call repeatedly.
+fn discover_all_issues(
+    conn: &Connection,
+    reader: &dyn ForgeReader,
+    repo: &str,
+) -> Result<usize> {
+    // Get max issue number from API (one call)
+    let max_num = reader.get_max_issue_number()?;
+    if max_num == 0 {
+        return Ok(0);
+    }
+
+    // Count how many issue refs we already have
+    let existing: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM forge_refs WHERE repo = ?1 AND ref_kind = 'issue'",
+            rusqlite::params![repo],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    // If we already have all issue refs, skip
+    if existing >= max_num {
+        return Ok(0);
+    }
+
+    // Insert all issue numbers 1..max_num (INSERT OR IGNORE handles duplicates)
+    // Do it in a transaction for speed
+    conn.execute("BEGIN TRANSACTION", [])?;
+
+    let mut count = 0;
+    for num in 1..=max_num {
+        let inserted = conn.execute(
+            "INSERT OR IGNORE INTO forge_refs (repo, ref_number, ref_kind, discovered)
+             VALUES (?1, ?2, 'issue', datetime('now'))",
+            rusqlite::params![repo, num],
+        )?;
+        count += inserted;
+    }
+
+    conn.execute("COMMIT", [])?;
+
+    if count > 0 {
+        println!("  Discovered {} issue refs (1..{})", count, max_num);
+    }
 
     Ok(count)
 }

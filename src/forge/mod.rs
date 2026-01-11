@@ -50,6 +50,10 @@ pub trait ForgeReader {
 
     /// Get single issue by number.
     fn get_issue(&self, number: i64) -> Result<Issue>;
+
+    /// Get the highest issue number (for backlog population).
+    /// Returns 0 if no issues exist.
+    fn get_max_issue_number(&self) -> Result<i64>;
 }
 
 /// Detect forge from git remote URL.

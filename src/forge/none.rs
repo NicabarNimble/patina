@@ -26,4 +26,8 @@ impl ForgeReader for NoneReader {
     fn get_issue(&self, number: i64) -> Result<Issue> {
         bail!("No forge configured, cannot fetch issue #{}", number)
     }
+
+    fn get_max_issue_number(&self) -> Result<i64> {
+        Ok(0) // No forge = no issues
+    }
 }
