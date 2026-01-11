@@ -16,7 +16,7 @@ use std::time::Instant;
 
 use super::database;
 use super::ScrapeStats;
-use patina::forge::{self, ForgeKind, Issue, IssueState, PrState, PullRequest};
+use patina::forge::{self, ForgeKind, Issue, IssueState};
 
 /// Create materialized views for forge events.
 fn create_materialized_views(conn: &Connection) -> Result<()> {
@@ -135,100 +135,6 @@ fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<usize> {
             &issue.created_at,
             &issue.updated_at,
             &issue.url,
-            seq,
-        ])?;
-
-        count += 1;
-    }
-
-    Ok(count)
-}
-
-/// Collect unique PR refs from git.commit events that haven't been fetched yet.
-fn collect_pr_refs(conn: &Connection) -> Result<Vec<i64>> {
-    let mut stmt = conn.prepare(
-        r#"
-        SELECT DISTINCT json_extract(data, '$.parsed.pr_ref') as pr_ref
-        FROM eventlog
-        WHERE event_type = 'git.commit'
-          AND json_extract(data, '$.parsed.pr_ref') IS NOT NULL
-          AND json_extract(data, '$.parsed.pr_ref') NOT IN (
-              SELECT number FROM forge_prs
-          )
-        ORDER BY pr_ref DESC
-        "#,
-    )?;
-
-    let pr_refs: Vec<i64> = stmt
-        .query_map([], |row| row.get(0))?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(pr_refs)
-}
-
-/// Insert PRs into eventlog and materialized views.
-fn insert_prs(conn: &Connection, prs: &[PullRequest]) -> Result<usize> {
-    let mut count = 0;
-
-    let mut pr_stmt = conn.prepare(
-        "INSERT OR REPLACE INTO forge_prs
-         (number, title, body, state, labels, author, created_at, merged_at, url, linked_issues, approvals, event_seq)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
-    )?;
-
-    for pr in prs {
-        let labels_str = serde_json::to_string(&pr.labels)?;
-        let linked_issues_str = serde_json::to_string(&pr.linked_issues)?;
-        let state_str = match pr.state {
-            PrState::Open => "open",
-            PrState::Merged => "merged",
-            PrState::Closed => "closed",
-        };
-
-        // Combine comments into single text for storage
-        let comments_text: Vec<String> = pr
-            .comments
-            .iter()
-            .map(|c| format!("{}: {}", c.author, c.body))
-            .collect();
-
-        // 1. Insert into eventlog (source of truth)
-        let event_data = json!({
-            "number": pr.number,
-            "title": &pr.title,
-            "body": &pr.body,
-            "state": state_str,
-            "labels": &pr.labels,
-            "author": &pr.author,
-            "url": &pr.url,
-            "linked_issues": &pr.linked_issues,
-            "comments": comments_text,
-            "approvals": pr.approvals,
-        });
-
-        let seq = database::insert_event(
-            conn,
-            "forge.pr",
-            &pr.created_at,
-            &pr.number.to_string(),
-            Some(&pr.url),
-            &event_data.to_string(),
-        )?;
-
-        // 2. Update materialized view
-        pr_stmt.execute(rusqlite::params![
-            pr.number,
-            &pr.title,
-            &pr.body,
-            state_str,
-            &labels_str,
-            &pr.author,
-            &pr.created_at,
-            &pr.merged_at,
-            &pr.url,
-            &linked_issues_str,
-            pr.approvals,
             seq,
         ])?;
 
@@ -439,31 +345,26 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
     let issue_fts_count = populate_fts5_issues(&conn)?;
     println!("  Indexed {} issues in FTS5", issue_fts_count);
 
-    // Phase 3: Fetch PRs referenced in commits
-    let pr_refs = collect_pr_refs(&conn)?;
-    let mut pr_count = 0;
+    // Phase 3: Sync PR/issue refs from commits (with rate limiting)
+    let repo_spec = format!("{}/{}", detected.owner, detected.repo);
+    let sync_stats = forge::sync::run(&conn, reader.as_ref(), &repo_spec)?;
 
-    if !pr_refs.is_empty() {
-        println!("  Found {} PR refs to fetch from commits", pr_refs.len());
-
-        let mut prs = Vec::new();
-        for pr_num in &pr_refs {
-            match reader.get_pull_request(*pr_num) {
-                Ok(pr) => prs.push(pr),
-                Err(e) => {
-                    // PR might be deleted or inaccessible - skip but don't fail
-                    println!("  ⚠️  Could not fetch PR #{}: {}", pr_num, e);
-                }
-            }
+    if sync_stats.discovered > 0 || sync_stats.resolved > 0 {
+        println!(
+            "  Sync: {} discovered, {} resolved, {} pending",
+            sync_stats.discovered, sync_stats.resolved, sync_stats.pending
+        );
+        if sync_stats.cache_hits > 0 {
+            println!("  ({} cache hits - no API calls needed)", sync_stats.cache_hits);
+        }
+        if sync_stats.errors > 0 {
+            println!("  ({} refs failed - see warnings above)", sync_stats.errors);
         }
 
-        if !prs.is_empty() {
-            pr_count = insert_prs(&conn, &prs)?;
-            println!("  Inserted {} PRs", pr_count);
-
-            // Populate FTS5 index for PRs
-            let pr_fts_count = populate_fts5_prs(&conn)?;
-            println!("  Indexed {} PRs in FTS5", pr_fts_count);
+        // Index newly resolved PRs in FTS (if any non-cached resolutions)
+        if sync_stats.resolved > sync_stats.cache_hits {
+            let fts_count = populate_fts5_prs(&conn)?;
+            println!("  Indexed {} PRs in FTS5", fts_count);
         }
     }
 
@@ -473,7 +374,7 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
         .unwrap_or(0);
 
     Ok(ScrapeStats {
-        items_processed: issue_count + pr_count,
+        items_processed: issue_count + sync_stats.resolved,
         time_elapsed: elapsed,
         database_size_kb: db_size,
     })
