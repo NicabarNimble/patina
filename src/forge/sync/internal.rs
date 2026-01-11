@@ -9,7 +9,7 @@ use std::time::Duration;
 use anyhow::Result;
 use rusqlite::Connection;
 
-use crate::forge::ForgeReader;
+use crate::forge::{ForgeReader, Issue, IssueState, PrState, PullRequest};
 
 use super::SyncStats;
 
@@ -210,9 +210,8 @@ fn resolve_ref(
 
     // Try as PR first (more common in commit refs like "Merge PR #123")
     match reader.get_pull_request(ref_num) {
-        Ok(_pr) => {
-            // PR fetched successfully - it's already in forge_prs via the reader
-            // Just mark this ref as resolved
+        Ok(pr) => {
+            insert_pr(conn, &pr)?;
             mark_resolved(conn, repo, ref_num, "pr")?;
             return Ok(false);
         }
@@ -223,14 +222,15 @@ fn resolve_ref(
 
     // Try as issue
     match reader.get_issue(ref_num) {
-        Ok(_issue) => {
+        Ok(issue) => {
+            insert_issue(conn, &issue)?;
             mark_resolved(conn, repo, ref_num, "issue")?;
             Ok(false)
         }
         Err(e) => {
             // Neither PR nor issue - record error, move on
             mark_failed(conn, repo, ref_num, &e.to_string())?;
-            Err(e.context(format!("#{} is neither PR nor issue", ref_num)))
+            anyhow::bail!("#{} is neither PR nor issue: {}", ref_num, e)
         }
     }
 }
@@ -277,6 +277,72 @@ fn mark_failed(conn: &Connection, repo: &str, ref_num: i64, error: &str) -> Resu
         WHERE repo = ?1 AND ref_number = ?2
         "#,
         rusqlite::params![repo, ref_num, error],
+    )?;
+    Ok(())
+}
+
+// ============================================================================
+// Database insertion - store fetched PRs/issues
+// ============================================================================
+
+/// Insert a PR into forge_prs table.
+fn insert_pr(conn: &Connection, pr: &PullRequest) -> Result<()> {
+    let labels_json = serde_json::to_string(&pr.labels)?;
+    let linked_json = serde_json::to_string(&pr.linked_issues)?;
+    let state_str = match pr.state {
+        PrState::Open => "open",
+        PrState::Merged => "merged",
+        PrState::Closed => "closed",
+    };
+
+    conn.execute(
+        r#"
+        INSERT OR REPLACE INTO forge_prs
+        (number, title, body, state, labels, author, created_at, merged_at, url, linked_issues, approvals)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+        "#,
+        rusqlite::params![
+            pr.number,
+            &pr.title,
+            &pr.body,
+            state_str,
+            &labels_json,
+            &pr.author,
+            &pr.created_at,
+            &pr.merged_at,
+            &pr.url,
+            &linked_json,
+            pr.approvals,
+        ],
+    )?;
+    Ok(())
+}
+
+/// Insert an issue into forge_issues table.
+fn insert_issue(conn: &Connection, issue: &Issue) -> Result<()> {
+    let labels_json = serde_json::to_string(&issue.labels)?;
+    let state_str = match issue.state {
+        IssueState::Open => "open",
+        IssueState::Closed => "closed",
+    };
+
+    conn.execute(
+        r#"
+        INSERT OR REPLACE INTO forge_issues
+        (number, title, body, state, labels, author, created_at, updated_at, url)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        "#,
+        rusqlite::params![
+            issue.number,
+            &issue.title,
+            &issue.body,
+            state_str,
+            &labels_json,
+            &issue.author,
+            &issue.created_at,
+            &issue.updated_at,
+            &issue.url,
+        ],
     )?;
     Ok(())
 }
