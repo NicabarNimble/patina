@@ -59,6 +59,28 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_forge_issues_updated ON forge_issues(updated_at);
         CREATE INDEX IF NOT EXISTS idx_forge_prs_state ON forge_prs(state);
         CREATE INDEX IF NOT EXISTS idx_forge_prs_merged ON forge_prs(merged_at);
+
+        -- Forge refs backlog (for incremental sync with pacing)
+        -- Tracks #N references found in commits, pending resolution
+        CREATE TABLE IF NOT EXISTS forge_refs (
+            repo        TEXT NOT NULL,       -- owner/repo
+            ref_number  INTEGER NOT NULL,
+
+            -- What we know
+            ref_kind    TEXT DEFAULT 'unknown',  -- 'unknown', 'issue', 'pr'
+            discovered  TEXT NOT NULL,       -- ISO timestamp when found
+            source      TEXT,                -- Commit SHA where found
+
+            -- Resolution status
+            resolved    TEXT,                -- ISO timestamp when fetched (NULL = pending)
+            error       TEXT,                -- Error message if failed
+
+            PRIMARY KEY (repo, ref_number)
+        );
+
+        -- Index for efficient backlog queries (pending refs, newest first)
+        CREATE INDEX IF NOT EXISTS idx_forge_refs_pending
+        ON forge_refs(repo, discovered DESC) WHERE resolved IS NULL;
         "#,
     )?;
 
