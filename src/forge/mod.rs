@@ -25,6 +25,7 @@ pub mod writer;
 
 pub mod github;
 mod none;
+pub mod sync;
 
 pub use types::*;
 pub use writer::{ForgeWriter, GitHubWriter, NoneWriter};
