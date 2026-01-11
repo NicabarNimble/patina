@@ -218,6 +218,9 @@ fn insert_prs(conn: &Connection, prs: &[PullRequest]) -> Result<usize> {
 
 /// Populate FTS5 index with forge issues.
 pub fn populate_fts5_issues(conn: &Connection) -> Result<usize> {
+    // Clear existing forge.issue entries to avoid duplicates on re-run
+    conn.execute("DELETE FROM code_fts WHERE event_type = 'forge.issue'", [])?;
+
     let count = conn.execute(
         r#"
         INSERT INTO code_fts (symbol_name, file_path, content, event_type)
@@ -237,6 +240,9 @@ pub fn populate_fts5_issues(conn: &Connection) -> Result<usize> {
 
 /// Populate FTS5 index with forge PRs.
 pub fn populate_fts5_prs(conn: &Connection) -> Result<usize> {
+    // Clear existing forge.pr entries to avoid duplicates on re-run
+    conn.execute("DELETE FROM code_fts WHERE event_type = 'forge.pr'", [])?;
+
     // Include PR body and comments for rich search
     let count = conn.execute(
         r#"
