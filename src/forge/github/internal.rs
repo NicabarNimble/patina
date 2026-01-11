@@ -168,6 +168,32 @@ pub(crate) fn fetch_pull_requests(
     Ok(gh_prs.into_iter().map(into_pull_request).collect())
 }
 
+/// Fetch single issue by number.
+pub(crate) fn fetch_issue(repo: &str, number: i64) -> Result<Issue> {
+    let output = Command::new("gh")
+        .args([
+            "issue",
+            "view",
+            &number.to_string(),
+            "--repo",
+            repo,
+            "--json",
+            "number,title,body,state,labels,author,createdAt,updatedAt,url",
+        ])
+        .output()
+        .context("Failed to run `gh issue view`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("gh issue view #{} failed: {}", number, stderr);
+    }
+
+    let gh_issue: GhIssue =
+        serde_json::from_slice(&output.stdout).context("Failed to parse GitHub issue JSON")?;
+
+    Ok(into_issue(gh_issue))
+}
+
 /// Fetch single PR with full details.
 pub(crate) fn fetch_pull_request(repo: &str, number: i64) -> Result<PullRequest> {
     let output = Command::new("gh")
