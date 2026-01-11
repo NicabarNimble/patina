@@ -107,6 +107,46 @@ pub(crate) fn get_status(conn: &Connection, repo: &str) -> Result<SyncStats> {
     })
 }
 
+/// Drain the backlog - keep syncing until all refs are resolved.
+///
+/// Respects rate limiting (500ms between API calls). Each batch
+/// is bounded by BATCH_SIZE. Prints progress between batches.
+pub(crate) fn drain_forge(
+    conn: &Connection,
+    reader: &dyn ForgeReader,
+    repo: &str,
+) -> Result<SyncStats> {
+    let mut total = SyncStats::default();
+    let mut batch_num = 0;
+
+    loop {
+        batch_num += 1;
+        let stats = sync_forge(conn, reader, repo)?;
+
+        total.discovered += stats.discovered;
+        total.resolved += stats.resolved;
+        total.errors += stats.errors;
+        total.cache_hits += stats.cache_hits;
+        total.pending = stats.pending;
+
+        if stats.pending == 0 {
+            break;
+        }
+
+        if stats.resolved == 0 && stats.errors == 0 {
+            // No progress made - avoid infinite loop
+            break;
+        }
+
+        println!(
+            "  Batch {} complete. {} remaining...",
+            batch_num, stats.pending
+        );
+    }
+
+    Ok(total)
+}
+
 // ============================================================================
 // Discovery - extract refs from commits
 // ============================================================================

@@ -126,7 +126,7 @@ pub fn execute_layer(full: bool) -> Result<()> {
 }
 
 /// Execute forge scraper (issues and PRs from GitHub/Gitea)
-pub fn execute_forge(full: bool, status: bool) -> Result<()> {
+pub fn execute_forge(full: bool, status: bool, drain: bool) -> Result<()> {
     if status {
         // Just show status, don't scrape
         return execute_forge_status();
@@ -134,6 +134,7 @@ pub fn execute_forge(full: bool, status: bool) -> Result<()> {
 
     let config = forge::ForgeScrapeConfig {
         force: full,
+        drain,
         ..Default::default()
     };
     let stats = forge::run(config)?;
@@ -184,7 +185,7 @@ fn execute_forge_status() -> Result<()> {
     println!("  • Errors: {}", stats.errors);
 
     if stats.pending > 0 {
-        let batches = (stats.pending + 49) / 50; // Ceiling division
+        let batches = stats.pending.div_ceil(50);
         println!("\n  Est. completion: ~{} more runs (50 refs/run)", batches);
     }
 

@@ -221,6 +221,7 @@ fn get_remote_url() -> Result<Option<String>> {
 pub struct ForgeScrapeConfig {
     pub limit: usize,    // max issues to fetch
     pub force: bool,     // full rebuild vs incremental
+    pub drain: bool,     // keep syncing until backlog empty
     pub db_path: String, // path to patina.db
 }
 
@@ -229,6 +230,7 @@ impl Default for ForgeScrapeConfig {
         Self {
             limit: 500,
             force: false,
+            drain: false,
             db_path: database::PATINA_DB.to_string(),
         }
     }
@@ -347,7 +349,12 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
 
     // Phase 3: Sync PR/issue refs from commits (with rate limiting)
     let repo_spec = format!("{}/{}", detected.owner, detected.repo);
-    let sync_stats = forge::sync::run(&conn, reader.as_ref(), &repo_spec)?;
+    let sync_stats = if config.drain {
+        println!("  Draining forge backlog (this may take a while)...");
+        forge::sync::drain(&conn, reader.as_ref(), &repo_spec)?
+    } else {
+        forge::sync::run(&conn, reader.as_ref(), &repo_spec)?
+    };
 
     if sync_stats.discovered > 0 || sync_stats.resolved > 0 {
         println!(
@@ -355,7 +362,10 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
             sync_stats.discovered, sync_stats.resolved, sync_stats.pending
         );
         if sync_stats.cache_hits > 0 {
-            println!("  ({} cache hits - no API calls needed)", sync_stats.cache_hits);
+            println!(
+                "  ({} cache hits - no API calls needed)",
+                sync_stats.cache_hits
+            );
         }
         if sync_stats.errors > 0 {
             println!("  ({} refs failed - see warnings above)", sync_stats.errors);
