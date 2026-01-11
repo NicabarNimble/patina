@@ -529,6 +529,10 @@ enum ScrapeCommands {
         /// Keep syncing until backlog is empty (still rate-limited)
         #[arg(long)]
         drain: bool,
+
+        /// Target a ref repo instead of current project
+        #[arg(long)]
+        repo: Option<String>,
     },
 }
 
@@ -861,7 +865,8 @@ fn main() -> Result<()> {
                 full,
                 status,
                 drain,
-            }) => commands::scrape::execute_forge(full, status, drain)?,
+                repo,
+            }) => commands::scrape::execute_forge(full, status, drain, repo)?,
         },
         Some(Commands::Oxidize) => {
             commands::oxidize::oxidize()?;

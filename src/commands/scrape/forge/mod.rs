@@ -10,7 +10,7 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use serde_json::json;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
@@ -201,11 +201,13 @@ fn update_last_scrape(conn: &Connection, timestamp: &str) -> Result<()> {
 }
 
 /// Detect git remote origin URL.
-fn get_remote_url() -> Result<Option<String>> {
-    let output = Command::new("git")
-        .args(["remote", "get-url", "origin"])
-        .output()
-        .context("Failed to get git remote URL")?;
+fn get_remote_url(working_dir: Option<&Path>) -> Result<Option<String>> {
+    let mut cmd = Command::new("git");
+    cmd.args(["remote", "get-url", "origin"]);
+    if let Some(dir) = working_dir {
+        cmd.current_dir(dir);
+    }
+    let output = cmd.output().context("Failed to get git remote URL")?;
 
     if output.status.success() {
         let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -219,10 +221,10 @@ fn get_remote_url() -> Result<Option<String>> {
 
 /// Scrape configuration for forge.
 pub struct ForgeScrapeConfig {
-    pub limit: usize,    // max issues to fetch
-    pub force: bool,     // full rebuild vs incremental
-    pub drain: bool,     // keep syncing until backlog empty
-    pub db_path: String, // path to patina.db
+    pub limit: usize,            // max issues to fetch
+    pub force: bool,             // full rebuild vs incremental
+    pub drain: bool,             // keep syncing until backlog empty
+    pub working_dir: Option<PathBuf>, // target directory (None = cwd)
 }
 
 impl Default for ForgeScrapeConfig {
@@ -231,7 +233,7 @@ impl Default for ForgeScrapeConfig {
             limit: 500,
             force: false,
             drain: false,
-            db_path: database::PATINA_DB.to_string(),
+            working_dir: None,
         }
     }
 }
@@ -239,10 +241,19 @@ impl Default for ForgeScrapeConfig {
 /// Main entry point for forge scraping.
 pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
     let start = Instant::now();
-    let db_path = Path::new(&config.db_path);
+
+    // Compute db_path based on working_dir
+    let db_path_buf: PathBuf;
+    let db_path = match &config.working_dir {
+        Some(dir) => {
+            db_path_buf = dir.join(".patina/data/patina.db");
+            db_path_buf.as_path()
+        }
+        None => Path::new(database::PATINA_DB),
+    };
 
     // Detect forge from remote URL
-    let remote_url = match get_remote_url()? {
+    let remote_url = match get_remote_url(config.working_dir.as_deref())? {
         Some(url) => url,
         None => {
             println!("  No git remote configured, skipping forge scrape");
@@ -390,112 +401,3 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
     })
 }
 
-// ============================================================================
-// Legacy compatibility - keeping old API for repo/internal.rs
-// ============================================================================
-
-/// Legacy config for backward compatibility with repo command.
-pub struct GitHubScrapeConfig {
-    pub repo: String,    // owner/repo format
-    pub limit: usize,    // max issues to fetch
-    pub force: bool,     // full rebuild vs incremental
-    pub db_path: String, // path to patina.db
-}
-
-impl Default for GitHubScrapeConfig {
-    fn default() -> Self {
-        Self {
-            repo: String::new(),
-            limit: 500,
-            force: false,
-            db_path: database::PATINA_DB.to_string(),
-        }
-    }
-}
-
-/// Legacy entry point for backward compatibility.
-///
-/// Used by repo command which provides explicit owner/repo.
-pub fn run_legacy(config: GitHubScrapeConfig) -> Result<ScrapeStats> {
-    let start = Instant::now();
-    let db_path = Path::new(&config.db_path);
-
-    // Check authentication
-    if !forge::github::is_authenticated()? {
-        anyhow::bail!("GitHub CLI not authenticated. Run `gh auth login` first.");
-    }
-
-    // Build forge from explicit repo spec
-    let parts: Vec<&str> = config.repo.splitn(2, '/').collect();
-    if parts.len() != 2 {
-        anyhow::bail!(
-            "Invalid repo format. Expected owner/repo, got: {}",
-            config.repo
-        );
-    }
-
-    let detected = forge::Forge {
-        kind: ForgeKind::GitHub,
-        owner: parts[0].to_string(),
-        repo: parts[1].to_string(),
-        host: "github.com".to_string(),
-    };
-
-    // Initialize database
-    let conn = database::initialize(db_path)?;
-    create_materialized_views(&conn)?;
-
-    // Get last scrape timestamp
-    let since = if config.force {
-        None
-    } else {
-        get_last_scrape(&conn)?
-    };
-
-    if since.is_some() {
-        println!("📊 Incremental forge scrape since last update...");
-    } else {
-        println!("📊 Full forge issues scrape...");
-    }
-
-    // Fetch issues via trait
-    let reader = forge::reader(&detected);
-    let issues = reader.list_issues(config.limit, since.as_deref())?;
-
-    if issues.is_empty() {
-        println!("  No new issues to process");
-        return Ok(ScrapeStats {
-            items_processed: 0,
-            time_elapsed: start.elapsed(),
-            database_size_kb: std::fs::metadata(db_path)
-                .map(|m| m.len() / 1024)
-                .unwrap_or(0),
-        });
-    }
-
-    println!("  Found {} issues to process", issues.len());
-
-    // Insert issues
-    let issue_count = insert_issues(&conn, &issues)?;
-    println!("  Inserted {} issues", issue_count);
-
-    // Update timestamp
-    if let Some(latest) = issues.iter().max_by_key(|i| &i.updated_at) {
-        update_last_scrape(&conn, &latest.updated_at)?;
-    }
-
-    // Populate FTS5
-    let fts_count = populate_fts5_issues(&conn)?;
-    println!("  Indexed {} issues in FTS5", fts_count);
-
-    let elapsed = start.elapsed();
-    let db_size = std::fs::metadata(db_path)
-        .map(|m| m.len() / 1024)
-        .unwrap_or(0);
-
-    Ok(ScrapeStats {
-        items_processed: issue_count,
-        time_elapsed: elapsed,
-        database_size_kb: db_size,
-    })
-}

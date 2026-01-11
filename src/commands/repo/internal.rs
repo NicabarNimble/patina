@@ -674,19 +674,16 @@ projections:
 }
 
 /// Scrape GitHub issues for a repo
-fn scrape_github_issues(repo_path: &Path, github: &str) -> Result<usize> {
-    use crate::commands::scrape::forge::{run_legacy, GitHubScrapeConfig};
+fn scrape_github_issues(repo_path: &Path, _github: &str) -> Result<usize> {
+    use crate::commands::scrape::forge::{run, ForgeScrapeConfig};
 
-    let db_path = repo_path.join(".patina/data/patina.db");
-
-    let config = GitHubScrapeConfig {
-        repo: github.to_string(),
-        limit: 500,
+    let config = ForgeScrapeConfig {
         force: true,
-        db_path: db_path.to_string_lossy().to_string(),
+        working_dir: Some(repo_path.to_path_buf()),
+        ..Default::default()
     };
 
-    let stats = run_legacy(config)?;
+    let stats = run(config)?;
     Ok(stats.items_processed)
 }
 

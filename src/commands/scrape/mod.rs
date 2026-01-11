@@ -7,7 +7,10 @@ pub mod git;
 pub mod layer;
 pub mod sessions;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
+use std::path::PathBuf;
+
+use patina::paths;
 
 /// Common configuration for all scrapers
 pub struct ScrapeConfig {
@@ -125,16 +128,34 @@ pub fn execute_layer(full: bool) -> Result<()> {
     Ok(())
 }
 
+/// Resolve ref repo name to path.
+fn resolve_repo_path(name: &str) -> Result<PathBuf> {
+    let repo_path = paths::repos::cache_dir().join(name);
+    if !repo_path.exists() {
+        bail!(
+            "Repository '{}' not found. Use 'patina repo list' to see registered repos.",
+            name
+        );
+    }
+    Ok(repo_path)
+}
+
 /// Execute forge scraper (issues and PRs from GitHub/Gitea)
-pub fn execute_forge(full: bool, status: bool, drain: bool) -> Result<()> {
+pub fn execute_forge(full: bool, status: bool, drain: bool, repo: Option<String>) -> Result<()> {
+    // Resolve working directory if --repo provided
+    let working_dir = match repo {
+        Some(name) => Some(resolve_repo_path(&name)?),
+        None => None,
+    };
+
     if status {
-        // Just show status, don't scrape
-        return execute_forge_status();
+        return execute_forge_status(working_dir.as_ref());
     }
 
     let config = forge::ForgeScrapeConfig {
         force: full,
         drain,
+        working_dir,
         ..Default::default()
     };
     let stats = forge::run(config)?;
@@ -146,14 +167,17 @@ pub fn execute_forge(full: bool, status: bool, drain: bool) -> Result<()> {
 }
 
 /// Show forge sync status without making changes.
-fn execute_forge_status() -> Result<()> {
+fn execute_forge_status(working_dir: Option<&PathBuf>) -> Result<()> {
     use std::path::Path;
     use std::process::Command;
 
     // Get repo from git remote
-    let output = Command::new("git")
-        .args(["remote", "get-url", "origin"])
-        .output()?;
+    let mut cmd = Command::new("git");
+    cmd.args(["remote", "get-url", "origin"]);
+    if let Some(dir) = working_dir {
+        cmd.current_dir(dir);
+    }
+    let output = cmd.output()?;
 
     if !output.status.success() {
         println!("No git remote configured.");
@@ -169,7 +193,16 @@ fn execute_forge_status() -> Result<()> {
     }
 
     let repo_spec = format!("{}/{}", detected.owner, detected.repo);
-    let db_path = Path::new(database::PATINA_DB);
+
+    // Compute db_path based on working_dir
+    let db_path_buf: PathBuf;
+    let db_path: &Path = match working_dir {
+        Some(dir) => {
+            db_path_buf = dir.join(".patina/data/patina.db");
+            db_path_buf.as_path()
+        }
+        None => Path::new(database::PATINA_DB),
+    };
 
     if !db_path.exists() {
         println!("No patina.db found. Run `patina scrape` first.");
