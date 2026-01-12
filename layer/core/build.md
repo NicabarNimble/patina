@@ -90,6 +90,7 @@ Run regularly to catch regressions.
 
 ### Active
 
+- [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Design:** UIDs for databases, enables federation graph
 - [spec-surface-layer.md](../surface/build/spec-surface-layer.md) - **Next:** Distillation layer, federation interface, `patina surface` command
 - [spec-session-prompts.md](../surface/build/spec-session-prompts.md) - **Design:** Capture user prompts in session files (reads from ~/.claude/history.jsonl)
 - [spec-report.md](../surface/build/spec-report.md) - **NEW:** Self-analysis reports using patina's own tools
