@@ -161,6 +161,7 @@ Key items:
 
 Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 
+- `spec/forge-sync-v2` - Background sync via fork, PID guards, 750ms pacing, --sync/--log/--limit flags
 - `spec/forge-abstraction` - ForgeReader + ForgeWriter traits, conventional commits, GitHub impl
 - `spec/llm-frontends` - Unified 5-command experience across Claude, Gemini, OpenCode
 - `spec/remove-legacy-repos-and-audit` - Removed layer/dust/repos and audit.rs (~1,100 lines)
@@ -183,6 +184,7 @@ Full list: `git tag -l 'spec/*'`
 Completed specs preserved via git tags. View with: `git show spec/<name>:layer/surface/build/spec-<name>.md`
 
 **Recent completions:**
+- `spec/forge-sync-v2` - Background sync via fork, PID guards, 750ms pacing, --sync/--log/--limit flags
 - `spec/forge-abstraction` - ForgeReader + ForgeWriter traits, conventional commits, GitHub impl (Gitea deferred)
 - `spec/mothership-graph` - Graph routing, 100% repo recall (~1000 lines)
 - `spec/ref-repo-semantic` - 13/13 repos with semantic indexes
