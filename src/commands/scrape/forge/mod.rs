@@ -221,9 +221,8 @@ fn get_remote_url(working_dir: Option<&Path>) -> Result<Option<String>> {
 
 /// Scrape configuration for forge.
 pub struct ForgeScrapeConfig {
-    pub limit: usize,            // max issues to fetch
-    pub force: bool,             // full rebuild vs incremental
-    pub drain: bool,             // keep syncing until backlog empty
+    pub limit: usize,                 // max issues to fetch
+    pub force: bool,                  // full rebuild vs incremental
     pub working_dir: Option<PathBuf>, // target directory (None = cwd)
 }
 
@@ -232,7 +231,6 @@ impl Default for ForgeScrapeConfig {
         Self {
             limit: 500,
             force: false,
-            drain: false,
             working_dir: None,
         }
     }
@@ -358,14 +356,10 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
     let issue_fts_count = populate_fts5_issues(&conn)?;
     println!("  Indexed {} issues in FTS5", issue_fts_count);
 
-    // Phase 3: Sync PR/issue refs from commits (with rate limiting)
+    // Phase 3: Discover PR/issue refs from commits
+    // (actual resolution happens via --sync or --limit flags)
     let repo_spec = format!("{}/{}", detected.owner, detected.repo);
-    let sync_stats = if config.drain {
-        println!("  Draining forge backlog (this may take a while)...");
-        forge::sync::drain(&conn, reader.as_ref(), &repo_spec)?
-    } else {
-        forge::sync::run(&conn, reader.as_ref(), &repo_spec)?
-    };
+    let sync_stats = forge::sync::run(&conn, reader.as_ref(), &repo_spec)?;
 
     if sync_stats.discovered > 0 || sync_stats.resolved > 0 {
         println!(
@@ -400,4 +394,3 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
         database_size_kb: db_size,
     })
 }
-

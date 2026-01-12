@@ -526,9 +526,17 @@ enum ScrapeCommands {
         #[arg(long)]
         status: bool,
 
-        /// Keep syncing until backlog is empty (still rate-limited)
+        /// Fork to background and sync all pending refs
         #[arg(long)]
-        drain: bool,
+        sync: bool,
+
+        /// Tail the sync log file
+        #[arg(long)]
+        log: bool,
+
+        /// Foreground sync with limit (escape hatch)
+        #[arg(long)]
+        limit: Option<usize>,
 
         /// Target a ref repo instead of current project
         #[arg(long)]
@@ -864,9 +872,11 @@ fn main() -> Result<()> {
             Some(ScrapeCommands::Forge {
                 full,
                 status,
-                drain,
+                sync,
+                log,
+                limit,
                 repo,
-            }) => commands::scrape::execute_forge(full, status, drain, repo)?,
+            }) => commands::scrape::execute_forge(full, status, sync, log, limit, repo)?,
         },
         Some(Commands::Oxidize) => {
             commands::oxidize::oxidize()?;

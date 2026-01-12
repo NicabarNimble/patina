@@ -225,16 +225,7 @@ pub(crate) fn fetch_pull_request(repo: &str, number: i64) -> Result<PullRequest>
 pub(crate) fn fetch_max_issue_number(repo: &str) -> Result<i64> {
     let output = Command::new("gh")
         .args([
-            "issue",
-            "list",
-            "--repo",
-            repo,
-            "--limit",
-            "1",
-            "--state",
-            "all",
-            "--json",
-            "number",
+            "issue", "list", "--repo", repo, "--limit", "1", "--state", "all", "--json", "number",
         ])
         .output()
         .context("Failed to run `gh issue list`")?;
