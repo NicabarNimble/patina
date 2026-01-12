@@ -364,6 +364,89 @@ patina scry "why did we choose rouille?"
 
 ---
 
+## Session 20260110-181504: Ref Repo Exploration
+
+### Question Explored
+
+For ref repos (external repos without `layer/`), what data can serve as their "surface layer"? Can issues/PRs provide the rationale content that sessions provide for patina itself?
+
+### What We Tried
+
+1. **Queried opencode ref repo** for "style guide", "decisions", "philosophy"
+   - scry returned file references and commits, but not actual content
+   - opencode has `STYLE_GUIDE.md` with real decisions ("AVOID try/catch", "PREFER single word variable names")
+   - But this content was NOT in patina.db - not scraped, not queryable
+
+2. **Updated opencode** with `patina repo update opencode --oxidize`
+   - Pulled 6945 commits, built 6041 semantic vectors
+   - But still no documentation content (README, STYLE_GUIDE, etc.)
+
+3. **Scraped forge data** with `patina scrape forge --full` (in opencode dir)
+   - Successfully fetched 500 issues
+   - Attempted to fetch 1215 PRs referenced in commit messages
+   - **Hit rate limiting** - TLS handshake timeouts on GitHub API
+   - Some `#123` refs in commits were issues not PRs → "Could not resolve to PullRequest"
+
+### Issues Discovered
+
+#### Issue 1: Forge PR Fetching Has No Rate Limiting
+
+**Location:** `src/commands/scrape/forge/mod.rs:422-430`
+
+```rust
+for pr_num in &pr_refs {
+    match reader.get_pull_request(*pr_num) { ... }
+}
+```
+
+Each call to `get_pull_request` spawns `gh pr view` (one API call). With 1215 PRs, we hammer GitHub's API with no delay, triggering rate limits.
+
+**Fix needed:** Add delay between requests, or batch via GraphQL.
+
+#### Issue 2: Forge Data Not in Semantic Index
+
+After scraping 500 issues, oxidize output showed:
+```
+Indexed 0 session events + 2911 code facts + 0 patterns + 3130 commits
+```
+
+Issues are in `forge_issues` table and `code_fts` (with `event_type='forge.issue'`), but:
+- NOT embedded by oxidize (not in semantic index)
+- scry's `include_issues=true` doesn't surface them
+
+**Fix needed:** Add forge events to oxidize embedding sources.
+
+#### Issue 3: Ref Repos Don't Scrape Documentation
+
+For ref repos, we scrape:
+- ✅ Code (functions, types, imports)
+- ✅ Git (commits, co-changes)
+- ⚠️ Forge (issues/PRs) - only if explicitly requested
+- ❌ Documentation (README, STYLE_GUIDE, CONTRIBUTING, ADRs)
+
+The layer scraper only indexes `layer/core` and `layer/surface`. Ref repos don't have these, so their documentation wisdom is invisible.
+
+**Fix needed:** Scrape markdown files from ref repos (README, docs/, etc.)
+
+### Key Insight
+
+For ref repos, **issues/PRs ARE their surface layer**:
+- Bug discussions → why things broke
+- Feature rationale → why things were added
+- PR descriptions → design decisions
+- Comments → community knowledge
+
+But we scrape it and don't index it properly for retrieval.
+
+### Next Steps
+
+1. Fix rate limiting in forge PR fetcher (add delay or batch)
+2. Add forge events to oxidize embedding sources
+3. Consider scraping documentation markdown from ref repos
+4. Wire up scry to actually return forge.issue results
+
+---
+
 ## References
 
 - [Obsidian](https://obsidian.md) - Knowledge garden model
@@ -372,3 +455,4 @@ patina scry "why did we choose rouille?"
 - Session 20260108-200725 - Refined as distillation layer
 - Session 20260109-063849 - LLM synthesis and model cartridge design
 - Session 20260110-154224 - Corrected to hub & spoke architecture
+- Session 20260110-181504 - Ref repo exploration, forge data gaps
