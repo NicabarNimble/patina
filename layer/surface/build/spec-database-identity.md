@@ -20,20 +20,58 @@ This breaks federation:
 
 ---
 
-## Solution: Random UID in Identity File
+## Solution: UID File + DB Generation
 
 ```
 .patina/
-├── uid                    # Identity (permanent)
+├── uid                    # Project identity (permanent)
 └── data/
-    └── patina.db          # Data (ephemeral, can rebuild)
+    └── patina.db          # Data (ephemeral, tracks generation)
 ```
 
-**Simple rules:**
-1. UID is random 32-bit hex (8 chars)
-2. Generated once at `patina init`
-3. Stored in `.patina/uid` file (not in database)
-4. Never changes, survives rebuild
+**Two-layer identity:**
+
+| Layer | Location | Purpose |
+|-------|----------|---------|
+| Project UID | `.patina/uid` file | Identifies the project (permanent) |
+| DB Generation | `patina.db._meta` | Tracks rebuild count (increments) |
+
+Full reference: `550e8400:3` = "project 550e8400, generation 3"
+
+---
+
+## UID Generation Strategy (Hybrid)
+
+Different sources get different UID strategies:
+
+| Source | UID Strategy | Rationale |
+|--------|--------------|-----------|
+| Local project | Random | No canonical external identity |
+| GitHub ref repo | Hash of `github:owner/repo` | Deterministic, shared across users |
+| GitLab ref repo | Hash of `gitlab:owner/repo` | Same logic |
+| Other forges | Hash of source URL | Extensible |
+
+**Why hybrid:**
+- Local projects have no shared identity → random is fine
+- Ref repos have canonical source → hash enables "find all indexes of this repo"
+- Two users indexing `anthropics/claude-code` get **same UID**
+
+```rust
+fn compute_uid(source: &RepoSource) -> String {
+    match source {
+        RepoSource::Local => format!("{:08x}", fastrand::u32(..)),
+        RepoSource::GitHub { owner, repo } =>
+            hash_uid(&format!("github:{}/{}", owner, repo)),
+        RepoSource::GitLab { owner, repo } =>
+            hash_uid(&format!("gitlab:{}/{}", owner, repo)),
+    }
+}
+
+fn hash_uid(canonical: &str) -> String {
+    let hash = sha256(canonical.as_bytes());
+    format!("{:08x}", u32::from_be_bytes(hash[..4].try_into().unwrap()))
+}
+```
 
 ---
 
@@ -77,7 +115,7 @@ Random UID means:
 
 ---
 
-## Why File (Not In Database)
+## Why UID in File (Not In Database)
 
 Database can be rebuilt (`patina rebuild`). If UID is in database:
 - Rebuild deletes database
@@ -90,6 +128,38 @@ With UID in separate file:
 - Identity is preserved
 
 **The UID identifies the project, not the database file.**
+
+---
+
+## DB Generation (Rebuild Tracking)
+
+The database tracks its own generation count:
+
+```sql
+-- Inside patina.db
+CREATE TABLE IF NOT EXISTS _meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+-- Set at creation, increment on rebuild
+INSERT INTO _meta (key, value) VALUES ('generation', '1');
+```
+
+**On rebuild:**
+```rust
+fn rebuild_database(project_path: &Path) -> Result<()> {
+    let old_gen = get_generation(&conn)?;  // Read before delete
+
+    fs::remove_file(db_path)?;             // Delete old DB
+    let conn = create_database(db_path)?;  // Create fresh
+
+    set_generation(&conn, old_gen + 1)?;   // Increment generation
+    // ... re-scrape ...
+}
+```
+
+**Use case:** Mother graph tracks `last_indexed_generation` to detect stale caches.
 
 ---
 
@@ -153,9 +223,11 @@ patina rebuild
 
 ```sql
 CREATE TABLE nodes (
-    uid TEXT PRIMARY KEY,     -- "550e8400"
-    name TEXT NOT NULL,       -- "claude-code" (human display)
-    path TEXT NOT NULL,       -- location (can change)
+    uid TEXT PRIMARY KEY,           -- "550e8400"
+    name TEXT NOT NULL,             -- "claude-code" (human display)
+    path TEXT NOT NULL,             -- location (can change)
+    last_indexed_generation INT,    -- track staleness
+    last_indexed_at TEXT,           -- when we last indexed
 );
 
 CREATE TABLE edges (
@@ -163,6 +235,19 @@ CREATE TABLE edges (
     to_uid TEXT NOT NULL,
     edge_type TEXT NOT NULL,
 );
+```
+
+### Staleness Detection
+
+```rust
+fn is_stale(node: &Node, project_path: &Path) -> Result<bool> {
+    let current_gen = get_generation_from_db(project_path)?;
+    Ok(current_gen > node.last_indexed_generation)
+}
+
+// On federated query:
+// 1. Check if node is stale
+// 2. If stale, re-index before querying (or mark results as potentially stale)
 ```
 
 ### Cross-DB References
@@ -221,14 +306,18 @@ Results:
 
 ---
 
-## What We Dropped
+## Design Evolution
 
-Earlier versions of this spec considered:
-- Hash of canonical identity (GitHub URL, git SHA, path)
-- Fallback chains for different scenarios
-- UID stored in database `_meta` table
+Earlier versions considered:
+- Pure random UID for everything → lost shared identity for ref repos
+- Pure hash of canonical → edge cases for local projects
+- UID in database only → lost on rebuild
 
-All dropped in favor of simpler random UID in file.
+**Final hybrid approach:**
+- Local projects: random UID (no canonical source)
+- Ref repos: hash of source URL (shared identity)
+- UID in file (survives rebuild)
+- Generation in DB (tracks rebuilds)
 
 ---
 
