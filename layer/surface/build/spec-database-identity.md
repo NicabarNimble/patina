@@ -429,16 +429,28 @@ fn test_cross_db_reference() {
 
 ---
 
+## Design Decision: 32-bit UID (8 hex chars)
+
+**Decision:** Use 32-bit UIDs (8 hex characters).
+
+**Rationale:** UIDs are namespaced per-user. Each user's databases only need to be unique within their own namespace. At 32 bits, collision risk reaches 1% at ~9,300 databases - far beyond any realistic personal usage. Future multi-user federation adds a user identity layer on top:
+
+```
+{user_uid}:{db_uid}  →  64-bit effective global namespace
+```
+
+This matches GitHub's model: repo names aren't globally unique, just unique per owner.
+
+---
+
 ## Open Questions
 
-1. **8 chars enough?** 32 bits = 4B possibilities. With <100 repos, collision probability is negligible. But should we use 12 chars (48 bits) for safety?
-
-2. **What if canonical changes?** If a local project gets pushed to GitHub, its canonical identity changes. Do we:
+1. **What if canonical changes?** If a local project gets pushed to GitHub, its canonical identity changes. Do we:
    - Keep old UID (stable but now "wrong")
    - Recompute UID (correct but breaks references)
    - Store both (complex)
 
-3. **Should UID be in filename?** Pros: visible identity. Cons: migration pain, longer paths.
+2. **Should UID be in filename?** Pros: visible identity. Cons: migration pain, longer paths.
 
 ---
 
