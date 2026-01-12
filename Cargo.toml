@@ -96,6 +96,10 @@ atty = "0.2"  # TTY detection for interactive prompts
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3.5"
 
+# Unix-only: fork/setsid for background sync
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 # Testing utilities
 tempfile = "3.14"

@@ -3,10 +3,12 @@
 //! Contains pacing, backlog management, and resolution logic.
 //! Not exposed in public interface.
 
+use std::fs;
+use std::path::PathBuf;
 use std::thread::sleep;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use rusqlite::Connection;
 
 use crate::forge::{ForgeReader, Issue, IssueState, PrState, PullRequest};
@@ -17,13 +19,104 @@ use super::SyncStats;
 // Constants - visible, not configurable
 // ============================================================================
 
-/// Delay between API requests. GitHub recommends 1000ms for mutations,
-/// we use 500ms for reads. Conservative but not glacial.
-const DELAY_BETWEEN_REQUESTS: Duration = Duration::from_millis(500);
+/// Delay between API requests.
+///
+/// GitHub allows 5,000/hour. At 750ms we do 4,800/hour max.
+/// Conservative. Never hits limits. Works forever.
+///
+/// Eskil: "No adaptive logic. No rate limit API calls. Just works."
+const DELAY_BETWEEN_REQUESTS: Duration = Duration::from_millis(750);
 
 /// Maximum refs to resolve per sync run. Keeps each run bounded.
-/// At 500ms delay, 50 refs = ~25 seconds.
+/// At 750ms delay, 50 refs = ~37 seconds per batch.
 const BATCH_SIZE: usize = 50;
+
+// ============================================================================
+// PID file infrastructure - prevents multiple syncs per repo
+// ============================================================================
+
+/// Get path to PID file for a repo.
+fn pid_file_path(repo: &str) -> PathBuf {
+    let safe_name = repo.replace('/', "-");
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(format!(".patina/run/forge-sync-{}.pid", safe_name))
+}
+
+/// Get path to log file for a repo.
+pub(crate) fn log_file_path(repo: &str) -> PathBuf {
+    let safe_name = repo.replace('/', "-");
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(format!(".patina/logs/forge-sync-{}.log", safe_name))
+}
+
+/// Check if a process is running by PID.
+fn process_is_running(pid: u32) -> bool {
+    // Unix: kill -0 checks if process exists without sending signal
+    #[cfg(unix)]
+    unsafe {
+        libc::kill(pid as i32, 0) == 0
+    }
+    #[cfg(not(unix))]
+    {
+        // On non-Unix, assume not running (conservative)
+        false
+    }
+}
+
+/// RAII guard that manages PID file lifecycle.
+/// Cleans up PID file on drop.
+pub(crate) struct SyncGuard {
+    pid_file: PathBuf,
+}
+
+impl Drop for SyncGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.pid_file);
+    }
+}
+
+/// Check if we can start sync for a repo. Returns guard if yes.
+/// Fails if another sync is already running.
+pub(crate) fn can_start_sync(repo: &str) -> Result<SyncGuard> {
+    let pid_file = pid_file_path(repo);
+
+    // Ensure directory exists
+    if let Some(parent) = pid_file.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    if pid_file.exists() {
+        let content = fs::read_to_string(&pid_file)?;
+        if let Ok(pid) = content.trim().parse::<u32>() {
+            if process_is_running(pid) {
+                bail!("Already syncing (PID {}). Check: --status", pid);
+            }
+        }
+        // Stale PID file - process died, clean up
+        fs::remove_file(&pid_file)?;
+    }
+
+    Ok(SyncGuard { pid_file })
+}
+
+/// Check if sync is currently running for a repo.
+pub(crate) fn is_sync_running(repo: &str) -> Option<u32> {
+    let pid_file = pid_file_path(repo);
+    if pid_file.exists() {
+        if let Ok(content) = fs::read_to_string(&pid_file) {
+            if let Ok(pid) = content.trim().parse::<u32>() {
+                if process_is_running(pid) {
+                    return Some(pid);
+                }
+            }
+        }
+        // Stale PID file - clean up
+        let _ = fs::remove_file(&pid_file);
+    }
+    None
+}
 
 // ============================================================================
 // Public functions (called by mod.rs)
@@ -114,7 +207,7 @@ pub(crate) fn get_status(conn: &Connection, repo: &str) -> Result<SyncStats> {
 
 /// Drain the backlog - keep syncing until all refs are resolved.
 ///
-/// Respects rate limiting (500ms between API calls). Each batch
+/// Respects rate limiting (750ms between API calls). Each batch
 /// is bounded by BATCH_SIZE. Prints progress between batches.
 pub(crate) fn drain_forge(
     conn: &Connection,
@@ -152,6 +245,166 @@ pub(crate) fn drain_forge(
     Ok(total)
 }
 
+/// Sync with a limit - resolve up to N refs then stop.
+/// Returns stats including how many remain.
+pub(crate) fn sync_with_limit(
+    conn: &Connection,
+    reader: &dyn ForgeReader,
+    repo: &str,
+    limit: usize,
+) -> Result<SyncStats> {
+    let mut total = SyncStats::default();
+    let mut resolved_count = 0;
+
+    // Discover refs first
+    let pr_discovered = discover_refs(conn, repo)?;
+    let issue_discovered = discover_all_issues(conn, reader, repo)?;
+    total.discovered = pr_discovered + issue_discovered;
+
+    // Resolve in batches up to limit
+    while resolved_count < limit {
+        let batch_limit = std::cmp::min(BATCH_SIZE, limit - resolved_count);
+        let pending_refs = get_pending_refs(conn, repo, batch_limit)?;
+
+        if pending_refs.is_empty() {
+            break;
+        }
+
+        for ref_num in &pending_refs {
+            sleep(DELAY_BETWEEN_REQUESTS);
+
+            match resolve_ref(conn, reader, repo, *ref_num) {
+                Ok(was_cached) => {
+                    total.resolved += 1;
+                    resolved_count += 1;
+                    if was_cached {
+                        total.cache_hits += 1;
+                    }
+                }
+                Err(e) => {
+                    total.errors += 1;
+                    eprintln!("  ⚠️  #{}: {}", ref_num, e);
+                }
+            }
+        }
+    }
+
+    total.pending = count_pending_refs(conn, repo)?;
+    Ok(total)
+}
+
+// ============================================================================
+// Background sync - fork to detached process
+// ============================================================================
+
+/// Start background sync process.
+///
+/// Forks to background, writes PID file, syncs all pending refs.
+/// Parent returns immediately. Child runs until complete or error.
+#[cfg(unix)]
+pub(crate) fn start_background_sync(
+    db_path: &std::path::Path,
+    repo: &str,
+    detected: &crate::forge::Forge,
+) -> Result<u32> {
+    use std::os::unix::io::AsRawFd;
+
+    // Check if already running
+    let _guard = can_start_sync(repo)?;
+
+    let log_path = log_file_path(repo);
+    let pid_path = pid_file_path(repo);
+
+    // Ensure log directory exists
+    if let Some(parent) = log_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    // Fork
+    match unsafe { libc::fork() } {
+        -1 => bail!("Fork failed: {}", std::io::Error::last_os_error()),
+        0 => {
+            // === Child process ===
+
+            // Detach from terminal (new session)
+            unsafe { libc::setsid() };
+
+            // Open log file for stdout/stderr redirection
+            let log_file = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&log_path)
+                .expect("Failed to open log file");
+
+            let log_fd = log_file.as_raw_fd();
+
+            // Redirect stdout and stderr to log file
+            unsafe {
+                libc::dup2(log_fd, libc::STDOUT_FILENO);
+                libc::dup2(log_fd, libc::STDERR_FILENO);
+            }
+
+            // Write PID file
+            if let Some(parent) = pid_path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let _ = fs::write(&pid_path, std::process::id().to_string());
+
+            // Log start
+            println!(
+                "[{}] Background sync started for {}",
+                chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"),
+                repo
+            );
+
+            // Do the work - reopen db and create reader
+            let result = (|| -> Result<SyncStats> {
+                let conn = rusqlite::Connection::open(db_path)?;
+                let reader = crate::forge::reader(detected);
+                drain_forge(&conn, reader.as_ref(), repo)
+            })();
+
+            // Log result
+            match &result {
+                Ok(stats) => {
+                    println!(
+                        "[{}] Sync complete: {} resolved, {} errors, {} pending",
+                        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"),
+                        stats.resolved,
+                        stats.errors,
+                        stats.pending
+                    );
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[{}] Sync failed: {}",
+                        chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"),
+                        e
+                    );
+                }
+            }
+
+            // Clean up PID file
+            let _ = fs::remove_file(&pid_path);
+
+            std::process::exit(if result.is_ok() { 0 } else { 1 });
+        }
+        child_pid => {
+            // === Parent process ===
+            Ok(child_pid as u32)
+        }
+    }
+}
+
+#[cfg(not(unix))]
+pub(crate) fn start_background_sync(
+    _db_path: &std::path::Path,
+    _repo: &str,
+    _detected: &crate::forge::Forge,
+) -> Result<u32> {
+    bail!("Background sync not supported on this platform. Use --limit instead.")
+}
+
 // ============================================================================
 // Discovery - extract refs from commits
 // ============================================================================
@@ -178,11 +431,7 @@ fn discover_refs(conn: &Connection, repo: &str) -> Result<usize> {
 
 /// Discover all issues by populating forge_refs with 1..max_issue_number.
 /// Uses INSERT OR IGNORE - safe to call repeatedly.
-fn discover_all_issues(
-    conn: &Connection,
-    reader: &dyn ForgeReader,
-    repo: &str,
-) -> Result<usize> {
+fn discover_all_issues(conn: &Connection, reader: &dyn ForgeReader, repo: &str) -> Result<usize> {
     // Get max issue number from API (one call)
     let max_num = reader.get_max_issue_number()?;
     if max_num == 0 {

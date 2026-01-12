@@ -141,20 +141,46 @@ fn resolve_repo_path(name: &str) -> Result<PathBuf> {
 }
 
 /// Execute forge scraper (issues and PRs from GitHub/Gitea)
-pub fn execute_forge(full: bool, status: bool, drain: bool, repo: Option<String>) -> Result<()> {
+pub fn execute_forge(
+    full: bool,
+    status: bool,
+    sync: bool,
+    log: bool,
+    limit: Option<usize>,
+    repo: Option<String>,
+) -> Result<()> {
     // Resolve working directory if --repo provided
-    let working_dir = match repo {
-        Some(name) => Some(resolve_repo_path(&name)?),
+    let working_dir = match &repo {
+        Some(name) => Some(resolve_repo_path(name)?),
         None => None,
     };
 
-    if status {
-        return execute_forge_status(working_dir.as_ref());
+    // Get repo spec early - needed for status, sync, log
+    let repo_spec = get_repo_spec(working_dir.as_ref())?;
+
+    // Handle --log: tail the sync log file
+    if log {
+        return execute_forge_log(&repo_spec);
     }
 
+    // Handle --status: show sync status
+    if status {
+        return execute_forge_status(working_dir.as_ref(), &repo_spec);
+    }
+
+    // Handle --sync: fork to background
+    if sync {
+        return execute_forge_background(working_dir.as_ref(), &repo_spec);
+    }
+
+    // Handle --limit: foreground sync with cap
+    if let Some(limit_val) = limit {
+        return execute_forge_limited(working_dir.as_ref(), &repo_spec, limit_val);
+    }
+
+    // Default: discovery only (instant)
     let config = forge::ForgeScrapeConfig {
         force: full,
-        drain,
         working_dir,
         ..Default::default()
     };
@@ -166,12 +192,10 @@ pub fn execute_forge(full: bool, status: bool, drain: bool, repo: Option<String>
     Ok(())
 }
 
-/// Show forge sync status without making changes.
-fn execute_forge_status(working_dir: Option<&PathBuf>) -> Result<()> {
-    use std::path::Path;
+/// Get repo spec (owner/repo) from git remote.
+fn get_repo_spec(working_dir: Option<&PathBuf>) -> Result<String> {
     use std::process::Command;
 
-    // Get repo from git remote
     let mut cmd = Command::new("git");
     cmd.args(["remote", "get-url", "origin"]);
     if let Some(dir) = working_dir {
@@ -180,46 +204,170 @@ fn execute_forge_status(working_dir: Option<&PathBuf>) -> Result<()> {
     let output = cmd.output()?;
 
     if !output.status.success() {
-        println!("No git remote configured.");
-        return Ok(());
+        bail!("No git remote configured.");
     }
 
     let remote_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let detected = patina::forge::detect(&remote_url);
 
     if detected.owner.is_empty() {
-        println!("Could not detect forge from remote URL.");
-        return Ok(());
+        bail!("Could not detect forge from remote URL.");
     }
 
-    let repo_spec = format!("{}/{}", detected.owner, detected.repo);
+    Ok(format!("{}/{}", detected.owner, detected.repo))
+}
 
-    // Compute db_path based on working_dir
-    let db_path_buf: PathBuf;
-    let db_path: &Path = match working_dir {
-        Some(dir) => {
-            db_path_buf = dir.join(".patina/data/patina.db");
-            db_path_buf.as_path()
-        }
-        None => Path::new(database::PATINA_DB),
-    };
+/// Get db path based on working directory.
+fn get_db_path(working_dir: Option<&PathBuf>) -> PathBuf {
+    match working_dir {
+        Some(dir) => dir.join(".patina/data/patina.db"),
+        None => PathBuf::from(database::PATINA_DB),
+    }
+}
+
+/// Show forge sync status without making changes.
+fn execute_forge_status(working_dir: Option<&PathBuf>, repo_spec: &str) -> Result<()> {
+    let db_path = get_db_path(working_dir);
 
     if !db_path.exists() {
         println!("No patina.db found. Run `patina scrape` first.");
         return Ok(());
     }
 
-    let conn = database::initialize(db_path)?;
-    let stats = patina::forge::sync::status(&conn, &repo_spec)?;
+    // Check if sync is running
+    let running_pid = patina::forge::sync::is_running(repo_spec);
+
+    let conn = database::initialize(&db_path)?;
+    let stats = patina::forge::sync::status(&conn, repo_spec)?;
 
     println!("📊 Forge Sync Status for {}:", repo_spec);
+
+    if let Some(pid) = running_pid {
+        println!("  • Status: Syncing (PID {})", pid);
+    } else {
+        println!("  • Status: Idle");
+    }
+
     println!("  • Resolved: {}", stats.resolved);
     println!("  • Pending: {}", stats.pending);
     println!("  • Errors: {}", stats.errors);
 
     if stats.pending > 0 {
-        let batches = stats.pending.div_ceil(50);
-        println!("\n  Est. completion: ~{} more runs (50 refs/run)", batches);
+        // At 750ms per ref, 50 refs/batch = ~37.5 seconds per batch
+        let total_time_secs = (stats.pending as f64) * 0.75;
+        let hours = (total_time_secs / 3600.0).floor() as usize;
+        let minutes = ((total_time_secs % 3600.0) / 60.0).ceil() as usize;
+
+        if hours > 0 {
+            println!("\n  ETA: ~{}h {}m remaining", hours, minutes);
+        } else {
+            println!("\n  ETA: ~{}m remaining", minutes);
+        }
+
+        println!("  Rate: ~48 refs/min (750ms pacing)");
+    }
+
+    Ok(())
+}
+
+/// Tail the sync log file.
+fn execute_forge_log(repo_spec: &str) -> Result<()> {
+    use std::process::Command;
+
+    let log_path = patina::forge::sync::log_path(repo_spec);
+
+    if !log_path.exists() {
+        println!("No log file found at: {}", log_path.display());
+        println!("Run `patina scrape forge --sync` first.");
+        return Ok(());
+    }
+
+    println!("📄 Tailing: {}", log_path.display());
+    println!("   (Ctrl+C to stop)\n");
+
+    // Use tail -f to follow the log
+    let status = Command::new("tail")
+        .args(["-f", log_path.to_str().unwrap_or("")])
+        .status()?;
+
+    if !status.success() {
+        bail!("tail command failed");
+    }
+
+    Ok(())
+}
+
+/// Start background sync.
+fn execute_forge_background(working_dir: Option<&PathBuf>, repo_spec: &str) -> Result<()> {
+    use std::process::Command;
+
+    let db_path = get_db_path(working_dir);
+
+    if !db_path.exists() {
+        bail!("No patina.db found. Run `patina scrape` first.");
+    }
+
+    // Get detected forge info
+    let mut cmd = Command::new("git");
+    cmd.args(["remote", "get-url", "origin"]);
+    if let Some(dir) = working_dir {
+        cmd.current_dir(dir);
+    }
+    let output = cmd.output()?;
+    let remote_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detected = patina::forge::detect(&remote_url);
+
+    // Start background sync
+    let pid = patina::forge::sync::start_background(&db_path, repo_spec, &detected)?;
+
+    let log_path = patina::forge::sync::log_path(repo_spec);
+
+    println!("🔄 Syncing in background (PID {})", pid);
+    println!("   Log: {}", log_path.display());
+    println!("   Check: patina scrape forge --status");
+
+    Ok(())
+}
+
+/// Foreground sync with limit.
+fn execute_forge_limited(
+    working_dir: Option<&PathBuf>,
+    repo_spec: &str,
+    limit: usize,
+) -> Result<()> {
+    use std::process::Command;
+
+    let db_path = get_db_path(working_dir);
+
+    if !db_path.exists() {
+        bail!("No patina.db found. Run `patina scrape` first.");
+    }
+
+    // Get detected forge info
+    let mut cmd = Command::new("git");
+    cmd.args(["remote", "get-url", "origin"]);
+    if let Some(dir) = working_dir {
+        cmd.current_dir(dir);
+    }
+    let output = cmd.output()?;
+    let remote_url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let detected = patina::forge::detect(&remote_url);
+
+    println!("🔄 Syncing up to {} refs in foreground...", limit);
+
+    let conn = database::initialize(&db_path)?;
+    let reader = patina::forge::reader(&detected);
+    let stats = patina::forge::sync::sync_limited(&conn, reader.as_ref(), repo_spec, limit)?;
+
+    println!("\n📊 Forge Sync Summary:");
+    println!("  • Discovered: {}", stats.discovered);
+    println!("  • Resolved: {}", stats.resolved);
+    println!("  • Pending: {}", stats.pending);
+    if stats.cache_hits > 0 {
+        println!("  • Cache hits: {}", stats.cache_hits);
+    }
+    if stats.errors > 0 {
+        println!("  • Errors: {}", stats.errors);
     }
 
     Ok(())
