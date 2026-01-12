@@ -1,8 +1,10 @@
 # Spec: Database Identity (UIDs for Federation)
 
-**Status:** Design
+**Status:** Design (blocked)
 **Created:** 2026-01-12
-**Session:** 20260112-061237
+**Updated:** 2026-01-12
+**Sessions:** 20260112-061237 (initial), 20260112-093636 (explicit patterns)
+**Blocked By:** [spec-init-hardening.md](spec-init-hardening.md) - init must preserve config before adding UID
 **Core References:** [dependable-rust](../../core/dependable-rust.md), [unix-philosophy](../../core/unix-philosophy.md)
 
 ---
@@ -82,8 +84,9 @@ fn hash_uid(canonical: &str) -> String {
 > "Black box modules with small, stable interfaces"
 
 - UID is ONE thing: 8 hex chars
-- Interface is minimal: `get_uid()`
-- No external dependencies, no edge cases
+- Interface is minimal: `create_uid()` and `read_uid()`
+- Explicit over implicit: creation and reading are separate operations
+- No hidden side effects: reads don't write, creates don't silently succeed
 
 ### From Unix Philosophy
 
@@ -187,24 +190,45 @@ cat .patina/uid
 
 Plain text, one line, 8 hex characters. No JSON, no metadata.
 
-### Init Logic
+### UID Operations (Explicit Create/Read)
+
+**Principle:** Explicit over implicit. No `ensure_uid()` magic - creation and reading are separate.
 
 ```rust
-fn ensure_uid(project_path: &Path) -> Result<String> {
+/// Create UID at init time. Fails if already exists (idempotent re-init is separate).
+fn create_uid(project_path: &Path, source: &RepoSource) -> Result<String> {
     let uid_path = project_path.join(".patina/uid");
 
     if uid_path.exists() {
-        return Ok(fs::read_to_string(&uid_path)?.trim().to_string());
+        // Re-init case: read existing, don't overwrite
+        return read_uid(project_path);
     }
 
-    // Generate random 32-bit UID
-    let uid = format!("{:08x}", fastrand::u32(..));
+    let uid = compute_uid(source);
     fs::create_dir_all(uid_path.parent().unwrap())?;
     fs::write(&uid_path, &uid)?;
-
     Ok(uid)
 }
+
+/// Read UID. Fails if missing - caller must handle upgrade path.
+fn read_uid(project_path: &Path) -> Result<String> {
+    let uid_path = project_path.join(".patina/uid");
+
+    if !uid_path.exists() {
+        return Err(anyhow!(
+            "No UID found. Run `patina init .` to upgrade this project."
+        ));
+    }
+
+    Ok(fs::read_to_string(&uid_path)?.trim().to_string())
+}
 ```
+
+**Why separate functions (Jon Gjengset / Eskil Steenberg principle):**
+- `read_uid()` never writes - no surprising side effects
+- `create_uid()` is called at ONE place (init) - single point of control
+- Failures are explicit - "no UID" is a clear error, not silent creation
+- Testing is straightforward - no hidden state changes
 
 ### Rebuild Behavior
 
@@ -214,6 +238,86 @@ patina rebuild
 # Keeps:   .patina/uid
 # Result:  Same identity, fresh data
 ```
+
+---
+
+## Edge Cases
+
+### Manual Database Deletion
+
+If user runs `rm .patina/data/patina.db` directly (not `patina rebuild`):
+- Generation counter resets to 1
+- Mother graph may have stale `last_indexed_generation`
+
+**Decision:** Accept this edge case.
+- Manual deletion is explicit user intent
+- Cleverness can come from mother graph later (detect generation regression)
+- Keep this spec simple
+
+### UID Collision Detection
+
+With 32-bit UIDs, collision probability is ~1% at 9,300 projects. When registering a project in mother graph:
+
+```rust
+fn register_in_mother(uid: &str, path: &Path) -> Result<()> {
+    if let Some(existing) = mother.get_node(uid)? {
+        if existing.path != path {
+            warn!(
+                "UID collision detected: {} already registered at {}",
+                uid, existing.path
+            );
+            // Log to mother system logs for future analysis
+            mother.log_event("uid_collision", json!({
+                "uid": uid,
+                "existing_path": existing.path,
+                "new_path": path,
+            }))?;
+        }
+    }
+    // Proceed with registration (last-write-wins for now)
+    mother.upsert_node(uid, path)?;
+    Ok(())
+}
+```
+
+**Decision:** Detect and warn, don't block.
+- Log collision events for future analysis
+- Mother graph can implement smarter resolution later
+- User can manually regenerate UID if needed (`rm .patina/uid && patina init .`)
+
+---
+
+## Migration (Upgrading Old Projects)
+
+Old `.patina` directories without `uid` file need explicit upgrade.
+
+### Behavior by Command
+
+| Command | Old Project (no UID) | New Project (has UID) |
+|---------|---------------------|----------------------|
+| `patina init .` | Creates UID | Reads existing UID |
+| `patina scrape` | **Fails with upgrade message** | Works normally |
+| `patina rebuild` | **Fails with upgrade message** | Works normally |
+| `patina doctor` | Shows "UID: missing" | Shows UID |
+
+### Error Message
+
+```
+Error: No UID found for this project.
+
+This project was created before UID support. Run:
+
+    patina init .
+
+This will add a UID without affecting your existing data.
+```
+
+### Why Explicit Migration
+
+- **No magic:** Commands don't silently create files
+- **User awareness:** User knows their project was upgraded
+- **Single entry point:** `patina init` is the ONE place UIDs are created
+- **Predictable:** `read_uid()` either succeeds or fails, never writes
 
 ---
 
@@ -276,15 +380,18 @@ Results:
 
 ### Phase 1: Add Identity
 
-1. Create `.patina/uid` at `patina init`
-2. Read UID in commands that need it
-3. `patina doctor` shows UID
+1. Add `create_uid()` and `read_uid()` functions (explicit, separate)
+2. Create `.patina/uid` at `patina init` (local=random, ref=hash)
+3. Commands that need UID call `read_uid()` - fail with upgrade message if missing
+4. `patina doctor` shows UID (or "missing - run patina init .")
+5. `patina init .` on old project creates UID (migration path)
 
 ### Phase 2: Mother Graph Integration
 
 1. Mother graph uses UID as primary key
-2. Edges reference UIDs, not names/paths
-3. Path changes don't break graph
+2. Collision detection on registration (warn + log, don't block)
+3. Edges reference UIDs, not names/paths
+4. Path changes don't break graph
 
 ### Phase 3: Cross-DB References
 
@@ -300,8 +407,11 @@ Results:
 |-------|----------|
 | 1 | `.patina/uid` created at init |
 | 1 | UID survives rebuild |
+| 1 | Old projects fail with clear upgrade message |
+| 1 | `patina init .` upgrades old projects |
 | 1 | `patina doctor` shows UID |
 | 2 | Mother graph uses UIDs |
+| 2 | Collision detected and logged |
 | 3 | Scry results show source UID |
 
 ---
@@ -312,16 +422,21 @@ Earlier versions considered:
 - Pure random UID for everything → lost shared identity for ref repos
 - Pure hash of canonical → edge cases for local projects
 - UID in database only → lost on rebuild
+- `ensure_uid()` lazy creation → hidden side effects, magic
 
-**Final hybrid approach:**
+**Final approach:**
 - Local projects: random UID (no canonical source)
 - Ref repos: hash of source URL (shared identity)
 - UID in file (survives rebuild)
 - Generation in DB (tracks rebuilds)
+- **Explicit create/read** (no `ensure_uid()` magic)
+- **Explicit migration** (require `patina init .` for old projects)
+- **Collision detection** (warn, log, don't block)
 
 ---
 
 ## References
 
 - [spec-mothership-graph.md](spec-mothership-graph.md) - Graph routing using UIDs
-- Session 20260112-061237 - Design discussion and simplification
+- Session 20260112-061237 - Initial design discussion and simplification
+- Session 20260112-093636 - Explicit create/read pattern, migration strategy, collision handling
