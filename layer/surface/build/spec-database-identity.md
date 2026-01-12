@@ -3,28 +3,37 @@
 **Status:** Design
 **Created:** 2026-01-12
 **Session:** 20260112-061237
-**Core References:** [dependable-rust](../../core/dependable-rust.md), [unix-philosophy](../../core/unix-philosophy.md), [adapter-pattern](../../core/adapter-pattern.md)
+**Core References:** [dependable-rust](../../core/dependable-rust.md), [unix-philosophy](../../core/unix-philosophy.md)
 
 ---
 
 ## Problem Statement
 
-Patina databases are currently **anonymous** - they don't know who they are. Identity is assigned externally by:
-- Filesystem path (fragile, breaks on move)
-- Registry name (can change, not intrinsic)
-- Mother graph node ID (external assignment)
+Patina databases are **anonymous** - they don't know who they are. Identity is assigned externally by filesystem path (fragile) or registry name (can change).
 
-This creates problems for federation:
+This breaks federation:
+- Cross-DB references have no stable target
+- Mother graph edges break on path/name changes
+- Can't trace where federated results came from
 
-| Problem | Current State | Impact |
-|---------|---------------|--------|
-| Cross-DB references | Can't reference data in other DBs | No provenance tracking |
-| Graph edges | Based on names/paths | Break on rename/move |
-| Federated results | No source identification | Can't trace where data came from |
-| Database portability | Identity lost when moved | Can't share/backup databases |
-| Deduplication | No way to identify source | Duplicate results in federation |
+**Root cause:** Databases lack intrinsic identity.
 
-**Root cause:** Databases lack intrinsic identity. They're files, not entities.
+---
+
+## Solution: Random UID in Identity File
+
+```
+.patina/
+├── uid                    # Identity (permanent)
+└── data/
+    └── patina.db          # Data (ephemeral, can rebuild)
+```
+
+**Simple rules:**
+1. UID is random 32-bit hex (8 chars)
+2. Generated once at `patina init`
+3. Stored in `.patina/uid` file (not in database)
+4. Never changes, survives rebuild
 
 ---
 
@@ -34,383 +43,169 @@ This creates problems for federation:
 
 > "Black box modules with small, stable interfaces"
 
-**Applied here:**
-- UID is a single, stable identifier (8 hex chars)
-- Interface is minimal: `get_uid()`, `set_uid()`
-- Implementation details (hash algorithm, storage) are hidden
-- Once assigned, UID never changes
+- UID is ONE thing: 8 hex chars
+- Interface is minimal: `get_uid()`
+- No external dependencies, no edge cases
 
 ### From Unix Philosophy
 
 > "One tool, one job, done well"
 
-**Applied here:**
-- UID does ONE thing: identifies the database
-- Not overloaded with version, location, or metadata
-- Separate concerns: identity (UID) vs location (path) vs metadata (registry)
-
-### From Adapter Pattern
-
-> "Trait-based abstraction for external systems"
-
-**Applied here:**
-- All databases share the same identity interface
-- Mother graph doesn't care HOW identity works, just that it exists
-- Future: could support different identity schemes via trait
+- UID identifies the project, nothing else
+- Separate concerns: identity (uid file) vs data (patina.db)
+- Plain text file - can inspect with `cat`
 
 ---
 
-## What is Identity?
+## Why Random (Not Hash)
 
-A database's identity answers: "What IS this database?"
+We considered hashing canonical identity (GitHub URL, path, etc.):
 
-Not to be confused with:
-- **Location:** Where is the database? (path)
-- **Name:** What do humans call it? (registry name)
-- **Content:** What's in the database? (eventlog)
+| Approach | Problem |
+|----------|---------|
+| Hash of GitHub URL | What if no GitHub? What if URL changes? |
+| Hash of git SHA | What if no git? Empty repos have no commits |
+| Hash of path | Path changes break identity |
 
-Identity must be:
-- **Intrinsic:** Stored IN the database, not external
-- **Immutable:** Never changes after creation
-- **Deterministic:** Same inputs → same UID (reproducible)
-- **Collision-resistant:** Practically unique
+**All add complexity and edge cases.**
 
----
-
-## UID Options Analysis
-
-### Option 1: Random UUID
-
-```
-patina-550e8400-e29b-41d4-a716-446655440000.db
-```
-
-| Aspect | Assessment |
-|--------|------------|
-| Uniqueness | Guaranteed (128 bits) |
-| Reproducibility | None - must store mapping |
-| Human readability | Poor (36 chars) |
-| Determinism | None |
-
-**Verdict:** Rejected. Violates "deterministic" requirement.
-
-### Option 2: Hash of Filesystem Path
-
-```
-sha256("/Users/nicabar/Projects/patina")[:8] → "a3f2b1c4"
-patina-a3f2b1c4.db
-```
-
-| Aspect | Assessment |
-|--------|------------|
-| Uniqueness | Good (path uniqueness) |
-| Reproducibility | Only if path unchanged |
-| Human readability | Good (8 chars) |
-| Determinism | Yes, but fragile |
-
-**Verdict:** Rejected. Path changes break identity.
-
-### Option 3: Hash of Git Initial Commit
-
-```
-sha256(git_initial_commit_sha)[:8] → "7e2d1f3a"
-patina-7e2d1f3a.db
-```
-
-| Aspect | Assessment |
-|--------|------------|
-| Uniqueness | Excellent (git SHA uniqueness) |
-| Reproducibility | Perfect (immutable) |
-| Human readability | Good (8 chars) |
-| Determinism | Yes |
-
-**Verdict:** Good, but requires git history. Empty repos have no commits.
-
-### Option 4: Hash of Canonical Identity (Recommended)
-
-```
-# For repos with remote:
-sha256("github:anthropics/claude-code")[:8] → "a3f2b1c4"
-
-# For local-only projects:
-sha256("git:e7d3a2f1...")[:8] → "7e2d1f3a"  # initial commit
-sha256("path:/Users/.../project")[:8] → "b4c8e2a1"  # fallback
-```
-
-| Aspect | Assessment |
-|--------|------------|
-| Uniqueness | Excellent |
-| Reproducibility | Perfect for repos, good for local |
-| Human readability | Good (8 chars) |
-| Determinism | Yes |
-| Fallback chain | Yes |
-
-**Verdict:** Recommended. Hierarchical identity with sensible fallbacks.
+Random UID means:
+- No external dependencies
+- No fallback chains
+- No "what if X changes" questions
+- Just works
 
 ---
 
-## Canonical Identity Hierarchy
+## Why File (Not In Database)
+
+Database can be rebuilt (`patina rebuild`). If UID is in database:
+- Rebuild deletes database
+- UID is lost
+- Mother graph has stale reference
+
+With UID in separate file:
+- Rebuild deletes `patina.db`
+- `.patina/uid` survives
+- Identity is preserved
+
+**The UID identifies the project, not the database file.**
+
+---
+
+## 32-bit UID (8 hex chars)
 
 ```
-1. github:{owner}/{repo}     # Best: globally unique, stable
-2. git:{initial_commit_sha}  # Good: immutable, requires history
-3. path:{absolute_path}      # Fallback: fragile but always available
+550e8400
 ```
 
-**Resolution algorithm:**
+**Why 32-bit:**
+- 1% collision at ~9,300 projects per user
+- Multi-user adds namespace: `{user}:{db}` = 64-bit effective
+- Matches GitHub model: unique per owner, not globally
+
+---
+
+## Implementation
+
+### File Format
+
+```bash
+cat .patina/uid
+550e8400
+```
+
+Plain text, one line, 8 hex characters. No JSON, no metadata.
+
+### Init Logic
 
 ```rust
-fn canonical_identity(project_path: &Path) -> String {
-    // Try git remote first
-    if let Some(remote) = get_git_remote(project_path) {
-        if let Some((owner, repo)) = parse_github_url(&remote) {
-            return format!("github:{}/{}", owner, repo);
-        }
+fn ensure_uid(project_path: &Path) -> Result<String> {
+    let uid_path = project_path.join(".patina/uid");
+
+    if uid_path.exists() {
+        return Ok(fs::read_to_string(&uid_path)?.trim().to_string());
     }
 
-    // Try initial commit
-    if let Some(sha) = get_initial_commit(project_path) {
-        return format!("git:{}", sha);
-    }
-
-    // Fallback to path
-    format!("path:{}", project_path.canonicalize().display())
-}
-
-fn compute_uid(canonical: &str) -> String {
-    let hash = sha256(canonical.as_bytes());
-    format!("{:08x}", u32::from_be_bytes(hash[..4].try_into().unwrap()))
-}
-```
-
----
-
-## Schema Design
-
-### New `_meta` Table
-
-Every `patina.db` gets a metadata table:
-
-```sql
-CREATE TABLE IF NOT EXISTS _meta (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
-
--- Required entries (set at init, never change)
-INSERT INTO _meta (key, value) VALUES ('uid', 'a3f2b1c4');
-INSERT INTO _meta (key, value) VALUES ('canonical', 'github:anthropics/claude-code');
-INSERT INTO _meta (key, value) VALUES ('created', '2026-01-12T12:00:00Z');
-INSERT INTO _meta (key, value) VALUES ('schema_version', '2');
-```
-
-### Database Filename
-
-Option A: **Embed UID in filename**
-```
-.patina/data/patina-a3f2b1c4.db
-```
-- Pro: Identity visible in filesystem
-- Con: Migration required for existing DBs
-
-Option B: **Keep filename, store UID internally**
-```
-.patina/data/patina.db  (contains _meta.uid = 'a3f2b1c4')
-```
-- Pro: No migration, backward compatible
-- Con: Must open DB to learn identity
-
-**Recommendation:** Option B for Phase 1 (internal), Option A optional for Phase 2.
-
----
-
-## Federation Integration
-
-### Mother Graph Updates
-
-```sql
--- Current schema
-CREATE TABLE nodes (
-    id TEXT PRIMARY KEY,      -- name: "claude-code"
-    path TEXT NOT NULL,       -- location
-    ...
-);
-
--- Updated schema
-CREATE TABLE nodes (
-    uid TEXT PRIMARY KEY,     -- intrinsic: "a3f2b1c4"
-    name TEXT NOT NULL,       -- human: "claude-code"
-    path TEXT NOT NULL,       -- location (can change)
-    canonical TEXT,           -- "github:anthropics/claude-code"
-    ...
-);
-
-CREATE TABLE edges (
-    from_uid TEXT NOT NULL,   -- "7e2d1f3a" (was: from_node)
-    to_uid TEXT NOT NULL,     -- "a3f2b1c4" (was: to_node)
-    ...
-);
-```
-
-### Cross-DB References in Eventlog
-
-```sql
--- In patina's eventlog: reference to claude-code data
-INSERT INTO eventlog (event_type, data) VALUES (
-  'reference.pattern',
-  '{
-    "pattern": "error boundary",
-    "source_uid": "a3f2b1c4",
-    "source_event_seq": 12345,
-    "learned_at": "2026-01-12T12:00:00Z"
-  }'
-);
-```
-
-### Federated Query Results
-
-```rust
-pub struct FederatedResult {
-    pub source_uid: String,      // "a3f2b1c4"
-    pub source_name: String,     // "claude-code" (for display)
-    pub doc_id: String,
-    pub score: f32,
-    pub content: String,
-}
-```
-
----
-
-## Migration Strategy
-
-### Phase 1: Add Identity (Non-Breaking)
-
-1. Add `_meta` table to new databases at init
-2. Add `_meta` table to existing databases on first open (lazy migration)
-3. Compute UID from canonical identity
-4. Store but don't require for existing flows
-
-```rust
-fn ensure_identity(conn: &Connection, project_path: &Path) -> Result<String> {
-    // Check if already has identity
-    if let Some(uid) = get_meta(conn, "uid")? {
-        return Ok(uid);
-    }
-
-    // Compute and store
-    let canonical = canonical_identity(project_path);
-    let uid = compute_uid(&canonical);
-
-    set_meta(conn, "uid", &uid)?;
-    set_meta(conn, "canonical", &canonical)?;
-    set_meta(conn, "created", &Utc::now().to_rfc3339())?;
+    // Generate random 32-bit UID
+    let uid = format!("{:08x}", fastrand::u32(..));
+    fs::create_dir_all(uid_path.parent().unwrap())?;
+    fs::write(&uid_path, &uid)?;
 
     Ok(uid)
 }
 ```
 
-### Phase 2: Update Mother Graph
-
-1. Migrate `nodes.id` → `nodes.uid`
-2. Migrate `edges.from_node/to_node` → `edges.from_uid/to_uid`
-3. Keep `nodes.name` for human display
-
-### Phase 3: Enable Cross-DB References
-
-1. Add `source_uid` field to relevant event types
-2. Update scry to include source in results
-3. Add provenance tracking in feedback loop
-
-### Phase 4: Optional Filename Update
-
-1. Rename `patina.db` → `patina-{uid}.db`
-2. Update all path references
-3. Add symlink for backward compatibility
-
----
-
-## API Design
-
-### Library Interface
-
-```rust
-// src/db/identity.rs
-
-/// Get database UID (creates if missing)
-pub fn get_or_create_uid(conn: &Connection, project_path: &Path) -> Result<String>;
-
-/// Get database UID (returns None if missing)
-pub fn get_uid(conn: &Connection) -> Result<Option<String>>;
-
-/// Get canonical identity string
-pub fn get_canonical(conn: &Connection) -> Result<Option<String>>;
-
-/// Check if database has identity
-pub fn has_identity(conn: &Connection) -> Result<bool>;
-```
-
-### CLI Integration
+### Rebuild Behavior
 
 ```bash
-# Show database identity
-patina doctor --identity
-# Database: patina-a3f2b1c4
-# Canonical: github:NicabarNimble/patina
-# Created: 2026-01-12T12:00:00Z
-
-# Show all known databases
-patina repo list --uids
-# UID       Name          Canonical
-# a3f2b1c4  claude-code   github:anthropics/claude-code
-# 7e2d1f3a  patina        github:NicabarNimble/patina
-# b4c8e2a1  local-proj    path:/Users/.../local-proj
+patina rebuild
+# Deletes: .patina/data/patina.db
+# Keeps:   .patina/uid
+# Result:  Same identity, fresh data
 ```
 
 ---
 
-## Testing Strategy
+## Federation Integration
 
-### Unit Tests
+### Mother Graph
 
-```rust
-#[test]
-fn test_canonical_identity_github() {
-    let id = canonical_identity_from_remote("git@github.com:anthropics/claude-code.git");
-    assert_eq!(id, "github:anthropics/claude-code");
-}
+```sql
+CREATE TABLE nodes (
+    uid TEXT PRIMARY KEY,     -- "550e8400"
+    name TEXT NOT NULL,       -- "claude-code" (human display)
+    path TEXT NOT NULL,       -- location (can change)
+);
 
-#[test]
-fn test_uid_deterministic() {
-    let uid1 = compute_uid("github:anthropics/claude-code");
-    let uid2 = compute_uid("github:anthropics/claude-code");
-    assert_eq!(uid1, uid2);
-}
-
-#[test]
-fn test_uid_collision_resistance() {
-    let uid1 = compute_uid("github:anthropics/claude-code");
-    let uid2 = compute_uid("github:anthropics/claude-cod");  // typo
-    assert_ne!(uid1, uid2);
-}
+CREATE TABLE edges (
+    from_uid TEXT NOT NULL,
+    to_uid TEXT NOT NULL,
+    edge_type TEXT NOT NULL,
+);
 ```
 
-### Integration Tests
+### Cross-DB References
 
-```rust
-#[test]
-fn test_migration_preserves_data() {
-    // Create old-style DB
-    // Run migration
-    // Verify all data intact + has identity
-}
-
-#[test]
-fn test_cross_db_reference() {
-    // Create two DBs with UIDs
-    // Insert cross-reference in eventlog
-    // Query and verify provenance
-}
+```sql
+-- In patina's eventlog
+INSERT INTO eventlog (event_type, data) VALUES (
+  'reference.pattern',
+  '{"source_uid": "550e8400", "source_seq": 12345}'
+);
 ```
+
+### Federated Results
+
+```
+scry "error handling"
+
+Results:
+  [550e8400] src/errors.ts:45 - ErrorBoundary pattern
+  [a3f2b1c4] src/forge/sync.rs:120 - Result<T> pattern
+```
+
+---
+
+## Phases
+
+### Phase 1: Add Identity
+
+1. Create `.patina/uid` at `patina init`
+2. Read UID in commands that need it
+3. `patina doctor` shows UID
+
+### Phase 2: Mother Graph Integration
+
+1. Mother graph uses UID as primary key
+2. Edges reference UIDs, not names/paths
+3. Path changes don't break graph
+
+### Phase 3: Cross-DB References
+
+1. Eventlog can store `source_uid`
+2. Scry results include source UID
+3. Provenance tracking enabled
 
 ---
 
@@ -418,61 +213,26 @@ fn test_cross_db_reference() {
 
 | Phase | Criteria |
 |-------|----------|
-| 1 | All new DBs have `_meta` table with UID |
-| 1 | Existing DBs get UID on first open |
-| 1 | `patina doctor --identity` shows UID |
-| 2 | Mother graph uses UIDs for edges |
-| 2 | `patina repo list --uids` works |
-| 3 | Scry results include source UID |
-| 3 | Eventlog can store cross-DB references |
-| 4 | (Optional) Filenames include UID |
+| 1 | `.patina/uid` created at init |
+| 1 | UID survives rebuild |
+| 1 | `patina doctor` shows UID |
+| 2 | Mother graph uses UIDs |
+| 3 | Scry results show source UID |
 
 ---
 
-## Design Decision: 32-bit UID (8 hex chars)
+## What We Dropped
 
-**Decision:** Use 32-bit UIDs (8 hex characters).
+Earlier versions of this spec considered:
+- Hash of canonical identity (GitHub URL, git SHA, path)
+- Fallback chains for different scenarios
+- UID stored in database `_meta` table
 
-**Rationale:** UIDs are namespaced per-user. Each user's databases only need to be unique within their own namespace. At 32 bits, collision risk reaches 1% at ~9,300 databases - far beyond any realistic personal usage. Future multi-user federation adds a user identity layer on top:
-
-```
-{user_uid}:{db_uid}  →  64-bit effective global namespace
-```
-
-This matches GitHub's model: repo names aren't globally unique, just unique per owner.
-
----
-
-## Design Decision: UID is Immutable
-
-**Question:** What if canonical changes? (e.g., local project pushed to GitHub)
-
-**Decision:** Keep old UID. Never recompute.
-
-**Rationale:**
-- UID is assigned at birth, like a git commit SHA
-- References depend on stability - recomputing breaks cross-DB links
-- Canonical is metadata (can update), UID is identity (immutable)
-- The database is the same database regardless of where it lives
-
-```sql
--- Canonical can be updated (metadata)
-UPDATE _meta SET value = 'github:owner/repo' WHERE key = 'canonical';
-
--- UID never changes (identity)
--- _meta.uid = 'a3f2b1c4' forever
-```
-
----
-
-## Open Questions
-
-1. **Should UID be in filename?** Pros: visible identity. Cons: migration pain, longer paths.
+All dropped in favor of simpler random UID in file.
 
 ---
 
 ## References
 
-- [spec-mothership-graph.md](spec-mothership-graph.md) - Graph routing that would use UIDs
-- [spec-pipeline.md](spec-pipeline.md) - Scrape pipeline that creates databases
-- Session 20260112-061237 - Origin of this design discussion
+- [spec-mothership-graph.md](spec-mothership-graph.md) - Graph routing using UIDs
+- Session 20260112-061237 - Design discussion and simplification
