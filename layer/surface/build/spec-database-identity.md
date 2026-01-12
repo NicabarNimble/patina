@@ -443,14 +443,31 @@ This matches GitHub's model: repo names aren't globally unique, just unique per 
 
 ---
 
+## Design Decision: UID is Immutable
+
+**Question:** What if canonical changes? (e.g., local project pushed to GitHub)
+
+**Decision:** Keep old UID. Never recompute.
+
+**Rationale:**
+- UID is assigned at birth, like a git commit SHA
+- References depend on stability - recomputing breaks cross-DB links
+- Canonical is metadata (can update), UID is identity (immutable)
+- The database is the same database regardless of where it lives
+
+```sql
+-- Canonical can be updated (metadata)
+UPDATE _meta SET value = 'github:owner/repo' WHERE key = 'canonical';
+
+-- UID never changes (identity)
+-- _meta.uid = 'a3f2b1c4' forever
+```
+
+---
+
 ## Open Questions
 
-1. **What if canonical changes?** If a local project gets pushed to GitHub, its canonical identity changes. Do we:
-   - Keep old UID (stable but now "wrong")
-   - Recompute UID (correct but breaks references)
-   - Store both (complex)
-
-2. **Should UID be in filename?** Pros: visible identity. Cons: migration pain, longer paths.
+1. **Should UID be in filename?** Pros: visible identity. Cons: migration pain, longer paths.
 
 ---
 
