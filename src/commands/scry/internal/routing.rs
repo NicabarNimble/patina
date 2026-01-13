@@ -107,7 +107,7 @@ pub fn execute_all_repos(query: Option<&str>, options: &ScryOptions) -> Result<(
     let mut all_results: Vec<(String, ScryResult)> = Vec::new();
 
     // 1. Query current project if we're in one
-    let in_project = Path::new(".patina/data/patina.db").exists();
+    let in_project = Path::new(".patina/local/data/patina.db").exists();
     if in_project {
         println!("📂 Searching current project...");
         let project_options = ScryOptions {
@@ -306,7 +306,7 @@ pub fn execute_graph_routing(query: Option<&str>, options: &ScryOptions) -> Resu
     let mut all_results: Vec<(String, String, f32, ScryResult)> = Vec::new();
 
     // Search current project
-    let in_project = Path::new(".patina/data/patina.db").exists();
+    let in_project = Path::new(".patina/local/data/patina.db").exists();
     if in_project {
         println!("📂 Searching current project...");
         let project_options = ScryOptions {

@@ -39,8 +39,8 @@ pub fn oxidize() -> Result<()> {
         );
     }
 
-    let db_path = ".patina/data/patina.db";
-    let output_dir = format!(".patina/data/embeddings/{}/projections", model_name);
+    let db_path = ".patina/local/data/patina.db";
+    let output_dir = format!(".patina/local/data/embeddings/{}/projections", model_name);
     std::fs::create_dir_all(&output_dir)?;
 
     // Create embedder once, reuse for all projections

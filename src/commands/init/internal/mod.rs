@@ -67,6 +67,12 @@ pub fn execute_init(
 
     // Backup existing devcontainer if it exists
     if Path::new(".devcontainer").exists() {
+        // Remove old backup if it exists
+        let backup_path = Path::new(".devcontainer.backup");
+        if backup_path.exists() {
+            fs::remove_dir_all(backup_path)
+                .context("Failed to remove old .devcontainer.backup")?;
+        }
         fs::rename(".devcontainer", ".devcontainer.backup")
             .context("Failed to backup existing .devcontainer")?;
         println!("✓ Backed up .devcontainer/ → .devcontainer.backup/");
@@ -196,13 +202,15 @@ pub fn execute_init(
     if !no_commit && name == "." {
         // Only commit if we're initializing in current directory
         println!("\n📦 Committing Patina setup...");
-        // Only add skeleton files (not adapter files - those are added by 'adapter add')
+        // Add specific committed files (not .patina/local/ which is gitignored)
         patina::git::add_paths(&[
             ".gitignore",
-            ".patina",
+            ".patina/config.toml",
+            ".patina/uid",
+            ".patina/oxidize.yaml",
+            ".patina/versions.json",
             ".devcontainer",
             "layer",
-            "ENVIRONMENT.toml",
             "Dockerfile",
             "docker-compose.yml",
         ])?;
@@ -457,8 +465,8 @@ build/
 *~
 .DS_Store
 
-# Patina-specific
-.patina/
+# Patina local state (derived, not committed)
+.patina/local/
 ENVIRONMENT.toml
 
 # Temporary files
@@ -630,7 +638,7 @@ fn ensure_gitignore_entries(gitignore_path: &Path) -> Result<()> {
         ("/target/", "Rust build artifacts"),
         ("node_modules/", "Node.js dependencies"),
         (".env", "Environment secrets"),
-        (".patina/", "Patina cache"),
+        (".patina/local/", "Patina local state (derived, not committed)"),
         ("*.db", "Database files"),
         ("*.key", "Private keys"),
         ("*.pem", "Certificates"),
@@ -665,7 +673,6 @@ fn ensure_gitignore_entries(gitignore_path: &Path) -> Result<()> {
 
     if !added.is_empty() {
         fs::write(gitignore_path, updated_content).context("Failed to update .gitignore")?;
-
         println!("✓ Added to .gitignore: {}", added.join(", "));
     }
 

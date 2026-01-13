@@ -561,7 +561,7 @@ fn backup_frontend_files(project_root: &std::path::Path, name: &str) -> Result<(
         );
     }
 
-    // Backup adapter directory (.claude/, .gemini/, etc.) to .patina/backups/
+    // Backup adapter directory (.claude/, .gemini/, etc.) to .patina/local/backups/
     let adapter_dir = project_root.join(format!(".{}", name));
     if adapter_dir.exists() {
         let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
@@ -674,6 +674,7 @@ mod tests {
 
         let add = AdapterCommands::Add {
             name: "claude".to_string(),
+            no_commit: false,
         };
         assert!(matches!(add, AdapterCommands::Add { .. }));
     }

@@ -244,7 +244,7 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
     let db_path_buf: PathBuf;
     let db_path = match &config.working_dir {
         Some(dir) => {
-            db_path_buf = dir.join(".patina/data/patina.db");
+            db_path_buf = dir.join(".patina/local/data/patina.db");
             db_path_buf.as_path()
         }
         None => Path::new(database::PATINA_DB),

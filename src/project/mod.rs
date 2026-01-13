@@ -82,6 +82,11 @@ pub fn patina_dir(project_path: &Path) -> PathBuf {
     internal::patina_dir(project_path)
 }
 
+/// Get the local state directory path for a project (gitignored)
+pub fn local_dir(project_path: &Path) -> PathBuf {
+    internal::local_dir(project_path)
+}
+
 /// Get the backups directory path for a project
 pub fn backups_dir(project_path: &Path) -> PathBuf {
     internal::backups_dir(project_path)
@@ -90,7 +95,7 @@ pub fn backups_dir(project_path: &Path) -> PathBuf {
 /// Backup a file before modifying it
 ///
 /// Returns the backup path if successful, None if file didn't exist.
-/// Backups are stored in `.patina/backups/` with timestamp suffix.
+/// Backups are stored in `.patina/local/backups/` with timestamp suffix.
 pub fn backup_file(project_path: &Path, file_path: &Path) -> Result<Option<PathBuf>> {
     internal::backup_file(project_path, file_path)
 }

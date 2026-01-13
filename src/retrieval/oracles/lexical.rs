@@ -22,7 +22,7 @@ impl LexicalOracle {
 
     pub fn with_options(include_issues: bool) -> Self {
         Self {
-            db_path: PathBuf::from(".patina/data/patina.db"),
+            db_path: PathBuf::from(".patina/local/data/patina.db"),
             include_issues,
         }
     }

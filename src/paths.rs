@@ -28,13 +28,15 @@
 //!
 //! ```text
 //! project/.patina/
-//! ├── config.toml              # Project config
-//! ├── oxidize.yaml             # Embedding recipe
-//! ├── versions.json            # Version manifest
-//! ├── backups/                 # Backup files
-//! └── data/                    # Derived (gitignored)
-//!     ├── patina.db            # SQLite database
-//!     └── embeddings/          # Vector indices
+//! ├── config.toml              # Project config (committed)
+//! ├── uid                      # Project identity (committed)
+//! ├── oxidize.yaml             # Embedding recipe (committed)
+//! ├── versions.json            # Version manifest (committed)
+//! └── local/                   # Local state (gitignored)
+//!     ├── data/
+//!     │   ├── patina.db        # SQLite database
+//!     │   └── embeddings/      # Vector indices
+//!     └── backups/             # Backup files
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -202,7 +204,7 @@ pub mod models {
 ///
 /// let root = Path::new("/home/user/myproject");
 /// let db = project::db_path(root);
-/// assert_eq!(db, Path::new("/home/user/myproject/.patina/data/patina.db"));
+/// assert_eq!(db, Path::new("/home/user/myproject/.patina/local/data/patina.db"));
 /// ```
 pub mod project {
     use super::*;
@@ -212,44 +214,49 @@ pub mod project {
         root.join(".patina")
     }
 
-    /// Project config: `.patina/config.toml`
+    /// Project config: `.patina/config.toml` (committed)
     pub fn config_path(root: &Path) -> PathBuf {
         root.join(".patina/config.toml")
     }
 
-    /// Derived data directory (gitignored): `.patina/data/`
+    /// Local state directory (gitignored): `.patina/local/`
+    pub fn local_dir(root: &Path) -> PathBuf {
+        root.join(".patina/local")
+    }
+
+    /// Derived data directory: `.patina/local/data/`
     pub fn data_dir(root: &Path) -> PathBuf {
-        root.join(".patina/data")
+        root.join(".patina/local/data")
     }
 
-    /// Main SQLite database: `.patina/data/patina.db`
+    /// Main SQLite database: `.patina/local/data/patina.db`
     pub fn db_path(root: &Path) -> PathBuf {
-        root.join(".patina/data/patina.db")
+        root.join(".patina/local/data/patina.db")
     }
 
-    /// Embedding indices: `.patina/data/embeddings/`
+    /// Embedding indices: `.patina/local/data/embeddings/`
     pub fn embeddings_dir(root: &Path) -> PathBuf {
-        root.join(".patina/data/embeddings")
+        root.join(".patina/local/data/embeddings")
     }
 
-    /// Model-specific projections: `.patina/data/embeddings/{model}/projections/`
+    /// Model-specific projections: `.patina/local/data/embeddings/{model}/projections/`
     pub fn model_projections_dir(root: &Path, model: &str) -> PathBuf {
-        root.join(format!(".patina/data/embeddings/{}/projections", model))
+        root.join(format!(".patina/local/data/embeddings/{}/projections", model))
     }
 
-    /// Oxidize recipe: `.patina/oxidize.yaml`
+    /// Oxidize recipe: `.patina/oxidize.yaml` (committed)
     pub fn recipe_path(root: &Path) -> PathBuf {
         root.join(".patina/oxidize.yaml")
     }
 
-    /// Version manifest: `.patina/versions.json`
+    /// Version manifest: `.patina/versions.json` (committed)
     pub fn versions_path(root: &Path) -> PathBuf {
         root.join(".patina/versions.json")
     }
 
-    /// Backup directory: `.patina/backups/`
+    /// Backup directory: `.patina/local/backups/`
     pub fn backups_dir(root: &Path) -> PathBuf {
-        root.join(".patina/backups")
+        root.join(".patina/local/backups")
     }
 }
 
@@ -318,12 +325,16 @@ mod tests {
             PathBuf::from("/tmp/test-project/.patina")
         );
         assert_eq!(
+            project::local_dir(root),
+            PathBuf::from("/tmp/test-project/.patina/local")
+        );
+        assert_eq!(
             project::db_path(root),
-            PathBuf::from("/tmp/test-project/.patina/data/patina.db")
+            PathBuf::from("/tmp/test-project/.patina/local/data/patina.db")
         );
         assert_eq!(
             project::model_projections_dir(root, "e5-base-v2"),
-            PathBuf::from("/tmp/test-project/.patina/data/embeddings/e5-base-v2/projections")
+            PathBuf::from("/tmp/test-project/.patina/local/data/embeddings/e5-base-v2/projections")
         );
     }
 }

@@ -275,7 +275,7 @@ impl QueryEngine {
 
         // 1. Query current project if we're in one
         let current_dir = std::env::current_dir()?;
-        if current_dir.join(".patina/data/patina.db").exists() {
+        if current_dir.join(".patina/local/data/patina.db").exists() {
             let local_results =
                 self.collect_oracle_results(query, limit, options.include_issues)?;
             all_results.extend(local_results);
@@ -427,7 +427,7 @@ impl Default for QueryEngine {
 ///
 /// Best-effort: if database or table doesn't exist, results are unchanged
 fn populate_annotations(results: &mut [FusedResult]) {
-    const DB_PATH: &str = ".patina/data/patina.db";
+    const DB_PATH: &str = ".patina/local/data/patina.db";
 
     let conn = match Connection::open(DB_PATH) {
         Ok(c) => c,

@@ -37,10 +37,10 @@ impl SemanticOracle {
             .map(|c| c.embeddings.model)
             .unwrap_or_else(|| "e5-base-v2".to_string());
 
-        let embeddings_dir = format!(".patina/data/embeddings/{}/projections", model);
+        let embeddings_dir = format!(".patina/local/data/embeddings/{}/projections", model);
 
         Self {
-            db_path: PathBuf::from(".patina/data/patina.db"),
+            db_path: PathBuf::from(".patina/local/data/patina.db"),
             index_path: PathBuf::from(format!("{}/semantic.usearch", embeddings_dir)),
             projection_path: PathBuf::from(format!("{}/semantic.safetensors", embeddings_dir)),
             cache: OnceLock::new(),
