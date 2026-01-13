@@ -1,10 +1,11 @@
 ---
 id: spec-adapter-selection
-status: draft
+status: ready
 created: 2026-01-13
 updated: 2026-01-13
 tags: [spec, adapter, init, launch, ux]
 references: [adapter-pattern, unix-philosophy, dependable-rust, rationale-eskil-steenberg]
+prerequisite-complete: true
 ---
 
 # Spec: Adapter Selection at Project Init
@@ -404,15 +405,17 @@ impl Adapter {
 
 ### Prerequisite Checklist
 
-- [ ] Add `OpenCode` variant to `Adapter` enum
-- [ ] Add `"opencode"` to `ADAPTERS` const
-- [ ] Update `name()` match arm
-- [ ] Update `display()` match arm
-- [ ] Update `from_name()` match arm
-- [ ] Update `bootstrap_file()` match arm
-- [ ] Update `detect_commands()` match arm
-- [ ] Verify `patina adapter list` shows opencode
-- [ ] Commit: `feat(adapters): wire OpenCode into launch system`
+- [x] Add `OpenCode` variant to `Adapter` enum
+- [x] Add `"opencode"` to `ADAPTERS` const
+- [x] Update `name()` match arm
+- [x] Update `display()` match arm
+- [x] Update `from_name()` match arm
+- [x] Update `bootstrap_file()` match arm
+- [x] Update `detect_commands()` match arm
+- [x] Update `get_mcp_config()` match arm (discovered during implementation)
+- [x] Update tests to cover OpenCode
+- [x] Verify `patina adapter list` shows opencode
+- [x] Commit: `feat(adapters): wire OpenCode into launch system` (42807464)
 
 ---
 
