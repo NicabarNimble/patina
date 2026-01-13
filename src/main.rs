@@ -78,9 +78,9 @@ impl DevEnv {
 #[derive(Parser)]
 #[command(author, version = env!("CARGO_PKG_VERSION"), about = "Context management for AI-assisted development", long_about = None)]
 struct Cli {
-    /// Frontend to launch (claude, gemini, codex). Default: from config.
-    #[arg(short = 'f', long = "frontend", global = true)]
-    frontend: Option<String>,
+    /// Adapter to launch (claude, gemini, codex). Default: from config.
+    #[arg(long = "adapter", global = true)]
+    adapter: Option<String>,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -792,11 +792,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        // Launcher mode: no subcommand means launch frontend
+        // Launcher mode: no subcommand means launch adapter
         None => {
             let options = commands::launch::LaunchOptions {
                 path: None,
-                frontend: cli.frontend,
+                adapter: cli.adapter,
                 auto_start_mothership: true,
                 auto_init: true,
             };
