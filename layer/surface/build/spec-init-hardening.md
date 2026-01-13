@@ -219,7 +219,7 @@ Current flow in `src/commands/launch/`:
 | `check` | `check()` | 158-177 | ✅ Works |
 | `mcp` | `configure_mcp()` | 290-347 | ✅ Works |
 
-**Note:** Spec says `switch` but code has `default`. Recommend keeping `default` (already implemented).
+**Note:** Command is `adapter default` (already implemented).
 
 ### `patina adapter` - What To Add
 
@@ -454,7 +454,7 @@ fn ensure_git_repo(path: &Path) -> Result<bool> {
 
 ### Purpose
 
-Manage LLM adapters. Add, switch, remove, diagnose.
+Manage LLM adapters. Add, remove, set default, diagnose.
 
 ### Subcommands
 
@@ -462,7 +462,7 @@ Manage LLM adapters. Add, switch, remove, diagnose.
 patina adapter list              # Show available and configured
 patina adapter add <name>        # Add and configure adapter
 patina adapter refresh <name>    # Update adapter with backup
-patina adapter switch <name>     # Change default adapter
+patina adapter default <name>    # Change default adapter
 patina adapter remove <name>     # Remove adapter
 patina adapter doctor            # Health check all adapters
 ```
@@ -521,10 +521,10 @@ patina adapter add claude
     └─ "✓ Added claude. Run 'patina' to start."
 ```
 
-### `adapter switch` Flow
+### `adapter default` Flow
 
 ```bash
-patina adapter switch gemini
+patina adapter default gemini
 ```
 
 ```
@@ -615,7 +615,7 @@ pub fn execute_adapter(cmd: AdapterCommand) -> Result<()> {
         AdapterCommand::List => list_adapters(),
         AdapterCommand::Add { name, no_commit, force } => add_adapter(&name, no_commit, force),
         AdapterCommand::Refresh { name, no_commit } => refresh_adapter(&name, no_commit),
-        AdapterCommand::Switch { name } => switch_adapter(&name),
+        AdapterCommand::Default { name } => set_default_adapter(&name),
         AdapterCommand::Remove { name, no_commit } => remove_adapter(&name, no_commit),
         AdapterCommand::Doctor => doctor_adapters(),
     }
@@ -797,7 +797,7 @@ pub fn execute_launch(adapter_override: Option<String>) -> Result<()> {
 
     // 5. Ensure MCP configured (silent)
     let adapter = get_adapter(&adapter_name)?;
-    if !adapter.mcp_configured(&project_path)? {
+    if !adapter.is_mcp_configured(&project_path)? {
         adapter.configure_mcp(&project_path)?;
     }
 
@@ -936,7 +936,7 @@ Configured adapters:
   claude (default)
   gemini
 
-$ patina adapter switch gemini
+$ patina adapter default gemini
 ✓ Default: gemini
 
 $ patina
@@ -1148,20 +1148,22 @@ Each command auto-commits its changes. Use `--no-commit` to skip.
    - Delete lines 52-56: `println!("🚀 Launching...")`
    - Delete line 412: `println!("\nLaunching {}...\n")`
 
-2. **Add is_mcp_configured()** (`src/adapters/mod.rs` or `launch.rs`):
+2. **Add is_mcp_configured() to LLMAdapter trait** (`src/adapters/mod.rs`):
    ```rust
-   pub fn is_mcp_configured(adapter: &str) -> Result<bool> {
-       // For claude: check ~/.config/claude/config.json for patina server
-       // Return true if configured, false if not
-   }
+   // Add to LLMAdapter trait:
+   fn is_mcp_configured(&self, project_path: &Path) -> Result<bool>;
+
+   // For ClaudeAdapter: check ~/.config/claude/config.json for patina server
+   // Return true if configured, false if not
    ```
 
 3. **Add silent MCP fix** (`src/commands/launch/internal.rs`):
    ```rust
    // After line 118 (frontend in allowed check), add:
    // Silent MCP auto-configuration
-   if !frontend::is_mcp_configured(&frontend_name)? {
-       let _ = crate::commands::adapter::configure_mcp(&frontend_name, false);
+   let adapter = patina::adapters::get_adapter(&frontend_name);
+   if !adapter.is_mcp_configured(&project_path)? {
+       let _ = adapter.configure_mcp(&project_path);
        // Ignore errors - if it fails, user will notice when MCP doesn't work
    }
    ```
@@ -1214,7 +1216,7 @@ Each command auto-commits its changes. Use `--no-commit` to skip.
 | `src/commands/launch/internal.rs` | 52-56 | DELETE "🚀 Launching..." output |
 | `src/commands/launch/internal.rs` | 412 | DELETE "Launching {}..." output |
 | `src/commands/launch/internal.rs` | ~119 | ADD silent MCP auto-fix |
-| `src/adapters/launch.rs` | NEW | Add `is_mcp_configured()` function |
+| `src/adapters/mod.rs` | Trait | Add `is_mcp_configured()` to LLMAdapter trait |
 
 ### Phase 4: Observability (Optional)
 
@@ -1261,7 +1263,7 @@ Each command auto-commits its changes. Use `--no-commit` to skip.
 | 2 | `adapter add claude` creates .claude/ and configures MCP |
 | 2 | `adapter add` on existing shows "use refresh" message |
 | 2 | `adapter refresh` backs up and preserves sessions |
-| 2 | `adapter switch` changes default |
+| 2 | `adapter default` changes default |
 | 3 | `patina` (no args) launches default adapter |
 | 3 | Missing adapter shows helpful message |
 | 4 | Events logged to events.db |
