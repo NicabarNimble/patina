@@ -85,7 +85,7 @@ fn extract_symbols(
     current_function: &mut Option<String>,
 ) {
     // First extract any calls
-    extract_calls(&node, source, file_path, current_function, data);
+    extract_calls(&node, source, file_path, current_function.as_deref(), data);
 
     // Process based on node kind
     match node.kind() {
@@ -272,7 +272,7 @@ fn process_function(
         is_unsafe: false, // No unsafe in TS
         is_public,
         parameter_count: params.len() as i32,
-        generic_count: count_generics(&generics),
+        generic_count: count_generics(generics.as_deref()),
         parameters: params,
         return_type,
     };
@@ -336,7 +336,7 @@ fn process_method(
         is_unsafe: false,
         is_public: visibility,
         parameter_count: params.len() as i32,
-        generic_count: count_generics(&generics),
+        generic_count: count_generics(generics.as_deref()),
         parameters: params,
         return_type,
     };
@@ -1096,8 +1096,8 @@ fn extract_generics(node: &Node, source: &[u8]) -> Option<String> {
 }
 
 /// Count generic parameters
-fn count_generics(generics: &Option<String>) -> i32 {
-    generics.as_ref().map_or(0, |g| {
+fn count_generics(generics: Option<&str>) -> i32 {
+    generics.map_or(0, |g| {
         // Simple count of commas + 1, accounting for <T> vs <T, U>
         if g.contains('<') && g.contains('>') {
             g.matches(',').count() as i32 + 1
@@ -1224,7 +1224,7 @@ fn extract_calls(
     node: &Node,
     source: &[u8],
     file_path: &FilePath,
-    current_function: &Option<String>,
+    current_function: Option<&str>,
     data: &mut ExtractedData,
 ) {
     let line_number = (node.start_position().row + 1) as i32;
@@ -1245,7 +1245,7 @@ fn extract_calls(
                         };
 
                         data.add_call_edge(CallGraphEntry::new(
-                            caller.clone(),
+                            caller.to_string(),
                             callee.to_string(),
                             file_path.to_string(),
                             call_type,
@@ -1264,7 +1264,7 @@ fn extract_calls(
                         if let Some(func_node) = child.child_by_field_name("function") {
                             if let Ok(callee) = func_node.utf8_text(source) {
                                 data.add_call_edge(CallGraphEntry::new(
-                                    caller.clone(),
+                                    caller.to_string(),
                                     callee.to_string(),
                                     file_path.to_string(),
                                     CallType::Async,
@@ -1282,7 +1282,7 @@ fn extract_calls(
                 if let Some(constructor_node) = node.child_by_field_name("constructor") {
                     if let Ok(callee) = constructor_node.utf8_text(source) {
                         data.add_call_edge(CallGraphEntry::new(
-                            caller.clone(),
+                            caller.to_string(),
                             format!("new {}", callee),
                             file_path.to_string(),
                             CallType::Constructor,
@@ -1302,15 +1302,13 @@ fn extract_calls(
                     name: format!("@{}", decorator_name),
                     value: Some(decorator_text.to_string()),
                     const_type: "decorator".to_string(),
-                    scope: current_function
-                        .clone()
-                        .unwrap_or_else(|| "module".to_string()),
+                    scope: current_function.unwrap_or("module").to_string(),
                     line: line_number as usize,
                 });
 
                 if let Some(caller) = current_function {
                     data.add_call_edge(CallGraphEntry::new(
-                        caller.clone(),
+                        caller.to_string(),
                         decorator_text.to_string(),
                         file_path.to_string(),
                         CallType::Decorator,
