@@ -1,6 +1,5 @@
 //! Internal implementation for init command
 
-pub mod backup;
 pub mod config;
 pub mod patterns;
 pub mod validation;
