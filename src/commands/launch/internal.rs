@@ -401,6 +401,7 @@ fn initialize_project(project_path: &Path, frontend_name: &str) -> Result<bool> 
     let adapter_result = crate::commands::adapter::execute(Some(
         crate::commands::adapter::AdapterCommands::Add {
             name: frontend_name.to_string(),
+            no_commit: false, // Allow auto-commit during launch init
         },
     ));
 
