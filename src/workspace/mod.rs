@@ -16,7 +16,7 @@
 //!
 //!     // Load global config
 //!     let config = workspace::config()?;
-//!     println!("Default frontend: {}", config.frontend.default);
+//!     println!("Default adapter: {}", config.adapter.default);
 //!     Ok(())
 //! }
 //! ```

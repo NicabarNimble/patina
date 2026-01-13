@@ -48,7 +48,7 @@ impl Default for WorkspaceConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdapterConfig {
-    /// Default frontend to use (claude, gemini, codex)
+    /// Default adapter to use (claude, gemini, codex)
     pub default: String,
 }
 
@@ -64,7 +64,7 @@ impl Default for AdapterConfig {
 pub struct ServeConfig {
     /// Port for mothership server
     pub port: u16,
-    /// Auto-start mothership when launching frontend
+    /// Auto-start mothership when launching adapter
     pub auto_start: bool,
 }
 
@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = GlobalConfig::default();
-        assert_eq!(config.frontend.default, "claude");
+        assert_eq!(config.adapter.default, "claude");
         assert_eq!(config.serve.port, 50051);
         assert!(config.serve.auto_start);
     }
@@ -345,7 +345,7 @@ mod tests {
         let config = GlobalConfig::default();
         let toml_str = toml::to_string_pretty(&config).unwrap();
         assert!(toml_str.contains("[workspace]"));
-        assert!(toml_str.contains("[frontend]"));
+        assert!(toml_str.contains("[adapter]"));
         assert!(toml_str.contains("[serve]"));
     }
 }
