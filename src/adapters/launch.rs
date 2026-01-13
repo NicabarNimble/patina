@@ -31,7 +31,7 @@ use std::process::Command;
 use crate::workspace;
 
 /// Available adapter names
-pub const ADAPTERS: &[&str] = &["claude", "gemini", "codex"];
+pub const ADAPTERS: &[&str] = &["claude", "gemini", "codex", "opencode"];
 
 // =============================================================================
 // Types
@@ -43,6 +43,7 @@ pub enum Adapter {
     Claude,
     Gemini,
     Codex,
+    OpenCode,
 }
 
 impl Adapter {
@@ -51,6 +52,7 @@ impl Adapter {
             Adapter::Claude => "claude",
             Adapter::Gemini => "gemini",
             Adapter::Codex => "codex",
+            Adapter::OpenCode => "opencode",
         }
     }
 
@@ -59,6 +61,7 @@ impl Adapter {
             Adapter::Claude => "Claude Code",
             Adapter::Gemini => "Gemini CLI",
             Adapter::Codex => "Codex",
+            Adapter::OpenCode => "OpenCode",
         }
     }
 
@@ -67,6 +70,7 @@ impl Adapter {
             "claude" => Some(Adapter::Claude),
             "gemini" => Some(Adapter::Gemini),
             "codex" => Some(Adapter::Codex),
+            "opencode" => Some(Adapter::OpenCode),
             _ => None,
         }
     }
@@ -76,6 +80,7 @@ impl Adapter {
             Adapter::Claude => "CLAUDE.md",
             Adapter::Gemini => "GEMINI.md",
             Adapter::Codex => "AGENTS.md",
+            Adapter::OpenCode => "OPENCODE.md",
         }
     }
 
@@ -84,6 +89,7 @@ impl Adapter {
             Adapter::Claude => &["claude --version"],
             Adapter::Gemini => &["gemini --version"],
             Adapter::Codex => &["codex --version"],
+            Adapter::OpenCode => &["opencode --version"],
         }
     }
 }
@@ -260,8 +266,9 @@ fn get_mcp_config(adapter: &Adapter) -> Option<McpConfig> {
             config_format: "json".to_string(),
             config_template: Some(MCP_TEMPLATE.to_string()),
         }),
-        Adapter::Gemini => None, // TBD
-        Adapter::Codex => None,  // TBD
+        Adapter::Gemini => None,   // TBD
+        Adapter::Codex => None,    // TBD
+        Adapter::OpenCode => None, // TBD
     }
 }
 
@@ -311,12 +318,15 @@ mod tests {
         assert_eq!(Adapter::Claude.name(), "claude");
         assert_eq!(Adapter::Gemini.name(), "gemini");
         assert_eq!(Adapter::Codex.name(), "codex");
+        assert_eq!(Adapter::OpenCode.name(), "opencode");
     }
 
     #[test]
     fn test_adapter_from_name() {
         assert_eq!(Adapter::from_name("claude"), Some(Adapter::Claude));
         assert_eq!(Adapter::from_name("CLAUDE"), Some(Adapter::Claude));
+        assert_eq!(Adapter::from_name("opencode"), Some(Adapter::OpenCode));
+        assert_eq!(Adapter::from_name("OpenCode"), Some(Adapter::OpenCode));
         assert_eq!(Adapter::from_name("unknown"), None);
     }
 
@@ -325,6 +335,7 @@ mod tests {
         assert_eq!(Adapter::Claude.bootstrap_file(), "CLAUDE.md");
         assert_eq!(Adapter::Gemini.bootstrap_file(), "GEMINI.md");
         assert_eq!(Adapter::Codex.bootstrap_file(), "AGENTS.md");
+        assert_eq!(Adapter::OpenCode.bootstrap_file(), "OPENCODE.md");
     }
 
     #[test]
@@ -332,5 +343,6 @@ mod tests {
         assert!(ADAPTERS.contains(&"claude"));
         assert!(ADAPTERS.contains(&"gemini"));
         assert!(ADAPTERS.contains(&"codex"));
+        assert!(ADAPTERS.contains(&"opencode"));
     }
 }
