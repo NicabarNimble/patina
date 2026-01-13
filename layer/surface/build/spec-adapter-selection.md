@@ -44,7 +44,7 @@ No "smart" defaults based on heuristics, project type detection, or AI guessing.
 If no adapters detected, fail immediately with actionable message:
 ```
 No AI adapters detected on this system.
-Install one of: claude, gemini, codex, opencode
+Install one of: claude, gemini, opencode
 ```
 
 > "Clean break, no deprecated aliases."
@@ -212,7 +212,7 @@ Initialize as patina project? [y/N]: y
 Initialize as patina project? [y/N]: y
 
 Error: No AI adapters detected on this system.
-Install one of: claude, gemini, codex, opencode
+Install one of: claude, gemini, opencode
 ```
 
 **Case 5: Explicit adapter not installed (Flow A, fail fast)**
@@ -325,9 +325,9 @@ if !project_config.adapters.allowed.contains(&adapter_name) {
 
 ---
 
-## Prerequisite: Wire OpenCode into Launch System
+## Prerequisite: Wire OpenCode into Launch System (Complete)
 
-OpenCode is partially implemented but not available for launch/selection:
+OpenCode is now fully wired into the launch system:
 
 | Component | Status |
 |-----------|--------|
@@ -336,30 +336,24 @@ OpenCode is partially implemented but not available for launch/selection:
 | `src/adapters/templates.rs` | ✅ Templates embedded |
 | `src/workspace/internal.rs` | ✅ Detection during workspace setup |
 | `src/commands/adapter.rs` | ✅ Bootstrap filename handled |
-| `src/adapters/launch.rs` | ❌ **Missing from enum and ADAPTERS const** |
+| `src/adapters/launch.rs` | ✅ Added to enum and ADAPTERS const |
 
-### Changes Required in `adapters/launch.rs`
+### Current State in `adapters/launch.rs`
 
 ```rust
-// Line 34: Add to ADAPTERS const
-pub const ADAPTERS: &[&str] = &["claude", "gemini", "codex", "opencode"];
+pub const ADAPTERS: &[&str] = &["claude", "gemini", "opencode"];
 
-// Line 42-46: Add to Adapter enum
 pub enum Adapter {
     Claude,
     Gemini,
-    Codex,
     OpenCode,
 }
-
-// Add OpenCode to all match arms:
 
 impl Adapter {
     pub fn name(&self) -> &'static str {
         match self {
             Adapter::Claude => "claude",
             Adapter::Gemini => "gemini",
-            Adapter::Codex => "codex",
             Adapter::OpenCode => "opencode",
         }
     }
@@ -368,7 +362,6 @@ impl Adapter {
         match self {
             Adapter::Claude => "Claude Code",
             Adapter::Gemini => "Gemini CLI",
-            Adapter::Codex => "Codex",
             Adapter::OpenCode => "OpenCode",
         }
     }
@@ -377,7 +370,6 @@ impl Adapter {
         match name.to_lowercase().as_str() {
             "claude" => Some(Adapter::Claude),
             "gemini" => Some(Adapter::Gemini),
-            "codex" => Some(Adapter::Codex),
             "opencode" => Some(Adapter::OpenCode),
             _ => None,
         }
@@ -387,7 +379,6 @@ impl Adapter {
         match self {
             Adapter::Claude => "CLAUDE.md",
             Adapter::Gemini => "GEMINI.md",
-            Adapter::Codex => "AGENTS.md",
             Adapter::OpenCode => "OPENCODE.md",
         }
     }
@@ -396,7 +387,6 @@ impl Adapter {
         match self {
             Adapter::Claude => &["claude --version"],
             Adapter::Gemini => &["gemini --version"],
-            Adapter::Codex => &["codex --version"],
             Adapter::OpenCode => &["opencode --version"],
         }
     }

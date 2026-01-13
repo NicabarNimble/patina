@@ -37,8 +37,8 @@ pub enum Llm {
     Claude,
     /// Gemini CLI (Google)
     Gemini,
-    /// Codex (OpenAI)
-    Codex,
+    /// OpenCode
+    OpenCode,
     /// Local LLM
     Local,
 }
@@ -48,7 +48,7 @@ impl Llm {
         match self {
             Llm::Claude => "claude",
             Llm::Gemini => "gemini",
-            Llm::Codex => "codex",
+            Llm::OpenCode => "opencode",
             Llm::Local => "local",
         }
     }
