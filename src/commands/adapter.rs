@@ -1,15 +1,15 @@
-//! Adapter command - Manage AI frontend configurations
+//! Adapter command - Manage AI adapter configurations
 //!
-//! Adapters are AI frontends (Claude Code, Gemini CLI, etc.) that can be used
-//! to interact with a patina project. This command manages:
-//! - Global frontend availability (detected from system)
-//! - Project-level allowed frontends (configured per-project)
+//! Adapters are integrations with AI tools (Claude Code, Gemini CLI, etc.) that
+//! interact with a patina project. This command manages:
+//! - Global adapter availability (detected from system)
+//! - Project-level allowed adapters (configured per-project)
 //!
 //! # Example
 //!
 //! ```no_run
 //! # fn main() -> anyhow::Result<()> {
-//! // List available and allowed frontends
+//! // List available and allowed adapters
 //! // patina adapter list
 //!
 //! // Set global default
@@ -18,10 +18,10 @@
 //! // Set project default
 //! // patina adapter default gemini --project
 //!
-//! // Add frontend to project
+//! // Add adapter to project
 //! // patina adapter add gemini
 //!
-//! // Remove frontend from project (with backup)
+//! // Remove adapter from project (with backup)
 //! // patina adapter remove claude
 //! # Ok(())
 //! # }
@@ -34,12 +34,12 @@ use patina::project;
 /// Adapter subcommands (re-exported for main.rs)
 #[derive(Debug, Clone, clap::Subcommand)]
 pub enum AdapterCommands {
-    /// List available frontends (global) and allowed frontends (project)
+    /// List available adapters (global) and allowed adapters (project)
     List,
 
-    /// Set default frontend (global or project with --project)
+    /// Set default adapter (global or project with --project)
     Default {
-        /// Frontend name (claude, gemini, codex)
+        /// Adapter name (claude, gemini, codex)
         name: String,
 
         /// Set default for current project (not global)
@@ -47,15 +47,15 @@ pub enum AdapterCommands {
         project: bool,
     },
 
-    /// Check frontend installation status
+    /// Check adapter installation status
     Check {
-        /// Frontend name (optional, checks all if not specified)
+        /// Adapter name (optional, checks all if not specified)
         name: Option<String>,
     },
 
-    /// Add a frontend to project's allowed list
+    /// Add an adapter to project's allowed list
     Add {
-        /// Frontend name (claude, gemini, codex)
+        /// Adapter name (claude, gemini, codex)
         name: String,
 
         /// Skip automatic git commit
@@ -63,9 +63,9 @@ pub enum AdapterCommands {
         no_commit: bool,
     },
 
-    /// Remove a frontend from project's allowed list
+    /// Remove an adapter from project's allowed list
     Remove {
-        /// Frontend name (claude, gemini, codex)
+        /// Adapter name (claude, gemini, codex)
         name: String,
 
         /// Don't backup files before removing
@@ -79,7 +79,7 @@ pub enum AdapterCommands {
 
     /// Refresh adapter files (backup, update templates, restore sessions)
     Refresh {
-        /// Frontend name (claude, gemini, codex)
+        /// Adapter name (claude, gemini, codex)
         name: String,
 
         /// Skip automatic git commit
@@ -90,9 +90,9 @@ pub enum AdapterCommands {
     /// Health check all configured adapters
     Doctor,
 
-    /// Configure MCP server for a frontend
+    /// Configure MCP server for an adapter
     Mcp {
-        /// Frontend name (claude)
+        /// Adapter name (claude)
         name: String,
 
         /// Remove MCP configuration instead of adding
@@ -119,34 +119,34 @@ pub fn execute(command: Option<AdapterCommands>) -> Result<()> {
     }
 }
 
-/// List available frontends (global) and allowed frontends (project)
+/// List available adapters (global) and allowed adapters (project)
 fn list() -> Result<()> {
-    // Show global frontends
-    let frontends = adapters::list()?;
-    println!("📱 Available AI Frontends (Global)\n");
+    // Show global adapters
+    let adapter_list = adapters::list()?;
+    println!("📱 Available AI Adapters (Global)\n");
     println!("{:<12} {:<15} {:<10} VERSION", "NAME", "DISPLAY", "STATUS");
     println!("{}", "─".repeat(50));
-    for f in frontends {
-        let status = if f.detected {
+    for adapter in adapter_list {
+        let status = if adapter.detected {
             "✓ found"
         } else {
             "✗ missing"
         };
-        let version = f.version.unwrap_or_else(|| "-".to_string());
+        let version = adapter.version.unwrap_or_else(|| "-".to_string());
         println!(
             "{:<12} {:<15} {:<10} {}",
-            f.name, f.display, status, version
+            adapter.name, adapter.display, status, version
         );
     }
 
     let default = adapters::default_name()?;
     println!("\nGlobal default: {}", default);
 
-    // Show project frontends if in a patina project
+    // Show project adapters if in a patina project
     let cwd = std::env::current_dir()?;
     if project::is_patina_project(&cwd) {
         let config = project::load_with_migration(&cwd)?;
-        println!("\n📁 Project Allowed Frontends\n");
+        println!("\n📁 Project Allowed Adapters\n");
         println!("Allowed: {:?}", config.adapters.allowed);
         println!("Project default: {}", config.adapters.default);
     }
@@ -154,7 +154,7 @@ fn list() -> Result<()> {
     Ok(())
 }
 
-/// Set default frontend (global or project-level)
+/// Set default adapter (global or project-level)
 fn set_default(name: &str, is_project: bool) -> Result<()> {
     if is_project {
         // Set project default
@@ -165,47 +165,47 @@ fn set_default(name: &str, is_project: bool) -> Result<()> {
         let mut config = project::load_with_migration(&cwd)?;
         if !config.adapters.allowed.contains(&name.to_string()) {
             anyhow::bail!(
-                "Frontend '{}' is not in allowed list. Add it first: patina adapter add {}",
+                "Adapter '{}' is not in allowed list. Add it first: patina adapter add {}",
                 name,
                 name
             );
         }
         config.adapters.default = name.to_string();
         project::save(&cwd, &config)?;
-        println!("✓ Project default frontend set to: {}", name);
+        println!("✓ Project default adapter set to: {}", name);
     } else {
         // Set global default
         adapters::set_default(name)?;
-        println!("✓ Global default frontend set to: {}", name);
+        println!("✓ Global default adapter set to: {}", name);
     }
     Ok(())
 }
 
-/// Check frontend installation status
+/// Check adapter installation status
 fn check(name: Option<&str>) -> Result<()> {
     if let Some(n) = name {
-        let f = adapters::get(n)?;
-        if f.detected {
-            println!("✓ {} is installed", f.display);
-            if let Some(v) = f.version {
+        let adapter = adapters::get(n)?;
+        if adapter.detected {
+            println!("✓ {} is installed", adapter.display);
+            if let Some(v) = adapter.version {
                 println!("  Version: {}", v);
             }
         } else {
-            println!("✗ {} is not installed", f.display);
+            println!("✗ {} is not installed", adapter.display);
         }
     } else {
         // Check all
-        for f in adapters::list()? {
-            let status = if f.detected { "✓" } else { "✗" };
-            println!("{} {}", status, f.display);
+        for adapter in adapters::list()? {
+            let status = if adapter.detected { "✓" } else { "✗" };
+            println!("{} {}", status, adapter.display);
         }
     }
     Ok(())
 }
 
-/// Add a frontend to project's allowed list
+/// Add an adapter to project's allowed list
 fn add(name: &str, no_commit: bool) -> Result<()> {
-    // Verify frontend exists
+    // Verify adapter exists
     let _ = adapters::get(name)?;
 
     let cwd = std::env::current_dir()?;
@@ -223,10 +223,10 @@ fn add(name: &str, no_commit: bool) -> Result<()> {
             config.adapters.default = name.to_string();
         }
         project::save(&cwd, &config)?;
-        println!("✓ Added '{}' to allowed frontends", name);
+        println!("✓ Added '{}' to allowed adapters", name);
         println!("  Allowed: {:?}", config.adapters.allowed);
     } else {
-        println!("Frontend '{}' is already in allowed list.", name);
+        println!("Adapter '{}' is already in allowed list.", name);
     }
 
     // Create adapter files if they don't exist
@@ -272,7 +272,7 @@ fn add(name: &str, no_commit: bool) -> Result<()> {
     Ok(())
 }
 
-/// Remove a frontend from project's allowed list
+/// Remove an adapter from project's allowed list
 fn remove(name: &str, no_backup: bool, _no_commit: bool) -> Result<()> {
     let cwd = std::env::current_dir()?;
     if !project::is_patina_project(&cwd) {
@@ -281,17 +281,17 @@ fn remove(name: &str, no_backup: bool, _no_commit: bool) -> Result<()> {
 
     let mut config = project::load_with_migration(&cwd)?;
     if !config.adapters.allowed.contains(&name.to_string()) {
-        println!("Frontend '{}' is not in allowed list.", name);
+        println!("Adapter '{}' is not in allowed list.", name);
         return Ok(());
     }
 
     // Backup files if requested
     if !no_backup {
-        backup_frontend_files(&cwd, name)?;
+        backup_adapter_files(&cwd, name)?;
     }
 
     // Remove from allowed list
-    config.adapters.allowed.retain(|f| f != name);
+    config.adapters.allowed.retain(|a| a != name);
 
     // Update default if we removed it
     if config.adapters.default == name {
@@ -308,7 +308,7 @@ fn remove(name: &str, no_backup: bool, _no_commit: bool) -> Result<()> {
 
     project::save(&cwd, &config)?;
 
-    println!("✓ Removed '{}' from allowed frontends", name);
+    println!("✓ Removed '{}' from allowed adapters", name);
     println!("  Allowed: {:?}", config.adapters.allowed);
     println!(
         "\n💡 To also remove files: rm -rf .{}/ {}",
@@ -322,7 +322,7 @@ fn remove(name: &str, no_backup: bool, _no_commit: bool) -> Result<()> {
     Ok(())
 }
 
-/// Get the bootstrap filename for a frontend (CLAUDE.md, GEMINI.md, etc.)
+/// Get the bootstrap filename for an adapter (CLAUDE.md, GEMINI.md, etc.)
 fn get_bootstrap_filename(name: &str) -> String {
     match name {
         "claude" => "CLAUDE.md".to_string(),
@@ -335,7 +335,7 @@ fn get_bootstrap_filename(name: &str) -> String {
 
 /// Refresh adapter files - backup, update templates, restore sessions
 fn refresh(name: &str, no_commit: bool) -> Result<()> {
-    // Verify frontend exists
+    // Verify adapter exists
     let _ = adapters::get(name)?;
 
     let cwd = std::env::current_dir()?;
@@ -346,7 +346,7 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     let config = project::load_with_migration(&cwd)?;
     if !config.adapters.allowed.contains(&name.to_string()) {
         anyhow::bail!(
-            "Frontend '{}' is not in allowed list. Add it first: patina adapter add {}",
+            "Adapter '{}' is not in allowed list. Add it first: patina adapter add {}",
             name,
             name
         );
@@ -356,7 +356,7 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
 
     // Step 1: Backup existing files (including session files)
     println!("📦 Backing up existing files...");
-    backup_frontend_files(&cwd, name)?;
+    backup_adapter_files(&cwd, name)?;
 
     // Step 2: Preserve session files before removing adapter directory
     let adapter_dir = cwd.join(format!(".{}", name));
@@ -469,18 +469,18 @@ fn doctor() -> Result<()> {
     for adapter_name in &config.adapters.allowed {
         println!("📱 {} adapter:", adapter_name);
 
-        // Check 1: Frontend installed on system
-        let frontend_info = adapters::get(adapter_name);
-        match frontend_info {
-            Ok(f) if f.detected => {
-                println!("  ✓ CLI installed: {}", f.version.unwrap_or_default());
+        // Check 1: Adapter CLI installed on system
+        let adapter_info = adapters::get(adapter_name);
+        match adapter_info {
+            Ok(a) if a.detected => {
+                println!("  ✓ CLI installed: {}", a.version.unwrap_or_default());
             }
             Ok(_) => {
                 println!("  ✗ CLI not found on system");
                 all_healthy = false;
             }
             Err(_) => {
-                println!("  ✗ Unknown frontend type");
+                println!("  ✗ Unknown adapter type");
                 all_healthy = false;
             }
         }
@@ -549,8 +549,8 @@ fn check_mcp_configured() -> Result<bool> {
     }
 }
 
-/// Backup frontend-specific files before removal or refresh
-fn backup_frontend_files(project_root: &std::path::Path, name: &str) -> Result<()> {
+/// Backup adapter-specific files before removal or refresh
+fn backup_adapter_files(project_root: &std::path::Path, name: &str) -> Result<()> {
     let bootstrap_file = get_bootstrap_filename(name);
     let file_path = project_root.join(&bootstrap_file);
     if let Some(backup_path) = project::backup_file(project_root, &file_path)? {
@@ -603,7 +603,7 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<()
     Ok(())
 }
 
-/// Configure MCP server for a frontend
+/// Configure MCP server for an adapter
 fn configure_mcp(name: &str, remove: bool) -> Result<()> {
     use std::process::Command;
 
@@ -656,7 +656,7 @@ fn configure_mcp(name: &str, remove: bool) -> Result<()> {
             anyhow::bail!("Gemini MCP configuration not yet supported");
         }
         _ => {
-            anyhow::bail!("Unknown frontend: {}. Supported: claude", name);
+            anyhow::bail!("Unknown adapter: {}. Supported: claude", name);
         }
     }
 
