@@ -223,7 +223,10 @@ fn print_summary() -> Result<()> {
     let embeddings_dir = Path::new(".patina/local/data/embeddings");
     if embeddings_dir.exists() {
         let size_kb = dir_size(embeddings_dir)? / 1024;
-        println!("   Indices: .patina/local/data/embeddings/ ({} KB)", size_kb);
+        println!(
+            "   Indices: .patina/local/data/embeddings/ ({} KB)",
+            size_kb
+        );
     }
 
     Ok(())

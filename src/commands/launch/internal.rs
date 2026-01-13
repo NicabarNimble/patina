@@ -382,10 +382,10 @@ fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
     // Step 1: Create skeleton
     let init_result = crate::commands::init::execute(
         ".".to_string(), // Use "." to trigger commit step in init
-        None,   // dev environment
-        false,  // force
-        true,   // local (skip GitHub integration for quick init)
-        false,  // no_commit (allow auto-commit)
+        None,            // dev environment
+        false,           // force
+        true,            // local (skip GitHub integration for quick init)
+        false,           // no_commit (allow auto-commit)
     );
 
     if let Err(e) = init_result {
@@ -395,24 +395,29 @@ fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
     }
 
     // Step 2: Add the adapter
-    let adapter_result = crate::commands::adapter::execute(Some(
-        crate::commands::adapter::AdapterCommands::Add {
+    let adapter_result =
+        crate::commands::adapter::execute(Some(crate::commands::adapter::AdapterCommands::Add {
             name: adapter_name.to_string(),
             no_commit: false, // Allow auto-commit during launch init
-        },
-    ));
+        }));
 
     // Restore original directory
     env::set_current_dir(original_dir)?;
 
     match adapter_result {
         Ok(()) => {
-            println!("\n✓ Initialized as patina project with {} adapter", adapter_name);
+            println!(
+                "\n✓ Initialized as patina project with {} adapter",
+                adapter_name
+            );
             Ok(true) // Continue to launch
         }
         Err(e) => {
             eprintln!("\n❌ Failed to add adapter: {}", e);
-            eprintln!("   Run 'patina adapter add {}' to add it manually", adapter_name);
+            eprintln!(
+                "   Run 'patina adapter add {}' to add it manually",
+                adapter_name
+            );
             Ok(false) // Don't continue
         }
     }

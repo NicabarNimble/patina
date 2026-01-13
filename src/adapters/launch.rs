@@ -154,8 +154,7 @@ pub fn default_name() -> Result<String> {
 /// Set the default adapter
 pub fn set_default(name: &str) -> Result<()> {
     // Verify adapter exists
-    let _ =
-        Adapter::from_name(name).ok_or_else(|| anyhow::anyhow!("Unknown adapter: {}", name))?;
+    let _ = Adapter::from_name(name).ok_or_else(|| anyhow::anyhow!("Unknown adapter: {}", name))?;
 
     let mut config = workspace::config()?;
     config.adapter.default = name.to_string();

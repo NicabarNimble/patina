@@ -241,7 +241,10 @@ pub mod project {
 
     /// Model-specific projections: `.patina/local/data/embeddings/{model}/projections/`
     pub fn model_projections_dir(root: &Path, model: &str) -> PathBuf {
-        root.join(format!(".patina/local/data/embeddings/{}/projections", model))
+        root.join(format!(
+            ".patina/local/data/embeddings/{}/projections",
+            model
+        ))
     }
 
     /// Oxidize recipe: `.patina/oxidize.yaml` (committed)
