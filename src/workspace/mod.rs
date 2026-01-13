@@ -77,10 +77,10 @@ pub struct SetupResult {
     pub workspace_path: std::path::PathBuf,
     /// Installed adapters
     pub adapters_installed: Vec<String>,
-    /// Detected frontend CLIs
-    pub frontends_detected: Vec<String>,
-    /// Default frontend set
-    pub default_frontend: Option<String>,
+    /// Detected adapter CLIs
+    pub adapters_detected: Vec<String>,
+    /// Default adapter set
+    pub default_adapter: Option<String>,
 }
 
 // Tests for path functions are in paths module

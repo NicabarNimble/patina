@@ -28,7 +28,7 @@
 //! ```
 
 use anyhow::Result;
-use patina::adapters::launch as frontend;
+use patina::adapters::launch as adapters;
 use patina::project;
 
 /// Adapter subcommands (re-exported for main.rs)
@@ -122,7 +122,7 @@ pub fn execute(command: Option<AdapterCommands>) -> Result<()> {
 /// List available frontends (global) and allowed frontends (project)
 fn list() -> Result<()> {
     // Show global frontends
-    let frontends = frontend::list()?;
+    let frontends = adapters::list()?;
     println!("📱 Available AI Frontends (Global)\n");
     println!("{:<12} {:<15} {:<10} VERSION", "NAME", "DISPLAY", "STATUS");
     println!("{}", "─".repeat(50));
@@ -139,7 +139,7 @@ fn list() -> Result<()> {
         );
     }
 
-    let default = frontend::default_name()?;
+    let default = adapters::default_name()?;
     println!("\nGlobal default: {}", default);
 
     // Show project frontends if in a patina project
@@ -147,8 +147,8 @@ fn list() -> Result<()> {
     if project::is_patina_project(&cwd) {
         let config = project::load_with_migration(&cwd)?;
         println!("\n📁 Project Allowed Frontends\n");
-        println!("Allowed: {:?}", config.frontends.allowed);
-        println!("Project default: {}", config.frontends.default);
+        println!("Allowed: {:?}", config.adapters.allowed);
+        println!("Project default: {}", config.adapters.default);
     }
 
     Ok(())
@@ -163,19 +163,19 @@ fn set_default(name: &str, is_project: bool) -> Result<()> {
             anyhow::bail!("Not a patina project. Run `patina init .` first.");
         }
         let mut config = project::load_with_migration(&cwd)?;
-        if !config.frontends.allowed.contains(&name.to_string()) {
+        if !config.adapters.allowed.contains(&name.to_string()) {
             anyhow::bail!(
                 "Frontend '{}' is not in allowed list. Add it first: patina adapter add {}",
                 name,
                 name
             );
         }
-        config.frontends.default = name.to_string();
+        config.adapters.default = name.to_string();
         project::save(&cwd, &config)?;
         println!("✓ Project default frontend set to: {}", name);
     } else {
         // Set global default
-        frontend::set_default(name)?;
+        adapters::set_default(name)?;
         println!("✓ Global default frontend set to: {}", name);
     }
     Ok(())
@@ -184,7 +184,7 @@ fn set_default(name: &str, is_project: bool) -> Result<()> {
 /// Check frontend installation status
 fn check(name: Option<&str>) -> Result<()> {
     if let Some(n) = name {
-        let f = frontend::get(n)?;
+        let f = adapters::get(n)?;
         if f.detected {
             println!("✓ {} is installed", f.display);
             if let Some(v) = f.version {
@@ -195,7 +195,7 @@ fn check(name: Option<&str>) -> Result<()> {
         }
     } else {
         // Check all
-        for f in frontend::list()? {
+        for f in adapters::list()? {
             let status = if f.detected { "✓" } else { "✗" };
             println!("{} {}", status, f.display);
         }
@@ -206,7 +206,7 @@ fn check(name: Option<&str>) -> Result<()> {
 /// Add a frontend to project's allowed list
 fn add(name: &str, no_commit: bool) -> Result<()> {
     // Verify frontend exists
-    let _ = frontend::get(name)?;
+    let _ = adapters::get(name)?;
 
     let cwd = std::env::current_dir()?;
     if !project::is_patina_project(&cwd) {
@@ -214,17 +214,17 @@ fn add(name: &str, no_commit: bool) -> Result<()> {
     }
 
     let mut config = project::load_with_migration(&cwd)?;
-    let already_allowed = config.frontends.allowed.contains(&name.to_string());
+    let already_allowed = config.adapters.allowed.contains(&name.to_string());
 
     if !already_allowed {
-        config.frontends.allowed.push(name.to_string());
+        config.adapters.allowed.push(name.to_string());
         // Set as default if this is the first adapter
-        if config.frontends.default.is_empty() {
-            config.frontends.default = name.to_string();
+        if config.adapters.default.is_empty() {
+            config.adapters.default = name.to_string();
         }
         project::save(&cwd, &config)?;
         println!("✓ Added '{}' to allowed frontends", name);
-        println!("  Allowed: {:?}", config.frontends.allowed);
+        println!("  Allowed: {:?}", config.adapters.allowed);
     } else {
         println!("Frontend '{}' is already in allowed list.", name);
     }
@@ -244,7 +244,7 @@ fn add(name: &str, no_commit: bool) -> Result<()> {
     // Create bootstrap file (CLAUDE.md, GEMINI.md, etc.) if it doesn't exist
     if !bootstrap_path.exists() {
         println!("  Creating {}...", bootstrap_file);
-        frontend::generate_bootstrap(name, &cwd)?;
+        adapters::generate_bootstrap(name, &cwd)?;
         println!("  ✓ Created {}", bootstrap_file);
     }
 
@@ -280,7 +280,7 @@ fn remove(name: &str, no_backup: bool, _no_commit: bool) -> Result<()> {
     }
 
     let mut config = project::load_with_migration(&cwd)?;
-    if !config.frontends.allowed.contains(&name.to_string()) {
+    if !config.adapters.allowed.contains(&name.to_string()) {
         println!("Frontend '{}' is not in allowed list.", name);
         return Ok(());
     }
@@ -291,25 +291,25 @@ fn remove(name: &str, no_backup: bool, _no_commit: bool) -> Result<()> {
     }
 
     // Remove from allowed list
-    config.frontends.allowed.retain(|f| f != name);
+    config.adapters.allowed.retain(|f| f != name);
 
     // Update default if we removed it
-    if config.frontends.default == name {
-        config.frontends.default = config
-            .frontends
+    if config.adapters.default == name {
+        config.adapters.default = config
+            .adapters
             .allowed
             .first()
             .cloned()
             .unwrap_or_default();
-        if !config.frontends.default.is_empty() {
-            println!("  ✓ Default changed to: {}", config.frontends.default);
+        if !config.adapters.default.is_empty() {
+            println!("  ✓ Default changed to: {}", config.adapters.default);
         }
     }
 
     project::save(&cwd, &config)?;
 
     println!("✓ Removed '{}' from allowed frontends", name);
-    println!("  Allowed: {:?}", config.frontends.allowed);
+    println!("  Allowed: {:?}", config.adapters.allowed);
     println!(
         "\n💡 To also remove files: rm -rf .{}/ {}",
         name,
@@ -336,7 +336,7 @@ fn get_bootstrap_filename(name: &str) -> String {
 /// Refresh adapter files - backup, update templates, restore sessions
 fn refresh(name: &str, no_commit: bool) -> Result<()> {
     // Verify frontend exists
-    let _ = frontend::get(name)?;
+    let _ = adapters::get(name)?;
 
     let cwd = std::env::current_dir()?;
     if !project::is_patina_project(&cwd) {
@@ -344,7 +344,7 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     }
 
     let config = project::load_with_migration(&cwd)?;
-    if !config.frontends.allowed.contains(&name.to_string()) {
+    if !config.adapters.allowed.contains(&name.to_string()) {
         anyhow::bail!(
             "Frontend '{}' is not in allowed list. Add it first: patina adapter add {}",
             name,
@@ -376,7 +376,7 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     // Create/refresh bootstrap file (CLAUDE.md, GEMINI.md, etc.)
     let bootstrap_file = get_bootstrap_filename(name);
     println!("  Generating {}...", bootstrap_file);
-    frontend::generate_bootstrap(name, &cwd)?;
+    adapters::generate_bootstrap(name, &cwd)?;
     println!("  ✓ Created {}", bootstrap_file);
 
     // Step 5: Restore preserved session files
@@ -458,7 +458,7 @@ fn doctor() -> Result<()> {
 
     println!("🩺 Adapter Health Check\n");
 
-    if config.frontends.allowed.is_empty() {
+    if config.adapters.allowed.is_empty() {
         println!("⚠️  No adapters configured.");
         println!("   Run: patina adapter add <claude|gemini|opencode>");
         return Ok(());
@@ -466,11 +466,11 @@ fn doctor() -> Result<()> {
 
     let mut all_healthy = true;
 
-    for adapter_name in &config.frontends.allowed {
+    for adapter_name in &config.adapters.allowed {
         println!("📱 {} adapter:", adapter_name);
 
         // Check 1: Frontend installed on system
-        let frontend_info = frontend::get(adapter_name);
+        let frontend_info = adapters::get(adapter_name);
         match frontend_info {
             Ok(f) if f.detected => {
                 println!("  ✓ CLI installed: {}", f.version.unwrap_or_default());
