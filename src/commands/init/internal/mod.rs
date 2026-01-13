@@ -70,8 +70,7 @@ pub fn execute_init(
         // Remove old backup if it exists
         let backup_path = Path::new(".devcontainer.backup");
         if backup_path.exists() {
-            fs::remove_dir_all(backup_path)
-                .context("Failed to remove old .devcontainer.backup")?;
+            fs::remove_dir_all(backup_path).context("Failed to remove old .devcontainer.backup")?;
         }
         fs::rename(".devcontainer", ".devcontainer.backup")
             .context("Failed to backup existing .devcontainer")?;
@@ -153,13 +152,7 @@ pub fn execute_init(
 
     // Create project configuration (without LLM - use 'adapter add' for that)
     let dev_env = patina::dev_env::get_dev_env(&dev);
-    create_project_config(
-        &project_path,
-        &name,
-        &dev,
-        &environment,
-        dev_env.as_ref(),
-    )?;
+    create_project_config(&project_path, &name, &dev, &environment, dev_env.as_ref())?;
 
     // Handle version manifest
     handle_version_manifest(&project_path, &dev, is_reinit, json_output)?;
@@ -638,7 +631,10 @@ fn ensure_gitignore_entries(gitignore_path: &Path) -> Result<()> {
         ("/target/", "Rust build artifacts"),
         ("node_modules/", "Node.js dependencies"),
         (".env", "Environment secrets"),
-        (".patina/local/", "Patina local state (derived, not committed)"),
+        (
+            ".patina/local/",
+            "Patina local state (derived, not committed)",
+        ),
         ("*.db", "Database files"),
         ("*.key", "Private keys"),
         ("*.pem", "Certificates"),

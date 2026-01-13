@@ -295,12 +295,7 @@ fn remove(name: &str, no_backup: bool, _no_commit: bool) -> Result<()> {
 
     // Update default if we removed it
     if config.adapters.default == name {
-        config.adapters.default = config
-            .adapters
-            .allowed
-            .first()
-            .cloned()
-            .unwrap_or_default();
+        config.adapters.default = config.adapters.allowed.first().cloned().unwrap_or_default();
         if !config.adapters.default.is_empty() {
             println!("  ✓ Default changed to: {}", config.adapters.default);
         }
@@ -433,10 +428,7 @@ fn preserve_session_files(adapter_dir: &std::path::Path) -> Result<Vec<(String, 
 }
 
 /// Restore preserved session files to adapter directory
-fn restore_session_files(
-    adapter_dir: &std::path::Path,
-    files: &[(String, Vec<u8>)],
-) -> Result<()> {
+fn restore_session_files(adapter_dir: &std::path::Path, files: &[(String, Vec<u8>)]) -> Result<()> {
     for (relative_path, content) in files {
         let full_path = adapter_dir.join(relative_path);
         if let Some(parent) = full_path.parent() {
@@ -537,9 +529,7 @@ fn doctor() -> Result<()> {
 fn check_mcp_configured() -> Result<bool> {
     use std::process::Command;
 
-    let output = Command::new("claude")
-        .args(["mcp", "list"])
-        .output()?;
+    let output = Command::new("claude").args(["mcp", "list"]).output()?;
 
     if output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -570,11 +560,7 @@ fn backup_adapter_files(project_root: &std::path::Path, name: &str) -> Result<()
 
         // Copy adapter directory contents
         copy_dir_recursive(&adapter_dir, &backup_dir)?;
-        println!(
-            "  ✓ Backed up .{}/ to {}",
-            name,
-            backup_dir.display()
-        );
+        println!("  ✓ Backed up .{}/ to {}", name, backup_dir.display());
     }
 
     Ok(())

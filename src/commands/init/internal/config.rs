@@ -7,7 +7,7 @@ use std::path::Path;
 use patina::dev_env::DevEnvironment;
 use patina::environment::Environment;
 use patina::project::{
-    DevSection, EmbeddingsSection, EnvironmentSection, AdaptersSection, ProjectConfig,
+    AdaptersSection, DevSection, EmbeddingsSection, EnvironmentSection, ProjectConfig,
     ProjectSection, RetrievalSection, SearchSection,
 };
 // Note: CiSection and UpstreamSection are optional, set to None for new projects
