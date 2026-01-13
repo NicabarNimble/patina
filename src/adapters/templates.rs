@@ -80,7 +80,7 @@ mod opencode_templates {
 /// Extract all templates to ~/.patina/adapters/
 ///
 /// Called during first-run setup. Creates the full template structure
-/// for all supported frontends.
+/// for all supported adapters.
 pub fn install_all(adapters_dir: &Path) -> Result<()> {
     install_claude_templates(adapters_dir)?;
     install_gemini_templates(adapters_dir)?;
@@ -92,10 +92,10 @@ pub fn install_all(adapters_dir: &Path) -> Result<()> {
 ///
 /// Copies the adapter-specific directory (.claude/, .gemini/) from
 /// central templates to the project.
-pub fn copy_to_project(frontend: &str, project_path: &Path) -> Result<()> {
-    let templates_dir = paths::adapters_dir().join(frontend).join("templates");
+pub fn copy_to_project(adapter_name: &str, project_path: &Path) -> Result<()> {
+    let templates_dir = paths::adapters_dir().join(adapter_name).join("templates");
 
-    let adapter_dir_name = format!(".{}", frontend);
+    let adapter_dir_name = format!(".{}", adapter_name);
     let src = templates_dir.join(&adapter_dir_name);
     let dest = project_path.join(&adapter_dir_name);
 
@@ -109,9 +109,9 @@ pub fn copy_to_project(frontend: &str, project_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Check if templates are installed for a frontend
-pub fn templates_installed(frontend: &str) -> bool {
-    let templates_dir = paths::adapters_dir().join(frontend).join("templates");
+/// Check if templates are installed for an adapter
+pub fn templates_installed(adapter_name: &str) -> bool {
+    let templates_dir = paths::adapters_dir().join(adapter_name).join("templates");
     templates_dir.exists()
 }
 
