@@ -361,7 +361,7 @@ pub fn show_repo(name: &str) -> Result<()> {
     }
 
     // Show event count from database
-    let db_path = repo_path.join(".patina/data/patina.db");
+    let db_path = repo_path.join(".patina/local/data/patina.db");
     if db_path.exists() {
         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
             if let Ok(count) = conn.query_row("SELECT COUNT(*) FROM eventlog", [], |row| {
@@ -383,7 +383,7 @@ pub fn get_repo_db_path(name: &str) -> Result<String> {
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", name))?;
 
-    let db_path = Path::new(&entry.path).join(".patina/data/patina.db");
+    let db_path = Path::new(&entry.path).join(".patina/local/data/patina.db");
     if !db_path.exists() {
         bail!(
             "Database not found for '{}'. Run 'patina repo update {}' to rebuild.",
@@ -557,8 +557,8 @@ model = "e5-base-v2"
         String::new()
     };
 
-    if !gitignore_content.contains(".patina/data") {
-        let addition = "\n# Patina local data\n.patina/data/\n";
+    if !gitignore_content.contains(".patina/local") {
+        let addition = "\n# Patina local state (derived, not committed)\n.patina/local/\n";
         fs::write(
             &gitignore_path,
             format!("{}{}", gitignore_content, addition),

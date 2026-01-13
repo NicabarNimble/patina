@@ -294,9 +294,14 @@ pub fn legacy_config_path(project_path: &Path) -> PathBuf {
     patina_dir(project_path).join("config.json")
 }
 
+/// Get the local state directory for a project (gitignored)
+pub fn local_dir(project_path: &Path) -> PathBuf {
+    patina_dir(project_path).join("local")
+}
+
 /// Get the backups directory for a project
 pub fn backups_dir(project_path: &Path) -> PathBuf {
-    patina_dir(project_path).join("backups")
+    local_dir(project_path).join("backups")
 }
 
 // =============================================================================

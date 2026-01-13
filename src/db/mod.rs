@@ -7,7 +7,7 @@
 //! ```no_run
 //! use patina::db::SqliteDatabase;
 //!
-//! let db = SqliteDatabase::open(".patina/data/facts.db")?;
+//! let db = SqliteDatabase::open(".patina/local/data/facts.db")?;
 //! db.execute("CREATE TABLE test (id INTEGER)", &[])?;
 //! # Ok::<(), anyhow::Error>(())
 //! ```

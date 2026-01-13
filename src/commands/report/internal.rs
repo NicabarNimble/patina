@@ -12,7 +12,7 @@ use std::path::Path;
 use super::ReportOptions;
 use crate::commands::scry::{scry, ScryOptions};
 
-const DB_PATH: &str = ".patina/data/patina.db";
+const DB_PATH: &str = ".patina/local/data/patina.db";
 
 // ============================================================================
 // Data Structures
@@ -356,7 +356,7 @@ fn collect_rag_health(conn: &Connection) -> Result<RagHealth> {
         .unwrap_or(0);
 
     // Check for vector indices
-    let embeddings_dir = Path::new(".patina/data/embeddings");
+    let embeddings_dir = Path::new(".patina/local/data/embeddings");
     let mut vector_dimensions = Vec::new();
 
     if embeddings_dir.exists() {

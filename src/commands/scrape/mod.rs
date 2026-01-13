@@ -220,7 +220,7 @@ fn get_repo_spec(working_dir: Option<&PathBuf>) -> Result<String> {
 /// Get db path based on working directory.
 fn get_db_path(working_dir: Option<&PathBuf>) -> PathBuf {
     match working_dir {
-        Some(dir) => dir.join(".patina/data/patina.db"),
+        Some(dir) => dir.join(".patina/local/data/patina.db"),
         None => PathBuf::from(database::PATINA_DB),
     }
 }

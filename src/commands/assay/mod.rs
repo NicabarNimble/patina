@@ -15,7 +15,7 @@ use internal::{
 };
 use rusqlite::Connection;
 
-const DB_PATH: &str = ".patina/data/patina.db";
+const DB_PATH: &str = ".patina/local/data/patina.db";
 
 /// Query type for assay command
 #[derive(Debug, Clone, Copy, Default)]
@@ -102,7 +102,7 @@ fn execute_all_repos(options: &AssayOptions) -> Result<()> {
         }
 
         for repo in &repos {
-            let db_path = std::path::Path::new(&repo.path).join(".patina/data/patina.db");
+            let db_path = std::path::Path::new(&repo.path).join(".patina/local/data/patina.db");
             if let Ok(conn) = Connection::open(&db_path) {
                 if let Ok(results) = collect_inventory_json(&conn, options, Some(&repo.name)) {
                     all_results.extend(results);
@@ -123,7 +123,7 @@ fn execute_all_repos(options: &AssayOptions) -> Result<()> {
 
         for repo in &repos {
             println!("━━━ {} ━━━\n", repo.name);
-            let db_path = std::path::Path::new(&repo.path).join(".patina/data/patina.db");
+            let db_path = std::path::Path::new(&repo.path).join(".patina/local/data/patina.db");
             if let Ok(conn) = Connection::open(&db_path) {
                 let _ = execute_inventory(&conn, options, Some(&repo.name));
             } else {

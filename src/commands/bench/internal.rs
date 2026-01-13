@@ -541,7 +541,7 @@ pub fn generate_from_commits(config: GenerateConfig) -> Result<QuerySet> {
     let db_path = if let Some(ref repo_name) = config.repo {
         crate::commands::repo::get_db_path(repo_name)?
     } else {
-        ".patina/data/patina.db".to_string()
+        ".patina/local/data/patina.db".to_string()
     };
 
     let conn = Connection::open(&db_path)
