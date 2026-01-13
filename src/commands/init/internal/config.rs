@@ -15,7 +15,7 @@ use patina::version::VersionManifest;
 
 /// Create project configuration file (unified config.toml format)
 ///
-/// Note: This creates a minimal skeleton config with empty frontends.
+/// Note: This creates a minimal skeleton config with empty adapters.
 /// Use 'patina adapter add <name>' to add LLM support.
 pub fn create_project_config(
     project_path: &Path,

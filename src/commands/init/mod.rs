@@ -57,7 +57,7 @@ use anyhow::Result;
 /// # Re-initialization
 ///
 /// When run in an existing Patina project:
-/// - Preserves adapter config (frontends.allowed, frontends.default)
+/// - Preserves adapter config (adapters.allowed, adapters.default)
 /// - Refreshes environment detection
 /// - Updates dev environment if specified
 ///
