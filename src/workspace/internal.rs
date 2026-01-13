@@ -5,6 +5,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -20,10 +21,10 @@ use crate::paths;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GlobalConfig {
     pub workspace: WorkspaceConfig,
-    pub frontend: FrontendConfig,
+    pub adapter: AdapterConfig,
     pub serve: ServeConfig,
     #[serde(default)]
-    pub frontends: FrontendsConfig,
+    pub adapters: AdaptersConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -46,12 +47,12 @@ impl Default for WorkspaceConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FrontendConfig {
+pub struct AdapterConfig {
     /// Default frontend to use (claude, gemini, codex)
     pub default: String,
 }
 
-impl Default for FrontendConfig {
+impl Default for AdapterConfig {
     fn default() -> Self {
         Self {
             default: "claude".to_string(),
@@ -76,18 +77,15 @@ impl Default for ServeConfig {
     }
 }
 
+/// Detected adapters configuration (flexible HashMap)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct FrontendsConfig {
-    #[serde(default)]
-    pub claude: Option<FrontendEntry>,
-    #[serde(default)]
-    pub gemini: Option<FrontendEntry>,
-    #[serde(default)]
-    pub codex: Option<FrontendEntry>,
+pub struct AdaptersConfig {
+    #[serde(flatten)]
+    pub entries: HashMap<String, AdapterEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FrontendEntry {
+pub struct AdapterEntry {
     pub command: String,
     pub detected: bool,
     #[serde(default)]
@@ -143,39 +141,32 @@ pub fn setup() -> Result<SetupResult> {
     crate::adapters::templates::install_all(&adapters)?;
     println!("  ✓ Installed adapters: claude, gemini, codex");
 
-    // Detect installed frontends
+    // Detect installed adapters
     let mut detected = Vec::new();
-    let mut frontends = FrontendsConfig::default();
+    let mut adapters_config = AdaptersConfig::default();
 
-    if detect_cli("claude") {
-        detected.push("claude".to_string());
-        frontends.claude = Some(FrontendEntry {
-            command: "claude".to_string(),
-            detected: true,
-            mcp_config: Some("~/.claude/settings.json".to_string()),
-        });
+    // Detect available adapters
+    for (name, mcp_config) in [
+        ("claude", Some("~/.claude/settings.json")),
+        ("gemini", None),
+        ("codex", None),
+        ("opencode", None),
+    ] {
+        if detect_cli(name) {
+            detected.push(name.to_string());
+            adapters_config.entries.insert(
+                name.to_string(),
+                AdapterEntry {
+                    command: name.to_string(),
+                    detected: true,
+                    mcp_config: mcp_config.map(String::from),
+                },
+            );
+        }
     }
 
-    if detect_cli("gemini") {
-        detected.push("gemini".to_string());
-        frontends.gemini = Some(FrontendEntry {
-            command: "gemini".to_string(),
-            detected: true,
-            mcp_config: None,
-        });
-    }
-
-    if detect_cli("codex") {
-        detected.push("codex".to_string());
-        frontends.codex = Some(FrontendEntry {
-            command: "codex".to_string(),
-            detected: true,
-            mcp_config: None,
-        });
-    }
-
-    println!("\nDetecting LLM frontends...");
-    for name in &["claude", "gemini", "codex"] {
+    println!("\nDetecting LLM adapters...");
+    for name in &["claude", "gemini", "codex", "opencode"] {
         if detected.contains(&name.to_string()) {
             println!("  ✓ {} (found)", name);
         } else {
@@ -183,8 +174,8 @@ pub fn setup() -> Result<SetupResult> {
         }
     }
 
-    // Determine default frontend
-    let default_frontend = detected.first().cloned();
+    // Determine default adapter
+    let default_adapter = detected.first().cloned();
 
     // Create workspace folder
     let workspace_path = dirs::home_dir()
@@ -202,19 +193,19 @@ pub fn setup() -> Result<SetupResult> {
         workspace: WorkspaceConfig {
             path: workspace_path.to_string_lossy().to_string(),
         },
-        frontend: FrontendConfig {
-            default: default_frontend
+        adapter: AdapterConfig {
+            default: default_adapter
                 .clone()
                 .unwrap_or_else(|| "claude".to_string()),
         },
         serve: ServeConfig::default(),
-        frontends,
+        adapters: adapters_config,
     };
 
     save_config(&config)?;
 
-    if let Some(ref frontend) = default_frontend {
-        println!("\nSetting default: {}", frontend);
+    if let Some(ref adapter) = default_adapter {
+        println!("\nSetting default: {}", adapter);
     }
 
     Ok(SetupResult {
@@ -224,9 +215,10 @@ pub fn setup() -> Result<SetupResult> {
             "claude".to_string(),
             "gemini".to_string(),
             "codex".to_string(),
+            "opencode".to_string(),
         ],
-        frontends_detected: detected,
-        default_frontend,
+        adapters_detected: detected,
+        default_adapter,
     })
 }
 

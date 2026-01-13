@@ -7,7 +7,7 @@ use std::path::Path;
 use patina::dev_env::DevEnvironment;
 use patina::environment::Environment;
 use patina::project::{
-    DevSection, EmbeddingsSection, EnvironmentSection, FrontendsSection, ProjectConfig,
+    DevSection, EmbeddingsSection, EnvironmentSection, AdaptersSection, ProjectConfig,
     ProjectSection, RetrievalSection, SearchSection,
 };
 // Note: CiSection and UpstreamSection are optional, set to None for new projects
@@ -64,11 +64,11 @@ pub fn create_project_config(
             dev_type: dev.to_string(),
             version: None,
         },
-        // Preserve existing frontends on re-init, otherwise empty
-        frontends: existing_config
+        // Preserve existing adapters on re-init, otherwise empty
+        adapters: existing_config
             .as_ref()
-            .map(|c| c.frontends.clone())
-            .unwrap_or_else(|| FrontendsSection {
+            .map(|c| c.adapters.clone())
+            .unwrap_or_else(|| AdaptersSection {
                 allowed: vec![],
                 default: String::new(),
             }),

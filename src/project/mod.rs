@@ -1,7 +1,7 @@
 //! Project module - Unified project configuration
 //!
 //! Manages `.patina/config.toml` for project-specific settings including
-//! project metadata, dev environment, allowed frontends, and embeddings.
+//! project metadata, dev environment, allowed adapters, and embeddings.
 //!
 //! Supports automatic migration from legacy `config.json` format.
 //!
@@ -18,10 +18,10 @@
 //!     // Load config (with automatic migration if needed)
 //!     let mut config = project::load_with_migration(path)?;
 //!     println!("Project: {}", config.project.name);
-//!     println!("Allowed frontends: {:?}", config.frontends.allowed);
+//!     println!("Allowed adapters: {:?}", config.adapters.allowed);
 //!
 //!     // Modify and save
-//!     config.frontends.allowed.push("gemini".to_string());
+//!     config.adapters.allowed.push("gemini".to_string());
 //!     project::save(path, &config)?;
 //! }
 //! # Ok::<(), anyhow::Error>(())
@@ -34,7 +34,7 @@ use std::path::{Path, PathBuf};
 
 // Re-export config types
 pub use internal::{
-    CiSection, DevSection, EmbeddingsSection, EnvironmentSection, FrontendsSection, ProjectConfig,
+    AdaptersSection, CiSection, DevSection, EmbeddingsSection, EnvironmentSection, ProjectConfig,
     ProjectSection, RetrievalSection, SearchSection, UpstreamSection,
 };
 
