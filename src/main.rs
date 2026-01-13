@@ -30,7 +30,7 @@ impl Dimension {
     }
 }
 
-/// LLM frontend for project initialization
+/// LLM adapter for project initialization
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Llm {
     /// Claude Code (Anthropic)
@@ -337,7 +337,7 @@ enum Commands {
         mcp: bool,
     },
 
-    /// List available AI frontends
+    /// Manage AI adapters
     Adapter {
         #[command(subcommand)]
         command: Option<AdapterCommands>,
