@@ -97,10 +97,10 @@ impl Default for DevSection {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdaptersSection {
-    /// Allowed frontends for this project
+    /// Allowed adapters for this project
     #[serde(default = "default_allowed")]
     pub allowed: Vec<String>,
-    /// Default frontend for this project
+    /// Default adapter for this project
     #[serde(default = "default_adapter")]
     pub default: String,
 }
@@ -396,7 +396,7 @@ pub fn migrate_legacy_config(project_path: &Path) -> Result<bool> {
         config.dev.dev_type = dev.to_string();
     }
     if let Some(llm) = json.get("llm").and_then(|v| v.as_str()) {
-        // Map llm to frontends.default and ensure it's in allowed list
+        // Map llm to adapters.default and ensure it's in allowed list
         config.adapters.default = llm.to_string();
         if !config.adapters.allowed.contains(&llm.to_string()) {
             config.adapters.allowed.push(llm.to_string());
