@@ -95,6 +95,24 @@ pub fn backup_file(project_path: &Path, file_path: &Path) -> Result<Option<PathB
     internal::backup_file(project_path, file_path)
 }
 
+/// Create a unique project identifier if it doesn't exist
+///
+/// Returns the UID (8 hex characters, created once, never modified).
+/// Used for stable project identity across different machines.
+pub fn create_uid_if_missing(project_path: &Path) -> Result<String> {
+    internal::create_uid_if_missing(project_path)
+}
+
+/// Get the UID for a project (returns None if not initialized)
+pub fn get_uid(project_path: &Path) -> Option<String> {
+    internal::get_uid(project_path)
+}
+
+/// Get the UID file path for a project
+pub fn uid_path(project_path: &Path) -> PathBuf {
+    internal::uid_path(project_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -14,16 +14,28 @@ use patina::project::{
 use patina::version::VersionManifest;
 
 /// Create project configuration file (unified config.toml format)
+///
+/// Note: This creates a minimal skeleton config with empty frontends.
+/// Use 'patina adapter add <name>' to add LLM support.
 pub fn create_project_config(
     project_path: &Path,
     name: &str,
-    llm: &str,
     dev: &str,
     environment: &Environment,
     _dev_env: &dyn DevEnvironment,
 ) -> Result<()> {
     let patina_dir = project_path.join(".patina");
     fs::create_dir_all(&patina_dir).context("Failed to create .patina directory")?;
+
+    // Check if config already exists (re-init case)
+    // Note: We check if the config FILE exists, not just call load()
+    // because load() returns a default config when file doesn't exist
+    let config_file = patina_dir.join("config.toml");
+    let existing_config = if config_file.exists() {
+        patina::project::load(project_path).ok()
+    } else {
+        None
+    };
 
     // Build detected tools list
     let detected_tools: Vec<String> = environment
@@ -38,24 +50,37 @@ pub fn create_project_config(
     // For contrib repos, user/LLM sets [upstream] section later
     let config = ProjectConfig {
         project: ProjectSection {
-            name: name.to_string(),
-            created: Some(chrono::Utc::now().to_rfc3339()),
+            // Preserve existing name and created date on re-init
+            name: existing_config
+                .as_ref()
+                .map(|c| c.project.name.clone())
+                .unwrap_or_else(|| name.to_string()),
+            created: existing_config
+                .as_ref()
+                .and_then(|c| c.project.created.clone())
+                .or_else(|| Some(chrono::Utc::now().to_rfc3339())),
         },
         dev: DevSection {
             dev_type: dev.to_string(),
             version: None,
         },
-        frontends: FrontendsSection {
-            allowed: vec![llm.to_string()],
-            default: llm.to_string(),
-        },
-        upstream: None, // Set when contributing to another repo
-        ci: None,       // Set with repo's CI requirements
+        // Preserve existing frontends on re-init, otherwise empty
+        frontends: existing_config
+            .as_ref()
+            .map(|c| c.frontends.clone())
+            .unwrap_or_else(|| FrontendsSection {
+                allowed: vec![],
+                default: String::new(),
+            }),
+        // Preserve existing upstream/ci on re-init
+        upstream: existing_config.as_ref().and_then(|c| c.upstream.clone()),
+        ci: existing_config.as_ref().and_then(|c| c.ci.clone()),
         embeddings: EmbeddingsSection {
             model: "e5-base-v2".to_string(),
         },
         search: SearchSection::default(),
         retrieval: RetrievalSection::default(),
+        // Always refresh environment detection
         environment: Some(EnvironmentSection {
             os: environment.os.clone(),
             arch: environment.arch.clone(),
@@ -114,7 +139,6 @@ projections:
 /// Create or update version manifest
 pub fn handle_version_manifest(
     project_path: &Path,
-    _llm: &str,
     _dev: &str,
     is_reinit: bool,
     json_output: bool,

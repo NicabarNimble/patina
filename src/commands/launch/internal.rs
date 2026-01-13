@@ -382,26 +382,39 @@ fn initialize_project(project_path: &Path, frontend_name: &str) -> Result<bool> 
     let original_dir = env::current_dir()?;
     env::set_current_dir(project_path)?;
 
-    // Call init with "." so it commits the patina setup
-    // (init only commits when name == ".")
-    let result = crate::commands::init::execute(
+    // Step 1: Create skeleton
+    let init_result = crate::commands::init::execute(
         ".".to_string(), // Use "." to trigger commit step in init
-        frontend_name.to_string(),
-        None,  // dev environment
-        false, // force
-        true,  // local (skip GitHub integration for quick init)
+        None,   // dev environment
+        false,  // force
+        true,   // local (skip GitHub integration for quick init)
+        false,  // no_commit (allow auto-commit)
     );
+
+    if let Err(e) = init_result {
+        env::set_current_dir(original_dir)?;
+        eprintln!("\n❌ Failed to initialize: {}", e);
+        return Ok(false);
+    }
+
+    // Step 2: Add the adapter
+    let adapter_result = crate::commands::adapter::execute(Some(
+        crate::commands::adapter::AdapterCommands::Add {
+            name: frontend_name.to_string(),
+        },
+    ));
 
     // Restore original directory
     env::set_current_dir(original_dir)?;
 
-    match result {
+    match adapter_result {
         Ok(()) => {
-            println!("\n✓ Initialized as patina project (contrib mode)");
+            println!("\n✓ Initialized as patina project with {} adapter", frontend_name);
             Ok(true) // Continue to launch
         }
         Err(e) => {
-            eprintln!("\n❌ Failed to initialize: {}", e);
+            eprintln!("\n❌ Failed to add adapter: {}", e);
+            eprintln!("   Run 'patina adapter add {}' to add it manually", frontend_name);
             Ok(false) // Don't continue
         }
     }
