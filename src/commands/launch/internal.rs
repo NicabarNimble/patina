@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
-use patina::adapters::launch as frontend;
+use patina::adapters::launch as adapters;
 use patina::git;
 use patina::project;
 use patina::workspace;
@@ -32,26 +32,26 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
     // Step 2: Determine project path
     let project_path = resolve_project_path(options.path.as_deref())?;
 
-    // Step 3: Determine frontend
-    let frontend_name = options
-        .frontend
-        .unwrap_or_else(|| frontend::default_name().unwrap_or_else(|_| "claude".to_string()));
+    // Step 3: Determine adapter
+    let adapter_name = options
+        .adapter
+        .unwrap_or_else(|| adapters::default_name().unwrap_or_else(|_| "claude".to_string()));
 
-    // Step 4: Check if frontend is available
-    let frontend_info = frontend::get(&frontend_name)?;
-    if !frontend_info.detected {
+    // Step 4: Check if adapter is available
+    let adapter_info = adapters::get(&adapter_name)?;
+    if !adapter_info.detected {
         bail!(
-            "Frontend '{}' ({}) is not installed.\n\
-             Install it and try again, or use a different frontend:\n\
-             patina launch <frontend>",
-            frontend_name,
-            frontend_info.display
+            "Adapter '{}' ({}) is not installed.\n\
+             Install it and try again, or use a different adapter:\n\
+             patina launch <adapter>",
+            adapter_name,
+            adapter_info.display
         );
     }
 
     println!(
         "🚀 Launching {} in {}",
-        frontend_info.display,
+        adapter_info.display,
         project_path.display()
     );
 
@@ -64,7 +64,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
     let patina_dir = project_path.join(".patina");
     if !patina_dir.exists() {
         if options.auto_init {
-            let initialized = prompt_are_you_lost(&project_path, &frontend_name)?;
+            let initialized = prompt_are_you_lost(&project_path, &adapter_name)?;
             if !initialized {
                 // User declined or init failed
                 return Ok(());
@@ -104,21 +104,21 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         }
     }
 
-    // Step 7: Check if frontend is in allowed list
+    // Step 7: Check if adapter is in allowed list
     let project_config = project::load_with_migration(&project_path)?;
-    if !project_config.frontends.allowed.contains(&frontend_name) {
+    if !project_config.adapters.allowed.contains(&adapter_name) {
         bail!(
-            "Frontend '{}' is not in allowed frontends for this project.\n\
+            "Adapter '{}' is not in allowed adapters for this project.\n\
              Allowed: {:?}\n\n\
              To add it, run: patina adapter add {}",
-            frontend_name,
-            project_config.frontends.allowed,
-            frontend_name
+            adapter_name,
+            project_config.adapters.allowed,
+            adapter_name
         );
     }
 
     // Step 8: Ensure bootstrap file exists
-    let bootstrap_file = match frontend_name.as_str() {
+    let bootstrap_file = match adapter_name.as_str() {
         "claude" => "CLAUDE.md",
         "gemini" => "GEMINI.md",
         "codex" => "AGENTS.md",
@@ -127,11 +127,11 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
     let bootstrap_path = project_path.join(bootstrap_file);
     if !bootstrap_path.exists() {
         println!("  ✓ Generating {} bootstrap", bootstrap_file);
-        frontend::generate_bootstrap(&frontend_name, &project_path)?;
+        adapters::generate_bootstrap(&adapter_name, &project_path)?;
     }
 
-    // Step 9: Launch frontend
-    launch_frontend_cli(&frontend_name, &project_path)?;
+    // Step 9: Launch adapter
+    launch_adapter_cli(&adapter_name, &project_path)?;
 
     Ok(())
 }
@@ -208,7 +208,7 @@ pub fn start_mothership_daemon() -> Result<()> {
 }
 
 /// "Are you lost?" prompt - show git context and offer to initialize
-fn prompt_are_you_lost(project_path: &Path, frontend_name: &str) -> Result<bool> {
+fn prompt_are_you_lost(project_path: &Path, adapter_name: &str) -> Result<bool> {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     println!(" Are you lost?");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
@@ -250,7 +250,7 @@ fn prompt_are_you_lost(project_path: &Path, frontend_name: &str) -> Result<bool>
     if should_init {
         // Initialize the project
         println!();
-        return initialize_project(project_path, frontend_name);
+        return initialize_project(project_path, adapter_name);
     }
 
     Ok(false)
@@ -374,7 +374,7 @@ fn ensure_on_patina_branch() -> Result<BranchAction> {
 }
 
 /// Initialize project from the "Are you lost?" prompt
-fn initialize_project(project_path: &Path, frontend_name: &str) -> Result<bool> {
+fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
     // Change to project directory for init
     let original_dir = env::current_dir()?;
     env::set_current_dir(project_path)?;
@@ -397,7 +397,7 @@ fn initialize_project(project_path: &Path, frontend_name: &str) -> Result<bool> 
     // Step 2: Add the adapter
     let adapter_result = crate::commands::adapter::execute(Some(
         crate::commands::adapter::AdapterCommands::Add {
-            name: frontend_name.to_string(),
+            name: adapter_name.to_string(),
             no_commit: false, // Allow auto-commit during launch init
         },
     ));
@@ -407,40 +407,40 @@ fn initialize_project(project_path: &Path, frontend_name: &str) -> Result<bool> 
 
     match adapter_result {
         Ok(()) => {
-            println!("\n✓ Initialized as patina project with {} adapter", frontend_name);
+            println!("\n✓ Initialized as patina project with {} adapter", adapter_name);
             Ok(true) // Continue to launch
         }
         Err(e) => {
             eprintln!("\n❌ Failed to add adapter: {}", e);
-            eprintln!("   Run 'patina adapter add {}' to add it manually", frontend_name);
+            eprintln!("   Run 'patina adapter add {}' to add it manually", adapter_name);
             Ok(false) // Don't continue
         }
     }
 }
 
-/// Launch the frontend CLI
-fn launch_frontend_cli(frontend_name: &str, project_path: &Path) -> Result<()> {
-    println!("\nLaunching {}...\n", frontend_name);
+/// Launch the adapter CLI
+fn launch_adapter_cli(adapter_name: &str, project_path: &Path) -> Result<()> {
+    println!("\nLaunching {}...\n", adapter_name);
 
     // Use exec to replace current process (Unix-style)
     // On Windows, we'd spawn and wait instead
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        let err = Command::new(frontend_name).current_dir(project_path).exec();
+        let err = Command::new(adapter_name).current_dir(project_path).exec();
         // exec only returns on error
-        bail!("Failed to exec {}: {}", frontend_name, err);
+        bail!("Failed to exec {}: {}", adapter_name, err);
     }
 
     #[cfg(not(unix))]
     {
-        let status = Command::new(frontend_name)
+        let status = Command::new(adapter_name)
             .current_dir(project_path)
             .status()
-            .with_context(|| format!("Failed to run {}", frontend_name))?;
+            .with_context(|| format!("Failed to run {}", adapter_name))?;
 
         if !status.success() {
-            bail!("{} exited with status: {}", frontend_name, status);
+            bail!("{} exited with status: {}", adapter_name, status);
         }
         Ok(())
     }
