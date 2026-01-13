@@ -30,7 +30,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
     }
 
     // Step 2: Determine project path
-    let project_path = resolve_project_path(&options.path)?;
+    let project_path = resolve_project_path(options.path.as_deref())?;
 
     // Step 3: Determine frontend
     let frontend_name = options
@@ -137,13 +137,10 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
 }
 
 /// Resolve project path from options or current directory
-fn resolve_project_path(path_opt: &Option<String>) -> Result<PathBuf> {
+fn resolve_project_path(path_opt: Option<&str>) -> Result<PathBuf> {
     let path = match path_opt {
-        Some(p) => {
-            let expanded = shellexpand::tilde(p);
-            PathBuf::from(expanded.as_ref())
-        }
-        None => env::current_dir()?,
+        Some(p) => PathBuf::from(shellexpand::tilde(p).as_ref()),
+        None => env::current_dir().context("Failed to get current directory")?,
     };
 
     // Canonicalize to resolve symlinks
@@ -455,14 +452,14 @@ mod tests {
 
     #[test]
     fn test_resolve_current_dir() {
-        let path = resolve_project_path(&None);
+        let path = resolve_project_path(None);
         assert!(path.is_ok());
         assert!(path.unwrap().is_absolute());
     }
 
     #[test]
     fn test_resolve_tilde_path() {
-        let path = resolve_project_path(&Some("~".to_string()));
+        let path = resolve_project_path(Some("~"));
         // This should work if home dir exists
         if let Ok(p) = path {
             assert!(p.is_absolute());
