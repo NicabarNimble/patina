@@ -66,7 +66,7 @@ fn extract_go_symbols(
     current_function: Option<String>,
 ) {
     // First extract any calls
-    extract_go_calls(node, source, file_path, &current_function, data);
+    extract_go_calls(node, source, file_path, current_function.as_deref(), data);
 
     // Handle package declaration
     if node.kind() == "package_clause" {
@@ -336,7 +336,7 @@ fn extract_go_calls(
     node: &Node,
     source: &[u8],
     file_path: &str,
-    current_function: &Option<String>,
+    current_function: Option<&str>,
     data: &mut ExtractedData,
 ) {
     let line_number = (node.start_position().row + 1) as i32;
@@ -347,7 +347,7 @@ fn extract_go_calls(
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
                         data.add_call_edge(CallGraphEntry::new(
-                            caller.clone(),
+                            caller.to_string(),
                             callee.to_string(),
                             file_path.to_string(),
                             CallType::Direct,
@@ -366,7 +366,7 @@ fn extract_go_calls(
                         if let Some(func_node) = child.child_by_field_name("function") {
                             if let Ok(callee) = func_node.utf8_text(source) {
                                 data.add_call_edge(CallGraphEntry::new(
-                                    caller.clone(),
+                                    caller.to_string(),
                                     callee.to_string(),
                                     file_path.to_string(),
                                     CallType::Goroutine,
@@ -387,7 +387,7 @@ fn extract_go_calls(
                         if let Some(func_node) = child.child_by_field_name("function") {
                             if let Ok(callee) = func_node.utf8_text(source) {
                                 data.add_call_edge(CallGraphEntry::new(
-                                    caller.clone(),
+                                    caller.to_string(),
                                     callee.to_string(),
                                     file_path.to_string(),
                                     CallType::Defer,
@@ -407,7 +407,7 @@ fn extract_go_calls(
                         if let Some(field_node) = node.child_by_field_name("field") {
                             if let Ok(callee) = field_node.utf8_text(source) {
                                 data.add_call_edge(CallGraphEntry::new(
-                                    caller.clone(),
+                                    caller.to_string(),
                                     callee.to_string(),
                                     file_path.to_string(),
                                     CallType::Method,
