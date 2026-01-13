@@ -1,4 +1,4 @@
-//! Initialize a new Patina project with LLM integration and development environment
+//! Initialize a new Patina project skeleton
 //!
 //! This module follows the dependable-rust pattern:
 //! - Public interface (this file): ≤150 lines, clean API
@@ -9,13 +9,17 @@
 //! ```no_run
 //! use patina::commands::init;
 //!
-//! // Initialize a new project with Claude and Docker
+//! // Initialize a new project skeleton
 //! init::execute(
-//!     "my-project".to_string(),
-//!     "claude".to_string(),
-//!     "PROJECT_DESIGN.toml".to_string(),
-//!     Some("docker".to_string())
+//!     ".".to_string(),
+//!     Some("docker".to_string()),
+//!     false, // force
+//!     false, // local
+//!     false, // no_commit
 //! ).expect("Failed to initialize project");
+//!
+//! // Then add an adapter:
+//! // patina adapter add claude
 //! ```
 
 pub mod design_wizard;
@@ -24,58 +28,54 @@ pub mod tool_installer;
 
 use anyhow::Result;
 
-/// Execute the init command to create or reinitialize a Patina project
+/// Execute the init command to create or reinitialize a Patina project skeleton
 ///
 /// # Arguments
 ///
 /// * `name` - Project name or "." for current directory
-/// * `llm` - LLM adapter to use (e.g., "claude", "gemini")
 /// * `dev` - Optional development environment (e.g., "docker")
 /// * `force` - Force initialization, backup and replace existing patina branch
 /// * `local` - Skip GitHub integration (local-only mode)
+/// * `no_commit` - Skip automatic git commit
 ///
 /// # Process
 ///
 /// 1. **Git Setup**: Ensures proper git branch and fork (if external repo)
 /// 2. **Environment Detection**: Identifies available tools and languages
-/// 3. **Project Setup**: Creates directory structure and configuration
-/// 4. **LLM Integration**: Initializes chosen LLM adapter (Claude, Gemini, etc.)
-/// 5. **Dev Environment**: Sets up development environment (Docker)
-/// 6. **Pattern Copying**: Copies core patterns from Patina
-/// 7. **Navigation Index**: Creates searchable pattern database
+/// 3. **Project Setup**: Creates .patina/ and layer/ structure
+/// 4. **Dev Environment**: Sets up development environment (Docker)
+/// 5. **Pattern Copying**: Copies core patterns from Patina
+///
+/// # What This Does NOT Do
+///
+/// - Create adapter directories (.claude/, .gemini/)
+/// - Configure MCP
+/// - Run scrape or oxidize
+///
+/// Use `patina adapter add <claude|gemini|opencode>` to add LLM support.
 ///
 /// # Re-initialization
 ///
 /// When run in an existing Patina project:
-/// - Backs up gitignored directories (.claude → .claude_backup_<timestamp>)
-/// - Preserves PROJECT_DESIGN.toml
-/// - Updates components to latest versions
-/// - Refreshes configuration and adapters
-///
-/// # Safety
-///
-/// - Never overwrites PROJECT_DESIGN.toml in re-initialization
-/// - Prevents self-overwriting when run in Patina source
-/// - Creates backups of user data before updates
-/// - Ensures git workflow is properly set up before making changes
+/// - Preserves adapter config (frontends.allowed, frontends.default)
+/// - Refreshes environment detection
+/// - Updates dev environment if specified
 ///
 /// # Errors
 ///
 /// Returns an error if:
 /// - Not a git repository
 /// - Working tree has uncommitted changes (unless --force)
-/// - PROJECT_DESIGN.toml cannot be created or read
 /// - Directory creation fails
-/// - LLM adapter initialization fails
 /// - Environment validation shows critical missing tools
 pub fn execute(
     name: String,
-    llm: String,
     dev: Option<String>,
     force: bool,
     local: bool,
+    no_commit: bool,
 ) -> Result<()> {
-    internal::execute_init(name, llm, dev, force, local)
+    internal::execute_init(name, dev, force, local, no_commit)
 }
 
 #[cfg(test)]

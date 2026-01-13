@@ -88,14 +88,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a new project
+    /// Initialize a new project (skeleton only - use 'patina adapter add' for LLM support)
     Init {
-        /// Project name
+        /// Project name or "." for current directory
         name: String,
-
-        /// LLM to use (claude, gemini, codex, local)
-        #[arg(long, value_enum)]
-        llm: Llm,
 
         /// Development environment (docker, dagger, native)
         #[arg(long, value_enum)]
@@ -108,6 +104,10 @@ enum Commands {
         /// Local-only mode (skip GitHub integration)
         #[arg(long)]
         local: bool,
+
+        /// Skip automatic git commit
+        #[arg(long)]
+        no_commit: bool,
     },
 
     /// Check for new Patina CLI versions
@@ -805,17 +805,17 @@ fn main() -> Result<()> {
 
         Some(Commands::Init {
             name,
-            llm,
             dev,
             force,
             local,
+            no_commit,
         }) => {
             commands::init::execute(
                 name,
-                llm.as_str().to_string(),
                 dev.map(|d| d.as_str().to_string()),
                 force,
                 local,
+                no_commit,
             )?;
         }
         Some(Commands::Upgrade { check, json }) => {

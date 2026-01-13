@@ -300,6 +300,52 @@ pub fn backups_dir(project_path: &Path) -> PathBuf {
 }
 
 // =============================================================================
+// UID (Project Identity)
+// =============================================================================
+
+/// Get the UID file path for a project
+pub fn uid_path(project_path: &Path) -> PathBuf {
+    patina_dir(project_path).join("uid")
+}
+
+/// Create a unique project identifier if it doesn't exist
+/// Returns the UID (8 hex characters, created once, never modified)
+pub fn create_uid_if_missing(project_path: &Path) -> Result<String> {
+    let uid_file = uid_path(project_path);
+
+    // If UID exists, read and return it
+    if uid_file.exists() {
+        return Ok(fs::read_to_string(&uid_file)?.trim().to_string());
+    }
+
+    // Generate new UID (8 hex chars from random u32)
+    let uid = format!("{:08x}", fastrand::u32(..));
+
+    // Ensure .patina directory exists
+    if let Some(parent) = uid_file.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    // Write UID
+    fs::write(&uid_file, &uid)
+        .with_context(|| format!("Failed to create UID file: {}", uid_file.display()))?;
+
+    Ok(uid)
+}
+
+/// Get the UID for a project (returns None if not initialized)
+pub fn get_uid(project_path: &Path) -> Option<String> {
+    let uid_file = uid_path(project_path);
+    if uid_file.exists() {
+        fs::read_to_string(&uid_file)
+            .ok()
+            .map(|s| s.trim().to_string())
+    } else {
+        None
+    }
+}
+
+// =============================================================================
 // Detection
 // =============================================================================
 

@@ -7,13 +7,12 @@ pub mod validation;
 
 use anyhow::{Context, Result};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use patina::environment::Environment;
 use patina::layer::Layer;
 
-use self::backup::{backup_gitignored_dirs, restore_session_files};
+// Note: backup functions moved to 'adapter refresh' command
 use self::config::{create_project_config, handle_version_manifest};
 use self::patterns::copy_core_patterns_safe;
 use self::validation::{determine_dev_environment, validate_environment};
@@ -23,10 +22,10 @@ use super::design_wizard::confirm;
 /// Main execution logic for init command
 pub fn execute_init(
     name: String,
-    llm: String,
     dev: Option<String>,
     force: bool,
     local: bool,
+    no_commit: bool,
 ) -> Result<()> {
     let json_output = false; // For init command, always false
 
@@ -73,10 +72,8 @@ pub fn execute_init(
         println!("✓ Backed up .devcontainer/ → .devcontainer.backup/");
     }
 
-    // Backup gitignored directories if re-initializing
-    if name == "." && Path::new(".claude").exists() {
-        backup_gitignored_dirs()?;
-    }
+    // Note: We don't backup .claude/ here - that's handled by 'adapter refresh'
+    // Init only creates skeleton (.patina/, layer/), not adapter directories
 
     // Check for nested project
     if name != "." && Path::new(".patina").exists() {
@@ -142,38 +139,27 @@ pub fn execute_init(
         .context("Failed to initialize layer structure")?;
     println!("  ✓ Created layer structure");
 
-    // Create project configuration
+    // Create UID (stable project identity)
+    let uid = patina::project::create_uid_if_missing(&project_path)?;
+    if !is_reinit {
+        println!("  ✓ Created project UID: {}", uid);
+    }
+
+    // Create project configuration (without LLM - use 'adapter add' for that)
     let dev_env = patina::dev_env::get_dev_env(&dev);
     create_project_config(
         &project_path,
         &name,
-        &llm,
         &dev,
         &environment,
         dev_env.as_ref(),
     )?;
 
-    // Handle version manifest and updates
-    let updates = handle_version_manifest(&project_path, &llm, &dev, is_reinit, json_output)?;
+    // Handle version manifest
+    handle_version_manifest(&project_path, &dev, is_reinit, json_output)?;
 
-    // Process updates if needed
-    let should_update = if let Some(ref _updates_list) = updates {
-        should_update_components(json_output)?
-    } else {
-        false
-    };
-
-    if should_update {
-        println!("  ✓ Components will be updated");
-    }
-
-    // Initialize LLM adapter
-    let adapter = patina::adapters::get_adapter(&llm);
-    adapter.init_project(&project_path, &project_name, &environment)?;
-    println!("  ✓ Created {llm} integration files");
-
-    // Restore preserved session files if any
-    restore_session_files()?;
+    // Note: LLM adapter initialization moved to 'patina adapter add'
+    // Init only creates skeleton - run 'patina adapter add <claude|gemini|opencode>' for LLM support
 
     // Initialize dev environment - use real project name from Cargo.toml if re-initializing
     let dev_project_name = if name == "." {
@@ -190,19 +176,13 @@ pub fn execute_init(
         println!("  ✓ Copied core patterns from Patina");
     }
 
-    // Create initial session record
-    create_init_session(&layer_path, &project_name, &llm, &dev)?;
+    // Create initial session record (without LLM - added via 'adapter add')
+    create_init_session(&layer_path, &project_name, &dev)?;
 
     // Initialize navigation index
     initialize_navigation(&project_path)?;
 
-    // Run post-init for adapter
-    adapter.post_init(&project_path, &dev)?;
-
-    // Update components if needed
-    if should_update {
-        update_components(&project_path, &llm)?;
-    }
+    // Note: Component updates for adapters are handled by 'adapter refresh'
 
     // Validate environment
     if let Some(warnings) = validate_environment(&environment)? {
@@ -212,20 +192,16 @@ pub fn execute_init(
         }
     }
 
-    // === STEP 3: COMMIT PATINA SETUP ===
-    if name == "." {
+    // === STEP 3: COMMIT PATINA SETUP (unless --no-commit) ===
+    if !no_commit && name == "." {
         // Only commit if we're initializing in current directory
         println!("\n📦 Committing Patina setup...");
-        // Only add patina-created files (not everything - avoids nested git repo issues)
+        // Only add skeleton files (not adapter files - those are added by 'adapter add')
         patina::git::add_paths(&[
             ".gitignore",
             ".patina",
-            ".claude",
             ".devcontainer",
             "layer",
-            "CLAUDE.md",
-            "GEMINI.md",
-            "AGENTS.md",
             "ENVIRONMENT.toml",
             "Dockerfile",
             "docker-compose.yml",
@@ -234,42 +210,21 @@ pub fn execute_init(
         let commit_msg = if is_reinit {
             "chore: update Patina configuration"
         } else {
-            "chore: initialize Patina"
+            "chore: initialize Patina project"
         };
 
         patina::git::commit(commit_msg)?;
         println!("✓ Committed Patina initialization");
     }
 
-    // === STEP 4: INDEX CODEBASE FOR MCP ===
-    println!("\n🔍 Indexing codebase for AI context...");
-    match crate::commands::scrape::execute_all() {
-        Ok(()) => println!("✓ Codebase indexed - MCP tools ready"),
-        Err(e) => {
-            // Don't fail init if scrape fails, just warn
-            println!("⚠️  Indexing incomplete: {}", e);
-            println!("   Run 'patina scrape' later to enable MCP tools");
-        }
-    }
-
-    // === STEP 5: BUILD EMBEDDINGS FOR SEMANTIC SEARCH ===
-    // First check if the required model is available
-    ensure_model_available()?;
-
-    println!("\n🧪 Building embeddings for semantic search...");
-    match crate::commands::oxidize::oxidize() {
-        Ok(()) => println!("✓ Embeddings built - semantic search ready"),
-        Err(e) => {
-            // Don't fail init if oxidize fails, just warn
-            println!("⚠️  Embeddings incomplete: {}", e);
-            println!("   Run 'patina oxidize' later for semantic search");
-        }
-    }
+    // Note: scrape and oxidize are now separate commands
+    // Run 'patina scrape' and 'patina oxidize' after adding an adapter
 
     // Suggest tool installation if needed
     suggest_missing_tools(&environment)?;
 
     println!("\n✨ Project '{name}' initialized successfully!");
+    println!("  Add an adapter: patina adapter add <claude|gemini|opencode>");
 
     Ok(())
 }
@@ -313,13 +268,12 @@ fn setup_project_path(name: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-fn create_init_session(layer_path: &Path, name: &str, llm: &str, dev: &str) -> Result<()> {
+fn create_init_session(layer_path: &Path, name: &str, dev: &str) -> Result<()> {
     let session_filename = format!("{}-init.md", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
     let session_content = format!(
-        "# {} Initialization\n\nInitialized on: {}\nLLM: {}\nDev Environment: {}\n",
+        "# {} Initialization\n\nInitialized on: {}\nDev Environment: {}\n\nNote: Run 'patina adapter add <name>' to add LLM support.\n",
         name,
         chrono::Utc::now().to_rfc3339(),
-        llm,
         dev
     );
 
@@ -344,39 +298,7 @@ fn initialize_navigation(project_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn should_update_components(json_output: bool) -> Result<bool> {
-    if json_output {
-        return Ok(true);
-    }
-
-    print!("Update components to latest versions? [Y/n]: ");
-    std::io::stdout().flush()?;
-
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-    let input = input.trim().to_lowercase();
-
-    Ok(input.is_empty() || input == "y" || input == "yes")
-}
-
-fn update_components(project_path: &Path, llm: &str) -> Result<()> {
-    println!("\n🔄 Updating components...");
-
-    // Update LLM adapter
-    print!("  Updating {} adapter... ", llm.to_title_case());
-    std::io::stdout().flush()?;
-
-    let adapter = patina::adapters::get_adapter(llm);
-    if let Some((_current_ver, _new_ver)) = adapter.check_for_updates(project_path)? {
-        adapter.update_adapter_files(project_path)?;
-        println!("✓");
-    } else {
-        println!("already up to date");
-    }
-
-    println!("\n✅ All components updated successfully!");
-    Ok(())
-}
+// Note: Component update functions moved to 'adapter refresh' command
 
 fn suggest_missing_tools(environment: &Environment) -> Result<()> {
     use crate::commands::init::tool_installer;
@@ -427,21 +349,6 @@ fn detect_project_name_from_cargo_toml(project_path: &Path) -> Result<String> {
         .and_then(|n| n.as_str())
         .map(|s| s.to_string())
         .ok_or_else(|| anyhow::anyhow!("No package.name found in Cargo.toml"))
-}
-
-// Helper trait for string formatting
-trait TitleCase {
-    fn to_title_case(&self) -> String;
-}
-
-impl TitleCase for str {
-    fn to_title_case(&self) -> String {
-        let mut chars = self.chars();
-        match chars.next() {
-            None => String::new(),
-            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        }
-    }
 }
 
 /// Check if gh CLI is available
@@ -578,54 +485,8 @@ logs/
     Ok(())
 }
 
-/// Ensure the embedding model is available (in cache or local)
-fn ensure_model_available() -> Result<()> {
-    use patina::embeddings::models::{Config, ModelRegistry};
-    use patina::models;
-
-    // Load project config to get model name
-    let config = match Config::load() {
-        Ok(c) => c,
-        Err(_) => return Ok(()), // No config yet, skip check
-    };
-
-    let model_name = &config.embeddings.model;
-
-    // Validate model exists in registry
-    let registry = ModelRegistry::load()?;
-    if registry.get_model(model_name).is_err() {
-        println!("\n⚠️  Model '{}' not in registry.", model_name);
-        println!("   Available models:");
-        for name in registry.list_models() {
-            println!("     - {}", name);
-        }
-        println!("   Update .patina/config.toml to use a valid model.");
-        return Ok(());
-    }
-
-    let status = models::model_status(model_name)?;
-
-    if status.in_cache || status.in_local {
-        return Ok(()); // Model available
-    }
-
-    // Model not available - prompt to download
-    println!("\n📦 Model '{}' not found in cache.", model_name);
-    print!("   Download now? [Y/n]: ");
-    std::io::stdout().flush()?;
-
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-    let input = input.trim().to_lowercase();
-
-    if input.is_empty() || input == "y" || input == "yes" {
-        models::add_model(model_name)?;
-    } else {
-        println!("   Skipped. Run 'patina model add {}' later.", model_name);
-    }
-
-    Ok(())
-}
+// Note: ensure_model_available() moved to oxidize command
+// Models are downloaded during 'patina oxidize', not during init
 
 /// Maximum depth to search for child patina projects
 /// 6 levels covers most real project structures (monorepos go 5-6 deep)
