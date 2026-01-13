@@ -608,6 +608,11 @@ fn find_child_patina_projects(dir: &Path) -> Result<Vec<PathBuf>> {
                 } else {
                     project_dir
                 };
+                // Skip if this is the root directory itself (re-init case)
+                // Finding .patina in the current dir is expected for re-init
+                if project_dir == dir {
+                    continue;
+                }
                 return Ok(vec![project_dir.to_path_buf()]);
             }
         }
