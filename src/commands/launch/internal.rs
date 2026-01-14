@@ -78,8 +78,16 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         }
     } else {
         // Existing project - resolve adapter name
-        adapter_name = explicit_adapter
-            .unwrap_or_else(|| adapters::default_name().unwrap_or_else(|_| "claude".to_string()));
+        // Priority: explicit flag > project default > global default
+        let project_config = project::load_with_migration(&project_path)?;
+        adapter_name = explicit_adapter.unwrap_or_else(|| {
+            // Use project default if set, otherwise fall back to global
+            if !project_config.adapters.default.is_empty() {
+                project_config.adapters.default.clone()
+            } else {
+                adapters::default_name().unwrap_or_else(|_| "claude".to_string())
+            }
+        });
 
         // Validate adapter is installed
         let adapter_info = adapters::get(&adapter_name)?;
@@ -451,26 +459,29 @@ fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
             no_commit: false, // Allow auto-commit during launch init
         }));
 
+    if let Err(e) = adapter_result {
+        env::set_current_dir(original_dir)?;
+        eprintln!("\n❌ Failed to add adapter: {}", e);
+        eprintln!(
+            "   Run 'patina adapter add {}' to add it manually",
+            adapter_name
+        );
+        return Ok(false);
+    }
+
+    // Step 3: Set as project default (so `patina` uses this adapter next time)
+    let mut config = project::load_with_migration(project_path)?;
+    config.adapters.default = adapter_name.to_string();
+    project::save(project_path, &config)?;
+
     // Restore original directory
     env::set_current_dir(original_dir)?;
 
-    match adapter_result {
-        Ok(()) => {
-            println!(
-                "\n✓ Initialized as patina project with {} adapter",
-                adapter_name
-            );
-            Ok(true) // Continue to launch
-        }
-        Err(e) => {
-            eprintln!("\n❌ Failed to add adapter: {}", e);
-            eprintln!(
-                "   Run 'patina adapter add {}' to add it manually",
-                adapter_name
-            );
-            Ok(false) // Don't continue
-        }
-    }
+    println!(
+        "\n✓ Initialized as patina project with {} adapter",
+        adapter_name
+    );
+    Ok(true) // Continue to launch
 }
 
 /// Launch the adapter CLI
