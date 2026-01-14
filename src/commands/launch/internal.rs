@@ -32,50 +32,71 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
     // Step 2: Determine project path
     let project_path = resolve_project_path(options.path.as_deref())?;
 
-    // Step 3: Determine adapter
-    let adapter_name = options
-        .adapter
-        .unwrap_or_else(|| adapters::default_name().unwrap_or_else(|_| "claude".to_string()));
+    // Step 3: Handle explicit vs implicit adapter (per spec-adapter-selection.md)
+    let explicit_adapter: Option<String> = options.adapter.clone();
 
-    // Step 4: Check if adapter is available
-    let adapter_info = adapters::get(&adapter_name)?;
-    if !adapter_info.detected {
-        bail!(
-            "Adapter '{}' ({}) is not installed.\n\
-             Install it and try again, or use a different adapter:\n\
-             patina launch <adapter>",
-            adapter_name,
-            adapter_info.display
-        );
+    // If explicit adapter specified, validate it's installed NOW (fail fast)
+    if let Some(ref name) = explicit_adapter {
+        let adapter_info = adapters::get(name)?;
+        if !adapter_info.detected {
+            bail!(
+                "Adapter '{}' ({}) is not installed.\n\
+                 Install it and try again, or use a different adapter.",
+                name,
+                adapter_info.display
+            );
+        }
     }
 
-    println!(
-        "🚀 Launching {} in {}",
-        adapter_info.display,
-        project_path.display()
-    );
-
-    // Step 5: Check/start mothership
+    // Step 4: Check/start mothership
     if options.auto_start_mothership {
         ensure_mothership_running()?;
     }
 
-    // Step 6: Check if this is a patina project
+    // Step 5: Check if this is a patina project
     let patina_dir = project_path.join(".patina");
+    let adapter_name: String;
+
     if !patina_dir.exists() {
         if options.auto_init {
-            let initialized = prompt_are_you_lost(&project_path, &adapter_name)?;
-            if !initialized {
-                // User declined or init failed
-                return Ok(());
+            // Pass explicit_adapter - if Some, skip selection prompt
+            match prompt_are_you_lost(&project_path, explicit_adapter.as_deref())? {
+                Some(selected) => {
+                    // Update adapter_name to what user selected (or explicit)
+                    adapter_name = selected;
+                }
+                None => {
+                    // User declined
+                    return Ok(());
+                }
             }
-            // Project was initialized, continue to launch
         } else {
             bail!(
                 "Not a patina project (no .patina/ directory).\n\
                  Run `patina init .` first."
             );
         }
+    } else {
+        // Existing project - resolve adapter name
+        adapter_name = explicit_adapter
+            .unwrap_or_else(|| adapters::default_name().unwrap_or_else(|_| "claude".to_string()));
+
+        // Validate adapter is installed
+        let adapter_info = adapters::get(&adapter_name)?;
+        if !adapter_info.detected {
+            bail!(
+                "Adapter '{}' ({}) is not installed.\n\
+                 Install it and try again, or use a different adapter.",
+                adapter_name,
+                adapter_info.display
+            );
+        }
+
+        println!(
+            "🚀 Launching {} in {}",
+            adapter_info.display,
+            project_path.display()
+        );
     }
 
     // Step 6.5: Branch safety - ensure we're on patina branch
@@ -121,7 +142,7 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
     let bootstrap_file = match adapter_name.as_str() {
         "claude" => "CLAUDE.md",
         "gemini" => "GEMINI.md",
-        "codex" => "AGENTS.md",
+        "opencode" => "OPENCODE.md",
         _ => "CLAUDE.md",
     };
     let bootstrap_path = project_path.join(bootstrap_file);
@@ -207,8 +228,18 @@ pub fn start_mothership_daemon() -> Result<()> {
     Ok(())
 }
 
-/// "Are you lost?" prompt - show git context and offer to initialize
-fn prompt_are_you_lost(project_path: &Path, adapter_name: &str) -> Result<bool> {
+/// "Are you lost?" prompt - show git context and offer to initialize.
+///
+/// Returns:
+/// - Ok(None) - user declined to init
+/// - Ok(Some(adapter_name)) - user accepted, project initialized with this adapter
+///
+/// If `explicit_adapter` is Some, uses that adapter without prompting for selection.
+/// If None, detects available adapters and prompts user to choose.
+fn prompt_are_you_lost(
+    project_path: &Path,
+    explicit_adapter: Option<&str>,
+) -> Result<Option<String>> {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     println!(" Are you lost?");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
@@ -247,13 +278,32 @@ fn prompt_are_you_lost(project_path: &Path, adapter_name: &str) -> Result<bool> 
 
     let should_init = input.trim().to_lowercase() == "y";
 
-    if should_init {
-        // Initialize the project
-        println!();
-        return initialize_project(project_path, adapter_name);
+    if !should_init {
+        return Ok(None);
     }
 
-    Ok(false)
+    // User wants to init - determine which adapter to use
+    let adapter_name = if let Some(explicit) = explicit_adapter {
+        // Flow A: explicit adapter from --adapter flag
+        explicit.to_string()
+    } else {
+        // Flow B: detect available adapters and let user choose
+        let all_adapters = adapters::list()?;
+        let available: Vec<_> = all_adapters.into_iter().filter(|a| a.detected).collect();
+
+        // Get global default as preference
+        let preference = adapters::default_name().ok();
+
+        adapters::select_adapter(&available, preference.as_deref())?
+    };
+
+    // Initialize the project with selected adapter
+    println!();
+    if initialize_project(project_path, &adapter_name)? {
+        Ok(Some(adapter_name))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Format remote URL for display (strip git@/https://, .git suffix)
