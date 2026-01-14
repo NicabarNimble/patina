@@ -81,7 +81,7 @@ fn extract_rust_symbols(
                 process_rust_function(node, source, file_path, name, data);
 
                 // Extract calls within this function
-                extract_rust_calls(node, source, file_path, &Some(name.to_string()), data);
+                extract_rust_calls(node, source, file_path, Some(name), data);
             }
         }
     } else if matches!(symbol_kind, SymbolKind::Const | SymbolKind::Static) {
@@ -600,17 +600,17 @@ fn extract_rust_calls(
     node: &Node,
     source: &[u8],
     file_path: &str,
-    current_function: &Option<String>,
+    current_function: Option<&str>,
     data: &mut ExtractedData,
 ) {
-    if let Some(ref caller) = current_function {
+    if let Some(caller) = current_function {
         // Look for different types of calls
         match node.kind() {
             "call_expression" => {
                 if let Some(function_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = function_node.utf8_text(source) {
                         let call_edge = CallGraphEntry::new(
-                            caller.clone(),
+                            caller.to_string(),
                             callee.to_string(),
                             file_path.to_string(),
                             CallType::Direct,
@@ -624,7 +624,7 @@ fn extract_rust_calls(
                 if let Some(macro_node) = node.child_by_field_name("macro") {
                     if let Ok(macro_name) = macro_node.utf8_text(source) {
                         let call_edge = CallGraphEntry::new(
-                            caller.clone(),
+                            caller.to_string(),
                             format!("{}!", macro_name),
                             file_path.to_string(),
                             CallType::Macro,

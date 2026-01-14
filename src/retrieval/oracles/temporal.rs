@@ -18,7 +18,7 @@ pub struct TemporalOracle {
 impl TemporalOracle {
     pub fn new() -> Self {
         Self {
-            db_path: PathBuf::from(".patina/data/patina.db"),
+            db_path: PathBuf::from(".patina/local/data/patina.db"),
         }
     }
 

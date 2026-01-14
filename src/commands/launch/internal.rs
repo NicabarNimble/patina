@@ -11,7 +11,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
 
-use patina::adapters::launch as frontend;
+use patina::adapters::launch as adapters;
 use patina::git;
 use patina::project;
 use patina::workspace;
@@ -30,52 +30,81 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
     }
 
     // Step 2: Determine project path
-    let project_path = resolve_project_path(&options.path)?;
+    let project_path = resolve_project_path(options.path.as_deref())?;
 
-    // Step 3: Determine frontend
-    let frontend_name = options
-        .frontend
-        .unwrap_or_else(|| frontend::default_name().unwrap_or_else(|_| "claude".to_string()));
+    // Step 3: Handle explicit vs implicit adapter (per spec-adapter-selection.md)
+    let explicit_adapter: Option<String> = options.adapter.clone();
 
-    // Step 4: Check if frontend is available
-    let frontend_info = frontend::get(&frontend_name)?;
-    if !frontend_info.detected {
-        bail!(
-            "Frontend '{}' ({}) is not installed.\n\
-             Install it and try again, or use a different frontend:\n\
-             patina launch <frontend>",
-            frontend_name,
-            frontend_info.display
-        );
+    // If explicit adapter specified, validate it's installed NOW (fail fast)
+    if let Some(ref name) = explicit_adapter {
+        let adapter_info = adapters::get(name)?;
+        if !adapter_info.detected {
+            bail!(
+                "Adapter '{}' ({}) is not installed.\n\
+                 Install it and try again, or use a different adapter.",
+                name,
+                adapter_info.display
+            );
+        }
     }
 
-    println!(
-        "🚀 Launching {} in {}",
-        frontend_info.display,
-        project_path.display()
-    );
-
-    // Step 5: Check/start mothership
+    // Step 4: Check/start mothership
     if options.auto_start_mothership {
         ensure_mothership_running()?;
     }
 
-    // Step 6: Check if this is a patina project
+    // Step 5: Check if this is a patina project
     let patina_dir = project_path.join(".patina");
+    let adapter_name: String;
+
     if !patina_dir.exists() {
         if options.auto_init {
-            let initialized = prompt_are_you_lost(&project_path, &frontend_name)?;
-            if !initialized {
-                // User declined or init failed
-                return Ok(());
+            // Pass explicit_adapter - if Some, skip selection prompt
+            match prompt_are_you_lost(&project_path, explicit_adapter.as_deref())? {
+                Some(selected) => {
+                    // Update adapter_name to what user selected (or explicit)
+                    adapter_name = selected;
+                }
+                None => {
+                    // User declined
+                    return Ok(());
+                }
             }
-            // Project was initialized, continue to launch
         } else {
             bail!(
                 "Not a patina project (no .patina/ directory).\n\
                  Run `patina init .` first."
             );
         }
+    } else {
+        // Existing project - resolve adapter name
+        // Priority: explicit flag > project default > global default
+        let project_config = project::load_with_migration(&project_path)?;
+        adapter_name = explicit_adapter.unwrap_or_else(|| {
+            // Use project default if set, otherwise fall back to global
+            if !project_config.adapters.default.is_empty() {
+                project_config.adapters.default.clone()
+            } else {
+                adapters::default_name().unwrap_or_else(|_| "claude".to_string())
+            }
+        });
+
+        // Validate adapter is installed
+        let adapter_info = adapters::get(&adapter_name)?;
+        if !adapter_info.detected {
+            bail!(
+                "Adapter '{}' ({}) is not installed.\n\
+                 Install it and try again, or use a different adapter.",
+                adapter_name,
+                adapter_info.display
+            );
+        }
+
+        println!(
+            "🚀 Launching {} in {}",
+            adapter_info.display,
+            project_path.display()
+        );
     }
 
     // Step 6.5: Branch safety - ensure we're on patina branch
@@ -104,46 +133,43 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         }
     }
 
-    // Step 7: Check if frontend is in allowed list
+    // Step 7: Check if adapter is in allowed list
     let project_config = project::load_with_migration(&project_path)?;
-    if !project_config.frontends.allowed.contains(&frontend_name) {
+    if !project_config.adapters.allowed.contains(&adapter_name) {
         bail!(
-            "Frontend '{}' is not in allowed frontends for this project.\n\
+            "Adapter '{}' is not in allowed adapters for this project.\n\
              Allowed: {:?}\n\n\
              To add it, run: patina adapter add {}",
-            frontend_name,
-            project_config.frontends.allowed,
-            frontend_name
+            adapter_name,
+            project_config.adapters.allowed,
+            adapter_name
         );
     }
 
     // Step 8: Ensure bootstrap file exists
-    let bootstrap_file = match frontend_name.as_str() {
+    let bootstrap_file = match adapter_name.as_str() {
         "claude" => "CLAUDE.md",
         "gemini" => "GEMINI.md",
-        "codex" => "AGENTS.md",
+        "opencode" => "OPENCODE.md",
         _ => "CLAUDE.md",
     };
     let bootstrap_path = project_path.join(bootstrap_file);
     if !bootstrap_path.exists() {
         println!("  ✓ Generating {} bootstrap", bootstrap_file);
-        frontend::generate_bootstrap(&frontend_name, &project_path)?;
+        adapters::generate_bootstrap(&adapter_name, &project_path)?;
     }
 
-    // Step 9: Launch frontend
-    launch_frontend_cli(&frontend_name, &project_path)?;
+    // Step 9: Launch adapter
+    launch_adapter_cli(&adapter_name, &project_path)?;
 
     Ok(())
 }
 
 /// Resolve project path from options or current directory
-fn resolve_project_path(path_opt: &Option<String>) -> Result<PathBuf> {
+fn resolve_project_path(path_opt: Option<&str>) -> Result<PathBuf> {
     let path = match path_opt {
-        Some(p) => {
-            let expanded = shellexpand::tilde(p);
-            PathBuf::from(expanded.as_ref())
-        }
-        None => env::current_dir()?,
+        Some(p) => PathBuf::from(shellexpand::tilde(p).as_ref()),
+        None => env::current_dir().context("Failed to get current directory")?,
     };
 
     // Canonicalize to resolve symlinks
@@ -210,8 +236,18 @@ pub fn start_mothership_daemon() -> Result<()> {
     Ok(())
 }
 
-/// "Are you lost?" prompt - show git context and offer to initialize
-fn prompt_are_you_lost(project_path: &Path, frontend_name: &str) -> Result<bool> {
+/// "Are you lost?" prompt - show git context and offer to initialize.
+///
+/// Returns:
+/// - Ok(None) - user declined to init
+/// - Ok(Some(adapter_name)) - user accepted, project initialized with this adapter
+///
+/// If `explicit_adapter` is Some, uses that adapter without prompting for selection.
+/// If None, detects available adapters and prompts user to choose.
+fn prompt_are_you_lost(
+    project_path: &Path,
+    explicit_adapter: Option<&str>,
+) -> Result<Option<String>> {
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     println!(" Are you lost?");
     println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n");
@@ -250,13 +286,32 @@ fn prompt_are_you_lost(project_path: &Path, frontend_name: &str) -> Result<bool>
 
     let should_init = input.trim().to_lowercase() == "y";
 
-    if should_init {
-        // Initialize the project
-        println!();
-        return initialize_project(project_path, frontend_name);
+    if !should_init {
+        return Ok(None);
     }
 
-    Ok(false)
+    // User wants to init - determine which adapter to use
+    let adapter_name = if let Some(explicit) = explicit_adapter {
+        // Flow A: explicit adapter from --adapter flag
+        explicit.to_string()
+    } else {
+        // Flow B: detect available adapters and let user choose
+        let all_adapters = adapters::list()?;
+        let available: Vec<_> = all_adapters.into_iter().filter(|a| a.detected).collect();
+
+        // Get global default as preference
+        let preference = adapters::default_name().ok();
+
+        adapters::select_adapter(&available, preference.as_deref())?
+    };
+
+    // Initialize the project with selected adapter
+    println!();
+    if initialize_project(project_path, &adapter_name)? {
+        Ok(Some(adapter_name))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Format remote URL for display (strip git@/https://, .git suffix)
@@ -377,59 +432,81 @@ fn ensure_on_patina_branch() -> Result<BranchAction> {
 }
 
 /// Initialize project from the "Are you lost?" prompt
-fn initialize_project(project_path: &Path, frontend_name: &str) -> Result<bool> {
+fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
     // Change to project directory for init
     let original_dir = env::current_dir()?;
     env::set_current_dir(project_path)?;
 
-    // Call init with "." so it commits the patina setup
-    // (init only commits when name == ".")
-    let result = crate::commands::init::execute(
+    // Step 1: Create skeleton
+    let init_result = crate::commands::init::execute(
         ".".to_string(), // Use "." to trigger commit step in init
-        frontend_name.to_string(),
-        None,  // dev environment
-        false, // force
-        true,  // local (skip GitHub integration for quick init)
+        None,            // dev environment
+        false,           // force
+        true,            // local (skip GitHub integration for quick init)
+        false,           // no_commit (allow auto-commit)
     );
+
+    if let Err(e) = init_result {
+        env::set_current_dir(original_dir)?;
+        eprintln!("\n❌ Failed to initialize: {}", e);
+        return Ok(false);
+    }
+
+    // Step 2: Add the adapter
+    let adapter_result =
+        crate::commands::adapter::execute(Some(crate::commands::adapter::AdapterCommands::Add {
+            name: adapter_name.to_string(),
+            no_commit: false, // Allow auto-commit during launch init
+        }));
+
+    if let Err(e) = adapter_result {
+        env::set_current_dir(original_dir)?;
+        eprintln!("\n❌ Failed to add adapter: {}", e);
+        eprintln!(
+            "   Run 'patina adapter add {}' to add it manually",
+            adapter_name
+        );
+        return Ok(false);
+    }
+
+    // Step 3: Set as project default (so `patina` uses this adapter next time)
+    let mut config = project::load_with_migration(project_path)?;
+    config.adapters.default = adapter_name.to_string();
+    project::save(project_path, &config)?;
 
     // Restore original directory
     env::set_current_dir(original_dir)?;
 
-    match result {
-        Ok(()) => {
-            println!("\n✓ Initialized as patina project (contrib mode)");
-            Ok(true) // Continue to launch
-        }
-        Err(e) => {
-            eprintln!("\n❌ Failed to initialize: {}", e);
-            Ok(false) // Don't continue
-        }
-    }
+    println!(
+        "\n✓ Initialized as patina project with {} adapter",
+        adapter_name
+    );
+    Ok(true) // Continue to launch
 }
 
-/// Launch the frontend CLI
-fn launch_frontend_cli(frontend_name: &str, project_path: &Path) -> Result<()> {
-    println!("\nLaunching {}...\n", frontend_name);
+/// Launch the adapter CLI
+fn launch_adapter_cli(adapter_name: &str, project_path: &Path) -> Result<()> {
+    println!("\nLaunching {}...\n", adapter_name);
 
     // Use exec to replace current process (Unix-style)
     // On Windows, we'd spawn and wait instead
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
-        let err = Command::new(frontend_name).current_dir(project_path).exec();
+        let err = Command::new(adapter_name).current_dir(project_path).exec();
         // exec only returns on error
-        bail!("Failed to exec {}: {}", frontend_name, err);
+        bail!("Failed to exec {}: {}", adapter_name, err);
     }
 
     #[cfg(not(unix))]
     {
-        let status = Command::new(frontend_name)
+        let status = Command::new(adapter_name)
             .current_dir(project_path)
             .status()
-            .with_context(|| format!("Failed to run {}", frontend_name))?;
+            .with_context(|| format!("Failed to run {}", adapter_name))?;
 
         if !status.success() {
-            bail!("{} exited with status: {}", frontend_name, status);
+            bail!("{} exited with status: {}", adapter_name, status);
         }
         Ok(())
     }
@@ -441,14 +518,14 @@ mod tests {
 
     #[test]
     fn test_resolve_current_dir() {
-        let path = resolve_project_path(&None);
+        let path = resolve_project_path(None);
         assert!(path.is_ok());
         assert!(path.unwrap().is_absolute());
     }
 
     #[test]
     fn test_resolve_tilde_path() {
-        let path = resolve_project_path(&Some("~".to_string()));
+        let path = resolve_project_path(Some("~"));
         // This should work if home dir exists
         if let Ok(p) = path {
             assert!(p.is_absolute());

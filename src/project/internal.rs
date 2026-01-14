@@ -21,7 +21,7 @@ pub struct ProjectConfig {
     #[serde(default)]
     pub dev: DevSection,
     #[serde(default)]
-    pub frontends: FrontendsSection,
+    pub adapters: AdaptersSection,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upstream: Option<UpstreamSection>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -96,27 +96,27 @@ impl Default for DevSection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FrontendsSection {
-    /// Allowed frontends for this project
+pub struct AdaptersSection {
+    /// Allowed adapters for this project
     #[serde(default = "default_allowed")]
     pub allowed: Vec<String>,
-    /// Default frontend for this project
-    #[serde(default = "default_frontend")]
+    /// Default adapter for this project
+    #[serde(default = "default_adapter")]
     pub default: String,
 }
 
 fn default_allowed() -> Vec<String> {
     vec!["claude".to_string()]
 }
-fn default_frontend() -> String {
+fn default_adapter() -> String {
     "claude".to_string()
 }
 
-impl Default for FrontendsSection {
+impl Default for AdaptersSection {
     fn default() -> Self {
         Self {
             allowed: default_allowed(),
-            default: default_frontend(),
+            default: default_adapter(),
         }
     }
 }
@@ -294,9 +294,60 @@ pub fn legacy_config_path(project_path: &Path) -> PathBuf {
     patina_dir(project_path).join("config.json")
 }
 
+/// Get the local state directory for a project (gitignored)
+pub fn local_dir(project_path: &Path) -> PathBuf {
+    patina_dir(project_path).join("local")
+}
+
 /// Get the backups directory for a project
 pub fn backups_dir(project_path: &Path) -> PathBuf {
-    patina_dir(project_path).join("backups")
+    local_dir(project_path).join("backups")
+}
+
+// =============================================================================
+// UID (Project Identity)
+// =============================================================================
+
+/// Get the UID file path for a project
+pub fn uid_path(project_path: &Path) -> PathBuf {
+    patina_dir(project_path).join("uid")
+}
+
+/// Create a unique project identifier if it doesn't exist
+/// Returns the UID (8 hex characters, created once, never modified)
+pub fn create_uid_if_missing(project_path: &Path) -> Result<String> {
+    let uid_file = uid_path(project_path);
+
+    // If UID exists, read and return it
+    if uid_file.exists() {
+        return Ok(fs::read_to_string(&uid_file)?.trim().to_string());
+    }
+
+    // Generate new UID (8 hex chars from random u32)
+    let uid = format!("{:08x}", fastrand::u32(..));
+
+    // Ensure .patina directory exists
+    if let Some(parent) = uid_file.parent() {
+        fs::create_dir_all(parent)?;
+    }
+
+    // Write UID
+    fs::write(&uid_file, &uid)
+        .with_context(|| format!("Failed to create UID file: {}", uid_file.display()))?;
+
+    Ok(uid)
+}
+
+/// Get the UID for a project (returns None if not initialized)
+pub fn get_uid(project_path: &Path) -> Option<String> {
+    let uid_file = uid_path(project_path);
+    if uid_file.exists() {
+        fs::read_to_string(&uid_file)
+            .ok()
+            .map(|s| s.trim().to_string())
+    } else {
+        None
+    }
 }
 
 // =============================================================================
@@ -345,10 +396,10 @@ pub fn migrate_legacy_config(project_path: &Path) -> Result<bool> {
         config.dev.dev_type = dev.to_string();
     }
     if let Some(llm) = json.get("llm").and_then(|v| v.as_str()) {
-        // Map llm to frontends.default and ensure it's in allowed list
-        config.frontends.default = llm.to_string();
-        if !config.frontends.allowed.contains(&llm.to_string()) {
-            config.frontends.allowed.push(llm.to_string());
+        // Map llm to adapters.default and ensure it's in allowed list
+        config.adapters.default = llm.to_string();
+        if !config.adapters.allowed.contains(&llm.to_string()) {
+            config.adapters.allowed.push(llm.to_string());
         }
     }
 
@@ -473,8 +524,8 @@ mod tests {
         let config = ProjectConfig::default();
         assert_eq!(config.project.name, "unnamed");
         assert_eq!(config.dev.dev_type, "docker");
-        assert_eq!(config.frontends.default, "claude");
-        assert!(config.frontends.allowed.contains(&"claude".to_string()));
+        assert_eq!(config.adapters.default, "claude");
+        assert!(config.adapters.allowed.contains(&"claude".to_string()));
         assert_eq!(config.embeddings.model, "e5-base-v2");
         assert!(config.upstream.is_none()); // No upstream by default (owned repo)
         assert!(config.ci.is_none()); // No CI checks by default
@@ -513,7 +564,7 @@ mod tests {
         let toml_str = toml::to_string_pretty(&config).unwrap();
         assert!(toml_str.contains("[project]"));
         assert!(toml_str.contains("[dev]"));
-        assert!(toml_str.contains("[frontends]"));
+        assert!(toml_str.contains("[adapters]"));
         assert!(toml_str.contains("[embeddings]"));
     }
 
@@ -523,13 +574,13 @@ mod tests {
         let project_path = tmp.path();
 
         let mut config = ProjectConfig::with_name("test-project");
-        config.frontends.allowed = vec!["claude".to_string(), "gemini".to_string()];
+        config.adapters.allowed = vec!["claude".to_string(), "gemini".to_string()];
 
         save(project_path, &config).unwrap();
         let loaded = load(project_path).unwrap();
 
         assert_eq!(loaded.project.name, "test-project");
-        assert_eq!(loaded.frontends.allowed.len(), 2);
+        assert_eq!(loaded.adapters.allowed.len(), 2);
     }
 
     #[test]
@@ -551,7 +602,7 @@ mod tests {
         assert_eq!(config.embeddings.model, "all-minilm-l6-v2");
         // Other sections should have defaults
         assert_eq!(config.project.name, "unnamed");
-        assert_eq!(config.frontends.default, "claude");
+        assert_eq!(config.adapters.default, "claude");
     }
 
     #[test]
@@ -598,8 +649,8 @@ mod tests {
         let config = load(tmp.path()).unwrap();
         assert_eq!(config.project.name, "test-project");
         assert_eq!(config.dev.dev_type, "native");
-        assert_eq!(config.frontends.default, "gemini");
-        assert!(config.frontends.allowed.contains(&"gemini".to_string()));
+        assert_eq!(config.adapters.default, "gemini");
+        assert!(config.adapters.allowed.contains(&"gemini".to_string()));
         assert_eq!(config.embeddings.model, "bge-base"); // preserved from existing toml
 
         // Verify JSON was removed

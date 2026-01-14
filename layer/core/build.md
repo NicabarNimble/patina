@@ -25,9 +25,12 @@ A local-first RAG network: portable project knowledge + personal mothership.
 ```
                             GIT (source of truth)
                                     │
-                                    ▼
-                                 scrape
-                        (extract facts from reality)
+                   ┌────────────────┼────────────────┐
+                   ▼                ▼                ▼
+             scrape git      scrape code      scrape forge
+           (commits+parsed)   (symbols)      (issues, PRs)
+                   │                │                │
+                   └────────────────┴────────────────┘
                                     │
                                     ▼
                                SQLite DB
@@ -50,7 +53,9 @@ A local-first RAG network: portable project knowledge + personal mothership.
 
 | Command | Role | "Do X" |
 |---------|------|--------|
-| scrape | Extract | Capture raw → structured facts |
+| scrape git | Extract | Capture commits, co-changes, parsed conventional commits |
+| scrape code | Extract | Capture symbols, functions, types |
+| scrape forge | Extract | Capture issues, PRs from GitHub/Gitea |
 | oxidize | Prepare (semantic) | Build embeddings from facts |
 | assay | Prepare (structural) | Build signals from facts |
 | scry | Deliver | Fuse and route knowledge to LLM |
@@ -73,6 +78,7 @@ Built-in quality measurement infrastructure:
 | `patina eval` | Retrieval quality by dimension | - |
 | `patina eval --feedback` | Real-world precision from sessions | Session data |
 | `patina bench retrieval` | MRR, Recall@k benchmarking | `eval/retrieval-queryset.json` |
+| `patina report` | **NEW:** Full state report using own tools | Tool quality = report quality |
 
 **Baseline metrics:** MRR 0.624, Recall@10 67.5%, Latency ~135ms
 
@@ -84,92 +90,51 @@ Run regularly to catch regressions.
 
 ### Active
 
-Currently being worked on:
-
-- [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **COMPLETE (Phase 1-3):** 13/13 repos with semantic indexes
-- [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 0 complete:** Git narrative + measurement
-- [spec-mothership-graph.md](../surface/build/spec-mothership-graph.md) - **COMPLETE (G0-G2.5):** Graph routing, weight learning (see `spec/mothership-graph` tag)
-- [spec-observability.md](../surface/build/spec-observability.md) - **Phase 0 complete**, Phase 1 deferred
-- [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** Responsibility separation (mother/patina/awaken)
-
----
-
-## Next: Ref Repo Semantic Gap
-
-**Problem:** Ref repos have `dependency.usearch` but NO `semantic.usearch`. Root cause: `oxidize semantic` trains on session observations ("same session = similar"), but ref repos have no sessions.
-
-**Solution:** Use commit messages as training signal. Analysis complete in [analysis-commit-training-signal.md](../surface/analysis-commit-training-signal.md).
-
-**Spec:** [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md)
-
-### Phase 1: Commit-Based Training (Complete)
-
-| Task | Effort | Status |
-|------|--------|--------|
-| Implement `generate_commit_pairs()` | 372 lines | ✅ |
-| Add fallback in oxidize (commits when no sessions) | ~30 lines | ✅ |
-| Run oxidize on Tier 1-2 repos | ~30 min | ✅ |
-| Measure semantic quality before/after | ~30 min | ✅ |
-
-**Results:** Tier 1 (gemini-cli) and Tier 2 (dojo, opencode, codex) now have semantic search. Before: FTS5 text matches. After: actual telemetry functions (`updateTelemetryTokenCount`, `ActivityMonitor`).
-
-### Phase 2: First-Class Commit Signal (Complete)
-
-**Insight:** Commits are a first-class training signal, not a fallback.
-
-Commits capture **code cohesion** (what changes together) — valuable in its own right, available in ALL repos.
-
-| Task | Effort | Status |
-|------|--------|--------|
-| Refactor: commits as first-class (not fallback) | ~20 lines | ✅ |
-| Update output messages (remove "fallback" framing) | ~5 lines | ✅ |
-| Validate on ref repos (no regression) | ~10 min | ✅ |
-
-### Phase 3: Measure & Optimize (Complete)
-
-Apply Ng method to commit signal quality.
-
-| Task | Effort | Status |
-|------|--------|--------|
-| Build eval queries for ref repos | ~20 min | ✅ |
-| Measure commit signal quality | ~30 min | ✅ |
-| Fix recipe creation gap | ~20 lines | ✅ |
-| Rebuild all repos with semantic | ~15 min | ✅ |
-| Fix token length issue | ~10 lines | ✅ |
-
-**Results:** 13/13 repos now have semantic indexes (66-83% hit rate). Token truncation fix enabled SDL (12,137 vectors) and livestore (2,984 vectors).
-
-**Design principle (Ng/Sutton):** Simplest fix that closes the loop. Don't build Codex Q&A Agent infrastructure—implement commit-based training pairs and measure.
+- [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Design:** UIDs for databases, enables federation graph
+- [spec-surface-layer.md](../surface/build/spec-surface-layer.md) - **Next:** Distillation layer, federation interface, `patina surface` command
+- [spec-session-prompts.md](../surface/build/spec-session-prompts.md) - **Design:** Capture user prompts in session files (reads from ~/.claude/history.jsonl)
+- [spec-report.md](../surface/build/spec-report.md) - **NEW:** Self-analysis reports using patina's own tools
+- [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - LLM query expansion for terminology mismatch
+- [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 1 next:** Federated query (0.5 persona complete)
+- [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** mother/patina/awaken separation
 
 ---
 
-## Completed: Mothership Graph (G2.5)
+## Current Focus
 
-**Specs:**
-- [spec-mothership.md](../surface/build/spec-mothership.md) - Full architecture (phases 0-3)
-- [spec-mothership-graph.md](../surface/build/spec-mothership-graph.md) - Graph layer for cross-project awareness
+### Surface Layer (Next)
 
-| Phase | Build | Exit |
-|-------|-------|------|
-| **0-0.25c** | Git Narrative + Measurement | ✅ Complete (2026-01-05) |
-| **G0** | Cross-Project Measurement | ✅ Complete (2026-01-05) - gap proven |
-| **G1** | Graph Foundation | ✅ Complete (2026-01-06) - CLI, sync, edges |
-| **G2** | Smart Routing | ✅ Complete (2026-01-06) - proof of concept working |
-| **G2.5** | Measurement + Learning | ✅ Complete (2026-01-06) - ~1000 lines implementation |
-| **G3** | Auto-Detection | Deferred - auto-populate edges from code/sessions |
-| **0.5** | Persona surfaces | Deferred - `[PERSONA]` + `[PROJECT]` sections in scry |
+**Problem:** Accumulated project wisdom is locked in eventlog/embeddings (local, not portable). When starting a new project, past learnings aren't visible or transferable. Other projects can't query your knowledge.
 
-**G2.5 Delivered:**
-- ✅ edge_usage table + routing context logging (475 lines)
-- ✅ scry.use → edge_usage linking (feedback signal connected)
-- ✅ Weight learning algorithm (290 lines)
-- ✅ `patina mother stats` command (93 lines)
-- ✅ `patina mother learn` command (83 lines)
-- ✅ Bench repo recall metric (89 lines)
-- ✅ Graph routing: 100% repo recall vs 0% dumb routing
-- ✅ Weights learned from usage: 1.0 → 1.02-1.06
+**Solution:** `patina surface` command that distills knowledge into atomic markdown files with wikilinks. Surface is:
+- **Derived**: Extracted by querying scry/assay
+- **Committed**: Lives in git (`layer/surface/`)
+- **Portable**: Federation interface for cross-project queries
+- **Queryable**: Scry can search surface nodes
 
-**Key insight:** Graph routing works. Now fix semantic gap in ref repos so routing has good content to find.
+**Phase 1 scope:** Basic generation - query scry for decisions/patterns, assay for components, generate atomic nodes with wikilinks from co-occurrence.
+
+**Spec:** [spec-surface-layer.md](../surface/build/spec-surface-layer.md)
+
+### Project Reports (NEW)
+
+**Problem:** No way to get a comprehensive "state of the repo" that uses patina's own tools. Want to dogfood scry, assay, scrape data to generate reports - tool quality = report quality.
+
+**Solution:** `patina report` command that internally runs scry queries, assay commands, reads knowledge.db, and assembles a timestamped markdown report.
+
+**Dual purpose:**
+1. Useful output (what's the state of this codebase?)
+2. Tool validation (if scry can't answer "main modules", fix scry)
+
+**Spec:** [spec-report.md](../surface/build/spec-report.md)
+
+### Vocabulary Gap
+
+**Problem:** FTS5 keyword matching fails when user vocabulary differs from codebase vocabulary ("commit message search" vs "commits_fts"). Measured in temporal queryset: MRR 0.100 (target: 0.4).
+
+**Solution:** LLM query expansion or semantic search on commits.
+
+**Spec:** [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md)
 
 ### Reference
 
@@ -197,6 +162,12 @@ Key items:
 
 Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 
+- `spec/init-hardening` - Init/Adapter refactor: skeleton-only init, adapter refresh/doctor (Phases 1-2)
+- `spec/adapter-selection` - Two-flow adapter selection (explicit --adapter vs implicit prompt), select_adapter() function
+- `spec/remove-codex` - Codex removed from adapter system (it's an agent, not adapter)
+- `spec/patina-local` - .patina/local/ directory structure for derived state
+- `spec/forge-sync-v2` - Background sync via fork, PID guards, 750ms pacing, --sync/--log/--limit flags
+- `spec/forge-abstraction` - ForgeReader + ForgeWriter traits, conventional commits, GitHub impl
 - `spec/llm-frontends` - Unified 5-command experience across Claude, Gemini, OpenCode
 - `spec/remove-legacy-repos-and-audit` - Removed layer/dust/repos and audit.rs (~1,100 lines)
 - `spec/quality-gates` - MRR regression fix (0.427→0.588), legacy cleanup, CI gate
@@ -213,112 +184,16 @@ Full list: `git tag -l 'spec/*'`
 
 ---
 
-## Completed
-
-Shipped phases (details preserved in git tags and specs):
-
-### Legacy Cleanup (doctor/audit/repos)
-
-Removed deprecated systems: layer/dust/repos (replaced by `patina repo`) and audit.rs (low-value hidden tool). Doctor slimmed from 602→278 lines, now pure health checks. Total: ~1,100 lines removed. Tracked in spec-architectural-alignment.md.
-
-**Tag:** `spec/remove-legacy-repos-and-audit`
-
-### Assay Refactoring
-
-Refactored assay command from monolithic 997-line file to black-box pattern with internal/ modules. Result: mod.rs 134 lines (-86%), 6 focused internal modules (util, imports, inventory, functions, derive). Follows dependable-rust pattern established in scry refactoring. Tracked in spec-architectural-alignment.md.
-
-### Quality Gates
-
-Measurement-first cleanup before extending. Fixed MRR regression (0.427 → 0.588, +37.7%) caused by stale database entries from deleted commands. Archived 4 legacy commands (922 lines): `query`, `ask`, `embeddings`, `belief`. Added CI quality gate for retrieval benchmarks (informational mode, MRR >= 0.55 threshold).
-
-**Tag:** `spec/quality-gates`
-
-### Secrets v2 (Local Vault)
-
-Replaced 1Password backend with local age-encrypted vault. Full implementation:
-- **Identity:** macOS Keychain with Touch ID, `PATINA_IDENTITY` env for CI/headless
-- **Vaults:** Global (`~/.patina/`) + Project (`.patina/`) with merge at runtime
-- **Multi-recipient:** Team members and CI can decrypt project vaults
-- **Session cache:** Via `patina serve` daemon, prevents repeated Touch ID prompts
-- **SSH injection:** `patina secrets run --ssh host -- cmd` for remote execution
-- **CLI:** `add`, `run`, `add-recipient`, `remove-recipient`, `list-recipients`, `--lock`, `--export-key`, `--import-key`, `--reset`
-
-Fixes container/CI gaps from v1. No external account required.
-
-**Tag:** `spec/secrets-v2`
-
-### Observable Scry (Phase 1 → 3)
-
-Made scry explainable, steerable, and instrumented. `--explain` flag shows per-oracle contributions. Explicit modes for intent (`orient`, `recent`, `why`). Feedback logging with query IDs, `scry open/copy/feedback` commands, MCP `use` mode callback. Gaps documented in spec-work-deferred.md.
-
-**Tag:** `spec/observable-scry`
-
-### Structural Signals (Phase 1 → 1.5 → 2)
-
-Added structural signal computation to assay (`assay derive`): is_used, importer_count, activity_level, centrality, commit_count, contributor_count, is_entry_point, is_test_file, directory_depth, file_size_rank. Achieved MRR 0.554 (+2.2% from baseline).
-
-Phase 2 experiment: tried boosting RRF scores with structural priors. Result: no improvement for relevance queries. Boost layer removed. Key lesson: structural signals are priors (importance), not relevance signals. Useful for orientation queries, not "where is X" queries.
-
-**Tag:** `spec/robust-signals`
-
-### Assay Command (Phase 0)
-Structural query interface for codebase facts. Inventory, imports/importers, callers/callees queries. MCP tool integration. Reduces 40+ shell calls to 1-3 patina commands.
-
-**Tag:** `spec/assay`
-
-### MCP & Retrieval Polish
-MCP tools renamed (`scry`/`context`), directive descriptions for LLM tool selection, TemporalOracle integration, CLI `--hybrid` mode, auto-oxidize on init.
-
-**Tag:** `spec/mcp-retrieval-polish`
-
-### Model Management
-Base models moved to `~/.patina/cache/models/`, provenance tracking via `models.lock`, `patina model` command (list/add/remove/status), init validates model availability, oxidize derives dimensions from registry.
-
-**Tag:** `spec/model-management`
-
-### Feedback Loop
-Scry query logging to eventlog, session-commit linkage via git tags (75% attribution), feedback SQL views (session_queries, commit_files, query_hits), `patina eval --feedback` for real-world precision metrics.
-
-**Tag:** `spec/feedback-loop`
-
-### Phase 1: Folder Restructure
-Centralized paths module (`src/paths.rs`), migration logic (`src/migration.rs`), user-level path consolidation. Clean separation of source vs derived data at `~/.patina/`.
-
-**Tag:** `spec/folder-structure`
-
-### Launcher & Adapters
-Template centralization, first-run setup, launcher command (`patina` / `patina -f claude`), config consolidation (`.patina/config.toml`), branch safety (auto-stash, auto-switch), adapter commands.
-
-**Tags:** `spec/launcher-architecture`, `spec/template-centralization`
-
-### Agentic RAG
-Oracle abstraction (semantic, lexical, persona), hybrid retrieval + RRF fusion (k=60), MCP server (`patina serve --mcp`), `scry` and `context` tools.
-
-**Metrics:** MRR 0.624, Recall@10 67.5%, Latency ~135ms
-
-**Includes:** Lab infrastructure (benchmarks, config), retrieval quality fixes (FTS5, layer docs), multi-project federation.
-
-**Tags:** `spec/agentic-rag`
-
-### Release Automation
-release-plz workflow for automated GitHub releases. v0.1.0 baseline created. Conventional commits (`feat:`, `fix:`) trigger Release PRs automatically.
-
-**Tags:** `spec/release-automation`
-
-### Mothership Graph (G0-G2.5)
-Cross-project awareness via relationship graph. Phases G0-G2.5 delivered ~1000 lines: graph foundation (graph.db, nodes, edges, CLI), smart routing (100% repo recall vs 0% dumb), learning loop (edge_usage, weight learning). Key commands: `patina mother graph/link/sync/stats/learn`. G3 (auto-detection) deferred.
-
-**Tag:** `spec/mothership-graph`
-
----
-
 ## Archive
 
-Completed specs preserved via git tags:
+Completed specs preserved via git tags. View with: `git show spec/<name>:layer/surface/build/spec-<name>.md`
 
-```bash
-git tag -l 'spec/*'              # List archived specs
-git show spec/scry:layer/surface/build/spec-scry.md  # View archived spec
-```
+**Recent completions:**
+- `spec/init-hardening` - Skeleton-only init, adapter refresh/doctor, UID creation
+- `spec/adapter-selection` - Two-flow adapter selection, select_adapter(), project defaults
+- `spec/remove-codex` - Codex removed (agent vs adapter distinction)
+- `spec/patina-local` - .patina/local/ for derived state, clean gitignore
+- `spec/forge-sync-v2` - Background sync via fork, PID guards, 750ms pacing
+- `spec/forge-abstraction` - ForgeReader + ForgeWriter traits, GitHub impl
 
-**Tags:** `spec/llm-frontends`, `spec/quality-gates`, `spec/secrets-v2`, `spec/observable-scry`, `spec/assay`, `spec/release-automation`, `spec/folder-structure`, `spec/agentic-rag`, `spec/eventlog-architecture`, `spec/scrape-pipeline`, `spec/oxidize`, `spec/scry`, `spec/lexical-search`, `spec/repo-command`, `spec/serve-command`, `spec/rebuild-command`, `spec/persona-capture`, `spec/main-refactor`, `spec/launcher-architecture`, `spec/template-centralization`, `spec/mcp-retrieval-polish`, `spec/model-management`, `spec/feedback-loop`, `spec/remove-legacy-repos-and-audit`, `spec/robust-signals`, `spec/mothership-graph`
+**All tags:** `git tag -l 'spec/*'` (30+ archived specs)

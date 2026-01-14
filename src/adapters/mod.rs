@@ -9,7 +9,7 @@ use anyhow::Result;
 use std::path::Path;
 
 // Re-export launcher types for convenience
-pub use launch::{Frontend, FrontendInfo, McpConfig};
+pub use launch::{Adapter, AdapterInfo, McpConfig};
 
 /// Trait for LLM-specific implementations
 pub trait LLMAdapter {

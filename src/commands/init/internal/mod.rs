@@ -1,19 +1,17 @@
 //! Internal implementation for init command
 
-pub mod backup;
 pub mod config;
 pub mod patterns;
 pub mod validation;
 
 use anyhow::{Context, Result};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use patina::environment::Environment;
 use patina::layer::Layer;
 
-use self::backup::{backup_gitignored_dirs, restore_session_files};
+// Note: backup functions moved to 'adapter refresh' command
 use self::config::{create_project_config, handle_version_manifest};
 use self::patterns::copy_core_patterns_safe;
 use self::validation::{determine_dev_environment, validate_environment};
@@ -23,12 +21,16 @@ use super::design_wizard::confirm;
 /// Main execution logic for init command
 pub fn execute_init(
     name: String,
-    llm: String,
     dev: Option<String>,
     force: bool,
     local: bool,
+    no_commit: bool,
 ) -> Result<()> {
     let json_output = false; // For init command, always false
+
+    // === STEP 0: CHECK FOR HIERARCHY CONFLICTS (BEFORE ANYTHING ELSE) ===
+    // Jon Gjengset principle: fail fast with clear errors
+    check_hierarchy_conflicts(force)?;
 
     // === STEP 1: GIT SETUP (FIRST - BEFORE ANY DESTRUCTIVE CHANGES) ===
     println!("🎨 Initializing Patina...\n");
@@ -64,15 +66,18 @@ pub fn execute_init(
 
     // Backup existing devcontainer if it exists
     if Path::new(".devcontainer").exists() {
+        // Remove old backup if it exists
+        let backup_path = Path::new(".devcontainer.backup");
+        if backup_path.exists() {
+            fs::remove_dir_all(backup_path).context("Failed to remove old .devcontainer.backup")?;
+        }
         fs::rename(".devcontainer", ".devcontainer.backup")
             .context("Failed to backup existing .devcontainer")?;
         println!("✓ Backed up .devcontainer/ → .devcontainer.backup/");
     }
 
-    // Backup gitignored directories if re-initializing
-    if name == "." && Path::new(".claude").exists() {
-        backup_gitignored_dirs()?;
-    }
+    // Note: We don't backup .claude/ here - that's handled by 'adapter refresh'
+    // Init only creates skeleton (.patina/, layer/), not adapter directories
 
     // Check for nested project
     if name != "." && Path::new(".patina").exists() {
@@ -138,38 +143,21 @@ pub fn execute_init(
         .context("Failed to initialize layer structure")?;
     println!("  ✓ Created layer structure");
 
-    // Create project configuration
-    let dev_env = patina::dev_env::get_dev_env(&dev);
-    create_project_config(
-        &project_path,
-        &name,
-        &llm,
-        &dev,
-        &environment,
-        dev_env.as_ref(),
-    )?;
-
-    // Handle version manifest and updates
-    let updates = handle_version_manifest(&project_path, &llm, &dev, is_reinit, json_output)?;
-
-    // Process updates if needed
-    let should_update = if let Some(ref _updates_list) = updates {
-        should_update_components(json_output)?
-    } else {
-        false
-    };
-
-    if should_update {
-        println!("  ✓ Components will be updated");
+    // Create UID (stable project identity)
+    let uid = patina::project::create_uid_if_missing(&project_path)?;
+    if !is_reinit {
+        println!("  ✓ Created project UID: {}", uid);
     }
 
-    // Initialize LLM adapter
-    let adapter = patina::adapters::get_adapter(&llm);
-    adapter.init_project(&project_path, &project_name, &environment)?;
-    println!("  ✓ Created {llm} integration files");
+    // Create project configuration (without LLM - use 'adapter add' for that)
+    let dev_env = patina::dev_env::get_dev_env(&dev);
+    create_project_config(&project_path, &name, &dev, &environment, dev_env.as_ref())?;
 
-    // Restore preserved session files if any
-    restore_session_files()?;
+    // Handle version manifest
+    handle_version_manifest(&project_path, &dev, is_reinit, json_output)?;
+
+    // Note: LLM adapter initialization moved to 'patina adapter add'
+    // Init only creates skeleton - run 'patina adapter add <claude|gemini|opencode>' for LLM support
 
     // Initialize dev environment - use real project name from Cargo.toml if re-initializing
     let dev_project_name = if name == "." {
@@ -186,19 +174,13 @@ pub fn execute_init(
         println!("  ✓ Copied core patterns from Patina");
     }
 
-    // Create initial session record
-    create_init_session(&layer_path, &project_name, &llm, &dev)?;
+    // Create initial session record (without LLM - added via 'adapter add')
+    create_init_session(&layer_path, &project_name, &dev)?;
 
     // Initialize navigation index
     initialize_navigation(&project_path)?;
 
-    // Run post-init for adapter
-    adapter.post_init(&project_path, &dev)?;
-
-    // Update components if needed
-    if should_update {
-        update_components(&project_path, &llm)?;
-    }
+    // Note: Component updates for adapters are handled by 'adapter refresh'
 
     // Validate environment
     if let Some(warnings) = validate_environment(&environment)? {
@@ -208,51 +190,41 @@ pub fn execute_init(
         }
     }
 
-    // === STEP 3: COMMIT PATINA SETUP ===
-    if name == "." {
+    // === STEP 3: COMMIT PATINA SETUP (unless --no-commit) ===
+    if !no_commit && name == "." {
         // Only commit if we're initializing in current directory
         println!("\n📦 Committing Patina setup...");
-        patina::git::add_all()?;
+        // Add specific committed files (not .patina/local/ which is gitignored)
+        patina::git::add_paths(&[
+            ".gitignore",
+            ".patina/config.toml",
+            ".patina/uid",
+            ".patina/oxidize.yaml",
+            ".patina/versions.json",
+            ".devcontainer",
+            "layer",
+            "Dockerfile",
+            "docker-compose.yml",
+        ])?;
 
         let commit_msg = if is_reinit {
             "chore: update Patina configuration"
         } else {
-            "chore: initialize Patina"
+            "chore: initialize Patina project"
         };
 
         patina::git::commit(commit_msg)?;
         println!("✓ Committed Patina initialization");
     }
 
-    // === STEP 4: INDEX CODEBASE FOR MCP ===
-    println!("\n🔍 Indexing codebase for AI context...");
-    match crate::commands::scrape::execute_all() {
-        Ok(()) => println!("✓ Codebase indexed - MCP tools ready"),
-        Err(e) => {
-            // Don't fail init if scrape fails, just warn
-            println!("⚠️  Indexing incomplete: {}", e);
-            println!("   Run 'patina scrape' later to enable MCP tools");
-        }
-    }
-
-    // === STEP 5: BUILD EMBEDDINGS FOR SEMANTIC SEARCH ===
-    // First check if the required model is available
-    ensure_model_available()?;
-
-    println!("\n🧪 Building embeddings for semantic search...");
-    match crate::commands::oxidize::oxidize() {
-        Ok(()) => println!("✓ Embeddings built - semantic search ready"),
-        Err(e) => {
-            // Don't fail init if oxidize fails, just warn
-            println!("⚠️  Embeddings incomplete: {}", e);
-            println!("   Run 'patina oxidize' later for semantic search");
-        }
-    }
+    // Note: scrape and oxidize are now separate commands
+    // Run 'patina scrape' and 'patina oxidize' after adding an adapter
 
     // Suggest tool installation if needed
     suggest_missing_tools(&environment)?;
 
     println!("\n✨ Project '{name}' initialized successfully!");
+    println!("  Add an adapter: patina adapter add <claude|gemini|opencode>");
 
     Ok(())
 }
@@ -296,13 +268,12 @@ fn setup_project_path(name: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-fn create_init_session(layer_path: &Path, name: &str, llm: &str, dev: &str) -> Result<()> {
+fn create_init_session(layer_path: &Path, name: &str, dev: &str) -> Result<()> {
     let session_filename = format!("{}-init.md", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
     let session_content = format!(
-        "# {} Initialization\n\nInitialized on: {}\nLLM: {}\nDev Environment: {}\n",
+        "# {} Initialization\n\nInitialized on: {}\nDev Environment: {}\n\nNote: Run 'patina adapter add <name>' to add LLM support.\n",
         name,
         chrono::Utc::now().to_rfc3339(),
-        llm,
         dev
     );
 
@@ -327,39 +298,7 @@ fn initialize_navigation(project_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn should_update_components(json_output: bool) -> Result<bool> {
-    if json_output {
-        return Ok(true);
-    }
-
-    print!("Update components to latest versions? [Y/n]: ");
-    std::io::stdout().flush()?;
-
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-    let input = input.trim().to_lowercase();
-
-    Ok(input.is_empty() || input == "y" || input == "yes")
-}
-
-fn update_components(project_path: &Path, llm: &str) -> Result<()> {
-    println!("\n🔄 Updating components...");
-
-    // Update LLM adapter
-    print!("  Updating {} adapter... ", llm.to_title_case());
-    std::io::stdout().flush()?;
-
-    let adapter = patina::adapters::get_adapter(llm);
-    if let Some((_current_ver, _new_ver)) = adapter.check_for_updates(project_path)? {
-        adapter.update_adapter_files(project_path)?;
-        println!("✓");
-    } else {
-        println!("already up to date");
-    }
-
-    println!("\n✅ All components updated successfully!");
-    Ok(())
-}
+// Note: Component update functions moved to 'adapter refresh' command
 
 fn suggest_missing_tools(environment: &Environment) -> Result<()> {
     use crate::commands::init::tool_installer;
@@ -410,21 +349,6 @@ fn detect_project_name_from_cargo_toml(project_path: &Path) -> Result<String> {
         .and_then(|n| n.as_str())
         .map(|s| s.to_string())
         .ok_or_else(|| anyhow::anyhow!("No package.name found in Cargo.toml"))
-}
-
-// Helper trait for string formatting
-trait TitleCase {
-    fn to_title_case(&self) -> String;
-}
-
-impl TitleCase for str {
-    fn to_title_case(&self) -> String {
-        let mut chars = self.chars();
-        match chars.next() {
-            None => String::new(),
-            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-        }
-    }
 }
 
 /// Check if gh CLI is available
@@ -533,8 +457,8 @@ build/
 *~
 .DS_Store
 
-# Patina-specific
-.patina/
+# Patina local state (derived, not committed)
+.patina/local/
 ENVIRONMENT.toml
 
 # Temporary files
@@ -561,53 +485,140 @@ logs/
     Ok(())
 }
 
-/// Ensure the embedding model is available (in cache or local)
-fn ensure_model_available() -> Result<()> {
-    use patina::embeddings::models::{Config, ModelRegistry};
-    use patina::models;
+// Note: ensure_model_available() moved to oxidize command
+// Models are downloaded during 'patina oxidize', not during init
 
-    // Load project config to get model name
-    let config = match Config::load() {
-        Ok(c) => c,
-        Err(_) => return Ok(()), // No config yet, skip check
-    };
+/// Maximum depth to search for child patina projects
+/// 6 levels covers most real project structures (monorepos go 5-6 deep)
+/// TODO: Make configurable via .patina/config.toml
+const CHILD_PROJECT_SEARCH_DEPTH: usize = 6;
 
-    let model_name = &config.embeddings.model;
+/// Check for hierarchy conflicts before init
+/// Prevents creating nested patina projects that cause duplicate slash commands
+fn check_hierarchy_conflicts(force: bool) -> Result<()> {
+    let current_dir = std::env::current_dir()?;
 
-    // Validate model exists in registry
-    let registry = ModelRegistry::load()?;
-    if registry.get_model(model_name).is_err() {
-        println!("\n⚠️  Model '{}' not in registry.", model_name);
-        println!("   Available models:");
-        for name in registry.list_models() {
-            println!("     - {}", name);
+    // Check 1: Parent directories with .claude/ (would cause duplicate commands)
+    let mut parent = current_dir.parent();
+    let mut conflicting_parents = Vec::new();
+
+    while let Some(p) = parent {
+        let claude_dir = p.join(".claude");
+        let commands_dir = claude_dir.join("commands");
+
+        if commands_dir.exists() {
+            conflicting_parents.push(p.to_path_buf());
         }
-        println!("   Update .patina/config.toml to use a valid model.");
-        return Ok(());
+
+        parent = p.parent();
     }
 
-    let status = models::model_status(model_name)?;
+    if !conflicting_parents.is_empty() {
+        eprintln!("Error: Found .claude/commands/ in parent directory:");
+        for p in &conflicting_parents {
+            eprintln!("  → {}", p.display());
+        }
+        eprintln!();
+        eprintln!("Claude Code walks up the directory tree and loads commands from each");
+        eprintln!(".claude/commands/ it finds. This would cause duplicate slash commands.");
+        eprintln!();
+        eprintln!("To fix:");
+        eprintln!(
+            "  1. Remove the parent .claude/: rm -rf {}/.claude",
+            conflicting_parents[0].display()
+        );
+        eprintln!("  2. Or use --force to ignore this check (not recommended)");
 
-    if status.in_cache || status.in_local {
-        return Ok(()); // Model available
+        if !force {
+            anyhow::bail!("Hierarchy conflict: parent directory has .claude/commands/");
+        }
+        eprintln!();
+        eprintln!("⚠️  Proceeding anyway due to --force flag...");
     }
 
-    // Model not available - prompt to download
-    println!("\n📦 Model '{}' not found in cache.", model_name);
-    print!("   Download now? [Y/n]: ");
-    std::io::stdout().flush()?;
+    // Check 2: Child directories with .patina/ (would be nested projects)
+    let child_projects = find_child_patina_projects(&current_dir)?;
 
-    let mut input = String::new();
-    std::io::stdin().read_line(&mut input)?;
-    let input = input.trim().to_lowercase();
+    if !child_projects.is_empty() {
+        eprintln!(
+            "Error: Found Patina project(s) in subdirectories (checked {} levels):",
+            CHILD_PROJECT_SEARCH_DEPTH
+        );
+        for p in &child_projects {
+            eprintln!("  → {}", p.display());
+        }
+        eprintln!();
+        eprintln!("Initializing here would create a parent project over existing ones,");
+        eprintln!("causing duplicate commands and configuration conflicts.");
+        eprintln!();
+        eprintln!("To fix:");
+        eprintln!("  1. Initialize in a different directory");
+        eprintln!("  2. Or use --force to ignore this check (not recommended)");
 
-    if input.is_empty() || input == "y" || input == "yes" {
-        models::add_model(model_name)?;
-    } else {
-        println!("   Skipped. Run 'patina model add {}' later.", model_name);
+        if !force {
+            anyhow::bail!("Hierarchy conflict: child directories contain Patina projects");
+        }
+        eprintln!();
+        eprintln!("⚠️  Proceeding anyway due to --force flag...");
     }
 
     Ok(())
+}
+
+/// Find child directories that already have .patina/ or .claude/commands/
+/// Uses ignore crate for fast walking (respects .gitignore, skips node_modules etc.)
+/// Returns on first match - we only need to find one to block init
+fn find_child_patina_projects(dir: &Path) -> Result<Vec<PathBuf>> {
+    use ignore::WalkBuilder;
+
+    let walker = WalkBuilder::new(dir)
+        .max_depth(Some(CHILD_PROJECT_SEARCH_DEPTH))
+        .hidden(false) // Need to see .patina and .claude
+        .git_ignore(true) // Skip node_modules, target, etc.
+        .build();
+
+    for entry in walker {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue, // Skip permission errors etc.
+        };
+
+        let path = entry.path();
+
+        // Skip the root directory itself
+        if path == dir {
+            continue;
+        }
+
+        // Check for patina markers
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+        if file_name == ".patina"
+            || (file_name == "commands"
+                && path
+                    .parent()
+                    .map(|p| p.ends_with(".claude"))
+                    .unwrap_or(false))
+        {
+            // Found a marker - return the project directory (parent of .patina or .claude)
+            if let Some(project_dir) = path.parent() {
+                let project_dir = if file_name == "commands" {
+                    // .claude/commands -> go up two levels
+                    project_dir.parent().unwrap_or(project_dir)
+                } else {
+                    project_dir
+                };
+                // Skip if this is the root directory itself (re-init case)
+                // Finding .patina in the current dir is expected for re-init
+                if project_dir == dir {
+                    continue;
+                }
+                return Ok(vec![project_dir.to_path_buf()]);
+            }
+        }
+    }
+
+    Ok(vec![])
 }
 
 /// Ensure critical entries exist in an existing .gitignore
@@ -619,7 +630,10 @@ fn ensure_gitignore_entries(gitignore_path: &Path) -> Result<()> {
         ("/target/", "Rust build artifacts"),
         ("node_modules/", "Node.js dependencies"),
         (".env", "Environment secrets"),
-        (".patina/", "Patina cache"),
+        (
+            ".patina/local/",
+            "Patina local state (derived, not committed)",
+        ),
         ("*.db", "Database files"),
         ("*.key", "Private keys"),
         ("*.pem", "Certificates"),
@@ -654,7 +668,6 @@ fn ensure_gitignore_entries(gitignore_path: &Path) -> Result<()> {
 
     if !added.is_empty() {
         fs::write(gitignore_path, updated_content).context("Failed to update .gitignore")?;
-
         println!("✓ Added to .gitignore: {}", added.join(", "));
     }
 

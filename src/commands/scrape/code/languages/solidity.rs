@@ -70,7 +70,7 @@ fn extract_solidity_symbols(
     current_contract: Option<String>,
 ) {
     // First extract any calls
-    extract_solidity_calls(node, source, file_path, &current_function, data);
+    extract_solidity_calls(node, source, file_path, current_function.as_deref(), data);
 
     // Determine symbol kind
     let _symbol_kind = match node.kind() {
@@ -420,7 +420,7 @@ fn extract_solidity_calls(
     node: &Node,
     source: &[u8],
     file_path: &str,
-    current_function: &Option<String>,
+    current_function: Option<&str>,
     data: &mut ExtractedData,
 ) {
     let line_number = (node.start_position().row + 1) as i32;
@@ -431,7 +431,7 @@ fn extract_solidity_calls(
                 if let Some(func_node) = node.child_by_field_name("function") {
                     if let Ok(callee) = func_node.utf8_text(source) {
                         data.add_call_edge(CallGraphEntry::new(
-                            caller.clone(),
+                            caller.to_string(),
                             callee.to_string(),
                             file_path.to_string(),
                             CallType::Direct,
@@ -449,7 +449,7 @@ fn extract_solidity_calls(
                         if let Some(property) = node.child_by_field_name("property") {
                             if let Ok(callee) = property.utf8_text(source) {
                                 data.add_call_edge(CallGraphEntry::new(
-                                    caller.clone(),
+                                    caller.to_string(),
                                     callee.to_string(),
                                     file_path.to_string(),
                                     CallType::Method,
@@ -469,7 +469,7 @@ fn extract_solidity_calls(
                         text.strip_prefix("new ").and_then(|s| s.split('(').next())
                     {
                         data.add_call_edge(CallGraphEntry::new(
-                            caller.clone(),
+                            caller.to_string(),
                             format!("new {}", contract_name.trim()),
                             file_path.to_string(),
                             CallType::Constructor,

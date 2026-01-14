@@ -12,6 +12,7 @@ pub mod oxidize;
 pub mod persona;
 pub mod rebuild;
 pub mod repo;
+pub mod report;
 pub mod scrape;
 pub mod scry;
 pub mod secrets;

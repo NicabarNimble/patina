@@ -79,6 +79,9 @@ jobs:
     - name: Build release
       run: cargo build --release
 
+    - name: Test cargo install (catches dependency resolution breaks)
+      run: cargo install --path . --locked --root ./test-install
+
     - name: Build knowledge database
       run: |
         ./target/release/patina scrape code

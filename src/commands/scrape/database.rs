@@ -9,7 +9,7 @@ use rusqlite::Connection;
 use std::path::Path;
 
 /// Path to unified database
-pub const PATINA_DB: &str = ".patina/data/patina.db";
+pub const PATINA_DB: &str = ".patina/local/data/patina.db";
 
 /// Initialize the unified patina.db with eventlog table and indexes
 pub fn initialize(db_path: &Path) -> Result<Connection> {

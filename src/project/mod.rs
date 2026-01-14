@@ -1,7 +1,7 @@
 //! Project module - Unified project configuration
 //!
 //! Manages `.patina/config.toml` for project-specific settings including
-//! project metadata, dev environment, allowed frontends, and embeddings.
+//! project metadata, dev environment, allowed adapters, and embeddings.
 //!
 //! Supports automatic migration from legacy `config.json` format.
 //!
@@ -18,10 +18,10 @@
 //!     // Load config (with automatic migration if needed)
 //!     let mut config = project::load_with_migration(path)?;
 //!     println!("Project: {}", config.project.name);
-//!     println!("Allowed frontends: {:?}", config.frontends.allowed);
+//!     println!("Allowed adapters: {:?}", config.adapters.allowed);
 //!
 //!     // Modify and save
-//!     config.frontends.allowed.push("gemini".to_string());
+//!     config.adapters.allowed.push("gemini".to_string());
 //!     project::save(path, &config)?;
 //! }
 //! # Ok::<(), anyhow::Error>(())
@@ -34,7 +34,7 @@ use std::path::{Path, PathBuf};
 
 // Re-export config types
 pub use internal::{
-    CiSection, DevSection, EmbeddingsSection, EnvironmentSection, FrontendsSection, ProjectConfig,
+    AdaptersSection, CiSection, DevSection, EmbeddingsSection, EnvironmentSection, ProjectConfig,
     ProjectSection, RetrievalSection, SearchSection, UpstreamSection,
 };
 
@@ -82,6 +82,11 @@ pub fn patina_dir(project_path: &Path) -> PathBuf {
     internal::patina_dir(project_path)
 }
 
+/// Get the local state directory path for a project (gitignored)
+pub fn local_dir(project_path: &Path) -> PathBuf {
+    internal::local_dir(project_path)
+}
+
 /// Get the backups directory path for a project
 pub fn backups_dir(project_path: &Path) -> PathBuf {
     internal::backups_dir(project_path)
@@ -90,9 +95,27 @@ pub fn backups_dir(project_path: &Path) -> PathBuf {
 /// Backup a file before modifying it
 ///
 /// Returns the backup path if successful, None if file didn't exist.
-/// Backups are stored in `.patina/backups/` with timestamp suffix.
+/// Backups are stored in `.patina/local/backups/` with timestamp suffix.
 pub fn backup_file(project_path: &Path, file_path: &Path) -> Result<Option<PathBuf>> {
     internal::backup_file(project_path, file_path)
+}
+
+/// Create a unique project identifier if it doesn't exist
+///
+/// Returns the UID (8 hex characters, created once, never modified).
+/// Used for stable project identity across different machines.
+pub fn create_uid_if_missing(project_path: &Path) -> Result<String> {
+    internal::create_uid_if_missing(project_path)
+}
+
+/// Get the UID for a project (returns None if not initialized)
+pub fn get_uid(project_path: &Path) -> Option<String> {
+    internal::get_uid(project_path)
+}
+
+/// Get the UID file path for a project
+pub fn uid_path(project_path: &Path) -> PathBuf {
+    internal::uid_path(project_path)
 }
 
 #[cfg(test)]
