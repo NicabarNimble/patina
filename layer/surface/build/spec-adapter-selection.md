@@ -1,6 +1,6 @@
 ---
 id: spec-adapter-selection
-status: ready
+status: implemented
 created: 2026-01-13
 updated: 2026-01-13
 tags: [spec, adapter, init, launch, ux]
@@ -411,17 +411,17 @@ impl Adapter {
 
 ## Implementation Checklist
 
-- [ ] Add `select_adapter()` function to `adapters/launch.rs`
-- [ ] Update `prompt_are_you_lost()` signature to return `Option<String>`
-- [ ] Update `prompt_are_you_lost()` to accept `explicit_adapter: Option<&str>`
-- [ ] Split launch flow into explicit vs implicit adapter paths
-- [ ] Update `adapter_name` after selection in launch flow
-- [ ] Test: 0 adapters case (error with install instructions)
-- [ ] Test: 1 adapter case (no prompt, auto-select)
-- [ ] Test: 2+ adapters case (numbered prompt)
-- [ ] Test: `--adapter=X` skips selection prompt
-- [ ] Test: `--adapter=X` where X not installed (fail fast before prompt)
-- [ ] Test: Global default becomes pre-selected option
+- [x] Add `select_adapter()` function to `adapters/launch.rs`
+- [x] Update `prompt_are_you_lost()` signature to return `Option<String>`
+- [x] Update `prompt_are_you_lost()` to accept `explicit_adapter: Option<&str>`
+- [x] Split launch flow into explicit vs implicit adapter paths
+- [x] Update `adapter_name` after selection in launch flow
+- [x] Test: 0 adapters case (error with install instructions)
+- [x] Test: 1 adapter case (no prompt, auto-select)
+- [ ] Test: 2+ adapters case (numbered prompt) - requires interactive stdin
+- [x] Test: `--adapter=X` skips selection prompt
+- [x] Test: `--adapter=X` where X not installed (fail fast before prompt)
+- [x] Test: Global default becomes pre-selected option
 
 ---
 
