@@ -80,7 +80,7 @@ tree-sitter = "0.24"
 scryer-prolog = "0.10.0"
 
 # Embeddings and vector search
-ort = { version = "2.0.0-rc.10", features = ["download-binaries"] }  # ONNX Runtime for embeddings
+ort = { version = "=2.0.0-rc.10", features = ["download-binaries"] }  # ONNX Runtime - pinned, rc.11 breaks API
 tokenizers = "0.15"                                                  # HuggingFace tokenizers (Rust)
 ndarray = "0.16"                                                     # Array operations for embeddings
 usearch = "2.21"                                                     # Fast vector similarity search (HNSW index)
@@ -95,6 +95,10 @@ atty = "0.2"  # TTY detection for interactive prompts
 # macOS-only: Keychain integration for Touch ID protected secrets
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = "3.5"
+
+# Unix-only: fork/setsid for background sync
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 # Testing utilities

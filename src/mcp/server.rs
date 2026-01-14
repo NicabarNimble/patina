@@ -481,7 +481,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
 fn execute_assay(options: &AssayOptions) -> Result<String> {
     use rusqlite::Connection;
 
-    const DB_PATH: &str = ".patina/data/patina.db";
+    const DB_PATH: &str = ".patina/local/data/patina.db";
 
     // Handle all_repos mode
     if options.all_repos {
@@ -796,7 +796,7 @@ fn execute_assay_all_repos(options: &AssayOptions) -> Result<String> {
     use rusqlite::Connection;
     use std::path::Path;
 
-    const DB_PATH: &str = ".patina/data/patina.db";
+    const DB_PATH: &str = ".patina/local/data/patina.db";
 
     let repos = crate::commands::repo::list()?;
     let current_has_db = Path::new(DB_PATH).exists();
@@ -854,7 +854,7 @@ fn execute_assay_all_repos(options: &AssayOptions) -> Result<String> {
 
     // Query each registered repo
     for repo in &repos {
-        let db_path = Path::new(&repo.path).join(".patina/data/patina.db");
+        let db_path = Path::new(&repo.path).join(".patina/local/data/patina.db");
         if let Ok(conn) = Connection::open(&db_path) {
             if let Ok(mut stmt) = conn.prepare(sql) {
                 let repo_name = repo.name.clone();
@@ -900,7 +900,7 @@ fn execute_assay_all_repos(options: &AssayOptions) -> Result<String> {
 fn log_mcp_query(query: &str, mode: &str, results: &[FusedResult]) -> Option<String> {
     use rusqlite::Connection;
 
-    const DB_PATH: &str = ".patina/data/patina.db";
+    const DB_PATH: &str = ".patina/local/data/patina.db";
 
     // Get session_id from active session
     let session_id = std::fs::read_to_string(".claude/context/active-session.md")
@@ -1044,7 +1044,7 @@ fn handle_orient(dir_path: &str, limit: usize) -> Result<String> {
     use anyhow::Context;
     use rusqlite::Connection;
 
-    let db_path = ".patina/data/patina.db";
+    let db_path = ".patina/local/data/patina.db";
     let conn = Connection::open(db_path)
         .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
 
@@ -1163,7 +1163,7 @@ fn handle_recent(query: Option<&str>, days: u32, limit: usize) -> Result<String>
     use anyhow::Context;
     use rusqlite::Connection;
 
-    let db_path = ".patina/data/patina.db";
+    let db_path = ".patina/local/data/patina.db";
     let conn = Connection::open(db_path)
         .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
 
@@ -1420,7 +1420,7 @@ fn read_patterns(dir: &Path, topic: Option<&str>) -> Result<Vec<(String, String)
 fn handle_use(query_id: &str, rank: usize) -> Result<String> {
     use rusqlite::Connection;
 
-    const DB_PATH: &str = ".patina/data/patina.db";
+    const DB_PATH: &str = ".patina/local/data/patina.db";
 
     let conn = Connection::open(DB_PATH)?;
 

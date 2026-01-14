@@ -46,7 +46,7 @@ impl SemanticSearch {
     /// Open from default database path
     pub fn open_default() -> Result<Self> {
         let embedder = crate::embeddings::create_embedder()?;
-        Self::new(".patina/data", embedder)
+        Self::new(".patina/local/data", embedder)
     }
 
     /// Add a new belief with automatic embedding

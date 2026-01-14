@@ -39,8 +39,8 @@ pub fn oxidize() -> Result<()> {
         );
     }
 
-    let db_path = ".patina/data/patina.db";
-    let output_dir = format!(".patina/data/embeddings/{}/projections", model_name);
+    let db_path = ".patina/local/data/patina.db";
+    let output_dir = format!(".patina/local/data/embeddings/{}/projections", model_name);
     std::fs::create_dir_all(&output_dir)?;
 
     // Create embedder once, reuse for all projections
@@ -359,9 +359,30 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
 
     let pattern_count = events.len() - session_count - code_count;
 
+    // 4. Git commits (the "why" behind code changes)
+    const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
+    let mut stmt = conn.prepare(
+        "SELECT rowid, sha, message FROM commits
+         WHERE message IS NOT NULL AND length(message) > 30
+         ORDER BY rowid",
+    )?;
+
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let rowid: i64 = row.get(0)?;
+        let sha: String = row.get(1)?;
+        let message: String = row.get(2)?;
+
+        // Use the full commit message for semantic search
+        let desc = format!("Commit {}: {}", &sha[..7.min(sha.len())], message);
+        events.push((COMMIT_ID_OFFSET + rowid, desc));
+    }
+
+    let commit_count = events.len() - session_count - code_count - pattern_count;
+
     println!(
-        "   Indexed {} session events + {} code facts + {} patterns",
-        session_count, code_count, pattern_count
+        "   Indexed {} session events + {} code facts + {} patterns + {} commits",
+        session_count, code_count, pattern_count, commit_count
     );
 
     Ok(events)

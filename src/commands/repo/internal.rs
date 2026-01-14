@@ -9,6 +9,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+use patina::forge::{ForgeWriter, GitHubWriter};
 use patina::paths;
 
 /// Registry schema (persisted to ~/.patina/registry.yaml)
@@ -360,7 +361,7 @@ pub fn show_repo(name: &str) -> Result<()> {
     }
 
     // Show event count from database
-    let db_path = repo_path.join(".patina/data/patina.db");
+    let db_path = repo_path.join(".patina/local/data/patina.db");
     if db_path.exists() {
         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
             if let Ok(count) = conn.query_row("SELECT COUNT(*) FROM eventlog", [], |row| {
@@ -382,7 +383,7 @@ pub fn get_repo_db_path(name: &str) -> Result<String> {
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found", name))?;
 
-    let db_path = Path::new(&entry.path).join(".patina/data/patina.db");
+    let db_path = Path::new(&entry.path).join(".patina/local/data/patina.db");
     if !db_path.exists() {
         bail!(
             "Database not found for '{}'. Run 'patina repo update {}' to rebuild.",
@@ -556,8 +557,8 @@ model = "e5-base-v2"
         String::new()
     };
 
-    if !gitignore_content.contains(".patina/data") {
-        let addition = "\n# Patina local data\n.patina/data/\n";
+    if !gitignore_content.contains(".patina/local") {
+        let addition = "\n# Patina local state (derived, not committed)\n.patina/local/\n";
         fs::write(
             &gitignore_path,
             format!("{}{}", gitignore_content, addition),
@@ -673,19 +674,16 @@ projections:
 }
 
 /// Scrape GitHub issues for a repo
-fn scrape_github_issues(repo_path: &Path, github: &str) -> Result<usize> {
-    use crate::commands::scrape::github::{run as github_run, GitHubScrapeConfig};
+fn scrape_github_issues(repo_path: &Path, _github: &str) -> Result<usize> {
+    use crate::commands::scrape::forge::{run, ForgeScrapeConfig};
 
-    let db_path = repo_path.join(".patina/data/patina.db");
-
-    let config = GitHubScrapeConfig {
-        repo: github.to_string(),
-        limit: 500,
+    let config = ForgeScrapeConfig {
         force: true,
-        db_path: db_path.to_string_lossy().to_string(),
+        working_dir: Some(repo_path.to_path_buf()),
+        ..Default::default()
     };
 
-    let stats = github_run(config)?;
+    let stats = run(config)?;
     Ok(stats.items_processed)
 }
 
@@ -724,41 +722,16 @@ fn git_pull(repo_path: &Path) -> Result<()> {
 
 /// Create a GitHub fork
 fn create_fork(repo_path: &Path, _owner: &str, _repo: &str) -> Result<String> {
-    // Use gh CLI to create fork
-    let output = Command::new("gh")
-        .args(["repo", "fork", "--clone=false"])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to execute gh repo fork. Is GitHub CLI installed?")?;
-
-    if !output.status.success() {
-        bail!(
-            "gh repo fork failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    // Get the fork name from gh
-    let output = Command::new("gh")
-        .args(["repo", "view", "--json", "name,owner"])
-        .current_dir(repo_path)
-        .output()?;
-
-    // Parse output to get fork name
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let writer = GitHubWriter;
+    let fork_url = writer.fork(repo_path)?;
 
     // Add fork as remote
     let _ = Command::new("git")
-        .args([
-            "remote",
-            "add",
-            "fork",
-            &format!("git@github.com:{}", stdout.trim()),
-        ])
+        .args(["remote", "add", "fork", &fork_url])
         .current_dir(repo_path)
         .output();
 
-    Ok(stdout.trim().to_string())
+    Ok(fork_url)
 }
 
 /// Upgrade existing repo to contributor mode

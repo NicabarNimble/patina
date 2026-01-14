@@ -70,7 +70,7 @@ fn extract_symbols(
     current_function: &mut Option<String>,
 ) {
     // First extract any calls
-    extract_calls(&node, source, file_path, current_function, data);
+    extract_calls(&node, source, file_path, current_function.as_deref(), data);
 
     // Handle decorated definitions specially
     if node.kind() == "decorated_definition" {
@@ -495,7 +495,7 @@ fn extract_calls(
     node: &Node,
     source: &[u8],
     file_path: &FilePath,
-    current_function: &Option<String>,
+    current_function: Option<&str>,
     data: &mut ExtractedData,
 ) {
     let line_number = (node.start_position().row + 1) as i32;
@@ -516,7 +516,7 @@ fn extract_calls(
                         };
 
                         data.add_call_edge(CallGraphEntry::new(
-                            caller.clone(),
+                            caller.to_string(),
                             callee_name.to_string(),
                             file_path.to_string(),
                             call_type,
@@ -535,7 +535,7 @@ fn extract_calls(
                         if let Some(func_node) = child.child_by_field_name("function") {
                             if let Ok(callee) = func_node.utf8_text(source) {
                                 data.add_call_edge(CallGraphEntry::new(
-                                    caller.clone(),
+                                    caller.to_string(),
                                     callee.to_string(),
                                     file_path.to_string(),
                                     CallType::Async,

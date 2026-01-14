@@ -4,7 +4,7 @@
 //!
 //! # Use Cases
 //! 1. Clone a repo with `layer/` → `patina rebuild` → working local RAG
-//! 2. Corrupted `.patina/data/` → `patina rebuild` → fresh indices
+//! 2. Corrupted `.patina/local/data/` → `patina rebuild` → fresh indices
 //! 3. Upgrade embedding model → `patina rebuild` → new projections
 
 use anyhow::{Context, Result};
@@ -153,10 +153,10 @@ fn count_commits() -> Result<usize> {
 
 /// Clear existing data directory
 fn clear_data() -> Result<()> {
-    let data_dir = Path::new(".patina/data");
+    let data_dir = Path::new(".patina/local/data");
     if data_dir.exists() {
-        std::fs::remove_dir_all(data_dir).context("Failed to remove .patina/data/")?;
-        println!("   ✓ Cleared .patina/data/");
+        std::fs::remove_dir_all(data_dir).context("Failed to remove .patina/local/data/")?;
+        println!("   ✓ Cleared .patina/local/data/");
     }
     Ok(())
 }
@@ -183,7 +183,7 @@ fn run_scrape(validation: &ValidationResult) -> Result<()> {
     println!("complete");
 
     // Get total event count
-    let db_path = Path::new(".patina/data/patina.db");
+    let db_path = Path::new(".patina/local/data/patina.db");
     if db_path.exists() {
         let total = count_events(db_path)?;
         println!("   ✓ patina.db: {} events", total);
@@ -213,17 +213,20 @@ fn print_summary() -> Result<()> {
     println!("\n✅ Rebuild complete!");
 
     // Database size
-    let db_path = Path::new(".patina/data/patina.db");
+    let db_path = Path::new(".patina/local/data/patina.db");
     if db_path.exists() {
         let size_kb = std::fs::metadata(db_path)?.len() / 1024;
-        println!("   Database: .patina/data/patina.db ({} KB)", size_kb);
+        println!("   Database: .patina/local/data/patina.db ({} KB)", size_kb);
     }
 
     // Embeddings size
-    let embeddings_dir = Path::new(".patina/data/embeddings");
+    let embeddings_dir = Path::new(".patina/local/data/embeddings");
     if embeddings_dir.exists() {
         let size_kb = dir_size(embeddings_dir)? / 1024;
-        println!("   Indices: .patina/data/embeddings/ ({} KB)", size_kb);
+        println!(
+            "   Indices: .patina/local/data/embeddings/ ({} KB)",
+            size_kb
+        );
     }
 
     Ok(())

@@ -30,15 +30,15 @@ impl Dimension {
     }
 }
 
-/// LLM frontend for project initialization
+/// LLM adapter for project initialization
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum Llm {
     /// Claude Code (Anthropic)
     Claude,
     /// Gemini CLI (Google)
     Gemini,
-    /// Codex (OpenAI)
-    Codex,
+    /// OpenCode
+    OpenCode,
     /// Local LLM
     Local,
 }
@@ -48,7 +48,7 @@ impl Llm {
         match self {
             Llm::Claude => "claude",
             Llm::Gemini => "gemini",
-            Llm::Codex => "codex",
+            Llm::OpenCode => "opencode",
             Llm::Local => "local",
         }
     }
@@ -78,9 +78,9 @@ impl DevEnv {
 #[derive(Parser)]
 #[command(author, version = env!("CARGO_PKG_VERSION"), about = "Context management for AI-assisted development", long_about = None)]
 struct Cli {
-    /// Frontend to launch (claude, gemini, codex). Default: from config.
-    #[arg(short = 'f', long = "frontend", global = true)]
-    frontend: Option<String>,
+    /// Adapter to launch (claude, gemini, codex). Default: from config.
+    #[arg(long = "adapter", global = true)]
+    adapter: Option<String>,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -88,14 +88,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a new project
+    /// Initialize a new project (skeleton only - use 'patina adapter add' for LLM support)
     Init {
-        /// Project name
+        /// Project name or "." for current directory
         name: String,
-
-        /// LLM to use (claude, gemini, codex, local)
-        #[arg(long, value_enum)]
-        llm: Llm,
 
         /// Development environment (docker, dagger, native)
         #[arg(long, value_enum)]
@@ -108,6 +104,10 @@ enum Commands {
         /// Local-only mode (skip GitHub integration)
         #[arg(long)]
         local: bool,
+
+        /// Skip automatic git commit
+        #[arg(long)]
+        no_commit: bool,
     },
 
     /// Check for new Patina CLI versions
@@ -337,10 +337,25 @@ enum Commands {
         mcp: bool,
     },
 
-    /// List available AI frontends
+    /// Manage AI adapters
     Adapter {
         #[command(subcommand)]
         command: Option<AdapterCommands>,
+    },
+
+    /// Generate project state report using patina's own tools
+    Report {
+        /// Output path (default: layer/surface/reports/YYYY-MM-DD-state.md)
+        #[arg(long, short)]
+        output: Option<String>,
+
+        /// Query a specific registered repo
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Output as JSON instead of markdown
+        #[arg(long)]
+        json: bool,
     },
 
     /// Query codebase structure (modules, imports, call graph)
@@ -500,6 +515,32 @@ enum ScrapeCommands {
         /// Full rebuild (ignore incremental)
         #[arg(long)]
         full: bool,
+    },
+    /// Fetch issues and PRs from forge (GitHub, Gitea, etc.)
+    Forge {
+        /// Full rebuild (ignore incremental)
+        #[arg(long)]
+        full: bool,
+
+        /// Show sync status without making changes
+        #[arg(long)]
+        status: bool,
+
+        /// Fork to background and sync all pending refs
+        #[arg(long)]
+        sync: bool,
+
+        /// Tail the sync log file
+        #[arg(long)]
+        log: bool,
+
+        /// Foreground sync with limit (escape hatch)
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Target a ref repo instead of current project
+        #[arg(long)]
+        repo: Option<String>,
     },
 }
 
@@ -751,11 +792,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        // Launcher mode: no subcommand means launch frontend
+        // Launcher mode: no subcommand means launch adapter
         None => {
             let options = commands::launch::LaunchOptions {
                 path: None,
-                frontend: cli.frontend,
+                adapter: cli.adapter,
                 auto_start_mothership: true,
                 auto_init: true,
             };
@@ -764,17 +805,17 @@ fn main() -> Result<()> {
 
         Some(Commands::Init {
             name,
-            llm,
             dev,
             force,
             local,
+            no_commit,
         }) => {
             commands::init::execute(
                 name,
-                llm.as_str().to_string(),
                 dev.map(|d| d.as_str().to_string()),
                 force,
                 local,
+                no_commit,
             )?;
         }
         Some(Commands::Upgrade { check, json }) => {
@@ -828,6 +869,14 @@ fn main() -> Result<()> {
             Some(ScrapeCommands::Git { full }) => commands::scrape::execute_git(full)?,
             Some(ScrapeCommands::Sessions { full }) => commands::scrape::execute_sessions(full)?,
             Some(ScrapeCommands::Layer { full }) => commands::scrape::execute_layer(full)?,
+            Some(ScrapeCommands::Forge {
+                full,
+                status,
+                sync,
+                log,
+                limit,
+                repo,
+            }) => commands::scrape::execute_forge(full, status, sync, log, limit, repo)?,
         },
         Some(Commands::Oxidize) => {
             commands::oxidize::oxidize()?;
@@ -1020,6 +1069,10 @@ fn main() -> Result<()> {
             }
         }
         Some(Commands::Adapter { command }) => commands::adapter::execute(command)?,
+        Some(Commands::Report { output, repo, json }) => {
+            let options = commands::report::ReportOptions { output, repo, json };
+            commands::report::execute(options)?;
+        }
         Some(Commands::Assay {
             command,
             pattern,

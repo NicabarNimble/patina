@@ -26,8 +26,8 @@ pub fn get_paths(options: &ScryOptions) -> Result<(String, String)> {
         // For local project, read model from config
         let model = get_embedding_model();
         Ok((
-            ".patina/data/patina.db".to_string(),
-            format!(".patina/data/embeddings/{}/projections", model),
+            ".patina/local/data/patina.db".to_string(),
+            format!(".patina/local/data/embeddings/{}/projections", model),
         ))
     }
 }

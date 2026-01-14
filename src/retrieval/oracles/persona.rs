@@ -111,10 +111,10 @@ impl Oracle for PersonaOracle {
             let distance = matches.distances[i];
             let score = 1.0 - distance;
 
-            // Look up belief/observation from database
+            // Look up knowledge from database (was "beliefs", now "knowledge")
             let result = conn.query_row(
                 "SELECT id, source, content, domains, timestamp
-                 FROM beliefs
+                 FROM knowledge
                  WHERE rowid = ?",
                 [key],
                 |row| {

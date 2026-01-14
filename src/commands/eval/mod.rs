@@ -26,7 +26,7 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
     println!("📊 Evaluation Framework\n");
     println!("Testing retrieval quality for each dimension...\n");
 
-    let db_path = ".patina/data/patina.db";
+    let db_path = ".patina/local/data/patina.db";
     let conn = Connection::open(db_path)?;
 
     let mut all_results = Vec::new();

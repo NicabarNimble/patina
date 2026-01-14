@@ -1,6 +1,7 @@
 //! Fork detection and creation
 
 use super::operations::{add_remote, has_remote, parse_github_url, remote_url};
+use crate::forge::{ForgeWriter, GitHubWriter};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::Command;
@@ -22,48 +23,9 @@ pub enum ForkStatus {
     CreatedNew { repo_name: String },
 }
 
-/// Get current GitHub user
-fn gh_current_user() -> Result<String> {
-    let output = Command::new("gh")
-        .args(["api", "user", "--jq", ".login"])
-        .output()
-        .context("Failed to get current GitHub user. Is 'gh' installed and authenticated?")?;
-
-    if !output.status.success() {
-        anyhow::bail!(
-            "Failed to get GitHub user: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-/// Check if a GitHub repository exists
-fn gh_repo_exists(full_name: &str) -> Result<bool> {
-    let output = Command::new("gh")
-        .args(["repo", "view", full_name])
-        .output()
-        .context("Failed to check if repository exists")?;
-
-    Ok(output.status.success())
-}
-
-/// Create a fork on GitHub
-fn gh_repo_fork() -> Result<()> {
-    let output = Command::new("gh")
-        .args(["repo", "fork", "--remote=false"])
-        .output()
-        .context("Failed to create fork")?;
-
-    if !output.status.success() {
-        anyhow::bail!(
-            "Failed to create fork: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    Ok(())
+/// Get the default ForgeWriter for GitHub.
+fn writer() -> GitHubWriter {
+    GitHubWriter
 }
 
 /// Create initial README and commit for new projects
@@ -159,18 +121,8 @@ fn gh_repo_create(name: &str) -> Result<()> {
     // Ensure we have at least one commit
     create_initial_commit(name)?;
 
-    let output = Command::new("gh")
-        .args(["repo", "create", name, "--private", "--source=.", "--push"])
-        .output()
-        .context("Failed to create GitHub repository")?;
-
-    if !output.status.success() {
-        anyhow::bail!(
-            "Failed to create repository: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
+    let current_dir = std::env::current_dir().context("Failed to get current directory")?;
+    writer().create_repo(name, true, &current_dir)?;
     Ok(())
 }
 
@@ -381,10 +333,10 @@ pub fn ensure_fork(local: bool) -> Result<ForkStatus> {
         Err(_) => {
             // No origin remote - check if GitHub repo exists
             let repo_name = current_dir_name()?;
-            let current_user = gh_current_user()?;
+            let current_user = writer().current_user()?;
             let full_repo_name = format!("{}/{}", current_user, repo_name);
 
-            if gh_repo_exists(&full_repo_name)? {
+            if writer().repo_exists(&current_user, &repo_name)? {
                 // Repository exists on GitHub - clone it
                 println!("📦 Found existing GitHub repository: {}", full_repo_name);
 
@@ -416,7 +368,7 @@ pub fn ensure_fork(local: bool) -> Result<ForkStatus> {
 /// Handle fork logic when origin exists
 fn ensure_fork_with_origin(origin_url: String) -> Result<ForkStatus> {
     let (owner, repo) = parse_github_url(&origin_url)?;
-    let current_user = gh_current_user()?;
+    let current_user = writer().current_user()?;
 
     // If user owns the repo, no fork needed
     if owner == current_user {
@@ -425,7 +377,7 @@ fn ensure_fork_with_origin(origin_url: String) -> Result<ForkStatus> {
     }
 
     // Check if fork already exists on GitHub
-    let fork_exists = gh_repo_exists(&format!("{}/{}", current_user, repo))?;
+    let fork_exists = writer().repo_exists(&current_user, &repo)?;
 
     if fork_exists {
         // Check if we already have it as a remote
@@ -450,9 +402,8 @@ fn ensure_fork_with_origin(origin_url: String) -> Result<ForkStatus> {
         println!("📍 External repo: {}/{}", owner, repo);
         println!("⚡ Creating fork...");
 
-        gh_repo_fork()?;
-
-        let fork_remote = format!("git@github.com:{}/{}.git", current_user, repo);
+        let current_dir = std::env::current_dir().context("Failed to get current directory")?;
+        let fork_remote = writer().fork(&current_dir)?;
         add_remote("fork", &fork_remote)?;
 
         println!("✓ Fork created: {}", fork_remote);
@@ -471,7 +422,7 @@ pub fn detect_fork_status() -> Result<ForkStatus> {
     let (owner, repo) = parse_github_url(&origin_url)?;
 
     // Get current user
-    let current_user = gh_current_user()?;
+    let current_user = writer().current_user()?;
 
     // If user owns the repo, no fork needed
     if owner == current_user {
@@ -479,7 +430,7 @@ pub fn detect_fork_status() -> Result<ForkStatus> {
     }
 
     // Check if fork already exists on GitHub
-    let fork_exists = gh_repo_exists(&format!("{}/{}", current_user, repo))?;
+    let fork_exists = writer().repo_exists(&current_user, &repo)?;
 
     if fork_exists {
         // Check if we already have it as a remote

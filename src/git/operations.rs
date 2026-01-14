@@ -240,10 +240,33 @@ pub fn add_all() -> Result<()> {
     let output = Command::new("git")
         .args(["add", "."])
         .output()
-        .context("Failed to stage changes")?;
+        .context("Failed to run git add")?;
 
     if !output.status.success() {
-        anyhow::bail!("Failed to stage changes");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("Failed to stage changes: {}", stderr.trim());
+    }
+
+    Ok(())
+}
+
+/// Stage specific paths (safer for repos with nested git directories)
+pub fn add_paths(paths: &[&str]) -> Result<()> {
+    for path in paths {
+        // Skip paths that don't exist
+        if !std::path::Path::new(path).exists() {
+            continue;
+        }
+
+        let output = Command::new("git")
+            .args(["add", path])
+            .output()
+            .context(format!("Failed to run git add {}", path))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("Failed to stage {}: {}", path, stderr.trim());
+        }
     }
 
     Ok(())
