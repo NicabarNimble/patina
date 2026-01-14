@@ -31,6 +31,14 @@ impl GitHubReader {
 }
 
 impl ForgeReader for GitHubReader {
+    fn get_issue_count(&self) -> Result<usize> {
+        internal::fetch_issue_count(&self.repo_spec())
+    }
+
+    fn get_pr_count(&self) -> Result<usize> {
+        internal::fetch_pr_count(&self.repo_spec())
+    }
+
     fn list_issues(&self, limit: usize, since: Option<&str>) -> Result<Vec<Issue>> {
         internal::fetch_issues(&self.repo_spec(), limit, since)
     }

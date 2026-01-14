@@ -264,9 +264,9 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
 
 Also need `insert_prs()` function (similar to existing `insert_issues()`).
 
-### Phase 3: Add Count Queries (Enhancement)
+### Phase 3: Add Count Queries (DONE)
 
-For progress reporting and validation. Can be deferred if Phase 1-2 are sufficient.
+For progress reporting and validation.
 
 ```rust
 // src/forge/mod.rs - add to ForgeReader trait

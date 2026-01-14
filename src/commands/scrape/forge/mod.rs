@@ -389,17 +389,25 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
     };
 
     let forge_name = format!("{}/{}", detected.owner, detected.repo);
+
+    // Get reader for bulk fetches
+    let reader = forge::reader(&detected);
+
+    // Query counts first for progress reporting
+    let issue_count_expected = reader.get_issue_count().unwrap_or(0);
+    let pr_count_expected = reader.get_pr_count().unwrap_or(0);
+
     if since.is_some() {
         println!(
             "📊 Incremental forge scrape for {} since last update...",
             forge_name
         );
     } else {
-        println!("📊 Full forge scrape for {}...", forge_name);
+        println!(
+            "📊 Full forge scrape for {} ({} issues, {} PRs)...",
+            forge_name, issue_count_expected, pr_count_expected
+        );
     }
-
-    // Get reader for bulk fetches
-    let reader = forge::reader(&detected);
 
     // Bulk fetch issues
     let issues = reader.list_issues(config.limit, since.as_deref())?;
@@ -407,7 +415,11 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
         println!("  No new issues to process");
         0
     } else {
-        println!("  Found {} issues to process", issues.len());
+        println!(
+            "  Fetched {}/{} issues",
+            issues.len(),
+            issue_count_expected
+        );
         let count = insert_issues(&conn, &issues)?;
         println!("  Inserted {} issues", count);
 
@@ -428,7 +440,7 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
         println!("  No new PRs to process");
         0
     } else {
-        println!("  Found {} PRs to process", prs.len());
+        println!("  Fetched {}/{} PRs", prs.len(), pr_count_expected);
         let count = insert_prs(&conn, &prs)?;
         println!("  Inserted {} PRs", count);
 
