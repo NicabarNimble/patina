@@ -162,6 +162,9 @@ Key items:
 
 Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 
+- `spec/adapter-selection` - Two-flow adapter selection (explicit --adapter vs implicit prompt), select_adapter() function
+- `spec/remove-codex` - Codex removed from adapter system (it's an agent, not adapter)
+- `spec/patina-local` - .patina/local/ directory structure for derived state
 - `spec/forge-sync-v2` - Background sync via fork, PID guards, 750ms pacing, --sync/--log/--limit flags
 - `spec/forge-abstraction` - ForgeReader + ForgeWriter traits, conventional commits, GitHub impl
 - `spec/llm-frontends` - Unified 5-command experience across Claude, Gemini, OpenCode
@@ -185,11 +188,11 @@ Full list: `git tag -l 'spec/*'`
 Completed specs preserved via git tags. View with: `git show spec/<name>:layer/surface/build/spec-<name>.md`
 
 **Recent completions:**
+- `spec/adapter-selection` - Two-flow adapter selection, select_adapter(), project defaults
+- `spec/remove-codex` - Codex removed (agent vs adapter distinction)
+- `spec/patina-local` - .patina/local/ for derived state, clean gitignore
 - `spec/forge-sync-v2` - Background sync via fork, PID guards, 750ms pacing, --sync/--log/--limit flags
 - `spec/forge-abstraction` - ForgeReader + ForgeWriter traits, conventional commits, GitHub impl (Gitea deferred)
 - `spec/mothership-graph` - Graph routing, 100% repo recall (~1000 lines)
-- `spec/ref-repo-semantic` - 13/13 repos with semantic indexes
-- `spec/quality-gates` - MRR regression fix (0.427→0.588)
-- `spec/secrets-v2` - Local age-encrypted vault with Touch ID
 
 **All tags:** `git tag -l 'spec/*'` (30+ archived specs)

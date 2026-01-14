@@ -1,8 +1,8 @@
 # Spec: .patina/local/ Directory Structure
 
-**Status:** Design
+**Status:** Implemented
 **Created:** 2026-01-12
-**Blocks:** spec-init-hardening.md (gitignore handling)
+**Implemented:** 2026-01-12
 **Core References:** [dependable-rust](../../core/dependable-rust.md), [unix-philosophy](../../core/unix-philosophy.md)
 
 ---

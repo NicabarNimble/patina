@@ -1,7 +1,8 @@
 ---
 id: spec-remove-codex
-status: ready
+status: implemented
 created: 2026-01-13
+implemented: 2026-01-13
 tags: [spec, adapter, cleanup, architecture]
 references: [adapter-pattern, unix-philosophy, spec-adapter-selection]
 ---
@@ -143,13 +144,15 @@ Update test assertions that reference Codex or adapter counts.
 
 ## Implementation Checklist
 
-- [ ] Remove `Codex` from `Adapter` enum in `src/adapters/launch.rs`
-- [ ] Remove `"codex"` from `ADAPTERS` const
-- [ ] Remove all Codex match arms (6 functions)
-- [ ] Update tests (remove assertions, adjust counts)
-- [ ] Remove `Codex` from `Llm` enum in `src/main.rs`
-- [ ] Update `spec-adapter-selection.md` references
-- [ ] `cargo test && cargo clippy` - exhaustiveness check will catch misses
+- [x] Remove `Codex` from `Adapter` enum in `src/adapters/launch.rs`
+- [x] Remove `"codex"` from `ADAPTERS` const
+- [x] Remove all Codex match arms (6 functions)
+- [x] Update tests (remove assertions, adjust counts)
+- [x] Remove `Codex` from `Llm` enum in `src/main.rs`
+- [x] Update `spec-adapter-selection.md` references
+- [x] `cargo test && cargo clippy` - exhaustiveness check will catch misses
+
+**Commit:** `454cb71f` refactor(adapters): remove Codex from adapter system
 
 ---
 
