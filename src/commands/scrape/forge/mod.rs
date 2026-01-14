@@ -229,7 +229,7 @@ pub struct ForgeScrapeConfig {
 impl Default for ForgeScrapeConfig {
     fn default() -> Self {
         Self {
-            limit: 500,
+            limit: 50000,
             force: false,
             working_dir: None,
         }
