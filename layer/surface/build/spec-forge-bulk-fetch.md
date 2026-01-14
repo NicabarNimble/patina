@@ -1,8 +1,9 @@
 ---
 id: spec-forge-bulk-fetch
-status: validated
+status: implemented
 created: 2026-01-14
 validated: 2026-01-14
+implemented: 2026-01-14
 tags: [spec, forge, github, bulk-fetch, rate-limit]
 references: [spec-forge-sync-v2, dependable-rust, unix-philosophy]
 ---
@@ -377,9 +378,9 @@ None. Same tables, same schema. Just populated via bulk instead of one-by-one.
 1. ~~`patina scrape forge` fetches ALL issues in <5 minutes for repos with <50k issues~~ **VALIDATED**: 17,509 issues in 3:20
 2. ~~API calls reduced by ~100x (bulk vs individual)~~ **VALIDATED**: No rate limit errors
 3. ~~Rate limit never exceeded~~ **VALIDATED**: gh handles pagination smoothly
-4. `discover_all_issues()` removed - no wasteful ref backlog creation
-5. PRs bulk fetched alongside issues
-6. PR refs from commits still resolved via backlog (correct use case)
+4. ~~`discover_all_issues()` removed - no wasteful ref backlog creation~~ **DONE**
+5. ~~PRs bulk fetched alongside issues~~ **DONE**: list_pull_requests() + insert_prs()
+6. ~~PR refs from commits still resolved via backlog (correct use case)~~ **DONE**: discover_refs() preserved
 
 ---
 
