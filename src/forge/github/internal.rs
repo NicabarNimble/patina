@@ -94,6 +94,42 @@ pub(crate) fn check_gh_auth() -> Result<bool> {
     Ok(output.status.success())
 }
 
+/// Get total issue count via GitHub search API.
+pub(crate) fn fetch_issue_count(repo: &str) -> Result<usize> {
+    let query = format!("repo:{} is:issue", repo);
+    let output = Command::new("gh")
+        .args(["api", "search/issues", "-f", &format!("q={}", query), "--jq", ".total_count"])
+        .output()
+        .context("Failed to run `gh api search/issues`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("gh api search/issues failed: {}", stderr);
+    }
+
+    let count_str = String::from_utf8_lossy(&output.stdout);
+    let count: usize = count_str.trim().parse().unwrap_or(0);
+    Ok(count)
+}
+
+/// Get total PR count via GitHub search API.
+pub(crate) fn fetch_pr_count(repo: &str) -> Result<usize> {
+    let query = format!("repo:{} is:pr", repo);
+    let output = Command::new("gh")
+        .args(["api", "search/issues", "-f", &format!("q={}", query), "--jq", ".total_count"])
+        .output()
+        .context("Failed to run `gh api search/issues`")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!("gh api search/issues failed: {}", stderr);
+    }
+
+    let count_str = String::from_utf8_lossy(&output.stdout);
+    let count: usize = count_str.trim().parse().unwrap_or(0);
+    Ok(count)
+}
+
 /// Fetch issues via gh CLI.
 pub(crate) fn fetch_issues(repo: &str, limit: usize, since: Option<&str>) -> Result<Vec<Issue>> {
     let mut cmd = Command::new("gh");
