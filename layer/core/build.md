@@ -165,6 +165,7 @@ Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 - `spec/init-hardening` - Init/Adapter refactor: skeleton-only init, adapter refresh/doctor (Phases 1-2)
 - `spec/adapter-selection` - Two-flow adapter selection (explicit --adapter vs implicit prompt), select_adapter() function
 - `spec/remove-codex` - Codex removed from adapter system (it's an agent, not adapter)
+- `spec/preflight` - Self-healing startup: auto-kill stale processes (>24h), prevent OOM conflicts
 - `spec/patina-local` - .patina/local/ directory structure for derived state
 - `spec/forge-sync-v2` - Background sync via fork, PID guards, 750ms pacing, --sync/--log/--limit flags
 - `spec/forge-abstraction` - ForgeReader + ForgeWriter traits, conventional commits, GitHub impl
@@ -189,11 +190,11 @@ Full list: `git tag -l 'spec/*'`
 Completed specs preserved via git tags. View with: `git show spec/<name>:layer/surface/build/spec-<name>.md`
 
 **Recent completions:**
+- `spec/preflight` - Self-healing startup, auto-kill stale processes (>24h)
 - `spec/init-hardening` - Skeleton-only init, adapter refresh/doctor, UID creation
 - `spec/adapter-selection` - Two-flow adapter selection, select_adapter(), project defaults
 - `spec/remove-codex` - Codex removed (agent vs adapter distinction)
 - `spec/patina-local` - .patina/local/ for derived state, clean gitignore
 - `spec/forge-sync-v2` - Background sync via fork, PID guards, 750ms pacing
-- `spec/forge-abstraction` - ForgeReader + ForgeWriter traits, GitHub impl
 
 **All tags:** `git tag -l 'spec/*'` (30+ archived specs)
