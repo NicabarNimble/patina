@@ -3,6 +3,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 
 mod commands;
 mod mcp;
+mod preflight;
 mod retrieval;
 
 // ============================================================================
@@ -788,6 +789,9 @@ fn main() -> Result<()> {
     // Run migrations early (before any command)
     patina::migration::migrate_if_needed();
     commands::repo::migrate_registry_paths();
+
+    // Preflight: clean up stale processes before normal operation
+    preflight::ensure_clean_state();
 
     let cli = Cli::parse();
 
