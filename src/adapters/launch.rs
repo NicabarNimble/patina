@@ -215,6 +215,72 @@ pub fn detect_version(name: &str) -> Option<String> {
     version
 }
 
+/// Select an adapter from available options.
+///
+/// Returns the chosen adapter name.
+///
+/// Behavior:
+/// - 0 available: Error with installation instructions
+/// - 1 available: Returns it (no prompt)
+/// - 2+ available: Prompts user to choose
+///
+/// If `preference` matches an available adapter, it becomes the default selection.
+/// This is used to honor the global config default without forcing it.
+pub fn select_adapter(available: &[AdapterInfo], preference: Option<&str>) -> Result<String> {
+    use std::io::{self, Write};
+
+    match available.len() {
+        0 => {
+            anyhow::bail!(
+                "No AI adapters detected on this system.\n\
+                 Install one of: {}",
+                ADAPTERS.join(", ")
+            );
+        }
+        1 => {
+            // Single adapter - use it without prompting
+            Ok(available[0].name.clone())
+        }
+        _ => {
+            // Multiple adapters - prompt user to choose
+            println!("\n📱 Available adapters:");
+
+            // Find which index should be default (1-based for display)
+            let default_idx = preference
+                .and_then(|pref| available.iter().position(|a| a.name == pref))
+                .map(|i| i + 1)
+                .unwrap_or(1);
+
+            for (i, adapter) in available.iter().enumerate() {
+                let num = i + 1;
+                let default_marker = if num == default_idx { " (default)" } else { "" };
+                println!("  [{}] {}{}", num, adapter.display, default_marker);
+            }
+
+            print!("\nSelect adapter [{}]: ", default_idx);
+            io::stdout().flush()?;
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+
+            let choice = input.trim();
+            let idx = if choice.is_empty() {
+                default_idx
+            } else {
+                choice.parse::<usize>().unwrap_or(default_idx)
+            };
+
+            // Validate and return
+            if idx >= 1 && idx <= available.len() {
+                Ok(available[idx - 1].name.clone())
+            } else {
+                // Invalid input, use default
+                Ok(available[default_idx - 1].name.clone())
+            }
+        }
+    }
+}
+
 // =============================================================================
 // Internal
 // =============================================================================
@@ -335,5 +401,43 @@ mod tests {
         assert!(ADAPTERS.contains(&"gemini"));
         assert!(ADAPTERS.contains(&"opencode"));
         assert_eq!(ADAPTERS.len(), 3);
+    }
+
+    #[test]
+    fn test_select_adapter_zero_available() {
+        let available: Vec<AdapterInfo> = vec![];
+        let result = select_adapter(&available, None);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("No AI adapters detected"));
+    }
+
+    #[test]
+    fn test_select_adapter_single_available() {
+        let available = vec![AdapterInfo {
+            name: "claude".to_string(),
+            display: "Claude Code".to_string(),
+            detected: true,
+            version: Some("1.0".to_string()),
+            mcp: None,
+        }];
+        let result = select_adapter(&available, None);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "claude");
+    }
+
+    #[test]
+    fn test_select_adapter_single_ignores_preference() {
+        let available = vec![AdapterInfo {
+            name: "gemini".to_string(),
+            display: "Gemini CLI".to_string(),
+            detected: true,
+            version: None,
+            mcp: None,
+        }];
+        // Even with claude preference, returns the only available adapter
+        let result = select_adapter(&available, Some("claude"));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "gemini");
     }
 }
