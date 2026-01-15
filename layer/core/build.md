@@ -2,7 +2,7 @@
 
 **Status:** Architectural alignment - internal code quality meets core values.
 
-**Recent:** Legacy cleanup complete (2025-12-30). Removed ~1,100 lines: layer/dust/repos system and audit.rs. Doctor slimmed to 278 lines (pure health checks). All priority refactors done - scry, assay, doctor now in Exemplary/Acceptable tiers. See spec-architectural-alignment.md for living alignment matrix.
+**Recent:** Ref repo lean storage complete (2026-01-14). Git/code skip eventlog for ref repos, forge dedup on insert. 9-60% DB size reduction across 14 ref repos. Bulk fetch 100x faster (3.7h → 3min). Adapter unification complete (Claude, Gemini, OpenCode). See spec-review-q4-2025.md for 3-month retrospective.
 
 ---
 
@@ -162,6 +162,7 @@ Key items:
 
 Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 
+- `spec/ref-repo-storage` - Lean storage for ref repos: git/code direct insert, forge dedup (11-60% DB reduction)
 - `spec/init-hardening` - Init/Adapter refactor: skeleton-only init, adapter refresh/doctor (Phases 1-2)
 - `spec/adapter-selection` - Two-flow adapter selection (explicit --adapter vs implicit prompt), select_adapter() function
 - `spec/remove-codex` - Codex removed from adapter system (it's an agent, not adapter)
@@ -191,11 +192,11 @@ Full list: `git tag -l 'spec/*'`
 Completed specs preserved via git tags. View with: `git show spec/<name>:layer/surface/build/spec-<name>.md`
 
 **Recent completions:**
+- `spec/ref-repo-storage` - Lean storage for ref repos (11-60% DB reduction)
 - `spec/forge-bulk-fetch` - Bulk issue/PR fetch (100x faster), delete discover_all_issues()
 - `spec/preflight` - Self-healing startup, auto-kill stale processes (>24h)
 - `spec/init-hardening` - Skeleton-only init, adapter refresh/doctor, UID creation
 - `spec/adapter-selection` - Two-flow adapter selection, select_adapter(), project defaults
 - `spec/remove-codex` - Codex removed (agent vs adapter distinction)
-- `spec/patina-local` - .patina/local/ for derived state, clean gitignore
 
-**All tags:** `git tag -l 'spec/*'` (30+ archived specs)
+**All tags:** `git tag -l 'spec/*'` (40 archived specs)
