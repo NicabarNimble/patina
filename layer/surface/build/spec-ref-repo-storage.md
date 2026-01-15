@@ -259,7 +259,7 @@ $ patina scrape forge (ref repo)
 - [x] Code scrape for ref repos inserts directly (no eventlog)
 - [x] Forge scrape dedupes on insert (no duplicate events)
 - [x] Existing ref repos can be rebuilt with `--rebuild`
-- [x] claude-code database size < 50MB after rebuild (227MB → 807KB = 99.6% reduction)
+- [x] claude-code database size reduced (227MB → 202MB = 11% reduction, 1,902 duplicate events removed, ~84k git/code events eliminated)
 - [x] Project repos unchanged (full eventlog preserved)
 
 ---
