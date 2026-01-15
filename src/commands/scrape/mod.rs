@@ -81,7 +81,7 @@ pub fn execute_all() -> Result<()> {
 /// Rebuild database from scratch.
 ///
 /// For ref repos: removes old eventlog bloat (git/code events) and rebuilds
-/// with lean storage pattern.
+/// with lean storage pattern. Includes forge data re-fetch.
 ///
 /// See: layer/surface/build/spec-ref-repo-storage.md
 pub fn execute_rebuild() -> Result<()> {
@@ -109,20 +109,29 @@ pub fn execute_rebuild() -> Result<()> {
     // Run all scrapers fresh (they will use lean storage for ref repos)
     println!("\n🔄 Running all scrapers...\n");
 
-    println!("📊 [1/4] Scraping code...");
+    println!("📊 [1/5] Scraping code...");
     execute_code(false, false)?;
 
-    println!("\n📊 [2/4] Scraping git...");
+    println!("\n📊 [2/5] Scraping git...");
     let git_stats = git::run(false)?;
     println!("  • {} commits", git_stats.items_processed);
 
-    println!("\n📚 [3/4] Scraping sessions...");
+    println!("\n📚 [3/5] Scraping sessions...");
     let session_stats = sessions::run(false)?;
     println!("  • {} sessions", session_stats.items_processed);
 
-    println!("\n📜 [4/4] Scraping layer patterns...");
+    println!("\n📜 [4/5] Scraping layer patterns...");
     let layer_stats = layer::run(false)?;
     println!("  • {} patterns", layer_stats.items_processed);
+
+    // For ref repos, also rebuild forge data (this is the expensive cached data we preserve)
+    if is_ref {
+        println!("\n🔗 [5/5] Scraping forge (issues/PRs)...");
+        // Use full=true to force complete re-fetch since we deleted the database
+        execute_forge(true, false, false, false, None, None)?;
+    } else {
+        println!("\n📝 [5/5] Skipping forge (run 'patina scrape forge' separately)");
+    }
 
     // Report new size
     let new_size_kb = std::fs::metadata(&db_path)
