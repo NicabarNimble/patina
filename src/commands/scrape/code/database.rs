@@ -82,22 +82,30 @@ pub struct ImportFact {
 /// Follows the same pattern as other modules (embeddings, semantic_search):
 /// - Owns SqliteDatabase
 /// - Domain-specific methods for code facts
+///
+/// For ref repos (skip_eventlog=true), uses direct-write pattern:
+/// - Code files ARE the source of truth, no need to duplicate in eventlog
+/// - See: layer/surface/build/spec-ref-repo-storage.md
 pub struct Database {
     db: SqliteDatabase,
+    skip_eventlog: bool,
 }
 
 impl Database {
     /// Open or create a SQLite database file
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let db = SqliteDatabase::open(path).context("Failed to open SQLite database")?;
-        Ok(Self { db })
+        let path_ref = path.as_ref();
+        // Detect if this is a ref repo - use lean storage (no eventlog for code)
+        let skip_eventlog = unified_db::is_ref_repo(path_ref);
+        let db = SqliteDatabase::open(path_ref).context("Failed to open SQLite database")?;
+        Ok(Self { db, skip_eventlog })
     }
 
     /// Create an in-memory database for testing
     #[cfg(test)]
     pub fn open_in_memory() -> Result<Self> {
         let db = SqliteDatabase::open_in_memory().context("Failed to create in-memory database")?;
-        Ok(Self { db })
+        Ok(Self { db, skip_eventlog: false })
     }
 
     /// Initialize schema with proper types
@@ -266,23 +274,25 @@ impl Database {
         let tx = conn.unchecked_transaction()?;
 
         for symbol in symbols {
-            // 1. Insert into eventlog (source of truth)
-            let event_data = serde_json::json!({
-                "path": &symbol.path,
-                "name": &symbol.name,
-                "kind": &symbol.kind,
-                "line": symbol.line,
-                "context": &symbol.context,
-            });
+            // 1. Insert into eventlog (skip for ref repos - files ARE the source)
+            if !self.skip_eventlog {
+                let event_data = serde_json::json!({
+                    "path": &symbol.path,
+                    "name": &symbol.name,
+                    "kind": &symbol.kind,
+                    "line": symbol.line,
+                    "context": &symbol.context,
+                });
 
-            unified_db::insert_event(
-                &tx,
-                "code.symbol",
-                &chrono::Utc::now().to_rfc3339(),
-                &format!("{}::{}", symbol.path, symbol.name),
-                Some(&symbol.path),
-                &event_data.to_string(),
-            )?;
+                unified_db::insert_event(
+                    &tx,
+                    "code.symbol",
+                    &chrono::Utc::now().to_rfc3339(),
+                    &format!("{}::{}", symbol.path, symbol.name),
+                    Some(&symbol.path),
+                    &event_data.to_string(),
+                )?;
+            }
 
             // 2. Insert into materialized view (existing logic)
             tx.execute(
@@ -311,31 +321,33 @@ impl Database {
         let tx = conn.unchecked_transaction()?;
 
         for func in functions {
-            // 1. Insert into eventlog (source of truth)
-            let event_data = serde_json::json!({
-                "file": &func.file,
-                "name": &func.name,
-                "takes_mut_self": func.takes_mut_self,
-                "takes_mut_params": func.takes_mut_params,
-                "returns_result": func.returns_result,
-                "returns_option": func.returns_option,
-                "is_async": func.is_async,
-                "is_unsafe": func.is_unsafe,
-                "is_public": func.is_public,
-                "parameter_count": func.parameter_count,
-                "generic_count": func.generic_count,
-                "parameters": &func.parameters,
-                "return_type": &func.return_type,
-            });
+            // 1. Insert into eventlog (skip for ref repos - files ARE the source)
+            if !self.skip_eventlog {
+                let event_data = serde_json::json!({
+                    "file": &func.file,
+                    "name": &func.name,
+                    "takes_mut_self": func.takes_mut_self,
+                    "takes_mut_params": func.takes_mut_params,
+                    "returns_result": func.returns_result,
+                    "returns_option": func.returns_option,
+                    "is_async": func.is_async,
+                    "is_unsafe": func.is_unsafe,
+                    "is_public": func.is_public,
+                    "parameter_count": func.parameter_count,
+                    "generic_count": func.generic_count,
+                    "parameters": &func.parameters,
+                    "return_type": &func.return_type,
+                });
 
-            unified_db::insert_event(
-                &tx,
-                "code.function",
-                &chrono::Utc::now().to_rfc3339(),
-                &format!("{}::{}", func.file, func.name),
-                Some(&func.file),
-                &event_data.to_string(),
-            )?;
+                unified_db::insert_event(
+                    &tx,
+                    "code.function",
+                    &chrono::Utc::now().to_rfc3339(),
+                    &format!("{}::{}", func.file, func.name),
+                    Some(&func.file),
+                    &event_data.to_string(),
+                )?;
+            }
 
             // 2. Insert into materialized view (existing logic)
             let params_str = func.parameters.join(", ");
@@ -373,34 +385,36 @@ impl Database {
         let tx = conn.unchecked_transaction()?;
 
         for type_fact in types {
-            // 1. Insert into eventlog (source of truth)
-            let event_data = serde_json::json!({
-                "file": &type_fact.file,
-                "name": &type_fact.name,
-                "definition": &type_fact.definition,
-                "kind": &type_fact.kind,
-                "visibility": &type_fact.visibility,
-                "usage_count": type_fact.usage_count,
-            });
+            // 1. Insert into eventlog (skip for ref repos - files ARE the source)
+            if !self.skip_eventlog {
+                let event_data = serde_json::json!({
+                    "file": &type_fact.file,
+                    "name": &type_fact.name,
+                    "definition": &type_fact.definition,
+                    "kind": &type_fact.kind,
+                    "visibility": &type_fact.visibility,
+                    "usage_count": type_fact.usage_count,
+                });
 
-            // Map kind to specific event type for better queryability
-            let event_type = match type_fact.kind.as_str() {
-                "struct" => "code.struct",
-                "enum" => "code.enum",
-                "class" => "code.class",
-                "interface" => "code.interface",
-                "trait" => "code.trait",
-                _ => "code.type",
-            };
+                // Map kind to specific event type for better queryability
+                let event_type = match type_fact.kind.as_str() {
+                    "struct" => "code.struct",
+                    "enum" => "code.enum",
+                    "class" => "code.class",
+                    "interface" => "code.interface",
+                    "trait" => "code.trait",
+                    _ => "code.type",
+                };
 
-            unified_db::insert_event(
-                &tx,
-                event_type,
-                &chrono::Utc::now().to_rfc3339(),
-                &format!("{}::{}", type_fact.file, type_fact.name),
-                Some(&type_fact.file),
-                &event_data.to_string(),
-            )?;
+                unified_db::insert_event(
+                    &tx,
+                    event_type,
+                    &chrono::Utc::now().to_rfc3339(),
+                    &format!("{}::{}", type_fact.file, type_fact.name),
+                    Some(&type_fact.file),
+                    &event_data.to_string(),
+                )?;
+            }
 
             // 2. Insert into materialized view (existing logic)
             tx.execute(
@@ -430,23 +444,25 @@ impl Database {
         let tx = conn.unchecked_transaction()?;
 
         for import in imports {
-            // 1. Insert into eventlog (source of truth)
-            let event_data = serde_json::json!({
-                "file": &import.file,
-                "import_path": &import.import_path,
-                "imported_names": &import.imported_names,
-                "import_kind": &import.import_kind,
-                "line_number": import.line_number,
-            });
+            // 1. Insert into eventlog (skip for ref repos - files ARE the source)
+            if !self.skip_eventlog {
+                let event_data = serde_json::json!({
+                    "file": &import.file,
+                    "import_path": &import.import_path,
+                    "imported_names": &import.imported_names,
+                    "import_kind": &import.import_kind,
+                    "line_number": import.line_number,
+                });
 
-            unified_db::insert_event(
-                &tx,
-                "code.import",
-                &chrono::Utc::now().to_rfc3339(),
-                &format!("{}::{}", import.file, import.import_path),
-                Some(&import.file),
-                &event_data.to_string(),
-            )?;
+                unified_db::insert_event(
+                    &tx,
+                    "code.import",
+                    &chrono::Utc::now().to_rfc3339(),
+                    &format!("{}::{}", import.file, import.import_path),
+                    Some(&import.file),
+                    &event_data.to_string(),
+                )?;
+            }
 
             // 2. Insert into materialized view (existing logic)
             let names_str = import.imported_names.join(", ");
@@ -476,23 +492,25 @@ impl Database {
         let tx = conn.unchecked_transaction()?;
 
         for edge in edges {
-            // 1. Insert into eventlog (source of truth)
-            let event_data = serde_json::json!({
-                "caller": &edge.caller,
-                "callee": &edge.callee,
-                "file": &edge.file,
-                "call_type": edge.call_type.as_str(),
-                "line_number": edge.line_number,
-            });
+            // 1. Insert into eventlog (skip for ref repos - files ARE the source)
+            if !self.skip_eventlog {
+                let event_data = serde_json::json!({
+                    "caller": &edge.caller,
+                    "callee": &edge.callee,
+                    "file": &edge.file,
+                    "call_type": edge.call_type.as_str(),
+                    "line_number": edge.line_number,
+                });
 
-            unified_db::insert_event(
-                &tx,
-                "code.call",
-                &chrono::Utc::now().to_rfc3339(),
-                &format!("{}::{}→{}", edge.file, edge.caller, edge.callee),
-                Some(&edge.file),
-                &event_data.to_string(),
-            )?;
+                unified_db::insert_event(
+                    &tx,
+                    "code.call",
+                    &chrono::Utc::now().to_rfc3339(),
+                    &format!("{}::{}→{}", edge.file, edge.caller, edge.callee),
+                    Some(&edge.file),
+                    &event_data.to_string(),
+                )?;
+            }
 
             // 2. Insert into materialized view (existing logic)
             tx.execute(
@@ -549,24 +567,26 @@ impl Database {
         let tx = conn.unchecked_transaction()?;
 
         for constant in constants {
-            // 1. Insert into eventlog (source of truth)
-            let event_data = serde_json::json!({
-                "file": &constant.file,
-                "name": &constant.name,
-                "value": &constant.value,
-                "const_type": &constant.const_type,
-                "scope": &constant.scope,
-                "line": constant.line,
-            });
+            // 1. Insert into eventlog (skip for ref repos - files ARE the source)
+            if !self.skip_eventlog {
+                let event_data = serde_json::json!({
+                    "file": &constant.file,
+                    "name": &constant.name,
+                    "value": &constant.value,
+                    "const_type": &constant.const_type,
+                    "scope": &constant.scope,
+                    "line": constant.line,
+                });
 
-            unified_db::insert_event(
-                &tx,
-                "code.constant",
-                &chrono::Utc::now().to_rfc3339(),
-                &format!("{}::{}", constant.file, constant.name),
-                Some(&constant.file),
-                &event_data.to_string(),
-            )?;
+                unified_db::insert_event(
+                    &tx,
+                    "code.constant",
+                    &chrono::Utc::now().to_rfc3339(),
+                    &format!("{}::{}", constant.file, constant.name),
+                    Some(&constant.file),
+                    &event_data.to_string(),
+                )?;
+            }
 
             // 2. Insert into materialized view (existing logic)
             tx.execute(
@@ -599,25 +619,27 @@ impl Database {
         let tx = conn.unchecked_transaction()?;
 
         for member in members {
-            // 1. Insert into eventlog (source of truth)
-            let event_data = serde_json::json!({
-                "file": &member.file,
-                "container": &member.container,
-                "name": &member.name,
-                "member_type": &member.member_type,
-                "visibility": &member.visibility,
-                "modifiers": &member.modifiers,
-                "line": member.line,
-            });
+            // 1. Insert into eventlog (skip for ref repos - files ARE the source)
+            if !self.skip_eventlog {
+                let event_data = serde_json::json!({
+                    "file": &member.file,
+                    "container": &member.container,
+                    "name": &member.name,
+                    "member_type": &member.member_type,
+                    "visibility": &member.visibility,
+                    "modifiers": &member.modifiers,
+                    "line": member.line,
+                });
 
-            unified_db::insert_event(
-                &tx,
-                "code.member",
-                &chrono::Utc::now().to_rfc3339(),
-                &format!("{}::{}::{}", member.file, member.container, member.name),
-                Some(&member.file),
-                &event_data.to_string(),
-            )?;
+                unified_db::insert_event(
+                    &tx,
+                    "code.member",
+                    &chrono::Utc::now().to_rfc3339(),
+                    &format!("{}::{}::{}", member.file, member.container, member.name),
+                    Some(&member.file),
+                    &event_data.to_string(),
+                )?;
+            }
 
             // 2. Insert into materialized view (existing logic)
             let modifiers_json = serde_json::to_string(&member.modifiers)?;

@@ -306,10 +306,16 @@ fn parse_git_log_output(output: &str) -> Result<Vec<GitCommit>> {
 
 /// Insert commits into eventlog and materialized views
 ///
-/// Dual-write pattern:
+/// Dual-write pattern (project repos):
 /// 1. Insert git.commit event into eventlog (source of truth)
 /// 2. Update materialized views (commits, commit_files) for fast queries
-fn insert_commits(conn: &Connection, commits: &[GitCommit]) -> Result<usize> {
+///
+/// Direct-write pattern (ref repos, skip_eventlog=true):
+/// - Skip eventlog (git IS the source of truth)
+/// - Only update materialized views for queries
+///
+/// See: layer/surface/build/spec-ref-repo-storage.md
+fn insert_commits(conn: &Connection, commits: &[GitCommit], skip_eventlog: bool) -> Result<usize> {
     let mut count = 0;
 
     let mut commit_stmt = conn.prepare(
@@ -355,14 +361,17 @@ fn insert_commits(conn: &Connection, commits: &[GitCommit]) -> Result<usize> {
             event_data["session_id"] = json!(session_id);
         }
 
-        database::insert_event(
-            conn,
-            "git.commit",
-            &commit.timestamp,
-            &commit.sha,
-            None, // source_file not applicable for commits
-            &event_data.to_string(),
-        )?;
+        // 1. Insert into eventlog (skip for ref repos - git IS the source)
+        if !skip_eventlog {
+            database::insert_event(
+                conn,
+                "git.commit",
+                &commit.timestamp,
+                &commit.sha,
+                None, // source_file not applicable for commits
+                &event_data.to_string(),
+            )?;
+        }
 
         // 2. Update materialized view (for fast queries)
         commit_stmt.execute([
@@ -491,6 +500,10 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     let start = Instant::now();
     let db_path = Path::new(database::PATINA_DB);
 
+    // Ref repos use lean storage - skip eventlog for git data
+    // Git IS the source of truth, no need to duplicate in eventlog
+    let skip_eventlog = database::is_ref_repo(db_path);
+
     // Check for shallow clone - skip co-change analysis
     if is_shallow_clone() {
         println!("⚠️  Shallow clone detected - skipping git history analysis");
@@ -560,9 +573,13 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         .filter(|c| commits::parse_conventional(&c.message).pr_ref.is_some())
         .count();
 
-    // Insert commits
-    let commit_count = insert_commits(&conn, &commits)?;
-    println!("  Inserted {} commits", commit_count);
+    // Insert commits (skip eventlog for ref repos - git IS the source)
+    let commit_count = insert_commits(&conn, &commits, skip_eventlog)?;
+    if skip_eventlog {
+        println!("  Inserted {} commits (direct, no eventlog)", commit_count);
+    } else {
+        println!("  Inserted {} commits", commit_count);
+    }
 
     // Report conventional commit stats
     if conventional_count > 0 {
