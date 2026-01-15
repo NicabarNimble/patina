@@ -1,6 +1,6 @@
 ---
 id: spec-ref-repo-storage
-status: draft
+status: partial
 created: 2026-01-14
 tags: [spec, ref-repos, database, eventlog, storage]
 references: [dependable-rust, unix-philosophy, spec-forge-bulk-fetch]
@@ -255,12 +255,12 @@ $ patina scrape forge (ref repo)
 
 ## Success Criteria
 
-- [ ] Git scrape for ref repos inserts directly (no eventlog)
-- [ ] Code scrape for ref repos inserts directly (no eventlog)
-- [ ] Forge scrape dedupes on insert (no duplicate events)
+- [x] Git scrape for ref repos inserts directly (no eventlog)
+- [x] Code scrape for ref repos inserts directly (no eventlog)
+- [x] Forge scrape dedupes on insert (no duplicate events)
 - [ ] Existing ref repos can be rebuilt with `--rebuild`
 - [ ] claude-code database size < 50MB after rebuild (was 224MB)
-- [ ] Project repos unchanged (full eventlog preserved)
+- [x] Project repos unchanged (full eventlog preserved)
 
 ---
 
