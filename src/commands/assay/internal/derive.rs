@@ -284,15 +284,16 @@ fn compute_activity(conn: &Connection, path: &str) -> (String, Option<i64>, i64)
     // Normalize path: strip ./ prefix to match git file paths
     let normalized_path = path.trim_start_matches("./");
 
-    // Query git.commit events that touch this file using json_each to search the files array
+    // Query commit_files + commits tables (works for both project and ref repos)
+    // Note: For ref repos, eventlog doesn't have git.commit events (lean storage)
     let result: Result<(i64, String), _> = conn.query_row(
         r#"
         SELECT
-            COUNT(DISTINCT e.seq) as commit_count,
-            MAX(e.timestamp) as last_commit
-        FROM eventlog e, json_each(json_extract(e.data, '$.files')) as f
-        WHERE e.event_type = 'git.commit'
-          AND json_extract(f.value, '$.path') = ?
+            COUNT(DISTINCT cf.sha) as commit_count,
+            MAX(c.timestamp) as last_commit
+        FROM commit_files cf
+        JOIN commits c ON cf.sha = c.sha
+        WHERE cf.file_path = ?
         "#,
         [normalized_path],
         |row| {
@@ -508,14 +509,17 @@ fn compute_contributors(conn: &Connection, path: &str) -> (Vec<String>, i64) {
     // Normalize path: strip ./ prefix to match git file paths
     let normalized_path = path.trim_start_matches("./");
 
+    // Query commit_files + commits tables (works for both project and ref repos)
+    // Note: For ref repos, eventlog doesn't have git.commit events (lean storage)
+
     // First get the count of distinct contributors
     let contributor_count: i64 = conn
         .query_row(
             r#"
-            SELECT COUNT(DISTINCT json_extract(e.data, '$.author_name'))
-            FROM eventlog e, json_each(json_extract(e.data, '$.files')) as f
-            WHERE e.event_type = 'git.commit'
-              AND json_extract(f.value, '$.path') = ?
+            SELECT COUNT(DISTINCT c.author_name)
+            FROM commit_files cf
+            JOIN commits c ON cf.sha = c.sha
+            WHERE cf.file_path = ?
             "#,
             [normalized_path],
             |row| row.get(0),
@@ -525,10 +529,10 @@ fn compute_contributors(conn: &Connection, path: &str) -> (Vec<String>, i64) {
     // Then get top 3 contributors
     let mut stmt = match conn.prepare(
         r#"
-        SELECT json_extract(e.data, '$.author_name') as author, COUNT(DISTINCT e.seq) as commits
-        FROM eventlog e, json_each(json_extract(e.data, '$.files')) as f
-        WHERE e.event_type = 'git.commit'
-          AND json_extract(f.value, '$.path') = ?
+        SELECT c.author_name as author, COUNT(DISTINCT cf.sha) as commits
+        FROM commit_files cf
+        JOIN commits c ON cf.sha = c.sha
+        WHERE cf.file_path = ?
         GROUP BY author
         ORDER BY commits DESC
         LIMIT 3
