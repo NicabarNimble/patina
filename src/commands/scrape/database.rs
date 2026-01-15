@@ -16,7 +16,21 @@ use std::path::Path;
 ///
 /// See: layer/surface/build/spec-ref-repo-storage.md
 pub fn is_ref_repo(path: &Path) -> bool {
-    path.to_string_lossy().contains(".patina/cache/repos")
+    // Try the path directly first
+    if path.to_string_lossy().contains(".patina/cache/repos") {
+        return true;
+    }
+    // If path is relative, check current working directory
+    if let Ok(cwd) = std::env::current_dir() {
+        if cwd.to_string_lossy().contains(".patina/cache/repos") {
+            return true;
+        }
+        // Also check canonical path
+        if let Ok(canonical) = cwd.join(path).canonicalize() {
+            return canonical.to_string_lossy().contains(".patina/cache/repos");
+        }
+    }
+    false
 }
 
 /// Path to unified database
