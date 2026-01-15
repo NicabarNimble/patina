@@ -142,8 +142,8 @@ Prefer synchronous, blocking code over async.
 |------|---------|--------|----------|
 | **Component** | scry, eventlog, oxidize | assay inventory | Deterministic |
 | **Concept** | sync-first, borrow-checker | Recurring terms in sessions/commits | Deterministic (frequency) |
-| **Decision** | why-rouille, why-sqlite | Session "Key Decisions", commit rationale | LLM synthesis |
-| **Pattern** | measure-first, scalpel-not-shotgun | Session "Patterns Observed" | LLM synthesis |
+| **Decision** | why-rouille, why-sqlite | Session "Key Decisions", commit rationale | Adapter LLM synthesis |
+| **Pattern** | measure-first, scalpel-not-shotgun | Session "Patterns Observed" | Adapter LLM synthesis |
 
 ### Link Generation
 
@@ -154,6 +154,74 @@ Wikilinks ARE the graph. No graph database needed.
 - **Co-occurrence** - concepts appear in same session/commit → linked
 - **Explicit reference** - commit mentions "because of X" → link to X
 
+### Mother's Role
+
+**Mother orchestrates surface capture.** Mother is deterministic daemon code, NOT a local LLM.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    MOTHER (Daemon)                          │
+│                                                             │
+│  Orchestrates existing tools:                               │
+│    • oxidize embeddings (session → vector)                  │
+│    • scry similarity (is A related to B?)                   │
+│    • temporal correlation (A happened, then B happened)     │
+│    • threshold rules (confidence > X → surface it)          │
+│                                                             │
+│  Outputs:                                                   │
+│    • Connection candidates (high confidence → surface)      │
+│    • Uncertainty queue (low confidence → adapter review)    │
+│                                                             │
+│  Does NOT:                                                  │
+│    • Run inference (no local LLM in Phase 1-2)              │
+│    • Make strategic decisions (adapters do this)            │
+│    • Generate prose (adapters do this)                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key insight:** 90% of connection scoring already exists in oxidize/scry. Mother just orchestrates and stores validated connections.
+
+### Connection Scoring
+
+How do we identify that an idea in a session maps to evidence in code?
+
+**Using existing infrastructure:**
+
+| Tool | Provides | Already Exists? |
+|------|----------|-----------------|
+| Session embeddings | Vector for session text | ✅ oxidize |
+| Commit embeddings | Vector for commit messages | ✅ oxidize |
+| Semantic similarity | "Is A similar to B?" | ✅ scry semantic oracle |
+| Temporal correlation | "Did A happen near B?" | ✅ timestamp comparison |
+| Lexical overlap | "Do A and B share keywords?" | ✅ scry lexical oracle |
+
+**What's new:**
+
+| Need | Description |
+|------|-------------|
+| Connection query | Join session → commit by similarity + time |
+| Connection storage | Table to store validated connections |
+| Confidence threshold | Cutoff for "confident enough to surface" |
+| Uncertainty queue | Low-confidence items for adapter review |
+
+**The flow:**
+```
+Session idea (embedded)
+        │
+        ▼
+Compare to recent commits (similarity score)
+        │
+        ▼
+Check temporal correlation (session before commit?)
+        │
+        ▼
+Confidence score = f(similarity, temporal, lexical)
+        │
+        ├── HIGH (>0.8) → Surface directly
+        ├── MEDIUM (0.5-0.8) → Queue for adapter review
+        └── LOW (<0.5) → Discard
+```
+
 ### Capture Phases
 
 **Phase 1: Deterministic Components**
@@ -161,22 +229,25 @@ Wikilinks ARE the graph. No graph database needed.
 - Generate component nodes with stats (lines, functions)
 - Extract links from `import_facts`
 
-**Phase 2: Deterministic Concepts**
+**Phase 2: Deterministic Concepts + Connection Scoring**
 - Query sessions for recurring terms (frequency analysis)
 - Query commits for decision language ("because", "prefer", "instead of")
+- Implement connection scoring (session → commit similarity)
 - Generate concept nodes with co-occurrence links
+- Store validated connections
 
-**Phase 3: LLM Synthesis**
-- Use local LLM to transform noisy query results into clean nodes
-- Generate decision and pattern nodes with rationale
-- Higher quality but non-deterministic
+**Phase 3: Adapter LLM Synthesis**
+- Adapter LLM (Claude/Gemini/OpenCode) reviews uncertainty queue
+- Adapter generates decision and pattern nodes with rationale
+- Adapter validates/refines Mother's connection candidates
+- Higher quality, uses the smartest model in the room
 
 ### Open Questions (Capture)
 
 1. What frequency threshold makes a term worth capturing?
 2. What decision language patterns reliably indicate rationale?
-3. How to handle noise in session data?
-4. Should LLM synthesis be optional or required for certain node types?
+3. What confidence threshold for automatic surfacing vs adapter review?
+4. How to measure connection scoring quality? (precision metric needed)
 
 ---
 
@@ -276,11 +347,12 @@ Patina should help manage its own build/spec system:
 - Basic wikilinks from imports
 - **Exit:** Can generate component nodes
 
-### Milestone 2: Concept Capture
-- Frequency analysis on sessions/commits
-- Decision language extraction
-- Co-occurrence linking
-- **Exit:** Can generate concept nodes
+### Milestone 2: Connection Scoring
+- Session → commit similarity query
+- Connection storage table
+- Confidence threshold + uncertainty queue
+- Concept nodes with validated connections
+- **Exit:** Mother can score connections, queue uncertainties
 
 ### Milestone 3: Curate Foundation
 - Importance scoring algorithm
@@ -288,16 +360,23 @@ Patina should help manage its own build/spec system:
 - Manual promote/archive workflow
 - **Exit:** Can see importance rankings, manually curate
 
-### Milestone 4: LLM Synthesis
-- Local LLM integration for decision/pattern nodes
-- Higher quality extraction
-- **Exit:** Can generate decision/pattern nodes
+### Milestone 4: Adapter LLM Synthesis
+- Adapter LLM reviews uncertainty queue during sessions
+- Generates decision/pattern nodes with rationale
+- Validates Mother's connection candidates
+- **Exit:** Can generate high-quality decision/pattern nodes
 
 ### Milestone 5: Automated Curation
 - Automatic staleness detection
 - Promotion/archival suggestions
 - Self-managing spec system
 - **Exit:** patina helps manage its own documentation
+
+### Milestone 6 (Future): Local Model Optimization
+- Local model (Gemma) handles routine synthesis offline
+- Only when proven patterns exist from Milestone 4
+- Reduces dependency on adapter LLM for common cases
+- **Exit:** Offline mode for routine surface maintenance
 
 ---
 
@@ -325,14 +404,21 @@ git status
 # Shows new/modified files in layer/surface/
 ```
 
-**4. Curate Test**
+**4. Connection Test**
+```bash
+patina surface connections
+# Shows: session X → commit Y (confidence: 0.87)
+# Queued for review: 3 uncertain connections
+```
+
+**5. Curate Test**
 ```bash
 patina surface status
 # Shows nodes ranked by importance
 # Identifies stale candidates
 ```
 
-**5. Query Test**
+**6. Query Test**
 ```bash
 patina scry "why did we choose rouille?"
 # Returns surface node with decision rationale
@@ -349,20 +435,34 @@ patina scry "why did we choose rouille?"
 - **Flat over hierarchical** - Links create structure, not folders
 - **Deterministic first** - Add LLM synthesis only where needed
 - **Curated over accumulated** - Quality over quantity
+- **Smart model in the room** - Use adapter LLMs for synthesis, not local models
 
 ---
 
-## Infrastructure That Exists
+## Infrastructure
+
+### What Exists (Use It)
 
 | Component | Status | Location |
 |-----------|--------|----------|
-| scry queries | ✅ Working | `src/commands/scry/` |
-| assay queries | ✅ Working | `src/commands/assay/` |
-| ort (ONNX runtime) | ✅ In use | embeddings |
-| patina model | ⚠️ Partial | model download/management |
-| Gemma ONNX models | ✅ Available | HuggingFace |
-| persona (template) | ✅ Working | LiveStore pattern for writes |
-| layer structure | ✅ Exists | core/surface/dust |
+| Session embeddings | ✅ Working | `oxidize` → semantic index |
+| Commit embeddings | ✅ Working | `oxidize` → semantic index |
+| Semantic similarity | ✅ Working | `scry` semantic oracle |
+| Lexical search | ✅ Working | `scry` lexical oracle (FTS5) |
+| Temporal data | ✅ Working | `commits` table timestamps |
+| Import relationships | ✅ Working | `import_facts` table |
+| Mother daemon | ✅ Working | `patina serve` |
+| Layer structure | ✅ Exists | `layer/core/`, `layer/surface/`, `layer/dust/` |
+
+### What's New (Build It)
+
+| Component | Description |
+|-----------|-------------|
+| Connection query | Join session → commit by similarity |
+| Connection storage | New table for validated connections |
+| Confidence scoring | Algorithm combining similarity + temporal + lexical |
+| Uncertainty queue | Storage for adapter review items |
+| Surface command | `patina surface capture`, `patina surface status` |
 
 ---
 
@@ -383,15 +483,26 @@ For ref repos (external repos without `layer/`), what data can serve as their "s
 2. Ref repos don't scrape documentation (README, STYLE_GUIDE, etc.)
 3. Rate limiting needed for PR fetching
 
+### Session 20260115-053944: Mother Architecture Crystallized
+
+**Key Insight:** Mother is NOT a local LLM model - she's deterministic daemon code.
+
+- Phase 1-2: Deterministic (existing embeddings + similarity + threshold rules)
+- Phase 3: Adapter LLM synthesis (Claude/Gemini/OpenCode - smartest model in room)
+- Phase 6+: Local model optimization (only after proven patterns exist)
+
+**90% of connection scoring already exists** in oxidize/scry. Mother orchestrates, stores connections, queues uncertainties.
+
 ---
 
 ## References
 
 - [Obsidian](https://obsidian.md) - Knowledge garden model
 - [spec-pipeline.md](./spec-pipeline.md) - scrape/oxidize/scry pipeline
+- [spec-mothership.md](./spec-mothership.md) - Mother architecture
 - Session 20260108-124107 - Initial design exploration
 - Session 20260108-200725 - Refined as distillation layer
 - Session 20260109-063849 - LLM synthesis and model cartridge design
 - Session 20260110-154224 - Corrected to hub & spoke architecture
 - Session 20260110-181504 - Ref repo exploration, forge data gaps
-- Session 20260115-053944 - Two functions: Capture & Curate
+- Session 20260115-053944 - Two functions: Capture & Curate, Mother crystallized
