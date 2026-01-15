@@ -157,6 +157,10 @@ enum Commands {
     Scrape {
         #[command(subcommand)]
         command: Option<ScrapeCommands>,
+
+        /// Rebuild database from scratch (for ref repos: removes old eventlog bloat)
+        #[arg(long)]
+        rebuild: bool,
     },
 
     /// Build embeddings and projections from recipe
@@ -865,23 +869,31 @@ fn main() -> Result<()> {
         Some(Commands::Test) => {
             commands::test::execute()?;
         }
-        Some(Commands::Scrape { command }) => match command {
-            None => commands::scrape::execute_all()?,
-            Some(ScrapeCommands::Code { args }) => {
-                commands::scrape::execute_code(args.init, args.force)?
+        Some(Commands::Scrape { command, rebuild }) => {
+            if rebuild {
+                commands::scrape::execute_rebuild()?;
+            } else {
+                match command {
+                    None => commands::scrape::execute_all()?,
+                    Some(ScrapeCommands::Code { args }) => {
+                        commands::scrape::execute_code(args.init, args.force)?
+                    }
+                    Some(ScrapeCommands::Git { full }) => commands::scrape::execute_git(full)?,
+                    Some(ScrapeCommands::Sessions { full }) => {
+                        commands::scrape::execute_sessions(full)?
+                    }
+                    Some(ScrapeCommands::Layer { full }) => commands::scrape::execute_layer(full)?,
+                    Some(ScrapeCommands::Forge {
+                        full,
+                        status,
+                        sync,
+                        log,
+                        limit,
+                        repo,
+                    }) => commands::scrape::execute_forge(full, status, sync, log, limit, repo)?,
+                }
             }
-            Some(ScrapeCommands::Git { full }) => commands::scrape::execute_git(full)?,
-            Some(ScrapeCommands::Sessions { full }) => commands::scrape::execute_sessions(full)?,
-            Some(ScrapeCommands::Layer { full }) => commands::scrape::execute_layer(full)?,
-            Some(ScrapeCommands::Forge {
-                full,
-                status,
-                sync,
-                log,
-                limit,
-                repo,
-            }) => commands::scrape::execute_forge(full, status, sync, log, limit, repo)?,
-        },
+        }
         Some(Commands::Oxidize) => {
             commands::oxidize::oxidize()?;
         }
