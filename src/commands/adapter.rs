@@ -462,7 +462,11 @@ fn preserve_user_files(adapter_dir: &std::path::Path) -> Result<Vec<(String, Vec
                 let dirname = path.file_name().unwrap().to_string_lossy().to_string();
                 // Only preserve if NOT a template-managed skill
                 if !TEMPLATE_SKILLS.contains(&dirname.as_str()) {
-                    preserve_directory_recursive(&path, &format!("skills/{}", dirname), &mut preserved)?;
+                    preserve_directory_recursive(
+                        &path,
+                        &format!("skills/{}", dirname),
+                        &mut preserved,
+                    )?;
                 }
             }
         }

@@ -98,7 +98,14 @@ pub(crate) fn check_gh_auth() -> Result<bool> {
 pub(crate) fn fetch_issue_count(repo: &str) -> Result<usize> {
     let query = format!("repo:{} is:issue", repo);
     let output = Command::new("gh")
-        .args(["api", "search/issues", "-f", &format!("q={}", query), "--jq", ".total_count"])
+        .args([
+            "api",
+            "search/issues",
+            "-f",
+            &format!("q={}", query),
+            "--jq",
+            ".total_count",
+        ])
         .output()
         .context("Failed to run `gh api search/issues`")?;
 
@@ -116,7 +123,14 @@ pub(crate) fn fetch_issue_count(repo: &str) -> Result<usize> {
 pub(crate) fn fetch_pr_count(repo: &str) -> Result<usize> {
     let query = format!("repo:{} is:pr", repo);
     let output = Command::new("gh")
-        .args(["api", "search/issues", "-f", &format!("q={}", query), "--jq", ".total_count"])
+        .args([
+            "api",
+            "search/issues",
+            "-f",
+            &format!("q={}", query),
+            "--jq",
+            ".total_count",
+        ])
         .output()
         .context("Failed to run `gh api search/issues`")?;
 

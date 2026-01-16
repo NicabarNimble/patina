@@ -472,11 +472,7 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
         println!("  No new issues to process");
         0
     } else {
-        println!(
-            "  Fetched {}/{} issues",
-            issues.len(),
-            issue_count_expected
-        );
+        println!("  Fetched {}/{} issues", issues.len(), issue_count_expected);
         let stats = insert_issues(&conn, &issues)?;
         if stats.skipped > 0 {
             println!(
