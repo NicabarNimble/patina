@@ -401,73 +401,150 @@ surface.rule.apply       {rule_id, context, result}
 
 **Goal:** Make belief creation deterministic - system provides format, not LLM discovery.
 
-**Key Insight (Session 20260116-080414):** The LLM synthesizes beliefs from scry/assay, but should NOT write markdown directly. The system should own the format.
+**Key Insight:** The LLM synthesizes beliefs, but should NOT discover format through trial and error. The system provides format knowledge and validation.
 
-**The Flow:**
+#### E2 Research (Session 20260116-095954)
+
+Explored three adapter codebases to understand extensibility mechanisms:
+
+**Adapter Command Systems (verified via scry on ref repos):**
+
+| Adapter | Command Format | Location | Shell Injection |
+|---------|---------------|----------|-----------------|
+| Claude Code | Markdown + YAML frontmatter | `.claude/commands/*.md` | `` !`cmd` `` |
+| OpenCode | Markdown + YAML frontmatter | `.opencode/command/*.md` | Direct bash |
+| Gemini CLI | TOML with prompt field | `.gemini/commands/*.toml` | `!{cmd}` |
+
+**Claude Code Skills System (Oct 2025):**
+
+Skills are auto-invoked context providers - Claude loads them when task matches description.
+
 ```
-Scry/Assay (raw data)
-        │
-        ▼
-Adapter LLM synthesizes belief
-        │
-        ▼
-LLM provides structured data (JSON)
-        │
-        ▼
-Patina validates + writes markdown
-        │
-        ▼
-layer/surface/epistemic/beliefs/new-belief.md
+.claude/skills/skill-name/
+├── SKILL.md           # Required: frontmatter (name, description) + instructions
+├── scripts/           # Optional: executable code for deterministic tasks
+├── references/        # Optional: documentation loaded on-demand
+└── assets/            # Optional: files used in output
 ```
 
-**Two Patterns in Patina:**
+Key properties:
+- **Auto-triggered**: Loaded based on description matching, not slash commands
+- **Progressive disclosure**: metadata (~100 words) → SKILL.md (<5k words) → resources (unbounded)
+- **Scripts are deterministic**: Shell/Python executed without loading into context
+- **References on-demand**: Large docs loaded only when needed
 
-| Pattern | Example | How | Adapter Support |
-|---------|---------|-----|-----------------|
-| Skills + Shell | Sessions (`/session-start`) | Skill → shell script → heredoc | Claude Code (others unclear) |
-| MCP Tools | Scry, Assay, Context | `patina serve --mcp` → Rust | All three adapters |
+Sources:
+- [Claude Code Skills Docs](https://code.claude.com/docs/en/skills)
+- [anthropics/skills GitHub](https://github.com/anthropics/skills)
+- [Anthropic Engineering Blog](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)
 
-**Adapter MCP Support (verified via scry on ref repos):**
-- Claude Code: ✅ (we use it now)
-- Gemini CLI: ✅ (`mcp-client.ts`, `McpPromptLoader`)
-- OpenCode: ✅ (`src/mcp/` directory)
-
-**Design Decision: MCP vs Skills**
+#### E2 Design Decision: Skills over MCP
 
 | Consideration | Skills + Shell | MCP Tool |
 |---------------|---------------|----------|
-| Adapter-agnostic | ❌ Claude-specific | ✅ All three |
-| Format ownership | Shell heredoc | Rust struct |
-| Validation | Basic string checks | Strong typing |
-| Complex structures | Heredoc limitations? | JSON → Rust → Markdown |
-| Hot-loadable | Skills evolving | Already works |
+| Adapter support | Claude Code only | All three |
+| Format ownership | Shell script | Rust struct |
+| Validation | Shell script checks | Strong typing |
+| Progressive disclosure | ✅ Built-in | ❌ Not applicable |
+| Implementation effort | ✅ Low (prototype done) | Medium (Rust work) |
+| Learning value | ✅ New system to understand | Already using MCP |
 
-**Recommendation:** MCP tool (`create_belief`) for adapter-agnostic belief creation. Rust owns format, validates input, writes markdown.
+**Decision:** Start with Skills prototype for Claude Code. MCP remains option for adapter-agnostic future.
 
-**Why Rust, Not JSON Schema:**
+**Rationale:**
+1. Skills are the emerging standard in Claude Code
+2. Progressive disclosure matches belief complexity (simple creation → detailed format)
+3. Shell scripts provide sufficient validation for prototype
+4. Learning the skills system has value beyond this use case
+5. Can always add MCP tool later if needed
 
-Original E2 proposed JSON Schema for validation. But:
-- JSON Schema = separate file that must stay in sync with code
-- Rust struct = the code itself, always in sync
-- If Rust parses it, it's valid. If not, error with details.
+#### E2 Prototype (Implemented)
 
-**Rust IS the schema.** No separate schema file needed.
+```
+.claude/skills/epistemic-beliefs/
+├── SKILL.md                    # Auto-loads when discussing belief creation
+├── scripts/
+│   └── create-belief.sh        # Validates + writes markdown
+└── references/
+    └── belief-example.md       # Complete format reference
+
+.claude/commands/
+└── belief-create.md            # Optional explicit /belief-create trigger
+```
+
+**The Flow:**
+```
+User discusses creating a belief
+        │
+        ▼
+Claude auto-loads epistemic-beliefs skill
+        │
+        ▼
+Claude synthesizes belief from context
+        │
+        ▼
+Claude calls create-belief.sh with args
+        │
+        ▼
+Script validates: id, statement, confidence, evidence
+        │
+        ▼
+Script writes layer/surface/epistemic/beliefs/{id}.md
+```
+
+**Script Validation:**
+- ID: lowercase, hyphens, starts with letter
+- Statement: required, non-empty
+- Confidence: required, 0.0-1.0
+- Evidence: required, at least one source
+- Persona: required
+- Prevents overwriting existing beliefs
+
+#### E2 Tasks
+
+- [x] Research adapter extensibility mechanisms
+- [x] Understand Claude Code skills system
+- [x] Create skill prototype (`epistemic-beliefs`)
+- [x] Implement validation script (`create-belief.sh`)
+- [x] Add format reference (`belief-example.md`)
+- [x] Create optional slash command (`/belief-create`)
+- [ ] Test skill auto-triggering in real usage
+- [ ] Iterate based on testing
+- [ ] Document for other adapters (Gemini CLI, OpenCode)
+- [ ] **Deployment gap**: Add skills to `templates.rs` for `adapter refresh`
+
+#### E2 Deployment Note
+
+**Current state**: Skills source files in `resources/claude/skills/` but NOT auto-deployed.
+
+**Why**: Patina has two deployment paths:
+1. `session_scripts.rs` - old internal path (not used by `adapter refresh`)
+2. `templates.rs` - actual path used by `adapter refresh`
+
+Skills need to be added to `templates.rs` → `install_claude_templates()` to be deployed automatically.
+
+**Workaround**: Manually copy from resources:
+```bash
+mkdir -p .claude/skills/epistemic-beliefs/{scripts,references}
+cp resources/claude/skills/epistemic-beliefs/SKILL.md .claude/skills/epistemic-beliefs/
+cp resources/claude/skills/epistemic-beliefs/scripts/* .claude/skills/epistemic-beliefs/scripts/
+cp resources/claude/skills/epistemic-beliefs/references/* .claude/skills/epistemic-beliefs/references/
+chmod +x .claude/skills/epistemic-beliefs/scripts/*.sh
+```
+
+#### E2 Future: MCP Alternative
+
+If adapter-agnostic creation needed:
 
 ```
 LLM provides JSON → Rust struct validates → Rust writes markdown
-                    ↑
-            This IS validation
 ```
 
-**Revised E2 Tasks:**
-- [ ] Rust struct defining belief fields (source of truth)
-- [ ] `patina surface create-belief` CLI command
-- [ ] MCP tool exposing `create_belief`
-- [ ] Rust validates JSON input, writes markdown output
-- [ ] `patina surface validate` for checking existing files
-- [ ] Link integrity checker
-
-**Open Question:** Skills system is evolving (hot-loading, less hacky). May revisit if skills become adapter-agnostic.
+Tasks (deferred):
+- Rust struct defining belief fields
+- `patina surface create-belief` CLI command
+- MCP tool exposing `create_belief`
+- `patina surface validate` for checking existing files
 
 ### Phase E3: Scry Integration
 
@@ -506,6 +583,15 @@ LLM provides JSON → Rust struct validates → Rust writes markdown
 - [ ] All beliefs have ≥1 evidence link
 - [ ] Zero broken wikilinks
 - [ ] Manual revision tested
+
+### Phase E2 Exit
+
+- [x] Skill prototype implemented (`.claude/skills/epistemic-beliefs/`)
+- [x] Validation script works (`create-belief.sh`)
+- [x] Format reference available (`references/belief-example.md`)
+- [ ] Skill auto-triggers correctly in real usage
+- [ ] Created 3+ beliefs using the skill
+- [ ] No format errors in created beliefs
 
 ### Phase E3 Exit
 
@@ -555,8 +641,8 @@ LLM provides JSON → Rust struct validates → Rust writes markdown
 3. **Cross-project attacks**: Can a belief in project A attack a belief in project B?
 4. **Rule inheritance**: Do rules from core apply automatically to surface?
 5. **Visualization**: How to visualize the argument graph? (Obsidian? Custom?)
-6. **Skills evolution**: Claude Code moving from custom commands to skills (hot-loadable). If skills become adapter-agnostic, reconsider MCP-only approach.
-7. **Heredoc limitations**: Can shell scripts handle complex belief structures (nested confidence signals, evidence arrays)? Needs testing.
+6. ~~**Skills evolution**: Claude Code moving from custom commands to skills.~~ **RESOLVED (Session 20260116-095954)**: Skills are now the standard. Prototype implemented using skills system.
+7. ~~**Heredoc limitations**: Can shell scripts handle complex belief structures?~~ **RESOLVED**: Shell script with command-line args works for belief creation. Complex structures (evidence arrays) handled as single string args, expanded in template.
 
 ---
 

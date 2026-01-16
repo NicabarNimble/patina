@@ -9,9 +9,9 @@ This directory contains Patina's epistemic belief system - atomic beliefs with e
 
 ## Statistics
 
-- **Beliefs**: 6
+- **Beliefs**: 9
 - **Rules**: 3
-- **Total Confidence**: 5.31/6.0 (avg: 0.885)
+- **Total Confidence**: 7.68/9.0 (avg: 0.853)
 - **Highest Entrenchment**: eventlog-is-truth (very-high)
 
 ## Argument Graph
@@ -64,6 +64,9 @@ eventlog-is-truth ─────────► [[capture-at-boundary]]
 | [[smart-model-in-room]] | 0.88 | high | active |
 | [[eventlog-is-truth]] | 0.92 | very-high | active |
 | [[measure-first]] | 0.88 | high | active |
+| [[skills-for-structured-output]] | 0.75 | medium | active |
+| [[progressive-disclosure]] | 0.82 | medium | active |
+| [[system-owns-format]] | 0.80 | medium | active |
 
 ## Rule Inventory
 
@@ -80,10 +83,13 @@ eventlog-is-truth ─────────► [[capture-at-boundary]]
 | [[analysis-paralysis]] | spec-first | active | "only when spec exceeds 1 week" |
 | [[cost-concerns]] | smart-model-in-room | active | "high-volume synthesis" |
 | [[latency-concerns]] | smart-model-in-room | active | "real-time interactions" |
+| [[latency-concerns]] | progressive-disclosure | active | "on-demand loading adds delay" |
 | [[storage-overhead]] | eventlog-is-truth | scoped | "ref repos use lean storage" |
 | [[measurement-overhead]] | measure-first | active | "trivial changes" |
 | [[high-concurrency-needed]] | sync-first | active | "network-heavy or many parallel connections" |
 | [[streaming-responses]] | sync-first | active | "long-running streaming APIs" |
+| [[adapter-agnostic-required]] | skills-for-structured-output | active | "supporting Gemini CLI or OpenCode" |
+| [[llm-flexibility-needed]] | system-owns-format | active | "output format varies by context" |
 
 ## Defeated Beliefs
 
@@ -96,16 +102,37 @@ eventlog-is-truth ─────────► [[capture-at-boundary]]
 | [[build-it-they-will-come]] | measure-first | - |
 | [[async-by-default]] | sync-first | consider actual I/O patterns first |
 | [[rqlite-architecture]] | sync-first | migrated to SQLite |
+| [[json-schema-for-validation]] | skills-for-structured-output | separate schema file must stay in sync |
+| [[load-everything-upfront]] | progressive-disclosure | wastes context window |
+| [[llm-writes-markdown-directly]] | system-owns-format | format discovery is non-deterministic |
 
 ## Personas
 
 | Persona | Facets | Beliefs | Rules |
 |---------|--------|---------|-------|
-| architect | development-process, design, engineering, llm, data-architecture, rust | 6 | 3 |
+| architect | development-process, design, engineering, llm, data-architecture, rust, tooling, context-management, epistemic | 9 | 3 |
 
 ## How to Use
 
-### Adding a Belief
+### Adding a Belief (Recommended: Use Skill)
+
+Use the `epistemic-beliefs` skill or `/belief-create` command:
+
+```bash
+.claude/skills/epistemic-beliefs/scripts/create-belief.sh \
+  --id "belief-id" \
+  --statement "One sentence belief" \
+  --persona "architect" \
+  --confidence "0.80" \
+  --evidence "[[source]]: description (weight: 0.X)" \
+  --facets "domain1,domain2"
+```
+
+The skill will auto-trigger when discussing belief creation. After creation:
+1. Edit the file to add supports/attacks relationships
+2. Update this index
+
+### Adding a Belief (Manual)
 
 1. Create `beliefs/<belief-id>.md`
 2. Fill in frontmatter (type, persona, confidence, entrenchment, status)
