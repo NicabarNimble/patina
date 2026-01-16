@@ -397,12 +397,77 @@ surface.rule.apply       {rule_id, context, result}
 - [ ] Derive 5 more rules from belief clusters
 - [ ] Test revision scenario (add conflicting belief)
 
-### Phase E2: Schema Validation
+### Phase E2: Belief Creation System
 
-- [ ] JSON Schema for belief frontmatter
-- [ ] JSON Schema for rule frontmatter
-- [ ] CLI validator: `patina surface validate`
+**Goal:** Make belief creation deterministic - system provides format, not LLM discovery.
+
+**Key Insight (Session 20260116-080414):** The LLM synthesizes beliefs from scry/assay, but should NOT write markdown directly. The system should own the format.
+
+**The Flow:**
+```
+Scry/Assay (raw data)
+        │
+        ▼
+Adapter LLM synthesizes belief
+        │
+        ▼
+LLM provides structured data (JSON)
+        │
+        ▼
+Patina validates + writes markdown
+        │
+        ▼
+layer/surface/epistemic/beliefs/new-belief.md
+```
+
+**Two Patterns in Patina:**
+
+| Pattern | Example | How | Adapter Support |
+|---------|---------|-----|-----------------|
+| Skills + Shell | Sessions (`/session-start`) | Skill → shell script → heredoc | Claude Code (others unclear) |
+| MCP Tools | Scry, Assay, Context | `patina serve --mcp` → Rust | All three adapters |
+
+**Adapter MCP Support (verified via scry on ref repos):**
+- Claude Code: ✅ (we use it now)
+- Gemini CLI: ✅ (`mcp-client.ts`, `McpPromptLoader`)
+- OpenCode: ✅ (`src/mcp/` directory)
+
+**Design Decision: MCP vs Skills**
+
+| Consideration | Skills + Shell | MCP Tool |
+|---------------|---------------|----------|
+| Adapter-agnostic | ❌ Claude-specific | ✅ All three |
+| Format ownership | Shell heredoc | Rust struct |
+| Validation | Basic string checks | Strong typing |
+| Complex structures | Heredoc limitations? | JSON → Rust → Markdown |
+| Hot-loadable | Skills evolving | Already works |
+
+**Recommendation:** MCP tool (`create_belief`) for adapter-agnostic belief creation. Rust owns format, validates input, writes markdown.
+
+**Why Rust, Not JSON Schema:**
+
+Original E2 proposed JSON Schema for validation. But:
+- JSON Schema = separate file that must stay in sync with code
+- Rust struct = the code itself, always in sync
+- If Rust parses it, it's valid. If not, error with details.
+
+**Rust IS the schema.** No separate schema file needed.
+
+```
+LLM provides JSON → Rust struct validates → Rust writes markdown
+                    ↑
+            This IS validation
+```
+
+**Revised E2 Tasks:**
+- [ ] Rust struct defining belief fields (source of truth)
+- [ ] `patina surface create-belief` CLI command
+- [ ] MCP tool exposing `create_belief`
+- [ ] Rust validates JSON input, writes markdown output
+- [ ] `patina surface validate` for checking existing files
 - [ ] Link integrity checker
+
+**Open Question:** Skills system is evolving (hot-loading, less hacky). May revisit if skills become adapter-agnostic.
 
 ### Phase E3: Scry Integration
 
@@ -490,6 +555,8 @@ surface.rule.apply       {rule_id, context, result}
 3. **Cross-project attacks**: Can a belief in project A attack a belief in project B?
 4. **Rule inheritance**: Do rules from core apply automatically to surface?
 5. **Visualization**: How to visualize the argument graph? (Obsidian? Custom?)
+6. **Skills evolution**: Claude Code moving from custom commands to skills (hot-loadable). If skills become adapter-agnostic, reconsider MCP-only approach.
+7. **Heredoc limitations**: Can shell scripts handle complex belief structures (nested confidence signals, evidence arrays)? Needs testing.
 
 ---
 
