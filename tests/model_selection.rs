@@ -5,6 +5,7 @@
 use patina::embeddings::create_embedder;
 
 #[test]
+#[ignore] // Requires model to be downloaded: patina model add all-MiniLM-L6-v2
 fn test_int8_model_loads() {
     let mut embedder = create_embedder().expect("Should load model from config");
 
