@@ -9,9 +9,9 @@ This directory contains Patina's epistemic belief system - atomic beliefs with e
 
 ## Statistics
 
-- **Beliefs**: 5
+- **Beliefs**: 6
 - **Rules**: 3
-- **Total Confidence**: 4.43/5.0 (avg: 0.886)
+- **Total Confidence**: 5.31/6.0 (avg: 0.885)
 - **Highest Entrenchment**: eventlog-is-truth (very-high)
 
 ## Argument Graph
@@ -58,6 +58,7 @@ eventlog-is-truth ─────────► [[capture-at-boundary]]
 
 | ID | Confidence | Entrenchment | Status |
 |----|------------|--------------|--------|
+| [[sync-first]] | 0.88 | high | active |
 | [[spec-first]] | 0.85 | high | active |
 | [[dont-build-what-exists]] | 0.90 | high | active |
 | [[smart-model-in-room]] | 0.88 | high | active |
@@ -81,6 +82,8 @@ eventlog-is-truth ─────────► [[capture-at-boundary]]
 | [[latency-concerns]] | smart-model-in-room | active | "real-time interactions" |
 | [[storage-overhead]] | eventlog-is-truth | scoped | "ref repos use lean storage" |
 | [[measurement-overhead]] | measure-first | active | "trivial changes" |
+| [[high-concurrency-needed]] | sync-first | active | "network-heavy or many parallel connections" |
+| [[streaming-responses]] | sync-first | active | "long-running streaming APIs" |
 
 ## Defeated Beliefs
 
@@ -91,12 +94,14 @@ eventlog-is-truth ─────────► [[capture-at-boundary]]
 | [[local-model-always]] | smart-model-in-room | quality gap too large |
 | [[mutable-state-simpler]] | eventlog-is-truth | loses history |
 | [[build-it-they-will-come]] | measure-first | - |
+| [[async-by-default]] | sync-first | consider actual I/O patterns first |
+| [[rqlite-architecture]] | sync-first | migrated to SQLite |
 
 ## Personas
 
 | Persona | Facets | Beliefs | Rules |
 |---------|--------|---------|-------|
-| architect | development-process, design, engineering, llm, data-architecture | 5 | 3 |
+| architect | development-process, design, engineering, llm, data-architecture, rust | 6 | 3 |
 
 ## How to Use
 
