@@ -127,9 +127,9 @@
 - spec-first belief → Attacked-By section
 - Scope qualifier
 
-**Baseline Score:** ___
-**Epistemic Score:** ___
-**Notes:**
+**Baseline Score:** 3.0
+**Epistemic Score:** 5.0
+**Notes:** Treatment provided specific attack (analysis-paralysis), confidence (0.3), and scope vs generic risks.
 
 ---
 
@@ -149,9 +149,9 @@
 - session-20260115-053944 (Mother architecture discussion)
 - spec-surface-layer
 
-**Baseline Score:** ___
-**Epistemic Score:** ___
-**Notes:**
+**Baseline Score:** 2.0
+**Epistemic Score:** 5.0
+**Notes:** Largest delta (+3.0). Two-belief reasoning chain with defeated attacks and phased approach.
 
 ---
 
@@ -171,9 +171,9 @@
 - Both belief files
 - Rule file showing derived-from
 
-**Baseline Score:** ___
-**Epistemic Score:** ___
-**Notes:**
+**Baseline Score:** 3.0
+**Epistemic Score:** 5.0
+**Notes:** Rule derivation explicit: measure-first + spec-first → implement-after-measurement with 4-step process.
 
 ---
 
@@ -191,9 +191,9 @@
 **Expected Evidence:**
 - Rule: implement-after-measurement → Exceptions section
 
-**Baseline Score:** ___
-**Epistemic Score:** ___
-**Notes:**
+**Baseline Score:** 2.0
+**Epistemic Score:** 5.0
+**Notes:** Specific criteria (20 lines, security urgency) vs vague "it depends".
 
 ---
 
@@ -214,9 +214,9 @@
 - eventlog-is-truth frontmatter
 - Evidence section with weights
 
-**Baseline Score:** ___
-**Epistemic Score:** ___
-**Notes:**
+**Baseline Score:** 2.0
+**Epistemic Score:** 5.0
+**Notes:** Full signal breakdown (evidence: 0.95, reliability: 0.90, etc.) impossible without epistemic layer.
 
 ---
 
@@ -235,27 +235,27 @@
 **Expected Evidence:**
 - N/A (tests graceful handling)
 
-**Baseline Score:** ___
-**Epistemic Score:** ___
-**Notes:**
+**Baseline Score:** 3.0
+**Epistemic Score:** 4.0
+**Notes:** Only non-5 score. System correctly acknowledged gap, found related beliefs (sync-first mentions SQLite). Evidence IS scattered in beliefs but no explicit belief exists.
 
 ---
 
-## Summary Table
+## Summary Table (Complete)
 
 | Query | Topic | Baseline | Epistemic | Delta |
 |-------|-------|----------|-----------|-------|
-| Q1 | Belief retrieval (direct) | | | |
-| Q2 | Belief retrieval (indirect) | | | |
-| Q3 | Evidence tracing | | | |
-| Q4 | Rule application | | | |
-| Q5 | Attack awareness | | | |
-| Q6 | Reasoning chain | | | |
-| Q7 | Cross-belief inference | | | |
-| Q8 | Exception handling | | | |
-| Q9 | Confidence assessment | | | |
-| Q10 | Missing belief (negative) | | | |
-| **Average** | | | | |
+| Q1 | Belief retrieval (direct) | 3.0 | 5.0 | +2.0 |
+| Q2 | Belief retrieval (indirect) | 3.0 | 5.0 | +2.0 |
+| Q3 | Evidence tracing | 3.5 | 5.0 | +1.5 |
+| Q4 | Rule application | 2.5 | 5.0 | +2.5 |
+| Q5 | Attack awareness | 3.0 | 5.0 | +2.0 |
+| Q6 | Reasoning chain | 2.0 | 5.0 | +3.0 |
+| Q7 | Cross-belief inference | 3.0 | 5.0 | +2.0 |
+| Q8 | Exception handling | 2.0 | 5.0 | +3.0 |
+| Q9 | Confidence assessment | 2.0 | 5.0 | +3.0 |
+| Q10 | Missing belief (negative) | 3.0 | 4.0 | +1.0 |
+| **Average** | | **2.7** | **4.9** | **+2.2** |
 
 ---
 
@@ -305,9 +305,16 @@ For each query where Baseline >= Epistemic:
 
 ## Next Steps After Evaluation
 
-1. **If targets met:** Proceed to Phase E2 (schema validation)
-2. **If targets not met:**
-   - Error analysis on failures
-   - Add missing beliefs
-   - Improve evidence links
-   - Re-evaluate
+**Evaluation Status: COMPLETE (2026-01-16)**
+
+All targets met:
+- Avg Epistemic Score: 4.9 (target: >= 4.0) ✅
+- Avg Delta: +2.2 (target: >= 1.0) ✅
+- Epistemic wins: 10/10 (target: >= 7/10) ✅
+- Full evidence chain: 9/10 (target: >= 5/10) ✅
+
+**Action: Proceed to Phase E2 (Schema Validation)**
+
+Optional improvements identified:
+- Consider creating `sqlite-preferred` belief (Q10 gap)
+- Enhance belief body search for implicit evidence
