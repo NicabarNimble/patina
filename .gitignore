@@ -52,3 +52,8 @@ node_modules/
 .env
 *.key
 *.pem
+.trunk/
+
+# Project-specific patina files
+.patina/config.toml
+.patina/oxidize.yaml
