@@ -3,7 +3,7 @@
 **Status:** Active (Next on deck)
 **Created:** 2026-01-08
 **Updated:** 2026-01-15
-**Origin:** Sessions 20260108-124107, 20260108-200725, 20260109-063849, 20260110-154224, 20260115-053944
+**Origin:** Sessions 20260108-124107, 20260108-200725, 20260109-063849, 20260110-154224, 20260115-053944, 20260115-121358
 
 ---
 
@@ -458,11 +458,143 @@ patina scry "why did we choose rouille?"
 
 | Component | Description |
 |-----------|-------------|
+| L2 eventlog | Surface decisions (synthesize, curate, connect) |
 | Connection query | Join session → commit by similarity |
 | Connection storage | New table for validated connections |
 | Confidence scoring | Algorithm combining similarity + temporal + lexical |
 | Uncertainty queue | Storage for adapter review items |
 | Surface command | `patina surface capture`, `patina surface status` |
+
+---
+
+## L2 Eventlog: Surface Decisions
+
+### The Regeneration Problem
+
+Surface data crosses a **non-deterministic boundary**:
+- Adapter LLM synthesis (tokens, model version, non-reproducible)
+- User curation (human judgment)
+
+Unlike L1 data (git/code → eventlog → patina.db), surface cannot be regenerated identically from source. The LLM might produce different output; user edits are original knowledge.
+
+**Helland's principle:** When you cross a non-deterministic boundary, the output becomes a new source of truth. You can't derive it - you must capture it.
+
+### The Eventlog Principle
+
+From ref-repo-storage design: **eventlog is for expensive/original knowledge, not derived data**.
+
+| Data Type | Eventlog? | Rationale |
+|-----------|-----------|-----------|
+| git/code | Skip (ref repos) | Derived from source, rebuildable |
+| forge | Always + dedup | Expensive API data, worth preserving |
+| sessions/layer | Always | Original knowledge |
+| **surface.synthesize** | **Always** | Expensive (LLM tokens), non-deterministic |
+| **surface.curate** | **Always** | Original (human judgment) |
+| surface.extract | Optional | Derived, but may want audit trail |
+
+### L1 vs L2 Eventlog
+
+```
+L1 EVENTLOG (patina.db source)
+────────────────────────────────
+git.commit, git.diff           → commits, commit_files
+code.function, code.import     → function_facts, import_facts
+session.start, session.end     → sessions, goals, observations
+pattern.detected               → patterns
+forge.issue, forge.pr          → forge_issues, forge_prs
+
+
+L2 EVENTLOG (layer/surface/ source)
+────────────────────────────────
+surface.extract.*              → deterministic nodes (component, concept)
+surface.synthesize.*           → LLM-generated nodes (decision, pattern)
+surface.connection.*           → validated connections
+surface.curate.*               → lifecycle transitions
+```
+
+### L2 Event Types
+
+**Capture Events:**
+```
+surface.extract.component    {node_id, source: "assay:inventory", path}
+surface.extract.concept      {node_id, source: "session:co-occurrence", terms}
+surface.synthesize.decision  {node_id, prompt, response, model, tokens, sources}
+surface.synthesize.pattern   {node_id, prompt, response, model, tokens, sources}
+```
+
+**Connection Events:**
+```
+surface.connection.scored    {session_id, commit_sha, score, method}
+surface.connection.validated {connection_id, validator: "llm"|"user", confidence}
+surface.connection.rejected  {connection_id, reason}
+```
+
+**Curate Events:**
+```
+surface.node.promoted  {node_id, from: "surface", to: "core", reason}
+surface.node.archived  {node_id, from: "surface", to: "dust", reason}
+surface.node.edited    {node_id, before_hash, after_hash, editor: "user"|"llm"}
+surface.node.culled    {node_id, reason: "duplicate"|"slop"|"superseded"}
+```
+
+### Architecture with L2
+
+```
+                        GIT (source of truth)
+                               │
+                               ▼
+                        L1 EVENTLOG
+                        ┌─────────────────────────────────────┐
+  git/code ────────────►│ git.*, code.*                       │
+  sessions/layer ──────►│ session.*, pattern.*                │──► patina.db
+  forge ───────────────►│ forge.*                             │
+                        └─────────────────────────────────────┘
+                                       │
+                                       ▼
+                                  scry/assay
+                                       │
+                        ┌──────────────┼──────────────┐
+                        ▼              ▼              ▼
+                  deterministic   adapter LLM      user
+                  (extract)       (synthesize)   (curate)
+                        │              │              │
+                        └──────────────┴──────────────┘
+                                       │
+                                       ▼
+                        L2 EVENTLOG (surface decisions)
+                        ┌─────────────────────────────────────┐
+                        │ surface.extract.*                   │
+                        │ surface.synthesize.*                │──► layer/surface/
+                        │ surface.connection.*                │    (documents)
+                        │ surface.curate.*                    │
+                        └─────────────────────────────────────┘
+```
+
+### Storage Location
+
+**Option A:** `.patina/surface.eventlog` (SQLite table, like L1)
+- Consistent with existing eventlog pattern
+- Easy to query, join with L1 data
+- Lives in derived state (not committed)
+
+**Option B:** `layer/events/surface/` (JSON files in git)
+- Portable: decisions travel with the project
+- Auditable: git history shows evolution
+- Helland-aligned: "outside" data with "outside" decisions
+
+**Recommendation:** Option A for now (simpler), with export capability to Option B for federation.
+
+### Why L2 Matters
+
+1. **Audit trail** - Why does this node exist? What prompt generated it?
+2. **Reproducibility** - Can't re-derive LLM output, but can replay the decision
+3. **Learning** - Which syntheses were kept vs edited vs rejected? Improves prompts.
+4. **Federation** - Other projects can see what you decided, not just what exists
+5. **Rollback** - If a synthesis was bad, trace back to the event and regenerate
+
+### Scope
+
+**L2 eventlog applies to projects only.** Ref repos don't have `layer/surface/` - their "surface" is forge data (issues/PRs), which is already captured in L1.
 
 ---
 
@@ -493,6 +625,28 @@ For ref repos (external repos without `layer/`), what data can serve as their "s
 
 **90% of connection scoring already exists** in oxidize/scry. Mother orchestrates, stores connections, queues uncertainties.
 
+### Session 20260115-121358: L2 Eventlog Design
+
+**Design partners:** Helland (primary), Hickey (secondary), Fowler (tertiary)
+
+**Key Insight:** Surface data crosses a non-deterministic boundary (LLM synthesis, user curation). Once crossed, the output becomes a new source of truth - it can't be re-derived, only captured.
+
+**Helland's contribution:**
+- Surface nodes are "documents" (self-describing, portable, outside data)
+- Federation happens via document exchange, not shared DBs
+- Source references should be URIs, not local IDs
+
+**Hickey's contribution:**
+- Surface is a projection of inside data (derived view)
+- Start with simplest projection (direct extraction)
+- Define the data shape explicitly
+
+**Fowler's contribution:**
+- Mother as event router, not orchestrator
+- Components react to events (choreography over orchestration)
+
+**Result:** L2 eventlog captures surface decisions (synthesize, curate, connect) as the source of truth for `layer/surface/`.
+
 ---
 
 ## References
@@ -506,3 +660,4 @@ For ref repos (external repos without `layer/`), what data can serve as their "s
 - Session 20260110-154224 - Corrected to hub & spoke architecture
 - Session 20260110-181504 - Ref repo exploration, forge data gaps
 - Session 20260115-053944 - Two functions: Capture & Curate, Mother crystallized
+- Session 20260115-121358 - L2 eventlog design (Helland/Hickey/Fowler analysis)
