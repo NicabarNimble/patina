@@ -353,9 +353,9 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     println!("📦 Backing up existing files...");
     backup_adapter_files(&cwd, name)?;
 
-    // Step 2: Preserve session files before removing adapter directory
+    // Step 2: Preserve user files before removing adapter directory
     let adapter_dir = cwd.join(format!(".{}", name));
-    let preserved_sessions = preserve_session_files(&adapter_dir)?;
+    let preserved_files = preserve_user_files(&adapter_dir)?;
 
     // Step 3: Remove old adapter directory
     if adapter_dir.exists() {
@@ -374,11 +374,11 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     adapters::generate_bootstrap(name, &cwd)?;
     println!("  ✓ Created {}", bootstrap_file);
 
-    // Step 5: Restore preserved session files
-    if !preserved_sessions.is_empty() {
-        println!("\n📁 Restoring session files...");
-        restore_session_files(&adapter_dir, &preserved_sessions)?;
-        println!("  ✓ Restored {} session files", preserved_sessions.len());
+    // Step 5: Restore preserved user files
+    if !preserved_files.is_empty() {
+        println!("\n📁 Restoring user files...");
+        restore_user_files(&adapter_dir, &preserved_files)?;
+        println!("  ✓ Restored {} user files", preserved_files.len());
     }
 
     // Step 6: Commit if not in no_commit mode
@@ -403,11 +403,23 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
     Ok(())
 }
 
-/// Preserve session files from adapter directory
-fn preserve_session_files(adapter_dir: &std::path::Path) -> Result<Vec<(String, Vec<u8>)>> {
+/// Template-managed command files (not user-created)
+const TEMPLATE_COMMANDS: &[&str] = &[
+    "session-start.md",
+    "session-update.md",
+    "session-note.md",
+    "session-end.md",
+    "patina-review.md",
+];
+
+/// Template-managed skill directories (not user-created)
+const TEMPLATE_SKILLS: &[&str] = &["epistemic-beliefs"];
+
+/// Preserve user files from adapter directory (context, custom commands, custom skills)
+fn preserve_user_files(adapter_dir: &std::path::Path) -> Result<Vec<(String, Vec<u8>)>> {
     let mut preserved = Vec::new();
 
-    // Look for context directory which typically has session files
+    // Preserve context/ files (session state)
     let context_dir = adapter_dir.join("context");
     if context_dir.exists() {
         for entry in std::fs::read_dir(&context_dir)? {
@@ -415,7 +427,6 @@ fn preserve_session_files(adapter_dir: &std::path::Path) -> Result<Vec<(String, 
             let path = entry.path();
             if path.is_file() {
                 let filename = path.file_name().unwrap().to_string_lossy().to_string();
-                // Preserve session-related files
                 if filename.contains("session") || filename.ends_with(".md") {
                     let content = std::fs::read(&path)?;
                     preserved.push((format!("context/{}", filename), content));
@@ -424,11 +435,66 @@ fn preserve_session_files(adapter_dir: &std::path::Path) -> Result<Vec<(String, 
         }
     }
 
+    // Preserve custom commands/ (user-created, not template-managed)
+    let commands_dir = adapter_dir.join("commands");
+    if commands_dir.exists() {
+        for entry in std::fs::read_dir(&commands_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_file() {
+                let filename = path.file_name().unwrap().to_string_lossy().to_string();
+                // Only preserve if NOT a template-managed file
+                if !TEMPLATE_COMMANDS.contains(&filename.as_str()) {
+                    let content = std::fs::read(&path)?;
+                    preserved.push((format!("commands/{}", filename), content));
+                }
+            }
+        }
+    }
+
+    // Preserve custom skills/ (user-created directories, not template-managed)
+    let skills_dir = adapter_dir.join("skills");
+    if skills_dir.exists() {
+        for entry in std::fs::read_dir(&skills_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                let dirname = path.file_name().unwrap().to_string_lossy().to_string();
+                // Only preserve if NOT a template-managed skill
+                if !TEMPLATE_SKILLS.contains(&dirname.as_str()) {
+                    preserve_directory_recursive(&path, &format!("skills/{}", dirname), &mut preserved)?;
+                }
+            }
+        }
+    }
+
     Ok(preserved)
 }
 
-/// Restore preserved session files to adapter directory
-fn restore_session_files(adapter_dir: &std::path::Path, files: &[(String, Vec<u8>)]) -> Result<()> {
+/// Recursively preserve all files in a directory
+fn preserve_directory_recursive(
+    dir: &std::path::Path,
+    prefix: &str,
+    preserved: &mut Vec<(String, Vec<u8>)>,
+) -> Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        let relative = format!("{}/{}", prefix, name);
+
+        if path.is_file() {
+            let content = std::fs::read(&path)?;
+            preserved.push((relative, content));
+        } else if path.is_dir() {
+            preserve_directory_recursive(&path, &relative, preserved)?;
+        }
+    }
+    Ok(())
+}
+
+/// Restore preserved user files to adapter directory
+fn restore_user_files(adapter_dir: &std::path::Path, files: &[(String, Vec<u8>)]) -> Result<()> {
     for (relative_path, content) in files {
         let full_path = adapter_dir.join(relative_path);
         if let Some(parent) = full_path.parent() {
