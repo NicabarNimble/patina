@@ -105,7 +105,10 @@ impl Database {
     #[cfg(test)]
     pub fn open_in_memory() -> Result<Self> {
         let db = SqliteDatabase::open_in_memory().context("Failed to create in-memory database")?;
-        Ok(Self { db, skip_eventlog: false })
+        Ok(Self {
+            db,
+            skip_eventlog: false,
+        })
     }
 
     /// Initialize schema with proper types

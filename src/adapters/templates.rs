@@ -35,8 +35,9 @@ mod claude_templates {
         include_str!("../../resources/claude/skills/epistemic-beliefs/SKILL.md");
     pub const SKILL_EPISTEMIC_BELIEFS_CREATE_SH: &str =
         include_str!("../../resources/claude/skills/epistemic-beliefs/scripts/create-belief.sh");
-    pub const SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD: &str =
-        include_str!("../../resources/claude/skills/epistemic-beliefs/references/belief-example.md");
+    pub const SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD: &str = include_str!(
+        "../../resources/claude/skills/epistemic-beliefs/references/belief-example.md"
+    );
 }
 
 // =============================================================================
