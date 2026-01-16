@@ -531,15 +531,21 @@ Following Andrew Ng's measurement-driven methodology:
 | 4 | Correct with partial evidence |
 | 5 | Correct with full evidence chain |
 
-### Results (Q1-Q4)
+### Results (Q1-Q10 Complete)
 
-| Query | Baseline | Treatment | Delta | Winner |
-|-------|----------|-----------|-------|--------|
-| Q1: Belief retrieval (direct) | 3.0 | 5.0 | +2.0 | Treatment |
-| Q2: Belief retrieval (indirect) | 3.0 | 5.0 | +2.0 | Treatment |
-| Q3: Evidence tracing | 3.5 | 5.0 | +1.5 | Treatment |
-| Q4: Rule application | 2.5 | 5.0 | +2.5 | Treatment |
-| **Average** | **3.0** | **5.0** | **+2.0** | **Treatment** |
+| Query | Topic | Baseline | Treatment | Delta |
+|-------|-------|----------|-----------|-------|
+| Q1 | Belief retrieval (direct) | 3.0 | 5.0 | +2.0 |
+| Q2 | Belief retrieval (indirect) | 3.0 | 5.0 | +2.0 |
+| Q3 | Evidence tracing | 3.5 | 5.0 | +1.5 |
+| Q4 | Rule application | 2.5 | 5.0 | +2.5 |
+| Q5 | Attack awareness | 3.0 | 5.0 | +2.0 |
+| Q6 | Reasoning chain | 2.0 | 5.0 | +3.0 |
+| Q7 | Cross-belief inference | 3.0 | 5.0 | +2.0 |
+| Q8 | Exception handling | 2.0 | 5.0 | +3.0 |
+| Q9 | Confidence assessment | 2.0 | 5.0 | +3.0 |
+| Q10 | Missing belief (negative) | 3.0 | 4.0 | +1.0 |
+| **Average** | | **2.7** | **4.9** | **+2.2** |
 
 ### Key Findings
 
@@ -569,23 +575,65 @@ Q1 initially failed in treatment (score: 2) because `sync-first` belief was miss
 - **Q3:** Helland cited, L2 eventlog explained vs basic reasons only
 - **Q4:** 4-step process with exceptions vs scattered hints
 
-### Success Criteria Assessment
+**4. Q5-Q10 Analysis (Session 20260116-080414)**
 
-| Metric | Target | Actual (Q1-Q4) | Status |
-|--------|--------|----------------|--------|
-| Avg Epistemic Score | >= 4.0 | 5.0 | ✅ Pass |
-| Avg Delta | >= 1.0 | +2.0 | ✅ Pass |
-| Epistemic wins | >= 7/10 | 4/4 (100%) | ✅ On track |
-| Full evidence (score 5) | >= 5/10 | 4/4 (100%) | ✅ On track |
+| Query | Finding |
+|-------|---------|
+| Q5 (Attack awareness) | Treatment provided specific attack (analysis-paralysis), confidence (0.3), and scope ("only when spec exceeds 1 week") vs generic risks |
+| Q6 (Reasoning chain) | Largest delta (+3.0) - two-belief reasoning chain with defeated attacks and phased approach |
+| Q7 (Cross-belief) | Rule derivation explicit: measure-first + spec-first → implement-after-measurement |
+| Q8 (Exceptions) | Specific criteria (20 lines, security urgency) vs vague "it depends" |
+| Q9 (Confidence) | Full signal breakdown impossible without epistemic layer - largest treatment advantage |
+| Q10 (Missing belief) | Only non-5 score: graceful gap acknowledgment + related belief inference |
+
+**5. Strongest Treatment Advantages (Q5-Q10)**
+
+- **Exception handling (Q8, +3.0)**: Explicit exceptions with criteria impossible to know without documentation
+- **Confidence assessment (Q9, +3.0)**: Signal breakdown only available from frontmatter - baseline cannot answer
+- **Reasoning chain (Q6, +3.0)**: Multi-belief chains with defeated alternatives show reasoning process
+
+**6. Gap Identified (Q10) - Error Analysis**
+
+Q10 scored 4 instead of 5 because no explicit belief exists for SQLite vs Postgres. The system correctly:
+1. Acknowledged the gap
+2. Found related beliefs (eventlog-is-truth implies SQLite)
+3. Suggested creating a new belief
+
+**Deep analysis:** Evidence for SQLite preference IS scattered in the codebase:
+- `sync-first` mentions "SQLite queries (single-threaded is fine)"
+- `rqlite-architecture` was defeated and "migrated to SQLite"
+- `eventlog-is-truth` mentions "patina.db" architecture
+
+**Two paths forward:**
+1. **Create explicit belief:** `sqlite-preferred` or `local-first-storage` to make decision explicit
+2. **Enhance search:** Treatment could search WITHIN belief bodies, not just belief IDs
+
+**Lesson:** The epistemic layer handles gaps gracefully, but:
+- Coverage matters for max score
+- Information scattered across beliefs is less valuable than explicit beliefs
+- Error analysis reveals opportunities to extract implicit decisions into explicit beliefs
+
+### Success Criteria Assessment (Final)
+
+| Metric | Target | Actual (Q1-Q10) | Status |
+|--------|--------|-----------------|--------|
+| Avg Epistemic Score | >= 4.0 | 4.9 | ✅ Pass |
+| Avg Delta | >= 1.0 | +2.2 | ✅ Pass |
+| Epistemic wins | >= 7/10 | 10/10 (100%) | ✅ Pass |
+| Full evidence (score 5) | >= 5/10 | 9/10 (90%) | ✅ Pass |
 
 ### Validated Hypothesis
 
 > **"Can an LLM correctly explain WHY a decision was made, with traceable evidence?"**
 
-**Without epistemic layer:** Guesses or fragments from sessions (avg 3.0)
-**With epistemic layer:** Cites beliefs, evidence chains, exceptions (avg 5.0)
+**Without epistemic layer:** Guesses or fragments from sessions (avg 2.7)
+**With epistemic layer:** Cites beliefs, evidence chains, exceptions (avg 4.9)
 
-**Conclusion:** The epistemic layer provides measurable improvement (+2.0 points average) in LLM reasoning quality about project decisions.
+**Conclusion:** The epistemic layer provides measurable improvement (+2.2 points average) in LLM reasoning quality about project decisions. All 10 queries showed improvement, with 9/10 achieving maximum score (5.0).
+
+### Evaluation Complete
+
+All success criteria met. Ready to proceed to Phase E2 (Schema Validation).
 
 ---
 
