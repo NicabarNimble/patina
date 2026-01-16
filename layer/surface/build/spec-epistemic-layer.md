@@ -511,26 +511,22 @@ Script writes layer/surface/epistemic/beliefs/{id}.md
 - [ ] Test skill auto-triggering in real usage
 - [ ] Iterate based on testing
 - [ ] Document for other adapters (Gemini CLI, OpenCode)
-- [ ] **Deployment gap**: Add skills to `templates.rs` for `adapter refresh`
+- [x] **Deployment gap**: Add skills to `templates.rs` for `adapter refresh`
 
 #### E2 Deployment Note
 
-**Current state**: Skills source files in `resources/claude/skills/` but NOT auto-deployed.
+**Status**: ✅ RESOLVED (Session 20260116-105801)
 
-**Why**: Patina has two deployment paths:
-1. `session_scripts.rs` - old internal path (not used by `adapter refresh`)
-2. `templates.rs` - actual path used by `adapter refresh`
+Skills are now embedded in `templates.rs` and deployed via `patina adapter refresh claude`.
 
-Skills need to be added to `templates.rs` → `install_claude_templates()` to be deployed automatically.
+**Implementation**:
+- `resources/claude/skills/` → `include_str!()` in `claude_templates` module
+- `install_claude_templates()` creates `.claude/skills/` structure
+- `copy_dir_recursive` handles deployment (same pattern as commands)
 
-**Workaround**: Manually copy from resources:
-```bash
-mkdir -p .claude/skills/epistemic-beliefs/{scripts,references}
-cp resources/claude/skills/epistemic-beliefs/SKILL.md .claude/skills/epistemic-beliefs/
-cp resources/claude/skills/epistemic-beliefs/scripts/* .claude/skills/epistemic-beliefs/scripts/
-cp resources/claude/skills/epistemic-beliefs/references/* .claude/skills/epistemic-beliefs/references/
-chmod +x .claude/skills/epistemic-beliefs/scripts/*.sh
-```
+**Behavior**:
+- Patina-managed skills (e.g., `epistemic-beliefs`) are overwritten on refresh
+- User custom skills (created directly in `.claude/skills/`) survive refresh
 
 #### E2 Future: MCP Alternative
 
