@@ -54,5 +54,5 @@ node_modules/
 *.pem
 .trunk/
 
-# Project-specific patina files (machine-specific)
-.patina/config.toml
+# Project-specific patina files (local data only)
+# Note: config.toml IS tracked - only [environment] section is machine-specific
