@@ -2,8 +2,8 @@
 
 **Status:** Active (Next on deck)
 **Created:** 2026-01-08
-**Updated:** 2026-01-10
-**Origin:** Sessions 20260108-124107, 20260108-200725, 20260109-063849, 20260110-154224
+**Updated:** 2026-01-15
+**Origin:** Sessions 20260108-124107, 20260108-200725, 20260109-063849, 20260110-154224, 20260115-053944, 20260115-121358
 
 ---
 
@@ -15,7 +15,32 @@ Not queryable. Not "run scry and hope." **Visible. In files I can read.**
 
 ---
 
-## Where We Are Today
+## Two Functions
+
+Surface layer has two distinct responsibilities:
+
+### 1. Capture
+
+**What:** Extract knowledge buried in raw data and generate atomic facts to `layer/surface/`.
+
+**Source:** scry queries, assay queries, sessions, commits, patterns observed.
+
+**Output:** Atomic markdown files with wikilinks that connect related concepts.
+
+### 2. Curate
+
+**What:** Manage the lifecycle of knowledge on the surface - score importance, promote evergreen facts to core, archive stale facts to dust, cull slop.
+
+**Goal:** The surface should contain actionable, relevant knowledge - not an ever-growing pile of generated docs.
+
+**Key insight:** Importance = user belief + proof in code/context. Something is important not just because it's mentioned, but because:
+- The user believes it matters
+- There's evidence in the codebase that it matters
+- It has temporal weight (old but still referenced = evergreen)
+
+---
+
+## Current State
 
 ### The Architecture (Hub & Spoke)
 
@@ -55,52 +80,37 @@ Not queryable. Not "run scry and hope." **Visible. In files I can read.**
     └───────────┘        └───────────┘        └───────────┘
 ```
 
-### Current State of Surface
+### Layer Structure (The Lifecycle)
 
-**What exists:**
-- `layer/surface/` contains ~16 **manually written** markdown files
-- These get **scraped** into `pattern.surface` events in eventlog
-- They're **queryable** via `pattern_fts` (lexical) and semantic index
-- They're **peers** to code/git as inputs, not outputs
+```
+layer/
+├── core/       → Evergreen. Proven over time. Fundamental truths.
+├── surface/    → Active. Current. In-use knowledge.
+└── dust/       → Archived. Historical. No longer active.
+```
 
-**What's missing:**
-- No `patina surface` command to generate nodes
-- No automated extraction from scry/assay queries
-- No cycle where surface is both input AND output
+Today this lifecycle is **manual**. Nothing automates promotion or archival.
 
 ### The Gap
 
 | Aspect | Today | Vision |
 |--------|-------|--------|
-| Content | Manual markdown | Auto-generated nodes |
-| Source | Human writes | scry/assay queries |
-| Format | Freeform docs | Atomic nodes with wikilinks |
-| Cycle | Input only | Input → query → generate → input |
+| Content | Manual markdown | Auto-generated + manually curated |
+| Capture | Human writes everything | patina extracts from scry/assay |
+| Curation | Manual file moves | patina scores, promotes, archives |
+| Lifecycle | Ad-hoc | Systematic (surface → core or dust) |
 
 ---
 
-## Where We Want To Be
+## Capture: The How
 
-### The Cycle
+### Intent
 
-Surface becomes both derived and committed:
-
-```
-Git → scrape → eventlog → scry/assay ──┐
-                                       │
-                            ┌──────────▼──────────┐
-                            │   patina surface    │
-                            │   (generates nodes) │
-                            └──────────┬──────────┘
-                                       │
-                                       ▼
-                               layer/surface/*.md
-                                       │
-                                       ▼
-                                  git commit
-                                       │
-                                       └──────────→ (back to top)
-```
+Extract knowledge from the database and generate atomic markdown files that:
+- Are **visible** (plain files, readable without patina)
+- Are **linked** (wikilinks create a graph)
+- Are **sourced** (frontmatter cites where knowledge came from)
+- Are **portable** (work in Obsidian, viewable by any LLM)
 
 ### Node Format
 
@@ -126,188 +136,247 @@ Prefer synchronous, blocking code over async.
 - [[tokio]] - explicitly avoided
 ```
 
-### What Gets Generated
+### What Gets Captured
 
-| Type | Example | Source |
-|------|---------|--------|
-| **Decision** | why-rouille, why-sqlite | Session "Key Decisions", commit rationale |
-| **Pattern** | measure-first, scalpel-not-shotgun | Session "Patterns Observed" |
-| **Concept** | sync-first, borrow-checker | Recurring ideas across sessions/commits |
-| **Component** | scry, eventlog, oxidize | assay inventory (key modules) |
+| Type | Example | Source | Approach |
+|------|---------|--------|----------|
+| **Component** | scry, eventlog, oxidize | assay inventory | Deterministic |
+| **Concept** | sync-first, borrow-checker | Recurring terms in sessions/commits | Deterministic (frequency) |
+| **Decision** | why-rouille, why-sqlite | Session "Key Decisions", commit rationale | Adapter LLM synthesis |
+| **Pattern** | measure-first, scalpel-not-shotgun | Session "Patterns Observed" | Adapter LLM synthesis |
 
-### The Graph
+### Link Generation
 
 Wikilinks ARE the graph. No graph database needed.
 
+**Links from:**
+- **Imports** - component A imports component B → `[[B]]` in A's node
+- **Co-occurrence** - concepts appear in same session/commit → linked
+- **Explicit reference** - commit mentions "because of X" → link to X
+
+### Mother's Role
+
+**Mother orchestrates surface capture.** Mother is deterministic daemon code, NOT a local LLM.
+
 ```
-sync-first ────────> rouille
-    │
-    ├──────────────> tokio (avoided)
-    │
-    └──────────────> borrow-checker
+┌─────────────────────────────────────────────────────────────┐
+│                    MOTHER (Daemon)                          │
+│                                                             │
+│  Orchestrates existing tools:                               │
+│    • oxidize embeddings (session → vector)                  │
+│    • scry similarity (is A related to B?)                   │
+│    • temporal correlation (A happened, then B happened)     │
+│    • threshold rules (confidence > X → surface it)          │
+│                                                             │
+│  Outputs:                                                   │
+│    • Connection candidates (high confidence → surface)      │
+│    • Uncertainty queue (low confidence → adapter review)    │
+│                                                             │
+│  Does NOT:                                                  │
+│    • Run inference (no local LLM in Phase 1-2)              │
+│    • Make strategic decisions (adapters do this)            │
+│    • Generate prose (adapters do this)                      │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Links from co-occurrence**: If two concepts appear in the same session or commit, they're related.
+**Key insight:** 90% of connection scoring already exists in oxidize/scry. Mother just orchestrates and stores validated connections.
+
+### Connection Scoring
+
+How do we identify that an idea in a session maps to evidence in code?
+
+**Using existing infrastructure:**
+
+| Tool | Provides | Already Exists? |
+|------|----------|-----------------|
+| Session embeddings | Vector for session text | ✅ oxidize |
+| Commit embeddings | Vector for commit messages | ✅ oxidize |
+| Semantic similarity | "Is A similar to B?" | ✅ scry semantic oracle |
+| Temporal correlation | "Did A happen near B?" | ✅ timestamp comparison |
+| Lexical overlap | "Do A and B share keywords?" | ✅ scry lexical oracle |
+
+**What's new:**
+
+| Need | Description |
+|------|-------------|
+| Connection query | Join session → commit by similarity + time |
+| Connection storage | Table to store validated connections |
+| Confidence threshold | Cutoff for "confident enough to surface" |
+| Uncertainty queue | Low-confidence items for adapter review |
+
+**The flow:**
+```
+Session idea (embedded)
+        │
+        ▼
+Compare to recent commits (similarity score)
+        │
+        ▼
+Check temporal correlation (session before commit?)
+        │
+        ▼
+Confidence score = f(similarity, temporal, lexical)
+        │
+        ├── HIGH (>0.8) → Surface directly
+        ├── MEDIUM (0.5-0.8) → Queue for adapter review
+        └── LOW (<0.5) → Discard
+```
+
+### Capture Phases
+
+**Phase 1: Deterministic Components**
+- Query `assay inventory` for key modules
+- Generate component nodes with stats (lines, functions)
+- Extract links from `import_facts`
+
+**Phase 2: Deterministic Concepts + Connection Scoring**
+- Query sessions for recurring terms (frequency analysis)
+- Query commits for decision language ("because", "prefer", "instead of")
+- Implement connection scoring (session → commit similarity)
+- Generate concept nodes with co-occurrence links
+- Store validated connections
+
+**Phase 3: Adapter LLM Synthesis**
+- Adapter LLM (Claude/Gemini/OpenCode) reviews uncertainty queue
+- Adapter generates decision and pattern nodes with rationale
+- Adapter validates/refines Mother's connection candidates
+- Higher quality, uses the smartest model in the room
+
+### Open Questions (Capture)
+
+1. What frequency threshold makes a term worth capturing?
+2. What decision language patterns reliably indicate rationale?
+3. What confidence threshold for automatic surfacing vs adapter review?
+4. How to measure connection scoring quality? (precision metric needed)
 
 ---
 
-## Options to Get There
+## Curate: The How
 
-Three approaches identified in session 20260109-063849:
+### Intent
 
-### Option A: Deterministic Extraction
+Manage knowledge lifecycle so the surface remains **useful, not bloated**:
+- Score importance of each node
+- Promote proven knowledge to `layer/core/`
+- Archive stale knowledge to `layer/dust/`
+- Cull over-generation before it becomes slop
 
-Query scry/assay with fixed queries, format results directly.
+### Importance Signals
 
-```
-assay inventory → component nodes
-scry "decisions" → decision nodes
-scry "patterns" → pattern nodes
-```
+What makes an atomic fact "important"?
 
-**Pros:**
-- Simple to implement
-- Reproducible output
-- No LLM dependency
+| Signal | Description | Weight |
+|--------|-------------|--------|
+| **User endorsement** | User explicitly marks as important | High |
+| **Code evidence** | Referenced in actual codebase | High |
+| **Commit correlation** | Commits mention this concept | Medium |
+| **Session frequency** | Appears across multiple sessions | Medium |
+| **Recency** | Mentioned recently | Medium |
+| **Age + still referenced** | Old but still appears in new work | High (evergreen signal) |
 
-**Cons:**
-- Raw scry results are noisy (snippets, scores)
-- No synthesis - just reformatted query results
-- May produce low-quality nodes
-
-**Best for:** Component nodes (assay data is already structured)
-
-### Option B: LLM Synthesis
-
-Use local LLM to transform query results into clean nodes.
+### Lifecycle States
 
 ```
-┌─────────────────┐
-│  Query Results  │  ← Raw, noisy
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Local LLM      │  ← Gemma 270M via ort
-│  (cartridge)    │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│  Surface Node   │  ← Clean, formatted, linked
-└─────────────────┘
+                    ┌─────────────┐
+                    │   Captured  │  (new node generated)
+                    └──────┬──────┘
+                           │
+                           ▼
+                    ┌─────────────┐
+              ┌─────│   Surface   │─────┐
+              │     └─────────────┘     │
+              │                         │
+              ▼                         ▼
+       ┌─────────────┐          ┌─────────────┐
+       │    Core     │          │    Dust     │
+       │ (evergreen) │          │ (archived)  │
+       └─────────────┘          └─────────────┘
 ```
 
-**Pros:**
-- High-quality synthesis
-- Can extract meaning from noisy results
-- Natural language to structured output
+**Promotion to Core:**
+- High importance score sustained over time
+- User endorsement
+- Evidence of continued relevance (still referenced in new commits/sessions)
 
-**Cons:**
-- Requires local LLM infrastructure
-- Non-deterministic (same input → slightly different output)
-- Adds complexity (model cartridges, inference)
+**Archival to Dust:**
+- Low importance score
+- No recent references
+- Superseded by newer knowledge
 
-**Best for:** Decision and pattern nodes (need synthesis)
+### Self-Managing Documentation
 
-### Option C: Hybrid (Recommended)
+Patina should help manage its own build/spec system:
 
-Combine both approaches based on node type.
+- **Detect completed specs** - all phases done, archive to git tag
+- **Detect stale docs** - not referenced, not updated, suggest archival
+- **Keep build.md current** - surface changes to roadmap automatically
+- **Cull redundant nodes** - merge near-duplicates, remove noise
 
-| Node Type | Approach | Rationale |
-|-----------|----------|-----------|
-| **Component** | Deterministic | assay data is structured |
-| **Decision** | LLM synthesis | needs interpretation |
-| **Pattern** | LLM synthesis | needs interpretation |
-| **Concept** | Deterministic | frequency-based extraction |
+### Curate Phases
 
-**Phase 1:** Start with deterministic (components + concepts)
-**Phase 2:** Add LLM synthesis for decisions/patterns
+**Phase 1: Importance Scoring**
+- Define scoring algorithm
+- Score existing surface nodes
+- Surface scores in node frontmatter or separate index
 
----
+**Phase 2: Manual Curation Assist**
+- `patina surface status` - show nodes ranked by importance
+- `patina surface stale` - identify candidates for archival
+- User confirms promotions/archival
 
-## Infrastructure That Exists
+**Phase 3: Automated Lifecycle**
+- Automatic promotion suggestions
+- Automatic archival of clearly stale nodes
+- Integration with spec/build system
 
-| Component | Status | Location |
-|-----------|--------|----------|
-| scry queries | ✅ Working | `src/commands/scry/` |
-| assay queries | ✅ Working | `src/commands/assay/` |
-| ort (ONNX runtime) | ✅ In use | embeddings |
-| patina model | ⚠️ Partial | model download/management |
-| Gemma ONNX models | ✅ Available | HuggingFace |
-| persona (template) | ✅ Working | LiveStore pattern for writes |
+### Open Questions (Curate)
 
-### What Needs to Be Built
-
-| Component | Description |
-|-----------|-------------|
-| `src/commands/surface/mod.rs` | Command scaffolding |
-| Surface node schema | Rust struct for node format |
-| Deterministic extractors | Query → node for each type |
-| (Optional) LLM cartridge | Gemma 270M for synthesis |
-| MCP tool: `surface_add` | For LLM-driven surface updates |
+1. How to weight user endorsement vs automated signals?
+2. What threshold triggers promotion to core?
+3. What threshold triggers archival to dust?
+4. How to handle the existing manual docs in `layer/surface/`?
+5. Should curate run automatically or only on command?
 
 ---
 
 ## Implementation Path
 
-### Phase 1: Deterministic Components
+### Milestone 1: Capture Foundation
+- `patina surface capture` command
+- Component nodes from assay
+- Basic wikilinks from imports
+- **Exit:** Can generate component nodes
 
-**Scope:** Generate component nodes from assay.
+### Milestone 2: Connection Scoring
+- Session → commit similarity query
+- Connection storage table
+- Confidence threshold + uncertainty queue
+- Concept nodes with validated connections
+- **Exit:** Mother can score connections, queue uncertainties
 
-| Task | Description |
-|------|-------------|
-| Create `src/commands/surface/mod.rs` | Command scaffolding |
-| Query `assay inventory` | Get key modules |
-| Generate component nodes | One file per module |
-| Extract links from imports | `import_facts` → wikilinks |
+### Milestone 3: Curate Foundation
+- Importance scoring algorithm
+- `patina surface status` command
+- Manual promote/archive workflow
+- **Exit:** Can see importance rankings, manually curate
 
-**Exit criteria:**
-- `patina surface` creates component nodes
-- Nodes have wikilinks from import relationships
+### Milestone 4: Adapter LLM Synthesis
+- Adapter LLM reviews uncertainty queue during sessions
+- Generates decision/pattern nodes with rationale
+- Validates Mother's connection candidates
+- **Exit:** Can generate high-quality decision/pattern nodes
 
-### Phase 2: Concept Extraction
+### Milestone 5: Automated Curation
+- Automatic staleness detection
+- Promotion/archival suggestions
+- Self-managing spec system
+- **Exit:** patina helps manage its own documentation
 
-**Scope:** Extract recurring concepts from sessions/commits.
-
-| Task | Description |
-|------|-------------|
-| Query sessions for recurring terms | Frequency analysis |
-| Query commits for decision language | "because", "prefer", "instead of" |
-| Generate concept nodes | Co-occurrence → links |
-
-**Exit criteria:**
-- Concept nodes generated from session/commit patterns
-- Links from co-occurrence in same session
-
-### Phase 3: LLM Synthesis (Optional)
-
-**Scope:** Add local LLM for decision/pattern synthesis.
-
-| Task | Description |
-|------|-------------|
-| Gemma cartridge setup | manifest + model + tokenizer |
-| Synthesis prompts | Query results → structured node |
-| Decision node generation | LLM interprets session decisions |
-| Pattern node generation | LLM interprets observed patterns |
-
-**Exit criteria:**
-- Local LLM synthesizes high-quality nodes
-- Decisions and patterns extracted with rationale
-
-### Phase 4: Federation
-
-**Scope:** Enable surface transfer between projects.
-
-| Task | Description |
-|------|-------------|
-| `--surface-from` on init | Copy surface from path |
-| `surface merge` command | Combine multiple surfaces |
-| Federated scry | Query across project surfaces |
-
-**Exit criteria:**
-- New project bootstraps from past project's surface
-- Cross-project queries work
+### Milestone 6 (Future): Local Model Optimization
+- Local model (Gemma) handles routine synthesis offline
+- Only when proven patterns exist from Milestone 4
+- Reduces dependency on adapter LLM for common cases
+- **Exit:** Offline mode for routine surface maintenance
 
 ---
 
@@ -327,15 +396,29 @@ open layer/surface/ -a Obsidian
 # Graph view shows connected concepts
 ```
 
-**3. Generation Test**
+**3. Capture Test**
 ```bash
-patina surface
+patina surface capture
 # Creates nodes from scry/assay queries
 git status
 # Shows new/modified files in layer/surface/
 ```
 
-**4. Query Test**
+**4. Connection Test**
+```bash
+patina surface connections
+# Shows: session X → commit Y (confidence: 0.87)
+# Queued for review: 3 uncertain connections
+```
+
+**5. Curate Test**
+```bash
+patina surface status
+# Shows nodes ranked by importance
+# Identifies stale candidates
+```
+
+**6. Query Test**
 ```bash
 patina scry "why did we choose rouille?"
 # Returns surface node with decision rationale
@@ -351,99 +434,218 @@ patina scry "why did we choose rouille?"
 - **Portable over powerful** - Plain markdown, works anywhere
 - **Flat over hierarchical** - Links create structure, not folders
 - **Deterministic first** - Add LLM synthesis only where needed
+- **Curated over accumulated** - Quality over quantity
+- **Smart model in the room** - Use adapter LLMs for synthesis, not local models
 
 ---
 
-## Open Questions
+## Infrastructure
 
-1. **Extraction quality**: How to filter meaningful nodes vs noise?
-2. **Link typing**: Should links be typed (implements, avoids) or just connected?
-3. **Manual edits**: Can users edit surface? Do edits survive regeneration?
-4. **Staleness**: How to identify nodes no longer relevant?
-5. **Incremental updates**: How to update existing nodes vs overwrite?
+### What Exists (Use It)
+
+| Component | Status | Location |
+|-----------|--------|----------|
+| Session embeddings | ✅ Working | `oxidize` → semantic index |
+| Commit embeddings | ✅ Working | `oxidize` → semantic index |
+| Semantic similarity | ✅ Working | `scry` semantic oracle |
+| Lexical search | ✅ Working | `scry` lexical oracle (FTS5) |
+| Temporal data | ✅ Working | `commits` table timestamps |
+| Import relationships | ✅ Working | `import_facts` table |
+| Mother daemon | ✅ Working | `patina serve` |
+| Layer structure | ✅ Exists | `layer/core/`, `layer/surface/`, `layer/dust/` |
+
+### What's New (Build It)
+
+| Component | Description |
+|-----------|-------------|
+| L2 eventlog | Surface decisions (synthesize, curate, connect) |
+| Connection query | Join session → commit by similarity |
+| Connection storage | New table for validated connections |
+| Confidence scoring | Algorithm combining similarity + temporal + lexical |
+| Uncertainty queue | Storage for adapter review items |
+| Surface command | `patina surface capture`, `patina surface status` |
 
 ---
 
-## Session 20260110-181504: Ref Repo Exploration
+## L2 Eventlog: Surface Decisions
 
-### Question Explored
+### The Regeneration Problem
 
-For ref repos (external repos without `layer/`), what data can serve as their "surface layer"? Can issues/PRs provide the rationale content that sessions provide for patina itself?
+Surface data crosses a **non-deterministic boundary**:
+- Adapter LLM synthesis (tokens, model version, non-reproducible)
+- User curation (human judgment)
 
-### What We Tried
+Unlike L1 data (git/code → eventlog → patina.db), surface cannot be regenerated identically from source. The LLM might produce different output; user edits are original knowledge.
 
-1. **Queried opencode ref repo** for "style guide", "decisions", "philosophy"
-   - scry returned file references and commits, but not actual content
-   - opencode has `STYLE_GUIDE.md` with real decisions ("AVOID try/catch", "PREFER single word variable names")
-   - But this content was NOT in patina.db - not scraped, not queryable
+**Helland's principle:** When you cross a non-deterministic boundary, the output becomes a new source of truth. You can't derive it - you must capture it.
 
-2. **Updated opencode** with `patina repo update opencode --oxidize`
-   - Pulled 6945 commits, built 6041 semantic vectors
-   - But still no documentation content (README, STYLE_GUIDE, etc.)
+### The Eventlog Principle
 
-3. **Scraped forge data** with `patina scrape forge --full` (in opencode dir)
-   - Successfully fetched 500 issues
-   - Attempted to fetch 1215 PRs referenced in commit messages
-   - **Hit rate limiting** - TLS handshake timeouts on GitHub API
-   - Some `#123` refs in commits were issues not PRs → "Could not resolve to PullRequest"
+From ref-repo-storage design: **eventlog is for expensive/original knowledge, not derived data**.
 
-### Issues Discovered
+| Data Type | Eventlog? | Rationale |
+|-----------|-----------|-----------|
+| git/code | Skip (ref repos) | Derived from source, rebuildable |
+| forge | Always + dedup | Expensive API data, worth preserving |
+| sessions/layer | Always | Original knowledge |
+| **surface.synthesize** | **Always** | Expensive (LLM tokens), non-deterministic |
+| **surface.curate** | **Always** | Original (human judgment) |
+| surface.extract | Optional | Derived, but may want audit trail |
 
-#### Issue 1: Forge PR Fetching Has No Rate Limiting
+### L1 vs L2 Eventlog
 
-**Location:** `src/commands/scrape/forge/mod.rs:422-430`
+```
+L1 EVENTLOG (patina.db source)
+────────────────────────────────
+git.commit, git.diff           → commits, commit_files
+code.function, code.import     → function_facts, import_facts
+session.start, session.end     → sessions, goals, observations
+pattern.detected               → patterns
+forge.issue, forge.pr          → forge_issues, forge_prs
 
-```rust
-for pr_num in &pr_refs {
-    match reader.get_pull_request(*pr_num) { ... }
-}
+
+L2 EVENTLOG (layer/surface/ source)
+────────────────────────────────
+surface.extract.*              → deterministic nodes (component, concept)
+surface.synthesize.*           → LLM-generated nodes (decision, pattern)
+surface.connection.*           → validated connections
+surface.curate.*               → lifecycle transitions
 ```
 
-Each call to `get_pull_request` spawns `gh pr view` (one API call). With 1215 PRs, we hammer GitHub's API with no delay, triggering rate limits.
+### L2 Event Types
 
-**Fix needed:** Add delay between requests, or batch via GraphQL.
-
-#### Issue 2: Forge Data Not in Semantic Index
-
-After scraping 500 issues, oxidize output showed:
+**Capture Events:**
 ```
-Indexed 0 session events + 2911 code facts + 0 patterns + 3130 commits
+surface.extract.component    {node_id, source: "assay:inventory", path}
+surface.extract.concept      {node_id, source: "session:co-occurrence", terms}
+surface.synthesize.decision  {node_id, prompt, response, model, tokens, sources}
+surface.synthesize.pattern   {node_id, prompt, response, model, tokens, sources}
 ```
 
-Issues are in `forge_issues` table and `code_fts` (with `event_type='forge.issue'`), but:
-- NOT embedded by oxidize (not in semantic index)
-- scry's `include_issues=true` doesn't surface them
+**Connection Events:**
+```
+surface.connection.scored    {session_id, commit_sha, score, method}
+surface.connection.validated {connection_id, validator: "llm"|"user", confidence}
+surface.connection.rejected  {connection_id, reason}
+```
 
-**Fix needed:** Add forge events to oxidize embedding sources.
+**Curate Events:**
+```
+surface.node.promoted  {node_id, from: "surface", to: "core", reason}
+surface.node.archived  {node_id, from: "surface", to: "dust", reason}
+surface.node.edited    {node_id, before_hash, after_hash, editor: "user"|"llm"}
+surface.node.culled    {node_id, reason: "duplicate"|"slop"|"superseded"}
+```
 
-#### Issue 3: Ref Repos Don't Scrape Documentation
+### Architecture with L2
 
-For ref repos, we scrape:
-- ✅ Code (functions, types, imports)
-- ✅ Git (commits, co-changes)
-- ⚠️ Forge (issues/PRs) - only if explicitly requested
-- ❌ Documentation (README, STYLE_GUIDE, CONTRIBUTING, ADRs)
+```
+                        GIT (source of truth)
+                               │
+                               ▼
+                        L1 EVENTLOG
+                        ┌─────────────────────────────────────┐
+  git/code ────────────►│ git.*, code.*                       │
+  sessions/layer ──────►│ session.*, pattern.*                │──► patina.db
+  forge ───────────────►│ forge.*                             │
+                        └─────────────────────────────────────┘
+                                       │
+                                       ▼
+                                  scry/assay
+                                       │
+                        ┌──────────────┼──────────────┐
+                        ▼              ▼              ▼
+                  deterministic   adapter LLM      user
+                  (extract)       (synthesize)   (curate)
+                        │              │              │
+                        └──────────────┴──────────────┘
+                                       │
+                                       ▼
+                        L2 EVENTLOG (surface decisions)
+                        ┌─────────────────────────────────────┐
+                        │ surface.extract.*                   │
+                        │ surface.synthesize.*                │──► layer/surface/
+                        │ surface.connection.*                │    (documents)
+                        │ surface.curate.*                    │
+                        └─────────────────────────────────────┘
+```
 
-The layer scraper only indexes `layer/core` and `layer/surface`. Ref repos don't have these, so their documentation wisdom is invisible.
+### Storage Location
 
-**Fix needed:** Scrape markdown files from ref repos (README, docs/, etc.)
+**Option A:** `.patina/surface.eventlog` (SQLite table, like L1)
+- Consistent with existing eventlog pattern
+- Easy to query, join with L1 data
+- Lives in derived state (not committed)
 
-### Key Insight
+**Option B:** `layer/events/surface/` (JSON files in git)
+- Portable: decisions travel with the project
+- Auditable: git history shows evolution
+- Helland-aligned: "outside" data with "outside" decisions
 
-For ref repos, **issues/PRs ARE their surface layer**:
+**Recommendation:** Option A for now (simpler), with export capability to Option B for federation.
+
+### Why L2 Matters
+
+1. **Audit trail** - Why does this node exist? What prompt generated it?
+2. **Reproducibility** - Can't re-derive LLM output, but can replay the decision
+3. **Learning** - Which syntheses were kept vs edited vs rejected? Improves prompts.
+4. **Federation** - Other projects can see what you decided, not just what exists
+5. **Rollback** - If a synthesis was bad, trace back to the event and regenerate
+
+### Scope
+
+**L2 eventlog applies to projects only.** Ref repos don't have `layer/surface/` - their "surface" is forge data (issues/PRs), which is already captured in L1.
+
+---
+
+## Appendix: Session Notes
+
+### Session 20260110-181504: Ref Repo Exploration
+
+For ref repos (external repos without `layer/`), what data can serve as their "surface layer"?
+
+**Key Insight:** For ref repos, **issues/PRs ARE their surface layer**:
 - Bug discussions → why things broke
 - Feature rationale → why things were added
 - PR descriptions → design decisions
 - Comments → community knowledge
 
-But we scrape it and don't index it properly for retrieval.
+**Issues Found:**
+1. Forge data not in semantic index (oxidize doesn't embed issues)
+2. Ref repos don't scrape documentation (README, STYLE_GUIDE, etc.)
+3. Rate limiting needed for PR fetching
 
-### Next Steps
+### Session 20260115-053944: Mother Architecture Crystallized
 
-1. Fix rate limiting in forge PR fetcher (add delay or batch)
-2. Add forge events to oxidize embedding sources
-3. Consider scraping documentation markdown from ref repos
-4. Wire up scry to actually return forge.issue results
+**Key Insight:** Mother is NOT a local LLM model - she's deterministic daemon code.
+
+- Phase 1-2: Deterministic (existing embeddings + similarity + threshold rules)
+- Phase 3: Adapter LLM synthesis (Claude/Gemini/OpenCode - smartest model in room)
+- Phase 6+: Local model optimization (only after proven patterns exist)
+
+**90% of connection scoring already exists** in oxidize/scry. Mother orchestrates, stores connections, queues uncertainties.
+
+### Session 20260115-121358: L2 Eventlog Design
+
+**Design partners:** Helland (primary), Hickey (secondary), Fowler (tertiary)
+
+**Key Insight:** Surface data crosses a non-deterministic boundary (LLM synthesis, user curation). Once crossed, the output becomes a new source of truth - it can't be re-derived, only captured.
+
+**Helland's contribution:**
+- Surface nodes are "documents" (self-describing, portable, outside data)
+- Federation happens via document exchange, not shared DBs
+- Source references should be URIs, not local IDs
+
+**Hickey's contribution:**
+- Surface is a projection of inside data (derived view)
+- Start with simplest projection (direct extraction)
+- Define the data shape explicitly
+
+**Fowler's contribution:**
+- Mother as event router, not orchestrator
+- Components react to events (choreography over orchestration)
+
+**Result:** L2 eventlog captures surface decisions (synthesize, curate, connect) as the source of truth for `layer/surface/`.
 
 ---
 
@@ -451,8 +653,11 @@ But we scrape it and don't index it properly for retrieval.
 
 - [Obsidian](https://obsidian.md) - Knowledge garden model
 - [spec-pipeline.md](./spec-pipeline.md) - scrape/oxidize/scry pipeline
+- [spec-mothership.md](./spec-mothership.md) - Mother architecture
 - Session 20260108-124107 - Initial design exploration
 - Session 20260108-200725 - Refined as distillation layer
 - Session 20260109-063849 - LLM synthesis and model cartridge design
 - Session 20260110-154224 - Corrected to hub & spoke architecture
 - Session 20260110-181504 - Ref repo exploration, forge data gaps
+- Session 20260115-053944 - Two functions: Capture & Curate, Mother crystallized
+- Session 20260115-121358 - L2 eventlog design (Helland/Hickey/Fowler analysis)

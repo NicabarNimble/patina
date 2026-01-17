@@ -5,7 +5,7 @@ created = "2025-12-05T16:52:27.714136+00:00"
 [dev]
 type = "docker"
 
-[frontends]
+[adapters]
 allowed = ["claude"]
 default = "claude"
 
@@ -17,21 +17,25 @@ scry_threshold = 0.0
 semantic_threshold = 0.3499999940395355
 belief_threshold = 0.5
 
+[retrieval]
+rrf_k = 60
+fetch_multiplier = 2
+
 [environment]
 os = "macos"
 arch = "aarch64"
 detected_tools = [
-    "gh",
-    "git",
-    "vim",
-    "cargo-clippy",
-    "jq",
-    "wasm-pack",
-    "brew",
-    "docker",
     "claude",
-    "cargo",
-    "go",
     "nvim",
+    "wasm-pack",
+    "jq",
+    "go",
+    "cargo-clippy",
     "cargo-fmt",
+    "git",
+    "gh",
+    "vim",
+    "docker",
+    "brew",
+    "cargo",
 ]

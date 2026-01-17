@@ -29,6 +29,15 @@ mod claude_templates {
     pub const SESSION_NOTE_MD: &str = include_str!("../../resources/claude/session-note.md");
     pub const SESSION_END_MD: &str = include_str!("../../resources/claude/session-end.md");
     pub const PATINA_REVIEW_MD: &str = include_str!("../../resources/claude/patina-review.md");
+
+    // Skills - epistemic-beliefs
+    pub const SKILL_EPISTEMIC_BELIEFS_MD: &str =
+        include_str!("../../resources/claude/skills/epistemic-beliefs/SKILL.md");
+    pub const SKILL_EPISTEMIC_BELIEFS_CREATE_SH: &str =
+        include_str!("../../resources/claude/skills/epistemic-beliefs/scripts/create-belief.sh");
+    pub const SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD: &str = include_str!(
+        "../../resources/claude/skills/epistemic-beliefs/references/belief-example.md"
+    );
 }
 
 // =============================================================================
@@ -126,11 +135,13 @@ fn install_claude_templates(adapters_dir: &Path) -> Result<()> {
     let bin_dir = claude_dir.join("bin");
     let commands_dir = claude_dir.join("commands");
     let context_dir = claude_dir.join("context");
+    let skills_dir = claude_dir.join("skills");
 
     // Create directories
     fs::create_dir_all(&bin_dir)?;
     fs::create_dir_all(&commands_dir)?;
     fs::create_dir_all(&context_dir)?;
+    fs::create_dir_all(&skills_dir)?;
 
     // Write shell scripts
     write_executable(
@@ -170,6 +181,26 @@ fn install_claude_templates(adapters_dir: &Path) -> Result<()> {
     fs::write(
         commands_dir.join("patina-review.md"),
         claude_templates::PATINA_REVIEW_MD,
+    )?;
+
+    // Write skills - epistemic-beliefs
+    let epistemic_beliefs_dir = skills_dir.join("epistemic-beliefs");
+    let epistemic_scripts_dir = epistemic_beliefs_dir.join("scripts");
+    let epistemic_refs_dir = epistemic_beliefs_dir.join("references");
+    fs::create_dir_all(&epistemic_scripts_dir)?;
+    fs::create_dir_all(&epistemic_refs_dir)?;
+
+    fs::write(
+        epistemic_beliefs_dir.join("SKILL.md"),
+        claude_templates::SKILL_EPISTEMIC_BELIEFS_MD,
+    )?;
+    write_executable(
+        &epistemic_scripts_dir.join("create-belief.sh"),
+        claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH,
+    )?;
+    fs::write(
+        epistemic_refs_dir.join("belief-example.md"),
+        claude_templates::SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD,
     )?;
 
     Ok(())
@@ -365,6 +396,10 @@ mod tests {
         // Just verify templates are embedded correctly
         assert!(!claude_templates::SESSION_START_SH.is_empty());
         assert!(!claude_templates::SESSION_START_MD.is_empty());
+        // Skills
+        assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_MD.is_empty());
+        assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH.is_empty());
+        assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_EXAMPLE_MD.is_empty());
     }
 
     #[test]
@@ -392,6 +427,17 @@ mod tests {
         // Deprecated commands should not exist
         assert!(!templates_dir.join(".claude/bin/launch.sh").exists());
         assert!(!templates_dir.join(".claude/bin/persona-start.sh").exists());
+
+        // Skills should be installed
+        assert!(templates_dir
+            .join(".claude/skills/epistemic-beliefs/SKILL.md")
+            .exists());
+        assert!(templates_dir
+            .join(".claude/skills/epistemic-beliefs/scripts/create-belief.sh")
+            .exists());
+        assert!(templates_dir
+            .join(".claude/skills/epistemic-beliefs/references/belief-example.md")
+            .exists());
     }
 
     #[test]

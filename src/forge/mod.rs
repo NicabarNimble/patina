@@ -39,6 +39,12 @@ use anyhow::Result;
 /// Implementations handle platform-specific CLI/API calls internally.
 /// Results are cached in eventlog for offline access.
 pub trait ForgeReader {
+    /// Get total issue count (1 API call). For progress reporting.
+    fn get_issue_count(&self) -> Result<usize>;
+
+    /// Get total PR count (1 API call). For progress reporting.
+    fn get_pr_count(&self) -> Result<usize>;
+
     /// Fetch issues (with optional since filter for incremental updates).
     fn list_issues(&self, limit: usize, since: Option<&str>) -> Result<Vec<Issue>>;
 
