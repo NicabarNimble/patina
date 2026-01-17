@@ -11,6 +11,14 @@ use super::{ForgeReader, Issue, PullRequest};
 pub struct NoneReader;
 
 impl ForgeReader for NoneReader {
+    fn get_issue_count(&self) -> Result<usize> {
+        Ok(0) // No forge = no issues
+    }
+
+    fn get_pr_count(&self) -> Result<usize> {
+        Ok(0) // No forge = no PRs
+    }
+
     fn list_issues(&self, _limit: usize, _since: Option<&str>) -> Result<Vec<Issue>> {
         Ok(vec![]) // No forge = no issues
     }

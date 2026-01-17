@@ -78,6 +78,84 @@ pub fn execute_all() -> Result<()> {
     Ok(())
 }
 
+/// Rebuild database from scratch.
+///
+/// For ref repos: removes old eventlog bloat (git/code events) and rebuilds
+/// with lean storage pattern. Includes forge data re-fetch.
+///
+/// See: layer/surface/build/spec-ref-repo-storage.md
+pub fn execute_rebuild() -> Result<()> {
+    let db_path = PathBuf::from(database::PATINA_DB);
+    let is_ref = database::is_ref_repo(&db_path);
+
+    // Get old size if exists
+    let old_size_kb = std::fs::metadata(&db_path)
+        .map(|m| m.len() / 1024)
+        .unwrap_or(0);
+
+    if is_ref {
+        println!("🔧 Rebuilding ref repo database (lean storage)...");
+        println!("   Old size: {} KB", old_size_kb);
+    } else {
+        println!("🔧 Rebuilding project database...");
+    }
+
+    // Delete existing database
+    if db_path.exists() {
+        std::fs::remove_file(&db_path)?;
+        println!("   Deleted old database");
+    }
+
+    // Run all scrapers fresh (they will use lean storage for ref repos)
+    println!("\n🔄 Running all scrapers...\n");
+
+    println!("📊 [1/5] Scraping code...");
+    execute_code(false, false)?;
+
+    println!("\n📊 [2/5] Scraping git...");
+    let git_stats = git::run(false)?;
+    println!("  • {} commits", git_stats.items_processed);
+
+    println!("\n📚 [3/5] Scraping sessions...");
+    let session_stats = sessions::run(false)?;
+    println!("  • {} sessions", session_stats.items_processed);
+
+    println!("\n📜 [4/5] Scraping layer patterns...");
+    let layer_stats = layer::run(false)?;
+    println!("  • {} patterns", layer_stats.items_processed);
+
+    // For ref repos, also rebuild forge data (this is the expensive cached data we preserve)
+    if is_ref {
+        println!("\n🔗 [5/5] Scraping forge (issues/PRs)...");
+        // Use full=true to force complete re-fetch since we deleted the database
+        execute_forge(true, false, false, false, None, None)?;
+    } else {
+        println!("\n📝 [5/5] Skipping forge (run 'patina scrape forge' separately)");
+    }
+
+    // Report new size
+    let new_size_kb = std::fs::metadata(&db_path)
+        .map(|m| m.len() / 1024)
+        .unwrap_or(0);
+
+    println!("\n✅ Rebuild complete!");
+    println!("   New size: {} KB", new_size_kb);
+
+    if is_ref && old_size_kb > 0 {
+        let reduction = if old_size_kb > new_size_kb {
+            ((old_size_kb - new_size_kb) * 100) / old_size_kb
+        } else {
+            0
+        };
+        println!(
+            "   Reduction: {} KB → {} KB ({}% smaller)",
+            old_size_kb, new_size_kb, reduction
+        );
+    }
+
+    Ok(())
+}
+
 /// Execute code scraper for current directory
 ///
 /// For external repos, use `patina repo update <name>` instead.

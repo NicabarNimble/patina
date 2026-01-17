@@ -16,7 +16,37 @@ use std::time::Instant;
 
 use super::database;
 use super::ScrapeStats;
-use patina::forge::{self, ForgeKind, Issue, IssueState};
+use patina::forge::{self, ForgeKind, Issue, IssueState, PrState, PullRequest};
+
+/// Check if we already have this issue at this updated_at timestamp.
+/// Prevents duplicate events from repeated scrapes.
+///
+/// See: layer/surface/build/spec-ref-repo-storage.md (Phase 2: Dedup on insert)
+fn issue_event_exists(conn: &Connection, number: i64, updated_at: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM eventlog
+         WHERE event_type = 'forge.issue'
+           AND json_extract(data, '$.number') = ?1
+           AND json_extract(data, '$.updated_at') = ?2",
+        rusqlite::params![number, updated_at],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+/// Check if we already have this PR at this updated_at timestamp.
+/// Prevents duplicate events from repeated scrapes.
+fn pr_event_exists(conn: &Connection, number: i64, updated_at: &str) -> Result<bool> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM eventlog
+         WHERE event_type = 'forge.pr'
+           AND json_extract(data, '$.number') = ?1
+           AND json_extract(data, '$.updated_at') = ?2",
+        rusqlite::params![number, updated_at],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
 
 /// Create materialized views for forge events.
 fn create_materialized_views(conn: &Connection) -> Result<()> {
@@ -87,9 +117,17 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Stats returned from insert operations
+pub struct InsertStats {
+    pub inserted: usize,
+    pub skipped: usize,
+}
+
 /// Insert issues into eventlog and materialized views.
-fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<usize> {
-    let mut count = 0;
+/// Deduplicates on (number, updated_at) to avoid duplicate events.
+fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<InsertStats> {
+    let mut inserted = 0;
+    let mut skipped = 0;
 
     let mut issue_stmt = conn.prepare(
         "INSERT OR REPLACE INTO forge_issues
@@ -104,27 +142,36 @@ fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<usize> {
             IssueState::Closed => "closed",
         };
 
-        // 1. Insert into eventlog (source of truth)
-        let event_data = json!({
-            "number": issue.number,
-            "title": &issue.title,
-            "body": &issue.body,
-            "state": state_str,
-            "labels": &issue.labels,
-            "author": &issue.author,
-            "url": &issue.url,
-        });
+        // 1. Insert into eventlog (with dedup check to avoid duplicates)
+        let seq = if issue_event_exists(conn, issue.number, &issue.updated_at)? {
+            // Already have this version - skip eventlog, still update materialized view
+            skipped += 1;
+            None
+        } else {
+            let event_data = json!({
+                "number": issue.number,
+                "title": &issue.title,
+                "body": &issue.body,
+                "state": state_str,
+                "labels": &issue.labels,
+                "author": &issue.author,
+                "url": &issue.url,
+                "updated_at": &issue.updated_at,
+            });
 
-        let seq = database::insert_event(
-            conn,
-            "forge.issue",
-            &issue.created_at,
-            &issue.number.to_string(),
-            Some(&issue.url),
-            &event_data.to_string(),
-        )?;
+            let seq = database::insert_event(
+                conn,
+                "forge.issue",
+                &issue.created_at,
+                &issue.number.to_string(),
+                Some(&issue.url),
+                &event_data.to_string(),
+            )?;
+            inserted += 1;
+            Some(seq)
+        };
 
-        // 2. Update materialized view
+        // 2. Update materialized view (always - latest wins)
         issue_stmt.execute(rusqlite::params![
             issue.number,
             &issue.title,
@@ -137,11 +184,93 @@ fn insert_issues(conn: &Connection, issues: &[Issue]) -> Result<usize> {
             &issue.url,
             seq,
         ])?;
-
-        count += 1;
     }
 
-    Ok(count)
+    Ok(InsertStats { inserted, skipped })
+}
+
+/// Insert PRs into eventlog and materialized views.
+/// Deduplicates on (number, updated_at) to avoid duplicate events.
+fn insert_prs(conn: &Connection, prs: &[PullRequest]) -> Result<InsertStats> {
+    let mut inserted = 0;
+    let mut skipped = 0;
+
+    let mut pr_stmt = conn.prepare(
+        "INSERT OR REPLACE INTO forge_prs
+         (number, title, body, state, labels, author, created_at, merged_at, url, linked_issues, approvals, event_seq)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+    )?;
+
+    for pr in prs {
+        let labels_str = serde_json::to_string(&pr.labels)?;
+        let linked_str = serde_json::to_string(&pr.linked_issues)?;
+        let state_str = match pr.state {
+            PrState::Open => "open",
+            PrState::Merged => "merged",
+            PrState::Closed => "closed",
+        };
+
+        // Combine body and comments for searchable content
+        let comments_text: String = pr
+            .comments
+            .iter()
+            .map(|c| format!("{}: {}", c.author, c.body))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Use created_at as updated_at proxy for PRs (API doesn't always provide updated_at)
+        let updated_at = &pr.created_at;
+
+        // 1. Insert into eventlog (with dedup check to avoid duplicates)
+        let seq = if pr_event_exists(conn, pr.number, updated_at)? {
+            // Already have this version - skip eventlog, still update materialized view
+            skipped += 1;
+            None
+        } else {
+            let event_data = json!({
+                "number": pr.number,
+                "title": &pr.title,
+                "body": &pr.body,
+                "state": state_str,
+                "labels": &pr.labels,
+                "author": &pr.author,
+                "url": &pr.url,
+                "linked_issues": &pr.linked_issues,
+                "comments": &comments_text,
+                "approvals": pr.approvals,
+                "updated_at": updated_at,
+            });
+
+            let seq = database::insert_event(
+                conn,
+                "forge.pr",
+                &pr.created_at,
+                &pr.number.to_string(),
+                Some(&pr.url),
+                &event_data.to_string(),
+            )?;
+            inserted += 1;
+            Some(seq)
+        };
+
+        // 2. Update materialized view (always - latest wins)
+        pr_stmt.execute(rusqlite::params![
+            pr.number,
+            &pr.title,
+            &pr.body,
+            state_str,
+            &labels_str,
+            &pr.author,
+            &pr.created_at,
+            &pr.merged_at,
+            &pr.url,
+            &linked_str,
+            pr.approvals,
+            seq,
+        ])?;
+    }
+
+    Ok(InsertStats { inserted, skipped })
 }
 
 /// Populate FTS5 index with forge issues.
@@ -229,7 +358,7 @@ pub struct ForgeScrapeConfig {
 impl Default for ForgeScrapeConfig {
     fn default() -> Self {
         Self {
-            limit: 500,
+            limit: 50000,
             force: false,
             working_dir: None,
         }
@@ -317,69 +446,95 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
     };
 
     let forge_name = format!("{}/{}", detected.owner, detected.repo);
+
+    // Get reader for bulk fetches
+    let reader = forge::reader(&detected);
+
+    // Query counts first for progress reporting
+    let issue_count_expected = reader.get_issue_count().unwrap_or(0);
+    let pr_count_expected = reader.get_pr_count().unwrap_or(0);
+
     if since.is_some() {
         println!(
             "📊 Incremental forge scrape for {} since last update...",
             forge_name
         );
     } else {
-        println!("📊 Full forge issues scrape for {}...", forge_name);
+        println!(
+            "📊 Full forge scrape for {} ({} issues, {} PRs)...",
+            forge_name, issue_count_expected, pr_count_expected
+        );
     }
 
-    // Get reader and fetch issues
-    let reader = forge::reader(&detected);
+    // Bulk fetch issues
     let issues = reader.list_issues(config.limit, since.as_deref())?;
-
-    if issues.is_empty() {
+    let issue_count = if issues.is_empty() {
         println!("  No new issues to process");
-        return Ok(ScrapeStats {
-            items_processed: 0,
-            time_elapsed: start.elapsed(),
-            database_size_kb: std::fs::metadata(db_path)
-                .map(|m| m.len() / 1024)
-                .unwrap_or(0),
-        });
-    }
+        0
+    } else {
+        println!("  Fetched {}/{} issues", issues.len(), issue_count_expected);
+        let stats = insert_issues(&conn, &issues)?;
+        if stats.skipped > 0 {
+            println!(
+                "  Inserted {} new events, {} unchanged (dedup)",
+                stats.inserted, stats.skipped
+            );
+        } else {
+            println!("  Inserted {} issues", stats.inserted);
+        }
 
-    println!("  Found {} issues to process", issues.len());
+        // Update last scrape timestamp from issues
+        if let Some(latest) = issues.iter().max_by_key(|i| &i.updated_at) {
+            update_last_scrape(&conn, &latest.updated_at)?;
+        }
 
-    // Insert issues
-    let issue_count = insert_issues(&conn, &issues)?;
-    println!("  Inserted {} issues", issue_count);
+        // Populate FTS5 index for issues
+        let issue_fts_count = populate_fts5_issues(&conn)?;
+        println!("  Indexed {} issues in FTS5", issue_fts_count);
+        stats.inserted
+    };
 
-    // Update last scrape timestamp
-    if let Some(latest) = issues.iter().max_by_key(|i| &i.updated_at) {
-        update_last_scrape(&conn, &latest.updated_at)?;
-    }
+    // Bulk fetch PRs (same pattern as issues)
+    let prs = reader.list_pull_requests(config.limit, since.as_deref())?;
+    let pr_count = if prs.is_empty() {
+        println!("  No new PRs to process");
+        0
+    } else {
+        println!("  Fetched {}/{} PRs", prs.len(), pr_count_expected);
+        let stats = insert_prs(&conn, &prs)?;
+        if stats.skipped > 0 {
+            println!(
+                "  Inserted {} new events, {} unchanged (dedup)",
+                stats.inserted, stats.skipped
+            );
+        } else {
+            println!("  Inserted {} PRs", stats.inserted);
+        }
 
-    // Populate FTS5 index for issues
-    let issue_fts_count = populate_fts5_issues(&conn)?;
-    println!("  Indexed {} issues in FTS5", issue_fts_count);
+        // Populate FTS5 index for PRs
+        let pr_fts_count = populate_fts5_prs(&conn)?;
+        println!("  Indexed {} PRs in FTS5", pr_fts_count);
+        stats.inserted
+    };
 
-    // Phase 3: Discover PR/issue refs from commits
-    // (actual resolution happens via --sync or --limit flags)
+    // Discover PR refs from commits (for numbers mentioned in commit messages)
+    // These are PRs we know the number of but haven't fetched yet
     let repo_spec = format!("{}/{}", detected.owner, detected.repo);
     let sync_stats = forge::sync::run(&conn, reader.as_ref(), &repo_spec)?;
 
     if sync_stats.discovered > 0 || sync_stats.resolved > 0 {
         println!(
-            "  Sync: {} discovered, {} resolved, {} pending",
+            "  Sync: {} PR refs from commits, {} resolved, {} pending",
             sync_stats.discovered, sync_stats.resolved, sync_stats.pending
         );
         if sync_stats.cache_hits > 0 {
             println!(
-                "  ({} cache hits - no API calls needed)",
+                "  ({} cache hits - already fetched via bulk)",
                 sync_stats.cache_hits
             );
         }
         if sync_stats.errors > 0 {
             println!("  ({} refs failed - see warnings above)", sync_stats.errors);
-        }
-
-        // Index newly resolved PRs in FTS (if any non-cached resolutions)
-        if sync_stats.resolved > sync_stats.cache_hits {
-            let fts_count = populate_fts5_prs(&conn)?;
-            println!("  Indexed {} PRs in FTS5", fts_count);
         }
     }
 
@@ -389,7 +544,7 @@ pub fn run(config: ForgeScrapeConfig) -> Result<ScrapeStats> {
         .unwrap_or(0);
 
     Ok(ScrapeStats {
-        items_processed: issue_count + sync_stats.resolved,
+        items_processed: issue_count + pr_count + sync_stats.resolved,
         time_elapsed: elapsed,
         database_size_kb: db_size,
     })
