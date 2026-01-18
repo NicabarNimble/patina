@@ -152,6 +152,56 @@ if [ -d .git ]; then
     echo "- Tags mark session boundaries, commits mark progress"
 fi
 
+# Show recent beliefs for context
+BELIEFS_DIR="layer/surface/epistemic/beliefs"
+if [ -d "$BELIEFS_DIR" ]; then
+    # Count beliefs and show recent ones
+    BELIEF_COUNT=$(find "$BELIEFS_DIR" -name "*.md" ! -name "_index.md" 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$BELIEF_COUNT" -gt 0 ]; then
+        echo ""
+        echo "📚 Epistemic Beliefs: $BELIEF_COUNT total"
+        echo "   Recent beliefs:"
+        # Show up to 5 most recently modified beliefs
+        for belief_file in $(ls -t "$BELIEFS_DIR"/*.md 2>/dev/null | head -5); do
+            [ -f "$belief_file" ] || continue
+            [[ "$(basename "$belief_file")" == "_index.md" ]] && continue
+            BELIEF_ID=$(basename "$belief_file" .md)
+            STATEMENT=$(grep "^statement:" "$belief_file" 2>/dev/null | sed 's/^statement: *//' | head -1)
+            if [ -n "$STATEMENT" ]; then
+                # Truncate long statements
+                if [ ${#STATEMENT} -gt 60 ]; then
+                    STATEMENT="${STATEMENT:0:57}..."
+                fi
+                echo "   - ${BELIEF_ID}: ${STATEMENT}"
+            fi
+        done
+    fi
+fi
+
+# Show previous session's captured beliefs (the feedback loop)
+LAST_SESSION_FILE=".claude/context/last-session.md"
+if [ -f "$LAST_SESSION_FILE" ]; then
+    # Extract the session file path from "See: layer/sessions/XXXX.md"
+    PREV_SESSION_PATH=$(grep "^See:" "$LAST_SESSION_FILE" | sed 's/^See: *//')
+    PREV_SESSION_TITLE=$(grep "^# Last Session:" "$LAST_SESSION_FILE" | sed 's/^# Last Session: *//')
+
+    if [ -f "$PREV_SESSION_PATH" ]; then
+        # Extract beliefs captured count
+        PREV_BELIEFS_LINE=$(grep "^## Beliefs Captured:" "$PREV_SESSION_PATH" 2>/dev/null)
+        if [ -n "$PREV_BELIEFS_LINE" ]; then
+            PREV_BELIEFS_COUNT=$(echo "$PREV_BELIEFS_LINE" | sed 's/^## Beliefs Captured: *//')
+            echo ""
+            if [ "$PREV_BELIEFS_COUNT" -gt 0 ] 2>/dev/null; then
+                echo "📝 Previous session \"$PREV_SESSION_TITLE\" captured $PREV_BELIEFS_COUNT belief(s):"
+                # Extract belief lines (start after "## Beliefs Captured:", stop at next ## or EOF)
+                sed -n '/^## Beliefs Captured:/,/^##/p' "$PREV_SESSION_PATH" | grep "^\s*-" | head -5
+            else
+                echo "📝 Previous session \"$PREV_SESSION_TITLE\": no beliefs captured"
+            fi
+        fi
+    fi
+fi
+
 # Prompt AI to read last-session.md and provide context
 echo ""
 if [ -f ".claude/context/last-session.md" ]; then

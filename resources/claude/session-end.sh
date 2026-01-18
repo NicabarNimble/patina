@@ -108,7 +108,49 @@ if command -v git &> /dev/null && [ -d .git ] && [ "$SESSION_TAG" != "none" ]; t
         echo "Diff session: git diff ${SESSION_TAG}..${SESSION_END_TAG}"
         echo "Cherry-pick to main: git cherry-pick ${SESSION_TAG}..${SESSION_END_TAG}"
     fi
-    
+
+    # Count beliefs captured during this session
+    BELIEFS_DIR="layer/surface/epistemic/beliefs"
+    BELIEFS_CAPTURED=0
+    BELIEFS_SUMMARY=""
+
+    if [ -d "$BELIEFS_DIR" ]; then
+        # Find beliefs modified since session start tag
+        for belief_file in "$BELIEFS_DIR"/*.md; do
+            [ -f "$belief_file" ] || continue
+            # Skip index file
+            [[ "$(basename "$belief_file")" == "_index.md" ]] && continue
+
+            # Check if file was modified since session start
+            if git diff --name-only "${SESSION_TAG}..HEAD" 2>/dev/null | grep -q "$(basename "$belief_file")"; then
+                BELIEFS_CAPTURED=$((BELIEFS_CAPTURED + 1))
+                # Extract belief ID and statement
+                BELIEF_ID=$(basename "$belief_file" .md)
+                STATEMENT=$(grep "^statement:" "$belief_file" 2>/dev/null | sed 's/^statement: *//' | head -1)
+                if [ -n "$STATEMENT" ]; then
+                    BELIEFS_SUMMARY="${BELIEFS_SUMMARY}\n  - **${BELIEF_ID}**: ${STATEMENT}"
+                fi
+            fi
+        done
+    fi
+
+    if [ "$SILENT_MODE" = false ]; then
+        echo ""
+        echo "Beliefs Captured: $BELIEFS_CAPTURED"
+        if [ $BELIEFS_CAPTURED -gt 0 ]; then
+            echo -e "$BELIEFS_SUMMARY"
+        fi
+    fi
+
+    # Add beliefs section to session file
+    echo "" >> "$ACTIVE_SESSION"
+    echo "## Beliefs Captured: ${BELIEFS_CAPTURED}" >> "$ACTIVE_SESSION"
+    if [ $BELIEFS_CAPTURED -gt 0 ]; then
+        echo -e "$BELIEFS_SUMMARY" >> "$ACTIVE_SESSION"
+    else
+        echo "_No beliefs captured this session_" >> "$ACTIVE_SESSION"
+    fi
+
     # Add classification to session file
     echo "" >> "$ACTIVE_SESSION"
     echo "## Session Classification" >> "$ACTIVE_SESSION"
@@ -116,6 +158,7 @@ if command -v git &> /dev/null && [ -d .git ] && [ "$SESSION_TAG" != "none" ]; t
     echo "- Files Changed: $FILES_CHANGED" >> "$ACTIVE_SESSION"
     echo "- Commits: $COMMITS_MADE" >> "$ACTIVE_SESSION"
     echo "- Patterns Modified: $PATTERNS_TOUCHED" >> "$ACTIVE_SESSION"
+    echo "- Beliefs Captured: $BELIEFS_CAPTURED" >> "$ACTIVE_SESSION"
     echo "- Session Tags: ${SESSION_TAG}..${SESSION_END_TAG}" >> "$ACTIVE_SESSION"
 else
     CLASSIFICATION="unclassified"
