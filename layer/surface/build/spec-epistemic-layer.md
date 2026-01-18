@@ -2,10 +2,10 @@
 
 **Status:** Active (E2 Complete - Belief Creation System Validated)
 **Created:** 2026-01-16
-**Updated:** 2026-01-17 (E2 testing complete)
+**Updated:** 2026-01-17 (E2.5 session-belief loop complete)
 **Origin:** Session 20260116-054624, external LLM collaboration on academic grounding
 **Prototype:** `layer/surface/epistemic/`
-**Progress:** E0 ✅ | E1 (in progress) | E2 ✅ | E3 (next) | E4-E6 (planned)
+**Progress:** E0 ✅ | E1 (in progress) | E2 ✅ | E2.5 ✅ | E3 (next) | E4-E6 (planned)
 
 ---
 
@@ -585,6 +585,93 @@ Tasks (deferred):
 - `patina surface create-belief` CLI command
 - MCP tool exposing `create_belief`
 - `patina surface validate` for checking existing files
+
+### Phase E2.5: Session-Belief Loop (Next)
+
+**Goal:** Make belief capture visible through the session lifecycle.
+
+**Key Insight:** The adapter LLM creates beliefs silently during sessions via the E2 skill. But we have no visibility into whether capture is happening. Session-end should measure it, session-start should recall it.
+
+#### The Loop
+
+```
+SESSION (during)              SESSION END                    SESSION START (next)
+      │                            │                              │
+      ▼                            ▼                              ▼
+LLM creates beliefs ──────► Count + summarize ──────► Recall previous beliefs
+(via skill, silent)         to active-session.md       from last-session.md
+```
+
+#### Session-End Capture Format
+
+Add to active-session.md before archiving:
+
+```markdown
+## Beliefs Captured: 2
+- **commit-early-commit-often**: Make small, focused commits frequently rather than batching changes into large commits
+- **project-config-in-git**: Track project configuration in git, separate from machine-specific settings
+```
+
+Format:
+- Count of beliefs created this session
+- One line per belief: `**{id}**: {one-liner summary}`
+- One-liner comes from the line after `# {id}` in belief file
+
+#### Session-Start Recall
+
+When reading last-session.md, surface the beliefs:
+
+> Previous session captured **2 beliefs**:
+> - `commit-early-commit-often`: Make small, focused commits...
+> - `project-config-in-git`: Track project configuration...
+
+This creates a feedback loop:
+- **0 beliefs** repeatedly → LLM not recognizing capture opportunities
+- **N beliefs** → Active capture working
+- **Mismatch** → User remembers decisions not captured → improve triggers
+
+#### Finding Beliefs by Session
+
+Beliefs link back via evidence:
+```markdown
+## Evidence
+- [[session-20260117-104322]] - discovered during CI debugging (weight: 0.8)
+```
+
+Query: `grep -r "session-{id}" layer/surface/epistemic/beliefs/`
+
+#### E2.5 Tasks
+
+- [x] Update `session-end.sh` to count beliefs created since session-start tag
+- [x] Update `session-end.sh` to extract one-liner summaries
+- [x] Update `session-end.sh` to write "Beliefs Captured" section
+- [x] Update `session-start.sh` to read and surface previous session's beliefs
+- [x] Test the loop across 2-3 sessions
+
+#### E2.5 Exit Criteria
+
+- [x] Session-end captures belief count + summaries
+- [x] Session-start recalls previous session's beliefs
+- [x] Format is grep-able (beliefs findable by session ID)
+
+#### E2.5 Implementation Notes (Session 20260117-205031)
+
+**session-end.sh (lines 112-152):**
+- Uses `git diff --name-only ${SESSION_TAG}..HEAD` to find modified belief files
+- Extracts belief ID and statement from frontmatter
+- Appends "## Beliefs Captured: N" section to session file
+
+**session-start.sh (lines 181-202):**
+- Reads `last-session.md` to find archived session path
+- Parses "## Beliefs Captured:" section from archived session
+- Displays: "📝 Previous session 'X' captured N belief(s):" or "no beliefs captured"
+
+**Feedback loop value:**
+- 0 beliefs repeatedly on architecture sessions → skill not triggering
+- 0 beliefs on bug fixes → expected, fine
+- N beliefs → system learning organically
+
+---
 
 ### Phase E3: Scry Integration
 
