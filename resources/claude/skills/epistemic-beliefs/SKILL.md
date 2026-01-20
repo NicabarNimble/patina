@@ -1,15 +1,34 @@
 ---
 name: epistemic-beliefs
-description: Guide for creating and managing epistemic beliefs in Patina. Use this skill when synthesizing project decisions into formal beliefs, when the user says "create a belief", "add belief", "capture this as a belief", or when distilling session learnings into the epistemic layer. Beliefs capture project decisions with evidence, confidence signals, and support/attack relationships.
+description: Guide for creating and managing epistemic beliefs in Patina. Use this skill when synthesizing project decisions into formal beliefs, when the user says "create a belief", "add belief", "capture this as a belief", or when distilling session learnings into the epistemic layer. Beliefs capture project decisions with evidence, confidence signals, and support/attack relationships. IMPORTANT - Proactively suggest belief capture when you notice design decisions, repeated patterns, strong principles, or statements like "we should always", "never do X", "the right way is". Do not wait for magic words.
 ---
 
 # Epistemic Beliefs
 
 Create formal beliefs that capture project decisions with evidence and reasoning.
 
+## Proactive Belief Detection
+
+**Do not wait for the user to say "create a belief".** Watch for:
+
+| Pattern | Example | Action |
+|---------|---------|--------|
+| Design decision | "We should use sync, not async" | Suggest: "Capture as belief?" |
+| Repeated principle | Said 3+ times in session | Suggest: "This keeps coming up..." |
+| Strong preference | "Never do X", "Always Y" | Suggest: "This sounds like a core belief" |
+| Contradiction found | Conflicts with existing belief | Ask: "This contradicts X - revise?" |
+| Lesson learned | "That was a mistake because..." | Suggest: "Capture to avoid repeating?" |
+
+When you notice these patterns, **ask the user**:
+> "This sounds like a belief worth capturing: '{statement}'. Should I create it?"
+
+If user confirms, proceed with belief creation. If user declines, move on.
+
 ## When to Create Beliefs
 
 - User explicitly requests: "create a belief", "add this as a belief"
+- **You notice a design decision or principle** (proactive)
+- **A pattern is repeated multiple times** (proactive)
 - Distilling session learnings into persistent knowledge
 - Capturing architectural decisions with justification
 - Recording design principles that guide future work
