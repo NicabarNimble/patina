@@ -96,17 +96,17 @@ pub fn add_repo(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
 
     // Check if already registered
     let mut registry = Registry::load()?;
-    if registry.repos.contains_key(&repo_name) {
-        let existing = &registry.repos[&repo_name];
+    if registry.repos.contains_key(&github) {
+        let existing = &registry.repos[&github];
         if contrib && !existing.contrib {
             println!("📌 Repository exists, upgrading to contributor mode...");
             // TODO: Add fork logic here
-            return upgrade_to_contrib(&repo_name, &mut registry);
+            return upgrade_to_contrib(&github, &mut registry);
         }
         bail!(
             "Repository '{}' already registered. Use 'patina repo update {}' to refresh.",
-            repo_name,
-            repo_name
+            github,
+            github
         );
     }
 
@@ -114,7 +114,7 @@ pub fn add_repo(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
     let repos_path = paths::repos::cache_dir();
     fs::create_dir_all(&repos_path)?;
 
-    let repo_path = repos_path.join(&repo_name);
+    let repo_path = repos_path.join(&github);
 
     // Clone repository
     println!("📥 Cloning {}...", github);
@@ -172,11 +172,11 @@ pub fn add_repo(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
     let synced_commit = get_head_sha(&repo_path);
 
     registry.repos.insert(
-        repo_name.clone(),
+        github.clone(),
         RepoEntry {
-            name: repo_name.clone(),
+            name: github.clone(),
             path: repo_path.to_string_lossy().to_string(),
-            github,
+            github: github.clone(),
             contrib: fork.is_some(),
             fork,
             registered: timestamp,
@@ -194,12 +194,12 @@ pub fn add_repo(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
         println!("   GitHub issues: {}", issue_count);
         println!(
             "\n   Query with: patina scry \"your query\" --repo {} --include-issues",
-            repo_name
+            github
         );
     } else {
         println!(
             "\n   Query with: patina scry \"your query\" --repo {}",
-            repo_name
+            github
         );
     }
 

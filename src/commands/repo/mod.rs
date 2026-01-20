@@ -250,29 +250,23 @@ pub fn execute(command: RepoCommand) -> Result<()> {
             println!("📚 Registered Repositories\n");
 
             if status {
-                println!("{:<20} {:<35} {:<8} STATUS", "NAME", "GITHUB", "CONTRIB");
+                println!("{:<40} {:<8} STATUS", "NAME", "CONTRIB");
                 println!("{}", "─".repeat(80));
 
                 for repo in repos {
                     let contrib_str = if repo.contrib { "✓ fork" } else { "-" };
                     let status_str =
                         internal::check_repo_status(&repo.path, repo.synced_commit.as_deref());
-                    println!(
-                        "{:<20} {:<35} {:<8} {}",
-                        repo.name, repo.github, contrib_str, status_str
-                    );
+                    println!("{:<40} {:<8} {}", repo.name, contrib_str, status_str);
                 }
             } else {
-                println!("{:<20} {:<35} {:<8} DOMAINS", "NAME", "GITHUB", "CONTRIB");
+                println!("{:<40} {:<8} DOMAINS", "NAME", "CONTRIB");
                 println!("{}", "─".repeat(80));
 
                 for repo in repos {
                     let contrib_str = if repo.contrib { "✓ fork" } else { "-" };
                     let domains = repo.domains.join(", ");
-                    println!(
-                        "{:<20} {:<35} {:<8} {}",
-                        repo.name, repo.github, contrib_str, domains
-                    );
+                    println!("{:<40} {:<8} {}", repo.name, contrib_str, domains);
                 }
             }
             Ok(())
