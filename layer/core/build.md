@@ -90,6 +90,8 @@ Run regularly to catch regressions.
 
 ### Active
 
+- [spec-repo-org-namespace.md](../surface/build/spec-repo-org-namespace.md) - **Next:** Fix repo name collisions (`org/repo` identifiers, preserves oxidize data)
+- [spec-skills-focused-adapter.md](../surface/build/spec-skills-focused-adapter.md) - **Design:** Skills-first adapter refactor (universal SKILL.md, namespace ownership)
 - [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Design:** UIDs for databases, enables federation graph
 - [spec-surface-layer.md](../surface/build/spec-surface-layer.md) - **Next:** Distillation layer, federation interface, `patina surface` command
 - [spec-session-prompts.md](../surface/build/spec-session-prompts.md) - **Design:** Capture user prompts in session files (reads from ~/.claude/history.jsonl)
@@ -101,6 +103,20 @@ Run regularly to catch regressions.
 ---
 
 ## Current Focus
+
+### Repo Org Namespace (Bug Fix - Next)
+
+**Problem:** `patina repo add` uses only repo name as identifier, causing collisions. Can't add `huggingface/skills` when `anthropics/skills` exists (both → "skills").
+
+**Solution:** Use `org/repo` as identifier. Migration renames directories + updates registry.yaml. All embeddings/databases preserved (no rebuild needed).
+
+**Spec:** [spec-repo-org-namespace.md](../surface/build/spec-repo-org-namespace.md)
+
+**Phases:**
+1. Migration infrastructure (rename dirs, update registry)
+2. Update name extraction (`parse_github_url()` returns `org/repo`)
+3. Update all lookups + short-name resolution
+4. CLI updates + ambiguity handling
 
 ### Surface Layer (Next)
 
