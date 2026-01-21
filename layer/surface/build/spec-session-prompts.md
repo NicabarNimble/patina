@@ -1,8 +1,9 @@
 # Spec: Session Prompt Capture
 
-**Status:** Complete (Phase 1)
+**Status:** Complete
 **Created:** 2026-01-10
 **Completed:** 2026-01-21
+**Tag:** spec/session-prompts
 **Origin:** Session 20260110-075703
 
 **Implementation:** Commit `1df7ecce feat: add vocabulary gap bridging and session prompt capture`
