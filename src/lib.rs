@@ -12,7 +12,6 @@ pub mod mother;
 pub mod paths;
 pub mod project;
 pub mod query;
-pub mod reasoning;
 pub mod secrets;
 pub mod session;
 pub mod storage;
