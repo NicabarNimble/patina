@@ -1,12 +1,15 @@
 ---
 id: spec-repo-org-namespace
-status: ready
+status: complete
 created: 2026-01-19
+completed: 2026-01-21
 tags: [spec, bug-fix, repo, implementation]
 references: [unix-philosophy, dependable-rust]
 ---
 
 # Spec: Repository Org/Name Namespacing
+
+**Status:** COMPLETE - Already implemented in commit `9724480e fix(repo): use org/repo namespace to prevent collisions`
 
 **Problem:** `patina repo add` uses only repo name as identifier, causing collisions.
 
