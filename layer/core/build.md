@@ -90,6 +90,7 @@ Run regularly to catch regressions.
 
 ### Active
 
+- [feat/belief-validation-system/SPEC.md](../surface/build/feat/belief-validation-system/SPEC.md) - **NEW:** Verifiable belief confidence (computed signals, scry verification, graph support)
 - [spec-repo-org-namespace.md](../surface/build/spec-repo-org-namespace.md) - **Next:** Fix repo name collisions (`org/repo` identifiers, preserves oxidize data)
 - [spec-skills-focused-adapter.md](../surface/build/spec-skills-focused-adapter.md) - **Design:** Skills-first adapter refactor (universal SKILL.md, namespace ownership)
 - [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Design:** UIDs for databases, enables federation graph
@@ -104,7 +105,7 @@ Run regularly to catch regressions.
 
 ## Current Focus
 
-### Repo Org Namespace (Bug Fix - Next)
+### Repo Org Namespace (Bug Fix)
 
 **Problem:** `patina repo add` uses only repo name as identifier, causing collisions. Can't add `huggingface/skills` when `anthropics/skills` exists (both → "skills").
 
@@ -178,6 +179,7 @@ Key items:
 
 Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 
+- `spec/remove-neuro-symbolic-debt` - Prolog removal (~2660 lines): reasoning/, storage/, query/, scryer-prolog dep
 - `spec/ref-repo-storage` - Lean storage for ref repos: git/code direct insert, forge dedup (11-60% DB reduction)
 - `spec/init-hardening` - Init/Adapter refactor: skeleton-only init, adapter refresh/doctor (Phases 1-2)
 - `spec/adapter-selection` - Two-flow adapter selection (explicit --adapter vs implicit prompt), select_adapter() function
@@ -208,6 +210,7 @@ Full list: `git tag -l 'spec/*'`
 Completed specs preserved via git tags. View with: `git show spec/<name>:layer/surface/build/spec-<name>.md`
 
 **Recent completions:**
+- `spec/remove-neuro-symbolic-debt` - Prolog removal (~2660 lines dead code + heavy dep)
 - `spec/ref-repo-storage` - Lean storage for ref repos (11-60% DB reduction)
 - `spec/forge-bulk-fetch` - Bulk issue/PR fetch (100x faster), delete discover_all_issues()
 - `spec/preflight` - Self-healing startup, auto-kill stale processes (>24h)
