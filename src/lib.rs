@@ -14,7 +14,6 @@ pub mod project;
 pub mod query;
 pub mod secrets;
 pub mod session;
-pub mod storage;
 pub mod version;
 pub mod workspace;
 
