@@ -526,6 +526,9 @@ fn scaffold_patina(repo_path: &Path) -> Result<()> {
 
     fs::create_dir_all(&data_dir)?;
 
+    // Create UID if not already present (preserves existing from clone)
+    patina::project::create_uid_if_missing(repo_path)?;
+
     // Create minimal config
     let config_path = patina_dir.join("config.toml");
     if !config_path.exists() {
