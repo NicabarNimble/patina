@@ -91,13 +91,13 @@ Run regularly to catch regressions.
 ### Active
 
 - [feat/belief-validation-system/SPEC.md](../surface/build/feat/belief-validation-system/SPEC.md) - **NEW:** Verifiable belief confidence (computed signals, scry verification, graph support)
-- [spec-repo-org-namespace.md](../surface/build/spec-repo-org-namespace.md) - **Next:** Fix repo name collisions (`org/repo` identifiers, preserves oxidize data)
+- [spec-repo-org-namespace.md](../surface/build/spec-repo-org-namespace.md) - **COMPLETE:** Fix repo name collisions (commit `9724480e`)
 - [spec-skills-focused-adapter.md](../surface/build/spec-skills-focused-adapter.md) - **Design:** Skills-first adapter refactor (universal SKILL.md, namespace ownership)
 - [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Design:** UIDs for databases, enables federation graph
 - [spec-surface-layer.md](../surface/build/spec-surface-layer.md) - **Next:** Distillation layer, federation interface, `patina surface` command
-- [spec-session-prompts.md](../surface/build/spec-session-prompts.md) - **Design:** Capture user prompts in session files (reads from ~/.claude/history.jsonl)
+- [spec-session-prompts.md](../surface/build/spec-session-prompts.md) - **COMPLETE:** Capture user prompts in session files (commit `1df7ecce`)
 - [spec-report.md](../surface/build/spec-report.md) - **NEW:** Self-analysis reports using patina's own tools
-- [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - LLM query expansion for terminology mismatch
+- [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - **Phase 1 COMPLETE:** LLM query expansion via `expanded_terms` MCP param
 - [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 1 next:** Federated query (0.5 persona complete)
 - [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** mother/patina/awaken separation
 
@@ -105,19 +105,18 @@ Run regularly to catch regressions.
 
 ## Current Focus
 
-### Repo Org Namespace (Bug Fix)
+### Repo Org Namespace (Bug Fix) ✅ COMPLETE
 
 **Problem:** `patina repo add` uses only repo name as identifier, causing collisions. Can't add `huggingface/skills` when `anthropics/skills` exists (both → "skills").
 
-**Solution:** Use `org/repo` as identifier. Migration renames directories + updates registry.yaml. All embeddings/databases preserved (no rebuild needed).
+**Solution:** Use `org/repo` as identifier.
 
 **Spec:** [spec-repo-org-namespace.md](../surface/build/spec-repo-org-namespace.md)
 
-**Phases:**
-1. Migration infrastructure (rename dirs, update registry)
-2. Update name extraction (`parse_github_url()` returns `org/repo`)
-3. Update all lookups + short-name resolution
-4. CLI updates + ambiguity handling
+**Completed:** Commit `9724480e fix(repo): use org/repo namespace to prevent collisions`
+- Registry keys use `org/repo` format
+- Directory structure is `~/.patina/cache/repos/org/repo/`
+- No migration needed (was already implemented)
 
 ### Surface Layer (Next)
 
