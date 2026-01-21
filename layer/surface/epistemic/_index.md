@@ -1,6 +1,6 @@
 ---
 type: index
-updated: 2026-01-17
+updated: 2026-01-21
 ---
 
 # Epistemic Layer Index
@@ -9,9 +9,9 @@ This directory contains Patina's epistemic belief system - atomic beliefs with e
 
 ## Statistics
 
-- **Beliefs**: 12
+- **Beliefs**: 15
 - **Rules**: 3
-- **Total Confidence**: 10.31/12.0 (avg: 0.859)
+- **Total Confidence**: 12.86/15.0 (avg: 0.857)
 - **Highest Entrenchment**: eventlog-is-truth (very-high)
 
 ## Argument Graph
@@ -31,11 +31,11 @@ This directory contains Patina's epistemic belief system - atomic beliefs with e
           │  [[dont-build-what-exists]] ◄─────────┘
           │         (0.90)
           │         │
-          │         └──────────┐
-          │                    │
-          ▼                    ▼
-   [[smart-model-in-room]] ◄───┘
-         (0.88)
+          │         ├──────────┐
+          │         │          │
+          ▼         ▼          ▼
+   [[smart-model-in-room]]  [[compose-over-build]]
+         (0.88)                  (0.85)
 ```
 
 ## Derived Rules
@@ -61,10 +61,13 @@ eventlog-is-truth ─────────► [[capture-at-boundary]]
 | [[eventlog-is-truth]] | 0.92 | very-high | active |
 | [[dont-build-what-exists]] | 0.90 | high | active |
 | [[commit-early-commit-often]] | 0.90 | high | active |
+| [[phased-development-with-measurement]] | 0.89 | high | active |
 | [[sync-first]] | 0.88 | high | active |
 | [[smart-model-in-room]] | 0.88 | high | active |
 | [[measure-first]] | 0.88 | high | active |
 | [[error-analysis-over-architecture]] | 0.88 | medium | active |
+| [[session-git-integration]] | 0.87 | medium | active |
+| [[compose-over-build]] | 0.85 | medium | active |
 | [[spec-first]] | 0.85 | high | active |
 | [[project-config-in-git]] | 0.85 | high | active |
 | [[progressive-disclosure]] | 0.82 | medium | active |
