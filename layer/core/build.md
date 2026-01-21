@@ -91,13 +91,13 @@ Run regularly to catch regressions.
 ### Active
 
 - [feat/belief-validation-system/SPEC.md](../surface/build/feat/belief-validation-system/SPEC.md) - **NEW:** Verifiable belief confidence (computed signals, scry verification, graph support)
-- [spec-repo-org-namespace.md](../surface/build/spec-repo-org-namespace.md) - **COMPLETE:** Fix repo name collisions (commit `9724480e`)
+- [spec-repo-org-namespace.md](../surface/build/spec-repo-org-namespace.md) - **ARCHIVED:** tag `spec/repo-org-namespace`
 - [spec-skills-focused-adapter.md](../surface/build/spec-skills-focused-adapter.md) - **Design:** Skills-first adapter refactor (universal SKILL.md, namespace ownership)
 - [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Design:** UIDs for databases, enables federation graph
 - [spec-surface-layer.md](../surface/build/spec-surface-layer.md) - **Next:** Distillation layer, federation interface, `patina surface` command
-- [spec-session-prompts.md](../surface/build/spec-session-prompts.md) - **COMPLETE:** Capture user prompts in session files (commit `1df7ecce`)
+- [spec-session-prompts.md](../surface/build/spec-session-prompts.md) - **ARCHIVED:** tag `spec/session-prompts`
 - [spec-report.md](../surface/build/spec-report.md) - **NEW:** Self-analysis reports using patina's own tools
-- [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - **Phase 1 COMPLETE:** LLM query expansion via `expanded_terms` MCP param
+- [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - **ARCHIVED:** tag `spec/vocabulary-gap`
 - [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 1 next:** Federated query (0.5 persona complete)
 - [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** mother/patina/awaken separation
 
