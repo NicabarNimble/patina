@@ -234,6 +234,9 @@ pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
 
     let repo_path = Path::new(&entry.path);
 
+    // Ensure UID exists (migration for existing ref repos)
+    patina::project::create_uid_if_missing(repo_path)?;
+
     // Git pull
     println!("📥 Pulling latest changes...");
     git_pull(repo_path)?;
