@@ -92,7 +92,7 @@ pub fn execute(json_output: bool) -> Result<i32> {
     if json_output {
         println!("{}", serde_json::to_string_pretty(&health_check)?);
     } else {
-        display_health_check(&health_check, &current_env)?;
+        display_health_check(&health_check, &current_env, &project_root)?;
 
         // Only provide recommendations, no auto-fixing
         if !health_check.environment_changes.missing_tools.is_empty()
@@ -231,7 +231,11 @@ fn count_sessions(sessions_path: &std::path::Path) -> usize {
     }
 }
 
-fn display_health_check(health: &HealthCheck, _env: &Environment) -> Result<()> {
+fn display_health_check(
+    health: &HealthCheck,
+    _env: &Environment,
+    project_root: &std::path::Path,
+) -> Result<()> {
     println!("\nEnvironment Changes Since Init:");
 
     // Display missing tools
@@ -252,6 +256,12 @@ fn display_health_check(health: &HealthCheck, _env: &Environment) -> Result<()> 
     }
 
     println!("\nProject Configuration:");
+    // Display UID
+    if let Some(uid) = project::get_uid(project_root) {
+        println!("  ✓ UID: {}", uid);
+    } else {
+        println!("  ⚠ UID: missing (will be created on next scrape)");
+    }
     let adapter_version = health
         .project_config
         .adapter_version
