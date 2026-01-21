@@ -11,7 +11,6 @@ pub mod models;
 pub mod mother;
 pub mod paths;
 pub mod project;
-pub mod query;
 pub mod secrets;
 pub mod session;
 pub mod version;
