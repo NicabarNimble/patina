@@ -91,32 +91,16 @@ Run regularly to catch regressions.
 ### Active
 
 - [feat/belief-validation-system/SPEC.md](../surface/build/feat/belief-validation-system/SPEC.md) - **NEW:** Verifiable belief confidence (computed signals, scry verification, graph support)
-- [spec-repo-org-namespace.md](../surface/build/spec-repo-org-namespace.md) - **ARCHIVED:** tag `spec/repo-org-namespace`
 - [spec-skills-focused-adapter.md](../surface/build/spec-skills-focused-adapter.md) - **Design:** Skills-first adapter refactor (universal SKILL.md, namespace ownership)
 - [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Design:** UIDs for databases, enables federation graph
 - [spec-surface-layer.md](../surface/build/spec-surface-layer.md) - **Next:** Distillation layer, federation interface, `patina surface` command
-- [spec-session-prompts.md](../surface/build/spec-session-prompts.md) - **ARCHIVED:** tag `spec/session-prompts`
 - [spec-report.md](../surface/build/spec-report.md) - **NEW:** Self-analysis reports using patina's own tools
-- [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - **ARCHIVED:** tag `spec/vocabulary-gap`
 - [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 1 next:** Federated query (0.5 persona complete)
 - [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** mother/patina/awaken separation
 
 ---
 
 ## Current Focus
-
-### Repo Org Namespace (Bug Fix) ✅ COMPLETE
-
-**Problem:** `patina repo add` uses only repo name as identifier, causing collisions. Can't add `huggingface/skills` when `anthropics/skills` exists (both → "skills").
-
-**Solution:** Use `org/repo` as identifier.
-
-**Spec:** [spec-repo-org-namespace.md](../surface/build/spec-repo-org-namespace.md)
-
-**Completed:** Commit `9724480e fix(repo): use org/repo namespace to prevent collisions`
-- Registry keys use `org/repo` format
-- Directory structure is `~/.patina/cache/repos/org/repo/`
-- No migration needed (was already implemented)
 
 ### Surface Layer (Next)
 
@@ -178,6 +162,9 @@ Key items:
 
 Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 
+- `spec/repo-org-namespace` - Fix repo name collisions with org/repo identifiers (was already implemented)
+- `spec/vocabulary-gap` - LLM query expansion via `expanded_terms` MCP param
+- `spec/session-prompts` - Capture user prompts from ~/.claude/history.jsonl in session files
 - `spec/remove-neuro-symbolic-debt` - Prolog removal (~2660 lines): reasoning/, storage/, query/, scryer-prolog dep
 - `spec/ref-repo-storage` - Lean storage for ref repos: git/code direct insert, forge dedup (11-60% DB reduction)
 - `spec/init-hardening` - Init/Adapter refactor: skeleton-only init, adapter refresh/doctor (Phases 1-2)
