@@ -100,11 +100,15 @@ mkdir -p .gemini/context/sessions
 # Get LLM info (gemini for now, extensible later)
 LLM_NAME="gemini"
 
+# Record start timestamp in Unix milliseconds for future prompt capture
+START_TIMESTAMP=$(date +%s)000
+
 # Create active session with metadata including git info
 cat > "$ACTIVE_SESSION" << EOF
 # Session: ${SESSION_TITLE}
 **ID**: ${SESSION_ID}
 **Started**: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+**Start Timestamp**: ${START_TIMESTAMP}
 **LLM**: ${LLM_NAME}
 **Git Branch**: ${CURRENT_BRANCH}
 **Session Tag**: ${SESSION_TAG}
