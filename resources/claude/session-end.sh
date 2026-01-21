@@ -167,6 +167,46 @@ else
     PATTERNS_TOUCHED=0
 fi
 
+# Extract user prompts from Claude Code history.jsonl
+HISTORY_FILE="$HOME/.claude/history.jsonl"
+if [ -f "$HISTORY_FILE" ] && command -v jq &> /dev/null; then
+    # Get start timestamp from session file
+    START_TS=$(grep "\*\*Start Timestamp\*\*:" "$ACTIVE_SESSION" | sed 's/.*\*\*Start Timestamp\*\*: *//')
+    PROJECT_PATH=$(pwd)
+
+    if [ -n "$START_TS" ]; then
+        # Extract prompts from history.jsonl
+        # Filter by: timestamp >= start_ts AND project == current project
+        PROMPTS=$(jq -r --arg start "$START_TS" --arg proj "$PROJECT_PATH" \
+            'select(.timestamp >= ($start | tonumber) and .project == $proj) | .display' \
+            "$HISTORY_FILE" 2>/dev/null)
+
+        PROMPT_COUNT=$(echo "$PROMPTS" | grep -c . 2>/dev/null || echo "0")
+
+        if [ "$PROMPT_COUNT" -gt 0 ]; then
+            echo "" >> "$ACTIVE_SESSION"
+            echo "## User Prompts ($PROMPT_COUNT)" >> "$ACTIVE_SESSION"
+            echo "" >> "$ACTIVE_SESSION"
+
+            # Number each prompt, truncate long ones
+            i=1
+            echo "$PROMPTS" | while IFS= read -r prompt; do
+                [ -z "$prompt" ] && continue
+                # Truncate prompts longer than 100 chars
+                if [ ${#prompt} -gt 100 ]; then
+                    prompt="${prompt:0:97}..."
+                fi
+                # Escape backticks in prompt
+                prompt=$(echo "$prompt" | sed 's/`/\\`/g')
+                echo "$i. \`$prompt\`" >> "$ACTIVE_SESSION"
+                i=$((i+1))
+            done
+
+            [ "$SILENT_MODE" = false ] && echo "✅ Captured $PROMPT_COUNT user prompts"
+        fi
+    fi
+fi
+
 # Track in SQLite if database exists
 DB_PATH=".patina/navigation.db"
 if [ -f "$DB_PATH" ] && command -v sqlite3 &> /dev/null; then
