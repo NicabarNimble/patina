@@ -14,18 +14,12 @@ use patina::layer::Layer;
 // Note: backup functions moved to 'adapter refresh' command
 use self::config::{create_project_config, handle_version_manifest};
 use self::patterns::copy_core_patterns_safe;
-use self::validation::{determine_dev_environment, validate_environment};
+use self::validation::validate_environment;
 
 use super::design_wizard::confirm;
 
 /// Main execution logic for init command
-pub fn execute_init(
-    name: String,
-    dev: Option<String>,
-    force: bool,
-    local: bool,
-    no_commit: bool,
-) -> Result<()> {
+pub fn execute_init(name: String, force: bool, local: bool, no_commit: bool) -> Result<()> {
     let json_output = false; // For init command, always false
 
     // === STEP 0: CHECK FOR HIERARCHY CONFLICTS (BEFORE ANYTHING ELSE) ===
@@ -64,20 +58,9 @@ pub fn execute_init(
 
     // === STEP 2: SAFE TO PROCEED WITH DESTRUCTIVE CHANGES ===
 
-    // Backup existing devcontainer if it exists
-    if Path::new(".devcontainer").exists() {
-        // Remove old backup if it exists
-        let backup_path = Path::new(".devcontainer.backup");
-        if backup_path.exists() {
-            fs::remove_dir_all(backup_path).context("Failed to remove old .devcontainer.backup")?;
-        }
-        fs::rename(".devcontainer", ".devcontainer.backup")
-            .context("Failed to backup existing .devcontainer")?;
-        println!("✓ Backed up .devcontainer/ → .devcontainer.backup/");
-    }
-
     // Note: We don't backup .claude/ here - that's handled by 'adapter refresh'
     // Init only creates skeleton (.patina/, layer/), not adapter directories
+    // Devcontainer generation is handled by 'patina yolo', not init
 
     // Check for nested project
     if name != "." && Path::new(".patina").exists() {
@@ -113,7 +96,6 @@ pub fn execute_init(
     // Detect environment
     println!("🔍 Detecting environment...");
     let environment = Environment::detect()?;
-    let dev = dev.unwrap_or_else(|| determine_dev_environment(&environment));
 
     // Display environment info
     display_environment_info(&environment);
@@ -150,23 +132,14 @@ pub fn execute_init(
     }
 
     // Create project configuration (without LLM - use 'adapter add' for that)
-    let dev_env = patina::dev_env::get_dev_env(&dev);
-    create_project_config(&project_path, &name, &dev, &environment, dev_env.as_ref())?;
+    create_project_config(&project_path, &name, &environment)?;
 
     // Handle version manifest
-    handle_version_manifest(&project_path, &dev, is_reinit, json_output)?;
+    handle_version_manifest(&project_path, is_reinit, json_output)?;
 
     // Note: LLM adapter initialization moved to 'patina adapter add'
     // Init only creates skeleton - run 'patina adapter add <claude|gemini|opencode>' for LLM support
-
-    // Initialize dev environment - use real project name from Cargo.toml if re-initializing
-    let dev_project_name = if name == "." {
-        detect_project_name_from_cargo_toml(&project_path).unwrap_or_else(|_| name.to_string())
-    } else {
-        name.clone()
-    };
-    dev_env.init_project(&project_path, &dev_project_name, "app")?;
-    println!("  ✓ Created {dev} environment files");
+    // Devcontainer generation moved to 'patina yolo'
 
     // Copy core patterns
     let patterns_copied = copy_core_patterns_safe(&project_path, &layer_path)?;
@@ -175,7 +148,7 @@ pub fn execute_init(
     }
 
     // Create initial session record (without LLM - added via 'adapter add')
-    create_init_session(&layer_path, &project_name, &dev)?;
+    create_init_session(&layer_path, &project_name)?;
 
     // Initialize navigation index
     initialize_navigation(&project_path)?;
@@ -201,10 +174,7 @@ pub fn execute_init(
             ".patina/uid",
             ".patina/oxidize.yaml",
             ".patina/versions.json",
-            ".devcontainer",
             "layer",
-            "Dockerfile",
-            "docker-compose.yml",
         ])?;
 
         let commit_msg = if is_reinit {
@@ -268,13 +238,12 @@ fn setup_project_path(name: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-fn create_init_session(layer_path: &Path, name: &str, dev: &str) -> Result<()> {
+fn create_init_session(layer_path: &Path, name: &str) -> Result<()> {
     let session_filename = format!("{}-init.md", chrono::Utc::now().format("%Y%m%d-%H%M%S"));
     let session_content = format!(
-        "# {} Initialization\n\nInitialized on: {}\nDev Environment: {}\n\nNote: Run 'patina adapter add <name>' to add LLM support.\n",
+        "# {} Initialization\n\nInitialized on: {}\n\nNote: Run 'patina adapter add <name>' to add LLM support.\n",
         name,
         chrono::Utc::now().to_rfc3339(),
-        dev
     );
 
     let sessions_path = layer_path.join("sessions");
@@ -328,27 +297,6 @@ fn suggest_missing_tools(environment: &Environment) -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Detect project name from Cargo.toml
-fn detect_project_name_from_cargo_toml(project_path: &Path) -> Result<String> {
-    let cargo_toml_path = project_path.join("Cargo.toml");
-
-    if !cargo_toml_path.exists() {
-        anyhow::bail!("Cargo.toml not found");
-    }
-
-    let cargo_content =
-        fs::read_to_string(&cargo_toml_path).context("Failed to read Cargo.toml")?;
-    let cargo_toml: toml::Value =
-        toml::from_str(&cargo_content).context("Failed to parse Cargo.toml")?;
-
-    cargo_toml
-        .get("package")
-        .and_then(|p| p.get("name"))
-        .and_then(|n| n.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| anyhow::anyhow!("No package.name found in Cargo.toml"))
 }
 
 /// Check if gh CLI is available
