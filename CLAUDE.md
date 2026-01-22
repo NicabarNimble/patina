@@ -60,15 +60,14 @@ The CI will fail if any of these checks don't pass! The pre-push script runs all
 ## Key Commands
 ```bash
 # Project lifecycle
-patina init <name> --llm=claude --dev=docker  # Initialize new project
-patina init .                                  # Re-init/update current project
-patina init . --llm=gemini                    # Switch LLM adapter
+patina init <name>              # Initialize new project skeleton
+patina init .                   # Re-init/update current project
+patina adapter add claude       # Add LLM adapter support
 
 # Development
-patina build                # Docker containerized builds
-patina test                 # Run tests in container
 patina doctor               # Check project health
-patina scrape                # Build semantic knowledge database
+patina scrape               # Build semantic knowledge database
+patina yolo                 # Generate devcontainer (if needed)
 
 # Session Management (Claude adapter)
 /session-git-start <name>       # Begin development session

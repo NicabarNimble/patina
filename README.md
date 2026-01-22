@@ -101,8 +101,6 @@ patina version                     # Show version info
 ```bash
 patina yolo                         # Generate AI-ready devcontainer
 patina yolo --with foundry,cairo    # Add specific tools
-patina build                        # Docker containerized build
-patina test                         # Run tests in container
 ```
 
 ### Session Management (Claude Adapter)
@@ -286,7 +284,7 @@ See `layer/surface/patina-embedding-architecture.md` for full design.
 
 - Rust 1.70+
 - Git
-- Docker (optional, for `patina yolo`, `patina build`, `patina test`)
+- Docker (optional, for `patina yolo` devcontainer generation)
 - `gh` CLI (optional, for `--with-issues` GitHub integration)
 
 ## Development

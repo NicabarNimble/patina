@@ -70,11 +70,8 @@ This project uses [Patina](https://github.com/ai-1st/patina) for AI-assisted dev
 # Start a development session (with Claude)
 patina session start "implementing new feature"
 
-# Build the project
-patina build
-
-# Run tests
-patina test
+# Check project health
+patina doctor
 
 # End session and capture learnings
 patina session end
