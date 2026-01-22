@@ -43,7 +43,7 @@ impl LLMAdapter for GeminiAdapter {
         internal::init_project(project_path, project_name, environment)
     }
 
-    fn post_init(&self, _project_path: &Path, _dev_env: &str) -> Result<()> {
+    fn post_init(&self, _project_path: &Path) -> Result<()> {
         Ok(())
     }
 

@@ -39,7 +39,7 @@ pub fn init_project(
     Ok(())
 }
 
-pub fn post_init(_project_path: &Path, _dev_env: &str) -> Result<()> {
+pub fn post_init(_project_path: &Path) -> Result<()> {
     // Currently no post-init actions needed
     Ok(())
 }
