@@ -4,8 +4,8 @@
 
 set -e
 
-EVAL_FILE="eval/ref-repo-queryset.json"
-RESULTS_FILE="eval/ref-repo-results.md"
+EVAL_FILE="resources/bench/ref-repo-queryset.json"
+RESULTS_FILE="layer/surface/reports/eval/ref-repo/results.md"
 
 echo "# Ref Repo Semantic Eval Results" > "$RESULTS_FILE"
 echo "" >> "$RESULTS_FILE"

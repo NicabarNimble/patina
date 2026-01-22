@@ -35,7 +35,7 @@ related:
 - [x] Reports structure documented (see below)
 - [x] `patina report` outputs to correct location (`reports/state/`)
 
-**Note:** Root `/eval/` contains JSON querysets (test fixtures for `patina bench`), not evaluation results. These are inputs, not outputs, and stay in `/eval/`.
+**Note:** JSON querysets (test fixtures for `patina bench`) moved to `resources/bench/` - they're patina development artifacts, not part of the layer system.
 
 ---
 
