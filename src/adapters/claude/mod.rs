@@ -46,8 +46,8 @@ impl LLMAdapter for ClaudeAdapter {
         internal::init_project(project_path, project_name, environment)
     }
 
-    fn post_init(&self, project_path: &Path, dev_env: &str) -> Result<()> {
-        internal::post_init(project_path, dev_env)
+    fn post_init(&self, project_path: &Path) -> Result<()> {
+        internal::post_init(project_path)
     }
 
     fn get_custom_commands(&self) -> Vec<(&'static str, &'static str)> {
