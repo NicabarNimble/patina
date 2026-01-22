@@ -536,9 +536,9 @@ fn get_output_path(options: &ReportOptions) -> Result<String> {
         return Ok(path.clone());
     }
 
-    // Default: layer/surface/reports/YYYY-MM-DD-state.md
+    // Default: layer/surface/reports/state/YYYY-MM-DD-state.md
     let date = Utc::now().format("%Y-%m-%d");
-    let reports_dir = "layer/surface/reports";
+    let reports_dir = "layer/surface/reports/state";
 
     // Create directory if needed
     fs::create_dir_all(reports_dir)?;
