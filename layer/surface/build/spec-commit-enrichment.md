@@ -1,9 +1,10 @@
 # Spec: Commit Enrichment
 
-**Status:** Active (Bug Fix)
+**Status:** Complete ✅
 **Created:** 2026-01-15
+**Completed:** 2026-01-22
 **Origin:** Session 20260115-121358 (surface layer deep dive)
-**Priority:** High (blocks connection scoring)
+**Fixed in:** Session 20260122-102703
 
 ---
 
