@@ -1,7 +1,8 @@
 ---
 id: spec-launcher-polish
-status: ready
+status: complete
 created: 2026-01-13
+completed: 2026-01-22
 extracted-from: spec-init-hardening (Phase 3)
 tags: [spec, launcher, mcp, ux]
 references: [adapter-pattern, dependable-rust]
@@ -12,6 +13,8 @@ references: [adapter-pattern, dependable-rust]
 **Problem:** If MCP configuration fails during `adapter add`, the user has to manually run `patina adapter mcp` before launching. The launcher should self-heal.
 
 **Solution:** Launcher silently auto-configures MCP if not already configured.
+
+**Status:** Complete ✅ (2026-01-22)
 
 ---
 
