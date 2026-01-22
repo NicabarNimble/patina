@@ -1,12 +1,12 @@
 ---
 type: refactor
 id: reports-layer
-status: in_progress
+status: complete
 created: 2026-01-22
-updated: 2026-01-22
+completed: 2026-01-22
 sessions:
   origin: 20260122-083510
-  work: []
+  work: [20260122-102703]
 related:
   - layer/surface/build/refactor/spec-system/SPEC.md
   - layer/surface/build/spec-report.md
@@ -24,15 +24,18 @@ related:
 
 **Solution:** Unify under `layer/surface/reports/` with clear categories.
 
+**Status:** Complete ✅ (2026-01-22)
+
 ---
 
 ## Exit Criteria
 
-- [ ] All eval content moved to `layer/surface/reports/`
-- [ ] Root `/eval/` directory removed (contents migrated)
-- [ ] `epistemic/eval/` moved to `reports/eval/epistemic/`
-- [ ] Reports structure documented
-- [ ] `patina report` outputs to correct location
+- [x] All eval content moved to `layer/surface/reports/`
+- [x] `epistemic/eval/` moved to `reports/eval/epistemic/`
+- [x] Reports structure documented (see below)
+- [x] `patina report` outputs to correct location (`reports/state/`)
+
+**Note:** Root `/eval/` contains JSON querysets (test fixtures for `patina bench`), not evaluation results. These are inputs, not outputs, and stay in `/eval/`.
 
 ---
 
@@ -159,6 +162,7 @@ related:
 | Date | Status | Note |
 |------|--------|------|
 | 2026-01-22 | in_progress | Spec created, migration not started |
+| 2026-01-22 | complete | Migration verified complete, report command updated |
 
 ---
 
