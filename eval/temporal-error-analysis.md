@@ -1,8 +1,20 @@
+---
+type: analysis
+id: temporal-error-analysis
+created: 2026-01-22
+session-origin: 20260122-061519
+related:
+  - eval/temporal-queryset-v2.json
+  - src/commands/scrape/sessions/mod.rs
+  - layer/surface/build/feat/surface-layer/SPEC.md
+---
+
 # Temporal Query Error Analysis
 
 **Date:** 2026-01-22
-**Session:** 20260122-061519 (spec review)
+**Session:** [[session-20260122-061519]] (spec review)
 **Baseline MRR:** 0.159 (target: 0.400)
+**Queryset:** [[temporal-queryset-v2.json]]
 
 ---
 
@@ -142,3 +154,13 @@ patina bench retrieval --query-set eval/temporal-queryset.json
 2. [ ] Re-scrape sessions
 3. [ ] Re-run temporal benchmark
 4. [ ] Measure MRR improvement
+
+---
+
+## References
+
+- [[temporal-queryset-v2.json]] - Expanded queryset (35 queries) created from this analysis
+- [[temporal-queryset.json]] - Original queryset (10 queries) with flawed ground truth
+- `src/commands/scrape/sessions/mod.rs:194` - `extract_observations()` function to modify
+- [[session-20260122-061519]] - Session where this analysis was performed
+- [[feat/surface-layer/SPEC.md]] - Surface layer spec includes related measurement framework
