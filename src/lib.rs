@@ -1,6 +1,5 @@
 pub mod adapters;
 pub mod db;
-pub mod dev_env;
 pub mod embeddings;
 pub mod environment;
 pub mod forge;
@@ -11,11 +10,8 @@ pub mod models;
 pub mod mother;
 pub mod paths;
 pub mod project;
-pub mod query;
-pub mod reasoning;
 pub mod secrets;
 pub mod session;
-pub mod storage;
 pub mod version;
 pub mod workspace;
 

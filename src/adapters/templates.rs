@@ -108,11 +108,10 @@ pub fn copy_to_project(adapter_name: &str, project_path: &Path) -> Result<()> {
     let src = templates_dir.join(&adapter_dir_name);
     let dest = project_path.join(&adapter_dir_name);
 
-    if !src.exists() {
-        // Templates not installed yet, install from embedded
-        let adapters = paths::adapters_dir();
-        install_all(&adapters)?;
-    }
+    // Always refresh cache from embedded templates
+    // This ensures updates to templates in the binary are applied
+    let adapters = paths::adapters_dir();
+    install_all(&adapters)?;
 
     copy_dir_recursive(&src, &dest)?;
     Ok(())

@@ -26,7 +26,7 @@ pub trait LLMAdapter {
 
     /// Called after project initialization to perform additional setup
     /// This is where adapters can create development environment files, etc.
-    fn post_init(&self, _project_path: &Path, _dev_env: &str) -> Result<()> {
+    fn post_init(&self, _project_path: &Path) -> Result<()> {
         Ok(()) // Default: no-op
     }
 

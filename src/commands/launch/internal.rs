@@ -440,7 +440,6 @@ fn initialize_project(project_path: &Path, adapter_name: &str) -> Result<bool> {
     // Step 1: Create skeleton
     let init_result = crate::commands::init::execute(
         ".".to_string(), // Use "." to trigger commit step in init
-        None,            // dev environment
         false,           // force
         true,            // local (skip GitHub integration for quick init)
         false,           // no_commit (allow auto-commit)

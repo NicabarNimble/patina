@@ -19,14 +19,14 @@ spec-mothership.md (this file)
 ├── Child Specs (complete, tagged):
 │   ├── spec/mothership-graph - Graph routing (~1000 lines)
 │   ├── spec/ref-repo-semantic - 13/13 repos indexed
-│   └── spec/vocabulary-gap - LLM query expansion (in progress)
+│   └── spec/vocabulary-gap - LLM query expansion (COMPLETE)
 │
 └── Deferred:
     ├── G3: Auto-detection of edges
     └── Phase 3: Session → Mother extraction
 ```
 
-**Current blocker:** Vocabulary gap (MRR 0.100 vs target 0.4). See [spec-vocabulary-gap.md](./spec-vocabulary-gap.md).
+**Previous blocker (resolved):** Vocabulary gap solved via `expanded_terms` MCP parameter. See `spec/vocabulary-gap` tag.
 
 ---
 
@@ -320,10 +320,10 @@ All foundation phases complete. Details preserved in git history.
 
 **Key metrics:**
 - Code retrieval MRR: 0.624 (baseline)
-- Temporal MRR: 0.100 (target: 0.4) ← blocked by vocabulary gap
+- Temporal MRR: 0.100 (target: 0.4) ← vocabulary gap addressed via `expanded_terms`
 - Ref repo semantic: 13/13 indexed
 
-**Current blocker:** Vocabulary gap between user queries and codebase terminology. See [spec-vocabulary-gap.md](./spec-vocabulary-gap.md).
+**Previous blocker (resolved):** Vocabulary gap addressed via `expanded_terms` MCP parameter (spec/vocabulary-gap).
 
 ---
 

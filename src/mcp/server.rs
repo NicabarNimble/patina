@@ -144,7 +144,7 @@ fn handle_list_tools(req: &Request) -> Response {
             "tools": [
                 {
                     "name": "scry",
-                    "description": "Search codebase knowledge - USE THIS FIRST for any question about the code. Fast hybrid search over indexed symbols, functions, types, git history, and session learnings. Prefer this over manual file exploration.",
+                    "description": "Search codebase knowledge - USE THIS FIRST for any question about the code. Fast hybrid search over indexed symbols, functions, types, git history, and session learnings. Prefer this over manual file exploration. TIP: For temporal queries ('when did we add X') or when user terms differ from code terms, use expanded_terms to add code-specific synonyms (e.g., 'commits_fts', 'LexicalOracle' for 'commit search').",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -197,6 +197,11 @@ fn handle_list_tools(req: &Request) -> Response {
                                 "type": "boolean",
                                 "description": "Include GitHub issues in results (default: false)",
                                 "default": false
+                            },
+                            "expanded_terms": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Additional search terms to include (LLM-provided synonyms or code-specific terms that bridge vocabulary gap between user query and codebase terminology)"
                             }
                         },
                         "required": []
@@ -369,6 +374,13 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false);
 
+                    // Extract expanded_terms for vocabulary gap bridging
+                    let expanded_terms: Vec<&str> = args
+                        .get("expanded_terms")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+                        .unwrap_or_default();
+
                     if query.is_empty() {
                         return Response::error(
                             req.id.clone(),
@@ -377,13 +389,20 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         );
                     }
 
+                    // Combine query with expanded terms for better FTS5 matching
+                    let full_query = if expanded_terms.is_empty() {
+                        query.to_string()
+                    } else {
+                        format!("{} {}", query, expanded_terms.join(" "))
+                    };
+
                     let options = QueryOptions {
                         repo,
                         all_repos,
                         include_issues,
                     };
 
-                    match engine.query_with_options(query, limit, &options) {
+                    match engine.query_with_options(&full_query, limit, &options) {
                         Ok(results) => {
                             // Log query and get query_id for feedback loop (Phase 3)
                             let query_id = log_mcp_query(query, "find", &results);

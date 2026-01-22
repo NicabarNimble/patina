@@ -6,7 +6,6 @@ use std::path::Path;
 
 use crate::adapters::claude::CLAUDE_ADAPTER_VERSION;
 use crate::adapters::gemini::GEMINI_ADAPTER_VERSION;
-use crate::dev_env::docker::DOCKER_VERSION;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VersionManifest {
@@ -44,15 +43,6 @@ impl VersionManifest {
             ComponentInfo {
                 version: GEMINI_ADAPTER_VERSION.to_string(),
                 description: "Gemini AI context file generation".to_string(),
-            },
-        );
-
-        // Dev Environments
-        components.insert(
-            "docker".to_string(),
-            ComponentInfo {
-                version: DOCKER_VERSION.to_string(),
-                description: "Docker containerization templates and integration".to_string(),
             },
         );
 
@@ -108,7 +98,6 @@ impl UpdateChecker {
             "gemini-adapter".to_string(),
             GEMINI_ADAPTER_VERSION.to_string(),
         );
-        available.insert("docker".to_string(), DOCKER_VERSION.to_string());
 
         available
     }
@@ -160,7 +149,6 @@ mod tests {
         // Check all expected components exist
         assert!(manifest.components.contains_key("claude-adapter"));
         assert!(manifest.components.contains_key("gemini-adapter"));
-        assert!(manifest.components.contains_key("docker"));
 
         // Verify component info
         let claude = &manifest.components["claude-adapter"];
@@ -184,7 +172,7 @@ mod tests {
 
         // Should return a new manifest
         assert_eq!(manifest.patina, env!("CARGO_PKG_VERSION"));
-        assert_eq!(manifest.components.len(), 3);
+        assert_eq!(manifest.components.len(), 2);
     }
 
     #[test]
@@ -236,39 +224,28 @@ mod tests {
     fn test_update_checker_get_available_versions() {
         let versions = UpdateChecker::get_available_versions();
 
-        assert_eq!(versions.len(), 3);
+        assert_eq!(versions.len(), 2);
         assert!(versions.contains_key("claude-adapter"));
         assert!(versions.contains_key("gemini-adapter"));
-        assert!(versions.contains_key("docker"));
     }
 
     #[test]
     fn test_update_checker_check_for_updates() {
         let mut manifest = VersionManifest::new();
 
-        // Set some components to old versions
+        // Set a component to old version
         manifest.update_component_version("claude-adapter", "0.1.0");
-        manifest.update_component_version("docker", "0.0.9");
 
         let updates = UpdateChecker::check_for_updates(&manifest);
 
-        // Should detect 2 updates
-        assert_eq!(updates.len(), 2);
+        // Should detect 1 update
+        assert_eq!(updates.len(), 1);
 
         // Verify update details
-        for (component, current, available) in &updates {
-            match component.as_str() {
-                "claude-adapter" => {
-                    assert_eq!(current, "0.1.0");
-                    assert_eq!(available, CLAUDE_ADAPTER_VERSION);
-                }
-                "docker" => {
-                    assert_eq!(current, "0.0.9");
-                    assert_eq!(available, DOCKER_VERSION);
-                }
-                _ => panic!("Unexpected component in updates"),
-            }
-        }
+        let (component, current, available) = &updates[0];
+        assert_eq!(component, "claude-adapter");
+        assert_eq!(current, "0.1.0");
+        assert_eq!(available, CLAUDE_ADAPTER_VERSION);
     }
 
     #[test]
@@ -295,8 +272,8 @@ mod tests {
 
         // Verify a specific component
         assert_eq!(
-            deserialized.components["docker"].version,
-            manifest.components["docker"].version
+            deserialized.components["claude-adapter"].version,
+            manifest.components["claude-adapter"].version
         );
     }
 
@@ -306,12 +283,11 @@ mod tests {
         let updates = UpdateChecker::force_all_updates(&manifest);
 
         // Should return all components even if up to date
-        assert_eq!(updates.len(), 3);
+        assert_eq!(updates.len(), 2);
 
         // Verify all components are included
         let components: Vec<String> = updates.iter().map(|(c, _, _)| c.clone()).collect();
         assert!(components.contains(&"claude-adapter".to_string()));
         assert!(components.contains(&"gemini-adapter".to_string()));
-        assert!(components.contains(&"docker".to_string()));
     }
 }

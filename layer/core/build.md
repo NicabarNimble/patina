@@ -90,13 +90,15 @@ Run regularly to catch regressions.
 
 ### Active
 
-- [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Design:** UIDs for databases, enables federation graph
+- [feat/belief-validation-system/SPEC.md](../surface/build/feat/belief-validation-system/SPEC.md) - **NEW:** Verifiable belief confidence (computed signals, scry verification, graph support)
+- [spec-skills-focused-adapter.md](../surface/build/spec-skills-focused-adapter.md) - **Design:** Skills-first adapter refactor (universal SKILL.md, namespace ownership)
+- [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Phase 1 done:** UIDs everywhere, Phase 2-3 remain (generation tracking, provenance)
 - [spec-surface-layer.md](../surface/build/spec-surface-layer.md) - **Next:** Distillation layer, federation interface, `patina surface` command
-- [spec-session-prompts.md](../surface/build/spec-session-prompts.md) - **Design:** Capture user prompts in session files (reads from ~/.claude/history.jsonl)
-- [spec-report.md](../surface/build/spec-report.md) - **NEW:** Self-analysis reports using patina's own tools
-- [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md) - LLM query expansion for terminology mismatch
-- [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 1 next:** Federated query (0.5 persona complete)
+- [spec-report.md](../surface/build/spec-report.md) - **Phase 1 done:** Basic reports working, Phase 2-4 remain
+- [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 1 next:** Federated query (vocabulary gap resolved)
 - [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** mother/patina/awaken separation
+- [spec-remove-build-test.md](../surface/build/spec-remove-build-test.md) - **Ready:** Remove dead code (63 lines)
+- [spec-explore-agents.md](../surface/build/spec-explore-agents.md) - **Exploration:** yolo/codex agent concepts
 
 ---
 
@@ -128,13 +130,13 @@ Run regularly to catch regressions.
 
 **Spec:** [spec-report.md](../surface/build/spec-report.md)
 
-### Vocabulary Gap
+### Vocabulary Gap (COMPLETE)
 
 **Problem:** FTS5 keyword matching fails when user vocabulary differs from codebase vocabulary ("commit message search" vs "commits_fts"). Measured in temporal queryset: MRR 0.100 (target: 0.4).
 
-**Solution:** LLM query expansion or semantic search on commits.
+**Solution:** LLM query expansion via `expanded_terms` MCP parameter.
 
-**Spec:** [spec-vocabulary-gap.md](../surface/build/spec-vocabulary-gap.md)
+**Status:** Complete (2026-01-21). Tagged `spec/vocabulary-gap`.
 
 ### Reference
 
@@ -162,6 +164,10 @@ Key items:
 
 Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 
+- `spec/repo-org-namespace` - Fix repo name collisions with org/repo identifiers (was already implemented)
+- `spec/vocabulary-gap` - LLM query expansion via `expanded_terms` MCP param
+- `spec/session-prompts` - Capture user prompts from ~/.claude/history.jsonl in session files
+- `spec/remove-neuro-symbolic-debt` - Prolog removal (~2660 lines): reasoning/, storage/, query/, scryer-prolog dep
 - `spec/ref-repo-storage` - Lean storage for ref repos: git/code direct insert, forge dedup (11-60% DB reduction)
 - `spec/init-hardening` - Init/Adapter refactor: skeleton-only init, adapter refresh/doctor (Phases 1-2)
 - `spec/adapter-selection` - Two-flow adapter selection (explicit --adapter vs implicit prompt), select_adapter() function
@@ -192,6 +198,7 @@ Full list: `git tag -l 'spec/*'`
 Completed specs preserved via git tags. View with: `git show spec/<name>:layer/surface/build/spec-<name>.md`
 
 **Recent completions:**
+- `spec/remove-neuro-symbolic-debt` - Prolog removal (~2660 lines dead code + heavy dep)
 - `spec/ref-repo-storage` - Lean storage for ref repos (11-60% DB reduction)
 - `spec/forge-bulk-fetch` - Bulk issue/PR fetch (100x faster), delete discover_all_issues()
 - `spec/preflight` - Self-healing startup, auto-kill stale processes (>24h)

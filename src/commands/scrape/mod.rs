@@ -57,6 +57,9 @@ mod tests {
 ///
 /// This is the default when running `patina scrape` with no subcommand.
 pub fn execute_all() -> Result<()> {
+    // Ensure UID exists (migration for projects without one)
+    patina::project::create_uid_if_missing(&std::env::current_dir()?)?;
+
     println!("🔄 Running all scrapers...\n");
 
     println!("📊 [1/4] Scraping code...");
@@ -85,6 +88,9 @@ pub fn execute_all() -> Result<()> {
 ///
 /// See: layer/surface/build/spec-ref-repo-storage.md
 pub fn execute_rebuild() -> Result<()> {
+    // Ensure UID exists (migration for projects without one)
+    patina::project::create_uid_if_missing(&std::env::current_dir()?)?;
+
     let db_path = PathBuf::from(database::PATINA_DB);
     let is_ref = database::is_ref_repo(&db_path);
 

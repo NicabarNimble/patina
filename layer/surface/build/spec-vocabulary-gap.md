@@ -1,8 +1,15 @@
 # Spec: Vocabulary Gap
 
-**Status:** Active
+**Status:** Complete
 **Created:** 2026-01-08
+**Completed:** 2026-01-21
+**Tag:** spec/vocabulary-gap
 **Origin:** Phase 0.25b benchmark revealed temporal MRR 0.100 (target: 0.4)
+
+**Phase 1 Implementation:** Commit `1df7ecce`
+- Added `expanded_terms` parameter to MCP scry tool schema
+- LLM can provide code-specific synonyms to improve FTS5 matching
+- Non-deterministic: depends on LLM using the parameter
 
 ---
 
