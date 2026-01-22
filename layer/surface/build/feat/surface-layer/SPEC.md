@@ -6,6 +6,9 @@ created: 2026-01-08
 updated: 2026-01-22
 session-origin: 20260108-124107
 sessions: [20260108-200725, 20260109-063849, 20260115-053944, 20260115-121358, 20260122-061519]
+related:
+  - eval/temporal-error-analysis.md
+  - layer/surface/build/feat/belief-validation-system/SPEC.md
 ---
 
 # feat: Surface Layer
