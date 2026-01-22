@@ -146,6 +146,13 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         );
     }
 
+    // Step 7.5: Silent MCP auto-configuration (self-healing)
+    // If MCP isn't configured, silently fix it. Errors are ignored - if it fails,
+    // user will notice when MCP tools don't work, but we don't block launch.
+    if !adapters::is_mcp_configured(&adapter_name).unwrap_or(true) {
+        let _ = adapters::configure_mcp(&adapter_name);
+    }
+
     // Step 8: Ensure bootstrap file exists
     let bootstrap_file = match adapter_name.as_str() {
         "claude" => "CLAUDE.md",

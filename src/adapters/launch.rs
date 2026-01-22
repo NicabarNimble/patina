@@ -194,6 +194,29 @@ pub fn generate_bootstrap(name: &str, project_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Check if MCP is configured for an adapter (patina server present in config)
+pub fn is_mcp_configured(name: &str) -> Result<bool> {
+    let info = get(name)?;
+
+    let mcp = match info.mcp.as_ref() {
+        Some(m) => m,
+        None => return Ok(true), // No MCP config needed for this adapter
+    };
+
+    let config_path = PathBuf::from(shellexpand::tilde(&mcp.config_path).as_ref());
+
+    if !config_path.exists() {
+        return Ok(false);
+    }
+
+    // Read config and check for patina server
+    let content = fs::read_to_string(&config_path).unwrap_or_default();
+
+    // Check if "patina" server is configured
+    // For JSON configs, look for "patina" in mcpServers
+    Ok(content.contains("\"patina\"") && content.contains("mcpServers"))
+}
+
 /// Configure MCP for an adapter (update its config file)
 pub fn configure_mcp(name: &str) -> Result<()> {
     let info = get(name)?;
@@ -216,10 +239,33 @@ pub fn configure_mcp(name: &str) -> Result<()> {
             fs::write(&config_path, template)?;
         }
     } else {
-        eprintln!(
-            "MCP config exists at {}. Please manually add patina server.",
-            config_path.display()
-        );
+        // Config exists - try to add patina server if not present
+        if !is_mcp_configured(name).unwrap_or(true) {
+            // Read existing config and try to merge
+            if let Ok(content) = fs::read_to_string(&config_path) {
+                if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&content) {
+                    // Add patina to mcpServers
+                    if let Some(obj) = json.as_object_mut() {
+                        let mcp_servers = obj
+                            .entry("mcpServers")
+                            .or_insert_with(|| serde_json::json!({}));
+                        if let Some(servers) = mcp_servers.as_object_mut() {
+                            servers.insert(
+                                "patina".to_string(),
+                                serde_json::json!({
+                                    "command": "patina",
+                                    "args": ["serve", "--mcp-stdio"]
+                                }),
+                            );
+                            // Write back
+                            if let Ok(updated) = serde_json::to_string_pretty(&json) {
+                                let _ = fs::write(&config_path, updated);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     Ok(())
