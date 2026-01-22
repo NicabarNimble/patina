@@ -57,11 +57,8 @@ pub fn create_project_config(
                 .and_then(|c| c.project.created.clone())
                 .or_else(|| Some(chrono::Utc::now().to_rfc3339())),
         },
-        // Preserve existing dev section on re-init, otherwise use default
-        dev: existing_config
-            .as_ref()
-            .map(|c| c.dev.clone())
-            .unwrap_or_default(),
+        // Note: dev section is deprecated and skipped on serialization
+        dev: Default::default(),
         // Preserve existing adapters on re-init, otherwise empty
         adapters: existing_config
             .as_ref()
