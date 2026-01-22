@@ -18,7 +18,8 @@ use std::path::{Path, PathBuf};
 pub struct ProjectConfig {
     #[serde(default)]
     pub project: ProjectSection,
-    #[serde(default)]
+    /// Deprecated: dev environment config (kept for backwards compat on load)
+    #[serde(default, skip_serializing)]
     pub dev: DevSection,
     #[serde(default)]
     pub adapters: AdaptersSection,
@@ -392,9 +393,7 @@ pub fn migrate_legacy_config(project_path: &Path) -> Result<bool> {
     if let Some(created) = json.get("created").and_then(|v| v.as_str()) {
         config.project.created = Some(created.to_string());
     }
-    if let Some(dev) = json.get("dev").and_then(|v| v.as_str()) {
-        config.dev.dev_type = dev.to_string();
-    }
+    // Note: dev field from legacy config is ignored (dev_env subsystem removed)
     if let Some(llm) = json.get("llm").and_then(|v| v.as_str()) {
         // Map llm to adapters.default and ensure it's in allowed list
         config.adapters.default = llm.to_string();
@@ -523,7 +522,7 @@ mod tests {
     fn test_default_config() {
         let config = ProjectConfig::default();
         assert_eq!(config.project.name, "unnamed");
-        assert_eq!(config.dev.dev_type, "docker");
+        // Note: dev section is deprecated and skipped on serialization
         assert_eq!(config.adapters.default, "claude");
         assert!(config.adapters.allowed.contains(&"claude".to_string()));
         assert_eq!(config.embeddings.model, "e5-base-v2");
@@ -563,7 +562,8 @@ mod tests {
         let config = ProjectConfig::default();
         let toml_str = toml::to_string_pretty(&config).unwrap();
         assert!(toml_str.contains("[project]"));
-        assert!(toml_str.contains("[dev]"));
+        // Note: [dev] is deprecated and skipped on serialization
+        assert!(!toml_str.contains("[dev]"));
         assert!(toml_str.contains("[adapters]"));
         assert!(toml_str.contains("[embeddings]"));
     }
@@ -648,7 +648,7 @@ mod tests {
         // Verify migration
         let config = load(tmp.path()).unwrap();
         assert_eq!(config.project.name, "test-project");
-        assert_eq!(config.dev.dev_type, "native");
+        // Note: dev field from legacy config is ignored (dev_env subsystem removed)
         assert_eq!(config.adapters.default, "gemini");
         assert!(config.adapters.allowed.contains(&"gemini".to_string()));
         assert_eq!(config.embeddings.model, "bge-base"); // preserved from existing toml
