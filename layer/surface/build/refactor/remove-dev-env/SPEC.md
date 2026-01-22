@@ -1,9 +1,11 @@
 ---
 type: refactor
 id: remove-dev-env
-status: ready
+status: complete
 created: 2026-01-21
+completed: 2026-01-21
 session-origin: 20260121-190217
+archived: spec/remove-dev-env
 ---
 
 # refactor: Remove dev_env Subsystem
