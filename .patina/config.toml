@@ -25,17 +25,17 @@ fetch_multiplier = 2
 os = "macos"
 arch = "aarch64"
 detected_tools = [
-    "claude",
-    "nvim",
-    "wasm-pack",
-    "jq",
-    "go",
-    "cargo-clippy",
     "cargo-fmt",
-    "git",
-    "gh",
-    "vim",
-    "docker",
     "brew",
+    "cargo-clippy",
+    "gh",
+    "nvim",
     "cargo",
+    "claude",
+    "vim",
+    "go",
+    "wasm-pack",
+    "git",
+    "docker",
+    "jq",
 ]

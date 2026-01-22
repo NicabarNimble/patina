@@ -1,8 +1,14 @@
 # Spec: Session Prompt Capture
 
-**Status:** Design
+**Status:** Complete
 **Created:** 2026-01-10
-**Origin:** Session 20260110-075703 (this session)
+**Completed:** 2026-01-21
+**Tag:** spec/session-prompts
+**Origin:** Session 20260110-075703
+
+**Implementation:** Commit `1df7ecce feat: add vocabulary gap bridging and session prompt capture`
+- `session-start.sh` records Start Timestamp (Unix ms) - all adapters
+- `session-end.sh` extracts prompts from `~/.claude/history.jsonl` - Claude only
 
 ---
 

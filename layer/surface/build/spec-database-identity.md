@@ -1,10 +1,9 @@
 # Spec: Database Identity (UIDs for Federation)
 
-**Status:** Design (blocked)
+**Status:** Ready to implement
 **Created:** 2026-01-12
-**Updated:** 2026-01-12
-**Sessions:** 20260112-061237 (initial), 20260112-093636 (explicit patterns)
-**Blocked By:** [spec-init-hardening.md](spec-init-hardening.md) - init must preserve config before adding UID
+**Updated:** 2026-01-21
+**Sessions:** 20260112-061237 (initial), 20260112-093636 (explicit patterns), 20260121-102727 (simplification)
 **Core References:** [dependable-rust](../../core/dependable-rust.md), [unix-philosophy](../../core/unix-philosophy.md)
 
 ---
@@ -22,58 +21,69 @@ This breaks federation:
 
 ---
 
-## Solution: UID File + DB Generation
+## Solution: UID File
 
 ```
 .patina/
-├── uid                    # Project identity (permanent)
-└── data/
-    └── patina.db          # Data (ephemeral, tracks generation)
+├── uid                    # Project identity (permanent, committed to git)
+└── local/
+    └── data/
+        └── patina.db      # Data (ephemeral, can be rebuilt)
 ```
 
-**Two-layer identity:**
-
-| Layer | Location | Purpose |
-|-------|----------|---------|
-| Project UID | `.patina/uid` file | Identifies the project (permanent) |
-| DB Generation | `patina.db._meta` | Tracks rebuild count (increments) |
-
-Full reference: `550e8400:3` = "project 550e8400, generation 3"
+**Core principle:** UID identifies the patina index. It's created once, never changes, and survives rebuilds.
 
 ---
 
-## UID Generation Strategy (Hybrid)
+## UID Generation Strategy (Random + Git Propagation)
 
-Different sources get different UID strategies:
-
-| Source | UID Strategy | Rationale |
-|--------|--------------|-----------|
-| Local project | Random | No canonical external identity |
-| GitHub ref repo | Hash of `github:owner/repo` | Deterministic, shared across users |
-| GitLab ref repo | Hash of `gitlab:owner/repo` | Same logic |
-| Other forges | Hash of source URL | Extensible |
-
-**Why hybrid:**
-- Local projects have no shared identity → random is fine
-- Ref repos have canonical source → hash enables "find all indexes of this repo"
-- Two users indexing `anthropics/claude-code` get **same UID**
+**All UIDs are random 32-bit values (8 hex chars).**
 
 ```rust
-fn compute_uid(source: &RepoSource) -> String {
-    match source {
-        RepoSource::Local => format!("{:08x}", fastrand::u32(..)),
-        RepoSource::GitHub { owner, repo } =>
-            hash_uid(&format!("github:{}/{}", owner, repo)),
-        RepoSource::GitLab { owner, repo } =>
-            hash_uid(&format!("gitlab:{}/{}", owner, repo)),
-    }
-}
-
-fn hash_uid(canonical: &str) -> String {
-    let hash = sha256(canonical.as_bytes());
-    format!("{:08x}", u32::from_be_bytes(hash[..4].try_into().unwrap()))
-}
+// Simple: just random
+let uid = format!("{:08x}", fastrand::u32(..));
 ```
+
+| Scenario | Behavior |
+|----------|----------|
+| `patina init` (new project) | Generate random UID |
+| `patina init .` (re-init) | Preserve existing UID |
+| `patina repo add` (patina project) | Preserve UID from clone |
+| `patina repo add` (non-patina repo) | Generate random UID |
+
+**Why this works:**
+- Patina projects commit `.patina/uid` to git
+- Cloning brings the UID with it
+- `create_uid_if_missing()` preserves existing UIDs
+- Same project = same UID via git propagation, not hashing
+
+**Example:**
+```
+# anthropics/claude-code is a patina project with uid "abc12345"
+# When anyone clones it (as ref repo or fork), they get that same UID
+
+User A: patina repo add anthropics/claude-code → uid: abc12345 (from clone)
+User B: patina repo add anthropics/claude-code → uid: abc12345 (from clone)
+User C: gh repo fork --clone && patina init .  → uid: abc12345 (from clone)
+```
+
+---
+
+## Multi-User Identity
+
+**Single machine:** UID alone (user is implicit)
+
+**Federation:** `{user}:{uid}` provides namespace
+
+```
+nicabar:abc12345   # User nicabar's index abc12345
+alice:abc12345     # User alice's index abc12345 (different index, same UID is fine)
+```
+
+**Why 32-bit is sufficient:**
+- 1% collision at ~9,300 projects per user
+- User namespace eliminates cross-user collision
+- Matches GitHub model: unique per owner, not globally
 
 ---
 
@@ -84,9 +94,9 @@ fn hash_uid(canonical: &str) -> String {
 > "Black box modules with small, stable interfaces"
 
 - UID is ONE thing: 8 hex chars
-- Interface is minimal: `create_uid()` and `read_uid()`
-- Explicit over implicit: creation and reading are separate operations
-- No hidden side effects: reads don't write, creates don't silently succeed
+- Interface is minimal: `create_uid_if_missing()` and `get_uid()`
+- Idempotent: calling create when exists just returns existing
+- Plain text file - can inspect with `cat`
 
 ### From Unix Philosophy
 
@@ -94,27 +104,7 @@ fn hash_uid(canonical: &str) -> String {
 
 - UID identifies the project, nothing else
 - Separate concerns: identity (uid file) vs data (patina.db)
-- Plain text file - can inspect with `cat`
-
----
-
-## Why Random (Not Hash)
-
-We considered hashing canonical identity (GitHub URL, path, etc.):
-
-| Approach | Problem |
-|----------|---------|
-| Hash of GitHub URL | What if no GitHub? What if URL changes? |
-| Hash of git SHA | What if no git? Empty repos have no commits |
-| Hash of path | Path changes break identity |
-
-**All add complexity and edge cases.**
-
-Random UID means:
-- No external dependencies
-- No fallback chains
-- No "what if X changes" questions
-- Just works
+- Git as distribution: UID propagates via normal git operations
 
 ---
 
@@ -134,48 +124,32 @@ With UID in separate file:
 
 ---
 
-## DB Generation (Rebuild Tracking)
+## Current Implementation Status
 
-The database tracks its own generation count:
+**Already implemented:**
 
-```sql
--- Inside patina.db
-CREATE TABLE IF NOT EXISTS _meta (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
+| Feature | Location | Status |
+|---------|----------|--------|
+| `uid_path()` | `src/project/internal.rs:312` | ✅ Working |
+| `create_uid_if_missing()` | `src/project/internal.rs:318` | ✅ Working |
+| `get_uid()` | `src/project/internal.rs:342` | ✅ Working (but unused) |
+| UID created at `patina init` | `src/commands/init/internal/mod.rs:147` | ✅ Working |
+| UID committed to git | `src/commands/init/internal/mod.rs:201` | ✅ Working |
 
--- Set at creation, increment on rebuild
-INSERT INTO _meta (key, value) VALUES ('generation', '1');
-```
+**Not implemented (Phase 1):**
 
-**On rebuild:**
-```rust
-fn rebuild_database(project_path: &Path) -> Result<()> {
-    let old_gen = get_generation(&conn)?;  // Read before delete
+| Feature | Location | Status |
+|---------|----------|--------|
+| UID for ref repos (new) | `repo/internal.rs` → `scaffold_patina()` | ❌ Phase 1 |
+| UID for ref repos (migration) | `repo/internal.rs` → `update_repo()` | ❌ Phase 1 |
+| UID for projects (migration) | `scrape/mod.rs` | ❌ Phase 1 |
+| Doctor shows UID | `src/commands/doctor.rs` | ❌ Phase 1 |
 
-    fs::remove_file(db_path)?;             // Delete old DB
-    let conn = create_database(db_path)?;  // Create fresh
+**Deferred (Phase 2):**
 
-    set_generation(&conn, old_gen + 1)?;   // Increment generation
-    // ... re-scrape ...
-}
-```
-
-**Use case:** Mother graph tracks `last_indexed_generation` to detect stale caches.
-
----
-
-## 32-bit UID (8 hex chars)
-
-```
-550e8400
-```
-
-**Why 32-bit:**
-- 1% collision at ~9,300 projects per user
-- Multi-user adds namespace: `{user}:{db}` = 64-bit effective
-- Matches GitHub model: unique per owner, not globally
+| Feature | Location | Status |
+|---------|----------|--------|
+| DB generation tracking | Database `_meta` table | ⏳ Phase 2 |
 
 ---
 
@@ -190,73 +164,161 @@ cat .patina/uid
 
 Plain text, one line, 8 hex characters. No JSON, no metadata.
 
-### UID Operations (Explicit Create/Read)
-
-**Principle:** Explicit over implicit. No `ensure_uid()` magic - creation and reading are separate.
+### Existing Functions
 
 ```rust
-/// Create UID at init time. Fails if already exists (idempotent re-init is separate).
-fn create_uid(project_path: &Path, source: &RepoSource) -> Result<String> {
-    let uid_path = project_path.join(".patina/uid");
+/// Create UID if missing, return existing if present
+/// This is the ONLY function that creates UIDs
+pub fn create_uid_if_missing(project_path: &Path) -> Result<String> {
+    let uid_file = uid_path(project_path);
 
-    if uid_path.exists() {
-        // Re-init case: read existing, don't overwrite
-        return read_uid(project_path);
+    // If UID exists, read and return it (idempotent)
+    if uid_file.exists() {
+        return Ok(fs::read_to_string(&uid_file)?.trim().to_string());
     }
 
-    let uid = compute_uid(source);
-    fs::create_dir_all(uid_path.parent().unwrap())?;
-    fs::write(&uid_path, &uid)?;
+    // Generate new UID (8 hex chars from random u32)
+    let uid = format!("{:08x}", fastrand::u32(..));
+
+    // Ensure .patina directory exists
+    fs::create_dir_all(uid_file.parent().unwrap())?;
+
+    // Write UID
+    fs::write(&uid_file, &uid)?;
     Ok(uid)
 }
 
-/// Read UID. Fails if missing - caller must handle upgrade path.
-fn read_uid(project_path: &Path) -> Result<String> {
-    let uid_path = project_path.join(".patina/uid");
-
-    if !uid_path.exists() {
-        return Err(anyhow!(
-            "No UID found. Run `patina init .` to upgrade this project."
-        ));
+/// Get UID (returns None if not initialized)
+pub fn get_uid(project_path: &Path) -> Option<String> {
+    let uid_file = uid_path(project_path);
+    if uid_file.exists() {
+        fs::read_to_string(&uid_file).ok().map(|s| s.trim().to_string())
+    } else {
+        None
     }
-
-    Ok(fs::read_to_string(&uid_path)?.trim().to_string())
 }
 ```
 
-**Why separate functions (Jon Gjengset / Eskil Steenberg principle):**
-- `read_uid()` never writes - no surprising side effects
-- `create_uid()` is called at ONE place (init) - single point of control
-- Failures are explicit - "no UID" is a clear error, not silent creation
-- Testing is straightforward - no hidden state changes
+### Ref Repo UID (NEW)
 
-### Rebuild Behavior
+Add to `scaffold_patina()` in `src/commands/repo/internal.rs`:
 
-```bash
-patina rebuild
-# Deletes: .patina/data/patina.db
-# Keeps:   .patina/uid
-# Result:  Same identity, fresh data
+```rust
+fn scaffold_patina(repo_path: &Path) -> Result<()> {
+    let patina_dir = repo_path.join(".patina");
+    fs::create_dir_all(&patina_dir)?;
+
+    // Create UID if not already present (preserves existing from clone)
+    patina::project::create_uid_if_missing(repo_path)?;
+
+    // ... rest unchanged ...
+}
+```
+
+This single line gives ref repos UIDs:
+- If cloned repo has `.patina/uid` → preserved
+- If cloned repo has no UID → random generated
+
+---
+
+## Doctor Display
+
+Add UID to health check output in `src/commands/doctor.rs`:
+
+```rust
+// In display_health_check()
+println!("\nProject Identity:");
+if let Some(uid) = patina::project::get_uid(&project_root) {
+    println!("  ✓ UID: {}", uid);
+} else {
+    println!("  ⚠ UID: missing (run 'patina init .' to add)");
+}
 ```
 
 ---
 
-## Edge Cases
+## Auto-Create Migration Strategy
 
-### Manual Database Deletion
+Instead of fail guards, auto-create UIDs wherever we touch a project. This provides seamless migration with no breaking changes.
 
-If user runs `rm .patina/data/patina.db` directly (not `patina rebuild`):
-- Generation counter resets to 1
-- Mother graph may have stale `last_indexed_generation`
+**Philosophy:** `create_uid_if_missing()` is already idempotent. Just call it in more places.
 
-**Decision:** Accept this edge case.
-- Manual deletion is explicit user intent
-- Cleverness can come from mother graph later (detect generation regression)
-- Keep this spec simple
+### Touch Points
 
-### UID Collision Detection
+| Operation | File | Behavior |
+|-----------|------|----------|
+| `patina repo add` | `repo/internal.rs` → `scaffold_patina()` | Create UID for new ref repos |
+| `patina repo update` | `repo/internal.rs` → `update_repo()` | Create UID if missing (migration) |
+| `patina scrape` | `scrape/mod.rs` | Create UID if missing (migration) |
 
-With 32-bit UIDs, collision probability is ~1% at 9,300 projects. When registering a project in mother graph:
+### Implementation
+
+```rust
+// In scaffold_patina() - new ref repos
+patina::project::create_uid_if_missing(repo_path)?;
+
+// In update_repo() - existing ref repos (migration)
+let repo_path = Path::new(&entry.path);
+patina::project::create_uid_if_missing(repo_path)?;
+
+// In scrape entry point - all projects (migration)
+patina::project::create_uid_if_missing(&project_path)?;
+```
+
+### Migration Behavior
+
+- Next `patina repo update` → ref repo gets UID
+- Next `patina repo update --all` → all ref repos get UIDs
+- Next `patina scrape` on any project → UID ensured
+- No fail guards, no error messages, no friction
+- Existing UIDs preserved (idempotent)
+
+---
+
+## DB Generation Tracking (Phase 2)
+
+Track rebuild count for staleness detection in federation. Deferred until Mother Graph integration.
+
+### Schema
+
+```sql
+-- Inside patina.db
+CREATE TABLE IF NOT EXISTS _meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+-- Set at creation
+INSERT INTO _meta (key, value) VALUES ('generation', '1');
+```
+
+### On Rebuild
+
+```rust
+fn rebuild_database(project_path: &Path) -> Result<()> {
+    let old_gen = get_generation(&conn)?;  // Read before delete
+
+    fs::remove_file(db_path)?;             // Delete old DB
+    let conn = create_database(db_path)?;  // Create fresh
+
+    set_generation(&conn, old_gen + 1)?;   // Increment generation
+    // ... re-scrape ...
+}
+```
+
+### Full Reference
+
+```
+550e8400:3 = "project 550e8400, generation 3"
+```
+
+Mother graph tracks `last_indexed_generation` to detect stale caches.
+
+---
+
+## Collision Handling (Phase 2)
+
+With 32-bit UIDs, collision is rare but possible. When registering in mother graph:
 
 ```rust
 fn register_in_mother(uid: &str, path: &Path) -> Result<()> {
@@ -266,7 +328,6 @@ fn register_in_mother(uid: &str, path: &Path) -> Result<()> {
                 "UID collision detected: {} already registered at {}",
                 uid, existing.path
             );
-            // Log to mother system logs for future analysis
             mother.log_event("uid_collision", json!({
                 "uid": uid,
                 "existing_path": existing.path,
@@ -274,56 +335,21 @@ fn register_in_mother(uid: &str, path: &Path) -> Result<()> {
             }))?;
         }
     }
-    // Proceed with registration (last-write-wins for now)
+    // Proceed with registration (last-write-wins)
     mother.upsert_node(uid, path)?;
     Ok(())
 }
 ```
 
 **Decision:** Detect and warn, don't block.
-- Log collision events for future analysis
-- Mother graph can implement smarter resolution later
-- User can manually regenerate UID if needed (`rm .patina/uid && patina init .`)
+- Log collision events for analysis
+- User can regenerate: `rm .patina/uid && patina init .`
 
 ---
 
-## Migration (Upgrading Old Projects)
+## Federation Integration (Future)
 
-Old `.patina` directories without `uid` file need explicit upgrade.
-
-### Behavior by Command
-
-| Command | Old Project (no UID) | New Project (has UID) |
-|---------|---------------------|----------------------|
-| `patina init .` | Creates UID | Reads existing UID |
-| `patina scrape` | **Fails with upgrade message** | Works normally |
-| `patina rebuild` | **Fails with upgrade message** | Works normally |
-| `patina doctor` | Shows "UID: missing" | Shows UID |
-
-### Error Message
-
-```
-Error: No UID found for this project.
-
-This project was created before UID support. Run:
-
-    patina init .
-
-This will add a UID without affecting your existing data.
-```
-
-### Why Explicit Migration
-
-- **No magic:** Commands don't silently create files
-- **User awareness:** User knows their project was upgraded
-- **Single entry point:** `patina init` is the ONE place UIDs are created
-- **Predictable:** `read_uid()` either succeeds or fails, never writes
-
----
-
-## Federation Integration
-
-### Mother Graph
+### Mother Graph Schema
 
 ```sql
 CREATE TABLE nodes (
@@ -341,29 +367,6 @@ CREATE TABLE edges (
 );
 ```
 
-### Staleness Detection
-
-```rust
-fn is_stale(node: &Node, project_path: &Path) -> Result<bool> {
-    let current_gen = get_generation_from_db(project_path)?;
-    Ok(current_gen > node.last_indexed_generation)
-}
-
-// On federated query:
-// 1. Check if node is stale
-// 2. If stale, re-index before querying (or mark results as potentially stale)
-```
-
-### Cross-DB References
-
-```sql
--- In patina's eventlog
-INSERT INTO eventlog (event_type, data) VALUES (
-  'reference.pattern',
-  '{"source_uid": "550e8400", "source_seq": 12345}'
-);
-```
-
 ### Federated Results
 
 ```
@@ -378,26 +381,26 @@ Results:
 
 ## Phases
 
-### Phase 1: Add Identity
+### Phase 1: Complete UID Coverage
 
-1. Add `create_uid()` and `read_uid()` functions (explicit, separate)
-2. Create `.patina/uid` at `patina init` (local=random, ref=hash)
-3. Commands that need UID call `read_uid()` - fail with upgrade message if missing
-4. `patina doctor` shows UID (or "missing - run patina init .")
-5. `patina init .` on old project creates UID (migration path)
+1. **Ref repo UIDs (new)** - Add `create_uid_if_missing()` to `scaffold_patina()`
+2. **Ref repo UIDs (migration)** - Add `create_uid_if_missing()` to `update_repo()`
+3. **Project UIDs (migration)** - Add `create_uid_if_missing()` to scrape entry point
+4. **Doctor display** - Show UID in health check (informational)
 
-### Phase 2: Mother Graph Integration
+### Phase 2: DB Generation + Mother Graph
 
-1. Mother graph uses UID as primary key
-2. Collision detection on registration (warn + log, don't block)
-3. Edges reference UIDs, not names/paths
-4. Path changes don't break graph
+1. **DB generation** - `_meta` table with generation counter
+2. Mother graph uses UID as primary key
+3. Collision detection on registration
+4. Edges reference UIDs, not names/paths
+5. Staleness detection via generation
 
 ### Phase 3: Cross-DB References
 
-1. Eventlog can store `source_uid`
+1. Eventlog stores `source_uid`
 2. Scry results include source UID
-3. Provenance tracking enabled
+3. Full provenance tracking
 
 ---
 
@@ -405,38 +408,35 @@ Results:
 
 | Phase | Criteria |
 |-------|----------|
-| 1 | `.patina/uid` created at init |
-| 1 | UID survives rebuild |
-| 1 | Old projects fail with clear upgrade message |
-| 1 | `patina init .` upgrades old projects |
+| 1 | `patina repo add` creates UID |
+| 1 | `patina repo update` creates UID if missing |
+| 1 | `patina scrape` creates UID if missing |
 | 1 | `patina doctor` shows UID |
+| 2 | DB tracks generation count |
 | 2 | Mother graph uses UIDs |
-| 2 | Collision detected and logged |
+| 2 | Collisions detected and logged |
 | 3 | Scry results show source UID |
 
 ---
 
 ## Design Evolution
 
-Earlier versions considered:
-- Pure random UID for everything → lost shared identity for ref repos
-- Pure hash of canonical → edge cases for local projects
-- UID in database only → lost on rebuild
-- `ensure_uid()` lazy creation → hidden side effects, magic
+**Session 20260112:** Initial design with hybrid model (random for local, hash for ref repos)
 
-**Final approach:**
-- Local projects: random UID (no canonical source)
-- Ref repos: hash of source URL (shared identity)
-- UID in file (survives rebuild)
-- Generation in DB (tracks rebuilds)
-- **Explicit create/read** (no `ensure_uid()` magic)
-- **Explicit migration** (require `patina init .` for old projects)
-- **Collision detection** (warn, log, don't block)
+**Session 20260121:** Simplified to pure random + git propagation:
+- Removed hybrid hash model entirely
+- Random UIDs for everything
+- Git propagation handles "same repo, same UID" naturally
+- Patina projects commit UID → clones inherit it
+- Multi-user: `user:uid` namespace makes 32-bit sufficient
+- Auto-create migration instead of fail guards (no friction)
+
+**Key insight:** We don't need deterministic hashing because git already propagates the UID. If a repo is a patina project, its UID travels with the clone.
 
 ---
 
 ## References
 
-- [spec-mothership-graph.md](spec-mothership-graph.md) - Graph routing using UIDs
-- Session 20260112-061237 - Initial design discussion and simplification
-- Session 20260112-093636 - Explicit create/read pattern, migration strategy, collision handling
+- Session 20260112-061237 - Initial design discussion
+- Session 20260112-093636 - Explicit create/read pattern, migration strategy
+- Session 20260121-102727 - Simplification: random + git propagation model

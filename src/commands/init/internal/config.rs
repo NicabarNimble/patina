@@ -4,11 +4,10 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
 
-use patina::dev_env::DevEnvironment;
 use patina::environment::Environment;
 use patina::project::{
-    AdaptersSection, DevSection, EmbeddingsSection, EnvironmentSection, ProjectConfig,
-    ProjectSection, RetrievalSection, SearchSection,
+    AdaptersSection, EmbeddingsSection, EnvironmentSection, ProjectConfig, ProjectSection,
+    RetrievalSection, SearchSection,
 };
 // Note: CiSection and UpstreamSection are optional, set to None for new projects
 use patina::version::VersionManifest;
@@ -20,9 +19,7 @@ use patina::version::VersionManifest;
 pub fn create_project_config(
     project_path: &Path,
     name: &str,
-    dev: &str,
     environment: &Environment,
-    _dev_env: &dyn DevEnvironment,
 ) -> Result<()> {
     let patina_dir = project_path.join(".patina");
     fs::create_dir_all(&patina_dir).context("Failed to create .patina directory")?;
@@ -60,10 +57,8 @@ pub fn create_project_config(
                 .and_then(|c| c.project.created.clone())
                 .or_else(|| Some(chrono::Utc::now().to_rfc3339())),
         },
-        dev: DevSection {
-            dev_type: dev.to_string(),
-            version: None,
-        },
+        // Note: dev section is deprecated and skipped on serialization
+        dev: Default::default(),
         // Preserve existing adapters on re-init, otherwise empty
         adapters: existing_config
             .as_ref()
@@ -139,7 +134,6 @@ projections:
 /// Create or update version manifest
 pub fn handle_version_manifest(
     project_path: &Path,
-    _dev: &str,
     is_reinit: bool,
     json_output: bool,
 ) -> Result<Option<Vec<(String, String, String)>>> {

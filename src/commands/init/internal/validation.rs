@@ -36,17 +36,3 @@ pub fn validate_environment(env: &Environment) -> Result<Option<Vec<String>>> {
         Ok(Some(warnings))
     }
 }
-
-/// Determine the best development environment based on what's available
-pub fn determine_dev_environment(_environment: &Environment) -> String {
-    // If PATINA_DEV is set, respect it
-    if let Ok(dev_env) = std::env::var("PATINA_DEV") {
-        eprintln!("   Using PATINA_DEV={dev_env}");
-        return dev_env;
-    }
-
-    // Docker-only now
-    println!("🐳 Using Docker for development");
-    println!("   💡 Docker provides containerized builds and tests");
-    "docker".to_string()
-}

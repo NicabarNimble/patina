@@ -1,7 +1,6 @@
 pub mod adapter;
 pub mod assay;
 pub mod bench;
-pub mod build;
 pub mod doctor;
 pub mod eval;
 pub mod init;
@@ -17,7 +16,6 @@ pub mod scrape;
 pub mod scry;
 pub mod secrets;
 pub mod serve;
-pub mod test;
 pub mod upgrade;
 pub mod version;
 pub mod yolo;

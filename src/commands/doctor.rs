@@ -61,7 +61,7 @@ pub fn execute(json_output: bool) -> Result<i32> {
         .unwrap_or_default();
 
     // Compare environments
-    let mut health_check = analyze_environment(&current_env, &stored_tools, &config.dev.dev_type)?;
+    let mut health_check = analyze_environment(&current_env, &stored_tools)?;
 
     // Check project status - use adapters.default as the LLM
     let llm = &config.adapters.default;
@@ -92,7 +92,7 @@ pub fn execute(json_output: bool) -> Result<i32> {
     if json_output {
         println!("{}", serde_json::to_string_pretty(&health_check)?);
     } else {
-        display_health_check(&health_check, &current_env)?;
+        display_health_check(&health_check, &current_env, &project_root)?;
 
         // Only provide recommendations, no auto-fixing
         if !health_check.environment_changes.missing_tools.is_empty()
@@ -114,11 +114,7 @@ pub fn execute(json_output: bool) -> Result<i32> {
     Ok(exit_code)
 }
 
-fn analyze_environment(
-    current: &Environment,
-    stored_tools: &[String],
-    dev_type: &str,
-) -> Result<HealthCheck> {
+fn analyze_environment(current: &Environment, stored_tools: &[String]) -> Result<HealthCheck> {
     let mut missing_tools = Vec::new();
     let mut new_tools = Vec::new();
     let version_changes = Vec::new();
@@ -131,7 +127,7 @@ fn analyze_environment(
             .get(tool_name)
             .is_some_and(|info| info.available)
         {
-            let required = is_tool_required(tool_name, dev_type);
+            let required = is_tool_required(tool_name);
             missing_tools.push(ToolChange {
                 name: tool_name.clone(),
                 old_version: Some("detected".to_string()),
@@ -186,13 +182,10 @@ fn analyze_environment(
     })
 }
 
-fn is_tool_required(tool: &str, dev_type: &str) -> bool {
-    // Check if tool is required based on project type and configuration
-    match tool {
-        "cargo" | "rust" => true, // Always required for Patina
-        "docker" => dev_type == "docker",
-        _ => false,
-    }
+fn is_tool_required(tool: &str) -> bool {
+    // Core tools required for Patina projects
+    // Docker is optional (detected but not required)
+    matches!(tool, "cargo" | "rust" | "git")
 }
 
 fn get_install_command(tool: &str) -> &'static str {
@@ -231,7 +224,11 @@ fn count_sessions(sessions_path: &std::path::Path) -> usize {
     }
 }
 
-fn display_health_check(health: &HealthCheck, _env: &Environment) -> Result<()> {
+fn display_health_check(
+    health: &HealthCheck,
+    _env: &Environment,
+    project_root: &std::path::Path,
+) -> Result<()> {
     println!("\nEnvironment Changes Since Init:");
 
     // Display missing tools
@@ -252,6 +249,12 @@ fn display_health_check(health: &HealthCheck, _env: &Environment) -> Result<()> 
     }
 
     println!("\nProject Configuration:");
+    // Display UID
+    if let Some(uid) = project::get_uid(project_root) {
+        println!("  ✓ UID: {}", uid);
+    } else {
+        println!("  ⚠ UID: missing (will be created on next scrape)");
+    }
     let adapter_version = health
         .project_config
         .adapter_version
