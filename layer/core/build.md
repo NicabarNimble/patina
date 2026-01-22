@@ -77,7 +77,7 @@ Built-in quality measurement infrastructure:
 |---------|---------|--------------|
 | `patina eval` | Retrieval quality by dimension | - |
 | `patina eval --feedback` | Real-world precision from sessions | Session data |
-| `patina bench retrieval` | MRR, Recall@k benchmarking | `eval/retrieval-queryset.json` |
+| `patina bench retrieval` | MRR, Recall@k benchmarking | `resources/bench/*.json` |
 | `patina report` | **NEW:** Full state report using own tools | Tool quality = report quality |
 
 **Baseline metrics:** MRR 0.624, Recall@10 67.5%, Latency ~135ms
