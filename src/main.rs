@@ -55,27 +55,6 @@ impl Llm {
     }
 }
 
-/// Development environment type
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
-pub enum DevEnv {
-    /// Docker containerized builds
-    Docker,
-    /// Dagger CI/CD pipelines
-    Dagger,
-    /// Native local development
-    Native,
-}
-
-impl DevEnv {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            DevEnv::Docker => "docker",
-            DevEnv::Dagger => "dagger",
-            DevEnv::Native => "native",
-        }
-    }
-}
-
 #[derive(Parser)]
 #[command(author, version = env!("CARGO_PKG_VERSION"), about = "Context management for AI-assisted development", long_about = None)]
 struct Cli {
@@ -93,10 +72,6 @@ enum Commands {
     Init {
         /// Project name or "." for current directory
         name: String,
-
-        /// Development environment (docker, dagger, native)
-        #[arg(long, value_enum)]
-        dev: Option<DevEnv>,
 
         /// Force initialization, backup and replace existing patina branch
         #[arg(long)]
@@ -128,12 +103,6 @@ enum Commands {
         #[command(subcommand)]
         command: DevCommands,
     },
-
-    /// Build project with Docker
-    Build,
-
-    /// Run tests in configured environment
-    Test,
 
     /// Check project health and environment
     Doctor {
@@ -813,18 +782,11 @@ fn main() -> Result<()> {
 
         Some(Commands::Init {
             name,
-            dev,
             force,
             local,
             no_commit,
         }) => {
-            commands::init::execute(
-                name,
-                dev.map(|d| d.as_str().to_string()),
-                force,
-                local,
-                no_commit,
-            )?;
+            commands::init::execute(name, force, local, no_commit)?;
         }
         Some(Commands::Upgrade { check, json }) => {
             commands::upgrade::execute(check, json)?;
@@ -863,12 +825,6 @@ fn main() -> Result<()> {
                 commands::dev::update_fixtures::execute(fixture.as_deref())?;
             }
         },
-        Some(Commands::Build) => {
-            commands::build::execute()?;
-        }
-        Some(Commands::Test) => {
-            commands::test::execute()?;
-        }
         Some(Commands::Scrape { command, rebuild }) => {
             if rebuild {
                 commands::scrape::execute_rebuild()?;

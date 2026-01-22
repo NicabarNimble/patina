@@ -12,7 +12,6 @@
 //! // Initialize a new project skeleton
 //! init::execute(
 //!     ".".to_string(),
-//!     Some("docker".to_string()),
 //!     false, // force
 //!     false, // local
 //!     false, // no_commit
@@ -33,7 +32,6 @@ use anyhow::Result;
 /// # Arguments
 ///
 /// * `name` - Project name or "." for current directory
-/// * `dev` - Optional development environment (e.g., "docker")
 /// * `force` - Force initialization, backup and replace existing patina branch
 /// * `local` - Skip GitHub integration (local-only mode)
 /// * `no_commit` - Skip automatic git commit
@@ -43,14 +41,14 @@ use anyhow::Result;
 /// 1. **Git Setup**: Ensures proper git branch and fork (if external repo)
 /// 2. **Environment Detection**: Identifies available tools and languages
 /// 3. **Project Setup**: Creates .patina/ and layer/ structure
-/// 4. **Dev Environment**: Sets up development environment (Docker)
-/// 5. **Pattern Copying**: Copies core patterns from Patina
+/// 4. **Pattern Copying**: Copies core patterns from Patina
 ///
 /// # What This Does NOT Do
 ///
 /// - Create adapter directories (.claude/, .gemini/)
 /// - Configure MCP
 /// - Run scrape or oxidize
+/// - Create devcontainer (use `patina yolo` for that)
 ///
 /// Use `patina adapter add <claude|gemini|opencode>` to add LLM support.
 ///
@@ -59,7 +57,6 @@ use anyhow::Result;
 /// When run in an existing Patina project:
 /// - Preserves adapter config (adapters.allowed, adapters.default)
 /// - Refreshes environment detection
-/// - Updates dev environment if specified
 ///
 /// # Errors
 ///
@@ -68,14 +65,8 @@ use anyhow::Result;
 /// - Working tree has uncommitted changes (unless --force)
 /// - Directory creation fails
 /// - Environment validation shows critical missing tools
-pub fn execute(
-    name: String,
-    dev: Option<String>,
-    force: bool,
-    local: bool,
-    no_commit: bool,
-) -> Result<()> {
-    internal::execute_init(name, dev, force, local, no_commit)
+pub fn execute(name: String, force: bool, local: bool, no_commit: bool) -> Result<()> {
+    internal::execute_init(name, force, local, no_commit)
 }
 
 #[cfg(test)]
