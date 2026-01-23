@@ -65,6 +65,11 @@ What EXISTS vs. what needs TO BE BUILT.
 
 | Component | Effort | Notes |
 |-----------|--------|-------|
+| `patina version show` | Small | Read Cargo.toml + state file |
+| `patina version milestone` | Medium | Update files, git tag, history |
+| `patina version phase` | Medium | Same + phase transition logic |
+| `.patina/version.toml` | Small | State schema |
+| Session version integration | Small | Hook into session-end prompt |
 | `patina contributor register` | Medium | New command, hash generation |
 | `patina contributor verify` | Small | Check contributors.json |
 | `patina pr create` | Medium | Extend ForgeWriter, signature logic |
@@ -72,15 +77,26 @@ What EXISTS vs. what needs TO BE BUILT.
 | `patina pr verify` | Medium | Verify signature in CI |
 | `.patina/contributors.json` | Small | Schema + read/write |
 | Signature logic | Medium | Hash computation, embed/extract |
+| Session contributor field | Small | Update session-start script, source from git/gh |
 
 ### NEEDS TO BE CREATED (docs)
 
 | File | Status |
 |------|--------|
-| CONTRIBUTING.md | ✗ Doesn't exist |
-| CHANGELOG.md | ✗ Doesn't exist |
+| `go-public/git-history-audit.md` | ✓ Created |
+| `go-public/versioning-policy.md` | ✓ Created |
+| `go-public/version-history.md` | ✓ Created |
+| CONTRIBUTING.md | ✗ Doesn't exist (must include session transparency consent) |
+| CHANGELOG.md | ✗ Doesn't exist (or reference audit artifact) |
 | PR template | ✗ Doesn't exist |
 | CI workflow for PR verify | ✗ Doesn't exist |
+
+### NEEDS TO BE REMOVED
+
+| File | Reason |
+|------|--------|
+| `.github/workflows/release-plz.yml` | Replaced by `patina version` |
+| `release-plz.toml` | If exists, no longer needed |
 
 ### CONFIGURATION (GitHub settings)
 
@@ -349,6 +365,77 @@ impl ForgeWriter for GitHubWriter {
 
 ---
 
+## Session Transparency
+
+Sessions are project memory, not personal artifacts. All sessions committed, flat structure, attributed.
+
+### The Model
+
+```
+layer/sessions/
+├── 20260123-082104.md  # nicabar's session
+├── 20260124-090000.md  # alice's session
+├── 20260124-143000.md  # bob's session
+└── ...                  # chronological, unified history
+```
+
+**Like commits:** You don't have `commits/alice/abc123` - you have commits with authors. Sessions work the same way. Contributed to the project, not segregated by owner.
+
+### Session Metadata
+
+Add contributor attribution to existing session format:
+
+```markdown
+# Session: feature name
+**ID**: 20260123-082104
+**Contributor**: nicabar          ← NEW: explicit attribution
+**Started**: 2026-01-23T13:21:04Z
+**LLM**: claude
+**Git Branch**: patina
+**Session Tag**: session-20260123-082104-claude-start
+```
+
+### Why Flat Works
+
+1. **No collision** - Timestamp IDs unique to the second (YYYYMMDD-HHMMSS)
+2. **No hierarchy** - Sessions aren't "yours" or "mine", they're the project's
+3. **Chronological** - Natural sort shows project evolution across all contributors
+4. **Transparent** - Anyone can see how decisions were made, by whom
+
+### The Philosophy
+
+Patina practices **transparent AI-assisted development**:
+- Sessions show the actual conversation that led to code
+- Prompts are visible - the "why" behind decisions
+- Contributors opt into this transparency by using Patina
+
+This is intentional. We're demonstrating the discipline we advocate.
+
+### Contributor Consent
+
+CONTRIBUTING.md must be explicit:
+
+> **Session Transparency:** When you use Patina's session workflow, your sessions become part of project history. This includes your prompts, goals, and activity logs. This is intentional - we practice transparent AI-assisted development. If you're not comfortable with this visibility, you can contribute without using sessions (manual commits), but we encourage embracing the transparency.
+
+Contributors who aren't comfortable self-select out. The friction works as intended.
+
+### Multi-User Scenarios
+
+| Scenario | Result |
+|----------|--------|
+| Alice and Bob start sessions same day | Different timestamps, no conflict |
+| Both PR to patina | Each PR includes their session file, merges cleanly |
+| Reviewer wants context | Can read contributor's session to understand "why" |
+| Future maintainer | Can trace any decision back through session history |
+
+### Implementation
+
+- Update session-start script to add `**Contributor**` field
+- Source contributor from `git config user.name` or `gh api user`
+- No directory restructuring needed - keep flat
+
+---
+
 ## Defense Layers
 
 Multiple gates, each adding friction:
@@ -388,8 +475,13 @@ This self-selects for serious contributors.
 ## Exit Criteria
 
 ### Infrastructure
-- [ ] Historical changelog generated from git history
-- [ ] Automated releases working (release-plz or alternative)
+- [x] Git history audit complete (`git-history-audit.md` artifact)
+- [x] Fresh start version decided (v0.8.1)
+- [x] Historical record documented (`version-history.md` artifact)
+- [x] Versioning policy established (`versioning-policy.md`)
+- [ ] `patina version` command implemented
+- [ ] Remove release-plz workflow (`.github/workflows/release-plz.yml`)
+- [ ] Remove release-plz config (`release-plz.toml` if exists)
 - [ ] CI passing on main branch
 
 ### Branch Flow
@@ -417,9 +509,15 @@ This self-selects for serious contributors.
 - [ ] CI check: contributor verification
 - [ ] PR template requiring issue link and rationale
 
+### Session Transparency
+- [ ] Session-start script adds `**Contributor**` field
+- [ ] Contributor sourced from git config or gh auth
+- [ ] CONTRIBUTING.md explains session transparency consent
+
 ### Documentation
 - [ ] README explains what Patina is and how to install
 - [ ] CONTRIBUTING.md defines the trust model and quality bar
+- [ ] CONTRIBUTING.md includes session transparency disclosure
 - [ ] LICENSE clear and correct
 
 ### Hygiene
@@ -428,20 +526,70 @@ This self-selects for serious contributors.
 
 ---
 
-## Historical Changelog
+## Release Audit
 
-Before going public, generate a changelog from existing git history. Show the evolution that already happened - don't start from zero.
+Before going public, audit git history to understand what releases *should have been*. Document this as a historical artifact, then start GitHub releases fresh.
 
-**Approach:**
-- Parse conventional commits for changelog entries
-- Group by version tags (v0.1.0, etc.) or time periods
-- Curate significant changes manually if needed
-- Result: CHANGELOG.md that tells the story so far
+### The Problem
 
-**Tools:**
+release-plz was configured but broken (9 failed runs). Result: 494+ commits since v0.1.0, version still at 0.1.0. No GitHub releases created.
+
+We need to:
+1. Understand the git history
+2. Find where it becomes "clean enough" to make sense
+3. Document what releases would have been
+4. Decide what version to start fresh at
+5. Create the historical record
+
+### Spec Artifacts
+
+Spec folders can contain supporting files beyond SPEC.md:
+
+```
+layer/surface/build/feat/go-public/
+├── SPEC.md                  # This spec
+├── git-history-audit.md     # Release history analysis (TO CREATE)
+```
+
+### Git History Audit Process
+
+**Step 1: Analyze history structure**
+- When did conventional commits start?
+- When did CI get stable?
+- Major refactors or milestones?
+- Where does the "real" project begin vs early experiments?
+
+**Step 2: Document in artifact**
+Create `git-history-audit.md` with:
+- Timeline of significant commits/milestones
+- Analysis of what releases would have been (feat = minor, fix = patch)
+- Recommendation for "clean start" point
+- Proposed version to resume at
+
+**Step 3: Decide fresh start version**
+Options:
+- **Stay at 0.1.0** - Pretend nothing happened (weird)
+- **Bump to 0.2.0** - Acknowledge "stuff happened" (honest)
+- **Jump to 1.0.0** - Going public = stable (bold)
+
+**Step 4: Create historical record**
+Either:
+- `CHANGELOG.md` with "Pre-release History" section
+- Or just point to `git-history-audit.md` for archaeology
+
+### Output
+
+The audit artifact answers:
+1. When does our history become meaningful?
+2. What would the release sequence have been?
+3. What version should we start fresh at?
+4. Where's the historical record for anyone who asks?
+
+### Tools
+
 - `git-cliff` - generates changelog from conventional commits
-- Manual curation for pre-conventional history
-- release-plz can continue from there
+- Manual curation - for pre-conventional or messy periods
+- The artifact is the curation - not generated, analyzed
 
 ---
 
@@ -468,30 +616,103 @@ Before going public, generate a changelog from existing git history. Show the ev
 
 ---
 
-## Automated Releases
+## Patina-Native Versioning
 
-**Current state:** release-plz configured but broken (9 failed runs).
+**Decision:** Replace release-plz with `patina version` command that fits our milestone-based model.
 
-**Root cause:** Gitignored files that were previously tracked cause "uncommitted changes" error. Fix exists on `patina` branch (`036e9c6`) but unmerged.
+### Why Not release-plz
 
-**Options:**
-1. **Fix release-plz** - Merge existing fix, verify it works
-2. **git-cliff + manual** - Generate changelog, tag manually
-3. **Defer automation** - Manual releases until contributor volume justifies automation
+release-plz is designed for:
+- Conventional commits → automatic semver bumps
+- Every `feat:` = minor bump, every `fix:` = patch bump
 
-**Decision:** TBD - depends on how much automation is worth the complexity
+Our model (see `versioning-policy.md`):
+- Phase transitions are intentional decisions
+- Milestones are "I completed something meaningful"
+- Not every feat commit is a version bump
 
-### Release-plz Fix Details
+**release-plz would fight our model, not help it.**
 
-Commit `036e9c6` untracked problematic files:
-- `layer/dust/` - archived patterns
-- `.trunk/` - removed entirely
-- `.patina/config.toml`, `.patina/oxidize.yaml` - project-specific
+### The `patina version` Command
 
-Error message (all 9 failures):
+```bash
+# Show current version and phase
+patina version show
+# → v0.8.1 (Go Public phase, milestone 1)
+
+# Bump milestone within current phase
+patina version milestone "Versioning policy established"
+# → 0.8.0 → 0.8.1
+# → Updates Cargo.toml
+# → Updates version-history.md
+# → Creates git tag v0.8.1
+# → Optionally creates GitHub release
+
+# Start new phase
+patina version phase "Production Ready"
+# → 0.8.5 → 0.9.0
+# → Same automation as above
 ```
-the working directory of this project has uncommitted changes.
+
+### What It Tracks
+
+State stored in `.patina/version.toml`:
+```toml
+[version]
+current = "0.8.1"
+phase = 8
+phase_name = "Go Public"
+milestone = 1
+
+[history]
+# Points to version-history.md for full record
 ```
+
+### Automation Features
+
+1. **Cargo.toml sync** - Updates version automatically
+2. **Git tagging** - Creates annotated tag with milestone description
+3. **History update** - Appends to `version-history.md`
+4. **GitHub release** - Optional, creates release with notes
+
+### Session Integration
+
+Hook into session-end workflow:
+```
+Session ending. You completed:
+- Versioning policy established
+- Git history audited
+- Cargo.toml updated
+
+Bump version? [y/N] y
+Milestone description: Versioning system designed
+
+✓ Version bumped: 0.8.0 → 0.8.1
+✓ Tagged: v0.8.1
+✓ History updated
+```
+
+This addresses the "fear of not keeping up" - the prompt is there when you finish meaningful work.
+
+### Implementation
+
+| Component | Effort | Notes |
+|-----------|--------|-------|
+| `patina version show` | Small | Read Cargo.toml + state file |
+| `patina version milestone` | Medium | Update files, git tag |
+| `patina version phase` | Medium | Same as milestone + phase logic |
+| `.patina/version.toml` | Small | State schema |
+| Session integration | Small | Hook into session-end |
+| GitHub release | Small | Use existing ForgeWriter |
+
+### Migration from release-plz
+
+1. Remove `.github/workflows/release-plz.yml`
+2. Remove `release-plz.toml` if exists
+3. Add `.patina/version.toml` with current state
+4. Use `patina version` going forward
+
+No backwards compatibility needed - clean break.
 
 ---
 
@@ -529,6 +750,10 @@ the working directory of this project has uncommitted changes.
 | 2026-01-23 | in_progress | Revised PR workflow - allow iterative updates via `patina pr push` |
 | 2026-01-23 | in_progress | Added forge abstraction details - uses existing ForgeWriter + `gh` CLI |
 | 2026-01-23 | in_progress | Added reality check - EXISTS vs TO BUILD audit |
+| 2026-01-23 | in_progress | Added session transparency - flat sessions with contributor attribution |
+| 2026-01-23 | in_progress | Added release audit - git history analysis before fresh start |
+| 2026-01-23 | in_progress | Versioning policy (Phase.Milestone), history audit, v0.8.1 |
+| 2026-01-23 | in_progress | Replace release-plz with `patina version` command |
 
 ---
 
