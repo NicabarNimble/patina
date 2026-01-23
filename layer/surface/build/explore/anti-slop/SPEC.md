@@ -26,11 +26,13 @@ related:
 
 - [x] Problem space documented (noise types across surfaces)
 - [x] Patina's existing capabilities mapped to signal/noise filtering
-- [x] Core mechanism identified (linkage as signal, not new tools)
+- [x] Core mechanism identified (linkage as signal)
 - [x] Honest limitations documented
-- [x] Linkage discipline documented (commit conventions, spec references)
-- [x] Linkage measurement design (semantic system integration)
+- [x] Existing code audited (what's real vs vision)
+- [x] Linkage discipline documented (conventions that work today)
+- [x] Build roadmap defined (what code is needed)
 - [ ] Demonstrated on Patina repo (this spec → this session → commits)
+- [ ] Prototype spec→code coverage table
 - [ ] Prototype linkage scoring in scry
 
 ---
@@ -196,43 +198,48 @@ Saves time - we already thought about this.
 
 ---
 
-## Linkage As Quality Measure
+## Linkage: What EXISTS Today
 
-### What We Already Have
+### Verified in Codebase
 
-| Artifact | Links To | How |
-|----------|----------|-----|
-| **Spec** | Sessions | `sessions: origin:` field |
-| **Session** | Commits | Activity log, git tags |
-| **Belief** | Sessions | `## Evidence` section |
-| **Commit** | ??? | Message only (weak) |
-| **Code** | ??? | No linkage |
+| Capability | Status | Code Location |
+|------------|--------|---------------|
+| **Commit→Session linking** | ✅ EXISTS | `src/commands/scrape/git/mod.rs:115` `find_session_for_commit()` |
+| **Session_id in eventlog** | ✅ EXISTS | `src/commands/scrape/git/mod.rs:361` stored in JSON |
+| **Sessions indexed** | ✅ EXISTS | `src/commands/scrape/sessions/mod.rs` tables: sessions, observations, goals |
+| **Beliefs with confidence** | ✅ EXISTS | `src/commands/scry/internal/enrichment.rs:46-86` |
+| **Semantic search all types** | ✅ EXISTS | Code, patterns, commits, beliefs queryable |
+| **Co-change analysis** | ✅ EXISTS | Temporal relationships in scrape |
 
-### What's Weak
+### How Commit→Session Works (Real Code)
 
-- **Commits don't reference specs** - "Fixed bug" vs "implements explore/anti-slop"
-- **Code doesn't link to justification** - No way to ask "why does this line exist?"
-- **Reverse traversal missing** - Can go spec→session→commit, hard to go commit→spec
+```rust
+// src/commands/scrape/git/mod.rs:115-144
+fn find_session_for_commit(commit_time: &str, sessions: &[SessionBounds]) -> Option<String> {
+    // Links commits to sessions BY TIMESTAMP
+    // If commit_time falls within session start/end tags, returns session_id
+}
+```
 
-### Strengthening Linkage (No New Tools)
+This is **temporal linking** - commits made during a session are associated with it. The `session_id` is stored in the eventlog JSON for each commit.
 
-1. **Commit message discipline** - Reference spec in commits
-   ```
-   feat: add signal detection
+### What's Missing (Gaps)
 
-   Implements: explore/anti-slop
-   Session: 20260123-050814
-   ```
+| Gap | Current State |
+|-----|---------------|
+| **Spec→code mapping** | No table, no analysis |
+| **Commit message parsing** | "Implements:" not parsed, only timestamps |
+| **Linkage scores in scry** | Scry returns similarity, not linkage |
+| **Belief alignment scoring** | No automatic check |
 
-2. **Spec references in code comments** (sparingly)
-   ```rust
-   // See: layer/surface/build/explore/anti-slop/SPEC.md
-   fn evaluate_signal() { ... }
-   ```
+### Discipline Layer (No Code Needed)
 
-3. **Session activity logs** - Already capture commits, keep doing it
+These work TODAY through convention:
 
-4. **Scry for traversal** - Use existing semantic search to find related specs/sessions
+1. **Spec frontmatter** - `sessions: origin: YYYYMMDD` (manual, works)
+2. **Session activity logs** - Commits listed in markdown (manual, works)
+3. **Commit message convention** - `Implements: explore/anti-slop` (manual, not parsed)
+4. **Scry for discovery** - Find related specs/sessions semantically (works)
 
 ### The Quality Question
 
@@ -246,65 +253,74 @@ For any contribution, ask:
 
 ---
 
-## Linkage Measurement (Semantic System)
+## Linkage Measurement: TO BUILD
 
-The same semantic system that indexes beliefs can measure linkage quality.
+> **Status: VISION** - This section describes features that don't exist yet.
 
-### The Pattern
+The same semantic system that indexes beliefs COULD measure linkage quality. This would require new code.
 
-| What We Measure | How It Works |
-|-----------------|--------------|
-| **Beliefs** | Indexed, scored (confidence), queryable via scry |
-| **Linkage** | Indexed, scored (completeness), queryable via scry |
+### The Pattern (Aspirational)
 
-### Linkage Signals
+| What We Measure | Current | Target |
+|-----------------|---------|--------|
+| **Beliefs** | ✅ Indexed, scored, queryable | Done |
+| **Linkage** | ❌ Not computed | Indexed, scored, queryable |
 
-| Signal | Description | Source |
-|--------|-------------|--------|
-| `spec_coverage` | Does this code have a justifying spec? | Spec → code path matching |
-| `session_provenance` | Was this developed in a tracked session? | Session tags, activity logs |
-| `commit_context` | Does commit reference spec/session? | Commit message parsing |
-| `belief_alignment` | Does change align with captured beliefs? | Semantic similarity |
+### Linkage Signals (To Implement)
 
-### Computed Score
+| Signal | Description | Implementation Needed |
+|--------|-------------|----------------------|
+| `spec_coverage` | Does code have a spec? | Parse specs for paths, build coverage table |
+| `session_provenance` | Developed in session? | ✅ EXISTS via `find_session_for_commit` |
+| `commit_context` | Commit refs spec? | Parse "Implements:" from commit messages |
+| `belief_alignment` | Aligns with beliefs? | Semantic similarity between diff and beliefs |
 
-```
-linkage_score = weighted_average(
-    spec_coverage,      # 0.0-1.0
-    session_provenance, # 0.0-1.0
-    commit_context,     # 0.0-1.0
-    belief_alignment    # 0.0-1.0
-)
-```
+### What Would Need to Be Built
 
-### Surfacing in Scry
+**Estimated: 500-1000 lines of Rust**
+
+1. **Spec→code mapping table** (~200 lines)
+   - Parse specs for file/function references
+   - Store in SQLite: `spec_coverage(spec_id, path_pattern)`
+   - Query: "Which spec covers this file?"
+
+2. **Commit message parser** (~100 lines)
+   - Extract `Implements:` and `Session:` fields
+   - Store in commits table or eventlog
+
+3. **Linkage score computation** (~200 lines)
+   - Aggregate signals into score
+   - Store per-file or per-function
+
+4. **Scry enrichment** (~100 lines)
+   - Add linkage info to `enrich_results()`
+   - Display in scry output
+
+### Envisioned Output
 
 ```bash
+# FUTURE - doesn't exist yet
 patina scry "src/commands/scrape"
 → [1] Score: 0.91 | code | src/commands/scrape/mod.rs
       Linkage: 0.92 (spec: spec-pipeline, session: 20260115)
-
-patina scry "src/utils/helpers.rs"
-→ [1] Score: 0.45 | code | src/utils/helpers.rs
-      Linkage: 0.31 (no spec, no session reference)
 ```
 
-### What This Enables
+### What This Would Enable
 
-- **Codebase health dashboard** - Overall linkage score across repo
-- **PR review signal** - New code with low linkage gets flagged
-- **Tech debt identification** - Old code without spec coverage
-- **Contribution quality** - Compare linkage scores across contributors
+- **Codebase health dashboard** - Overall linkage score
+- **PR review signal** - Flag low-linkage contributions
+- **Tech debt identification** - Code without spec coverage
+- **Contribution quality metrics** - Track over time
 
-### Not Detection - Measurement
+### Build Priority
 
-This isn't "detect and block noise." It's "measure and surface linkage quality."
-
-The measurement:
-- Helps maintainers prioritize review effort
-- Helps contributors understand expectations
-- Creates incentive for linkage discipline
-- Builds empirical track record over time
+| Component | Value | Effort | Priority |
+|-----------|-------|--------|----------|
+| Session provenance | High | ✅ Done | - |
+| Spec coverage | High | Medium | P1 |
+| Commit parsing | Medium | Low | P2 |
+| Belief alignment | Medium | Medium | P3 |
+| Scry integration | High | Low | P1 (after data) |
 
 ---
 
@@ -333,13 +349,13 @@ Goal: Friction **low for signal** (Patina makes it easy to learn project context
 
 ## Non-Goals (For Now)
 
-- **New detection tools** - Bots, CI integrations, automated scoring
+- **External detection tools** - Bots, CI integrations, GitHub Apps
 - **ZK proofs of understanding** - Cryptographic verification
 - **On-chain reputation** - Outcome tracking, slashable stake
 - **Proof of personhood** - Anti-sybil mechanisms
-- **Git blame for intent** - Structured intent metadata in commits
+- **Git protocol changes** - New metadata formats in git itself
 
-The answer is **linkage discipline**, not new infrastructure. Use existing systems (specs, sessions, commits, scry) and connect them well.
+**Clarification:** We DO need to build ~500-1000 lines of Rust to compute linkage scores. But this extends existing Patina infrastructure (scrape, scry), not external systems.
 
 See [[design.md]] for extended exploration of deferred ideas.
 
@@ -375,6 +391,7 @@ Someone willing to engage with Patina could still submit garbage with plausible 
 | 2026-01-23 | design | Added trust layer thesis and integration model |
 | 2026-01-23 | design | Reframed: linkage as signal, not new tools |
 | 2026-01-23 | design | Added linkage measurement via semantic system |
+| 2026-01-23 | design | Reality check: audited code, separated EXISTS vs TO BUILD |
 
 ---
 
