@@ -24,24 +24,40 @@ related:
 
 ## Exit Criteria
 
-- [ ] Problem space documented (noise types across surfaces)
-- [ ] Patina's existing capabilities mapped to signal/noise filtering
-- [ ] At least one concrete mechanism prototyped
-- [ ] Honest limitations documented
+- [x] Problem space documented (noise types across surfaces)
+- [x] Patina's existing capabilities mapped to signal/noise filtering
+- [x] Core mechanism identified (linkage as signal, not new tools)
+- [x] Honest limitations documented
+- [ ] Linkage discipline documented (commit conventions, spec references)
+- [ ] Demonstrated on Patina repo (this spec → this session → commits)
 
 ---
 
 ## The Core Insight
 
-**Noise is generic. Signal engages with project-specific knowledge.**
+**The signal IS the linkage.**
 
-Slop is one form of noise. But so are:
-- Duplicate issues (semantically similar to existing)
-- Already-explored proposals (covered in past sessions)
-- Well-intentioned but misaligned contributions
-- Drive-by opinions without context
+A quality contribution can be traced:
 
-Patina captures project-specific knowledge. Content that engages with it is signal. Content that ignores it is noise.
+```
+Spec (why this exists)
+    ↓ links to
+Session (work record)
+    ↓ links to
+Commit (implementation)
+    ↓ links to
+Diff/Code (grounded change)
+```
+
+If these connections exist and are coherent, that's signal. If they don't, that's noise.
+
+**No new tools needed.** Just discipline in linking existing artifacts:
+- Specs link to sessions (`sessions: origin: YYYYMMDD`)
+- Sessions link to commits (activity logs, tags)
+- Commits reference specs (`implements explore/anti-slop`)
+- Code changes are grounded in diffs
+
+The question becomes: **Can you trace this code change back to a spec that explains why?**
 
 ---
 
@@ -178,28 +194,53 @@ Saves time - we already thought about this.
 
 ---
 
-## What's Missing (Potential Mechanisms)
+## Linkage As Quality Measure
 
-### Automatic Surfacing
+### What We Already Have
 
-- **Issue triage bot** - Run scry on new issues, comment with related items
-- **PR context bot** - Surface relevant beliefs/patterns on PRs
-- **Duplicate detection** - Semantic similarity to existing issues
+| Artifact | Links To | How |
+|----------|----------|-----|
+| **Spec** | Sessions | `sessions: origin:` field |
+| **Session** | Commits | Activity log, git tags |
+| **Belief** | Sessions | `## Evidence` section |
+| **Commit** | ??? | Message only (weak) |
+| **Code** | ??? | No linkage |
 
-### Conflict Detection
+### What's Weak
 
-- **Belief alignment check** - Flag content that contradicts high-confidence beliefs
-- **"Already explored" flag** - Link to sessions that covered this ground
+- **Commits don't reference specs** - "Fixed bug" vs "implements explore/anti-slop"
+- **Code doesn't link to justification** - No way to ask "why does this line exist?"
+- **Reverse traversal missing** - Can go spec→session→commit, hard to go commit→spec
 
-### Quality Signals
+### Strengthening Linkage (No New Tools)
 
-- **Generic vs specific heuristics** - Does content use project vocabulary?
-- **Engagement indicators** - Did contributor query project knowledge?
+1. **Commit message discipline** - Reference spec in commits
+   ```
+   feat: add signal detection
 
-### Social/Process
+   Implements: explore/anti-slop
+   Session: 20260123-050814
+   ```
 
-- **CONTRIBUTING.md** - Guide contributors to `patina scry` before submitting
-- **Templates** - Reference beliefs/patterns in issue/PR templates
+2. **Spec references in code comments** (sparingly)
+   ```rust
+   // See: layer/surface/build/explore/anti-slop/SPEC.md
+   fn evaluate_signal() { ... }
+   ```
+
+3. **Session activity logs** - Already capture commits, keep doing it
+
+4. **Scry for traversal** - Use existing semantic search to find related specs/sessions
+
+### The Quality Question
+
+For any contribution, ask:
+
+> Can I trace this change back to a spec that explains why it exists?
+
+- **Yes, full chain** → Signal (understanding demonstrated)
+- **Partial chain** → Review needed (some context, gaps remain)
+- **No chain** → Noise (context-free, generic)
 
 ---
 
@@ -228,12 +269,15 @@ Goal: Friction **low for signal** (Patina makes it easy to learn project context
 
 ## Non-Goals (For Now)
 
-- ZK proofs of understanding
-- On-chain reputation / outcome tracking
-- Proof of personhood / anti-sybil
-- Git blame for intent
+- **New detection tools** - Bots, CI integrations, automated scoring
+- **ZK proofs of understanding** - Cryptographic verification
+- **On-chain reputation** - Outcome tracking, slashable stake
+- **Proof of personhood** - Anti-sybil mechanisms
+- **Git blame for intent** - Structured intent metadata in commits
 
-These require infrastructure Patina doesn't control. See [[design.md]] for exploration.
+The answer is **linkage discipline**, not new infrastructure. Use existing systems (specs, sessions, commits, scry) and connect them well.
+
+See [[design.md]] for extended exploration of deferred ideas.
 
 ---
 
@@ -265,6 +309,7 @@ Someone willing to engage with Patina could still submit garbage with plausible 
 | 2026-01-23 | design | Initial exploration from session discussion |
 | 2026-01-23 | design | Expanded from "anti-slop" to "signal over noise" across all surfaces |
 | 2026-01-23 | design | Added trust layer thesis and integration model |
+| 2026-01-23 | design | Reframed: linkage as signal, not new tools |
 
 ---
 
