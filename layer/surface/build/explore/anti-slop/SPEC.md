@@ -28,8 +28,10 @@ related:
 - [x] Patina's existing capabilities mapped to signal/noise filtering
 - [x] Core mechanism identified (linkage as signal, not new tools)
 - [x] Honest limitations documented
-- [ ] Linkage discipline documented (commit conventions, spec references)
+- [x] Linkage discipline documented (commit conventions, spec references)
+- [x] Linkage measurement design (semantic system integration)
 - [ ] Demonstrated on Patina repo (this spec → this session → commits)
+- [ ] Prototype linkage scoring in scry
 
 ---
 
@@ -244,6 +246,68 @@ For any contribution, ask:
 
 ---
 
+## Linkage Measurement (Semantic System)
+
+The same semantic system that indexes beliefs can measure linkage quality.
+
+### The Pattern
+
+| What We Measure | How It Works |
+|-----------------|--------------|
+| **Beliefs** | Indexed, scored (confidence), queryable via scry |
+| **Linkage** | Indexed, scored (completeness), queryable via scry |
+
+### Linkage Signals
+
+| Signal | Description | Source |
+|--------|-------------|--------|
+| `spec_coverage` | Does this code have a justifying spec? | Spec → code path matching |
+| `session_provenance` | Was this developed in a tracked session? | Session tags, activity logs |
+| `commit_context` | Does commit reference spec/session? | Commit message parsing |
+| `belief_alignment` | Does change align with captured beliefs? | Semantic similarity |
+
+### Computed Score
+
+```
+linkage_score = weighted_average(
+    spec_coverage,      # 0.0-1.0
+    session_provenance, # 0.0-1.0
+    commit_context,     # 0.0-1.0
+    belief_alignment    # 0.0-1.0
+)
+```
+
+### Surfacing in Scry
+
+```bash
+patina scry "src/commands/scrape"
+→ [1] Score: 0.91 | code | src/commands/scrape/mod.rs
+      Linkage: 0.92 (spec: spec-pipeline, session: 20260115)
+
+patina scry "src/utils/helpers.rs"
+→ [1] Score: 0.45 | code | src/utils/helpers.rs
+      Linkage: 0.31 (no spec, no session reference)
+```
+
+### What This Enables
+
+- **Codebase health dashboard** - Overall linkage score across repo
+- **PR review signal** - New code with low linkage gets flagged
+- **Tech debt identification** - Old code without spec coverage
+- **Contribution quality** - Compare linkage scores across contributors
+
+### Not Detection - Measurement
+
+This isn't "detect and block noise." It's "measure and surface linkage quality."
+
+The measurement:
+- Helps maintainers prioritize review effort
+- Helps contributors understand expectations
+- Creates incentive for linkage discipline
+- Builds empirical track record over time
+
+---
+
 ## Asymmetric Friction Model
 
 Noise economics require: generate quickly, submit to many projects, hope some stick.
@@ -310,6 +374,7 @@ Someone willing to engage with Patina could still submit garbage with plausible 
 | 2026-01-23 | design | Expanded from "anti-slop" to "signal over noise" across all surfaces |
 | 2026-01-23 | design | Added trust layer thesis and integration model |
 | 2026-01-23 | design | Reframed: linkage as signal, not new tools |
+| 2026-01-23 | design | Added linkage measurement via semantic system |
 
 ---
 
