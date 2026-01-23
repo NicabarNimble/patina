@@ -96,7 +96,7 @@ jobs:
       run: |
         # Run benchmark and capture full output
         ./target/release/patina bench retrieval \
-          --query-set eval/retrieval-queryset.json \
+          --query-set resources/bench/retrieval-queryset.json \
           --json | tee benchmark-output.txt
 
         # Extract JSON from output (last valid JSON object)
