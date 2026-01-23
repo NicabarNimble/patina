@@ -2,7 +2,7 @@
 
 **Status:** Architectural alignment - internal code quality meets core values.
 
-**Recent:** Commit enrichment bug fixed (2026-01-22) - scry now returns `git.commit` results, unblocking ref repo semantic search and surface layer connection scoring. Spec system reorg complete - 17 specs archived, 11 deferred, new folder format defined. See spec-review-q4-2025.md for 3-month retrospective.
+**Recent:** E3 complete (2026-01-22) - beliefs now indexed and queryable via scry (23 beliefs, ID offset 4B). New exploration: `explore/anti-slop` - signal over noise thesis, linkage as quality measure. Commit enrichment bug fixed - scry returns `git.commit` results. Spec system reorg ongoing - new folder format, 46 archived specs.
 
 ---
 
@@ -94,7 +94,7 @@ Run regularly to catch regressions.
 - [feat/surface-layer/SPEC.md](../surface/build/feat/surface-layer/SPEC.md) - **Design:** Distillation layer with success metrics, `patina surface` command
 
 **In Progress:**
-- [spec-epistemic-layer.md](../surface/build/spec-epistemic-layer.md) - **E0-E2.5 done:** Belief system validated, E3 (confidence decay) next
+- [spec-epistemic-layer.md](../surface/build/spec-epistemic-layer.md) - **E0-E3 done:** Belief system validated, beliefs indexed in scry (23 total)
 - [spec-mother.md](../surface/build/spec-mother.md) - **Phase 1 next:** Federated query (vocabulary gap resolved)
 - [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **Phase 1-2 done:** Commit-based training working
 - [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Phase 1 done:** UIDs everywhere, Phase 2-3 remain
@@ -107,21 +107,32 @@ Run regularly to catch regressions.
 - [spec-launcher-polish.md](../surface/build/spec-launcher-polish.md) - **Ready:** MCP auto-config on launch
 
 **Exploration:**
+- [explore/anti-slop/SPEC.md](../surface/build/explore/anti-slop/SPEC.md) - **Active:** Signal over noise, linkage as quality measure
 - [explore/agents-and-yolo/SPEC.md](../surface/build/explore/agents-and-yolo/SPEC.md) - **Open:** yolo fate, agent concepts
 
 ---
 
 ## Current Focus
 
-### Epistemic Layer (Active)
+### Epistemic Layer (E0-E3 Complete)
 
 **Problem:** Knowledge systems store facts. Patina needs to store **beliefs with justification and revision**.
 
 **Solution:** Persona-based epistemic belief revision using atomic Markdown propositions. AGM-style operations (expansion, contraction, revision) map to layer lifecycle (surface → core or → dust).
 
-**Progress:** E0-E2.5 complete (21 beliefs captured), E3 next (confidence decay).
+**Progress:** E0-E3 complete. 23 beliefs captured and indexed in scry (BELIEF_ID_OFFSET = 4B). Queryable via `patina scry "what do we believe about X"`. E4 (extraction automation) next.
 
 **Spec:** [spec-epistemic-layer.md](../surface/build/spec-epistemic-layer.md)
+
+### Signal Over Noise (Exploration)
+
+**Problem:** Open source faces increasing noise (slop, duplicates, misaligned contributions). Git tracks what changed but not why or under what understanding.
+
+**Thesis:** Linkage is the signal. Spec → Session → Commit → Code. If you can trace a change back to a spec that explains why, that's signal.
+
+**Progress:** Problem framed, existing linkage audited (commit→session EXISTS via timestamp), gaps identified (code→spec missing). ~500-1000 lines needed to compute linkage scores.
+
+**Spec:** [explore/anti-slop/SPEC.md](../surface/build/explore/anti-slop/SPEC.md)
 
 ### Surface Layer (Design)
 
