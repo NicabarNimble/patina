@@ -1,12 +1,12 @@
 //! Mother - Cross-project awareness layer
 //!
-//! This module consolidates mothership functionality:
+//! This module consolidates mother functionality:
 //! - **Client**: HTTP client for communicating with `patina serve` daemon
 //! - **Graph**: Local SQLite storage for project relationships
 //!
-//! # Client Usage (containers → mothership)
+//! # Client Usage (containers → mother)
 //!
-//! Set `PATINA_MOTHERSHIP=host:port` to enable remote queries.
+//! Set `PATINA_MOTHER=host:port` to enable remote queries.
 //! ```ignore
 //! use patina::mother;
 //!
@@ -39,30 +39,39 @@ pub use graph::{
 // Client exports
 pub use internal::{Client, ScryRequest, ScryResponse, ScryResultJson};
 
-/// Default port for mothership daemon
+/// Default port for mother daemon
 pub const DEFAULT_PORT: u16 = 50051;
 
-/// Environment variable for mothership address
-pub const ENV_MOTHERSHIP: &str = "PATINA_MOTHERSHIP";
+/// Environment variable for mother address
+pub const ENV_MOTHER: &str = "PATINA_MOTHER";
 
-/// Check if mothership is configured via environment
+/// Legacy environment variable (deprecated, use PATINA_MOTHER)
+const ENV_MOTHER_LEGACY: &str = "PATINA_MOTHERSHIP";
+
+/// Check if mother is configured via environment
 pub fn is_configured() -> bool {
-    std::env::var(ENV_MOTHERSHIP).is_ok()
+    // Warn if using legacy env var
+    if std::env::var(ENV_MOTHER_LEGACY).is_ok() && std::env::var(ENV_MOTHER).is_err() {
+        eprintln!("⚠️  PATINA_MOTHERSHIP is deprecated, use PATINA_MOTHER instead");
+    }
+    std::env::var(ENV_MOTHER).is_ok() || std::env::var(ENV_MOTHER_LEGACY).is_ok()
 }
 
-/// Get the mothership address from environment
+/// Get the mother address from environment
 /// Returns None if not configured
 pub fn get_address() -> Option<String> {
-    std::env::var(ENV_MOTHERSHIP).ok()
+    std::env::var(ENV_MOTHER)
+        .or_else(|_| std::env::var(ENV_MOTHER_LEGACY))
+        .ok()
 }
 
-/// Create a client connected to the configured mothership
-/// Returns None if PATINA_MOTHERSHIP is not set
+/// Create a client connected to the configured mother
+/// Returns None if PATINA_MOTHER is not set
 pub fn connect() -> Option<Client> {
     get_address().map(Client::new)
 }
 
-/// Check if the mothership is reachable (health check)
+/// Check if the mother is reachable (health check)
 pub fn is_available() -> bool {
     if let Some(client) = connect() {
         client.health().is_ok()
@@ -71,9 +80,9 @@ pub fn is_available() -> bool {
     }
 }
 
-/// Query the mothership with scry
-/// Returns Err if mothership is not configured or unreachable
+/// Query the mother with scry
+/// Returns Err if mother is not configured or unreachable
 pub fn scry(request: ScryRequest) -> Result<ScryResponse> {
-    let client = connect().ok_or_else(|| anyhow::anyhow!("PATINA_MOTHERSHIP not set"))?;
+    let client = connect().ok_or_else(|| anyhow::anyhow!("PATINA_MOTHER not set"))?;
     client.scry(request)
 }

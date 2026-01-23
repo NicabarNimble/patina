@@ -24,8 +24,8 @@ pub struct LaunchOptions {
     pub path: Option<String>,
     /// Adapter to use (default: from config)
     pub adapter: Option<String>,
-    /// Start mothership in background if not running
-    pub auto_start_mothership: bool,
+    /// Start mother in background if not running
+    pub auto_start_mother: bool,
     /// Initialize project if needed (prompt user)
     pub auto_init: bool,
 }
@@ -35,7 +35,7 @@ impl Default for LaunchOptions {
         Self {
             path: None,
             adapter: None,
-            auto_start_mothership: true,
+            auto_start_mother: true,
             auto_init: true,
         }
     }
@@ -55,7 +55,7 @@ mod tests {
         let opts = LaunchOptions::default();
         assert!(opts.path.is_none());
         assert!(opts.adapter.is_none());
-        assert!(opts.auto_start_mothership);
+        assert!(opts.auto_start_mother);
         assert!(opts.auto_init);
     }
 }

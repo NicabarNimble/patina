@@ -1,4 +1,4 @@
-//! Model command - Manage embedding models in mothership cache
+//! Model command - Manage embedding models in mother cache
 //!
 //! Models are downloaded to `~/.patina/cache/models/` and shared across projects.
 //! Provenance tracked in `~/.patina/models.lock`.
@@ -155,7 +155,7 @@ fn status() -> Result<()> {
     println!("📊 Model Status\n");
 
     // Show what's in cache
-    println!("Mothership cache:");
+    println!("Mother cache:");
     if lock.list().is_empty() {
         println!("  (no models downloaded)");
     } else {

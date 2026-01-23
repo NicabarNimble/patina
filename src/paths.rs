@@ -103,7 +103,7 @@ pub mod secrets {
     use std::path::Path;
 
     // =========================================================================
-    // Global (mothership) paths - ~/.patina/
+    // Global (mother) paths - ~/.patina/
     // =========================================================================
 
     /// Global secrets registry: `~/.patina/secrets.toml`

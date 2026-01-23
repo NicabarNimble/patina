@@ -74,7 +74,7 @@ fn create_embedder_from_config() -> Result<Box<dyn EmbeddingEngine>> {
 
 /// Create ONNX embedder from model definition
 fn create_onnx_embedder(model_def: &ModelDefinition) -> Result<Box<dyn EmbeddingEngine>> {
-    // Resolve model path: checks mothership cache first, then local
+    // Resolve model path: checks mother cache first, then local
     let model_dir = crate::models::resolve_model_path(&model_def.name)?;
 
     // Construct paths based on model directory

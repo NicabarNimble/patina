@@ -249,7 +249,7 @@ enum Commands {
         with_issues: bool,
     },
 
-    /// Manage embedding models in mothership cache
+    /// Manage embedding models in mother cache
     Model {
         #[command(subcommand)]
         command: Option<commands::model::ModelCommands>,
@@ -296,7 +296,7 @@ enum Commands {
         json: bool,
     },
 
-    /// Start the Mothership daemon (Ollama-style HTTP server)
+    /// Start the Mother daemon (Ollama-style HTTP server)
     Serve {
         /// Host to bind to (default: 127.0.0.1, use 0.0.0.0 for container access)
         #[arg(long, default_value = "127.0.0.1")]
@@ -774,7 +774,7 @@ fn main() -> Result<()> {
             let options = commands::launch::LaunchOptions {
                 path: None,
                 adapter: cli.adapter,
-                auto_start_mothership: true,
+                auto_start_mother: true,
                 auto_init: true,
             };
             commands::launch::execute(options)?;
