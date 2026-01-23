@@ -1,11 +1,11 @@
 # Spec: Epistemic Markdown Layer
 
-**Status:** Active (E2 Complete - Belief Creation System Validated)
+**Status:** Active (E3 Complete - Beliefs in Scry)
 **Created:** 2026-01-16
-**Updated:** 2026-01-17 (E2.5 session-belief loop complete)
+**Updated:** 2026-01-22 (E3 beliefs indexed and queryable via scry)
 **Origin:** Session 20260116-054624, external LLM collaboration on academic grounding
 **Prototype:** `layer/surface/epistemic/`
-**Progress:** E0 ✅ | E1 (in progress) | E2 ✅ | E2.5 ✅ | E3 (next) | E4-E6 (planned)
+**Progress:** E0 ✅ | E1 (in progress) | E2 ✅ | E2.5 ✅ | E3 ✅ | E4-E6 (planned)
 
 ---
 
@@ -673,11 +673,43 @@ Query: `grep -r "session-{id}" layer/surface/epistemic/beliefs/`
 
 ---
 
-### Phase E3: Scry Integration
+### Phase E3: Scry Integration (COMPLETE - Session 20260122-220957)
 
-- [ ] Index beliefs in oxidize pipeline
-- [ ] Query beliefs via scry
-- [ ] Return beliefs in MCP `scry` tool
+- [x] Index beliefs in oxidize pipeline
+- [x] Query beliefs via scry
+- [x] Return beliefs in MCP `scry` tool
+
+**Implementation (2026-01-22):**
+
+1. **Belief Scraper** (`src/commands/scrape/beliefs/mod.rs`):
+   - Parses beliefs from `layer/surface/epistemic/beliefs/`
+   - Creates `beliefs` table and `belief_fts` for lexical search
+   - Extracts: id, statement, persona, facets, confidence, entrenchment, status
+
+2. **Oxidize Integration** (`src/commands/oxidize/mod.rs`):
+   - `BELIEF_ID_OFFSET = 4_000_000_000` (after commits at 3B)
+   - Embeds belief statement + persona + facets + confidence
+   - 22 beliefs indexed in semantic projection
+
+3. **Scry Enrichment** (`src/commands/scry/internal/enrichment.rs`):
+   - Handles belief ID range in semantic results
+   - Returns `belief.surface` event type
+   - Format: `{statement} [confidence: X%, entrenchment] (file_path)`
+
+**Commits:**
+- `884eef2a feat(scrape): add belief scraper for epistemic layer (E3)`
+- `9aeceff3 feat(scry): index and retrieve beliefs in semantic search (E3)`
+
+**Test Results:**
+```
+patina scry "what do we believe about async"
+→ [2] Score: 0.853 | belief.surface | sync-first
+   Prefer synchronous, blocking code over async in Patina. [confidence: 88%, high]
+
+patina scry "what do we believe about specs"
+→ [2] Score: 0.879 | belief.surface | truthful-specs
+→ [8] Score: 0.852 | belief.surface | spec-first
+```
 
 ### Phase E4: Extraction Automation
 
@@ -720,11 +752,11 @@ Query: `grep -r "session-{id}" layer/surface/epistemic/beliefs/`
 - [x] Created 3+ beliefs using the skill (5 created)
 - [x] No format errors in created beliefs
 
-### Phase E3 Exit
+### Phase E3 Exit (✅ COMPLETE - Session 20260122-220957)
 
-- [ ] `patina scry "what do we believe about X"` returns beliefs
-- [ ] Beliefs appear in MCP tool results
-- [ ] Belief embeddings in usearch index
+- [x] `patina scry "what do we believe about X"` returns beliefs
+- [x] Beliefs appear in MCP tool results (via `patina serve` MCP server)
+- [x] Belief embeddings in usearch index (22 beliefs in semantic.usearch)
 
 ### Phase E5 Exit
 
@@ -735,18 +767,19 @@ Query: `grep -r "session-{id}" layer/surface/epistemic/beliefs/`
 
 ---
 
-## Current Prototype Statistics (Updated 2026-01-17)
+## Current Prototype Statistics (Updated 2026-01-22)
 
 | Metric | Value |
 |--------|-------|
-| Beliefs | 14 |
+| Beliefs | 22 |
 | Rules | 3 |
-| Avg Confidence | 0.859 |
+| Avg Confidence | ~0.87 |
 | Highest Entrenchment | very-high (eventlog-is-truth) |
 | Defeated Attacks | 16 |
 | Active Attacks | 13 |
 | Personas | 1 (architect) |
-| Facets | 16 (methodology, git, workflow, devops, ci, development-process, design, engineering, llm, data-architecture, rust, tooling, context-management, epistemic, measurement, session-tracking, architecture, configuration) |
+| Indexed in Semantic | ✅ 22 beliefs in usearch |
+| Queryable via Scry | ✅ Verified working |
 
 ### Belief Inventory (Top 10 by Confidence)
 
