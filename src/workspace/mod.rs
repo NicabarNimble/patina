@@ -72,7 +72,7 @@ pub fn ensure() -> Result<()> {
 #[derive(Debug)]
 pub struct SetupResult {
     /// Path to ~/.patina/
-    pub mothership_path: std::path::PathBuf,
+    pub mother_path: std::path::PathBuf,
     /// Path to workspace folder
     pub workspace_path: std::path::PathBuf,
     /// Installed adapters

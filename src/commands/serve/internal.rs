@@ -1,4 +1,4 @@
-//! Internal implementation of the Mothership server
+//! Internal implementation of the Mother server
 
 use anyhow::Result;
 use rouille::{router, Request, Response};
@@ -93,12 +93,12 @@ struct ScryResultJson {
     timestamp: String,
 }
 
-/// Run the Mothership HTTP server
+/// Run the Mother HTTP server
 pub fn run_server(options: ServeOptions) -> Result<()> {
     let addr = format!("{}:{}", options.host, options.port);
     let state = Arc::new(ServerState::new());
 
-    println!("🚀 Mothership daemon starting...");
+    println!("🚀 Mother daemon starting...");
     println!("   Listening on http://{}", addr);
     println!("   Press Ctrl+C to stop\n");
 
@@ -148,7 +148,7 @@ fn handle_health(state: &ServerState) -> Response {
 fn handle_version(state: &ServerState) -> Response {
     Response::json(&serde_json::json!({
         "version": state.version,
-        "name": "patina-mothership"
+        "name": "patina-mother"
     }))
 }
 

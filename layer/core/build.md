@@ -2,17 +2,17 @@
 
 **Status:** Architectural alignment - internal code quality meets core values.
 
-**Recent:** Ref repo lean storage complete (2026-01-14). Git/code skip eventlog for ref repos, forge dedup on insert. 9-60% DB size reduction across 14 ref repos. Bulk fetch 100x faster (3.7h → 3min). Adapter unification complete (Claude, Gemini, OpenCode). See spec-review-q4-2025.md for 3-month retrospective.
+**Recent:** E3 complete (2026-01-22) - beliefs now indexed and queryable via scry (23 beliefs, ID offset 4B). New exploration: `explore/anti-slop` - signal over noise thesis, linkage as quality measure. Commit enrichment bug fixed - scry returns `git.commit` results. Spec system reorg ongoing - new folder format, 46 archived specs.
 
 ---
 
 ## What Patina IS
 
-A local-first RAG network: portable project knowledge + personal mothership.
+A local-first RAG network: portable project knowledge + personal mother.
 
 - **Patina Projects:** `patina init .` - full RAG (semantic, temporal, dependency)
 - **Reference Repos:** `patina repo add <url>` - lightweight index in `~/.patina/cache/repos/`
-- **Mothership:** `~/.patina/` - registry, personas, `patina serve` daemon
+- **Mother:** `~/.patina/` - registry, personas, `patina serve` daemon
 
 **Completed infrastructure:** Scrape pipeline, oxidize embeddings, query/scry, serve daemon, persona, rebuild command, MCP server, hybrid retrieval (MRR 0.624), model management, feedback loop, assay structural queries. All working.
 
@@ -77,7 +77,7 @@ Built-in quality measurement infrastructure:
 |---------|---------|--------------|
 | `patina eval` | Retrieval quality by dimension | - |
 | `patina eval --feedback` | Real-world precision from sessions | Session data |
-| `patina bench retrieval` | MRR, Recall@k benchmarking | `eval/retrieval-queryset.json` |
+| `patina bench retrieval` | MRR, Recall@k benchmarking | `resources/bench/*.json` |
 | `patina report` | **NEW:** Full state report using own tools | Tool quality = report quality |
 
 **Baseline metrics:** MRR 0.624, Recall@10 67.5%, Latency ~135ms
@@ -90,53 +90,77 @@ Run regularly to catch regressions.
 
 ### Active
 
-- [feat/belief-validation-system/SPEC.md](../surface/build/feat/belief-validation-system/SPEC.md) - **NEW:** Verifiable belief confidence (computed signals, scry verification, graph support)
-- [spec-skills-focused-adapter.md](../surface/build/spec-skills-focused-adapter.md) - **Design:** Skills-first adapter refactor (universal SKILL.md, namespace ownership)
-- [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Phase 1 done:** UIDs everywhere, Phase 2-3 remain (generation tracking, provenance)
-- [spec-surface-layer.md](../surface/build/spec-surface-layer.md) - **Next:** Distillation layer, federation interface, `patina surface` command
-- [spec-report.md](../surface/build/spec-report.md) - **Phase 1 done:** Basic reports working, Phase 2-4 remain
-- [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 1 next:** Federated query (vocabulary gap resolved)
-- [spec-three-layers.md](../surface/build/spec-three-layers.md) - **Workshop:** mother/patina/awaken separation
-- [spec-remove-build-test.md](../surface/build/spec-remove-build-test.md) - **Ready:** Remove dead code (63 lines)
-- [spec-explore-agents.md](../surface/build/spec-explore-agents.md) - **Exploration:** yolo/codex agent concepts
+**Features:**
+- [feat/surface-layer/SPEC.md](../surface/build/feat/surface-layer/SPEC.md) - **Design:** Distillation layer with success metrics, `patina surface` command
+
+**In Progress:**
+- [spec-epistemic-layer.md](../surface/build/spec-epistemic-layer.md) - **E0-E3 done:** Belief system validated, beliefs indexed in scry (23 total)
+- [spec-mother.md](../surface/build/spec-mother.md) - **Phase 1 next:** Federated query (vocabulary gap resolved)
+- [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **Phase 1-2 done:** Commit-based training working
+- [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Phase 1 done:** UIDs everywhere, Phase 2-3 remain
+
+**Refactors:**
+- [refactor/spec-system/SPEC.md](../surface/build/refactor/spec-system/SPEC.md) - **In Progress:** New folder-based spec format
+- [refactor/reports-layer/SPEC.md](../surface/build/refactor/reports-layer/SPEC.md) - **In Progress:** Unify eval/reports under `layer/surface/reports/`
+
+**Ready:**
+- [spec-launcher-polish.md](../surface/build/spec-launcher-polish.md) - **Ready:** MCP auto-config on launch
+
+**Exploration:**
+- [explore/anti-slop/SPEC.md](../surface/build/explore/anti-slop/SPEC.md) - **Active:** Signal over noise, linkage as quality measure
+- [explore/agents-and-yolo/SPEC.md](../surface/build/explore/agents-and-yolo/SPEC.md) - **Open:** yolo fate, agent concepts
 
 ---
 
 ## Current Focus
 
-### Surface Layer (Next)
+### Epistemic Layer (E0-E3 Complete)
 
-**Problem:** Accumulated project wisdom is locked in eventlog/embeddings (local, not portable). When starting a new project, past learnings aren't visible or transferable. Other projects can't query your knowledge.
+**Problem:** Knowledge systems store facts. Patina needs to store **beliefs with justification and revision**.
 
-**Solution:** `patina surface` command that distills knowledge into atomic markdown files with wikilinks. Surface is:
-- **Derived**: Extracted by querying scry/assay
-- **Committed**: Lives in git (`layer/surface/`)
-- **Portable**: Federation interface for cross-project queries
-- **Queryable**: Scry can search surface nodes
+**Solution:** Persona-based epistemic belief revision using atomic Markdown propositions. AGM-style operations (expansion, contraction, revision) map to layer lifecycle (surface → core or → dust).
 
-**Phase 1 scope:** Basic generation - query scry for decisions/patterns, assay for components, generate atomic nodes with wikilinks from co-occurrence.
+**Progress:** E0-E3 complete. 23 beliefs captured and indexed in scry (BELIEF_ID_OFFSET = 4B). Queryable via `patina scry "what do we believe about X"`. E4 (extraction automation) next.
 
-**Spec:** [spec-surface-layer.md](../surface/build/spec-surface-layer.md)
+**Spec:** [spec-epistemic-layer.md](../surface/build/spec-epistemic-layer.md)
 
-### Project Reports (NEW)
+### Signal Over Noise (Exploration)
 
-**Problem:** No way to get a comprehensive "state of the repo" that uses patina's own tools. Want to dogfood scry, assay, scrape data to generate reports - tool quality = report quality.
+**Problem:** Open source faces increasing noise (slop, duplicates, misaligned contributions). Git tracks what changed but not why or under what understanding.
 
-**Solution:** `patina report` command that internally runs scry queries, assay commands, reads knowledge.db, and assembles a timestamped markdown report.
+**Thesis:** Linkage is the signal. Spec → Session → Commit → Code. If you can trace a change back to a spec that explains why, that's signal.
 
-**Dual purpose:**
-1. Useful output (what's the state of this codebase?)
-2. Tool validation (if scry can't answer "main modules", fix scry)
+**Progress:** Problem framed, existing linkage audited (commit→session EXISTS via timestamp), gaps identified (code→spec missing). ~500-1000 lines needed to compute linkage scores.
 
-**Spec:** [spec-report.md](../surface/build/spec-report.md)
+**Spec:** [explore/anti-slop/SPEC.md](../surface/build/explore/anti-slop/SPEC.md)
 
-### Vocabulary Gap (COMPLETE)
+### Surface Layer (Design)
 
-**Problem:** FTS5 keyword matching fails when user vocabulary differs from codebase vocabulary ("commit message search" vs "commits_fts"). Measured in temporal queryset: MRR 0.100 (target: 0.4).
+**Problem:** Accumulated project wisdom is locked in eventlog/embeddings (local, not portable). When starting a new project, past learnings aren't visible.
 
-**Solution:** LLM query expansion via `expanded_terms` MCP parameter.
+**Solution:** `patina surface` command that distills knowledge into atomic markdown files with wikilinks.
 
-**Status:** Complete (2026-01-21). Tagged `spec/vocabulary-gap`.
+**Status:** Design complete, needs baseline measurement before implementation.
+
+**Spec:** [feat/surface-layer/SPEC.md](../surface/build/feat/surface-layer/SPEC.md)
+
+### Spec System Reorg (In Progress)
+
+**Problem:** Specs were inconsistent - lying status fields, unchecked boxes for done work, no provenance.
+
+**Solution:** One folder-based format (SPEC.md + optional design.md), machine-parseable frontmatter, session links.
+
+**Progress:** Format defined, new specs use it, migration ongoing.
+
+**Spec:** [refactor/spec-system/SPEC.md](../surface/build/refactor/spec-system/SPEC.md)
+
+### Commit Enrichment (COMPLETE)
+
+**Problem:** Commits indexed at offset 3B but enrichment.rs only handled 1B (code) and 2B (patterns).
+
+**Solution:** Added COMMIT_ID_OFFSET handling to scry enrichment.
+
+**Status:** Complete (2026-01-22). Unblocks ref repo semantic search and surface layer connection scoring.
 
 ### Reference
 
@@ -148,7 +172,7 @@ Living documentation (not phased work):
 
 ### Deferred
 
-See [deferred/](../surface/build/deferred/) folder. Categories:
+See [deferred/](../surface/build/deferred/) folder (18 specs). Categories:
 
 - **Parked** - Started, got partial win, waiting for conditions
 - **Blocked** - Ready to start, waiting for dependency
@@ -156,17 +180,23 @@ See [deferred/](../surface/build/deferred/) folder. Categories:
 - **Ideas** - Might do, not planned
 
 Key items:
+- `belief-validation-system/` - Verifiable belief confidence (complex, needs epistemic layer first)
+- `spec-skills-focused-adapter.md` - Skills-first adapter refactor (major redesign)
+- `spec-skills-universal.md` - Universal SKILL.md format
+- `spec-three-layers.md` - mother/patina/awaken separation concept
+- `spec-report.md` - Phase 1 done, Phase 2-4 on hold
 - `spec-retrieval-optimization.md` - Phase 0-1 complete (6.8x faster), Phase 2-4 need 100+ queries
 - `spec-persona-fusion.md` - Phase 1 complete, Phase 2 deferred
-- `spec-work-deferred.md` - Legacy backlog (needs rebuild into proper specs)
 
 ### Archived (git tags)
 
 Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 
-- `spec/repo-org-namespace` - Fix repo name collisions with org/repo identifiers (was already implemented)
+- `spec/commit-enrichment` - Add COMMIT_ID_OFFSET to scry enrichment (2026-01-22)
 - `spec/vocabulary-gap` - LLM query expansion via `expanded_terms` MCP param
+- `spec/repo-org-namespace` - Fix repo name collisions with org/repo identifiers
 - `spec/session-prompts` - Capture user prompts from ~/.claude/history.jsonl in session files
+- `spec/remove-dev-env` - Remove dev_env subsystem (~490 lines): build/test commands, DevEnvironment trait, --dev flag
 - `spec/remove-neuro-symbolic-debt` - Prolog removal (~2660 lines): reasoning/, storage/, query/, scryer-prolog dep
 - `spec/ref-repo-storage` - Lean storage for ref repos: git/code direct insert, forge dedup (11-60% DB reduction)
 - `spec/init-hardening` - Init/Adapter refactor: skeleton-only init, adapter refresh/doctor (Phases 1-2)
@@ -198,12 +228,12 @@ Full list: `git tag -l 'spec/*'`
 Completed specs preserved via git tags. View with: `git show spec/<name>:layer/surface/build/spec-<name>.md`
 
 **Recent completions:**
-- `spec/remove-neuro-symbolic-debt` - Prolog removal (~2660 lines dead code + heavy dep)
+- `spec/commit-enrichment` - Add COMMIT_ID_OFFSET to scry enrichment (2026-01-22)
+- `spec/vocabulary-gap` - LLM query expansion via `expanded_terms` MCP param (2026-01-21)
 - `spec/ref-repo-storage` - Lean storage for ref repos (11-60% DB reduction)
-- `spec/forge-bulk-fetch` - Bulk issue/PR fetch (100x faster), delete discover_all_issues()
-- `spec/preflight` - Self-healing startup, auto-kill stale processes (>24h)
-- `spec/init-hardening` - Skeleton-only init, adapter refresh/doctor, UID creation
-- `spec/adapter-selection` - Two-flow adapter selection, select_adapter(), project defaults
-- `spec/remove-codex` - Codex removed (agent vs adapter distinction)
+- `spec/forge-bulk-fetch` - Bulk issue/PR fetch (100x faster)
+- `spec/remove-dev-env` - Remove dev_env subsystem (~490 lines)
+- `spec/remove-neuro-symbolic-debt` - Prolog removal (~2660 lines)
+- `spec/init-hardening` - Skeleton-only init, adapter refresh/doctor
 
-**All tags:** `git tag -l 'spec/*'` (40 archived specs)
+**All tags:** `git tag -l 'spec/*'` (46 archived specs)

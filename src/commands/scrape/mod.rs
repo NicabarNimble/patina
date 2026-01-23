@@ -1,5 +1,6 @@
 // Shared utilities for all scrape subcommands
 
+pub mod beliefs;
 pub mod code;
 pub mod database;
 pub mod forge;
@@ -53,7 +54,7 @@ mod tests {
     }
 }
 
-/// Run all scrapers in sequence (code, git, sessions, layer)
+/// Run all scrapers in sequence (code, git, sessions, layer, beliefs)
 ///
 /// This is the default when running `patina scrape` with no subcommand.
 pub fn execute_all() -> Result<()> {
@@ -62,20 +63,24 @@ pub fn execute_all() -> Result<()> {
 
     println!("🔄 Running all scrapers...\n");
 
-    println!("📊 [1/4] Scraping code...");
+    println!("📊 [1/5] Scraping code...");
     execute_code(false, false)?;
 
-    println!("\n📊 [2/4] Scraping git...");
+    println!("\n📊 [2/5] Scraping git...");
     let git_stats = git::run(false)?;
     println!("  • {} commits", git_stats.items_processed);
 
-    println!("\n📚 [3/4] Scraping sessions...");
+    println!("\n📚 [3/5] Scraping sessions...");
     let session_stats = sessions::run(false)?;
     println!("  • {} sessions", session_stats.items_processed);
 
-    println!("\n📜 [4/4] Scraping layer patterns...");
+    println!("\n📜 [4/5] Scraping layer patterns...");
     let layer_stats = layer::run(false)?;
     println!("  • {} patterns", layer_stats.items_processed);
+
+    println!("\n🧠 [5/5] Scraping beliefs...");
+    let belief_stats = beliefs::run(false)?;
+    println!("  • {} beliefs", belief_stats.items_processed);
 
     println!("\n✅ All scrapers complete!");
     Ok(())
@@ -115,28 +120,32 @@ pub fn execute_rebuild() -> Result<()> {
     // Run all scrapers fresh (they will use lean storage for ref repos)
     println!("\n🔄 Running all scrapers...\n");
 
-    println!("📊 [1/5] Scraping code...");
+    println!("📊 [1/6] Scraping code...");
     execute_code(false, false)?;
 
-    println!("\n📊 [2/5] Scraping git...");
+    println!("\n📊 [2/6] Scraping git...");
     let git_stats = git::run(false)?;
     println!("  • {} commits", git_stats.items_processed);
 
-    println!("\n📚 [3/5] Scraping sessions...");
+    println!("\n📚 [3/6] Scraping sessions...");
     let session_stats = sessions::run(false)?;
     println!("  • {} sessions", session_stats.items_processed);
 
-    println!("\n📜 [4/5] Scraping layer patterns...");
+    println!("\n📜 [4/6] Scraping layer patterns...");
     let layer_stats = layer::run(false)?;
     println!("  • {} patterns", layer_stats.items_processed);
 
+    println!("\n🧠 [5/6] Scraping beliefs...");
+    let belief_stats = beliefs::run(false)?;
+    println!("  • {} beliefs", belief_stats.items_processed);
+
     // For ref repos, also rebuild forge data (this is the expensive cached data we preserve)
     if is_ref {
-        println!("\n🔗 [5/5] Scraping forge (issues/PRs)...");
+        println!("\n🔗 [6/6] Scraping forge (issues/PRs)...");
         // Use full=true to force complete re-fetch since we deleted the database
         execute_forge(true, false, false, false, None, None)?;
     } else {
-        println!("\n📝 [5/5] Skipping forge (run 'patina scrape forge' separately)");
+        println!("\n📝 [6/6] Skipping forge (run 'patina scrape forge' separately)");
     }
 
     // Report new size

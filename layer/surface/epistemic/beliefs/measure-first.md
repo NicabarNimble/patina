@@ -27,7 +27,7 @@ Before building infrastructure, measure the current state and prove the problem 
 
 ## Evidence
 
-- [[spec-mothership-graph]] - Phase G0 measured dumb routing before building graph (weight: 0.95)
+- [[spec/mothership-graph]] - Phase G0 measured dumb routing before building graph (weight: 0.95)
 - [[session-20260105]] - "Don't build infrastructure before proving the problem exists with data" (weight: 0.90)
 - [[spec-review-q4-2025]] - MRR regression caught because of measurement culture (weight: 0.85)
 
@@ -57,6 +57,6 @@ Before building infrastructure, measure the current state and prove the problem 
 
 ## Revision Log
 
-- 2026-01-05: Extracted from mothership-graph G0 phase (confidence: 0.75)
+- 2026-01-05: Extracted from mother-graph G0 phase (confidence: 0.75)
 - 2026-01-08: Quality gate evidence added (confidence: 0.75 → 0.85)
 - 2026-01-16: Q4 review evidence added (confidence: 0.85 → 0.88)

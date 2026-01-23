@@ -62,9 +62,9 @@ impl Default for AdapterConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServeConfig {
-    /// Port for mothership server
+    /// Port for mother server
     pub port: u16,
-    /// Auto-start mothership when launching adapter
+    /// Auto-start mother when launching adapter
     pub auto_start: bool,
 }
 
@@ -95,7 +95,7 @@ pub struct AdapterEntry {
 /// Workspace status info
 #[derive(Debug)]
 pub struct WorkspaceInfo {
-    pub mothership_path: PathBuf,
+    pub mother_path: PathBuf,
     pub workspace_path: PathBuf,
     pub config_exists: bool,
     pub adapters_installed: Vec<String>,
@@ -116,16 +116,16 @@ pub fn is_first_run() -> bool {
 
 /// Perform first-run setup
 pub fn setup() -> Result<SetupResult> {
-    let mothership = paths::patina_home();
+    let mother = paths::patina_home();
     let adapters = paths::adapters_dir();
 
     // Create directory structure
     println!("First-time setup...");
 
     // ~/.patina/
-    fs::create_dir_all(&mothership)
-        .with_context(|| format!("Failed to create {}", mothership.display()))?;
-    println!("  ✓ Created {}", mothership.display());
+    fs::create_dir_all(&mother)
+        .with_context(|| format!("Failed to create {}", mother.display()))?;
+    println!("  ✓ Created {}", mother.display());
 
     // ~/.patina/adapters/
     fs::create_dir_all(&adapters)?;
@@ -209,7 +209,7 @@ pub fn setup() -> Result<SetupResult> {
     }
 
     Ok(SetupResult {
-        mothership_path: mothership,
+        mother_path: mother,
         workspace_path,
         adapters_installed: vec![
             "claude".to_string(),
@@ -224,9 +224,9 @@ pub fn setup() -> Result<SetupResult> {
 
 /// Ensure workspace exists (idempotent)
 pub fn ensure_workspace() -> Result<()> {
-    let mothership = paths::patina_home();
+    let mother = paths::patina_home();
 
-    if !mothership.exists() {
+    if !mother.exists() {
         setup()?;
         return Ok(());
     }
@@ -294,7 +294,7 @@ pub fn save_config(config: &GlobalConfig) -> Result<()> {
 
 /// Get workspace info
 pub fn workspace_info() -> Result<WorkspaceInfo> {
-    let mothership = paths::patina_home();
+    let mother = paths::patina_home();
     let config = load_config()?;
     let workspace_path = PathBuf::from(shellexpand::tilde(&config.workspace.path).as_ref());
 
@@ -308,7 +308,7 @@ pub fn workspace_info() -> Result<WorkspaceInfo> {
     }
 
     Ok(WorkspaceInfo {
-        mothership_path: mothership.clone(),
+        mother_path: mother.clone(),
         workspace_path,
         config_exists: paths::config_path().exists(),
         adapters_installed: installed,

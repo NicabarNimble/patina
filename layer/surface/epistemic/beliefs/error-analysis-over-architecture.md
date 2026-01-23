@@ -50,7 +50,7 @@ When systems fail or underperform, analyze failure cases before adding complexit
 
 - [[spec-epistemic-layer]] Evaluation section - Q1-Q10 error analysis revealed data gaps
 - [[session-20260116-221800]] CI failure → error analysis → found config.toml gitignore issue
-- [[spec-mothership-graph]] G0-G2.5 phases all start with measurement before implementation
+- [[spec/mothership-graph]] G0-G2.5 phases all start with measurement before implementation
 
 ## Revision Log
 

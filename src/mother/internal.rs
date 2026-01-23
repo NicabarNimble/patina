@@ -1,11 +1,11 @@
-//! Internal HTTP client implementation for mothership
+//! Internal HTTP client implementation for mother
 
 use anyhow::{Context, Result};
 use reqwest::blocking::Client as HttpClient;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-/// Mothership client
+/// Mother client
 pub struct Client {
     base_url: String,
     http: HttpClient,
@@ -28,17 +28,17 @@ impl Client {
         Self { base_url, http }
     }
 
-    /// Health check - returns Ok if mothership is reachable
+    /// Health check - returns Ok if mother is reachable
     pub fn health(&self) -> Result<HealthResponse> {
         let url = format!("{}/health", self.base_url);
         let response = self
             .http
             .get(&url)
             .send()
-            .with_context(|| format!("Failed to connect to mothership at {}", self.base_url))?;
+            .with_context(|| format!("Failed to connect to mother at {}", self.base_url))?;
 
         if !response.status().is_success() {
-            anyhow::bail!("Mothership returned status: {}", response.status());
+            anyhow::bail!("Mother returned status: {}", response.status());
         }
 
         response
@@ -46,7 +46,7 @@ impl Client {
             .with_context(|| "Failed to parse health response")
     }
 
-    /// Execute a scry query against the mothership
+    /// Execute a scry query against the mother
     pub fn scry(&self, request: ScryRequest) -> Result<ScryResponse> {
         let url = format!("{}/api/scry", self.base_url);
         let response = self
@@ -59,7 +59,7 @@ impl Client {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().unwrap_or_default();
-            anyhow::bail!("Mothership scry failed ({}): {}", status, body);
+            anyhow::bail!("Mother scry failed ({}): {}", status, body);
         }
 
         response
@@ -76,7 +76,7 @@ pub struct HealthResponse {
     pub uptime_secs: u64,
 }
 
-/// Scry request to mothership
+/// Scry request to mother
 #[derive(Debug, Serialize)]
 pub struct ScryRequest {
     pub query: String,
@@ -109,7 +109,7 @@ impl Default for ScryRequest {
     }
 }
 
-/// Scry response from mothership
+/// Scry response from mother
 #[derive(Debug, Deserialize)]
 pub struct ScryResponse {
     pub results: Vec<ScryResultJson>,

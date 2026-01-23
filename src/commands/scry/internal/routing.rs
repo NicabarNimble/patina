@@ -1,6 +1,6 @@
 //! Remote and multi-repo routing for scry
 //!
-//! Handles routing queries to mothership daemon and cross-repo searches.
+//! Handles routing queries to mother daemon and cross-repo searches.
 //!
 //! Routing strategies:
 //! - **all**: Dumb routing - search ALL repos (current behavior)
@@ -39,14 +39,14 @@ impl RoutingStrategy {
     }
 }
 
-/// Execute scry via mothership daemon
-pub fn execute_via_mothership(query: Option<&str>, options: &ScryOptions) -> Result<()> {
+/// Execute scry via mother daemon
+pub fn execute_via_mother(query: Option<&str>, options: &ScryOptions) -> Result<()> {
     let address = mother::get_address().unwrap_or_else(|| "unknown".to_string());
-    println!("🔮 Scry - Querying mothership at {}\n", address);
+    println!("🔮 Scry - Querying mother at {}\n", address);
 
-    // File-based queries not supported via mothership yet
+    // File-based queries not supported via mother yet
     if options.file.is_some() {
-        anyhow::bail!("File-based queries (--file) not supported via mothership. Run locally.");
+        anyhow::bail!("File-based queries (--file) not supported via mother. Run locally.");
     }
 
     let query = query.ok_or_else(|| anyhow::anyhow!("Query text required"))?;

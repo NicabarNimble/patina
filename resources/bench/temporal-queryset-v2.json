@@ -1,0 +1,306 @@
+{
+  "name": "patina-temporal-retrieval-v2",
+  "version": "2.0",
+  "description": "Expanded temporal/narrative retrieval benchmark (35 queries). Targets INDEXED session observations (decisions, patterns, context, work). Original 10 queries had ground truth in Activity Log which isn't indexed.",
+  "methodology": "Queries derived from actual indexed observations in patina.db. Ground truth = session IDs where content appears in observations table.",
+  "created": "2026-01-22",
+  "session_origin": "20260122-061519",
+  "queries": [
+    {
+      "id": "t01-prolog-reject",
+      "query": "why did we reject the Prolog approach for belief validation",
+      "type": "why",
+      "relevant_docs": ["20260121-071314"],
+      "indexed_as": "decision",
+      "notes": "Decision: Reject Prolog approach (parallel infrastructure requires separate maintenance)"
+    },
+    {
+      "id": "t02-compose-over-build",
+      "query": "what is the compose over build pattern",
+      "type": "what",
+      "relevant_docs": ["20260121-071314"],
+      "indexed_as": "pattern",
+      "notes": "Pattern: compose-over-build: Composed solutions improve when components improve"
+    },
+    {
+      "id": "t03-scry-verification",
+      "query": "how do we use scry for semantic verification",
+      "type": "how",
+      "relevant_docs": ["20260121-071314"],
+      "indexed_as": "decision",
+      "notes": "Decision: Use composition: scry for semantic verification, git for link verification"
+    },
+    {
+      "id": "t04-skill-architecture",
+      "query": "what is the skill architecture for specs",
+      "type": "what",
+      "relevant_docs": ["20260120-165543"],
+      "indexed_as": "decision",
+      "notes": "Decision: Specs should use skill architecture: folder structure = routing"
+    },
+    {
+      "id": "t05-neuro-symbolic-debt",
+      "query": "why is neuro-symbolic code considered tech debt",
+      "type": "why",
+      "relevant_docs": ["20260120-165543"],
+      "indexed_as": "decision",
+      "notes": "Decision: ~1900 lines of Nov 2025 neuro-symbolic code is true tech debt"
+    },
+    {
+      "id": "t06-cache-kill",
+      "query": "why did we kill the cache and always refresh",
+      "type": "why",
+      "relevant_docs": ["20260120-132035"],
+      "indexed_as": "decision",
+      "notes": "Decision: Kill cache for now, always refresh from embedded"
+    },
+    {
+      "id": "t07-scalpel-not-shotgun",
+      "query": "what does scalpel not shotgun mean",
+      "type": "what",
+      "relevant_docs": ["20260120-132035"],
+      "indexed_as": "pattern",
+      "notes": "Pattern: Scalpel not shotgun - minimal targeted fixes, one commit per purpose"
+    },
+    {
+      "id": "t08-namespace-patina",
+      "query": "how should patina content be namespaced in adapter directories",
+      "type": "how",
+      "relevant_docs": ["20260118-054352"],
+      "indexed_as": "decision",
+      "notes": "Decision: Namespace all Patina content under patina/ subdirectories"
+    },
+    {
+      "id": "t09-bootstrap-ownership",
+      "query": "who owns bootstrap files like CLAUDE.md",
+      "type": "what",
+      "relevant_docs": ["20260118-054352"],
+      "indexed_as": "decision",
+      "notes": "Decision: Bootstrap files are user-owned - offer @import section on add"
+    },
+    {
+      "id": "t10-import-syntax",
+      "query": "what is the @import pattern for file inclusion",
+      "type": "what",
+      "relevant_docs": ["20260118-054352"],
+      "indexed_as": "pattern",
+      "notes": "Pattern: All three CLIs support @import syntax - universal pattern"
+    },
+    {
+      "id": "t11-feedback-loop",
+      "query": "how should the E2.5 feedback loop display beliefs",
+      "type": "how",
+      "relevant_docs": ["20260117-205031"],
+      "indexed_as": "decision",
+      "notes": "Decision: E2.5 feedback loop should be informative, not judgmental"
+    },
+    {
+      "id": "t12-oxidize-tracking",
+      "query": "should oxidize.yaml be tracked in git",
+      "type": "what",
+      "relevant_docs": ["20260116-154950"],
+      "indexed_as": "decision",
+      "notes": "Decision: oxidize.yaml is a project recipe, not machine-specific config"
+    },
+    {
+      "id": "t13-skills-over-mcp",
+      "query": "why skills over MCP for belief capture",
+      "type": "why",
+      "relevant_docs": ["20260116-095954"],
+      "indexed_as": "decision",
+      "notes": "Decision: Skills over MCP (learning value + progressive disclosure)"
+    },
+    {
+      "id": "t14-agm-framework",
+      "query": "what is the AGM framework for belief revision",
+      "type": "what",
+      "relevant_docs": ["20260116-054624"],
+      "indexed_as": "decision",
+      "notes": "Decision: Adopted AGM framework vocabulary (expansion, contraction, revision)"
+    },
+    {
+      "id": "t15-belief-confidence-signals",
+      "query": "what are the belief confidence signals",
+      "type": "what",
+      "relevant_docs": ["20260116-054624"],
+      "indexed_as": "decision",
+      "notes": "Decision: Beliefs have confidence signals (evidence, reliability, recency)"
+    },
+    {
+      "id": "t16-spec-living-documents",
+      "query": "what is the purpose of specs as living documents",
+      "type": "what",
+      "relevant_docs": ["20260119-115739"],
+      "indexed_as": "pattern",
+      "notes": "Pattern: Spec purpose: guide LLM through phased work with human checkpoints"
+    },
+    {
+      "id": "t17-migration-code-smell",
+      "query": "when is migration code a code smell",
+      "type": "when",
+      "relevant_docs": ["20260119-115739"],
+      "indexed_as": "pattern",
+      "notes": "Pattern: Migration code smell: if it runs once then does nothing"
+    },
+    {
+      "id": "t18-sqlite-relative-paths",
+      "query": "does SQLite store relative or absolute paths",
+      "type": "what",
+      "relevant_docs": ["20260119-180457"],
+      "indexed_as": "pattern",
+      "notes": "Pattern: SQLite stores relative paths - safe to move directories"
+    },
+    {
+      "id": "t19-usearch-paths",
+      "query": "do USearch indices have path references",
+      "type": "what",
+      "relevant_docs": ["20260119-180457"],
+      "indexed_as": "pattern",
+      "notes": "Pattern: USearch indices and safetensors have no path references"
+    },
+    {
+      "id": "t20-session-recovery",
+      "query": "how does session recovery work with uncommitted files",
+      "type": "how",
+      "relevant_docs": ["20260118-160027"],
+      "indexed_as": "pattern",
+      "notes": "Pattern: Session recovery via uncommitted session files + user paste"
+    },
+    {
+      "id": "t21-model-loading-bottleneck",
+      "query": "what was the real bottleneck in query performance",
+      "type": "what",
+      "relevant_docs": ["20260101-070900"],
+      "indexed_as": "decision",
+      "notes": "Decision: Real bottleneck is model loading per-query (200-500ms)"
+    },
+    {
+      "id": "t22-semantic-oracle-bottleneck",
+      "query": "what is the semantic oracle bottleneck",
+      "type": "what",
+      "relevant_docs": ["20251223-134455"],
+      "indexed_as": "context",
+      "notes": "Context: semantic oracle (MRR 0.201) is the bottleneck, lexical does heavy lifting"
+    },
+    {
+      "id": "t23-breaking-changes-signals",
+      "query": "what do breaking changes reveal about project decisions",
+      "type": "what",
+      "relevant_docs": ["20260102-061346"],
+      "indexed_as": "decision",
+      "notes": "Decision: Breaking changes reveal external pressures vs internal decisions"
+    },
+    {
+      "id": "t24-llm-era-commits",
+      "query": "how are LLM-era repo commits different",
+      "type": "how",
+      "relevant_docs": ["20260102-061346"],
+      "indexed_as": "decision",
+      "notes": "Decision: LLM-era repos have richer commit messages - more 'why'"
+    },
+    {
+      "id": "t25-git-narrative-approach",
+      "query": "what is the Phase 0 Git Narrative approach",
+      "type": "what",
+      "relevant_docs": ["20260102-061346"],
+      "indexed_as": "context",
+      "notes": "Context: Complete Phase 0 Git Narrative - all 6 deliverables"
+    },
+    {
+      "id": "t26-moments-detection",
+      "query": "what are moments in git history analysis",
+      "type": "what",
+      "relevant_docs": ["20260102-061346"],
+      "indexed_as": "context",
+      "notes": "Context: Implement moments detection (temporal signals)"
+    },
+    {
+      "id": "t27-temporal-queryset-design",
+      "query": "how was the temporal queryset designed",
+      "type": "how",
+      "relevant_docs": ["20260102-071003"],
+      "indexed_as": "context",
+      "notes": "Context: Create temporal queryset derived from real sessions"
+    },
+    {
+      "id": "t28-graph-weight-learning",
+      "query": "how does mother graph weight learning work",
+      "type": "how",
+      "relevant_docs": ["20260106-115754"],
+      "indexed_as": "context",
+      "notes": "Context: Graph-based weight learning from usage data"
+    },
+    {
+      "id": "t29-rag-architecture-goals",
+      "query": "what are the RAG architecture goals for mother",
+      "type": "what",
+      "relevant_docs": ["20260105-111026"],
+      "indexed_as": "context",
+      "notes": "Context: RAG architecture spec + goals for mother"
+    },
+    {
+      "id": "t30-ref-repo-semantic",
+      "query": "what is the ref repo semantic indexing approach",
+      "type": "what",
+      "relevant_docs": ["20260107-093317", "20260107-102433"],
+      "indexed_as": "context",
+      "notes": "Context: spec-ref-repo-semantic - content layer for ref repos"
+    },
+    {
+      "id": "t31-evidence-verification",
+      "query": "how can evidence links in beliefs be verified",
+      "type": "how",
+      "relevant_docs": ["20260121-071314"],
+      "indexed_as": "pattern",
+      "notes": "Pattern: Evidence links ARE verifiable - sessions exist, content can be grep'd"
+    },
+    {
+      "id": "t32-fabricated-signals",
+      "query": "how are belief signals currently fabricated",
+      "type": "how",
+      "relevant_docs": ["20260121-071314"],
+      "indexed_as": "pattern",
+      "notes": "Pattern: Current signals are fabricated: EVIDENCE_SIGNAL=$(echo $CONFIDENCE + 0.05)"
+    },
+    {
+      "id": "t33-huggingface-skills",
+      "query": "what does HuggingFace skills repo demonstrate",
+      "type": "what",
+      "relevant_docs": ["20260120-165543"],
+      "indexed_as": "pattern",
+      "notes": "Pattern: HuggingFace skills repo provides progressive disclosure reference"
+    },
+    {
+      "id": "t34-conventional-commits-mapping",
+      "query": "how do conventional commit types map to spec organization",
+      "type": "how",
+      "relevant_docs": ["20260120-165543"],
+      "indexed_as": "pattern",
+      "notes": "Pattern: Conventional commit types (feat/, fix/, refactor/) map to spec organization"
+    },
+    {
+      "id": "t35-read-code-before-write",
+      "query": "what is the read code before write code pattern",
+      "type": "what",
+      "relevant_docs": ["20260120-132035"],
+      "indexed_as": "pattern",
+      "notes": "Pattern: Read code before write code - understand existing design before changing"
+    }
+  ],
+  "query_types": {
+    "when": "Temporal queries - find point in time (2 queries)",
+    "why": "Rationale queries - understand decisions (6 queries)",
+    "how": "Mechanism queries - understand implementation (10 queries)",
+    "what": "Definition queries - understand concepts (17 queries)"
+  },
+  "improvements_over_v1": {
+    "ground_truth": "Targets indexed observations (decision, pattern, context) instead of Activity Log",
+    "query_count": "35 queries vs 10",
+    "vocabulary": "Uses vocabulary from actual indexed content",
+    "session_ids": "All session IDs verified to exist in observations table"
+  },
+  "known_limitations": {
+    "activity_log": "Activity Log content not indexed - fix in src/commands/scrape/sessions/mod.rs",
+    "commits": "Commit SHAs not well-matched by scry - needs commit→session linking"
+  }
+}

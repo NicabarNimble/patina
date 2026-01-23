@@ -54,7 +54,7 @@ Two concepts only:
 
 ## Two Levels of Configuration
 
-### Mothership Level: What Hosts Do I Have?
+### Mother Level: What Hosts Do I Have?
 
 ```yaml
 # ~/.patina/hosts.yaml
@@ -93,7 +93,7 @@ This is **project-specific**. Optional - not every project deploys somewhere.
 ## Relationship
 
 ```
-Mothership                          Projects
+Mother                              Projects
 (your infrastructure)               (individual apps)
 
 ┌─────────────────┐
@@ -106,7 +106,7 @@ Mothership                          Projects
 └─────────────────┘
 ```
 
-**Mothership = what you have**
+**Mother = what you have**
 **Project = what goes where**
 
 ---
@@ -147,7 +147,7 @@ patina/                    ethereum-rust/         notes/
 
 ## Commands
 
-### Host Management (Mothership)
+### Host Management (Mother)
 
 ```bash
 # Add a host to your infrastructure
@@ -279,7 +279,7 @@ Options:
 |-------|-------------------|
 | **unix-philosophy** | deploy does one thing: sync project to host |
 | **git as memory** | Project is git-tracked. Deploy syncs FROM git. |
-| **local-first** | Mothership on Mac. Hosts are just targets. |
+| **local-first** | Mother on Mac. Hosts are just targets. |
 | **escape hatches** | Can always SSH directly. rsync is standard. |
 | **platform-agnostic** | Projects work on any platform (Mac, Linux, etc.) |
 

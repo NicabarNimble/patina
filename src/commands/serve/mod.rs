@@ -1,7 +1,7 @@
-//! Mothership daemon for Patina
+//! Mother daemon for Patina
 //!
 //! Provides HTTP server for:
-//! - Container queries to Mac mothership
+//! - Container queries to Mac mother
 //! - Hot model caching (E5 embeddings)
 //! - Cross-project knowledge access
 //!
@@ -28,7 +28,7 @@ impl Default for ServeOptions {
     }
 }
 
-/// Start the Mothership daemon
+/// Start the Mother daemon
 pub fn execute(options: ServeOptions) -> Result<()> {
     internal::run_server(options)
 }

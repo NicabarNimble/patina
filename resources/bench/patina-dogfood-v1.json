@@ -73,9 +73,9 @@
       "relevant_docs": ["src/adapters/claude/mod.rs", "src/adapters/claude/internal/mod.rs"]
     },
     {
-      "id": "df15-mothership",
-      "query": "How does the mothership daemon manage background services?",
-      "relevant_docs": ["src/mothership/mod.rs", "src/mothership/internal.rs"]
+      "id": "df15-mother",
+      "query": "How does the mother daemon manage background services?",
+      "relevant_docs": ["src/mother/mod.rs", "src/mother/internal.rs"]
     },
     {
       "id": "df16-benchmark-metrics",

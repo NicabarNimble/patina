@@ -1,6 +1,6 @@
 //! Internal implementation for launch command
 //!
-//! Handles the launch flow: workspace check → mothership → project check → bootstrap → launch
+//! Handles the launch flow: workspace check → mother → project check → bootstrap → launch
 
 use anyhow::{bail, Context, Result};
 use std::env;
@@ -48,9 +48,9 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         }
     }
 
-    // Step 4: Check/start mothership
-    if options.auto_start_mothership {
-        ensure_mothership_running()?;
+    // Step 4: Check/start mother
+    if options.auto_start_mother {
+        ensure_mother_running()?;
     }
 
     // Step 5: Check if this is a patina project
@@ -146,6 +146,13 @@ pub fn launch(options: LaunchOptions) -> Result<()> {
         );
     }
 
+    // Step 7.5: Silent MCP auto-configuration (self-healing)
+    // If MCP isn't configured, silently fix it. Errors are ignored - if it fails,
+    // user will notice when MCP tools don't work, but we don't block launch.
+    if !adapters::is_mcp_configured(&adapter_name).unwrap_or(true) {
+        let _ = adapters::configure_mcp(&adapter_name);
+    }
+
     // Step 8: Ensure bootstrap file exists
     let bootstrap_file = match adapter_name.as_str() {
         "claude" => "CLAUDE.md",
@@ -179,8 +186,8 @@ fn resolve_project_path(path_opt: Option<&str>) -> Result<PathBuf> {
     Ok(canonical)
 }
 
-/// Check if mothership is running via health endpoint
-pub fn check_mothership_health() -> bool {
+/// Check if mother is running via health endpoint
+pub fn check_mother_health() -> bool {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(2))
         .build()
@@ -197,30 +204,30 @@ pub fn check_mothership_health() -> bool {
     }
 }
 
-/// Ensure mothership is running, start if needed
-fn ensure_mothership_running() -> Result<()> {
-    if check_mothership_health() {
-        println!("  ✓ Mothership running");
+/// Ensure mother is running, start if needed
+fn ensure_mother_running() -> Result<()> {
+    if check_mother_health() {
+        println!("  ✓ Mother running");
         return Ok(());
     }
 
-    println!("  ⏳ Starting mothership...");
-    start_mothership_daemon()?;
+    println!("  ⏳ Starting mother...");
+    start_mother_daemon()?;
 
     // Wait for it to come up
     for _ in 0..10 {
         thread::sleep(Duration::from_millis(500));
-        if check_mothership_health() {
-            println!("  ✓ Mothership started");
+        if check_mother_health() {
+            println!("  ✓ Mother started");
             return Ok(());
         }
     }
 
-    bail!("Failed to start mothership daemon")
+    bail!("Failed to start mother daemon")
 }
 
-/// Start mothership as background daemon
-pub fn start_mothership_daemon() -> Result<()> {
+/// Start mother as background daemon
+pub fn start_mother_daemon() -> Result<()> {
     // Get the path to the patina binary
     let patina_bin = env::current_exe()?;
 
@@ -231,7 +238,7 @@ pub fn start_mothership_daemon() -> Result<()> {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .context("Failed to start mothership daemon")?;
+        .context("Failed to start mother daemon")?;
 
     Ok(())
 }
