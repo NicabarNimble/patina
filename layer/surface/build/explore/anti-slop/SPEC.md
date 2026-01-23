@@ -200,6 +200,42 @@ Saves time - we already thought about this.
 
 ## Linkage: What EXISTS Today
 
+### The Linkage Graph (Current State)
+
+```
+Spec ──────────────────────────────────────────────────────────────
+  │
+  │ sessions.origin: YYYYMMDD             [MANUAL - frontmatter]
+  ▼
+Session ───────────────────────────────────────────────────────────
+  │
+  │ git tags: session-YYYYMMDD-start/end  [AUTO - session scripts]
+  │ activity logs mention commits          [MANUAL - markdown]
+  ▼
+Commit ────────────────────────────────────────────────────────────
+  │
+  │ find_session_for_commit()             [AUTO - timestamp-based]
+  │ session_id in eventlog JSON           [AUTO - stored on scrape]
+  │ "Implements:" in message              [MANUAL - not parsed]
+  ▼
+Code ──────────────────────────────────────────────────────────────
+  │
+  │ (nothing)                             [GAP - no link exists]
+  ▼
+```
+
+### Link Summary
+
+| From | To | Method | Auto/Manual |
+|------|-----|--------|-------------|
+| Spec | Session | `sessions: origin:` frontmatter | Manual |
+| Session | Commits | Git tags bracket the session | Auto |
+| Commit | Session | `find_session_for_commit()` | Auto |
+| Commit | Eventlog | `session_id` in JSON | Auto |
+| Commit | Spec | `Implements:` in message | Manual (not parsed) |
+| Belief | Session | `## Evidence` wikilinks | Manual |
+| Code | Spec | **NOTHING** | **GAP** |
+
 ### Verified in Codebase
 
 | Capability | Status | Code Location |
@@ -256,6 +292,29 @@ For any contribution, ask:
 ## Linkage Measurement: TO BUILD
 
 > **Status: VISION** - This section describes features that don't exist yet.
+
+### Target Linkage Graph
+
+```
+          ┌──────────────────────────────────────────────────────┐
+          │                                                      │
+          ▼                                                      │
+Spec ◄───────────────────────────────────────────────────────┐   │
+  │                                                          │   │
+  │ sessions.origin                                          │   │
+  ▼                                                          │   │
+Session ◄────────────────────────────────────────────────┐   │   │
+  │                                                      │   │   │
+  │ git tags                                             │   │   │
+  ▼                                                      │   │   │
+Commit ──────────────────────────────────────────────────┼───┘   │
+  │         find_session_for_commit() [EXISTS] ──────────┘       │
+  │         parse "Implements:" [TO BUILD] ──────────────────────┘
+  │
+  ▼
+Code ────────────────────────────────────────────────────────────
+          spec_coverage table [TO BUILD] links back to Spec
+```
 
 The same semantic system that indexes beliefs COULD measure linkage quality. This would require new code.
 
@@ -392,6 +451,7 @@ Someone willing to engage with Patina could still submit garbage with plausible 
 | 2026-01-23 | design | Reframed: linkage as signal, not new tools |
 | 2026-01-23 | design | Added linkage measurement via semantic system |
 | 2026-01-23 | design | Reality check: audited code, separated EXISTS vs TO BUILD |
+| 2026-01-23 | design | Added linkage graph diagrams (current state + target state) |
 
 ---
 
