@@ -1,9 +1,9 @@
 # Spec: Database Identity (UIDs for Federation)
 
-**Status:** Ready to implement
+**Status:** Phase 1 Complete ✅
 **Created:** 2026-01-12
-**Updated:** 2026-01-21
-**Sessions:** 20260112-061237 (initial), 20260112-093636 (explicit patterns), 20260121-102727 (simplification)
+**Updated:** 2026-01-22
+**Sessions:** 20260112-061237 (initial), 20260112-093636 (explicit patterns), 20260121-102727 (simplification), 20260122-154954 (verified complete)
 **Core References:** [dependable-rust](../../core/dependable-rust.md), [unix-philosophy](../../core/unix-philosophy.md)
 
 ---
@@ -126,30 +126,29 @@ With UID in separate file:
 
 ## Current Implementation Status
 
-**Already implemented:**
+**Phase 1: Complete ✅ (verified 2026-01-22)**
 
 | Feature | Location | Status |
 |---------|----------|--------|
-| `uid_path()` | `src/project/internal.rs:312` | ✅ Working |
-| `create_uid_if_missing()` | `src/project/internal.rs:318` | ✅ Working |
-| `get_uid()` | `src/project/internal.rs:342` | ✅ Working (but unused) |
+| `uid_path()` | `src/project/internal.rs:313` | ✅ Working |
+| `create_uid_if_missing()` | `src/project/internal.rs:319` | ✅ Working |
+| `get_uid()` | `src/project/internal.rs:343` | ✅ Working |
 | UID created at `patina init` | `src/commands/init/internal/mod.rs:147` | ✅ Working |
 | UID committed to git | `src/commands/init/internal/mod.rs:201` | ✅ Working |
+| UID for ref repos (new) | `repo/internal.rs:533` → `scaffold_patina()` | ✅ Working |
+| UID for ref repos (migration) | `repo/internal.rs:238` → `update_repo()` | ✅ Working |
+| UID for projects (migration) | `scrape/mod.rs:61,92` | ✅ Working |
+| Doctor shows UID | `src/commands/doctor.rs:252-257` | ✅ Working |
 
-**Not implemented (Phase 1):**
+**Verification:** All 15 registered ref repos have UIDs. Patina's own UID: `2bdc808e`.
 
-| Feature | Location | Status |
-|---------|----------|--------|
-| UID for ref repos (new) | `repo/internal.rs` → `scaffold_patina()` | ❌ Phase 1 |
-| UID for ref repos (migration) | `repo/internal.rs` → `update_repo()` | ❌ Phase 1 |
-| UID for projects (migration) | `scrape/mod.rs` | ❌ Phase 1 |
-| Doctor shows UID | `src/commands/doctor.rs` | ❌ Phase 1 |
-
-**Deferred (Phase 2):**
+**Phase 2: Deferred**
 
 | Feature | Location | Status |
 |---------|----------|--------|
 | DB generation tracking | Database `_meta` table | ⏳ Phase 2 |
+| Mother graph uses UIDs | `src/mother/graph.rs` | ⏳ Phase 2 |
+| Collision detection | Mother registration | ⏳ Phase 2 |
 
 ---
 
@@ -381,14 +380,16 @@ Results:
 
 ## Phases
 
-### Phase 1: Complete UID Coverage
+### Phase 1: Complete UID Coverage ✅
 
-1. **Ref repo UIDs (new)** - Add `create_uid_if_missing()` to `scaffold_patina()`
-2. **Ref repo UIDs (migration)** - Add `create_uid_if_missing()` to `update_repo()`
-3. **Project UIDs (migration)** - Add `create_uid_if_missing()` to scrape entry point
-4. **Doctor display** - Show UID in health check (informational)
+All items complete (verified 2026-01-22):
 
-### Phase 2: DB Generation + Mother Graph
+1. ✅ **Ref repo UIDs (new)** - `repo/internal.rs:533` in `scaffold_patina()`
+2. ✅ **Ref repo UIDs (migration)** - `repo/internal.rs:238` in `update_repo()`
+3. ✅ **Project UIDs (migration)** - `scrape/mod.rs:61,92` at entry points
+4. ✅ **Doctor display** - `doctor.rs:252-257` shows UID in health check
+
+### Phase 2: DB Generation + Mother Graph (Deferred)
 
 1. **DB generation** - `_meta` table with generation counter
 2. Mother graph uses UID as primary key
