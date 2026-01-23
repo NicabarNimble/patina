@@ -1,4 +1,4 @@
-# Spec: Mothership Architecture
+# Spec: Mother Architecture
 
 **Status:** Active (Parent Spec)
 **Created:** 2026-01-01
@@ -7,7 +7,7 @@
 ## Spec Hierarchy
 
 ```
-spec-mothership.md (this file)
+spec-mother.md (this file)
 │
 ├── Phase 0-0.5: Foundation ✅ COMPLETE
 │   Git narrative, measurement, intent detection, persona surfaces
@@ -344,7 +344,7 @@ All foundation phases complete. Details preserved in git history.
 
 **Goal:** Graph captures relationships.
 
-**Implementation:** See [spec-mothership-graph.md](./spec-mothership-graph.md) (archived as `spec/mothership-graph`)
+**Implementation:** See archived git tag `spec/mothership-graph`
 
 **Delivered:**
 - [x] Graph schema (nodes, edges, edge_usage in graph.db)
@@ -463,7 +463,7 @@ CREATE TABLE project_relationships (
 
 ## Open Questions
 
-1. **Graph DB choice** - SQLite with JSON? Dedicated graph DB? → **Answered: SQLite** (spec-mothership-graph.md)
+1. **Graph DB choice** - SQLite with JSON? Dedicated graph DB? → **Answered: SQLite** (see git tag: spec/mothership-graph)
 2. **Cross-project measurement** - How to prove graph helps? → **Answered: Phase G0** (measure dumb routing first)
 3. **Relationship types** - Which types matter? → **Answered: Data-driven** (let error analysis reveal)
 4. **Pattern extraction** - LLM-based? Rule-based? Hybrid?
@@ -475,7 +475,7 @@ CREATE TABLE project_relationships (
 ## Related Specs
 
 **Child Specs (implementations of this vision):**
-- [spec-mothership-graph.md](./spec-mothership-graph.md) - **✅ COMPLETE** Phase 2 implementation (tag: `spec/mothership-graph`)
+- spec/mothership-graph (archived git tag) - **✅ COMPLETE** Phase 2 implementation
 - [spec-ref-repo-semantic.md](./spec-ref-repo-semantic.md) - **CURRENT** Content layer for ref repos
 
 **Architecture:**
@@ -485,6 +485,6 @@ CREATE TABLE project_relationships (
 
 **How the specs connect:**
 ```
-User Query → Graph Routing (mothership-graph) → Semantic Search (ref-repo-semantic)
+User Query → Graph Routing (mother-graph) → Semantic Search (ref-repo-semantic)
              "route to dojo"                    "find relevant code in dojo"
 ```
