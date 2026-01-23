@@ -232,11 +232,11 @@
     },
     {
       "id": "t29-rag-architecture-goals",
-      "query": "what are the RAG architecture goals for mothership",
+      "query": "what are the RAG architecture goals for mother",
       "type": "what",
       "relevant_docs": ["20260105-111026"],
       "indexed_as": "context",
-      "notes": "Context: RAG architecture spec + goals for mothership"
+      "notes": "Context: RAG architecture spec + goals for mother"
     },
     {
       "id": "t30-ref-repo-semantic",
