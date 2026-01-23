@@ -4,8 +4,8 @@
 //! Phase 2.5b: MVP implementation for validating retrieval quality.
 //!
 //! # Remote Execution
-//! If `PATINA_MOTHERSHIP` is set, queries are routed to a remote daemon.
-//! This enables containers to query the Mac mothership.
+//! If `PATINA_MOTHER` is set, queries are routed to a remote daemon.
+//! This enables containers to query the Mac mother.
 
 pub mod internal;
 
@@ -17,7 +17,7 @@ use crate::commands::persona;
 use internal::enrichment::truncate_content;
 use internal::hybrid::execute_hybrid;
 use internal::logging::log_scry_query;
-use internal::routing::{execute_all_repos, execute_graph_routing, execute_via_mothership};
+use internal::routing::{execute_all_repos, execute_graph_routing, execute_via_mother};
 use internal::search::{is_lexical_query, scry_file};
 
 // Re-export routing strategy for CLI
@@ -79,9 +79,9 @@ impl Default for ScryOptions {
 
 /// Execute scry command
 pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
-    // Check if we should route to mothership
+    // Check if we should route to mother
     if mother::is_configured() {
-        return execute_via_mothership(query, &options);
+        return execute_via_mother(query, &options);
     }
 
     println!("🔮 Scry - Searching knowledge base\n");

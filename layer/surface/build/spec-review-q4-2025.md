@@ -75,9 +75,9 @@ The critique identified that the "database abstraction" rejected the very mechan
 
 ## Act II: Infrastructure & Measurement (November 2025)
 
-### The Mothership Emerges
+### The Mother Emerges
 
-November shifted focus from distributed dreams to local-first reality. The "mothership" concept transformed from "Turso cloud sync" to something more practical: `~/.patina/` as a local knowledge hub.
+November shifted focus from distributed dreams to local-first reality. The "mother" concept transformed from "Turso cloud sync" to something more practical: `~/.patina/` as a local knowledge hub.
 
 Key commits:
 - `a609d1546` feat(repo): add mothership MVP for cross-project knowledge
@@ -297,7 +297,7 @@ This honesty prevented technical debt accumulation.
 |--------|---------|
 | Turso distributed sync | Local-first SQLite |
 | Prolog reasoning engine | Deferred |
-| Team knowledge bases | Single-user mothership |
+| Team knowledge bases | Single-user mother |
 | Typed knowledge graph | Wikilinks in markdown |
 | Cloud-synced beliefs | Local persona.db |
 
@@ -348,7 +348,7 @@ The vision shrank, but what remained *actually works*.
 | spec-surface-layer | Distill knowledge into atomic markdown with wikilinks |
 | spec-report | Self-analysis reports using patina's own tools |
 | spec-vocabulary-gap | LLM query expansion for terminology mismatch |
-| spec-mothership | Phase 1: Federated query |
+| spec-mother | Phase 1: Federated query |
 | spec-database-identity | UIDs for databases, federation graph |
 
 ### Deferred Work
@@ -374,7 +374,7 @@ The vision shrank, but what remained *actually works*.
 
 ## Conclusion
 
-Three months, 765 commits, 39 completed specs. The neuro-symbolic dream became a practical RAG network. Prolog was deferred but ONNX embeddings shipped. Turso sync became local mothership. The vision contracted, but coherence emerged.
+Three months, 765 commits, 39 completed specs. The neuro-symbolic dream became a practical RAG network. Prolog was deferred but ONNX embeddings shipped. Turso sync became local mother. The vision contracted, but coherence emerged.
 
 The codebase now aligns with its stated values. Commands follow dependable-rust. Adapters follow adapter-pattern. Each tool does one thing (unix-philosophy).
 

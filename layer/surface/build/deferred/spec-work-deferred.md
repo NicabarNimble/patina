@@ -142,7 +142,7 @@ let db_path = project::db_path(project_root);
 
 **Proposed solution:** `patina upgrade --templates`
 - Sync templates from binary → `~/.patina/adapters/`
-- Push templates from mothership → all registered projects
+- Push templates from mother → all registered projects
 - Requires projects to be registered in `registry.yaml`
 
 **Tasks:**

@@ -479,5 +479,5 @@ The analysis identified a more ambitious approach: Codex as an RL-style agent th
 
 - [analysis-commit-training-signal.md](../analysis-commit-training-signal.md) - Detailed analysis of 48K commits across 13 repos
 - [concept-repo-patina.md](../concept-repo-patina.md) - Future Codex Q&A Agent vision
-- [spec-mothership-graph.md](./spec-mothership-graph.md) - Graph routing (prerequisite for cross-project queries)
+- spec/mothership-graph (archived git tag) - Graph routing (prerequisite for cross-project queries)
 - Session 20260107-061556 - Origin of this spec

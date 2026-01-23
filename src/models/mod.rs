@@ -1,6 +1,6 @@
 //! Model management for Patina
 //!
-//! Resolves model files from the mothership cache (`~/.patina/cache/models/`).
+//! Resolves model files from the mother cache (`~/.patina/cache/models/`).
 //! Tracks provenance in `~/.patina/models.lock`.
 //!
 //! # Design
@@ -11,7 +11,7 @@
 //! ```text
 //! registry.toml (in binary)  →  What models exist
 //!      ↓
-//! models.lock (mothership)   →  What's downloaded + provenance
+//! models.lock (mother)   →  What's downloaded + provenance
 //!      ↓
 //! config.toml (project)      →  What model this project uses
 //!      ↓
@@ -46,7 +46,7 @@ use crate::paths;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
-/// Check if a model is available in the mothership cache.
+/// Check if a model is available in the mother cache.
 ///
 /// Returns the path to the model directory if tokenizer.json exists and
 /// either model.onnx or model_quantized.onnx exists.
@@ -94,12 +94,12 @@ fn has_valid_model_files(dir: &Path) -> bool {
 /// Get the resolved path for a model, checking cache first then local.
 ///
 /// Resolution order:
-/// 1. Mothership cache (`~/.patina/cache/models/{name}/`)
+/// 1. Mother cache (`~/.patina/cache/models/{name}/`)
 /// 2. Local project path (`resources/models/{name}/`)
 ///
 /// Returns the first path where valid model files exist.
 pub fn resolve_model_path(name: &str) -> Result<PathBuf> {
-    // Try mothership cache first
+    // Try mother cache first
     if let Some(path) = cached_model_path(name) {
         return Ok(path);
     }
@@ -145,7 +145,7 @@ pub fn model_status(name: &str) -> Result<ModelStatus> {
     })
 }
 
-/// Download a model from registry to mothership cache.
+/// Download a model from registry to mother cache.
 ///
 /// 1. Gets model info from registry
 /// 2. Downloads model.onnx and tokenizer.json

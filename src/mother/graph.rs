@@ -36,7 +36,7 @@ impl NodeType {
 
 /// Edge types - relationships between nodes
 ///
-/// Note: These are hypothesized types from layer/surface/build/spec-mothership-graph.md.
+/// Note: These are hypothesized types from the archived spec (git tag: spec/mothership-graph).
 /// Will be validated against real usage in Phase G2.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EdgeType {

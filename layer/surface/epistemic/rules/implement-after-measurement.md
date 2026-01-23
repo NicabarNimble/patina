@@ -26,7 +26,7 @@ Before implementing new infrastructure:
 
 ## Rationale
 
-Combining spec-first (design before code) with measure-first (prove with data) ensures we don't build unnecessary infrastructure. The mothership-graph implementation followed this pattern: G0 measured, proved 0% repo recall, then G1-G2 built the solution.
+Combining spec-first (design before code) with measure-first (prove with data) ensures we don't build unnecessary infrastructure. The mother-graph implementation followed this pattern: G0 measured, proved 0% repo recall, then G1-G2 built the solution.
 
 ## Exceptions
 
@@ -36,7 +36,7 @@ Combining spec-first (design before code) with measure-first (prove with data) e
 
 ## Applied-In
 
-- [[spec-mothership-graph]] - G0 phase before G1
+- [[spec/mothership-graph]] - G0 phase before G1
 - [[spec-quality-gates]] - Measured MRR regression before fixing
 - [[spec-ref-repo-storage]] - Measured storage before optimization
 
