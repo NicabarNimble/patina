@@ -75,7 +75,7 @@
     },
     {
       "id": "q_3c83cd89",
-      "query": "add mothership architecture spec",
+      "query": "add mother architecture spec",
       "relevant_docs": [
         "layer/core/build.md",
         "layer/surface/build/spec-mothership.md"

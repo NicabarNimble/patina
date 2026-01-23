@@ -26,12 +26,12 @@
       "notes": "derive-moments command, temporal signals from git history"
     },
     {
-      "id": "t3-mothership-design",
+      "id": "t3-mother-design",
       "query": "why is mother a federation layer not a database",
       "type": "why",
       "relevant_docs": [
         "3c83cd89",
-        "spec-mothership",
+        "spec-mother",
         "20260101-194122"
       ],
       "notes": "Session captures the design rationale that commits don't"
@@ -93,7 +93,7 @@
       "type": "why",
       "relevant_docs": [
         "20260101-194122",
-        "spec-mothership"
+        "spec-mother"
       ],
       "notes": "Persona surfacing issue - diagnosis only in session, not commits"
     },
