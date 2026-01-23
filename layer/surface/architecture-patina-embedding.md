@@ -285,11 +285,11 @@ semantic_pairs = [
 
 ---
 
-## Mothership Architecture
+## Mother Architecture
 
 ### Global Semantic Adapter
 
-The mothership trains a cross-project semantic adapter from all primary projects:
+The mother trains a cross-project semantic adapter from all primary projects:
 
 ```
 ~/.patina/
@@ -324,7 +324,7 @@ projects:
     sessions: 0
     observations: 0
     adapters:
-      semantic: global                 # Uses mothership global adapter
+      semantic: global                 # Uses mother global adapter
       syntactic: local                 # Trained from code immediately
       dependency: local
       temporal: local
@@ -437,7 +437,7 @@ Following event-sourcing pattern, adapters are materialized views:
       ├─ temporal.onnx                 # Local
       ├─ architectural.onnx            # Local
       └─ semantic.onnx -> ~/.patina/persona/models/semantic_global.onnx
-         # Symlink to mothership global adapter (until local matures)
+         # Symlink to mother global adapter (until local matures)
 ```
 
 ### Progressive Adapter Evolution
@@ -476,7 +476,7 @@ patina adapters status
 # ✓ dependency:    local (8,475 calls, trained)
 # ✓ temporal:      local (234 commits, trained)
 # ✓ architectural: local (156 files, trained)
-# ⚠ semantic:      global (0 local observations, using mothership)
+# ⚠ semantic:      global (0 local observations, using mother)
 #
 # Tip: Accumulate 100+ observations to train local semantic adapter
 
@@ -518,7 +518,7 @@ patina materialize adapters
 - `layer/surface/patina-system-architecture.md` - v0.1.0 implementation details
 - `layer/core/session-capture.md` - Session system that generates semantic training data
 - Session 20251120-110914 - "One Engine, Variable Patina Thickness" design
-- Session 20251119-061119 - Islands & Gods, Mothership architecture
+- Session 20251119-061119 - Islands & Gods, Mother architecture
 
 ---
 

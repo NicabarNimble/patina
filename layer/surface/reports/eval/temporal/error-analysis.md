@@ -63,14 +63,14 @@ The session scraper (`src/commands/scrape/sessions/mod.rs`) extracts observation
 | Expected | Found | Gap |
 |----------|-------|-----|
 | session 20260101-194122 | spec-persona-fusion (related!) | Session not found |
-| spec-mothership | NOT FOUND | |
+| spec-mother | NOT FOUND | |
 
 **Exact match in session (line 33):**
 ```markdown
 - Diagnosed persona surfacing: works in direct query (0.719) but drowns in RRF (0.86+)
 ```
 
-**Why it fails:** This content is in Activity Log (### 20:15-21:30 - Mothership Deep Dive).
+**Why it fails:** This content is in Activity Log (### 20:15-21:30 - Mother Deep Dive).
 
 ### t10-query-performance: "what caused the query performance speedup"
 

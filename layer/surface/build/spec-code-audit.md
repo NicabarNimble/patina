@@ -93,7 +93,7 @@ CLI entry points. 24 public modules, ~19K lines total.
 | commands/repo/ | 1068 | External repo management | Federation | ✓ | Add, remove, sync, fork |
 | commands/scrape/ | **11,173** | Build knowledge database | RAG pipeline | ✓ | **HUGE** - see breakdown below |
 | commands/scry/ | 1358 | Vector similarity search | MCP tool | ✓ | Core query interface, hybrid mode |
-| commands/serve/ | 302 | Mothership HTTP daemon | Federation | ✓ | Container ↔ Mac queries |
+| commands/serve/ | 302 | Mother HTTP daemon | Federation | ✓ | Container ↔ Mac queries |
 | commands/yolo/ | 1613 | Generate devcontainers | Autonomous dev | ✓ | Scan repo, generate config |
 
 #### Scrape Breakdown (11,173 lines)
@@ -127,7 +127,7 @@ Multi-oracle knowledge retrieval with RRF fusion.
 | oracles/semantic.rs | 70 | Vector similarity | ONNX embeddings |
 | oracles/lexical.rs | 65 | FTS5 full-text | SQLite |
 | oracles/temporal.rs | 191 | Co-change patterns | Git history |
-| oracles/persona.rs | 49 | Cross-project knowledge | User mothership |
+| oracles/persona.rs | 49 | Cross-project knowledge | User mother |
 
 **Status:** ✓ Well-designed. Clean trait abstraction, parallel execution.
 
@@ -246,7 +246,7 @@ Project-level configuration.
 
 **Status:** ✓ Handles `.patina/config.toml`, legacy JSON migration.
 
-#### mothership/ (211 lines)
+#### mother/ (211 lines)
 HTTP client for remote daemon.
 
 | Module | Lines | Purpose | Notes |

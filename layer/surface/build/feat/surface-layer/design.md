@@ -465,4 +465,4 @@ Added Andrew Ng-style measurement framework. Key principle: measure before you b
 
 - [Obsidian](https://obsidian.md) - Knowledge garden model
 - [spec-pipeline.md](../../spec-pipeline.md) - scrape/oxidize/scry pipeline
-- [spec-mothership.md](../../spec-mothership.md) - Mother architecture
+- [spec-mother.md](../../spec-mother.md) - Mother architecture

@@ -26,7 +26,7 @@ Each project is a knowledge node:
 - `layer/` = Patina content (patterns, sessions, learnings) - **git-tracked**
 - `.patina/` = Config and local data (indices, embeddings) - **gitignored**
 
-### 2. Mothership as Hub
+### 2. Mother as Hub
 
 `~/.patina/` contains:
 - `personas/` - Cross-project knowledge (see spec-persona-capture.md)
@@ -81,7 +81,7 @@ Reference repos don't get: sessions, temporal, semantic dimensions.
 
 ### 6. Data Flow
 
-- **UP:** Knowledge flows from projects → Mothership personas
+- **UP:** Knowledge flows from projects → Mother personas
 - **DOWN:** Knowledge flows only through explicit queries (scry)
 - Reference repos don't contribute to persona (read-only knowledge sources)
 
@@ -138,7 +138,7 @@ dimensions:
   - dependency   # Caller/callee = related
 ```
 
-**Mothership provides MODELS (how to implement):**
+**Mother provides MODELS (how to implement):**
 ```toml
 # ~/.patina/config.toml
 [models.semantic]
@@ -156,4 +156,4 @@ This is the adapter pattern applied to models.
 
 > "Projects are islands, personas are the user. Knowledge flows UP (project → persona). Knowledge flows DOWN only through explicit queries."
 
-> "Mothership is a librarian, not a library. It tracks where knowledge lives, doesn't duplicate it."
+> "Mother is a librarian, not a library. It tracks where knowledge lives, doesn't duplicate it."

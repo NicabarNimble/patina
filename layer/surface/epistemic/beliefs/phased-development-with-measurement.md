@@ -27,7 +27,7 @@ Complex features should be built in phases, with each phase starting with measur
 
 ## Evidence
 
-- [[spec-mothership-graph]] G0 (baseline measurement) → G1 (graph CLI) → G2 (routing) → G2.5 (feedback loop) - each phase started with metrics (weight: 0.92)
+- [[spec/mothership-graph]] G0 (baseline measurement) → G1 (graph CLI) → G2 (routing) → G2.5 (feedback loop) - each phase started with metrics (weight: 0.92)
 - [[spec-epistemic-layer]] E0 (prototype) → E1 (manual population) → E2 (creation system) → E3 (scry integration) - phased with validation criteria (weight: 0.90)
 - [[spec-epistemic-layer]] Andrew Ng methodology: "Establish a baseline first" before iterating (weight: 0.88)
 - Git history shows G0-G2.5 commits each tagged phase completion with measurement results (weight: 0.85)
@@ -50,7 +50,7 @@ Complex features should be built in phases, with each phase starting with measur
 
 ## Applied-In
 
-- Mothership graph: G0 (baseline 2.7), G1 (graph management), G2 (routing improved to 4.9), G2.5 (feedback loop)
+- Mother graph: G0 (baseline 2.7), G1 (graph management), G2 (routing improved to 4.9), G2.5 (feedback loop)
 - Epistemic layer: E0 (5 beliefs), E1 (20+ beliefs goal), E2 (skill system), E3 (scry integration)
 - Forge abstraction: Phase 1 (reader trait), Phase 2 (scraper migration), Phase 3 (PR context), Phase 4 (writer trait)
 

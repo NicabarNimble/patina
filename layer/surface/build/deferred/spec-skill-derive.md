@@ -464,7 +464,7 @@ Beliefs with `attacked-by` could generate conditional skills:
 
 ### E3: Cross-Project Skills
 
-Mothership beliefs could generate skills that work across all projects.
+Mother beliefs could generate skills that work across all projects.
 
 ### E4: Skill Evolution
 

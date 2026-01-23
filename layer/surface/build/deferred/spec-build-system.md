@@ -12,7 +12,7 @@
 >
 > **Reason:**
 > - Manual markdown tracking is sufficient for current scale
-> - Higher priority work: observability, mothership design, retrieval optimization
+> - Higher priority work: observability, mother design, retrieval optimization
 > - Over-engineering risk: adding structured task tracking before proving manual approach is insufficient
 >
 > **Resume trigger:** When session/spec workflow friction becomes a bottleneck, or when LLM task querying would provide clear value.

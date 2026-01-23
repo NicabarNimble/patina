@@ -14,7 +14,7 @@
 > **Reason:**
 > - Manual `patina bench` workflow is sufficient for current scale
 > - Model comparison is infrequent (E5-base-v2 is working well)
-> - Higher priority: observability, mothership design
+> - Higher priority: observability, mother design
 >
 > **Resume trigger:** When model experimentation becomes frequent, or when retrieval quality regression tracking is needed.
 

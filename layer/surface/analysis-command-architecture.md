@@ -38,7 +38,7 @@ src/commands/scry/
 - `scry_file()` - File-specific search
 - `execute_hybrid()` - RRF fusion search
 - `execute_all_repos()` - Multi-repo search
-- `execute_via_mothership()` - Remote execution
+- `execute_via_mother()` - Remote execution
 - `execute_orient()` - Structural ranking
 - `execute_recent()` - Temporal queries
 - `execute_why()` - Explain results
@@ -90,7 +90,7 @@ src/commands/scry/
     ├── search.rs       # scry_text, scry_lexical, scry_file
     ├── hybrid.rs       # execute_hybrid, RRF fusion
     ├── subcommands.rs  # orient, recent, why, open, copy, feedback
-    ├── routing.rs      # mothership, all_repos
+    ├── routing.rs      # mother, all_repos
     ├── enrichment.rs   # enrich_results, add metadata
     ├── logging.rs      # query logging, feedback tracking
     └── query_prep.rs   # prepare_fts_query, lexical detection
@@ -152,7 +152,7 @@ src/commands/secrets/
 - Manages query logging
 - Clipboard operations
 - File opening
-- Mothership routing
+- Mother routing
 - All in one file
 
 ---
