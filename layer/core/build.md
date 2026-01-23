@@ -8,11 +8,11 @@
 
 ## What Patina IS
 
-A local-first RAG network: portable project knowledge + personal mothership.
+A local-first RAG network: portable project knowledge + personal mother.
 
 - **Patina Projects:** `patina init .` - full RAG (semantic, temporal, dependency)
 - **Reference Repos:** `patina repo add <url>` - lightweight index in `~/.patina/cache/repos/`
-- **Mothership:** `~/.patina/` - registry, personas, `patina serve` daemon
+- **Mother:** `~/.patina/` - registry, personas, `patina serve` daemon
 
 **Completed infrastructure:** Scrape pipeline, oxidize embeddings, query/scry, serve daemon, persona, rebuild command, MCP server, hybrid retrieval (MRR 0.624), model management, feedback loop, assay structural queries. All working.
 
@@ -95,7 +95,7 @@ Run regularly to catch regressions.
 
 **In Progress:**
 - [spec-epistemic-layer.md](../surface/build/spec-epistemic-layer.md) - **E0-E2.5 done:** Belief system validated, E3 (confidence decay) next
-- [spec-mothership.md](../surface/build/spec-mothership.md) - **Phase 1 next:** Federated query (vocabulary gap resolved)
+- [spec-mother.md](../surface/build/spec-mother.md) - **Phase 1 next:** Federated query (vocabulary gap resolved)
 - [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **Phase 1-2 done:** Commit-based training working
 - [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Phase 1 done:** UIDs everywhere, Phase 2-3 remain
 
