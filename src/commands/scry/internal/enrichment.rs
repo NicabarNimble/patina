@@ -27,6 +27,7 @@ pub fn enrich_results(
     const CODE_ID_OFFSET: i64 = 1_000_000_000;
     const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
     const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
+    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
 
     match dimension {
         "semantic" => {
@@ -42,7 +43,48 @@ pub fn enrich_results(
                 }
 
                 // Check content type based on ID range (order matters: highest offset first)
-                if key >= COMMIT_ID_OFFSET {
+                if key >= BELIEF_ID_OFFSET {
+                    // Belief - look up in beliefs table
+                    let rowid = key - BELIEF_ID_OFFSET;
+                    let result = conn.query_row(
+                        "SELECT id, statement, persona, facets, confidence, entrenchment, file_path
+                         FROM beliefs
+                         WHERE rowid = ?",
+                        [rowid],
+                        |row| {
+                            let id: String = row.get(0)?;
+                            let statement: String = row.get(1)?;
+                            let _persona: String = row.get(2)?;
+                            let facets: Option<String> = row.get(3)?;
+                            let confidence: f64 = row.get(4)?;
+                            let entrenchment: String = row.get(5)?;
+                            let file_path: String = row.get(6)?;
+
+                            // Build description with confidence indicator
+                            let _facet_str = facets.unwrap_or_default();
+                            let content = format!(
+                                "{} [confidence: {:.0}%, {}] ({})",
+                                statement,
+                                confidence * 100.0,
+                                entrenchment,
+                                file_path
+                            );
+
+                            Ok(ScryResult {
+                                id: key,
+                                event_type: "belief.surface".to_string(),
+                                source_id: id,
+                                timestamp: String::new(),
+                                content,
+                                score,
+                            })
+                        },
+                    );
+
+                    if let Ok(r) = result {
+                        enriched.push(r);
+                    }
+                } else if key >= COMMIT_ID_OFFSET {
                     // Commit - look up in commits table
                     let rowid = key - COMMIT_ID_OFFSET;
                     let result = conn.query_row(

@@ -380,9 +380,57 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
 
     let commit_count = events.len() - session_count - code_count - pattern_count;
 
+    // 5. Epistemic beliefs (project decisions with confidence)
+    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+    let has_beliefs: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='beliefs'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if has_beliefs {
+        let mut stmt = conn.prepare(
+            "SELECT rowid, id, statement, persona, facets, confidence, entrenchment
+             FROM beliefs
+             WHERE status = 'active'",
+        )?;
+
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let rowid: i64 = row.get(0)?;
+            let id: String = row.get(1)?;
+            let statement: String = row.get(2)?;
+            let persona: String = row.get(3)?;
+            let facets: Option<String> = row.get(4)?;
+            let confidence: f64 = row.get(5)?;
+            let entrenchment: String = row.get(6)?;
+
+            // Create embeddable text for the belief
+            // Rich context: statement, persona, facets, confidence for semantic matching
+            let mut desc = format!("Belief: {} - {}", id, statement);
+            desc.push_str(&format!(". Persona: {}", persona));
+            if let Some(f) = facets {
+                if !f.is_empty() {
+                    desc.push_str(&format!(". Facets: {}", f));
+                }
+            }
+            desc.push_str(&format!(
+                ". Confidence: {:.2}, Entrenchment: {}",
+                confidence, entrenchment
+            ));
+
+            events.push((BELIEF_ID_OFFSET + rowid, desc));
+        }
+    }
+
+    let belief_count = events.len() - session_count - code_count - pattern_count - commit_count;
+
     println!(
-        "   Indexed {} session events + {} code facts + {} patterns + {} commits",
-        session_count, code_count, pattern_count, commit_count
+        "   Indexed {} session events + {} code facts + {} patterns + {} commits + {} beliefs",
+        session_count, code_count, pattern_count, commit_count, belief_count
     );
 
     Ok(events)
