@@ -20,15 +20,15 @@ const BELIEFS_DIR: &str = "layer/surface/epistemic/beliefs";
 #[derive(Debug)]
 struct ParsedBelief {
     id: String,
-    statement: String,       // One-sentence statement after # heading
-    persona: String,         // architect, etc.
-    facets: Vec<String>,     // Domain tags
-    confidence: f64,         // 0.0-1.0
-    entrenchment: String,    // low/medium/high/very-high
-    status: String,          // active/scoped/defeated/archived
+    statement: String,    // One-sentence statement after # heading
+    persona: String,      // architect, etc.
+    facets: Vec<String>,  // Domain tags
+    confidence: f64,      // 0.0-1.0
+    entrenchment: String, // low/medium/high/very-high
+    status: String,       // active/scoped/defeated/archived
     extracted: Option<String>,
     revised: Option<String>,
-    content: String,         // Full markdown for embedding
+    content: String, // Full markdown for embedding
     file_path: String,
 }
 
