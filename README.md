@@ -18,7 +18,7 @@ Patina solves the fundamental problem of AI-assisted development: constantly re-
 | **Multi-Dimension Search** | Semantic, temporal, dependency projections |
 | **Cross-Project Knowledge** | Query external repos via `~/.patina/repos/` |
 | **GitHub Integration** | Index issues with bounty detection |
-| **Mothership Daemon** | `patina serve` for container queries |
+| **Mother Daemon** | `patina serve` for container queries |
 | **YOLO Devcontainers** | AI-ready development environments |
 | **LLM Adapters** | Claude and Gemini integration |
 
@@ -83,7 +83,7 @@ patina repo update dojo                  # Git pull + rescrape
 patina repo rm dojo                      # Remove repo
 ```
 
-### Mothership Daemon
+### Mother Daemon
 ```bash
 patina serve                             # Start on localhost:50051
 patina serve --host 0.0.0.0              # Bind all interfaces (for containers)
@@ -133,7 +133,7 @@ Patina has 20 commands totaling ~42k lines of Rust. Here's the full inventory:
 | `adapter` | 400 | `adapter.rs` | LLM frontend management (Claude, Gemini) |
 | `serve` | 300 | `serve/` | MCP server for LLM tool integration |
 | `rebuild` | 260 | `rebuild/` | Rebuild .patina/ from git-tracked sources |
-| `model` | 210 | `model.rs` | Manage embedding models in mothership cache |
+| `model` | 210 | `model.rs` | Manage embedding models in mother cache |
 | `upgrade` | 160 | `upgrade.rs` | Check for new CLI versions |
 | `version` | 160 | `version.rs` | Show version and component info |
 
@@ -200,7 +200,7 @@ patina/
 │   │   │       ├── routing.rs, enrichment.rs, logging.rs
 │   │   │       └── query_prep.rs
 │   │   ├── repo/          # Cross-project knowledge
-│   │   └── serve/         # Mothership HTTP daemon
+│   │   └── serve/         # Mother HTTP daemon
 │   ├── embeddings/        # ONNX E5-base-v2 embeddings
 │   └── reasoning/         # Embedded Prolog for belief validation
 ├── layer/

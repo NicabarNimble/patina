@@ -4,7 +4,7 @@ status: emerging
 created: 2026-01-06
 oxidizer: nicabar
 tags: [concept, ref-repos, knowledge-extraction, delegate-model, codex]
-references: [concept-rag-network, spec-mothership-graph]
+references: [concept-rag-network, spec/mothership-graph]
 ---
 
 # Repo Patina: Extracted Wisdom from Reference Repositories
@@ -122,7 +122,7 @@ Codex is not a batch extractor—it's an **RL-style agent** that builds Q&A docu
 ### Where Things Live
 
 ```
-Project (island)              Mothership
+Project (island)              Mother
 ─────────────────            ──────────────────────────────
 best-dojo-game/              ~/.patina/mother/
 ├── layer/core/              ├── graph.db (nodes, edges)
@@ -136,7 +136,7 @@ best-dojo-game/              ~/.patina/mother/
              Context: project rules + persona
 ```
 
-**Key architectural point:** User launches from project (provides context). Codex runs at mothership level but anchored in project rules. Codex only works with ref repos.
+**Key architectural point:** User launches from project (provides context). Codex runs at mother level but anchored in project rules. Codex only works with ref repos.
 
 ### Question Generation
 
@@ -422,5 +422,5 @@ If no → understand why evidence extraction fails, iterate.
 ## References
 
 - [concept-rag-network](./concept-rag-network.md) — RAG architecture, projects vs reference repos
-- [spec-mothership-graph](./build/spec-mothership-graph.md) — Graph layer for cross-project awareness
+- spec/mothership-graph (archived git tag) — Graph layer for cross-project awareness
 - Session 20260106-130041 — Origin of this concept thread (G2.5 validation → architecture exploration)

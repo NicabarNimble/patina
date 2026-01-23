@@ -4,7 +4,7 @@ status: active
 created: 2026-01-06
 oxidizer: nicabar
 tags: [analysis, commits, training, semantic, ref-repos]
-references: [concept-repo-patina, spec-mothership-graph]
+references: [concept-repo-patina, spec/mothership-graph]
 ---
 
 # Commit Messages as Training Signal for Ref Repo Semantic Projection
@@ -431,5 +431,5 @@ Same MLP as current oxidize (768 → 1024 → 256), with weighted sampling based
 ## References
 
 - [concept-repo-patina](./concept-repo-patina.md) - Repo patina extraction vision
-- [spec-mothership-graph](./build/spec-mothership-graph.md) - Graph routing for ref repos
+- spec/mothership-graph (archived git tag) - Graph routing for ref repos
 - Session 20260106-190145 - Origin of this analysis

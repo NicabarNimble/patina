@@ -63,7 +63,7 @@ Previous system used flat files:
 layer/surface/build/
 ├── spec-surface-layer.md
 ├── spec-bootstrap-markers.md
-├── spec-mothership.md
+├── spec-mother.md
 └── ... 36 files
 ```
 

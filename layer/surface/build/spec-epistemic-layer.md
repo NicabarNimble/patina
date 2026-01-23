@@ -930,7 +930,7 @@ All success criteria met. Ready to proceed to Phase E2 (Schema Validation).
 ## References
 
 - [[spec-surface-layer]] - Parent spec (capture/curate framing)
-- [[spec-mothership-graph]] - Cross-project relationships
+- [[spec/mothership-graph]] - Cross-project relationships
 - [[session-20260116-054624]] - This session
 - AGM Framework: Alchourrón, Gärdenfors, Makinson (1985)
 - Pat Helland: "Data on the Outside vs Data on the Inside"

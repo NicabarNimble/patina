@@ -12,7 +12,7 @@
 > PersonaOracle is wired and working.
 >
 > **Phase 2 (explicit persona mode, answer synthesis) is parked:**
-> - Lower priority than observability and mothership design
+> - Lower priority than observability and mother design
 > - Current persona contribution is sufficient for now
 > - Need usage data to understand how users interact with persona results
 >

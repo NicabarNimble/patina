@@ -163,7 +163,7 @@ Reports in `layer/` are:
 ### Ref Repo Reports
 
 ```
-~/.patina/mothership/reports/
+~/.patina/mother/reports/
 ├── gemini-cli/
 │   ├── 2026-01-08-state.md
 │   └── index.json
@@ -260,7 +260,7 @@ Based on scry results:
 
 ### Phase 3: Ref Repos
 - [ ] Add `--repo` flag for ref repos
-- [ ] Store in mothership reports folder
+- [ ] Store in mother reports folder
 - [ ] Add `--repo all` for batch generation
 
 ### Phase 4: History & Diff
