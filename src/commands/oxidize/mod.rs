@@ -82,6 +82,84 @@ pub fn oxidize() -> Result<()> {
     Ok(())
 }
 
+/// Run oxidize for a registered external repo
+///
+/// Looks up repo path from registry, changes to that directory,
+/// ensures recipe exists, and runs oxidize.
+pub fn oxidize_for_repo(repo_name: &str) -> Result<()> {
+    use std::os::unix::fs::symlink;
+
+    // Look up repo path
+    let repo_path = crate::commands::repo::get_path(repo_name)?;
+    println!("🧪 Oxidize - Building embeddings for {}\n", repo_name);
+    println!("   Path: {}", repo_path.display());
+
+    // Save current directory (where patina project with models lives)
+    let original_dir = std::env::current_dir()?;
+    let resources_path = original_dir.join("resources");
+
+    // Change to repo directory
+    std::env::set_current_dir(&repo_path)?;
+
+    // Ensure config.toml has embeddings section
+    let config_path = repo_path.join(".patina/config.toml");
+    if config_path.exists() {
+        let config_content = std::fs::read_to_string(&config_path)?;
+        if !config_content.contains("[embeddings]") {
+            println!("   Adding embeddings config...");
+            let updated = format!("{}\n[embeddings]\nmodel = \"e5-base-v2\"\n", config_content);
+            std::fs::write(&config_path, updated)?;
+        }
+    }
+
+    // Create oxidize.yaml if it doesn't exist
+    let recipe_path = repo_path.join(".patina/oxidize.yaml");
+    if !recipe_path.exists() {
+        println!("   Creating oxidize.yaml recipe...\n");
+        let recipe_content = r#"# Oxidize Recipe for reference repo
+version: 1
+embedding_model: e5-base-v2
+
+projections:
+  dependency:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
+
+  temporal:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
+
+  semantic:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
+"#;
+        std::fs::write(&recipe_path, recipe_content)?;
+    }
+
+    // Symlink resources directory if needed (for embedding models)
+    let repo_resources = repo_path.join("resources");
+    if !repo_resources.exists() && resources_path.exists() {
+        println!("   Linking model resources...\n");
+        symlink(&resources_path, &repo_resources).context("Failed to create resources symlink")?;
+    }
+
+    // Run oxidize
+    let result = oxidize();
+
+    // Clean up symlink
+    if repo_resources.is_symlink() {
+        let _ = std::fs::remove_file(&repo_resources);
+    }
+
+    // Restore directory
+    std::env::set_current_dir(original_dir)?;
+
+    result
+}
+
 /// Train a projection based on its name
 fn train_projection(
     name: &str,

@@ -427,6 +427,25 @@ pub fn get_repo_db_path(name: &str) -> Result<String> {
     Ok(db_path.to_string_lossy().to_string())
 }
 
+/// Get the filesystem path for a registered repo
+pub fn get_repo_path(name: &str) -> Result<std::path::PathBuf> {
+    let registry = Registry::load()?;
+    let entry = registry
+        .repos
+        .get(name)
+        .ok_or_else(|| anyhow::anyhow!("Repository '{}' not found. Use 'patina repo list' to see registered repos.", name))?;
+
+    let path = std::path::PathBuf::from(&entry.path);
+    if !path.exists() {
+        bail!(
+            "Repository path '{}' not found. It may have been moved or deleted.",
+            entry.path
+        );
+    }
+
+    Ok(path)
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper functions
 // ─────────────────────────────────────────────────────────────────────────────

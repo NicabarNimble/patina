@@ -133,7 +133,11 @@ enum Commands {
     },
 
     /// Build embeddings and projections from recipe
-    Oxidize,
+    Oxidize {
+        /// Build for a registered external repo (e.g., clawdbot/clawdbot)
+        #[arg(long)]
+        repo: Option<String>,
+    },
 
     /// Rebuild .patina/ from layer/ and local sources (portability)
     Rebuild {
@@ -850,8 +854,12 @@ fn main() -> Result<()> {
                 }
             }
         }
-        Some(Commands::Oxidize) => {
-            commands::oxidize::oxidize()?;
+        Some(Commands::Oxidize { repo }) => {
+            if let Some(repo_name) = repo {
+                commands::oxidize::oxidize_for_repo(&repo_name)?;
+            } else {
+                commands::oxidize::oxidize()?;
+            }
         }
         Some(Commands::Rebuild {
             scrape,
