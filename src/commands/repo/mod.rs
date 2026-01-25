@@ -182,6 +182,11 @@ pub fn get_db_path(name: &str) -> Result<String> {
     internal::get_repo_db_path(name)
 }
 
+/// Get the filesystem path for a repo (for oxidize --repo)
+pub fn get_path(name: &str) -> Result<std::path::PathBuf> {
+    internal::get_repo_path(name)
+}
+
 /// Migrate registry paths to the new cache location.
 ///
 /// This handles the case where repos were moved but the registry wasn't updated,
