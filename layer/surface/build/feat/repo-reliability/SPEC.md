@@ -1,7 +1,7 @@
 ---
 type: feat
 id: repo-reliability
-status: draft
+status: complete
 created: 2026-01-25
 updated: 2026-01-25
 sessions:
