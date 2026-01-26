@@ -4,7 +4,7 @@
 //! LLMs never see secret values.
 
 use anyhow::{bail, Result};
-use patina::secrets;
+use patina::{scanner, secrets};
 use std::env;
 use std::io::{self, BufRead, Write};
 
@@ -54,6 +54,12 @@ pub enum SecretsCommands {
 
     /// List recipients for the project vault
     ListRecipients,
+
+    /// Scan staged files for exposed secrets (pre-commit)
+    Check,
+
+    /// Scan all tracked files for exposed secrets
+    Audit,
 }
 
 /// Flags for bare `patina secrets` command
@@ -132,6 +138,8 @@ pub fn execute(command: SecretsCommands) -> Result<()> {
         SecretsCommands::AddRecipient { key } => add_recipient(&key),
         SecretsCommands::RemoveRecipient { key } => remove_recipient(&key),
         SecretsCommands::ListRecipients => list_recipients(),
+        SecretsCommands::Check => check_staged(),
+        SecretsCommands::Audit => audit_tracked(),
     }
 }
 
@@ -313,6 +321,51 @@ fn list_recipients() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Scan staged files for exposed secrets (pre-commit check)
+fn check_staged() -> Result<()> {
+    let repo_root = env::current_dir()?;
+
+    let findings = scanner::scan_staged(&repo_root)?;
+
+    if findings.is_empty() {
+        println!("No secrets found in staged files.");
+        return Ok(());
+    }
+
+    println!("Found {} secret(s):\n", findings.len());
+    print_findings(&findings);
+
+    println!("\nCommit blocked. Remove secret or use `patina secrets add`.");
+    std::process::exit(1);
+}
+
+/// Scan all tracked files for exposed secrets
+fn audit_tracked() -> Result<()> {
+    let repo_root = env::current_dir()?;
+
+    let findings = scanner::scan_tracked(&repo_root)?;
+
+    if findings.is_empty() {
+        println!("All clear - no secrets found.");
+        return Ok(());
+    }
+
+    println!("Found {} secret(s):\n", findings.len());
+    print_findings(&findings);
+
+    std::process::exit(1);
+}
+
+fn print_findings(findings: &[scanner::Finding]) {
+    for f in findings {
+        println!("  {}:{}:{}", f.path.display(), f.line, f.column);
+        println!("    Pattern: {}", f.pattern);
+        println!("    Severity: {}", f.severity);
+        println!("    Match: {}", f.matched);
+        println!();
+    }
 }
 
 #[cfg(test)]
