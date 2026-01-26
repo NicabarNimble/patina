@@ -73,50 +73,191 @@ pub fn show_version(json_output: bool, components: bool) -> Result<()> {
     Ok(())
 }
 
-/// Bump milestone within current phase
-pub fn bump_milestone(description: &str, no_tag: bool, dry_run: bool) -> Result<()> {
-    let mut state = load_or_create_state()?;
-    let old_version = state.version.current.clone();
+/// Complete current spec milestone and bump version (spec-aware)
+pub fn bump_milestone(description_override: Option<&str>, no_tag: bool, dry_run: bool) -> Result<()> {
+    let project_path = Path::new(".");
 
-    // Calculate new version: increment milestone
-    state.version.milestone += 1;
-    state.version.current = format!("0.{}.{}", state.version.phase, state.version.milestone);
+    // 1. Get current milestone from spec index
+    let (milestone, spec_path) = get_current_milestone_with_path()
+        .ok_or_else(|| anyhow::anyhow!(
+            "No current milestone found. Ensure spec has milestones and run 'patina scrape layer'."
+        ))?;
 
-    let new_version = &state.version.current;
+    let description = description_override.unwrap_or(&milestone.name);
+    let new_version = &milestone.version;
+
+    // 2. Check if versioning is enabled (owned vs fork)
+    let versioning_enabled = patina::project::is_versioning_enabled(project_path);
+
+    // 3. Get next pending milestone
+    let next_milestone = get_next_pending_milestone(&milestone.spec_id, new_version);
+
+    // 4. Get current Cargo.toml version for comparison
+    let old_version = read_cargo_version().unwrap_or_else(|_| "unknown".to_string());
 
     if dry_run {
         println!("Dry run - would perform these changes:\n");
-        println!("Version: {} -> {}", old_version, new_version);
-        println!("Milestone: {} ({})", state.version.milestone, description);
-        println!(
-            "Phase: {} ({})",
-            state.version.phase, state.version.phase_name
-        );
+        println!("Completing: {} v{} - {}", milestone.spec_id, new_version, description);
+        if versioning_enabled {
+            println!("Cargo.toml: {} -> {}", old_version, new_version);
+        } else {
+            println!("Cargo.toml: unchanged (fork repo)");
+        }
+        println!("Spec: mark {} complete, advance to {:?}", new_version, next_milestone);
         println!("\nFiles that would be updated:");
-        println!("  - .patina/version.toml");
-        println!("  - Cargo.toml");
-        if !no_tag {
+        println!("  - {}", spec_path);
+        if versioning_enabled {
+            println!("  - Cargo.toml");
+        }
+        if !no_tag && versioning_enabled {
             println!("  - git tag: v{}", new_version);
         }
         return Ok(());
     }
 
-    // Update timestamp
-    state.metadata.last_bump = Some(chrono::Utc::now().to_rfc3339());
+    // 5. Update spec YAML (mark complete, advance current_milestone)
+    update_spec_milestone(&spec_path, new_version, next_milestone.as_deref())?;
 
-    // Perform updates
-    save_version_state(&state)?;
-    update_cargo_version(new_version)?;
+    // 6. Update Cargo.toml (only for owned repos)
+    if versioning_enabled {
+        update_cargo_version(new_version)?;
+    }
 
-    if !no_tag {
+    // 7. Re-scrape layer to sync index
+    println!("Syncing index...");
+    if let Err(e) = rescrape_layer() {
+        eprintln!("Warning: failed to re-scrape layer: {}", e);
+    }
+
+    // 8. Create git tag (only for owned repos)
+    if !no_tag && versioning_enabled {
         create_git_tag(new_version, description)?;
     }
 
     // Output
-    println!("Version bumped: {} -> {}", old_version, new_version);
-    println!("Milestone {}: {}", state.version.milestone, description);
-    if !no_tag {
-        println!("Tagged: v{}", new_version);
+    println!("\n✓ Milestone complete: {} v{}", milestone.spec_id, new_version);
+    println!("  {}", description);
+    if versioning_enabled {
+        println!("  Cargo.toml: {} -> {}", old_version, new_version);
+        if !no_tag {
+            println!("  Tagged: v{}", new_version);
+        }
+    }
+    if let Some(next) = &next_milestone {
+        println!("  Next: v{}", next);
+    } else {
+        println!("  No more pending milestones!");
+    }
+
+    Ok(())
+}
+
+/// Get current milestone with spec file path
+fn get_current_milestone_with_path() -> Option<(SpecMilestone, String)> {
+    let db_path = Path::new(".patina/local/data/patina.db");
+    if !db_path.exists() {
+        return None;
+    }
+
+    let conn = Connection::open(db_path).ok()?;
+
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT m.spec_id, m.version, m.name, m.status, p.file_path
+            FROM patterns p
+            JOIN milestones m ON p.id = m.spec_id AND p.current_milestone = m.version
+            WHERE p.current_milestone IS NOT NULL
+            LIMIT 1
+            "#,
+        )
+        .ok()?;
+
+    stmt.query_row([], |row| {
+        Ok((
+            SpecMilestone {
+                spec_id: row.get(0)?,
+                version: row.get(1)?,
+                name: row.get(2)?,
+                status: row.get(3)?,
+            },
+            row.get::<_, String>(4)?,
+        ))
+    })
+    .ok()
+}
+
+/// Get next pending milestone after completing current one
+fn get_next_pending_milestone(spec_id: &str, current_version: &str) -> Option<String> {
+    let db_path = Path::new(".patina/local/data/patina.db");
+    if !db_path.exists() {
+        return None;
+    }
+
+    let conn = Connection::open(db_path).ok()?;
+
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT version FROM milestones
+            WHERE spec_id = ?1 AND status = 'pending' AND version > ?2
+            ORDER BY version
+            LIMIT 1
+            "#,
+        )
+        .ok()?;
+
+    stmt.query_row(rusqlite::params![spec_id, current_version], |row| {
+        row.get::<_, String>(0)
+    })
+    .ok()
+}
+
+/// Update spec YAML to mark milestone complete and advance to next
+fn update_spec_milestone(spec_path: &str, current_version: &str, next_version: Option<&str>) -> Result<()> {
+    let content = fs::read_to_string(spec_path)?;
+
+    // Update the milestone status from in_progress to complete
+    let pattern = format!(
+        r#"(?m)(- version: "{}"[\s\S]*?status: )in_progress"#,
+        regex::escape(current_version)
+    );
+    let re = regex::Regex::new(&pattern)?;
+    let content = re.replace(&content, "${1}complete").to_string();
+
+    // Update current_milestone to next version
+    let content = if let Some(next) = next_version {
+        // Also mark next milestone as in_progress
+        let next_pattern = format!(
+            r#"(?m)(- version: "{}"[\s\S]*?status: )pending"#,
+            regex::escape(next)
+        );
+        let next_re = regex::Regex::new(&next_pattern)?;
+        let content = next_re.replace(&content, "${1}in_progress").to_string();
+
+        // Update current_milestone pointer
+        let cm_re = regex::Regex::new(r#"(?m)^current_milestone: "[^"]+""#)?;
+        cm_re.replace(&content, &format!(r#"current_milestone: "{}""#, next)).to_string()
+    } else {
+        content
+    };
+
+    fs::write(spec_path, content)?;
+    Ok(())
+}
+
+/// Re-run layer scrape to sync index after spec update
+fn rescrape_layer() -> Result<()> {
+    use std::process::Command as ProcessCommand;
+
+    let output = ProcessCommand::new("patina")
+        .args(["scrape", "layer", "--full"])
+        .output()
+        .context("Failed to run patina scrape layer")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("patina scrape layer failed: {}", stderr);
     }
 
     Ok(())
