@@ -1,8 +1,8 @@
 [version]
-current = "0.8.1"
+current = "0.8.4"
 phase = 8
 phase_name = "Go Public"
-milestone = 1
+milestone = 4
 
 [metadata]
 history_file = "layer/surface/build/feat/go-public/version-history.md"
