@@ -73,6 +73,120 @@ pub fn show_version(json_output: bool, components: bool) -> Result<()> {
     Ok(())
 }
 
+/// Run safeguard checks before version bump
+///
+/// Blocking checks (will error):
+/// - Dirty working tree (uncommitted tracked files)
+/// - Behind remote (need to pull)
+/// - Diverged from remote (need to resolve)
+/// - Tag already exists (can't re-release)
+/// - Index stale (spec newer than last scrape)
+///
+/// Warnings (non-blocking):
+/// - Not on patina branch
+/// - Untracked files present
+fn run_safeguard_checks(new_version: &str) -> Result<()> {
+    use patina::git;
+
+    // === BLOCKING CHECKS ===
+
+    // 1. Dirty tree check (tracked files only)
+    if !git::is_clean()? {
+        let count = git::status_count()?;
+        anyhow::bail!(
+            "❌ Working tree has uncommitted changes ({} files)\n\n\
+             Commit your changes first:\n\
+               git add -A && git commit -m \"your message\"\n\n\
+             Or stash them:\n\
+               git stash",
+            count
+        );
+    }
+
+    // 2. Behind remote check
+    if git::has_upstream()? {
+        let behind = git::commits_behind_upstream()?;
+        if behind > 0 {
+            anyhow::bail!(
+                "❌ Branch is {} commits behind remote\n\n\
+                 Pull changes first:\n\
+                   git pull --rebase",
+                behind
+            );
+        }
+    }
+
+    // 3. Diverged check
+    if git::is_diverged()? {
+        anyhow::bail!(
+            "❌ Branch has diverged from remote (both ahead and behind)\n\n\
+             Resolve the divergence first:\n\
+               git pull --rebase\n\n\
+             Or reset to remote:\n\
+               git fetch && git reset --hard @{{upstream}}"
+        );
+    }
+
+    // 4. Tag exists check
+    let tag_name = format!("v{}", new_version);
+    if git::tag_exists(&tag_name)? {
+        anyhow::bail!(
+            "❌ Tag '{}' already exists\n\n\
+             This version has already been released.\n\
+             Check your milestone status or use a different version.",
+            tag_name
+        );
+    }
+
+    // 5. Index stale check
+    check_index_freshness()?;
+
+    // === WARNINGS (non-blocking) ===
+
+    // Warn if not on patina branch
+    let branch = git::current_branch()?;
+    if branch != "patina" {
+        eprintln!("⚠️  Warning: Not on 'patina' branch (currently on '{}')", branch);
+    }
+
+    Ok(())
+}
+
+/// Check if the spec index is fresh (spec file not newer than last scrape)
+fn check_index_freshness() -> Result<()> {
+    let db_path = Path::new(".patina/local/data/patina.db");
+    if !db_path.exists() {
+        anyhow::bail!(
+            "❌ No index found\n\n\
+             Run 'patina scrape layer' first to build the index."
+        );
+    }
+
+    // Get database modification time
+    let db_mtime = fs::metadata(db_path)?
+        .modified()
+        .context("Failed to get database modification time")?;
+
+    // Check if any spec file is newer than the database
+    // For now, just check the spec that has the current milestone
+    if let Some((_, spec_path)) = get_current_milestone_with_path() {
+        if let Ok(spec_meta) = fs::metadata(&spec_path) {
+            if let Ok(spec_mtime) = spec_meta.modified() {
+                if spec_mtime > db_mtime {
+                    anyhow::bail!(
+                        "❌ Index is stale (spec '{}' was modified after last scrape)\n\n\
+                         Re-scrape to sync:\n\
+                           patina scrape layer --full",
+                        spec_path
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Complete current spec milestone and bump version (spec-aware)
 pub fn bump_milestone(description_override: Option<&str>, no_tag: bool, dry_run: bool) -> Result<()> {
     let project_path = Path::new(".");
@@ -86,7 +200,12 @@ pub fn bump_milestone(description_override: Option<&str>, no_tag: bool, dry_run:
     let description = description_override.unwrap_or(&milestone.name);
     let new_version = &milestone.version;
 
-    // 2. Check if versioning is enabled (owned vs fork)
+    // 2. Run safeguard checks (skip in dry-run, we'll show what would be checked)
+    if !dry_run {
+        run_safeguard_checks(new_version)?;
+    }
+
+    // 3. Check if versioning is enabled (owned vs fork)
     let versioning_enabled = patina::project::is_versioning_enabled(project_path);
 
     // 3. Get next pending milestone
