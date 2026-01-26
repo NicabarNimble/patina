@@ -27,7 +27,7 @@ milestones:
     name: GitHub config and branch protection
     status: complete
   - version: "0.8.5"
-    name: Session contributor field
+    name: Version safeguards
     status: in_progress
   - version: "0.9.0"
     name: Public release
@@ -501,7 +501,7 @@ Version-linked outcomes for this spec. Each milestone = version bump.
 | 0.8.2 | Version command with automation | ✓ complete | `patina version show/milestone/phase` working |
 | 0.8.3 | Spec-linked versioning | ✓ complete | Milestones in specs, scrape extracts them, version reads from index |
 | 0.8.4 | GitHub config and branch protection | ✓ complete | Branch protection, default branch, CI passing |
-| 0.8.5 | Session contributor field | → in_progress | Session-start adds contributor, sourced from git/gh |
+| 0.8.5 | Version safeguards | → in_progress | Dirty tree check, sync check, branch check before version bump |
 | 0.9.0 | Public release | ○ pending | Secrets audit, repo made public |
 
 **Note:** Contributor system and PR signing (Phase 2 in original spec) deferred to post-0.9.0. Build after going public, before first external PR.
@@ -542,6 +542,8 @@ Contributor and PR signing system - builds after going public, before first exte
 - [ ] `patina contributor verify` command implemented
 - [ ] `.patina/contributors.json` schema defined
 - [ ] CI workflow to verify contributor on PR
+- [ ] Session-start script adds `**Contributor**` field (verified identity)
+- [ ] Contributor sourced from verified gh auth (not unverified git config)
 
 **Patina-Signed PRs:**
 - [ ] `patina pr create` command implemented
@@ -553,10 +555,6 @@ Contributor and PR signing system - builds after going public, before first exte
 ### Phase 3: Launch
 
 Documentation and final checks before flipping public.
-
-**Session Transparency:**
-- [ ] Session-start script adds `**Contributor**` field
-- [ ] Contributor sourced from git config or gh auth
 
 **Documentation:**
 - [x] README explains what Patina is and how to install
@@ -689,7 +687,7 @@ milestones:
     name: GitHub config and branch protection
     status: complete
   - version: "0.8.5"
-    name: Session contributor field
+    name: Version safeguards
     status: in_progress
   - version: "0.9.0"
     name: Public release
@@ -727,7 +725,7 @@ Versioning behavior inferred from `[upstream]` config in `.patina/config.toml`:
 patina version show
 # → patina 0.8.4
 # → Phase 8: Go Public (milestone 4)
-# → Spec: go-public v0.8.5 → Session contributor field
+# → Spec: go-public v0.8.5 → Version safeguards
 
 # Complete current spec milestone (spec-aware, atomic)
 patina version milestone
