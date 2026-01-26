@@ -523,8 +523,27 @@ Infrastructure and GitHub config - enables clean releases and proper branch flow
 - [x] `patina version milestone` command implemented
 - [x] `patina version phase` command implemented
 - [x] `.patina/version.toml` schema defined
-- [ ] Version safeguards (dirty tree, sync check)
+- [ ] Version safeguards (dirty tree, sync check) - see detail below
 - [x] Spec-linked versioning (milestones from spec index)
+
+**Version Safeguards (0.8.5 detail):**
+
+`patina version milestone` must check before proceeding:
+
+| Check | Action | Rationale |
+|-------|--------|-----------|
+| Dirty tree (tracked files) | **Block** | Don't version uncommitted work |
+| Behind remote | **Block** | Someone else pushed, pull first |
+| Diverged from remote | **Block** | Merge conflict waiting, resolve first |
+| Tag already exists | **Block** | Can't re-release same version |
+| Index stale (spec newer than scrape) | **Block** | Could complete wrong milestone |
+
+Non-blocking warnings:
+| Check | Action | Rationale |
+|-------|--------|-----------|
+| Not on `patina` branch | **Warn** | Unusual but allowed |
+| Untracked files present | **Warn** | May want to add them |
+| Ahead of remote | **Allow** | Normal workflow - commit often, push later |
 - [x] Remove release-plz workflow (`.github/workflows/release-plz.yml`)
 
 **Branch Flow:**
