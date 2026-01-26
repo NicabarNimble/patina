@@ -31,7 +31,8 @@ Milestones belong in specs, not separate files. Git is the source of truth - der
 
 ## Supports
 
-<!-- Add beliefs this supports -->
+- milestones-immutable: If milestones live in git, they inherit git's append-only nature
+- versioning-inference: Spec milestones work for both owned and fork repos
 
 ## Attacks
 
