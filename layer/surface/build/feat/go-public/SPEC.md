@@ -22,17 +22,17 @@ milestones:
     status: complete
   - version: "0.8.3"
     name: Spec-linked versioning
-    status: in_progress
+    status: complete
   - version: "0.8.4"
     name: GitHub config and branch protection
-    status: pending
+    status: in_progress
   - version: "0.8.5"
     name: Session contributor field
     status: pending
   - version: "0.9.0"
     name: Public release
     status: pending
-current_milestone: "0.8.3"
+current_milestone: "0.8.4"
 ---
 
 # feat: Go Public
@@ -499,8 +499,8 @@ Version-linked outcomes for this spec. Each milestone = version bump.
 | Version | Name | Status | Exit Criteria |
 |---------|------|--------|---------------|
 | 0.8.2 | Version command with automation | ✓ complete | `patina version show/milestone/phase` working |
-| 0.8.3 | Spec-linked versioning | → in_progress | Milestones in specs, scrape extracts them, version reads from index |
-| 0.8.4 | GitHub config and branch protection | ○ pending | Branch protection, default branch, CI passing |
+| 0.8.3 | Spec-linked versioning | ✓ complete | Milestones in specs, scrape extracts them, version reads from index |
+| 0.8.4 | GitHub config and branch protection | → in_progress | Branch protection, default branch, CI passing |
 | 0.8.5 | Session contributor field | ○ pending | Session-start adds contributor, sourced from git/gh |
 | 0.9.0 | Public release | ○ pending | Secrets audit, repo made public |
 
@@ -524,7 +524,7 @@ Infrastructure and GitHub config - enables clean releases and proper branch flow
 - [x] `patina version phase` command implemented
 - [x] `.patina/version.toml` schema defined
 - [ ] Version safeguards (dirty tree, sync check)
-- [ ] Spec-linked versioning (milestones from spec index)
+- [x] Spec-linked versioning (milestones from spec index)
 - [ ] Remove release-plz workflow (`.github/workflows/release-plz.yml`)
 
 **Branch Flow:**
