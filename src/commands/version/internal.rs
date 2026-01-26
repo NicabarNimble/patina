@@ -4,6 +4,7 @@
 //! in mod.rs exposes only what's needed.
 
 use anyhow::{Context, Result};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
@@ -222,6 +223,16 @@ fn output_json(components: bool) -> Result<()> {
         "milestone": state.version.milestone,
     });
 
+    // Add current spec milestone from index (if available)
+    if let Some(milestone) = get_current_spec_milestone() {
+        version_info["spec_milestone"] = json!({
+            "spec_id": milestone.spec_id,
+            "version": milestone.version,
+            "name": milestone.name,
+            "status": milestone.status,
+        });
+    }
+
     if components {
         let components_info = get_component_versions()?;
         version_info["components"] = components_info;
@@ -242,6 +253,19 @@ fn output_human(components: bool) -> Result<()> {
         println!(
             "Phase {}: {} (milestone {})",
             state.version.phase, state.version.phase_name, state.version.milestone
+        );
+    }
+
+    // Show current spec milestone from index (if available)
+    if let Some(milestone) = get_current_spec_milestone() {
+        let status_icon = match milestone.status.as_str() {
+            "complete" => "✓",
+            "in_progress" => "→",
+            _ => "○",
+        };
+        println!(
+            "Spec: {} v{} {} {}",
+            milestone.spec_id, milestone.version, status_icon, milestone.name
         );
     }
 
@@ -504,4 +528,84 @@ fn get_component_versions() -> Result<serde_json::Value> {
     components["external"] = external;
 
     Ok(components)
+}
+
+// ============================================================================
+// Milestone Queries (from scraped index)
+// ============================================================================
+
+/// Milestone info from the scraped spec index
+#[derive(Debug, Clone)]
+pub struct SpecMilestone {
+    pub spec_id: String,
+    pub version: String,
+    pub name: String,
+    pub status: String,
+}
+
+/// Get current milestone from scraped spec index
+///
+/// Looks for specs with current_milestone set and returns the matching milestone info.
+fn get_current_spec_milestone() -> Option<SpecMilestone> {
+    let db_path = Path::new(".patina/local/data/patina.db");
+    if !db_path.exists() {
+        return None;
+    }
+
+    let conn = Connection::open(db_path).ok()?;
+
+    // Find patterns with current_milestone set and join with milestones table
+    let mut stmt = conn
+        .prepare(
+            r#"
+            SELECT m.spec_id, m.version, m.name, m.status
+            FROM patterns p
+            JOIN milestones m ON p.id = m.spec_id AND p.current_milestone = m.version
+            WHERE p.current_milestone IS NOT NULL
+            LIMIT 1
+            "#,
+        )
+        .ok()?;
+
+    stmt.query_row([], |row| {
+        Ok(SpecMilestone {
+            spec_id: row.get(0)?,
+            version: row.get(1)?,
+            name: row.get(2)?,
+            status: row.get(3)?,
+        })
+    })
+    .ok()
+}
+
+/// Get all milestones for a spec
+#[allow(dead_code)]
+fn get_spec_milestones(spec_id: &str) -> Vec<SpecMilestone> {
+    let db_path = Path::new(".patina/local/data/patina.db");
+    if !db_path.exists() {
+        return Vec::new();
+    }
+
+    let conn = match Connection::open(db_path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut stmt = match conn.prepare(
+        "SELECT spec_id, version, name, status FROM milestones WHERE spec_id = ?1 ORDER BY version",
+    ) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+
+    stmt.query_map([spec_id], |row| {
+        Ok(SpecMilestone {
+            spec_id: row.get(0)?,
+            version: row.get(1)?,
+            name: row.get(2)?,
+            status: row.get(3)?,
+        })
+    })
+    .map(|rows| rows.filter_map(|r| r.ok()).collect())
+    .unwrap_or_default()
 }
