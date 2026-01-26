@@ -10,7 +10,7 @@ Patina solves the fundamental problem of AI-assisted development: constantly re-
 
 **Core idea**: Your development knowledge compounds. Session insights become observations, observations train embeddings, embeddings enable smarter retrieval.
 
-## Features (v0.1.0)
+## Features (v0.8.1)
 
 | Feature | Description |
 |---------|-------------|
