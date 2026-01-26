@@ -16,6 +16,11 @@ related:
   - layer/surface/build/deferred/spec-version-simplification.md
   - layer/surface/build/explore/anti-slop/SPEC.md
   - layer/surface/build/refactor/spec-system/SPEC.md
+artifacts:
+  - ./secrets-scan.md
+  - ./git-history-audit.md
+  - ./version-history.md
+  - ./versioning-policy.md
 milestones:
   - version: "0.8.2"
     name: Version command with automation
@@ -505,7 +510,7 @@ Version-linked outcomes for this spec. Each milestone = version bump.
 | 0.8.3 | Spec-linked versioning | ✓ complete | Milestones in specs, scrape extracts them, version reads from index |
 | 0.8.4 | GitHub config and branch protection | ✓ complete | Branch protection, default branch, CI passing |
 | 0.8.5 | Version safeguards | ✓ complete | Dirty tree check, sync check, branch check before version bump |
-| 0.8.6 | Secrets exposure hardening | → in_progress | Audit history, add safeguards for owned/local/contrib projects |
+| 0.8.6 | Secrets exposure hardening | → in_progress | [secrets-scan.md](./secrets-scan.md) - Native secret detection |
 | 0.9.0 | Public release | ○ pending | Flip repo public |
 
 **Note:** Contributor system and PR signing (Phase 2 in original spec) deferred to post-0.9.0. Build after going public, before first external PR.
@@ -586,7 +591,8 @@ Documentation and final checks before flipping public.
 - [x] LICENSE clear and correct (MIT)
 
 **Hygiene:**
-- [ ] Secrets audit complete (no sensitive data in history)
+- [ ] Secrets audit complete - see [secrets-scan.md](./secrets-scan.md)
+- [ ] `patina secrets audit` passes on repo
 - [ ] Repo made public on GitHub
 
 ---
