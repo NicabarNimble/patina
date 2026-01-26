@@ -28,11 +28,11 @@ milestones:
     status: complete
   - version: "0.8.5"
     name: Version safeguards
-    status: in_progress
+    status: complete
   - version: "0.9.0"
     name: Public release
-    status: pending
-current_milestone: "0.8.5"
+    status: in_progress
+current_milestone: "0.9.0"
 ---
 
 # feat: Go Public
