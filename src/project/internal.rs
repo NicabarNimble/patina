@@ -513,6 +513,33 @@ pub fn backup_file(project_path: &Path, file_path: &Path) -> Result<Option<PathB
     Ok(Some(backup_path))
 }
 
+// =============================================================================
+// Versioning Control
+// =============================================================================
+
+/// Check if versioning is enabled for this project.
+///
+/// Versioning is enabled when:
+/// - No `[upstream]` section exists (local/owned project)
+/// - `upstream.remote = "origin"` (owned repo)
+///
+/// Versioning is disabled when:
+/// - `upstream.remote = "upstream"` (fork/contrib project)
+///
+/// For forks, Cargo.toml version is controlled by upstream,
+/// not by `patina version milestone`.
+pub fn is_versioning_enabled(project_path: &Path) -> bool {
+    let config = match load(project_path) {
+        Ok(c) => c,
+        Err(_) => return true, // Default to enabled if can't load config
+    };
+
+    match &config.upstream {
+        None => true,                          // No upstream = owned
+        Some(up) => up.remote == "origin",     // origin = owned, upstream = fork
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
