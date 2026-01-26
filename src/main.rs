@@ -111,13 +111,16 @@ enum Commands {
         json: bool,
     },
 
-    /// Show version information
+    /// Manage project versioning (Phase.Milestone model)
     Version {
-        /// Output as JSON
+        #[command(subcommand)]
+        command: Option<commands::version::VersionCommands>,
+
+        /// Output as JSON (for default 'show' behavior)
         #[arg(short, long)]
         json: bool,
 
-        /// Show component versions
+        /// Show component versions (for default 'show' behavior)
         #[arg(short, long)]
         components: bool,
     },
@@ -1037,8 +1040,17 @@ fn main() -> Result<()> {
         }) => {
             commands::yolo::execute(interactive, defaults, with, without, json)?;
         }
-        Some(Commands::Version { json, components }) => {
-            commands::version::execute(json, components)?;
+        Some(Commands::Version {
+            command,
+            json,
+            components,
+        }) => {
+            if let Some(subcmd) = command {
+                commands::version::execute_subcommand(subcmd)?;
+            } else {
+                // Default behavior: show version
+                commands::version::execute(json, components)?;
+            }
         }
         Some(Commands::Serve { host, port, mcp }) => {
             if mcp {

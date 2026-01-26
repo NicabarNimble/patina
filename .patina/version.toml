@@ -1,0 +1,9 @@
+[version]
+current = "0.8.1"
+phase = 8
+phase_name = "Go Public"
+milestone = 1
+
+[metadata]
+history_file = "layer/surface/build/feat/go-public/version-history.md"
+last_bump = "2026-01-26T11:43:14.788348+00:00"
