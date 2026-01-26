@@ -21,6 +21,13 @@ related:
 
 **Thesis:** For each observed pattern: define hypothesis, design test, establish baseline, apply, measure, decide.
 
+**Triggers:** Check this spec when:
+- Starting complex multi-step work (runbooks)
+- Running multiple LLM sessions (multi-agent)
+- Creating or updating skills (learnings)
+
+**Complete when:** All patterns either validated (→ belief), rejected (→ documented why), or explicitly deferred with rationale.
+
 ---
 
 ## Exit Criteria
@@ -59,6 +66,8 @@ related:
 
 **Baseline:** No explicit rules
 
+**Rejection Criteria:** If conflicts occur <10% of multi-agent sessions, overhead of rules not justified.
+
 **Status:** Deferred - no multi-agent use case today
 
 ---
@@ -83,6 +92,8 @@ Step-by-step procedure with decision points, bash snippets, troubleshooting sect
 **Baseline:** Current approach (specs define what, not step-by-step how)
 
 **Question:** How different from specs? Specs = requirements, runbooks = execution steps.
+
+**Rejection Criteria:** If runbook doesn't reduce errors by >25% or time by >20%, not worth maintaining separate artifact.
 
 **Status:** Pending - test on next complex procedure
 
@@ -110,9 +121,11 @@ metadata: {"clawdbot":{"requires":{"bins":["gh"]}}}
 | 2 | Implement skill validation in `patina doctor` |
 | 3 | Measure: skills failing due to missing deps (before/after) |
 
-**Status:** Proceed - already planned in `spec-skills-universal.md`, aligns with agentskills.io standard
+**Rejection Criteria:** N/A - external standard (agentskills.io) provides validation.
 
-**Decision:** No new testing needed, external standard validates approach.
+**Status:** Proceed - already planned in `spec-skills-universal.md`
+
+**Decision:** Adopt. No Patina-specific testing needed.
 
 ---
 
@@ -138,6 +151,8 @@ metadata: {"clawdbot":{"requires":{"bins":["gh"]}}}
 
 **Question:** Overlap with beliefs? Beliefs = project-level, learnings = skill-specific.
 
+**Rejection Criteria:** If rediscovery rate doesn't drop, or if beliefs already capture skill-level insights adequately, don't add separate learnings sections.
+
 **Status:** Pending - needs session history analysis
 
 ---
@@ -158,3 +173,4 @@ metadata: {"clawdbot":{"requires":{"bins":["gh"]}}}
 | Date | Status | Note |
 |------|--------|------|
 | 2026-01-25 | design | Created from session clawdbot comparison |
+| 2026-01-25 | design | Added rejection criteria, triggers, completion definition |
