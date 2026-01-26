@@ -3,7 +3,7 @@ type: feat
 id: go-public
 status: in_progress
 created: 2026-01-23
-updated: 2026-01-25
+updated: 2026-01-26
 sessions:
   origin: 20260123-082104
   work:
@@ -11,9 +11,28 @@ sessions:
     - 20251216-085711
     - 20260123-050814
     - 20260125-211931
+    - 20260126-060540
 related:
   - layer/surface/build/deferred/spec-version-simplification.md
   - layer/surface/build/explore/anti-slop/SPEC.md
+  - layer/surface/build/refactor/spec-system/SPEC.md
+milestones:
+  - version: "0.8.2"
+    name: Version command with automation
+    status: complete
+  - version: "0.8.3"
+    name: Spec-linked versioning
+    status: in_progress
+  - version: "0.8.4"
+    name: GitHub config and branch protection
+    status: pending
+  - version: "0.8.5"
+    name: Session contributor field
+    status: pending
+  - version: "0.9.0"
+    name: Public release
+    status: pending
+current_milestone: "0.8.3"
 ---
 
 # feat: Go Public
@@ -473,6 +492,22 @@ This self-selects for serious contributors.
 
 ---
 
+## Milestones
+
+Version-linked outcomes for this spec. Each milestone = version bump.
+
+| Version | Name | Status | Exit Criteria |
+|---------|------|--------|---------------|
+| 0.8.2 | Version command with automation | ✓ complete | `patina version show/milestone/phase` working |
+| 0.8.3 | Spec-linked versioning | → in_progress | Milestones in specs, scrape extracts them, version reads from index |
+| 0.8.4 | GitHub config and branch protection | ○ pending | Branch protection, default branch, CI passing |
+| 0.8.5 | Session contributor field | ○ pending | Session-start adds contributor, sourced from git/gh |
+| 0.9.0 | Public release | ○ pending | Secrets audit, repo made public |
+
+**Note:** Contributor system and PR signing (Phase 2 in original spec) deferred to post-0.9.0. Build after going public, before first external PR.
+
+---
+
 ## Exit Criteria
 
 ### Phase 1: Foundation (Do Now)
@@ -484,10 +519,12 @@ Infrastructure and GitHub config - enables clean releases and proper branch flow
 - [x] Fresh start version decided (v0.8.1)
 - [x] Historical record documented (`version-history.md` artifact)
 - [x] Versioning policy established (`versioning-policy.md`)
-- [ ] `patina version show` command implemented
-- [ ] `patina version milestone` command implemented
-- [ ] `patina version phase` command implemented
-- [ ] `.patina/version.toml` schema defined
+- [x] `patina version show` command implemented
+- [x] `patina version milestone` command implemented
+- [x] `patina version phase` command implemented
+- [x] `.patina/version.toml` schema defined
+- [ ] Version safeguards (dirty tree, sync check)
+- [ ] Spec-linked versioning (milestones from spec index)
 - [ ] Remove release-plz workflow (`.github/workflows/release-plz.yml`)
 
 **Branch Flow:**
@@ -763,6 +800,8 @@ No backwards compatibility needed - clean break.
 | 2026-01-23 | in_progress | Replace release-plz with `patina version` command |
 | 2026-01-25 | in_progress | Phased exit criteria: P1 (foundation), P2 (quality gates post-launch), P3 (launch) |
 | 2026-01-25 | in_progress | CONTRIBUTING.md created, README version fixed |
+| 2026-01-26 | in_progress | `patina version` command implemented (show/milestone/phase) |
+| 2026-01-26 | in_progress | Added milestones to spec, designing spec-linked versioning |
 
 ---
 
