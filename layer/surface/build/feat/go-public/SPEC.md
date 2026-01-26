@@ -29,10 +29,13 @@ milestones:
   - version: "0.8.5"
     name: Version safeguards
     status: complete
+  - version: "0.8.6"
+    name: Secrets exposure hardening
+    status: in_progress
   - version: "0.9.0"
     name: Public release
-    status: in_progress
-current_milestone: "0.9.0"
+    status: pending
+current_milestone: "0.8.6"
 ---
 
 # feat: Go Public
@@ -501,8 +504,9 @@ Version-linked outcomes for this spec. Each milestone = version bump.
 | 0.8.2 | Version command with automation | ✓ complete | `patina version show/milestone/phase` working |
 | 0.8.3 | Spec-linked versioning | ✓ complete | Milestones in specs, scrape extracts them, version reads from index |
 | 0.8.4 | GitHub config and branch protection | ✓ complete | Branch protection, default branch, CI passing |
-| 0.8.5 | Version safeguards | → in_progress | Dirty tree check, sync check, branch check before version bump |
-| 0.9.0 | Public release | ○ pending | Secrets audit, repo made public |
+| 0.8.5 | Version safeguards | ✓ complete | Dirty tree check, sync check, branch check before version bump |
+| 0.8.6 | Secrets exposure hardening | → in_progress | Audit history, add safeguards for owned/local/contrib projects |
+| 0.9.0 | Public release | ○ pending | Flip repo public |
 
 **Note:** Contributor system and PR signing (Phase 2 in original spec) deferred to post-0.9.0. Build after going public, before first external PR.
 
@@ -523,7 +527,7 @@ Infrastructure and GitHub config - enables clean releases and proper branch flow
 - [x] `patina version milestone` command implemented
 - [x] `patina version phase` command implemented
 - [x] `.patina/version.toml` schema defined
-- [ ] Version safeguards (dirty tree, sync check) - see detail below
+- [x] Version safeguards (dirty tree, sync check) - see detail below
 - [x] Spec-linked versioning (milestones from spec index)
 
 **Version Safeguards (0.8.5 detail):**
