@@ -241,6 +241,10 @@ pub fn bump_milestone(
         println!("  - {}", spec_path);
         if versioning_enabled {
             println!("  - Cargo.toml");
+            println!(
+                "  - git commit: release: v{} - {}",
+                new_version, description
+            );
         }
         if !no_tag && versioning_enabled {
             println!("  - git tag: v{}", new_version);
@@ -262,7 +266,12 @@ pub fn bump_milestone(
         eprintln!("Warning: failed to re-scrape layer: {}", e);
     }
 
-    // 8. Create git tag (only for owned repos)
+    // 8. Commit the release (so tag points to the right commit)
+    if versioning_enabled {
+        commit_release(new_version, &spec_path, description)?;
+    }
+
+    // 9. Create git tag (only for owned repos)
     if !no_tag && versioning_enabled {
         create_git_tag(new_version, description)?;
     }
@@ -706,6 +715,37 @@ fn update_cargo_version(new_version: &str) -> Result<()> {
 // ============================================================================
 // Git Operations
 // ============================================================================
+
+/// Commit the release changes (spec + Cargo.toml) before tagging
+fn commit_release(version: &str, spec_path: &str, description: &str) -> Result<()> {
+    // Stage the changed files
+    let output = Command::new("git")
+        .args(["add", spec_path, "Cargo.toml"])
+        .output()
+        .context("Failed to stage release files")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git add failed: {}", stderr);
+    }
+
+    // Commit with release message
+    let commit_msg = format!("release: v{} - {}", version, description);
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_msg])
+        .output()
+        .context("Failed to commit release")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // If nothing to commit, that's ok (files might already be committed)
+        if !stderr.contains("nothing to commit") {
+            anyhow::bail!("git commit failed: {}", stderr);
+        }
+    }
+
+    Ok(())
+}
 
 fn create_git_tag(version: &str, message: &str) -> Result<()> {
     let tag_name = format!("v{}", version);
