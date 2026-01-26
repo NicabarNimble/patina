@@ -664,6 +664,8 @@ The audit artifact answers:
 
 **Decision:** Replace release-plz with `patina version` command that fits our milestone-based model.
 
+**Core Principle:** Spec is truth. Everything else derives from it.
+
 ### Why Not release-plz
 
 release-plz is designed for:
@@ -671,92 +673,123 @@ release-plz is designed for:
 - Every `feat:` = minor bump, every `fix:` = patch bump
 
 Our model (see `versioning-policy.md`):
-- Phase transitions are intentional decisions
-- Milestones are "I completed something meaningful"
-- Not every feat commit is a version bump
+- Milestones are immutable goals defined in specs
+- Completing a milestone = releasing that version
+- Spec content evolves (the "how"), but milestone goals don't change
+- If a goal was wrong, create new milestone - don't edit old one
 
 **release-plz would fight our model, not help it.**
+
+### Source of Truth: Spec Milestones
+
+```yaml
+# In spec YAML frontmatter
+milestones:
+  - version: "0.8.4"
+    name: GitHub config and branch protection
+    status: complete
+  - version: "0.8.5"
+    name: Session contributor field
+    status: in_progress
+  - version: "0.9.0"
+    name: Public release
+    status: pending
+current_milestone: "0.8.5"
+```
+
+**Flow:**
+```
+Spec YAML (source of truth)
+    ↓ patina scrape layer
+Database (index for fast lookup)
+    ↓ patina version milestone
+Updates spec + Cargo.toml atomically
+```
+
+### Versioning Enabled/Disabled (Owned vs Fork)
+
+Versioning behavior inferred from `[upstream]` config in `.patina/config.toml`:
+
+| Config State | Inference | Versioning |
+|--------------|-----------|------------|
+| No `[upstream]` section | Local/owned project | ✓ Enabled |
+| `upstream.remote = "origin"` | Owned repo | ✓ Enabled |
+| `upstream.remote = "upstream"` | Fork/contrib | ✗ Disabled |
+
+**For forks:** Milestones track YOUR contribution goals (e.g., "get PR merged"), but Cargo.toml is controlled by upstream. `patina version milestone` updates spec only, not Cargo.toml.
+
+**For owned repos:** Milestones = release versions. `patina version milestone` updates spec AND Cargo.toml atomically.
 
 ### The `patina version` Command
 
 ```bash
-# Show current version and phase
+# Show current version and spec milestone
 patina version show
-# → v0.8.1 (Go Public phase, milestone 1)
+# → patina 0.8.4
+# → Phase 8: Go Public (milestone 4)
+# → Spec: go-public v0.8.5 → Session contributor field
 
-# Bump milestone within current phase
-patina version milestone "Versioning policy established"
-# → 0.8.0 → 0.8.1
-# → Updates Cargo.toml
-# → Updates version-history.md
-# → Creates git tag v0.8.1
-# → Optionally creates GitHub release
+# Complete current spec milestone (spec-aware, atomic)
+patina version milestone
+# → Reads current milestone from spec (via index)
+# → Marks it complete in spec YAML
+# → Advances current_milestone to next pending
+# → Updates Cargo.toml to milestone version (if owned repo)
+# → Re-scrapes layer to sync index
+# → Creates git tag
 
 # Start new phase
 patina version phase "Production Ready"
-# → 0.8.5 → 0.9.0
-# → Same automation as above
+# → 0.8.x → 0.9.0
+# → Same atomic updates
 ```
 
-### What It Tracks
+### What Gets Updated (Atomic Operation)
 
-State stored in `.patina/version.toml`:
+When `patina version milestone` runs on an owned repo:
+
+1. **Spec YAML** - Mark current milestone `status: complete`, advance `current_milestone`
+2. **Cargo.toml** - Set version to completed milestone version
+3. **Layer index** - Re-scrape to sync database
+4. **Git tag** - Create annotated tag with milestone name
+
+All or nothing. No partial updates that cause drift.
+
+### version.toml: Deprecated
+
+Previously tracked phase/milestone state separately. Now redundant because spec is truth.
+
+Kept for backwards compatibility but not authoritative. May be removed in future.
+
+### Dogfooding: Patina's Own Config
+
 ```toml
-[version]
-current = "0.8.1"
-phase = 8
-phase_name = "Go Public"
-milestone = 1
-
-[history]
-# Points to version-history.md for full record
+# .patina/config.toml
+[upstream]
+repo = "NicabarNimble/patina"
+branch = "main"
+remote = "origin"           # We own it → versioning enabled
+include_patina = true
+include_adapters = true
 ```
-
-### Automation Features
-
-1. **Cargo.toml sync** - Updates version automatically
-2. **Git tagging** - Creates annotated tag with milestone description
-3. **History update** - Appends to `version-history.md`
-4. **GitHub release** - Optional, creates release with notes
-
-### Session Integration
-
-Hook into session-end workflow:
-```
-Session ending. You completed:
-- Versioning policy established
-- Git history audited
-- Cargo.toml updated
-
-Bump version? [y/N] y
-Milestone description: Versioning system designed
-
-✓ Version bumped: 0.8.0 → 0.8.1
-✓ Tagged: v0.8.1
-✓ History updated
-```
-
-This addresses the "fear of not keeping up" - the prompt is there when you finish meaningful work.
 
 ### Implementation
 
-| Component | Effort | Notes |
+| Component | Status | Notes |
 |-----------|--------|-------|
-| `patina version show` | Small | Read Cargo.toml + state file |
-| `patina version milestone` | Medium | Update files, git tag |
-| `patina version phase` | Medium | Same as milestone + phase logic |
-| `.patina/version.toml` | Small | State schema |
-| Session integration | Small | Hook into session-end |
-| GitHub release | Small | Use existing ForgeWriter |
+| `patina version show` | ✓ Done | Shows Cargo.toml + spec milestone from index |
+| `patina version milestone` | Needs update | Must become spec-aware |
+| `is_versioning_enabled()` | To build | Check upstream.remote |
+| Spec YAML update | To build | Mark complete, advance current |
+| Atomic operation | To build | All updates or rollback |
 
 ### Migration from release-plz
 
-1. Remove `.github/workflows/release-plz.yml`
-2. Remove `release-plz.toml` if exists
-3. Add `.patina/version.toml` with current state
-4. Use `patina version` going forward
-
-No backwards compatibility needed - clean break.
+1. ✓ Remove `.github/workflows/release-plz.yml`
+2. ✓ Remove `release-plz.toml`
+3. Add `[upstream]` to `.patina/config.toml`
+4. Ensure spec has milestones in frontmatter
+5. Use `patina version milestone` going forward
 
 ---
 
