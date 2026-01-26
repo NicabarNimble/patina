@@ -1,97 +1,171 @@
-# Secrets Scanning Module
+# Scanner Module
 
-> Native secret detection for Patina - scan tracked files before going public.
+> Detect exposed secrets in files. Independent module, CLI unified under `patina secrets`.
 
 **Parent:** [go-public/SPEC.md](./SPEC.md) (0.8.6 milestone)
 **Status:** design
-**Session:** 20260126-111115
+**Sessions:** 20260126-111115, 20260126-134036
 
 ---
 
-## Goal
+## Design Principle
 
-Implement `patina secrets` commands that:
-1. Scan git-tracked files for secrets (pre-commit use case)
-2. Respect `.gitignore` natively (no false positives from ignored directories)
-3. Integrate with `patina doctor` for pre-public audit
-4. Behave differently for owned vs contrib projects
+Scanner is a **pure function**: files in, findings out.
 
----
+It doesn't know or care about:
+- Whether you have a vault
+- How you store secrets
+- What Patina is
 
-## Design Decision: Native vs Dependency
+This independence is intentional. The scanner could be used on any project, with or without Patina's vault system.
 
-**Evaluated:**
-- `ripsecrets` - Rust crate, 905 lines, MIT, pre-commit focused
-- `noseyparker` - Rust binary only, 30MB, full history scanning
+```
+src/secrets/     "Store and use secrets safely"
+      │
+      │  no dependency
+      │
+src/scanner/     "Detect exposed secrets in files"
+      │
+      └── CLI unifies both under `patina secrets`
+```
 
-**Decision: Native implementation**
-
-Rationale:
-1. ripsecrets patterns are simple regex (MIT licensed, can copy)
-2. Skip statistical randomness detection (complex, marginal benefit)
-3. Deep integration with Patina's git infrastructure
-4. Return structured `Finding` objects, not terminal output
-5. ~200-300 lines vs external dependency
+**The test:** Can I delete one without touching the other? Yes. They're not coupled. The code reflects this.
 
 ---
 
 ## Architecture
 
 ```
-src/secrets/
-├── mod.rs          # Public API: scan(), check()
-├── patterns.rs     # Secret detection regex patterns
-└── internal.rs     # Scanning implementation
+src/
+├── secrets/           # Vault (unchanged)
+│   ├── mod.rs
+│   ├── vault.rs
+│   ├── identity.rs
+│   └── ...
+│
+├── scanner/           # NEW: Independent module
+│   ├── mod.rs         # Public API
+│   ├── patterns.rs    # Detection patterns
+│   └── error.rs       # Typed errors
+│
+└── commands/
+    └── secrets.rs     # CLI composition layer
 ```
 
-### Public Interface (mod.rs)
+The CLI imports both:
+```rust
+use patina::secrets;   // Vault operations
+use patina::scanner;   // Scan operations
+
+match command {
+    Add { .. }   => secrets::add_secret(...),
+    Run { .. }   => secrets::run_with_secrets(...),
+    Check        => scanner::scan_staged(...),
+    Audit        => scanner::scan_tracked(...),
+}
+```
+
+User sees `patina secrets`. Code is honest about independence.
+
+---
+
+## Public API (mod.rs)
 
 ```rust
-//! Secret scanning for Patina projects.
+//! Detect exposed secrets in files.
 //!
-//! "Do X": Detect hardcoded secrets in tracked files.
+//! Independent of Patina's vault system. Can scan any files.
 
+mod error;
 mod patterns;
-mod internal;
 
-pub use internal::{scan, Finding, Severity};
+pub use error::ScanError;
 
-/// A detected secret
+use std::path::{Path, PathBuf};
+
+/// A detected secret exposure
 #[derive(Debug, Clone)]
 pub struct Finding {
     pub path: PathBuf,
     pub line: usize,
     pub column: usize,
-    pub pattern_name: &'static str,
-    pub matched: String,       // The matched text (redacted in display)
+    pub pattern: &'static str,
+    pub matched: String,       // Redacted
     pub severity: Severity,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
-    High,      // Known secret format (GitHub token, AWS key, etc.)
-    Medium,    // Generic password/secret assignment
+    High,
+    Medium,
 }
 
-/// Scan git-tracked files for secrets
-pub fn scan(repo_root: &Path) -> Result<Vec<Finding>> {
-    internal::scan_tracked_files(repo_root)
-}
+/// Core: scan arbitrary files
+///
+/// Pure function - works with any file list.
+pub fn scan_files(
+    paths: impl IntoIterator<Item = impl AsRef<Path>>
+) -> Result<Vec<Finding>, ScanError>;
 
-/// Check staged files only (pre-commit use case)
-pub fn check_staged(repo_root: &Path) -> Result<Vec<Finding>> {
-    internal::scan_staged_files(repo_root)
+/// Convenience: scan git-tracked files
+pub fn scan_tracked(repo_root: &Path) -> Result<Vec<Finding>, ScanError>;
+
+/// Convenience: scan staged files only
+pub fn scan_staged(repo_root: &Path) -> Result<Vec<Finding>, ScanError>;
+```
+
+**Key:** `scan_files` is the core. Git-aware functions are conveniences built on top.
+
+Composable usage:
+```rust
+// Scan specific files (no git involved)
+scanner::scan_files(&["config.toml", "src/main.rs"])?;
+
+// Scan git-tracked files
+scanner::scan_tracked(&repo_root)?;
+
+// Scan only staged files (pre-commit)
+scanner::scan_staged(&repo_root)?;
+```
+
+---
+
+## Error Handling (error.rs)
+
+Explicit. Matchable. No `anyhow` in public API.
+
+```rust
+use std::path::PathBuf;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum ScanError {
+    #[error("not a git repository: {0}")]
+    NotAGitRepo(PathBuf),
+
+    #[error("git command failed: {0}")]
+    GitFailed(String),
+
+    #[error("failed to read {path}")]
+    ReadError {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("regex compilation failed: {0}")]
+    RegexError(#[from] regex::Error),
 }
 ```
 
-### Patterns (patterns.rs)
+---
 
-Adapted from ripsecrets (MIT licensed):
+## Patterns (patterns.rs)
+
+Const data. No trait abstraction until needed.
 
 ```rust
-//! Secret detection patterns.
-//!
-//! Source: ripsecrets (MIT) - https://github.com/sirwart/ripsecrets
+use crate::scanner::Severity;
 
 pub struct Pattern {
     pub name: &'static str,
@@ -99,209 +173,126 @@ pub struct Pattern {
     pub severity: Severity,
 }
 
-pub const PATTERNS: &[Pattern] = &[
-    // === High Severity: Known Secret Formats ===
-
-    // GitHub tokens
+pub static PATTERNS: &[Pattern] = &[
+    // === High Severity: Known Formats ===
     Pattern {
         name: "github_token",
-        regex: r"(?:gh[oprsu]|github_pat)_[\dA-Za-z_]{36}",
+        regex: r"(?:gh[oprsu]|github_pat)_[\dA-Za-z_]{36,}",
         severity: Severity::High,
     },
-    // GitLab tokens
     Pattern {
         name: "gitlab_token",
-        regex: r"glpat-[\dA-Za-z_=-]{20,22}",
+        regex: r"glpat-[\dA-Za-z_=-]{20,}",
         severity: Severity::High,
     },
-    // Stripe keys
-    Pattern {
-        name: "stripe_key",
-        regex: r"[rs]k_live_[\dA-Za-z]{24,247}",
-        severity: Severity::High,
-    },
-    // AWS Secret Access Key
     Pattern {
         name: "aws_secret",
         regex: r"(?i)aws.{0,20}['\"][0-9a-zA-Z/+]{40}['\"]",
         severity: Severity::High,
     },
-    // Azure Storage Account Key
-    Pattern {
-        name: "azure_storage",
-        regex: r"AccountKey=[\d+/=A-Za-z]{88}",
-        severity: Severity::High,
-    },
-    // GCP API Key
-    Pattern {
-        name: "gcp_api_key",
-        regex: r"AIzaSy[\dA-Za-z_-]{33}",
-        severity: Severity::High,
-    },
-    // OpenAI API Key
     Pattern {
         name: "openai_key",
         regex: r"sk-[A-Za-z0-9]{48}",
         severity: Severity::High,
     },
-    // Anthropic API Key
     Pattern {
         name: "anthropic_key",
         regex: r"sk-ant-[\dA-Za-z_-]{90,110}",
         severity: Severity::High,
     },
-    // Age secret key (we use this!)
     Pattern {
         name: "age_secret_key",
         regex: r"AGE-SECRET-KEY-1[\dA-Z]{58}",
         severity: Severity::High,
     },
-    // Slack tokens
+    Pattern {
+        name: "stripe_key",
+        regex: r"[rs]k_live_[\dA-Za-z]{24,}",
+        severity: Severity::High,
+    },
     Pattern {
         name: "slack_token",
         regex: r"xox[aboprs]-(?:\d+-)+[\da-z]+",
         severity: Severity::High,
     },
-    // npm tokens
-    Pattern {
-        name: "npm_token",
-        regex: r"npm_[\dA-Za-z]{36}",
-        severity: Severity::High,
-    },
-    // JWT tokens
-    Pattern {
-        name: "jwt",
-        regex: r"\beyJ[\dA-Za-z=_-]+(?:\.[\dA-Za-z=_-]{3,}){1,4}",
-        severity: Severity::High,
-    },
-
-    // === Private Keys ===
     Pattern {
         name: "private_key_pem",
         regex: r"-{5}BEGIN (?:RSA |DSA |EC |OPENSSH |PGP )?PRIVATE KEY-{5}",
         severity: Severity::High,
     },
-    Pattern {
-        name: "putty_private_key",
-        regex: r"PuTTY-User-Key-File-2",
-        severity: Severity::High,
-    },
 
-    // === Medium Severity: URL Credentials ===
+    // === Medium Severity: Heuristics ===
     Pattern {
         name: "url_credentials",
-        regex: r"[A-Za-z]+://[^:]+:([^@]{8,})@[\dA-Za-z#%&+./:=?_~-]+",
+        regex: r"[a-z]+://[^:]+:[^@]{8,}@[\w./-]+",
         severity: Severity::Medium,
     },
-
-    // === Medium Severity: Generic Assignments ===
-    // password = "..." or secret = "..." etc.
     Pattern {
         name: "generic_secret",
-        regex: r#"(?i)(?:password|secret|token|api_key|apikey|auth)\s*[:=]\s*["'][^"']{8,}["']"#,
+        regex: r#"(?i)(?:password|secret|token|api_key)\s*[:=]\s*["'][^"']{8,}["']"#,
         severity: Severity::Medium,
     },
 ];
-
-/// Compile all patterns into a single regex for efficiency
-pub fn combined_regex() -> String {
-    let mut combined = String::from("(");
-    for (i, pattern) in PATTERNS.iter().enumerate() {
-        if i > 0 {
-            combined.push('|');
-        }
-        // Named capture group for pattern identification
-        combined.push_str(&format!("(?P<{}>{})", pattern.name, pattern.regex));
-    }
-    combined.push(')');
-    combined
-}
 ```
 
-### Implementation (internal.rs)
+---
+
+## Implementation
+
+Use `RegexSet` for efficient "which patterns matched?" queries.
 
 ```rust
-//! Internal scanning implementation.
+use once_cell::sync::Lazy;
+use regex::{Regex, RegexSet};
 
-use crate::git;  // Patina's git helpers
-use regex::Regex;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+static REGEX_SET: Lazy<RegexSet> = Lazy::new(|| {
+    RegexSet::new(patterns::PATTERNS.iter().map(|p| p.regex))
+        .expect("invalid pattern regex")
+});
 
-/// Scan all git-tracked files
-pub fn scan_tracked_files(repo_root: &Path) -> Result<Vec<Finding>> {
-    let files = get_tracked_files(repo_root)?;
-    scan_files(&files, repo_root)
-}
+// Individual regexes for extracting match details
+static REGEXES: Lazy<Vec<Regex>> = Lazy::new(|| {
+    patterns::PATTERNS
+        .iter()
+        .map(|p| Regex::new(p.regex).expect("invalid pattern regex"))
+        .collect()
+});
 
-/// Scan only staged files (pre-commit)
-pub fn scan_staged_files(repo_root: &Path) -> Result<Vec<Finding>> {
-    let files = get_staged_files(repo_root)?;
-    scan_files(&files, repo_root)
-}
-
-/// Get list of tracked files via git ls-files
-fn get_tracked_files(repo_root: &Path) -> Result<Vec<PathBuf>> {
-    let output = Command::new("git")
-        .args(["ls-files", "-z"])  // null-separated for safety
-        .current_dir(repo_root)
-        .output()?;
-
-    parse_null_separated(&output.stdout, repo_root)
-}
-
-/// Get list of staged files via git diff --cached
-fn get_staged_files(repo_root: &Path) -> Result<Vec<PathBuf>> {
-    let output = Command::new("git")
-        .args(["diff", "--cached", "--name-only", "-z"])
-        .current_dir(repo_root)
-        .output()?;
-
-    parse_null_separated(&output.stdout, repo_root)
-}
-
-fn parse_null_separated(bytes: &[u8], repo_root: &Path) -> Result<Vec<PathBuf>> {
-    let s = String::from_utf8_lossy(bytes);
-    Ok(s.split('\0')
-        .filter(|s| !s.is_empty())
-        .map(|s| repo_root.join(s))
-        .collect())
-}
-
-/// Scan a list of files for secrets
-fn scan_files(files: &[PathBuf], repo_root: &Path) -> Result<Vec<Finding>> {
-    let regex = Regex::new(&patterns::combined_regex())?;
+pub fn scan_files(
+    paths: impl IntoIterator<Item = impl AsRef<Path>>
+) -> Result<Vec<Finding>, ScanError> {
     let mut findings = Vec::new();
 
-    for file in files {
-        // Skip binary files
-        if is_binary(file) {
+    for path in paths {
+        let path = path.as_ref();
+
+        if should_skip(path) {
             continue;
         }
 
-        // Skip files we know are safe
-        if should_skip(file) {
-            continue;
-        }
-
-        let content = std::fs::read_to_string(file)?;
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue, // binary
+            Err(e) => return Err(ScanError::ReadError {
+                path: path.to_owned(),
+                source: e
+            }),
+        };
 
         for (line_num, line) in content.lines().enumerate() {
-            for cap in regex.captures_iter(line) {
-                // Find which pattern matched
-                for pattern in patterns::PATTERNS {
-                    if let Some(m) = cap.name(pattern.name) {
-                        findings.push(Finding {
-                            path: file.strip_prefix(repo_root)
-                                .unwrap_or(file)
-                                .to_path_buf(),
-                            line: line_num + 1,
-                            column: m.start() + 1,
-                            pattern_name: pattern.name,
-                            matched: redact(m.as_str()),
-                            severity: pattern.severity,
-                        });
-                    }
+            let matches: Vec<usize> = REGEX_SET.matches(line).iter().collect();
+
+            for idx in matches {
+                let pattern = &patterns::PATTERNS[idx];
+                if let Some(m) = REGEXES[idx].find(line) {
+                    findings.push(Finding {
+                        path: path.to_owned(),
+                        line: line_num + 1,
+                        column: m.start() + 1,
+                        pattern: pattern.name,
+                        matched: redact(m.as_str()),
+                        severity: pattern.severity,
+                    });
                 }
             }
         }
@@ -310,42 +301,61 @@ fn scan_files(files: &[PathBuf], repo_root: &Path) -> Result<Vec<Finding>> {
     Ok(findings)
 }
 
-/// Check if file is binary
-fn is_binary(path: &Path) -> bool {
-    // Simple heuristic: read first 8KB, look for null bytes
-    if let Ok(bytes) = std::fs::read(path) {
-        let check_len = bytes.len().min(8192);
-        return bytes[..check_len].contains(&0);
-    }
-    false
+pub fn scan_tracked(repo_root: &Path) -> Result<Vec<Finding>, ScanError> {
+    let files = git_ls_files(repo_root)?;
+    scan_files(files)
 }
 
-/// Files to skip (known safe patterns)
+pub fn scan_staged(repo_root: &Path) -> Result<Vec<Finding>, ScanError> {
+    let files = git_staged_files(repo_root)?;
+    scan_files(files)
+}
+
 fn should_skip(path: &Path) -> bool {
-    let name = path.file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
-    // Lock files often have hashes that look like secrets
-    if name.ends_with(".lock") || name == "Cargo.lock" {
-        return true;
-    }
-
-    // Test fixtures may contain example secrets
-    if path.to_string_lossy().contains("/test/")
-        || path.to_string_lossy().contains("/fixtures/") {
-        return true;
-    }
-
-    false
+    // Lock files have hashes that look like secrets
+    name.ends_with(".lock")
 }
 
-/// Redact a secret for display
 fn redact(s: &str) -> String {
     if s.len() <= 8 {
-        return "*".repeat(s.len());
+        "*".repeat(s.len())
+    } else {
+        format!("{}...{}", &s[..4], &s[s.len()-4..])
     }
-    format!("{}...{}", &s[..4], &s[s.len()-4..])
+}
+
+fn git_ls_files(repo_root: &Path) -> Result<Vec<PathBuf>, ScanError> {
+    let output = std::process::Command::new("git")
+        .args(["ls-files", "-z"])
+        .current_dir(repo_root)
+        .output()
+        .map_err(|e| ScanError::GitFailed(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(ScanError::NotAGitRepo(repo_root.to_owned()));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(|s| repo_root.join(s))
+        .collect())
+}
+
+fn git_staged_files(repo_root: &Path) -> Result<Vec<PathBuf>, ScanError> {
+    let output = std::process::Command::new("git")
+        .args(["diff", "--cached", "--name-only", "-z"])
+        .current_dir(repo_root)
+        .output()
+        .map_err(|e| ScanError::GitFailed(e.to_string()))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .split('\0')
+        .filter(|s| !s.is_empty())
+        .map(|s| repo_root.join(s))
+        .collect())
 }
 ```
 
@@ -355,158 +365,138 @@ fn redact(s: &str) -> String {
 
 ### `patina secrets check`
 
-Pre-commit use case - scan staged files only.
-
 ```bash
 $ patina secrets check
-Scanning staged files for secrets...
+Scanning 3 staged files...
 
 Found 1 secret:
 
   src/config.rs:42:15
-  Pattern: anthropic_key
-  Match: sk-a...xyz1
-  Severity: HIGH
+    Pattern: anthropic_key
+    Severity: HIGH
+    Match: sk-a...xyz1
 
-Commit blocked. Remove secrets before committing.
+Commit blocked. Remove secret or use `patina secrets add`.
 ```
 
 Exit codes:
-- `0` - No secrets found
-- `1` - Secrets found (blocks commit)
-- `2` - Error during scan
+- `0` - Clean
+- `1` - Secrets found
+- `2` - Error
 
 ### `patina secrets audit`
 
-Full audit of tracked files - used before going public.
-
 ```bash
 $ patina secrets audit
-Scanning 1510 tracked files for secrets...
+Scanning 1510 tracked files...
 
 All clear - no secrets found.
-
-# Or with findings:
-Found 3 secrets in 2 files:
-
-  src/api.rs:15:20
-    Pattern: openai_key
-    Severity: HIGH
-
-  config/dev.toml:8:12
-    Pattern: generic_secret
-    Severity: MEDIUM
-
-  config/dev.toml:12:12
-    Pattern: url_credentials
-    Severity: MEDIUM
-
-Run `patina secrets audit --help` for remediation options.
 ```
 
-### `patina secrets patterns`
+### `patina secrets` (status)
 
-List available detection patterns.
-
-```bash
-$ patina secrets patterns
-Secret Detection Patterns (18 total)
-
-HIGH SEVERITY:
-  github_token      GitHub personal access token or app token
-  gitlab_token      GitLab personal access token
-  stripe_key        Stripe live API key
-  aws_secret        AWS Secret Access Key
-  ...
-
-MEDIUM SEVERITY:
-  url_credentials   Credentials in URL (user:pass@host)
-  generic_secret    Generic password/secret/token assignment
-```
+Existing status output unchanged. Scanner doesn't affect vault status.
 
 ---
 
-## Integration Points
+## Testing
 
-### Pre-commit Hook
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-```bash
-# .git/hooks/pre-commit (installed by patina)
-#!/bin/sh
-patina secrets check
+    fn scan_content(content: &str) -> Vec<Finding> {
+        // Helper that scans a string directly
+        scan_string(content)
+    }
+
+    #[test]
+    fn detects_github_token() {
+        let findings = scan_content(
+            r#"token = "ghp_ABC123def456GHI789jkl012MNO345pqr678""#
+        );
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].pattern, "github_token");
+        assert_eq!(findings[0].severity, Severity::High);
+    }
+
+    #[test]
+    fn detects_anthropic_key() {
+        let findings = scan_content(
+            r#"key = "sk-ant-api03-verylongstringhere...""#
+        );
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].pattern, "anthropic_key");
+    }
+
+    #[test]
+    fn ignores_lock_files() {
+        assert!(should_skip(Path::new("Cargo.lock")));
+        assert!(should_skip(Path::new("package-lock.json")));
+    }
+
+    #[test]
+    fn redacts_secrets() {
+        let redacted = redact("ghp_ABC123def456GHI789jkl012MNO345pqr678");
+        assert!(redacted.contains("..."));
+        assert!(!redacted.contains("ABC123"));
+    }
+
+    #[test]
+    fn no_false_positive_on_placeholder() {
+        let findings = scan_content(r#"token = "your-token-here""#);
+        assert!(findings.is_empty());
+    }
+}
 ```
 
-Or via session-start which already manages git state.
-
-### `patina doctor`
-
-Add secrets check to doctor output:
-
-```bash
-$ patina doctor
-...
-Secrets audit:
-  Tracked files: 1510
-  Staged files: 3
-  Status: clean
-...
-```
-
-### Owned vs Contrib Behavior
-
-| Project Type | `secrets check` | `secrets audit` |
-|--------------|-----------------|-----------------|
-| Owned/Local | Error + block commit | Error exit code |
-| Contrib | Warning only | Warning only |
-
-Contrib projects may have secrets from upstream - not our problem.
+Each pattern gets a test. Integration tests scan fixture directories.
 
 ---
 
 ## Excluded from Scope
 
-1. **Statistical randomness detection** - Complex (200 lines of probability math), marginal benefit. Known patterns catch 90%+ of real secrets.
+1. **Custom patterns** - Built-in patterns cover 90%+. Add trait abstraction when needed.
 
-2. **Git history scanning** - Would need to scan all blobs ever committed. Use `git filter-repo` or BFG for history cleaning if needed.
+2. **Parallel scanning** - Consciously deferred. Add rayon if benchmarks show need.
 
-3. **Live validation** - Not phoning home to APIs to check if secrets are active. Privacy concern.
+3. **Git history scanning** - Different problem. Use `git filter-repo` for history.
 
-4. **Custom patterns via config** - Keep it simple for now. Can add later.
+4. **Live validation** - Not calling APIs to verify secrets are active.
 
----
-
-## Testing Strategy
-
-1. **Test fixtures** with known secrets (in `test/secrets/`)
-2. **No false positives** on Cargo.lock, test files, etc.
-3. **Real scan** of Patina repo should be clean
+5. **Hook installation** - Manual pre-commit setup for now.
 
 ---
 
 ## Implementation Order
 
-1. `src/secrets/patterns.rs` - Pattern definitions
-2. `src/secrets/internal.rs` - Scanning logic
-3. `src/secrets/mod.rs` - Public API
-4. `src/commands/secrets.rs` - CLI commands
-5. Integration with `patina doctor`
-6. Pre-commit hook installation
+1. `src/scanner/error.rs` - ScanError enum
+2. `src/scanner/patterns.rs` - Pattern definitions
+3. `src/scanner/mod.rs` - Core API + implementation
+4. `src/lib.rs` - Export scanner module
+5. `src/commands/secrets.rs` - Add Check/Audit subcommands
+6. Tests for each pattern
 
 ---
 
-## Exit Criteria (for 0.8.6)
+## Exit Criteria (0.8.6)
 
+- [ ] `src/scanner/` module exists, independent of `src/secrets/`
+- [ ] `scanner::scan_files()` works with arbitrary paths
+- [ ] `scanner::scan_tracked()` scans git-tracked files
+- [ ] `scanner::scan_staged()` scans staged files only
+- [ ] `ScanError` provides typed, matchable errors
 - [ ] `patina secrets check` scans staged files
 - [ ] `patina secrets audit` scans all tracked files
-- [ ] Patterns detect common secret formats
-- [ ] Respects .gitignore via `git ls-files`
-- [ ] `patina doctor` includes secrets status
+- [ ] Each pattern has a unit test
 - [ ] Patina repo passes `patina secrets audit`
 
 ---
 
 ## References
 
-- [ripsecrets](https://github.com/sirwart/ripsecrets) - Pattern source (MIT)
-- [Nosey Parker](https://github.com/praetorian-inc/noseyparker) - Evaluated but not used
-- Session research on secret scanning tools
+- [ripsecrets](https://github.com/sirwart/ripsecrets) - Pattern inspiration (MIT)
+- [regex crate - RegexSet](https://docs.rs/regex/latest/regex/struct.RegexSet.html)
+- Session 20260126-111115 - Tool research
+- Session 20260126-134036 - Design discussion
