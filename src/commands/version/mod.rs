@@ -45,10 +45,11 @@ pub enum VersionCommands {
         components: bool,
     },
 
-    /// Bump milestone within current phase (0.8.1 -> 0.8.2)
+    /// Complete current spec milestone and bump version
     Milestone {
-        /// Description of what this milestone completes
-        description: String,
+        /// Override description (default: from spec milestone name)
+        #[arg(short, long)]
+        description: Option<String>,
 
         /// Skip creating git tag
         #[arg(long)]
@@ -106,7 +107,7 @@ pub fn execute_subcommand(command: VersionCommands) -> Result<()> {
             description,
             no_tag,
             dry_run,
-        } => milestone(&description, no_tag, dry_run),
+        } => milestone(description.as_deref(), no_tag, dry_run),
         VersionCommands::Phase {
             name,
             no_tag,
@@ -130,20 +131,21 @@ pub fn show(json: bool, components: bool) -> Result<()> {
     internal::show_version(json, components)
 }
 
-/// Bump milestone within current phase
+/// Complete current spec milestone and bump version
 ///
-/// Increments the milestone number (0.8.1 -> 0.8.2) and:
-/// - Updates `.patina/version.toml`
-/// - Updates `Cargo.toml` version field
-/// - Appends entry to version history
+/// Reads current milestone from spec (via index) and:
+/// - Marks it complete in spec YAML
+/// - Advances current_milestone to next pending
+/// - Updates `Cargo.toml` version (if owned repo)
+/// - Re-scrapes layer to sync index
 /// - Creates annotated git tag (unless `--no-tag`)
 ///
 /// # Arguments
 ///
-/// * `description` - What this milestone completes (used in history and tag)
+/// * `description` - Override description (default: from spec milestone name)
 /// * `no_tag` - Skip creating git tag
 /// * `dry_run` - Show changes without writing files
-pub fn milestone(description: &str, no_tag: bool, dry_run: bool) -> Result<()> {
+pub fn milestone(description: Option<&str>, no_tag: bool, dry_run: bool) -> Result<()> {
     internal::bump_milestone(description, no_tag, dry_run)
 }
 
