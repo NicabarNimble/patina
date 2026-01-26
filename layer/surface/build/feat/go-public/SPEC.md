@@ -3,13 +3,14 @@ type: feat
 id: go-public
 status: in_progress
 created: 2026-01-23
-updated: 2026-01-23
+updated: 2026-01-25
 sessions:
   origin: 20260123-082104
   work:
     - 20260116-105801
     - 20251216-085711
     - 20260123-050814
+    - 20260125-211931
 related:
   - layer/surface/build/deferred/spec-version-simplification.md
   - layer/surface/build/explore/anti-slop/SPEC.md
@@ -474,54 +475,60 @@ This self-selects for serious contributors.
 
 ## Exit Criteria
 
-### Infrastructure
+### Phase 1: Foundation (Do Now)
+
+Infrastructure and GitHub config - enables clean releases and proper branch flow.
+
+**Versioning:**
 - [x] Git history audit complete (`git-history-audit.md` artifact)
 - [x] Fresh start version decided (v0.8.1)
 - [x] Historical record documented (`version-history.md` artifact)
 - [x] Versioning policy established (`versioning-policy.md`)
-- [ ] `patina version` command implemented
+- [ ] `patina version show` command implemented
+- [ ] `patina version milestone` command implemented
+- [ ] `patina version phase` command implemented
+- [ ] `.patina/version.toml` schema defined
 - [ ] Remove release-plz workflow (`.github/workflows/release-plz.yml`)
-- [ ] Remove release-plz config (`release-plz.toml` if exists)
-- [ ] CI passing on main branch
 
-### Branch Flow
+**Branch Flow:**
 - [ ] `main` branch protected (require PR, require maintainer review)
 - [ ] `patina` branch protected (require PR, require CI pass)
 - [ ] Default branch set to `patina`
-- [ ] Contributors can only PR to `patina`
+- [ ] CI passing on main branch
 
-### Contributor System
+### Phase 2: Quality Gates (Post-Launch)
+
+Contributor and PR signing system - builds after going public, before first external PR.
+
+**Contributor System:**
 - [ ] `patina contributor register` command implemented
 - [ ] `patina contributor verify` command implemented
 - [ ] `.patina/contributors.json` schema defined
 - [ ] CI workflow to verify contributor on PR
 
-### Patina-Signed PRs
+**Patina-Signed PRs:**
 - [ ] `patina pr create` command implemented
 - [ ] `patina pr push` command implemented (re-signs on update)
 - [ ] `patina pr verify` command implemented
 - [ ] Signature block format defined
 - [ ] CI workflow to verify PR signature
-- [ ] Contributor continuity check (same person throughout)
 
-### Quality Gates
-- [ ] CI checks: tests, clippy, fmt (surgical, not bloated)
-- [ ] CI check: contributor verification
-- [ ] PR template requiring issue link and rationale
+### Phase 3: Launch
 
-### Session Transparency
+Documentation and final checks before flipping public.
+
+**Session Transparency:**
 - [ ] Session-start script adds `**Contributor**` field
 - [ ] Contributor sourced from git config or gh auth
-- [ ] CONTRIBUTING.md explains session transparency consent
 
-### Documentation
-- [ ] README explains what Patina is and how to install
-- [ ] CONTRIBUTING.md defines the trust model and quality bar
-- [ ] CONTRIBUTING.md includes session transparency disclosure
-- [ ] LICENSE clear and correct
+**Documentation:**
+- [x] README explains what Patina is and how to install
+- [x] CONTRIBUTING.md defines the trust model and quality bar
+- [x] CONTRIBUTING.md includes session transparency disclosure
+- [x] LICENSE clear and correct (MIT)
 
-### Hygiene
-- [ ] No secrets or sensitive paths in repo history
+**Hygiene:**
+- [ ] Secrets audit complete (no sensitive data in history)
 - [ ] Repo made public on GitHub
 
 ---
@@ -754,6 +761,8 @@ No backwards compatibility needed - clean break.
 | 2026-01-23 | in_progress | Added release audit - git history analysis before fresh start |
 | 2026-01-23 | in_progress | Versioning policy (Phase.Milestone), history audit, v0.8.1 |
 | 2026-01-23 | in_progress | Replace release-plz with `patina version` command |
+| 2026-01-25 | in_progress | Phased exit criteria: P1 (foundation), P2 (quality gates post-launch), P3 (launch) |
+| 2026-01-25 | in_progress | CONTRIBUTING.md created, README version fixed |
 
 ---
 
