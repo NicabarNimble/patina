@@ -146,7 +146,10 @@ fn run_safeguard_checks(new_version: &str) -> Result<()> {
     // Warn if not on patina branch
     let branch = git::current_branch()?;
     if branch != "patina" {
-        eprintln!("⚠️  Warning: Not on 'patina' branch (currently on '{}')", branch);
+        eprintln!(
+            "⚠️  Warning: Not on 'patina' branch (currently on '{}')",
+            branch
+        );
     }
 
     Ok(())
@@ -188,14 +191,19 @@ fn check_index_freshness() -> Result<()> {
 }
 
 /// Complete current spec milestone and bump version (spec-aware)
-pub fn bump_milestone(description_override: Option<&str>, no_tag: bool, dry_run: bool) -> Result<()> {
+pub fn bump_milestone(
+    description_override: Option<&str>,
+    no_tag: bool,
+    dry_run: bool,
+) -> Result<()> {
     let project_path = Path::new(".");
 
     // 1. Get current milestone from spec index
-    let (milestone, spec_path) = get_current_milestone_with_path()
-        .ok_or_else(|| anyhow::anyhow!(
+    let (milestone, spec_path) = get_current_milestone_with_path().ok_or_else(|| {
+        anyhow::anyhow!(
             "No current milestone found. Ensure spec has milestones and run 'patina scrape layer'."
-        ))?;
+        )
+    })?;
 
     let description = description_override.unwrap_or(&milestone.name);
     let new_version = &milestone.version;
@@ -216,13 +224,19 @@ pub fn bump_milestone(description_override: Option<&str>, no_tag: bool, dry_run:
 
     if dry_run {
         println!("Dry run - would perform these changes:\n");
-        println!("Completing: {} v{} - {}", milestone.spec_id, new_version, description);
+        println!(
+            "Completing: {} v{} - {}",
+            milestone.spec_id, new_version, description
+        );
         if versioning_enabled {
             println!("Cargo.toml: {} -> {}", old_version, new_version);
         } else {
             println!("Cargo.toml: unchanged (fork repo)");
         }
-        println!("Spec: mark {} complete, advance to {:?}", new_version, next_milestone);
+        println!(
+            "Spec: mark {} complete, advance to {:?}",
+            new_version, next_milestone
+        );
         println!("\nFiles that would be updated:");
         println!("  - {}", spec_path);
         if versioning_enabled {
@@ -254,7 +268,10 @@ pub fn bump_milestone(description_override: Option<&str>, no_tag: bool, dry_run:
     }
 
     // Output
-    println!("\n✓ Milestone complete: {} v{}", milestone.spec_id, new_version);
+    println!(
+        "\n✓ Milestone complete: {} v{}",
+        milestone.spec_id, new_version
+    );
     println!("  {}", description);
     if versioning_enabled {
         println!("  Cargo.toml: {} -> {}", old_version, new_version);
@@ -333,7 +350,11 @@ fn get_next_pending_milestone(spec_id: &str, current_version: &str) -> Option<St
 }
 
 /// Update spec YAML to mark milestone complete and advance to next
-fn update_spec_milestone(spec_path: &str, current_version: &str, next_version: Option<&str>) -> Result<()> {
+fn update_spec_milestone(
+    spec_path: &str,
+    current_version: &str,
+    next_version: Option<&str>,
+) -> Result<()> {
     let content = fs::read_to_string(spec_path)?;
 
     // Update the milestone status from in_progress to complete
@@ -356,7 +377,9 @@ fn update_spec_milestone(spec_path: &str, current_version: &str, next_version: O
 
         // Update current_milestone pointer
         let cm_re = regex::Regex::new(r#"(?m)^current_milestone: "[^"]+""#)?;
-        cm_re.replace(&content, &format!(r#"current_milestone: "{}""#, next)).to_string()
+        cm_re
+            .replace(&content, &format!(r#"current_milestone: "{}""#, next))
+            .to_string()
     } else {
         content
     };

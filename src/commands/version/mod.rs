@@ -187,7 +187,7 @@ mod tests {
         assert!(matches!(show, VersionCommands::Show { .. }));
 
         let milestone = VersionCommands::Milestone {
-            description: "Test milestone".to_string(),
+            description: Some("Test milestone".to_string()),
             no_tag: false,
             dry_run: true,
         };

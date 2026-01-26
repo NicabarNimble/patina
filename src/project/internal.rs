@@ -535,8 +535,8 @@ pub fn is_versioning_enabled(project_path: &Path) -> bool {
     };
 
     match &config.upstream {
-        None => true,                          // No upstream = owned
-        Some(up) => up.remote == "origin",     // origin = owned, upstream = fork
+        None => true,                      // No upstream = owned
+        Some(up) => up.remote == "origin", // origin = owned, upstream = fork
     }
 }
 
