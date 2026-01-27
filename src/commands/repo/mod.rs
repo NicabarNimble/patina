@@ -43,6 +43,10 @@ pub enum RepoCommands {
         /// Also fetch and index GitHub issues
         #[arg(long)]
         with_issues: bool,
+
+        /// Skip building semantic indices (faster, lexical search only)
+        #[arg(long)]
+        no_oxidize: bool,
     },
 
     /// List registered repositories
@@ -97,12 +101,14 @@ pub fn execute_cli(
                 url,
                 contrib,
                 with_issues,
+                no_oxidize,
             }),
             _,
         ) => RepoCommand::Add {
             url,
             contrib,
             with_issues,
+            no_oxidize,
         },
         (Some(RepoCommands::List { status }), _) => RepoCommand::List { status },
         (Some(RepoCommands::Update { name, all, oxidize }), _) => {
@@ -119,10 +125,12 @@ pub fn execute_cli(
         (Some(RepoCommands::Show { name }), _) => RepoCommand::Show { name },
 
         // Shorthand form: patina repo <url> [--contrib] [--with-issues]
+        // Note: --no-oxidize not available in shorthand, defaults to false (oxidize runs)
         (None, Some(url)) => RepoCommand::Add {
             url,
             contrib,
             with_issues,
+            no_oxidize: false,
         },
 
         // No args: show list
@@ -135,12 +143,13 @@ pub fn execute_cli(
 /// Add an external repository
 ///
 /// Clones the repo to `~/.patina/repos/<name>/`, creates patina branch,
-/// scaffolds `.patina/` structure, and runs scrape.
+/// scaffolds `.patina/` structure, runs scrape, and builds semantic indices.
 ///
 /// With `--contrib`, also creates a GitHub fork and sets up push remote.
 /// With `--with-issues`, also fetches and indexes GitHub issues.
-pub fn add(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
-    internal::add_repo(url, contrib, with_issues)
+/// With `--no-oxidize`, skips building semantic indices (faster, lexical search only).
+pub fn add(url: &str, contrib: bool, with_issues: bool, no_oxidize: bool) -> Result<()> {
+    internal::add_repo(url, contrib, with_issues, no_oxidize)
 }
 
 /// List all registered repositories
@@ -171,6 +180,11 @@ pub fn show(name: &str) -> Result<()> {
 /// Get the database path for a repo (for scry --repo)
 pub fn get_db_path(name: &str) -> Result<String> {
     internal::get_repo_db_path(name)
+}
+
+/// Get the filesystem path for a repo (for oxidize --repo)
+pub fn get_path(name: &str) -> Result<std::path::PathBuf> {
+    internal::get_repo_path(name)
 }
 
 /// Migrate registry paths to the new cache location.
@@ -238,7 +252,8 @@ pub fn execute(command: RepoCommand) -> Result<()> {
             url,
             contrib,
             with_issues,
-        } => add(&url, contrib, with_issues),
+            no_oxidize,
+        } => add(&url, contrib, with_issues, no_oxidize),
         RepoCommand::List { status } => {
             let repos = list()?;
             if repos.is_empty() {
@@ -290,6 +305,7 @@ pub enum RepoCommand {
         url: String,
         contrib: bool,
         with_issues: bool,
+        no_oxidize: bool,
     },
     List {
         status: bool,
@@ -316,6 +332,7 @@ mod tests {
             url: "https://github.com/test/repo".to_string(),
             contrib: false,
             with_issues: true,
+            no_oxidize: false,
         };
         assert!(matches!(add, RepoCommand::Add { .. }));
 

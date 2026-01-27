@@ -3,13 +3,15 @@ type: refactor
 id: spec-system
 status: in_progress
 created: 2026-01-22
-updated: 2026-01-22
+updated: 2026-01-26
 sessions:
   origin: 20260122-083510
-  work: []
+  work:
+    - 20260126-060540
 related:
   - layer/surface/build/spec-epistemic-layer.md
   - layer/surface/build/feat/surface-layer/SPEC.md
+  - layer/surface/build/feat/go-public/SPEC.md
 ---
 
 # refactor: Spec System
@@ -24,9 +26,11 @@ related:
 
 ## Exit Criteria
 
-- [ ] Spec format documented (this file)
+- [x] Spec format documented (this file)
+- [x] Milestone format documented (this file)
 - [ ] Existing specs migrated or archived
-- [ ] `patina report specs` can parse status from frontmatter
+- [ ] `patina scrape layer` extracts milestones from specs
+- [ ] `patina version milestone` reads from scraped index
 - [ ] No specs with status that contradicts reality
 
 ---
@@ -81,6 +85,12 @@ sessions:
   work: [session-ids]
 related:
   - path/to/related/spec
+# Optional: milestones for version-linked work
+milestones:
+  - version: "0.x.y"
+    name: Short description
+    status: pending | in_progress | complete
+current_milestone: "0.x.y"
 ---
 
 # type: Title
@@ -94,6 +104,17 @@ related:
 - [ ] Criterion 1
 - [ ] Criterion 2
 - [ ] Criterion 3
+
+---
+
+## Milestones
+
+Optional section for specs with version-linked outcomes.
+
+| Version | Name | Status |
+|---------|------|--------|
+| 0.x.y | Milestone description | → in_progress |
+| 0.x.z | Next milestone | ○ pending |
 
 ---
 
@@ -126,6 +147,34 @@ Optional section for commands, key decisions, anything needed at a glance.
 | `in_progress` | Actively being built |
 | `complete` | All exit criteria met |
 | `archived` | Superseded, abandoned, or done and tagged |
+
+### Milestones (Optional)
+
+Milestones connect specs to version bumps. Use them when:
+- Work spans multiple version releases
+- You want `patina version milestone` to link to spec progress
+- The spec represents a "phase" of development (like go-public)
+
+**Don't use milestones when:**
+- Single version bump completes the spec
+- Exploration/research with uncertain outcome
+- Quick fix that doesn't warrant version tracking
+
+**Milestone Status Enum:**
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Not started |
+| `in_progress` | Current focus |
+| `complete` | Version bumped, done |
+
+**Milestone Rules:**
+
+1. **One `in_progress` at a time** - Focus. Complete current before starting next.
+2. **Version must be sequential** - 0.8.2 → 0.8.3, no skipping
+3. **Completing = version bump** - When milestone status → complete, `patina version milestone` bumps version
+4. **Exit criteria per milestone** - Each milestone should have clear criteria in the spec body
+5. **Scraped into index** - `patina scrape layer` extracts milestones for fast lookup
 
 ### Rules
 
@@ -209,6 +258,7 @@ Add `patina report specs` to parse frontmatter and show:
 | Date | Status | Note |
 |------|--------|------|
 | 2026-01-22 | in_progress | Initial spec created during session |
+| 2026-01-26 | in_progress | Added milestone format for version linkage |
 
 ---
 

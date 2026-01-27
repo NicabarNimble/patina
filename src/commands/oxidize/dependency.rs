@@ -121,8 +121,14 @@ const MAX_FUNCTION_NAME_LEN: usize = 200;
 /// "commands::init::execute" -> "Function: commands::init::execute (Rust function)"
 pub fn function_to_text(name: &str) -> String {
     // Truncate very long names (some scraped "functions" are actually code blocks)
+    // Find the last valid UTF-8 char boundary at or before MAX_FUNCTION_NAME_LEN
     let truncated = if name.len() > MAX_FUNCTION_NAME_LEN {
-        &name[..MAX_FUNCTION_NAME_LEN]
+        // Walk backwards from limit to find a valid char boundary
+        let mut end = MAX_FUNCTION_NAME_LEN;
+        while end > 0 && !name.is_char_boundary(end) {
+            end -= 1;
+        }
+        &name[..end]
     } else {
         name
     };
@@ -236,6 +242,22 @@ mod tests {
             function_to_text("simple_func"),
             "Function: simple_func (function)"
         );
+    }
+
+    #[test]
+    fn test_function_to_text_unicode_truncation() {
+        // Create a string with multi-byte UTF-8 characters that exceeds MAX_FUNCTION_NAME_LEN
+        // The fancy quote " is 3 bytes in UTF-8, so placing it at byte 199-201 would
+        // cause a panic if we naively slice at byte 200
+        let mut long_name = "x".repeat(197);
+        long_name.push('"'); // 3-byte UTF-8 character at bytes 197-199
+        long_name.push('"'); // 3-byte UTF-8 character at bytes 200-202
+        long_name.push_str("more text after");
+
+        // This should not panic - it should truncate safely at a char boundary
+        let result = function_to_text(&long_name);
+        assert!(result.starts_with("Function: "));
+        assert!(result.len() <= MAX_FUNCTION_NAME_LEN + 30); // account for "Function: " prefix and suffix
     }
 
     #[test]

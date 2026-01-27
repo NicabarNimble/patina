@@ -359,6 +359,69 @@ pub fn rebase_abort() -> Result<()> {
     Ok(())
 }
 
+/// Check if a tag exists
+pub fn tag_exists(name: &str) -> Result<bool> {
+    let output = Command::new("git")
+        .args(["tag", "-l", name])
+        .output()
+        .context("Failed to check if tag exists")?;
+
+    let tags = String::from_utf8_lossy(&output.stdout);
+    Ok(tags.trim() == name)
+}
+
+/// Check if current branch has an upstream tracking branch
+pub fn has_upstream() -> Result<bool> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "@{upstream}"])
+        .output()
+        .context("Failed to check for upstream")?;
+
+    Ok(output.status.success())
+}
+
+/// Get number of commits current branch is ahead of its upstream
+pub fn commits_ahead() -> Result<usize> {
+    let output = Command::new("git")
+        .args(["rev-list", "--count", "@{upstream}..HEAD"])
+        .output()
+        .context("Failed to count commits ahead")?;
+
+    if !output.status.success() {
+        return Ok(0);
+    }
+
+    let count_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(count_str.parse().unwrap_or(0))
+}
+
+/// Get number of commits current branch is behind its upstream
+pub fn commits_behind_upstream() -> Result<usize> {
+    let output = Command::new("git")
+        .args(["rev-list", "--count", "HEAD..@{upstream}"])
+        .output()
+        .context("Failed to count commits behind")?;
+
+    if !output.status.success() {
+        return Ok(0);
+    }
+
+    let count_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(count_str.parse().unwrap_or(0))
+}
+
+/// Check if current branch has diverged from upstream (both ahead and behind)
+pub fn is_diverged() -> Result<bool> {
+    if !has_upstream()? {
+        return Ok(false);
+    }
+
+    let ahead = commits_ahead()?;
+    let behind = commits_behind_upstream()?;
+
+    Ok(ahead > 0 && behind > 0)
+}
+
 /// Fetch from remote
 pub fn fetch(remote: &str) -> Result<()> {
     let output = Command::new("git")
