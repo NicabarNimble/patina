@@ -31,6 +31,9 @@ related:
 - [ ] Existing specs migrated or archived
 - [ ] `patina scrape layer` extracts milestones from specs
 - [ ] `patina version milestone` reads from scraped index
+- [ ] `patina version milestone` creates GitHub release via forge (not just git tag)
+- [ ] `patina version show` reads Cargo.toml as source of truth (not only stale index)
+- [ ] Spec archival (delete + tag) triggers re-scrape or version command handles missing specs gracefully
 - [ ] No specs with status that contradicts reality
 
 ---
@@ -259,6 +262,7 @@ Add `patina report specs` to parse frontmatter and show:
 |------|--------|------|
 | 2026-01-22 | in_progress | Initial spec created during session |
 | 2026-01-26 | in_progress | Added milestone format for version linkage |
+| 2026-01-27 | in_progress | Added: GitHub release creation, stale index handling, spec archival re-scrape |
 
 ---
 
