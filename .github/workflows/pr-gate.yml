@@ -1,0 +1,55 @@
+name: PR Gate
+
+on:
+  pull_request:
+    types: [opened, edited, reopened]
+
+jobs:
+  check-linked-issue:
+    name: Require Linked Issue
+    runs-on: ubuntu-latest
+
+    # Skip for maintainers
+    if: github.actor != 'NicabarNimble'
+
+    steps:
+      - name: Check for linked issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.pull_request.body || '';
+
+            // Look for issue references: Fixes #123, Closes #123, Resolves #123
+            const issuePattern = /(?:fix(?:es)?|close[sd]?|resolve[sd]?)\s*#(\d+)/i;
+            const hasLinkedIssue = issuePattern.test(body);
+
+            if (!hasLinkedIssue) {
+              // Post comment explaining why
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: `Thanks for your contribution!
+
+This PR doesn't appear to have a linked issue. Please:
+
+1. Create an issue describing what you want to change and why
+2. Update this PR description with \`Fixes #<issue-number>\`
+
+This helps us understand the context and ensures changes align with project direction.
+
+See [CONTRIBUTING.md](../blob/patina/CONTRIBUTING.md) for more details.`
+              });
+
+              // Close the PR
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                state: 'closed'
+              });
+
+              core.setFailed('PR must reference an issue (e.g., "Fixes #123")');
+            } else {
+              console.log('Linked issue found');
+            }
