@@ -3,16 +3,44 @@ type: feat
 id: go-public
 status: in_progress
 created: 2026-01-23
-updated: 2026-01-23
+updated: 2026-01-26
 sessions:
   origin: 20260123-082104
   work:
     - 20260116-105801
     - 20251216-085711
     - 20260123-050814
+    - 20260125-211931
+    - 20260126-060540
 related:
   - layer/surface/build/deferred/spec-version-simplification.md
   - layer/surface/build/explore/anti-slop/SPEC.md
+  - layer/surface/build/refactor/spec-system/SPEC.md
+artifacts:
+  - ./secrets-scan.md
+  - ./git-history-audit.md
+  - ./version-history.md
+  - ./versioning-policy.md
+milestones:
+  - version: "0.8.2"
+    name: Version command with automation
+    status: complete
+  - version: "0.8.3"
+    name: Spec-linked versioning
+    status: complete
+  - version: "0.8.4"
+    name: GitHub config and branch protection
+    status: complete
+  - version: "0.8.5"
+    name: Version safeguards
+    status: complete
+  - version: "0.8.6"
+    name: Secrets exposure hardening
+    status: complete
+  - version: "0.9.0"
+    name: Public release
+    status: complete
+current_milestone: "0.9.0"
 ---
 
 # feat: Go Public
@@ -472,56 +500,99 @@ This self-selects for serious contributors.
 
 ---
 
+## Milestones
+
+Version-linked outcomes for this spec. Each milestone = version bump.
+
+| Version | Name | Status | Exit Criteria |
+|---------|------|--------|---------------|
+| 0.8.2 | Version command with automation | ✓ complete | `patina version show/milestone/phase` working |
+| 0.8.3 | Spec-linked versioning | ✓ complete | Milestones in specs, scrape extracts them, version reads from index |
+| 0.8.4 | GitHub config and branch protection | ✓ complete | Branch protection, default branch, CI passing |
+| 0.8.5 | Version safeguards | ✓ complete | Dirty tree check, sync check, branch check before version bump |
+| 0.8.6 | Secrets exposure hardening | → in_progress | [secrets-scan.md](./secrets-scan.md) - Native secret detection |
+| 0.9.0 | Public release | ○ pending | Flip repo public |
+
+**Note:** Contributor system and PR signing (Phase 2 in original spec) deferred to post-0.9.0. Build after going public, before first external PR.
+
+---
+
 ## Exit Criteria
 
-### Infrastructure
+### Phase 1: Foundation (Do Now)
+
+Infrastructure and GitHub config - enables clean releases and proper branch flow.
+
+**Versioning:**
 - [x] Git history audit complete (`git-history-audit.md` artifact)
 - [x] Fresh start version decided (v0.8.1)
 - [x] Historical record documented (`version-history.md` artifact)
 - [x] Versioning policy established (`versioning-policy.md`)
-- [ ] `patina version` command implemented
-- [ ] Remove release-plz workflow (`.github/workflows/release-plz.yml`)
-- [ ] Remove release-plz config (`release-plz.toml` if exists)
-- [ ] CI passing on main branch
+- [x] `patina version show` command implemented
+- [x] `patina version milestone` command implemented
+- [x] `patina version phase` command implemented
+- [x] `.patina/version.toml` schema defined
+- [x] Version safeguards (dirty tree, sync check) - see detail below
+- [x] Spec-linked versioning (milestones from spec index)
 
-### Branch Flow
-- [ ] `main` branch protected (require PR, require maintainer review)
-- [ ] `patina` branch protected (require PR, require CI pass)
-- [ ] Default branch set to `patina`
-- [ ] Contributors can only PR to `patina`
+**Version Safeguards (0.8.5 detail):**
 
-### Contributor System
+`patina version milestone` must check before proceeding:
+
+| Check | Action | Rationale |
+|-------|--------|-----------|
+| Dirty tree (tracked files) | **Block** | Don't version uncommitted work |
+| Behind remote | **Block** | Someone else pushed, pull first |
+| Diverged from remote | **Block** | Merge conflict waiting, resolve first |
+| Tag already exists | **Block** | Can't re-release same version |
+| Index stale (spec newer than scrape) | **Block** | Could complete wrong milestone |
+
+Non-blocking warnings:
+| Check | Action | Rationale |
+|-------|--------|-----------|
+| Not on `patina` branch | **Warn** | Unusual but allowed |
+| Untracked files present | **Warn** | May want to add them |
+| Ahead of remote | **Allow** | Normal workflow - commit often, push later |
+- [x] Remove release-plz workflow (`.github/workflows/release-plz.yml`)
+
+**Branch Flow:**
+- [x] `main` branch protected (require PR, require maintainer review)
+- [ ] `patina` branch protected (require PR, require CI pass) - deferred to Phase 2
+- [x] Default branch set to `patina`
+- [x] CI passing on main branch
+
+### Phase 2: Quality Gates (Post-Launch)
+
+Contributor and PR signing system - builds after going public, before first external PR.
+
+**Contributor System:**
 - [ ] `patina contributor register` command implemented
 - [ ] `patina contributor verify` command implemented
 - [ ] `.patina/contributors.json` schema defined
 - [ ] CI workflow to verify contributor on PR
+- [ ] Session-start script adds `**Contributor**` field (verified identity)
+- [ ] Contributor sourced from verified gh auth (not unverified git config)
 
-### Patina-Signed PRs
+**Patina-Signed PRs:**
 - [ ] `patina pr create` command implemented
 - [ ] `patina pr push` command implemented (re-signs on update)
 - [ ] `patina pr verify` command implemented
 - [ ] Signature block format defined
 - [ ] CI workflow to verify PR signature
-- [ ] Contributor continuity check (same person throughout)
 
-### Quality Gates
-- [ ] CI checks: tests, clippy, fmt (surgical, not bloated)
-- [ ] CI check: contributor verification
-- [ ] PR template requiring issue link and rationale
+### Phase 3: Launch
 
-### Session Transparency
-- [ ] Session-start script adds `**Contributor**` field
-- [ ] Contributor sourced from git config or gh auth
-- [ ] CONTRIBUTING.md explains session transparency consent
+Documentation and final checks before flipping public.
 
-### Documentation
-- [ ] README explains what Patina is and how to install
-- [ ] CONTRIBUTING.md defines the trust model and quality bar
-- [ ] CONTRIBUTING.md includes session transparency disclosure
-- [ ] LICENSE clear and correct
+**Documentation:**
+- [x] README explains what Patina is and how to install
+- [x] CONTRIBUTING.md defines the trust model and quality bar
+- [x] CONTRIBUTING.md includes session transparency disclosure
+- [x] LICENSE clear and correct (MIT)
 
-### Hygiene
-- [ ] No secrets or sensitive paths in repo history
+**Hygiene:**
+- [ ] Secrets audit complete - see [secrets-scan.md](./secrets-scan.md)
+- [ ] `patina secrets audit` passes on repo
 - [ ] Repo made public on GitHub
 
 ---
@@ -620,6 +691,8 @@ The audit artifact answers:
 
 **Decision:** Replace release-plz with `patina version` command that fits our milestone-based model.
 
+**Core Principle:** Spec is truth. Everything else derives from it.
+
 ### Why Not release-plz
 
 release-plz is designed for:
@@ -627,92 +700,123 @@ release-plz is designed for:
 - Every `feat:` = minor bump, every `fix:` = patch bump
 
 Our model (see `versioning-policy.md`):
-- Phase transitions are intentional decisions
-- Milestones are "I completed something meaningful"
-- Not every feat commit is a version bump
+- Milestones are immutable goals defined in specs
+- Completing a milestone = releasing that version
+- Spec content evolves (the "how"), but milestone goals don't change
+- If a goal was wrong, create new milestone - don't edit old one
 
 **release-plz would fight our model, not help it.**
+
+### Source of Truth: Spec Milestones
+
+```yaml
+# In spec YAML frontmatter
+milestones:
+  - version: "0.8.4"
+    name: GitHub config and branch protection
+    status: complete
+  - version: "0.8.5"
+    name: Version safeguards
+    status: in_progress
+  - version: "0.9.0"
+    name: Public release
+    status: pending
+current_milestone: "0.8.5"
+```
+
+**Flow:**
+```
+Spec YAML (source of truth)
+    ↓ patina scrape layer
+Database (index for fast lookup)
+    ↓ patina version milestone
+Updates spec + Cargo.toml atomically
+```
+
+### Versioning Enabled/Disabled (Owned vs Fork)
+
+Versioning behavior inferred from `[upstream]` config in `.patina/config.toml`:
+
+| Config State | Inference | Versioning |
+|--------------|-----------|------------|
+| No `[upstream]` section | Local/owned project | ✓ Enabled |
+| `upstream.remote = "origin"` | Owned repo | ✓ Enabled |
+| `upstream.remote = "upstream"` | Fork/contrib | ✗ Disabled |
+
+**For forks:** Milestones track YOUR contribution goals (e.g., "get PR merged"), but Cargo.toml is controlled by upstream. `patina version milestone` updates spec only, not Cargo.toml.
+
+**For owned repos:** Milestones = release versions. `patina version milestone` updates spec AND Cargo.toml atomically.
 
 ### The `patina version` Command
 
 ```bash
-# Show current version and phase
+# Show current version and spec milestone
 patina version show
-# → v0.8.1 (Go Public phase, milestone 1)
+# → patina 0.8.4
+# → Phase 8: Go Public (milestone 4)
+# → Spec: go-public v0.8.5 → Version safeguards
 
-# Bump milestone within current phase
-patina version milestone "Versioning policy established"
-# → 0.8.0 → 0.8.1
-# → Updates Cargo.toml
-# → Updates version-history.md
-# → Creates git tag v0.8.1
-# → Optionally creates GitHub release
+# Complete current spec milestone (spec-aware, atomic)
+patina version milestone
+# → Reads current milestone from spec (via index)
+# → Marks it complete in spec YAML
+# → Advances current_milestone to next pending
+# → Updates Cargo.toml to milestone version (if owned repo)
+# → Re-scrapes layer to sync index
+# → Creates git tag
 
 # Start new phase
 patina version phase "Production Ready"
-# → 0.8.5 → 0.9.0
-# → Same automation as above
+# → 0.8.x → 0.9.0
+# → Same atomic updates
 ```
 
-### What It Tracks
+### What Gets Updated (Atomic Operation)
 
-State stored in `.patina/version.toml`:
+When `patina version milestone` runs on an owned repo:
+
+1. **Spec YAML** - Mark current milestone `status: complete`, advance `current_milestone`
+2. **Cargo.toml** - Set version to completed milestone version
+3. **Layer index** - Re-scrape to sync database
+4. **Git tag** - Create annotated tag with milestone name
+
+All or nothing. No partial updates that cause drift.
+
+### version.toml: Deprecated
+
+Previously tracked phase/milestone state separately. Now redundant because spec is truth.
+
+Kept for backwards compatibility but not authoritative. May be removed in future.
+
+### Dogfooding: Patina's Own Config
+
 ```toml
-[version]
-current = "0.8.1"
-phase = 8
-phase_name = "Go Public"
-milestone = 1
-
-[history]
-# Points to version-history.md for full record
+# .patina/config.toml
+[upstream]
+repo = "NicabarNimble/patina"
+branch = "main"
+remote = "origin"           # We own it → versioning enabled
+include_patina = true
+include_adapters = true
 ```
-
-### Automation Features
-
-1. **Cargo.toml sync** - Updates version automatically
-2. **Git tagging** - Creates annotated tag with milestone description
-3. **History update** - Appends to `version-history.md`
-4. **GitHub release** - Optional, creates release with notes
-
-### Session Integration
-
-Hook into session-end workflow:
-```
-Session ending. You completed:
-- Versioning policy established
-- Git history audited
-- Cargo.toml updated
-
-Bump version? [y/N] y
-Milestone description: Versioning system designed
-
-✓ Version bumped: 0.8.0 → 0.8.1
-✓ Tagged: v0.8.1
-✓ History updated
-```
-
-This addresses the "fear of not keeping up" - the prompt is there when you finish meaningful work.
 
 ### Implementation
 
-| Component | Effort | Notes |
+| Component | Status | Notes |
 |-----------|--------|-------|
-| `patina version show` | Small | Read Cargo.toml + state file |
-| `patina version milestone` | Medium | Update files, git tag |
-| `patina version phase` | Medium | Same as milestone + phase logic |
-| `.patina/version.toml` | Small | State schema |
-| Session integration | Small | Hook into session-end |
-| GitHub release | Small | Use existing ForgeWriter |
+| `patina version show` | ✓ Done | Shows Cargo.toml + spec milestone from index |
+| `patina version milestone` | Needs update | Must become spec-aware |
+| `is_versioning_enabled()` | To build | Check upstream.remote |
+| Spec YAML update | To build | Mark complete, advance current |
+| Atomic operation | To build | All updates or rollback |
 
 ### Migration from release-plz
 
-1. Remove `.github/workflows/release-plz.yml`
-2. Remove `release-plz.toml` if exists
-3. Add `.patina/version.toml` with current state
-4. Use `patina version` going forward
-
-No backwards compatibility needed - clean break.
+1. ✓ Remove `.github/workflows/release-plz.yml`
+2. ✓ Remove `release-plz.toml`
+3. Add `[upstream]` to `.patina/config.toml`
+4. Ensure spec has milestones in frontmatter
+5. Use `patina version milestone` going forward
 
 ---
 
@@ -754,6 +858,10 @@ No backwards compatibility needed - clean break.
 | 2026-01-23 | in_progress | Added release audit - git history analysis before fresh start |
 | 2026-01-23 | in_progress | Versioning policy (Phase.Milestone), history audit, v0.8.1 |
 | 2026-01-23 | in_progress | Replace release-plz with `patina version` command |
+| 2026-01-25 | in_progress | Phased exit criteria: P1 (foundation), P2 (quality gates post-launch), P3 (launch) |
+| 2026-01-25 | in_progress | CONTRIBUTING.md created, README version fixed |
+| 2026-01-26 | in_progress | `patina version` command implemented (show/milestone/phase) |
+| 2026-01-26 | in_progress | Added milestones to spec, designing spec-linked versioning |
 
 ---
 

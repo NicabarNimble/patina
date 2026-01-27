@@ -87,7 +87,7 @@ impl Registry {
 }
 
 /// Add a repository
-pub fn add_repo(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
+pub fn add_repo(url: &str, contrib: bool, with_issues: bool, no_oxidize: bool) -> Result<()> {
     // Parse GitHub URL
     let (owner, repo_name) = parse_github_url(url)?;
     let github = format!("{}/{}", owner, repo_name);
@@ -166,6 +166,28 @@ pub fn add_repo(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
         None
     };
 
+    // Build semantic indices unless skipped
+    let oxidize_success = if no_oxidize {
+        println!("\n⏭️  Skipping semantic indices (--no-oxidize)");
+        false
+    } else {
+        println!("\n🧪 Building semantic indices...");
+        match oxidize_repo(&repo_path) {
+            Ok(()) => {
+                println!("   ✅ Semantic search enabled");
+                true
+            }
+            Err(e) => {
+                println!("   ⚠️  Oxidize failed: {}. Semantic search unavailable.", e);
+                println!(
+                    "      Run 'patina repo update {} --oxidize' to retry.",
+                    github
+                );
+                false
+            }
+        }
+    };
+
     // Register in registry
     let timestamp = chrono::Utc::now().to_rfc3339();
     let domains = detect_domains(&repo_path);
@@ -187,9 +209,16 @@ pub fn add_repo(url: &str, contrib: bool, with_issues: bool) -> Result<()> {
 
     registry.save()?;
 
+    let search_mode = if oxidize_success {
+        "semantic + lexical"
+    } else {
+        "lexical only"
+    };
+
     println!("\n✅ Repository added successfully!");
     println!("   Path: {}", repo_path.display());
     println!("   Code events: {}", event_count);
+    println!("   Search: {}", search_mode);
     if issue_count > 0 {
         println!("   GitHub issues: {}", issue_count);
         println!(
@@ -396,6 +425,27 @@ pub fn get_repo_db_path(name: &str) -> Result<String> {
     }
 
     Ok(db_path.to_string_lossy().to_string())
+}
+
+/// Get the filesystem path for a registered repo
+pub fn get_repo_path(name: &str) -> Result<std::path::PathBuf> {
+    let registry = Registry::load()?;
+    let entry = registry.repos.get(name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Repository '{}' not found. Use 'patina repo list' to see registered repos.",
+            name
+        )
+    })?;
+
+    let path = std::path::PathBuf::from(&entry.path);
+    if !path.exists() {
+        bail!(
+            "Repository path '{}' not found. It may have been moved or deleted.",
+            entry.path
+        );
+    }
+
+    Ok(path)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -118,6 +118,18 @@ pub fn uid_path(project_path: &Path) -> PathBuf {
     internal::uid_path(project_path)
 }
 
+/// Check if versioning is enabled for this project.
+///
+/// Versioning is enabled when:
+/// - No `[upstream]` section exists (local/owned project)
+/// - `upstream.remote = "origin"` (owned repo)
+///
+/// Versioning is disabled when:
+/// - `upstream.remote = "upstream"` (fork/contrib project)
+pub fn is_versioning_enabled(project_path: &Path) -> bool {
+    internal::is_versioning_enabled(project_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -2,9 +2,9 @@ name: Test Pipeline
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, patina ]
   push:
-    branches: [ main ]
+    branches: [ main, patina ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,13 +13,11 @@ jobs:
   test:
     name: Test Suite
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # Full history for co_changes analysis
-      
+
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
       with:
@@ -27,8 +25,73 @@ jobs:
 
     - name: Install DuckDB
       run: |
-        wget https://github.com/duckdb/duckdb/releases/download/v1.1.3/libduckdb-linux-amd64.zip
-        unzip libduckdb-linux-amd64.zip -d libduckdb
+        wget -q https://github.com/duckdb/duckdb/releases/download/v1.1.3/libduckdb-linux-amd64.zip
+        unzip -q libduckdb-linux-amd64.zip -d libduckdb
+        echo "DUCKDB_LIB_DIR=$PWD/libduckdb" >> $GITHUB_ENV
+        echo "DUCKDB_INCLUDE_DIR=$PWD/libduckdb" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$PWD/libduckdb" >> $GITHUB_ENV
+
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Get active model name
+      id: active-model
+      run: echo "model=$(./scripts/get-active-model.sh)" >> $GITHUB_OUTPUT
+
+    - name: Cache embedding models
+      id: cache-models-test
+      uses: actions/cache@v4
+      with:
+        path: resources/models
+        key: models-${{ steps.active-model.outputs.model }}-${{ hashFiles('resources/models/registry.toml') }}
+
+    - name: Download active model
+      if: steps.cache-models-test.outputs.cache-hit != 'true'
+      run: ./scripts/download-active-model.sh
+
+    - name: Check Rust formatting
+      run: cargo fmt --all -- --check
+
+    - name: Run clippy
+      run: cargo clippy --workspace -- -D warnings
+
+    - name: Run Rust tests
+      run: cargo test --workspace
+
+    - name: Build release
+      run: cargo build --release
+
+    - name: Test cargo install
+      run: cargo install --path . --locked --root ./test-install
+
+  # Embedding/retrieval benchmarks - only on main pushes
+  benchmark:
+    name: Retrieval Benchmark
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install DuckDB
+      run: |
+        wget -q https://github.com/duckdb/duckdb/releases/download/v1.1.3/libduckdb-linux-amd64.zip
+        unzip -q libduckdb-linux-amd64.zip -d libduckdb
         echo "DUCKDB_LIB_DIR=$PWD/libduckdb" >> $GITHUB_ENV
         echo "DUCKDB_INCLUDE_DIR=$PWD/libduckdb" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=$PWD/libduckdb" >> $GITHUB_ENV
@@ -50,7 +113,6 @@ jobs:
         sudo rm -rf /opt/ghc
         sudo rm -rf "/usr/local/share/boost"
         sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-        df -h
 
     - name: Get active model name
       id: active-model
@@ -67,20 +129,8 @@ jobs:
       if: steps.cache-models.outputs.cache-hit != 'true'
       run: ./scripts/download-active-model.sh
 
-    - name: Check Rust formatting
-      run: cargo fmt --all -- --check
-      
-    - name: Run clippy
-      run: cargo clippy --workspace -- -D warnings
-      
-    - name: Run Rust tests
-      run: cargo test --workspace
-      
     - name: Build release
       run: cargo build --release
-
-    - name: Test cargo install (catches dependency resolution breaks)
-      run: cargo install --path . --locked --root ./test-install
 
     - name: Build knowledge database
       run: |
@@ -92,17 +142,14 @@ jobs:
     - name: Build vector indices
       run: ./target/release/patina oxidize
 
-    - name: Retrieval Quality Check (Informational)
+    - name: Retrieval Quality Check
       run: |
-        # Run benchmark and capture full output
         ./target/release/patina bench retrieval \
           --query-set resources/bench/retrieval-queryset.json \
           --json | tee benchmark-output.txt
 
-        # Extract JSON from output (last valid JSON object)
         tail -n 10 benchmark-output.txt | grep -A 100 '^{' > benchmark-results.json
 
-        # Extract metrics
         MRR=$(jq -r '.mrr' benchmark-results.json)
         RECALL_5=$(jq -r '.recall_at_5' benchmark-results.json)
         RECALL_10=$(jq -r '.recall_at_10' benchmark-results.json)
@@ -116,12 +163,11 @@ jobs:
         echo "Recall@10:  $RECALL_10"
         echo ""
 
-        # Check threshold and warn if below target (informational only)
         if awk "BEGIN {exit !($MRR >= 0.55)}"; then
           echo "✅ Quality: MRR meets target (>= 0.55)"
         else
-          echo "⚠️  Warning: MRR below target (< 0.55)"
-          echo "   This is informational only - not blocking the build"
-          echo "   Consider investigating if this is unexpected"
+          echo "❌ Quality: MRR below target (< 0.55)"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          exit 1
         fi
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
