@@ -42,6 +42,21 @@ jobs:
           target/
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+    - name: Get active model name
+      id: active-model
+      run: echo "model=$(./scripts/get-active-model.sh)" >> $GITHUB_OUTPUT
+
+    - name: Cache embedding models
+      id: cache-models-test
+      uses: actions/cache@v4
+      with:
+        path: resources/models
+        key: models-${{ steps.active-model.outputs.model }}-${{ hashFiles('resources/models/registry.toml') }}
+
+    - name: Download active model
+      if: steps.cache-models-test.outputs.cache-hit != 'true'
+      run: ./scripts/download-active-model.sh
+
     - name: Check Rust formatting
       run: cargo fmt --all -- --check
 
