@@ -66,13 +66,59 @@ pub fn scan_files(paths: impl IntoIterator<Item = impl AsRef<Path>>) -> Result<V
 /// Convenience: scan git-tracked files
 pub fn scan_tracked(repo_root: &Path) -> Result<Vec<Finding>> {
     let files = git_ls_files(repo_root)?;
-    scan_files(files)
+    let ignore = load_secretsignore(repo_root);
+    scan_files_with_ignore(files, &ignore)
 }
 
 /// Convenience: scan staged files only
 pub fn scan_staged(repo_root: &Path) -> Result<Vec<Finding>> {
     let files = git_staged_files(repo_root)?;
-    scan_files(files)
+    let ignore = load_secretsignore(repo_root);
+    scan_files_with_ignore(files, &ignore)
+}
+
+/// Scan files, respecting ignore patterns
+fn scan_files_with_ignore(
+    paths: impl IntoIterator<Item = impl AsRef<Path>>,
+    ignore_patterns: &[String],
+) -> Result<Vec<Finding>> {
+    let filtered: Vec<PathBuf> = paths
+        .into_iter()
+        .map(|p| p.as_ref().to_path_buf())
+        .filter(|p| !is_ignored(p, ignore_patterns))
+        .collect();
+    scan_files(filtered)
+}
+
+/// Load .secretsignore patterns from repo root
+fn load_secretsignore(repo_root: &Path) -> Vec<String> {
+    let ignore_path = repo_root.join(".secretsignore");
+    match std::fs::read_to_string(&ignore_path) {
+        Ok(content) => content
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(|l| l.to_string())
+            .collect(),
+        Err(_) => vec![],
+    }
+}
+
+/// Check if path matches any ignore pattern
+fn is_ignored(path: &Path, patterns: &[String]) -> bool {
+    let path_str = path.to_string_lossy();
+    for pattern in patterns {
+        // Simple matching: if pattern ends with /, match directory prefix
+        // Otherwise match anywhere in path
+        if pattern.ends_with('/') {
+            if path_str.contains(pattern.trim_end_matches('/')) {
+                return true;
+            }
+        } else if path_str.contains(pattern) || path_str.ends_with(pattern) {
+            return true;
+        }
+    }
+    false
 }
 
 /// Scan a string directly (for testing)
@@ -122,20 +168,12 @@ fn scan_content(
 
 fn should_skip(path: &Path) -> bool {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    let path_str = path.to_string_lossy();
 
     // Lock files have hashes that look like secrets
     name.ends_with(".lock")
         || name == "package-lock.json"
         || name == "yarn.lock"
         || name == "pnpm-lock.yaml"
-        // Documentation has example patterns
-        || name.ends_with(".md")
-        // Test directories have test fixtures
-        || path_str.contains("/tests/")
-        || path_str.contains("/test/")
-        // Scanner's own test patterns (circular)
-        || path_str.contains("/scanner/")
 }
 
 fn redact(s: &str) -> String {
