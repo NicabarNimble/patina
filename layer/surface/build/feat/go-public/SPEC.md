@@ -36,11 +36,11 @@ milestones:
     status: complete
   - version: "0.8.6"
     name: Secrets exposure hardening
-    status: in_progress
+    status: complete
   - version: "0.9.0"
     name: Public release
-    status: pending
-current_milestone: "0.8.6"
+    status: in_progress
+current_milestone: "0.9.0"
 ---
 
 # feat: Go Public
