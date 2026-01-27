@@ -35,6 +35,44 @@ related:
 - [ ] `patina version show` reads Cargo.toml as source of truth (not only stale index)
 - [ ] Spec archival (delete + tag) triggers re-scrape or version command handles missing specs gracefully
 - [ ] No specs with status that contradicts reality
+- [ ] Forge sync: spec exit criteria generate GitHub issues
+- [ ] Forge sync: spec milestones map to GitHub project items
+- [ ] Forge sync: completing a milestone updates issue/project state
+- [ ] Specs are source of truth, GitHub is a read-only window
+
+---
+
+## Forge Sync
+
+Specs are the source of truth. GitHub (issues, projects, releases) is a window into that truth, not a separate system to maintain.
+
+### The Model
+
+```
+Spec YAML (source of truth)
+  → patina scrape layer → index (milestones, exit criteria)
+  → patina forge sync → GitHub issues, project items, releases
+  ← GitHub is read-only reflection of spec state
+```
+
+### What Syncs
+
+| Spec element | GitHub target |
+|-------------|---------------|
+| Exit criteria (unchecked) | Open issue, linked to project |
+| Exit criteria (checked) | Closed issue |
+| Milestone (pending) | Project item in Backlog |
+| Milestone (in_progress) | Project item in In Progress |
+| Milestone (complete) | Project item in Done + GitHub release |
+| Spec status (complete) | All linked issues closed |
+
+### Sync Direction
+
+**One-way: specs → GitHub.** If you close an issue on GitHub, it doesn't check the exit criterion in the spec. The spec is always authoritative. `patina forge sync` is idempotent — run it anytime to reconcile.
+
+### Why Not Two-Way
+
+Two-way sync creates conflicts: who wins when the spec says "pending" but the issue is closed? One source of truth eliminates this. GitHub is for visibility and external collaboration, not for driving internal state.
 
 ---
 
@@ -263,6 +301,7 @@ Add `patina report specs` to parse frontmatter and show:
 | 2026-01-22 | in_progress | Initial spec created during session |
 | 2026-01-26 | in_progress | Added milestone format for version linkage |
 | 2026-01-27 | in_progress | Added: GitHub release creation, stale index handling, spec archival re-scrape |
+| 2026-01-27 | in_progress | Added: Forge sync — specs as source of truth, GitHub as read-only window |
 
 ---
 
