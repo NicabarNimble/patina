@@ -2,9 +2,9 @@ name: Test Pipeline
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ main, patina ]
   push:
-    branches: [ main ]
+    branches: [ main, patina ]
 
 env:
   CARGO_TERM_COLOR: always
