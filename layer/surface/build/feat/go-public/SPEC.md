@@ -39,7 +39,7 @@ milestones:
     status: complete
   - version: "0.9.0"
     name: Public release
-    status: in_progress
+    status: complete
 current_milestone: "0.9.0"
 ---
 
