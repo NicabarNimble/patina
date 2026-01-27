@@ -10,8 +10,8 @@
 //! modified_at = "2024-12-24T14:30:00Z"
 //!
 //! [values]
-//! github-token = "ghp_xxxxxxxxxxxx"
-//! openai-key = "sk-proj-xxxxxxxx"
+//! my-api = "xxx"
+//! db-pass = "xxx"
 //! ```
 
 use crate::secrets::identity;

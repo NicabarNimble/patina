@@ -122,11 +122,20 @@ fn scan_content(
 
 fn should_skip(path: &Path) -> bool {
     let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let path_str = path.to_string_lossy();
+
     // Lock files have hashes that look like secrets
     name.ends_with(".lock")
         || name == "package-lock.json"
         || name == "yarn.lock"
         || name == "pnpm-lock.yaml"
+        // Documentation has example patterns
+        || name.ends_with(".md")
+        // Test directories have test fixtures
+        || path_str.contains("/tests/")
+        || path_str.contains("/test/")
+        // Scanner's own test patterns (circular)
+        || path_str.contains("/scanner/")
 }
 
 fn redact(s: &str) -> String {
