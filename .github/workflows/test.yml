@@ -104,6 +104,7 @@ jobs:
       run: echo "model=$(./scripts/get-active-model.sh)" >> $GITHUB_OUTPUT
 
     - name: Cache embedding models
+      id: cache-models
       uses: actions/cache@v4
       with:
         path: resources/models
@@ -150,6 +151,8 @@ jobs:
         if awk "BEGIN {exit !($MRR >= 0.55)}"; then
           echo "✅ Quality: MRR meets target (>= 0.55)"
         else
-          echo "⚠️  Warning: MRR below target (< 0.55)"
+          echo "❌ Quality: MRR below target (< 0.55)"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          exit 1
         fi
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
