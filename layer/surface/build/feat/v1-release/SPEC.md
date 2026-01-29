@@ -14,7 +14,7 @@ related:
 milestones:
   - version: "0.9.1"
     name: Version & spec system alignment
-    status: pending
+    status: in_progress
   - version: "0.9.2"
     name: Epistemic E4 (belief automation)
     status: pending
