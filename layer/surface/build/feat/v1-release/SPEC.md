@@ -73,6 +73,18 @@ All three must be complete for v1.0.
 
 Each patch = one meaningful milestone toward a pillar.
 
+### 0.9.1 Final Item: Adapter Version Parity
+
+Before bumping 0.9.1, clean up VERSION_CHANGES arrays across all adapters:
+
+| Adapter | Location | Status |
+|---------|----------|--------|
+| Claude | `src/adapters/claude/internal/manifest.rs` | Stale (mentions removed neuro-symbolic) |
+| Gemini | `src/adapters/gemini/mod.rs` | Empty (acceptable for 0.1.0) |
+| OpenCode | `src/adapters/opencode/mod.rs` | Empty (acceptable for 0.1.0) |
+
+**Principle:** All three adapter LLMs must have the same level of excellence. Lying documentation is technical debt.
+
 ---
 
 ## Pillar 1: Epistemic Layer
