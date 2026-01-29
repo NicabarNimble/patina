@@ -14,6 +14,53 @@ use std::process::Command;
 const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // ============================================================================
+// Spec Frontmatter Types (for YAML round-trip)
+// ============================================================================
+
+/// Sessions can be either a simple list or a structured object
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum Sessions {
+    /// Simple list of session IDs: [20260108-200725, ...]
+    List(Vec<String>),
+    /// Structured with origin and work: { origin: ..., work: [...] }
+    Structured {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        origin: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        work: Vec<String>,
+    },
+}
+
+/// Milestone in spec frontmatter
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SpecMilestoneEntry {
+    pub version: String,
+    pub name: String,
+    pub status: String,
+}
+
+/// Complete spec frontmatter - all fields optional except those always present
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpecFrontmatter {
+    pub r#type: String,
+    pub id: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sessions: Option<Sessions>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub milestones: Vec<SpecMilestoneEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_milestone: Option<String>,
+}
+
+// ============================================================================
 // Data Structures
 // ============================================================================
 
@@ -358,42 +405,98 @@ fn get_next_pending_milestone(spec_id: &str, current_version: &str) -> Option<St
     .ok()
 }
 
+/// Parse spec file into frontmatter and body
+fn parse_spec_file(content: &str) -> Result<(SpecFrontmatter, String)> {
+    // Extract frontmatter between --- markers
+    let content = content
+        .strip_prefix("---")
+        .ok_or_else(|| anyhow::anyhow!("Spec file must start with '---' frontmatter delimiter"))?;
+
+    let end = content.find("\n---").ok_or_else(|| {
+        anyhow::anyhow!("Spec file must have closing '---' frontmatter delimiter")
+    })?;
+
+    let frontmatter_str = &content[..end];
+    let body = &content[end + 4..]; // Skip "\n---"
+
+    let frontmatter: SpecFrontmatter = serde_yaml::from_str(frontmatter_str)
+        .with_context(|| format!("Failed to parse frontmatter:\n{}", frontmatter_str))?;
+
+    Ok((frontmatter, body.to_string()))
+}
+
+/// Serialize spec back to file content
+fn serialize_spec_file(frontmatter: &SpecFrontmatter, body: &str) -> Result<String> {
+    let yaml = serde_yaml::to_string(frontmatter)?;
+    Ok(format!("---\n{}---{}", yaml, body))
+}
+
 /// Update spec YAML to mark milestone complete and advance to next
+///
+/// Uses serde_yaml for type-safe parsing and modification.
+/// Note: This normalizes YAML formatting (quotes, array style).
 fn update_spec_milestone(
     spec_path: &str,
     current_version: &str,
     next_version: Option<&str>,
 ) -> Result<()> {
     let content = fs::read_to_string(spec_path)?;
+    let (mut frontmatter, body) = parse_spec_file(&content)?;
 
-    // Update the milestone status from in_progress to complete
-    let pattern = format!(
-        r#"(?m)(- version: "{}"[\s\S]*?status: )in_progress"#,
-        regex::escape(current_version)
-    );
-    let re = regex::Regex::new(&pattern)?;
-    let content = re.replace(&content, "${1}complete").to_string();
+    // Find and update current milestone status
+    let mut found_current = false;
+    for milestone in &mut frontmatter.milestones {
+        if milestone.version == current_version {
+            if milestone.status != "in_progress" {
+                anyhow::bail!(
+                    "Milestone {} has status '{}', expected 'in_progress'",
+                    current_version,
+                    milestone.status
+                );
+            }
+            milestone.status = "complete".to_string();
+            found_current = true;
+        }
+    }
 
-    // Update current_milestone to next version
-    let content = if let Some(next) = next_version {
-        // Also mark next milestone as in_progress
-        let next_pattern = format!(
-            r#"(?m)(- version: "{}"[\s\S]*?status: )pending"#,
-            regex::escape(next)
+    if !found_current {
+        anyhow::bail!(
+            "Milestone {} not found in spec frontmatter",
+            current_version
         );
-        let next_re = regex::Regex::new(&next_pattern)?;
-        let content = next_re.replace(&content, "${1}in_progress").to_string();
+    }
 
-        // Update current_milestone pointer
-        let cm_re = regex::Regex::new(r#"(?m)^current_milestone: "[^"]+""#)?;
-        cm_re
-            .replace(&content, &format!(r#"current_milestone: "{}""#, next))
-            .to_string()
+    // If there's a next version, mark it in_progress and update current_milestone
+    if let Some(next) = next_version {
+        let mut found_next = false;
+        for milestone in &mut frontmatter.milestones {
+            if milestone.version == next {
+                if milestone.status != "pending" {
+                    anyhow::bail!(
+                        "Next milestone {} has status '{}', expected 'pending'",
+                        next,
+                        milestone.status
+                    );
+                }
+                milestone.status = "in_progress".to_string();
+                found_next = true;
+            }
+        }
+
+        if !found_next {
+            anyhow::bail!("Next milestone {} not found in spec frontmatter", next);
+        }
+
+        frontmatter.current_milestone = Some(next.to_string());
     } else {
-        content
-    };
+        // No next milestone - clear current_milestone
+        frontmatter.current_milestone = None;
+    }
 
-    fs::write(spec_path, content)?;
+    // Write back
+    let new_content = serialize_spec_file(&frontmatter, &body)?;
+    fs::write(spec_path, new_content)?;
+
     Ok(())
 }
 
@@ -997,5 +1100,106 @@ fn get_current_spec_milestone() -> Option<SpecMilestone> {
         MilestoneQueryResult::Single(m) => Some(m),
         MilestoneQueryResult::Multiple(mut v) => v.pop(), // return last (highest version)
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_spec_frontmatter_parse_roundtrip() {
+        let yaml = r#"---
+type: feat
+id: v1-release
+status: in_progress
+created: 2026-01-27
+updated: 2026-01-29
+sessions:
+  origin: 20260127-085434
+  work: [20260129-074742]
+related:
+  - spec/go-public
+  - spec-epistemic-layer
+milestones:
+  - version: "0.9.1"
+    name: Version & spec system alignment
+    status: in_progress
+  - version: "0.9.2"
+    name: Epistemic E4
+    status: pending
+current_milestone: "0.9.1"
+---
+
+# feat: v1.0 Release
+
+Body content here.
+"#;
+
+        // Parse
+        let (frontmatter, body) = parse_spec_file(yaml).expect("should parse");
+
+        assert_eq!(frontmatter.id, "v1-release");
+        assert_eq!(frontmatter.r#type, "feat");
+        assert_eq!(frontmatter.milestones.len(), 2);
+        assert_eq!(frontmatter.milestones[0].version, "0.9.1");
+        assert_eq!(frontmatter.milestones[0].status, "in_progress");
+        assert_eq!(frontmatter.current_milestone, Some("0.9.1".to_string()));
+        assert!(body.contains("# feat: v1.0 Release"));
+
+        // Serialize back
+        let output = serialize_spec_file(&frontmatter, &body).expect("should serialize");
+
+        // Parse again to verify round-trip
+        let (fm2, body2) = parse_spec_file(&output).expect("should parse again");
+        assert_eq!(fm2.id, frontmatter.id);
+        assert_eq!(fm2.milestones.len(), frontmatter.milestones.len());
+        assert_eq!(body2.trim(), body.trim());
+    }
+
+    #[test]
+    fn test_sessions_list_format() {
+        let yaml = r#"---
+type: refactor
+id: test-spec
+status: in_progress
+sessions: [20260108-200725, 20260109-063849]
+---
+
+# Test
+"#;
+
+        let (frontmatter, _) = parse_spec_file(yaml).expect("should parse list format");
+        match frontmatter.sessions {
+            Some(Sessions::List(list)) => {
+                assert_eq!(list.len(), 2);
+                assert_eq!(list[0], "20260108-200725");
+            }
+            _ => panic!("Expected Sessions::List"),
+        }
+    }
+
+    #[test]
+    fn test_sessions_structured_format() {
+        let yaml = r#"---
+type: feat
+id: test-spec
+status: in_progress
+sessions:
+  origin: 20260127-085434
+  work: [20260129-074742]
+---
+
+# Test
+"#;
+
+        let (frontmatter, _) = parse_spec_file(yaml).expect("should parse structured format");
+        match frontmatter.sessions {
+            Some(Sessions::Structured { origin, work }) => {
+                assert_eq!(origin, Some("20260127-085434".to_string()));
+                assert_eq!(work.len(), 1);
+            }
+            _ => panic!("Expected Sessions::Structured"),
+        }
     }
 }

@@ -208,13 +208,20 @@ Fix the foundation before building on it.
 
 **Verified:** `patina scrape` now reports "Pruned N stale entries" when files are removed.
 
-### 2. YAML Parser for Spec Updates (Low Priority)
+### 2. YAML Parser for Spec Updates — DONE
 
-**Problem:** `update_spec_milestone()` in `src/commands/version/internal.rs:362` uses regex to modify YAML frontmatter. Fragile if formatting changes.
+**Problem:** `update_spec_milestone()` used regex to modify YAML frontmatter. Fragile if formatting changes.
 
-**Where to fix:** Replace regex with proper YAML parsing (e.g., `serde_yaml` or `yaml-rust`).
+**Solution:** Replaced regex with proper `serde_yaml` parsing. Added `SpecFrontmatter` struct that models all frontmatter fields with proper type safety.
 
-**Why low priority:** Works today, only breaks if spec format changes significantly.
+**Changed:**
+- `src/commands/version/internal.rs` — Added `SpecFrontmatter`, `Sessions`, `SpecMilestoneEntry` types
+- `parse_spec_file()` and `serialize_spec_file()` helpers for YAML round-trip
+- `update_spec_milestone()` now type-safe with validation
+
+**Trade-off accepted:** YAML formatting normalized on write (quotes removed, arrays in block style). Type safety worth the one-time format change.
+
+**Bug fixed during implementation:** Layer/beliefs scrapers used file stems for pruning but DB uses frontmatter IDs. This caused specs with `id` different from filename to be incorrectly pruned. Fixed by tracking frontmatter IDs during parsing.
 
 ### 3. Spec-System Folder Migration
 
@@ -234,3 +241,4 @@ Fix the foundation before building on it.
 | 2026-01-29 | in_progress | Restructured as three-pillar roadmap. Patch versioning (0.9.x → 1.0.0). |
 | 2026-01-29 | in_progress | Version system hardened: multi-milestone warning, coherence check, deprecation warnings, dead code removed. |
 | 2026-01-29 | in_progress | Index staleness fixed: automatic pruning in layer and beliefs scrapers. |
+| 2026-01-29 | in_progress | YAML parser: serde_yaml replaces regex for spec updates. Fixed prune bug (file stem vs frontmatter ID). |
