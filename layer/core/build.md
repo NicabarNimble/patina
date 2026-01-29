@@ -46,7 +46,7 @@ A local-first RAG network: portable project knowledge + personal mother.
 
 ## The Architecture
 
-**Spec:** [spec-pipeline.md](../surface/build/spec-pipeline.md)
+**Spec:** [reference/spec-pipeline.md](../surface/build/reference/spec-pipeline.md)
 
 ```
                             GIT (source of truth)
@@ -118,22 +118,19 @@ Run regularly to catch regressions.
 
 **v1.0 Pillars:**
 - [feat/v1-release/SPEC.md](../surface/build/feat/v1-release/SPEC.md) - **Master roadmap:** Three pillars, patch versioning
-- [spec-epistemic-layer.md](../surface/build/spec-epistemic-layer.md) - **Pillar 1:** E0-E3 done (35 beliefs), E4 automation next
-- [spec-mother.md](../surface/build/spec-mother.md) - **Pillar 2:** Federated query, persona fusion
+- [feat/epistemic-layer/SPEC.md](../surface/build/feat/epistemic-layer/SPEC.md) - **Pillar 1:** E0-E3 done (35 beliefs), E4 automation next
+- [feat/mother/SPEC.md](../surface/build/feat/mother/SPEC.md) - **Pillar 2:** Federated query, persona fusion
 
 **Features:**
 - [feat/surface-layer/SPEC.md](../surface/build/feat/surface-layer/SPEC.md) - **Design:** Distillation layer with success metrics, `patina surface` command
 
 **In Progress:**
-- [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **Phase 1-2 done:** Commit-based training working
-- [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Phase 1 done:** UIDs everywhere, Phase 2-3 remain
+- [feat/ref-repo-semantic/SPEC.md](../surface/build/feat/ref-repo-semantic/SPEC.md) - **Phase 1-2 done:** Commit-based training working
+- [refactor/database-identity/SPEC.md](../surface/build/refactor/database-identity/SPEC.md) - **Phase 1 done:** UIDs everywhere, Phase 2-3 remain
 
 **Refactors:**
 - [refactor/spec-system/SPEC.md](../surface/build/refactor/spec-system/SPEC.md) - **In Progress:** New folder-based spec format
 - [refactor/reports-layer/SPEC.md](../surface/build/refactor/reports-layer/SPEC.md) - **In Progress:** Unify eval/reports under `layer/surface/reports/`
-
-**Ready:**
-- [spec-launcher-polish.md](../surface/build/spec-launcher-polish.md) - **Ready:** MCP auto-config on launch
 
 **Exploration:**
 - [explore/anti-slop/SPEC.md](../surface/build/explore/anti-slop/SPEC.md) - **Active:** Signal over noise, linkage as quality measure
@@ -151,7 +148,7 @@ Run regularly to catch regressions.
 
 **Progress:** E0-E3 complete. 35 beliefs captured and indexed in scry (BELIEF_ID_OFFSET = 4B). Queryable via `patina scry "what do we believe about X"`. E4 (extraction automation) next.
 
-**Spec:** [spec-epistemic-layer.md](../surface/build/spec-epistemic-layer.md)
+**Spec:** [feat/epistemic-layer/SPEC.md](../surface/build/feat/epistemic-layer/SPEC.md)
 
 ### Signal Over Noise (Exploration)
 
@@ -195,9 +192,9 @@ Run regularly to catch regressions.
 
 Living documentation (not phased work):
 
-- [spec-architectural-alignment.md](../surface/build/spec-architectural-alignment.md) - Command/library alignment matrices
-- [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
-- [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
+- [reference/spec-architectural-alignment.md](../surface/build/reference/spec-architectural-alignment.md) - Command/library alignment matrices
+- [reference/spec-pipeline.md](../surface/build/reference/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
+- [reference/spec-assay.md](../surface/build/reference/spec-assay.md) - Structural queries + signals
 
 ### Deferred
 

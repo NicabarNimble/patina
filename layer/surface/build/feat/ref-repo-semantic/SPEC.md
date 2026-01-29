@@ -1,9 +1,18 @@
-# Spec: Ref Repo Semantic Training
+---
+type: feat
+id: ref-repo-semantic
+status: in_progress
+created: 2026-01-07
+updated: 2026-01-29
+related:
+  - layer/surface/build/feat/mother/SPEC.md
+---
 
-**Status:** Phase 1-2 Complete, Phase 3 Next
-**Created:** 2026-01-07
-**Prerequisite:** [analysis-commit-training-signal.md](../analysis-commit-training-signal.md) (complete)
-**Goal:** Enable semantic search on ref repos via first-class commit signal
+# feat: Ref Repo Semantic Training
+
+> Enable semantic search on ref repos via first-class commit signal
+
+**Progress:** Phase 1-2 Complete, Phase 3 Next
 
 ---
 

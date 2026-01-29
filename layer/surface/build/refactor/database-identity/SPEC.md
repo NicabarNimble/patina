@@ -1,10 +1,23 @@
-# Spec: Database Identity (UIDs for Federation)
+---
+type: refactor
+id: database-identity
+status: in_progress
+created: 2026-01-12
+updated: 2026-01-22
+sessions:
+  origin: 20260112-061237
+  work:
+    - 20260112-093636
+    - 20260121-102727
+    - 20260122-154954
+related:
+  - layer/core/dependable-rust.md
+  - layer/core/unix-philosophy.md
+---
 
-**Status:** Phase 1 Complete ✅
-**Created:** 2026-01-12
-**Updated:** 2026-01-22
-**Sessions:** 20260112-061237 (initial), 20260112-093636 (explicit patterns), 20260121-102727 (simplification), 20260122-154954 (verified complete)
-**Core References:** [dependable-rust](../../core/dependable-rust.md), [unix-philosophy](../../core/unix-philosophy.md)
+# refactor: Database Identity (UIDs for Federation)
+
+**Progress:** Phase 1 Complete ✅, Phase 2-3 remain
 
 ---
 
