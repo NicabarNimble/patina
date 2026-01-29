@@ -17,18 +17,21 @@ milestones:
   name: Version & spec system alignment
   status: complete
 - version: 0.9.2
-  name: Epistemic E4 (belief automation)
+  name: Adapter parity & testing
   status: in_progress
 - version: 0.9.3
-  name: Mother federated query
+  name: Epistemic E4 (belief automation)
   status: pending
 - version: 0.9.4
-  name: Dynamic ONNX loading
+  name: Mother federated query
   status: pending
 - version: 0.9.5
-  name: WASM grammars
+  name: Dynamic ONNX loading
   status: pending
 - version: 0.9.6
+  name: WASM grammars
+  status: pending
+- version: 0.9.7
   name: GitHub releases + Homebrew
   status: pending
 - version: 1.0.0
@@ -63,28 +66,86 @@ All three must be complete for v1.0.
 
 ```
 0.9.0  - Current (public release, fat binary)
-0.9.1  - Version system fixed, spec-system aligned
-0.9.2  - Epistemic E4 (belief extraction automation)
-0.9.3  - Mother federated query
-0.9.4  - Dynamic ONNX loading
-0.9.5  - WASM grammars
-0.9.6  - GitHub releases + Homebrew
+0.9.1  ✓ Version system fixed, spec-system aligned
+0.9.2  → Adapter parity & testing
+0.9.3  - Epistemic E4 (belief extraction automation)
+0.9.4  - Mother federated query
+0.9.5  - Dynamic ONNX loading
+0.9.6  - WASM grammars
+0.9.7  - GitHub releases + Homebrew
 1.0.0  - All pillars complete
 ```
 
 Each patch = one meaningful milestone toward a pillar.
 
-### 0.9.1 Final Item: Adapter Version Parity
+**Principle:** All three adapter LLMs must have the same level of excellence.
 
-Before bumping 0.9.1, clean up VERSION_CHANGES arrays across all adapters:
+---
 
-| Adapter | Location | Status |
-|---------|----------|--------|
-| Claude | `src/adapters/claude/internal/manifest.rs` | Stale (mentions removed neuro-symbolic) |
-| Gemini | `src/adapters/gemini/mod.rs` | Empty (acceptable for 0.1.0) |
-| OpenCode | `src/adapters/opencode/mod.rs` | Empty (acceptable for 0.1.0) |
+## Immediate Next: 0.9.2 — Adapter Parity & Testing
 
-**Principle:** All three adapter LLMs must have the same level of excellence. Lying documentation is technical debt.
+Foundation work before features. We need to track our adapters properly.
+
+### The Problem
+
+Adapters integrate Patina with LLM tools (Claude Code, OpenCode, Gemini CLI). Currently:
+- We have static `CLAUDE_ADAPTER_VERSION` constants we invented
+- No detection of actual installed LLM tool versions
+- No way to verify adapters work correctly
+- No parity enforcement across the three adapters
+
+### Adapter Version = Installed Tool Version
+
+The adapter version should reflect what the user actually has installed:
+
+| Adapter | LLM Tool | Detection |
+|---------|----------|-----------|
+| Claude | Claude Code CLI | `claude --version` |
+| OpenCode | OpenCode | `opencode --version` (TBD) |
+| Gemini | Gemini CLI | `gemini --version` (TBD) |
+
+This is **dynamic detection**, not static constants. Each `patina` install should know:
+- Which adapters are available (tool installed?)
+- What version of each tool is installed
+- Whether Patina's adapter templates are compatible with that version
+
+### Deliverables
+
+**1. Dynamic version detection**
+```bash
+patina adapter status
+# Claude Code: 1.0.17 (compatible)
+# OpenCode: not installed
+# Gemini CLI: 0.5.2 (compatible)
+```
+
+**2. Adapter testing**
+```bash
+patina adapter test claude
+# ✓ Claude Code installed (1.0.17)
+# ✓ Project init works
+# ✓ Context file generated
+# ✓ Session commands available
+# ✓ MCP tools registered
+```
+
+**3. CI integration**
+- Test all adapters on push
+- Verify templates generate valid files
+- Catch breaking changes from upstream LLM tools
+
+**4. Parity checklist**
+- Same capabilities documented (or explicit "not supported")
+- Same session workflow (start/update/note/end)
+- Same MCP tool availability (scry, context)
+
+### Exit Criteria
+
+- [ ] `patina adapter status` shows installed tool versions (dynamic)
+- [ ] `patina adapter test <name>` verifies adapter works
+- [ ] All three adapters pass test suite
+- [ ] CI runs adapter tests on push
+- [ ] Remove static `CLAUDE_ADAPTER_VERSION` constants (replaced by detection)
 
 ---
 
@@ -188,26 +249,26 @@ Currently statically linked via `ort` crate's `download-binaries` feature.
 
 ---
 
-## Immediate Next: 0.9.1
+## Completed: 0.9.1 — Version & Spec System
 
-Fix the foundation before building on it.
-
-**Done:**
-- [x] `patina version show` reflects actual version (0.9.0)
-- [x] Version tracking reads from Cargo.toml (sole source of truth)
-- [x] build.md updated with v1.0 pillar roadmap
-- [x] Removed stale `.patina/version.toml`
-
-**Version system hardening (done):**
+**Version system hardening:**
+- [x] `patina version show` reflects actual version from Cargo.toml
 - [x] Single active milestone: warns if multiple specs have current_milestone
 - [x] Coherence check: warns if spec milestone version <= Cargo.toml version
 - [x] Silent failures: distinct messages for no DB, query error, no milestones
-- [x] Deprecate `version phase` and `version init` commands (warn + doc)
-- [x] Remove dead code: `get_spec_milestones()` function deleted
+- [x] Deprecate `version phase` and `version init` commands
+- [x] Removed stale `.patina/version.toml`
+
+**Spec system cleanup:**
+- [x] Auto-pruning in `scrape layer` and `scrape beliefs`
+- [x] YAML parser (serde_yaml) replaces regex for spec updates
+- [x] 11 flat-file specs migrated to folder format
+- [x] Fixed prune bug (file stem vs frontmatter ID)
+- [x] Cleaned stale VERSION_CHANGES in Claude adapter
 
 ---
 
-## Remaining Work (Next Session)
+## Historical: 0.9.1 Implementation Details
 
 ### 1. Index Staleness: Scrape Prunes Deleted Specs — DONE
 
@@ -260,7 +321,6 @@ Fix the foundation before building on it.
 |------|--------|------|
 | 2026-01-27 | in_progress | Spec created. Current binary 52MB, 14MB compressed. |
 | 2026-01-29 | in_progress | Restructured as three-pillar roadmap. Patch versioning (0.9.x → 1.0.0). |
-| 2026-01-29 | in_progress | Version system hardened: multi-milestone warning, coherence check, deprecation warnings, dead code removed. |
-| 2026-01-29 | in_progress | Index staleness fixed: automatic pruning in layer and beliefs scrapers. |
-| 2026-01-29 | in_progress | YAML parser: serde_yaml replaces regex for spec updates. Fixed prune bug (file stem vs frontmatter ID). |
-| 2026-01-29 | in_progress | Spec migration: 11 active flat-file specs migrated to folder format or archived. |
+| 2026-01-29 | in_progress | Version system hardened, YAML parser, spec migration, prune bug fixed. |
+| 2026-01-29 | **0.9.1** | Released v0.9.1. Cleaned VERSION_CHANGES, bumped Cargo.toml. |
+| 2026-01-29 | in_progress | Reordered milestones: inserted 0.9.2 Adapter parity & testing. |
