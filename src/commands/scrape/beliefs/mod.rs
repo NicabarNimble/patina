@@ -373,6 +373,36 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         processed_count, skipped
     );
 
+    // Prune stale entries: delete DB entries for files that no longer exist
+    let file_ids: std::collections::HashSet<String> = belief_files
+        .iter()
+        .filter_map(|p| p.file_stem().and_then(|s| s.to_str()).map(String::from))
+        .collect();
+
+    let mut stmt = conn.prepare("SELECT id FROM beliefs")?;
+    let db_ids: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut pruned = 0;
+    for db_id in &db_ids {
+        if !file_ids.contains(db_id) {
+            // Delete from all related tables
+            conn.execute("DELETE FROM beliefs WHERE id = ?1", [db_id])?;
+            conn.execute("DELETE FROM belief_fts WHERE id = ?1", [db_id])?;
+            conn.execute(
+                "DELETE FROM eventlog WHERE source_id = ?1 AND event_type = 'belief.surface'",
+                [db_id],
+            )?;
+            pruned += 1;
+        }
+    }
+
+    if pruned > 0 {
+        println!("  Pruned {} stale beliefs", pruned);
+    }
+
     let elapsed = start.elapsed();
     let db_size = std::fs::metadata(db_path)
         .map(|m| m.len() / 1024)
