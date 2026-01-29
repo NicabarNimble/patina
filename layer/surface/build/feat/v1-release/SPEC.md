@@ -179,10 +179,23 @@ Currently statically linked via `ort` crate's `download-binaries` feature.
 
 Fix the foundation before building on it.
 
-- [ ] `patina version show` reflects actual version (0.9.0)
-- [ ] Version tracking reads from Cargo.toml or reliable source
+**Done:**
+- [x] `patina version show` reflects actual version (0.9.0)
+- [x] Version tracking reads from Cargo.toml (sole source of truth)
+- [x] build.md updated with v1.0 pillar roadmap
+- [x] Removed stale `.patina/version.toml`
+
+**Version system hardening:**
+- [ ] Index staleness: scrape prunes deleted specs (manual cleanup for now)
+- [x] Single active milestone: warns if multiple specs have current_milestone
+- [x] Coherence check: warns if spec milestone version <= Cargo.toml version
+- [x] Silent failures: distinct messages for no DB, query error, no milestones
+- [x] Deprecate `version phase` and `version init` commands (warn + doc)
+- [x] Remove dead code: `get_spec_milestones()` function deleted
+- [ ] Use YAML parser for spec updates (not regex) — deferred, low priority
+
+**Deferred:**
 - [ ] Spec-system folder migration complete
-- [ ] build.md updated with v1.0 pillar roadmap
 
 ---
 
@@ -192,3 +205,4 @@ Fix the foundation before building on it.
 |------|--------|------|
 | 2026-01-27 | in_progress | Spec created. Current binary 52MB, 14MB compressed. |
 | 2026-01-29 | in_progress | Restructured as three-pillar roadmap. Patch versioning (0.9.x → 1.0.0). |
+| 2026-01-29 | in_progress | Version system hardened: multi-milestone warning, coherence check, deprecation warnings, dead code removed. |
