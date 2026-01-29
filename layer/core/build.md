@@ -20,13 +20,14 @@
 
 **Patch milestones:**
 ```
-0.9.0  ← Current
-0.9.1  - Version/spec system alignment
-0.9.2  - Epistemic E4 (belief automation)
-0.9.3  - Mother federated query
-0.9.4  - Dynamic ONNX loading
-0.9.5  - WASM grammars
-0.9.6  - GitHub releases + Homebrew
+0.9.0  - Public release (fat binary)
+0.9.1  ✓ Version/spec system alignment
+0.9.2  → Session system & adapter parity
+0.9.3  - Epistemic E4 (belief automation)
+0.9.4  - Mother federated query
+0.9.5  - Dynamic ONNX loading
+0.9.6  - WASM grammars
+0.9.7  - GitHub releases + Homebrew
 1.0.0  - All pillars complete
 ```
 
