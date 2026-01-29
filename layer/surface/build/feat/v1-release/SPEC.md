@@ -223,13 +223,21 @@ Fix the foundation before building on it.
 
 **Bug fixed during implementation:** Layer/beliefs scrapers used file stems for pruning but DB uses frontmatter IDs. This caused specs with `id` different from filename to be incorrectly pruned. Fixed by tracking frontmatter IDs during parsing.
 
-### 3. Spec-System Folder Migration
+### 3. Spec-System Folder Migration — DONE
 
-**Problem:** Old flat-file specs (`spec-*.md`) need migration to folder format (`feat/name/SPEC.md`).
+**Problem:** Old flat-file specs (`spec-*.md`) needed migration to folder format.
 
-**Where:** `layer/surface/build/` — see `refactor/spec-system/SPEC.md` for the format.
+**Migrated:**
+- 2 deleted (archived via git tags): launcher-polish, commit-enrichment
+- 3 moved to `reference/`: architectural-alignment, assay, pipeline
+- 2 moved to `dust/reviews/` (gitignored): code-audit, review-q4-2025
+- 4 migrated to folder format with YAML frontmatter:
+  - `feat/epistemic-layer/SPEC.md`
+  - `feat/mother/SPEC.md`
+  - `feat/ref-repo-semantic/SPEC.md`
+  - `refactor/database-identity/SPEC.md`
 
-**Scope:** ~10-15 specs to migrate, mostly in `deferred/`.
+**Remaining:** 18 specs in `deferred/` - spec-system says "deferred/ can be flat files"
 
 ---
 
@@ -242,3 +250,4 @@ Fix the foundation before building on it.
 | 2026-01-29 | in_progress | Version system hardened: multi-milestone warning, coherence check, deprecation warnings, dead code removed. |
 | 2026-01-29 | in_progress | Index staleness fixed: automatic pruning in layer and beliefs scrapers. |
 | 2026-01-29 | in_progress | YAML parser: serde_yaml replaces regex for spec updates. Fixed prune bug (file stem vs frontmatter ID). |
+| 2026-01-29 | in_progress | Spec migration: 11 active flat-file specs migrated to folder format or archived. |
