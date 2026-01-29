@@ -6,34 +6,35 @@ created: 2026-01-27
 updated: 2026-01-29
 sessions:
   origin: 20260127-085434
-  work: [20260129-074742]
+  work:
+  - 20260129-074742
 related:
-  - spec/go-public
-  - spec-epistemic-layer
-  - spec-mother
+- spec/go-public
+- spec-epistemic-layer
+- spec-mother
 milestones:
-  - version: "0.9.1"
-    name: Version & spec system alignment
-    status: in_progress
-  - version: "0.9.2"
-    name: Epistemic E4 (belief automation)
-    status: pending
-  - version: "0.9.3"
-    name: Mother federated query
-    status: pending
-  - version: "0.9.4"
-    name: Dynamic ONNX loading
-    status: pending
-  - version: "0.9.5"
-    name: WASM grammars
-    status: pending
-  - version: "0.9.6"
-    name: GitHub releases + Homebrew
-    status: pending
-  - version: "1.0.0"
-    name: All pillars complete
-    status: pending
-current_milestone: "0.9.1"
+- version: 0.9.1
+  name: Version & spec system alignment
+  status: complete
+- version: 0.9.2
+  name: Epistemic E4 (belief automation)
+  status: in_progress
+- version: 0.9.3
+  name: Mother federated query
+  status: pending
+- version: 0.9.4
+  name: Dynamic ONNX loading
+  status: pending
+- version: 0.9.5
+  name: WASM grammars
+  status: pending
+- version: 0.9.6
+  name: GitHub releases + Homebrew
+  status: pending
+- version: 1.0.0
+  name: All pillars complete
+  status: pending
+current_milestone: 0.9.2
 ---
 
 # feat: v1.0 Release
