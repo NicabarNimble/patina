@@ -196,16 +196,17 @@ Fix the foundation before building on it.
 
 ## Remaining Work (Next Session)
 
-### 1. Index Staleness: Scrape Prunes Deleted Specs
+### 1. Index Staleness: Scrape Prunes Deleted Specs — DONE
 
-**Problem:** When specs are archived/deleted, their entries linger in `patina.db`. We had to manually `DELETE FROM patterns WHERE id = 'go-public'` to clean up.
+**Problem:** When specs are archived/deleted, their entries linger in `patina.db`.
 
-**Where to fix:** `src/indexer/` — the scrape layer command should:
-- Track which files were processed
-- Delete DB entries for files that no longer exist
-- Or: add `--prune` flag to explicitly clean stale entries
+**Solution:** Automatic pruning in `scrape layer` and `scrape beliefs`. After processing files, compares DB entries against files on disk and deletes stale entries. No `--prune` flag needed — follows unix philosophy of doing one job well.
 
-**Context:** See session 20260129-074742 where go-public was manually cleaned from index.
+**Changed:**
+- `src/commands/scrape/layer/mod.rs` — prunes patterns, pattern_fts, milestones, eventlog
+- `src/commands/scrape/beliefs/mod.rs` — prunes beliefs, belief_fts, eventlog
+
+**Verified:** `patina scrape` now reports "Pruned N stale entries" when files are removed.
 
 ### 2. YAML Parser for Spec Updates (Low Priority)
 
@@ -232,3 +233,4 @@ Fix the foundation before building on it.
 | 2026-01-27 | in_progress | Spec created. Current binary 52MB, 14MB compressed. |
 | 2026-01-29 | in_progress | Restructured as three-pillar roadmap. Patch versioning (0.9.x → 1.0.0). |
 | 2026-01-29 | in_progress | Version system hardened: multi-milestone warning, coherence check, deprecation warnings, dead code removed. |
+| 2026-01-29 | in_progress | Index staleness fixed: automatic pruning in layer and beliefs scrapers. |
