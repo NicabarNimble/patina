@@ -1,8 +1,34 @@
 # Build Recipe
 
-**Status:** Architectural alignment - internal code quality meets core values.
+**Status:** v1.0 roadmap crystallized. Three pillars: epistemic, mother, distribution.
 
-**Recent:** E3 complete (2026-01-22) - beliefs now indexed and queryable via scry (23 beliefs, ID offset 4B). New exploration: `explore/anti-slop` - signal over noise thesis, linkage as quality measure. Commit enrichment bug fixed - scry returns `git.commit` results. Spec system reorg ongoing - new folder format, 46 archived specs.
+**Version:** 0.9.0 → patches (0.9.x) → 1.0.0
+
+**Recent:** v1.0 spec restructured (2026-01-29) with three-pillar focus and patch versioning. PR #75 merged (v0.9.0). 35 beliefs indexed. Spec system reorg ongoing.
+
+---
+
+## v1.0 Roadmap
+
+**Spec:** [feat/v1-release/SPEC.md](../surface/build/feat/v1-release/SPEC.md)
+
+| Pillar | Current | Target |
+|--------|---------|--------|
+| **Epistemic** | E0-E3 done, 35 beliefs | E4 automation, stable validation |
+| **Mother** | Registry + serve daemon | Federated query, persona fusion |
+| **Distribution** | 52MB fat binary | Slim binary, `patina setup`, Homebrew |
+
+**Patch milestones:**
+```
+0.9.0  ← Current
+0.9.1  - Version/spec system alignment
+0.9.2  - Epistemic E4 (belief automation)
+0.9.3  - Mother federated query
+0.9.4  - Dynamic ONNX loading
+0.9.5  - WASM grammars
+0.9.6  - GitHub releases + Homebrew
+1.0.0  - All pillars complete
+```
 
 ---
 
@@ -90,12 +116,15 @@ Run regularly to catch regressions.
 
 ### Active
 
+**v1.0 Pillars:**
+- [feat/v1-release/SPEC.md](../surface/build/feat/v1-release/SPEC.md) - **Master roadmap:** Three pillars, patch versioning
+- [spec-epistemic-layer.md](../surface/build/spec-epistemic-layer.md) - **Pillar 1:** E0-E3 done (35 beliefs), E4 automation next
+- [spec-mother.md](../surface/build/spec-mother.md) - **Pillar 2:** Federated query, persona fusion
+
 **Features:**
 - [feat/surface-layer/SPEC.md](../surface/build/feat/surface-layer/SPEC.md) - **Design:** Distillation layer with success metrics, `patina surface` command
 
 **In Progress:**
-- [spec-epistemic-layer.md](../surface/build/spec-epistemic-layer.md) - **E0-E3 done:** Belief system validated, beliefs indexed in scry (23 total)
-- [spec-mother.md](../surface/build/spec-mother.md) - **Phase 1 next:** Federated query (vocabulary gap resolved)
 - [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **Phase 1-2 done:** Commit-based training working
 - [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Phase 1 done:** UIDs everywhere, Phase 2-3 remain
 
@@ -114,13 +143,13 @@ Run regularly to catch regressions.
 
 ## Current Focus
 
-### Epistemic Layer (E0-E3 Complete)
+### Epistemic Layer (E0-E3 Complete) — v1.0 Pillar 1
 
 **Problem:** Knowledge systems store facts. Patina needs to store **beliefs with justification and revision**.
 
 **Solution:** Persona-based epistemic belief revision using atomic Markdown propositions. AGM-style operations (expansion, contraction, revision) map to layer lifecycle (surface → core or → dust).
 
-**Progress:** E0-E3 complete. 23 beliefs captured and indexed in scry (BELIEF_ID_OFFSET = 4B). Queryable via `patina scry "what do we believe about X"`. E4 (extraction automation) next.
+**Progress:** E0-E3 complete. 35 beliefs captured and indexed in scry (BELIEF_ID_OFFSET = 4B). Queryable via `patina scry "what do we believe about X"`. E4 (extraction automation) next.
 
 **Spec:** [spec-epistemic-layer.md](../surface/build/spec-epistemic-layer.md)
 

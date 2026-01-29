@@ -3,53 +3,126 @@ type: feat
 id: v1-release
 status: in_progress
 created: 2026-01-27
-updated: 2026-01-27
+updated: 2026-01-29
 sessions:
   origin: 20260127-085434
-  work: []
+  work: [20260129-074742]
 related:
   - spec/go-public
+  - spec-epistemic-layer
+  - spec-mother
 milestones:
-  - version: "1.0.0"
-    name: Distribution-ready release
+  - version: "0.9.1"
+    name: Version & spec system alignment
     status: pending
-current_milestone: "1.0.0"
+  - version: "0.9.2"
+    name: Epistemic E4 (belief automation)
+    status: pending
+  - version: "0.9.3"
+    name: Mother federated query
+    status: pending
+  - version: "0.9.4"
+    name: Dynamic ONNX loading
+    status: pending
+  - version: "0.9.5"
+    name: WASM grammars
+    status: pending
+  - version: "0.9.6"
+    name: GitHub releases + Homebrew
+    status: pending
+  - version: "1.0.0"
+    name: All pillars complete
+    status: pending
+current_milestone: "0.9.1"
 ---
 
 # feat: v1.0 Release
 
-> Ship Patina as a distributable product. Small binary, easy install, no build-from-source friction.
+> Finalize Patina's core architecture: epistemic beliefs, federated mother, and modular distribution.
 
-**Goal:** Users install Patina in seconds, not minutes. Binary is slim, heavy assets download on demand, homebrew makes it one command.
-
----
-
-## The Problem
-
-Today Patina is 52MB with everything baked in — ONNX Runtime, tree-sitter grammars (8 languages), embedding infrastructure. Installing from source requires compiling C/C++ grammars and linking ONNX. There's no pre-built binary or package manager support.
-
-Crates.io publishing is blocked by `patina-metal` bundling 60MB of grammar source files (10MB crate limit).
+**Goal:** A stable foundation that enables proper iteration. v1.0 means the three pillars are complete and the system can evolve without architectural rewrites.
 
 ---
 
-## Packaging Architecture
+## Three Pillars to v1.0
 
-### Current State
+| Pillar | Current State | Finalized Means |
+|--------|---------------|-----------------|
+| **Epistemic Layer** | E0-E3 done, 35 beliefs indexed | E4 automation, validation stable, beliefs queryable |
+| **Mother** | Registry works, `serve` daemon exists | Federated query across repos, persona fusion |
+| **Distribution** | 52MB fat binary, source-only | Slim binary, `patina setup`, Homebrew tap |
 
-| Asset | Size | Bundled/Downloaded |
-|-------|------|-------------------|
-| Tree-sitter grammars (native C) | ~10-15MB in binary | Compiled at build time |
-| ONNX Runtime | ~15-20MB in binary | Linked at build time |
-| Embedding models (.onnx) | ~30-90MB | Downloaded at runtime |
+All three must be complete for v1.0.
 
-### Target State
+---
 
-| Asset | Size | Strategy |
-|-------|------|----------|
-| Patina binary (slim) | ~5-10MB | Core CLI only |
-| Tree-sitter grammars (.wasm) | ~10MB | Downloaded on demand |
-| ONNX Runtime (.dylib) | ~15MB | Downloaded on demand |
-| Embedding models (.onnx) | ~30-90MB | Downloaded on demand (existing) |
+## Versioning Strategy
+
+**Model:** Semver patches from 0.9.0 → 1.0.0
+
+```
+0.9.0  - Current (public release, fat binary)
+0.9.1  - Version system fixed, spec-system aligned
+0.9.2  - Epistemic E4 (belief extraction automation)
+0.9.3  - Mother federated query
+0.9.4  - Dynamic ONNX loading
+0.9.5  - WASM grammars
+0.9.6  - GitHub releases + Homebrew
+1.0.0  - All pillars complete
+```
+
+Each patch = one meaningful milestone toward a pillar.
+
+---
+
+## Pillar 1: Epistemic Layer
+
+**Spec:** [[spec-epistemic-layer.md]]
+
+**Current:** E0-E3 complete. 35 beliefs captured and indexed in scry. Queryable via `patina scry "what do we believe about X"`.
+
+**Remaining:**
+- E4: Belief extraction automation (suggest beliefs from session patterns)
+- Validation stability (confidence signals, revision workflow)
+
+**Exit criteria:**
+- [ ] `patina` suggests beliefs from session content
+- [ ] Belief confidence updates based on evidence accumulation
+- [ ] Belief query integrated into MCP tools
+
+---
+
+## Pillar 2: Mother (Federated Query)
+
+**Spec:** [[spec-mother.md]]
+
+**Current:** Registry works, `patina serve` daemon exists, ref repos indexed.
+
+**Remaining:**
+- Federated query across multiple repos
+- Persona fusion (cross-project learning)
+- Vocabulary bridging between repos
+
+**Exit criteria:**
+- [ ] `patina scry` queries mother registry (not just local project)
+- [ ] Results ranked by relevance across repos
+- [ ] Persona preferences influence retrieval
+
+---
+
+## Pillar 3: Distribution
+
+**Current:** 52MB binary with everything baked in. Install requires building from source.
+
+**Target:** Slim binary (~5-10MB), heavy assets download on demand.
+
+### Packaging Architecture
+
+| Asset | Current | Target |
+|-------|---------|--------|
+| Tree-sitter grammars | Compiled C (~10-15MB) | WASM, downloaded |
+| ONNX Runtime | Static link (~15-20MB) | Dynamic `.dylib`, downloaded |
+| Embedding models | Downloaded (existing) | Same |
 
 ### Runtime Asset Management
 
@@ -63,77 +136,53 @@ patina (slim binary)
 └── ~/.patina/lib/       → runtime assets directory
 ```
 
-First run: `patina setup` or auto-download on first use.
-Subsequent runs: instant, everything cached locally.
-
----
-
-## WASM Grammars
+### WASM Grammars
 
 Replace compiled-in C grammars with tree-sitter WASM modules loaded at runtime.
 
-**Why WASM over native dylibs:**
+**Why WASM:**
 - Portable across architectures (same .wasm on arm64 and x86_64)
 - Sandboxed execution
-- Smaller than native equivalents
 - Tree-sitter has native WASM support
 
-**Trade-off:** Slower parsing than native C. Acceptable for Patina's use case (scraping, not real-time editing).
+**Trade-off:** Slower parsing than native C. Acceptable for scraping (not real-time editing).
 
-**Migration path:**
-1. Build .wasm grammars from existing vendored sources
-2. Host on GitHub releases as `patina-grammars-v1.0.0.tar.gz`
-3. Load via tree-sitter WASM runtime instead of compiled-in native code
-4. Remove `patina-metal` C build step (or make it optional for dev builds)
-
----
-
-## ONNX Runtime
+### ONNX Runtime
 
 Currently statically linked via `ort` crate's `download-binaries` feature.
 
-**Target:** Ship without ONNX baked in. Download `libonnxruntime.dylib` on demand, load via `ORT_DYLIB_PATH`.
+**Target:** Download `libonnxruntime.dylib` on demand, load via `ORT_DYLIB_PATH`.
 
-**`ort` supports this:** The crate can load a dynamic library at runtime instead of bundling one.
+### Distribution Channels
 
----
+**GitHub Releases (primary):**
+- Release workflow on version tags (`v*`)
+- macOS arm64 binary
+- Stripped with release profile optimizations
 
-## Distribution Channels
-
-### GitHub Releases (primary)
-- Release workflow triggered on version tags (`v*`)
-- Builds on macOS arm64 (mac only for now)
-- Produces `patina-v{version}-aarch64-apple-darwin.tar.gz`
-- Stripped binary with release profile optimizations
-
-### Homebrew Tap
+**Homebrew Tap:**
 - Separate repo: `NicabarNimble/homebrew-tap`
-- Formula points to GitHub release tarball
 - Install: `brew install NicabarNimble/tap/patina`
-- Formula updated on each release (manual or automated)
 
-### Release Profile
-
-```toml
-[profile.release]
-strip = true
-lto = true
-codegen-units = 1
-opt-level = "z"  # optimize for size
-```
-
----
-
-## Exit Criteria
-
+**Exit criteria:**
 - [ ] WASM grammar loading replaces compiled-in C grammars
-- [ ] ONNX Runtime loaded dynamically (not statically linked)
+- [ ] ONNX Runtime loaded dynamically
 - [ ] `patina setup` downloads all runtime assets
 - [ ] `patina doctor` reports asset status
 - [ ] GitHub release workflow produces macOS arm64 binary
-- [ ] Homebrew tap formula works (`brew install NicabarNimble/tap/patina`)
+- [ ] Homebrew tap formula works
 - [ ] Binary under 15MB (stripped, before compression)
-- [ ] Tarball under 5MB compressed
+
+---
+
+## Immediate Next: 0.9.1
+
+Fix the foundation before building on it.
+
+- [ ] `patina version show` reflects actual version (0.9.0)
+- [ ] Version tracking reads from Cargo.toml or reliable source
+- [ ] Spec-system folder migration complete
+- [ ] build.md updated with v1.0 pillar roadmap
 
 ---
 
@@ -142,3 +191,4 @@ opt-level = "z"  # optimize for size
 | Date | Status | Note |
 |------|--------|------|
 | 2026-01-27 | in_progress | Spec created. Current binary 52MB, 14MB compressed. |
+| 2026-01-29 | in_progress | Restructured as three-pillar roadmap. Patch versioning (0.9.x → 1.0.0). |
