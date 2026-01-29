@@ -85,93 +85,109 @@ Each patch = one meaningful milestone toward a pillar.
 
 ## Immediate Next: 0.9.2 — Session System & Adapter Parity
 
-Two problems, one solution: move session logic from shell scripts into Patina, making sessions adapter-agnostic and event-first.
+Move session mechanics from ~640 lines of bash into Patina Rust commands, making sessions adapter-agnostic while preserving the division of labor that makes them work: **Patina handles mechanics (git tags, scaffolding, metrics, classification, archival), LLMs handle meaning (narrative, context bridging, belief capture, goal tracking).**
 
-### Problem 1: Sessions Are Shell Scripts
+### What We Have (and Why It's Clever)
 
-Current session workflow:
+**858 git tags. 538 session files. Every single development session tracked.**
+
+The current system has three layers:
+
+1. **Shell scripts** (`.claude/bin/session-*.sh`, ~640 lines) — mechanical work: git tags, markdown scaffolding, metrics computation, work classification, archival, prompt extraction
+2. **Skill definitions** (`resources/claude/session-*.md`) — teach the LLM what to do *around* the script: read previous session, write real summary, fill in goals, suggest beliefs, bridge context
+3. **Rust scraper** (`src/commands/scrape/sessions/mod.rs`) — extracts structured events from finished markdown after the fact
+
+The clever design: **scripts produce structure, the LLM fills in meaning.** Bash creates the scaffold and captures metrics; the LLM writes the narrative. Neither is redundant.
+
+### What's Wrong
+
+- **640 lines of bash doing things Patina does natively** — YAML parsing, git operations, SQLite writes all have Rust equivalents
+- **Three adapter copies** — Claude, Gemini, OpenCode each deploy identical scripts. Bug fix = change in 3+ places plus `session_scripts.rs` embeds
+- **Events reconstructed, not recorded** — scraper parses markdown *after* session ends. If LLM writes in unexpected format, scraper misses it
+- **Active session is adapter-specific** — `.claude/context/active-session.md` means switching adapters mid-session loses tracking
+- **`navigation.db` is vestigial** — scripts write to `state_transitions` table, nothing reads it. Eventlog already captures the same data
+- **`history.jsonl` path is hardcoded to Claude** — all three adapter scripts (including Gemini and OpenCode) reference `$HOME/.claude/history.jsonl` for prompt extraction. Gemini/OpenCode never capture user prompts because they look in the wrong place. Rust implementation must detect the active adapter or check all known paths.
+- **No spec linkage** — sessions and specs are both central but not connected
+
+### Solution: Dual-Write Sessions
+
+**Architecture principle:** Markdown is the collaboration artifact (LLM actively edits it). Events are the structured query layer (written at action time). Both are primary — neither is derived from the other.
+
 ```
-/session-start  → .claude/bin/session-start.sh (216 lines of bash)
-/session-update → .claude/bin/session-update.sh (136 lines of bash)
-/session-end    → .claude/bin/session-end.sh (289 lines of bash)
-```
-
-Issues:
-- Logic lives in bash (hard to test, hard to extend)
-- Each adapter needs its own copy of scripts
-- Events created after-the-fact by scraping markdown
-- No `patina session` command exists
-
-### Problem 2: Sessions Don't Link to Specs
-
-Sessions and specs are both core to how we work, but they're not connected:
-- Sessions have git linkage (tags → commits via timestamp matching)
-- Specs have `sessions:` field but it's manually maintained
-- Can't easily query "what sessions worked on v1-release?"
-
-### Solution: Event-First Sessions
-
-**Architecture principle:** Events are immutable truth, markdown is derived view.
-
-```
-User action (patina session start)
+patina session start "complete 0.9.2"
          │
-         ▼
-┌────────────────────────────────────────┐
-│ EVENTLOG (immutable, append-only)      │
-│                                        │
-│  session.started {                     │
-│    id: "20260129-093857",              │
-│    title: "Complete v0.9.2",           │
-│    spec_id: "v1-release",    ← NEW     │
-│    milestone: "0.9.2",       ← NEW     │
-│    branch: "patina",                   │
-│    start_tag: "session-...-start"      │
-│  }                                     │
-└────────────────────────────────────────┘
+         ├──→ .patina/active-session.md    (collaboration artifact)
+         │    - YAML frontmatter + markdown scaffold
+         │    - LLM reads/writes this throughout session
+         │    - Archived to layer/sessions/ on end
          │
-         │ materialize
-         ▼
-┌────────────────────────────────────────┐
-│ layer/sessions/20260129-093857.md      │
-│ (human-readable view, regeneratable)   │
-└────────────────────────────────────────┘
+         ├──→ EVENTLOG (append-only)        (structured query layer)
+         │    session.started { id, title, branch, tag }
+         │    - Written at action time, not scraped after
+         │    - Enables "what sessions worked on X?" queries
+         │
+         └──→ GIT TAG                       (durable boundary marker)
+              session-{ID}-{frontend}-start
+              - Survives rebasing, branch deletion, cloning
+              - `git log tag-start..tag-end` always works
 ```
 
 ### Deliverables
 
 **1. `patina session` commands (Rust)**
 
+Replace shell script mechanics with native Patina commands. Same outputs, same git tag conventions, same markdown format — but testable, single-source, and event-aware.
+
 ```bash
-# Start a session, link to spec
-patina session start "complete 0.9.2" --spec v1-release --milestone 0.9.2
-  → Creates session.started event
-  → Creates git tag
-  → Outputs session ID and context
+patina session start "complete 0.9.2"
+  → Creates git tag (session-{ID}-{frontend}-start)
+  → Writes active session markdown to .patina/active-session.md
+  → Writes session.started event to eventlog
+  → Handles incomplete previous session (cleanup/archive)
+  → Shows beliefs context, previous session pointer
+  → Outputs session ID, branch, tag for LLM
 
-# Update with progress
 patina session update
-  → Creates session.update event with git metrics
-  → Returns structured data for LLM to fill in
+  → Computes git metrics (commits, files changed, last commit time)
+  → Appends timestamped update section to active session markdown
+  → Writes session.update event to eventlog
+  → Shows commit coaching (stale work warnings, large change alerts)
 
-# Add observation
 patina session note "discovered edge case in parser"
-  → Creates session.observation event
+  → Appends timestamped note with [branch@sha] to active session
+  → Writes session.observation event to eventlog
+  → Detects importance keywords, suggests checkpoint commit
 
-# End session
 patina session end
-  → Creates session.ended event with final metrics
-  → Creates git tag
-  → Materializes markdown to layer/sessions/
-  → Updates spec's sessions.work array (if linked)
-
-# Query sessions
-patina session list
-patina session show 20260129-093857
-patina session show --active
+  → Creates git tag (session-{ID}-{frontend}-end)
+  → Computes final metrics and work classification
+  → Counts beliefs captured during session
+  → Extracts user prompts (from history.jsonl if available)
+  → Appends classification + beliefs sections to markdown
+  → Archives to layer/sessions/{ID}.md
+  → Updates .patina/last-session.md pointer
+  → Writes session.ended event to eventlog
+  → Cleans up active session file
 ```
 
-**2. Session document format (YAML frontmatter)**
+**What the LLM still does** (via skill definitions, unchanged role):
+- Reads previous session file and writes substantive summary
+- Fills in activity log with narrative, decisions, patterns
+- Checks for beliefs to capture during updates
+- Runs final update before ending session
+
+**2. Active session in `.patina/` (adapter-agnostic)**
+
+Move from `.claude/context/active-session.md` to `.patina/active-session.md`.
+
+- All adapters read/write the same file
+- `patina session` commands own the file lifecycle
+- Adapter skill definitions reference the new path
+- `.patina/last-session.md` replaces `.claude/context/last-session.md`
+
+**3. YAML frontmatter for session documents**
+
+New sessions get machine-parseable frontmatter (consistent with spec format):
 
 ```yaml
 ---
@@ -185,85 +201,76 @@ git:
   branch: patina
   starting_commit: 81d9e6b1
   start_tag: session-20260129-093857-claude-start
-links:
-  previous: 20260129-084757
-  spec: v1-release          # ← explicit spec linkage
-  milestone: 0.9.2
-goals:
-  - text: Complete v0.9.2
-    done: false
 ---
 
 ## Previous Session Context
-...
+<!-- AI: Summarize the last session from last-session.md -->
+
+## Goals
+- [ ] Complete v0.9.2
 
 ## Activity Log
+### 09:38 - Session Start
 ...
 ```
 
-**3. Active session location**
+Scraper updated to read YAML frontmatter when present, fall back to markdown header parsing for 538 existing sessions.
 
-Move from `.claude/context/active-session.md` (adapter-specific) to `.patina/active-session.md` (patina-owned).
+**4. Skill definitions updated**
 
-- Adapters call `patina session` commands
-- No adapter-specific session logic
-- Shell scripts become thin wrappers or disappear
+Each adapter's skill `.md` files change one line — from calling a shell script to calling `patina session`:
 
-**4. Spec ↔ Session bidirectional links**
-
-Session events include `spec_id` and `milestone`:
-```json
-{"event_type": "session.started", "data": {"spec_id": "v1-release", "milestone": "0.9.2"}}
+```diff
+- `.claude/bin/session-start.sh $ARGUMENTS`
++ `patina session start "$ARGUMENTS"`
 ```
 
-On session end, auto-update spec's sessions array:
-```yaml
-sessions:
-  origin: 20260127-085434
-  work:
-    - 20260129-074742
-    - 20260129-093857  ← auto-added
-```
+The rest of the skill definition (read previous session, fill in summary, suggest beliefs, etc.) stays identical. This is where adapter parity actually lives: all adapters call the same `patina session` commands, with only skill definition format differing (markdown for Claude/OpenCode, TOML for Gemini).
 
-**5. Adapter version detection (secondary)**
+**5. Drop `navigation.db` session tracking**
 
-Keep existing `launch.rs` detection, add `patina adapter status`:
-```bash
-patina adapter status
-# Claude Code: 1.0.17 (installed)
-# OpenCode: not installed
-# Gemini CLI: 0.5.2 (installed)
-```
+Shell scripts currently write `SessionStart`/`SessionEnd` transitions to `.patina/navigation.db`. Nothing reads this data — the eventlog captures the same information. New Rust commands write to eventlog only. Clean cut.
 
-Remove static `CLAUDE_ADAPTER_VERSION` constants.
+### Stretch Goals (not required for 0.9.2)
+
+- `--spec` and `--milestone` flags for explicit spec linkage
+- Auto-update spec's `sessions.work` array on session end
+- `patina session list` / `patina session show` query commands
+- `patina adapter status` (unrelated to sessions — separate task)
 
 ### Migration Path
 
-**Phase 1: Add commands (non-breaking)**
+**Phase 1: Build Rust commands (non-breaking)**
 - Implement `patina session start/update/note/end`
-- Events created in real-time
-- Shell scripts still work (parallel paths)
+- Dual-write: markdown + eventlog events at action time
+- Scraper handles both YAML frontmatter and legacy markdown headers
+- Shell scripts still exist and work (parallel paths for testing)
+- Active session written to `.patina/active-session.md`
 
-**Phase 2: Update adapters**
-- Adapter skills call `patina session` commands
-- Shell scripts become one-liners or removed
-- Active session moves to `.patina/`
+**Phase 2: Cut over adapters**
+- Skill definitions updated to call `patina session` commands
+- Active session path changed in all adapter skill definitions
+- Adapter `session_scripts.rs` deploys `patina session` wrappers instead of full bash scripts
+- Test: run full session lifecycle with each adapter
 
-**Phase 3: Remove legacy**
-- Delete shell scripts
-- Remove `CLAUDE_ADAPTER_VERSION` constants
-- Update scrape to handle both old and new session formats
+**Phase 3: Remove legacy (separate commit, after validation)**
+- Delete shell scripts from `resources/{claude,gemini,opencode}/`
+- Remove embedded script constants from `session_scripts.rs`
+- Remove `navigation.db` writes from any remaining code
+- Keep shell scripts accessible via git history
 
 ### Exit Criteria
 
-- [ ] `patina session start/update/note/end` commands exist
-- [ ] Session events created at action time (not scraped after)
-- [ ] `--spec` and `--milestone` flags link sessions to specs
+- [ ] `patina session start/update/note/end` commands exist in Rust
+- [ ] Commands produce identical markdown output to current shell scripts
+- [ ] Session events written to eventlog at action time
 - [ ] Active session lives in `.patina/active-session.md`
-- [ ] YAML frontmatter format for session documents
-- [ ] Shell scripts deprecated or removed
-- [ ] `patina adapter status` shows installed tool versions
-- [ ] Spec's `sessions.work` auto-updates on session end
+- [ ] YAML frontmatter on new session documents
+- [ ] Scraper handles both YAML frontmatter and legacy markdown headers
+- [ ] Skill definitions call `patina session` instead of shell scripts
+- [ ] All three adapters (Claude, Gemini, OpenCode) use same commands
+- [ ] `navigation.db` session writes removed
+- [ ] Full session lifecycle tested (start → update → note → end → archive)
 
 ---
 
@@ -441,4 +448,4 @@ Currently statically linked via `ort` crate's `download-binaries` feature.
 | 2026-01-29 | in_progress | Restructured as three-pillar roadmap. Patch versioning (0.9.x → 1.0.0). |
 | 2026-01-29 | in_progress | Version system hardened, YAML parser, spec migration, prune bug fixed. |
 | 2026-01-29 | **0.9.1** | Released v0.9.1. Cleaned VERSION_CHANGES, bumped Cargo.toml. |
-| 2026-01-29 | in_progress | 0.9.2 scoped: Session system redesign + adapter parity. Event-first architecture. |
+| 2026-01-29 | in_progress | 0.9.2 revised: Dual-write sessions, bash→Rust, adapter-agnostic active session. |
