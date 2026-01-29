@@ -8,6 +8,7 @@ sessions:
   origin: 20260127-085434
   work:
   - 20260129-074742
+  - 20260129-093857
 related:
 - spec/go-public
 - spec-epistemic-layer
@@ -17,7 +18,7 @@ milestones:
   name: Version & spec system alignment
   status: complete
 - version: 0.9.2
-  name: Adapter parity & testing
+  name: Session system & adapter parity
   status: in_progress
 - version: 0.9.3
   name: Epistemic E4 (belief automation)
@@ -67,7 +68,7 @@ All three must be complete for v1.0.
 ```
 0.9.0  - Current (public release, fat binary)
 0.9.1  ✓ Version system fixed, spec-system aligned
-0.9.2  → Adapter parity & testing
+0.9.2  → Session system & adapter parity
 0.9.3  - Epistemic E4 (belief extraction automation)
 0.9.4  - Mother federated query
 0.9.5  - Dynamic ONNX loading
@@ -82,70 +83,187 @@ Each patch = one meaningful milestone toward a pillar.
 
 ---
 
-## Immediate Next: 0.9.2 — Adapter Parity & Testing
+## Immediate Next: 0.9.2 — Session System & Adapter Parity
 
-Foundation work before features. We need to track our adapters properly.
+Two problems, one solution: move session logic from shell scripts into Patina, making sessions adapter-agnostic and event-first.
 
-### The Problem
+### Problem 1: Sessions Are Shell Scripts
 
-Adapters integrate Patina with LLM tools (Claude Code, OpenCode, Gemini CLI). Currently:
-- We have static `CLAUDE_ADAPTER_VERSION` constants we invented
-- No detection of actual installed LLM tool versions
-- No way to verify adapters work correctly
-- No parity enforcement across the three adapters
+Current session workflow:
+```
+/session-start  → .claude/bin/session-start.sh (216 lines of bash)
+/session-update → .claude/bin/session-update.sh (136 lines of bash)
+/session-end    → .claude/bin/session-end.sh (289 lines of bash)
+```
 
-### Adapter Version = Installed Tool Version
+Issues:
+- Logic lives in bash (hard to test, hard to extend)
+- Each adapter needs its own copy of scripts
+- Events created after-the-fact by scraping markdown
+- No `patina session` command exists
 
-The adapter version should reflect what the user actually has installed:
+### Problem 2: Sessions Don't Link to Specs
 
-| Adapter | LLM Tool | Detection |
-|---------|----------|-----------|
-| Claude | Claude Code CLI | `claude --version` |
-| OpenCode | OpenCode | `opencode --version` (TBD) |
-| Gemini | Gemini CLI | `gemini --version` (TBD) |
+Sessions and specs are both core to how we work, but they're not connected:
+- Sessions have git linkage (tags → commits via timestamp matching)
+- Specs have `sessions:` field but it's manually maintained
+- Can't easily query "what sessions worked on v1-release?"
 
-This is **dynamic detection**, not static constants. Each `patina` install should know:
-- Which adapters are available (tool installed?)
-- What version of each tool is installed
-- Whether Patina's adapter templates are compatible with that version
+### Solution: Event-First Sessions
+
+**Architecture principle:** Events are immutable truth, markdown is derived view.
+
+```
+User action (patina session start)
+         │
+         ▼
+┌────────────────────────────────────────┐
+│ EVENTLOG (immutable, append-only)      │
+│                                        │
+│  session.started {                     │
+│    id: "20260129-093857",              │
+│    title: "Complete v0.9.2",           │
+│    spec_id: "v1-release",    ← NEW     │
+│    milestone: "0.9.2",       ← NEW     │
+│    branch: "patina",                   │
+│    start_tag: "session-...-start"      │
+│  }                                     │
+└────────────────────────────────────────┘
+         │
+         │ materialize
+         ▼
+┌────────────────────────────────────────┐
+│ layer/sessions/20260129-093857.md      │
+│ (human-readable view, regeneratable)   │
+└────────────────────────────────────────┘
+```
 
 ### Deliverables
 
-**1. Dynamic version detection**
+**1. `patina session` commands (Rust)**
+
+```bash
+# Start a session, link to spec
+patina session start "complete 0.9.2" --spec v1-release --milestone 0.9.2
+  → Creates session.started event
+  → Creates git tag
+  → Outputs session ID and context
+
+# Update with progress
+patina session update
+  → Creates session.update event with git metrics
+  → Returns structured data for LLM to fill in
+
+# Add observation
+patina session note "discovered edge case in parser"
+  → Creates session.observation event
+
+# End session
+patina session end
+  → Creates session.ended event with final metrics
+  → Creates git tag
+  → Materializes markdown to layer/sessions/
+  → Updates spec's sessions.work array (if linked)
+
+# Query sessions
+patina session list
+patina session show 20260129-093857
+patina session show --active
+```
+
+**2. Session document format (YAML frontmatter)**
+
+```yaml
+---
+type: session
+id: "20260129-093857"
+title: Complete v0.9.2
+status: active              # active | archived
+llm: claude
+created: 2026-01-29T14:38:57Z
+git:
+  branch: patina
+  starting_commit: 81d9e6b1
+  start_tag: session-20260129-093857-claude-start
+links:
+  previous: 20260129-084757
+  spec: v1-release          # ← explicit spec linkage
+  milestone: 0.9.2
+goals:
+  - text: Complete v0.9.2
+    done: false
+---
+
+## Previous Session Context
+...
+
+## Activity Log
+...
+```
+
+**3. Active session location**
+
+Move from `.claude/context/active-session.md` (adapter-specific) to `.patina/active-session.md` (patina-owned).
+
+- Adapters call `patina session` commands
+- No adapter-specific session logic
+- Shell scripts become thin wrappers or disappear
+
+**4. Spec ↔ Session bidirectional links**
+
+Session events include `spec_id` and `milestone`:
+```json
+{"event_type": "session.started", "data": {"spec_id": "v1-release", "milestone": "0.9.2"}}
+```
+
+On session end, auto-update spec's sessions array:
+```yaml
+sessions:
+  origin: 20260127-085434
+  work:
+    - 20260129-074742
+    - 20260129-093857  ← auto-added
+```
+
+**5. Adapter version detection (secondary)**
+
+Keep existing `launch.rs` detection, add `patina adapter status`:
 ```bash
 patina adapter status
-# Claude Code: 1.0.17 (compatible)
+# Claude Code: 1.0.17 (installed)
 # OpenCode: not installed
-# Gemini CLI: 0.5.2 (compatible)
+# Gemini CLI: 0.5.2 (installed)
 ```
 
-**2. Adapter testing**
-```bash
-patina adapter test claude
-# ✓ Claude Code installed (1.0.17)
-# ✓ Project init works
-# ✓ Context file generated
-# ✓ Session commands available
-# ✓ MCP tools registered
-```
+Remove static `CLAUDE_ADAPTER_VERSION` constants.
 
-**3. CI integration**
-- Test all adapters on push
-- Verify templates generate valid files
-- Catch breaking changes from upstream LLM tools
+### Migration Path
 
-**4. Parity checklist**
-- Same capabilities documented (or explicit "not supported")
-- Same session workflow (start/update/note/end)
-- Same MCP tool availability (scry, context)
+**Phase 1: Add commands (non-breaking)**
+- Implement `patina session start/update/note/end`
+- Events created in real-time
+- Shell scripts still work (parallel paths)
+
+**Phase 2: Update adapters**
+- Adapter skills call `patina session` commands
+- Shell scripts become one-liners or removed
+- Active session moves to `.patina/`
+
+**Phase 3: Remove legacy**
+- Delete shell scripts
+- Remove `CLAUDE_ADAPTER_VERSION` constants
+- Update scrape to handle both old and new session formats
 
 ### Exit Criteria
 
-- [ ] `patina adapter status` shows installed tool versions (dynamic)
-- [ ] `patina adapter test <name>` verifies adapter works
-- [ ] All three adapters pass test suite
-- [ ] CI runs adapter tests on push
-- [ ] Remove static `CLAUDE_ADAPTER_VERSION` constants (replaced by detection)
+- [ ] `patina session start/update/note/end` commands exist
+- [ ] Session events created at action time (not scraped after)
+- [ ] `--spec` and `--milestone` flags link sessions to specs
+- [ ] Active session lives in `.patina/active-session.md`
+- [ ] YAML frontmatter format for session documents
+- [ ] Shell scripts deprecated or removed
+- [ ] `patina adapter status` shows installed tool versions
+- [ ] Spec's `sessions.work` auto-updates on session end
 
 ---
 
@@ -323,4 +441,4 @@ Currently statically linked via `ort` crate's `download-binaries` feature.
 | 2026-01-29 | in_progress | Restructured as three-pillar roadmap. Patch versioning (0.9.x → 1.0.0). |
 | 2026-01-29 | in_progress | Version system hardened, YAML parser, spec migration, prune bug fixed. |
 | 2026-01-29 | **0.9.1** | Released v0.9.1. Cleaned VERSION_CHANGES, bumped Cargo.toml. |
-| 2026-01-29 | in_progress | Reordered milestones: inserted 0.9.2 Adapter parity & testing. |
+| 2026-01-29 | in_progress | 0.9.2 scoped: Session system redesign + adapter parity. Event-first architecture. |
