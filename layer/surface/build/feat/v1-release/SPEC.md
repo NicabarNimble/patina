@@ -185,17 +185,43 @@ Fix the foundation before building on it.
 - [x] build.md updated with v1.0 pillar roadmap
 - [x] Removed stale `.patina/version.toml`
 
-**Version system hardening:**
-- [ ] Index staleness: scrape prunes deleted specs (manual cleanup for now)
+**Version system hardening (done):**
 - [x] Single active milestone: warns if multiple specs have current_milestone
 - [x] Coherence check: warns if spec milestone version <= Cargo.toml version
 - [x] Silent failures: distinct messages for no DB, query error, no milestones
 - [x] Deprecate `version phase` and `version init` commands (warn + doc)
 - [x] Remove dead code: `get_spec_milestones()` function deleted
-- [ ] Use YAML parser for spec updates (not regex) — deferred, low priority
 
-**Deferred:**
-- [ ] Spec-system folder migration complete
+---
+
+## Remaining Work (Next Session)
+
+### 1. Index Staleness: Scrape Prunes Deleted Specs
+
+**Problem:** When specs are archived/deleted, their entries linger in `patina.db`. We had to manually `DELETE FROM patterns WHERE id = 'go-public'` to clean up.
+
+**Where to fix:** `src/indexer/` — the scrape layer command should:
+- Track which files were processed
+- Delete DB entries for files that no longer exist
+- Or: add `--prune` flag to explicitly clean stale entries
+
+**Context:** See session 20260129-074742 where go-public was manually cleaned from index.
+
+### 2. YAML Parser for Spec Updates (Low Priority)
+
+**Problem:** `update_spec_milestone()` in `src/commands/version/internal.rs:362` uses regex to modify YAML frontmatter. Fragile if formatting changes.
+
+**Where to fix:** Replace regex with proper YAML parsing (e.g., `serde_yaml` or `yaml-rust`).
+
+**Why low priority:** Works today, only breaks if spec format changes significantly.
+
+### 3. Spec-System Folder Migration
+
+**Problem:** Old flat-file specs (`spec-*.md`) need migration to folder format (`feat/name/SPEC.md`).
+
+**Where:** `layer/surface/build/` — see `refactor/spec-system/SPEC.md` for the format.
+
+**Scope:** ~10-15 specs to migrate, mostly in `deferred/`.
 
 ---
 
