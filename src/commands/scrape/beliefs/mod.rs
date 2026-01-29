@@ -340,24 +340,22 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
 
     let mut processed_count = 0;
     let mut skipped = 0;
+    let mut current_file_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for path in &belief_files {
-        let id = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
-
-        // Skip if already processed (incremental mode)
-        if !full && processed.contains(&id) {
-            skipped += 1;
-            continue;
-        }
-
         match parse_belief_file(path) {
             Ok(belief) => {
+                // Track the frontmatter ID (not file stem) for pruning
+                current_file_ids.insert(belief.id.clone());
+
+                // Skip if already processed (incremental mode)
+                if !full && processed.contains(&belief.id) {
+                    skipped += 1;
+                    continue;
+                }
+
                 if let Err(e) = insert_belief(&conn, &belief) {
-                    eprintln!("  Warning: failed to insert belief {}: {}", id, e);
+                    eprintln!("  Warning: failed to insert belief {}: {}", belief.id, e);
                 } else {
                     processed_count += 1;
                 }
@@ -373,11 +371,8 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         processed_count, skipped
     );
 
-    // Prune stale entries: delete DB entries for files that no longer exist
-    let file_ids: std::collections::HashSet<String> = belief_files
-        .iter()
-        .filter_map(|p| p.file_stem().and_then(|s| s.to_str()).map(String::from))
-        .collect();
+    // Prune stale entries: delete DB entries for IDs that no longer exist on disk
+    let file_ids = current_file_ids;
 
     let mut stmt = conn.prepare("SELECT id FROM beliefs")?;
     let db_ids: Vec<String> = stmt
