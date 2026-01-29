@@ -506,22 +506,18 @@ pub fn init_version(phase: u32, phase_name: &str, milestone: u32) -> Result<()> 
 // ============================================================================
 
 fn output_json(components: bool) -> Result<()> {
-    let state = load_or_create_state()?;
-
+    // Cargo.toml is the sole source of truth for version
     let mut version_info = json!({
-        "patina": CORE_VERSION,
-        "phase": state.version.phase,
-        "phase_name": state.version.phase_name,
-        "milestone": state.version.milestone,
+        "version": CORE_VERSION,
     });
 
-    // Add current spec milestone from index (if available)
+    // Add current spec milestone from index (what we're working toward)
     if let Some(milestone) = get_current_spec_milestone() {
-        version_info["spec_milestone"] = json!({
-            "spec_id": milestone.spec_id,
+        version_info["next"] = json!({
             "version": milestone.version,
             "name": milestone.name,
             "status": milestone.status,
+            "spec": milestone.spec_id,
         });
     }
 
@@ -535,20 +531,10 @@ fn output_json(components: bool) -> Result<()> {
 }
 
 fn output_human(components: bool) -> Result<()> {
-    let state_result = load_version_state();
-
-    // Always show core version
+    // Cargo.toml is the sole source of truth for version
     println!("patina {CORE_VERSION}");
 
-    // Show phase/milestone if version.toml exists
-    if let Ok(state) = state_result {
-        println!(
-            "Phase {}: {} (milestone {})",
-            state.version.phase, state.version.phase_name, state.version.milestone
-        );
-    }
-
-    // Show current spec milestone from index (if available)
+    // Show current spec milestone from index (what we're working toward)
     if let Some(milestone) = get_current_spec_milestone() {
         let status_icon = match milestone.status.as_str() {
             "complete" => "✓",
@@ -556,8 +542,8 @@ fn output_human(components: bool) -> Result<()> {
             _ => "○",
         };
         println!(
-            "Spec: {} v{} {} {}",
-            milestone.spec_id, milestone.version, status_icon, milestone.name
+            "Next: v{} {} {} ({})",
+            milestone.version, status_icon, milestone.name, milestone.spec_id
         );
     }
 
