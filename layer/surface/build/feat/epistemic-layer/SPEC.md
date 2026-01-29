@@ -1,11 +1,19 @@
-# Spec: Epistemic Markdown Layer
+---
+type: feat
+id: epistemic-layer
+status: in_progress
+created: 2026-01-16
+updated: 2026-01-22
+sessions:
+  origin: 20260116-054624
+related:
+  - layer/surface/build/feat/v1-release/SPEC.md
+---
 
-**Status:** Active (E3 Complete - Beliefs in Scry)
-**Created:** 2026-01-16
-**Updated:** 2026-01-22 (E3 beliefs indexed and queryable via scry)
-**Origin:** Session 20260116-054624, external LLM collaboration on academic grounding
-**Prototype:** `layer/surface/epistemic/`
+# feat: Epistemic Markdown Layer
+
 **Progress:** E0 ✅ | E1 (in progress) | E2 ✅ | E2.5 ✅ | E3 ✅ | E4-E6 (planned)
+**Prototype:** `layer/surface/epistemic/`
 
 ---
 

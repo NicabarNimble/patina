@@ -1,8 +1,17 @@
-# Spec: Mother Architecture
+---
+type: feat
+id: mother
+status: in_progress
+created: 2026-01-01
+updated: 2026-01-29
+related:
+  - layer/surface/build/feat/v1-release/SPEC.md
+  - layer/surface/build/feat/ref-repo-semantic/SPEC.md
+---
 
-**Status:** Active (Parent Spec)
-**Created:** 2026-01-01
-**Purpose:** Define Mother as the nervous system connecting all project islands
+# feat: Mother Architecture
+
+> Define Mother as the nervous system connecting all project islands
 
 ## Spec Hierarchy
 
