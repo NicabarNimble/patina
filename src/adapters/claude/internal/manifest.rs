@@ -16,12 +16,11 @@ const VERSION_CHANGES: &[(&str, &[&str])] = &[
     (
         "0.7.0",
         &[
-            "New: /persona-start command for belief extraction with neuro-symbolic validation",
-            "Added: persona-start.sh and persona-start.md templates",
-            "Integrated: ReasoningEngine (embedded Scryer Prolog) into persona workflow",
-            "Changed: Replaced shell-based Prolog calls with `patina belief validate`",
-            "Enhanced: Evidence-based confidence scoring using weighted similarity × reliability",
-            "Updated: Validation thresholds enforced by symbolic reasoning (not LLM judgment)",
+            "New: /epistemic-beliefs skill for creating and managing project beliefs",
+            "Added: create-belief.sh script with validation (ID, statement, confidence, evidence)",
+            "Added: Proactive belief detection guidance (watch for design decisions, repeated patterns)",
+            "Enhanced: Session-git integration with automatic tagging at session boundaries",
+            "Added: belief-example.md reference for complete belief format",
         ],
     ),
     (
