@@ -359,6 +359,20 @@ pub fn rebase_abort() -> Result<()> {
     Ok(())
 }
 
+/// Get the full SHA of HEAD
+pub fn head_sha() -> Result<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .context("Failed to get HEAD SHA")?;
+
+    if !output.status.success() {
+        anyhow::bail!("Failed to get HEAD SHA (no commits?)");
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 /// Get the short SHA of HEAD
 pub fn short_sha() -> Result<String> {
     let output = Command::new("git")
@@ -447,6 +461,24 @@ pub fn fetch(remote: &str) -> Result<()> {
         anyhow::bail!(
             "Failed to fetch {}: {}",
             remote,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    Ok(())
+}
+
+/// Create an annotated git tag
+pub fn create_tag(name: &str, message: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["tag", "-a", name, "-m", message])
+        .output()
+        .context("Failed to create git tag")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to create tag '{}': {}",
+            name,
             String::from_utf8_lossy(&output.stderr)
         );
     }
