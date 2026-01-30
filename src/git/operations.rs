@@ -454,6 +454,88 @@ pub fn fetch(remote: &str) -> Result<()> {
     Ok(())
 }
 
+/// Count commits from a given SHA (exclusive) to HEAD
+pub fn commits_since_count(since_sha: &str) -> Result<usize> {
+    let range = format!("{}..HEAD", since_sha);
+    let output = Command::new("git")
+        .args(["rev-list", "--count", &range])
+        .output()
+        .context("Failed to count commits since SHA")?;
+
+    if !output.status.success() {
+        return Ok(0);
+    }
+
+    let count_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(count_str.parse().unwrap_or(0))
+}
+
+/// Get relative time of last commit (e.g., "2 hours ago")
+pub fn last_commit_relative_time() -> Result<String> {
+    let output = Command::new("git")
+        .args(["log", "-1", "--format=%ar"])
+        .output()
+        .context("Failed to get last commit time")?;
+
+    if !output.status.success() {
+        anyhow::bail!("No commits found");
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Get the subject line of the last commit
+pub fn last_commit_message() -> Result<String> {
+    let output = Command::new("git")
+        .args(["log", "-1", "--format=%s"])
+        .output()
+        .context("Failed to get last commit message")?;
+
+    if !output.status.success() {
+        anyhow::bail!("No commits found");
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Get the diff stat summary line (e.g., "3 files changed, 45 insertions(+), 10 deletions(-)")
+pub fn diff_stat_summary() -> Result<String> {
+    let output = Command::new("git")
+        .args(["diff", "--stat"])
+        .output()
+        .context("Failed to get diff stat")?;
+
+    let stat = String::from_utf8_lossy(&output.stdout);
+    // Last non-empty line is the summary
+    Ok(stat
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim()
+        .to_string())
+}
+
+/// Get git status in porcelain format (machine-parseable)
+pub fn status_porcelain() -> Result<String> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .output()
+        .context("Failed to get git status")?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Get recent commits as oneline format
+pub fn log_oneline(count: usize) -> Result<String> {
+    let output = Command::new("git")
+        .args(["log", "--oneline", &format!("-{}", count)])
+        .output()
+        .context("Failed to get recent commits")?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
