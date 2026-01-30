@@ -1,0 +1,50 @@
+---
+type: belief
+id: eventlog-is-infrastructure
+persona: architect
+facets: [architecture, rust, unix-philosophy]
+confidence:
+  score: 0.80
+  signals:
+    evidence: 0.85
+    source_reliability: 0.80
+    recency: 0.80
+    survival: 0.50
+    user_endorsement: 0.50
+entrenchment: medium
+status: active
+extracted: 2026-01-29
+revised: 2026-01-29
+---
+
+# eventlog-is-infrastructure
+
+The eventlog is shared infrastructure, not a scrape implementation detail. When multiple commands write events, the eventlog module must live outside any single command.
+
+## Statement
+
+The eventlog is shared infrastructure, not a scrape implementation detail. When multiple commands write events, the eventlog module must live outside any single command.
+
+## Evidence
+
+- session-20260129-123019: Deep dive into session system revealed scrape/database.rs owns insert_event() but session commands, scry feedback, and git scraper all need to write events. Cross-command import is architectural debt. (weight: 0.9)
+
+## Supports
+
+<!-- Add beliefs this supports -->
+
+## Attacks
+
+<!-- Add beliefs this defeats -->
+
+## Attacked-By
+
+<!-- Add beliefs that challenge this -->
+
+## Applied-In
+
+<!-- Add concrete applications -->
+
+## Revision Log
+
+- 2026-01-29: Created (confidence: 0.80)
