@@ -242,33 +242,39 @@ Shell scripts currently write `SessionStart`/`SessionEnd` transitions to `.patin
 
 **A/B testing:** Rust commands write to `.patina/local/active-session.md`. Shell scripts keep writing to `.claude/context/active-session.md`. Both run in parallel during the same session. Diff the outputs. If they match, update skill definitions to point to Rust commands. If they don't, fix the Rust commands until they do.
 
+### Build Steps
+
+**Phase 1: Build Rust commands (non-breaking)**
+
+- [x] 1. Extract eventlog to `src/eventlog.rs` (prerequisite refactor)
+- [x] 2. Wire up `patina session` subcommand scaffolding (clap)
+- [ ] 3. Implement `patina session note` (simplest — validates active session read/append)
+- [ ] 4. Implement `patina session update` (git metrics, append, commit coaching)
+- [ ] 5. Implement `patina session start` (branch handling, tag, scaffold, beliefs)
+- [ ] 6. Implement `patina session end` (tag, metrics, classification, archival)
+- [ ] 7. YAML frontmatter on new session documents
+- [ ] 8. Scraper handles both YAML frontmatter and legacy markdown headers
+- [ ] 9. A/B test: diff Rust output vs shell output for full lifecycle
+
+**Phase 2: Cut over adapters**
+
+- [ ] 10. Skill definitions call `patina session` instead of shell scripts
+- [ ] 11. Active session path changed to `.patina/local/` in all adapters
+- [ ] 12. `session_scripts.rs` deploys `patina session` wrappers
+- [ ] 13. Full session lifecycle tested with each adapter
+
+**Phase 3: Remove legacy (separate commit, after validation)**
+
+- [ ] 14. Delete shell scripts from `resources/{claude,gemini,opencode}/`
+- [ ] 15. Remove embedded script constants from `session_scripts.rs`
+- [ ] 16. Remove `navigation.db` writes from any remaining code
+
 ### Stretch Goals (not required for 0.9.2)
 
 - `--spec` and `--milestone` flags for explicit spec linkage
 - Auto-update spec's `sessions.work` array on session end
 - `patina session list` / `patina session show` query commands
 - `patina adapter status` (unrelated to sessions — separate task)
-
-### Migration Path
-
-**Phase 1: Build Rust commands (non-breaking)**
-- Implement `patina session start/update/note/end`
-- Dual-write: markdown + eventlog events at action time
-- Scraper handles both YAML frontmatter and legacy markdown headers
-- Shell scripts still exist and work (parallel paths for testing)
-- Active session written to `.patina/local/active-session.md`
-
-**Phase 2: Cut over adapters**
-- Skill definitions updated to call `patina session` commands
-- Active session path changed in all adapter skill definitions
-- Adapter `session_scripts.rs` deploys `patina session` wrappers instead of full bash scripts
-- Test: run full session lifecycle with each adapter
-
-**Phase 3: Remove legacy (separate commit, after validation)**
-- Delete shell scripts from `resources/{claude,gemini,opencode}/`
-- Remove embedded script constants from `session_scripts.rs`
-- Remove `navigation.db` writes from any remaining code
-- Keep shell scripts accessible via git history
 
 ### Exit Criteria
 
@@ -460,3 +466,4 @@ Currently statically linked via `ort` crate's `download-binaries` feature.
 | 2026-01-29 | in_progress | Version system hardened, YAML parser, spec migration, prune bug fixed. |
 | 2026-01-29 | **0.9.1** | Released v0.9.1. Cleaned VERSION_CHANGES, bumped Cargo.toml. |
 | 2026-01-29 | in_progress | 0.9.2 revised: Dual-write sessions, bash→Rust, adapter-agnostic active session. |
+| 2026-01-30 | in_progress | 0.9.2 steps 1-2: eventlog extracted to `src/eventlog.rs`, session subcommand scaffolding wired. |
