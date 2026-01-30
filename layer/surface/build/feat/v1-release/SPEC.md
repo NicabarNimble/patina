@@ -116,7 +116,7 @@ The clever design: **scripts produce structure, the LLM fills in meaning.** Bash
 ```
 patina session start "complete 0.9.2"
          │
-         ├──→ .patina/active-session.md    (collaboration artifact)
+         ├──→ .patina/local/active-session.md  (collaboration artifact)
          │    - YAML frontmatter + markdown scaffold
          │    - LLM reads/writes this throughout session
          │    - Archived to layer/sessions/ on end
@@ -141,7 +141,7 @@ Replace shell script mechanics with native Patina commands. Same outputs, same g
 ```bash
 patina session start "complete 0.9.2"
   → Creates git tag (session-{ID}-{frontend}-start)
-  → Writes active session markdown to .patina/active-session.md
+  → Writes active session markdown to .patina/local/active-session.md
   → Writes session.started event to eventlog
   → Handles incomplete previous session (cleanup/archive)
   → Shows beliefs context, previous session pointer
@@ -165,7 +165,7 @@ patina session end
   → Extracts user prompts (from history.jsonl if available)
   → Appends classification + beliefs sections to markdown
   → Archives to layer/sessions/{ID}.md
-  → Updates .patina/last-session.md pointer
+  → Updates .patina/local/last-session.md pointer
   → Writes session.ended event to eventlog
   → Cleans up active session file
 ```
@@ -176,14 +176,15 @@ patina session end
 - Checks for beliefs to capture during updates
 - Runs final update before ending session
 
-**2. Active session in `.patina/` (adapter-agnostic)**
+**2. Active session in `.patina/local/` (adapter-agnostic, gitignored)**
 
-Move from `.claude/context/active-session.md` to `.patina/active-session.md`.
+Move from `.claude/context/active-session.md` to `.patina/local/active-session.md`.
 
 - All adapters read/write the same file
 - `patina session` commands own the file lifecycle
 - Adapter skill definitions reference the new path
-- `.patina/last-session.md` replaces `.claude/context/last-session.md`
+- `.patina/local/last-session.md` replaces `.claude/context/last-session.md`
+- Transient files stay in `.patina/local/` (gitignored), not `.patina/` (committed)
 
 **3. YAML frontmatter for session documents**
 
@@ -231,6 +232,16 @@ The rest of the skill definition (read previous session, fill in summary, sugges
 
 Shell scripts currently write `SessionStart`/`SessionEnd` transitions to `.patina/navigation.db`. Nothing reads this data — the eventlog captures the same information. New Rust commands write to eventlog only. Clean cut.
 
+### Implementation Decisions
+
+**Transient file location:** `.patina/local/active-session.md` and `.patina/local/last-session.md`. Transient files (deleted on session end) stay in `.patina/local/` which is gitignored. `.patina/` root is for committed config.
+
+**Adapter detection:** Resolution chain — explicit `--adapter` flag wins, otherwise read `config.adapters.default` from `.patina/config.toml`. No env vars, no magic. Function signature is honest about what it needs: `resolve_adapter(explicit: Option<&str>, project_root: &Path) -> Result<String>`.
+
+**Eventlog as shared infrastructure:** Extract eventlog (schema, `insert_event()`, event types) from `src/commands/scrape/database.rs` into `src/eventlog.rs`. The eventlog is a pipe between commands — scrape writes events, session writes events, scry reads events. No single command owns it.
+
+**A/B testing:** Rust commands write to `.patina/local/active-session.md`. Shell scripts keep writing to `.claude/context/active-session.md`. Both run in parallel during the same session. Diff the outputs. If they match, update skill definitions to point to Rust commands. If they don't, fix the Rust commands until they do.
+
 ### Stretch Goals (not required for 0.9.2)
 
 - `--spec` and `--milestone` flags for explicit spec linkage
@@ -245,7 +256,7 @@ Shell scripts currently write `SessionStart`/`SessionEnd` transitions to `.patin
 - Dual-write: markdown + eventlog events at action time
 - Scraper handles both YAML frontmatter and legacy markdown headers
 - Shell scripts still exist and work (parallel paths for testing)
-- Active session written to `.patina/active-session.md`
+- Active session written to `.patina/local/active-session.md`
 
 **Phase 2: Cut over adapters**
 - Skill definitions updated to call `patina session` commands
@@ -264,7 +275,7 @@ Shell scripts currently write `SessionStart`/`SessionEnd` transitions to `.patin
 - [ ] `patina session start/update/note/end` commands exist in Rust
 - [ ] Commands produce identical markdown output to current shell scripts
 - [ ] Session events written to eventlog at action time
-- [ ] Active session lives in `.patina/active-session.md`
+- [ ] Active session lives in `.patina/local/active-session.md`
 - [ ] YAML frontmatter on new session documents
 - [ ] Scraper handles both YAML frontmatter and legacy markdown headers
 - [ ] Skill definitions call `patina session` instead of shell scripts
