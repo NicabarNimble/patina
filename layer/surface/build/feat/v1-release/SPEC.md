@@ -251,7 +251,7 @@ Shell scripts currently write `SessionStart`/`SessionEnd` transitions to `.patin
 - [x] 3. Implement `patina session note` (simplest — validates active session read/append)
 - [x] 4. Implement `patina session update` (git metrics, append, commit coaching)
 - [x] 5. Implement `patina session start` (branch handling, tag, scaffold, beliefs)
-- [ ] 6. Implement `patina session end` (tag, metrics, classification, archival)
+- [x] 6. Implement `patina session end` (tag, metrics, classification, archival)
 - [ ] 7. YAML frontmatter on new session documents
 - [ ] 8. Scraper handles both YAML frontmatter and legacy markdown headers
 - [ ] 9. A/B test: diff Rust output vs shell output for full lifecycle
