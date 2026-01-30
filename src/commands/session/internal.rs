@@ -4,6 +4,7 @@
 
 use anyhow::{bail, Result};
 use chrono::{Local, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, Write};
@@ -26,6 +27,31 @@ const SESSIONS_DIR: &str = "layer/sessions";
 /// Importance keywords that suggest a checkpoint commit
 const IMPORTANCE_KEYWORDS: &[&str] =
     &["breakthrough", "discovered", "solved", "fixed", "important"];
+
+/// YAML frontmatter for session documents.
+///
+/// New sessions (step 7+) write this as `---\n<yaml>\n---` at the top of the
+/// markdown file. Legacy sessions use `**Field**: value` lines instead.
+/// `read_session_field` handles both formats transparently.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SessionFrontmatter {
+    r#type: String,
+    id: String,
+    title: String,
+    status: String,
+    llm: String,
+    created: String,
+    start_timestamp: i64,
+    git: SessionGit,
+}
+
+/// Git context embedded in session YAML frontmatter.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SessionGit {
+    branch: String,
+    starting_commit: String,
+    start_tag: String,
+}
 
 pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) -> Result<()> {
     let adapter = resolve_adapter(adapter, project_root)?;
@@ -107,34 +133,38 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
         }
     }
 
-    // 7. Write active session markdown
+    // 7. Write active session markdown with YAML frontmatter
     let started_utc = Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let start_timestamp = Utc::now().timestamp_millis();
     let time_str = now.format("%H:%M").to_string();
 
+    let frontmatter = SessionFrontmatter {
+        r#type: "session".to_string(),
+        id: session_id.clone(),
+        title: title.to_string(),
+        status: "active".to_string(),
+        llm: adapter.clone(),
+        created: started_utc,
+        start_timestamp,
+        git: SessionGit {
+            branch: branch.clone(),
+            starting_commit: starting_commit.clone(),
+            start_tag: session_tag.clone(),
+        },
+    };
+    let yaml = serde_yaml::to_string(&frontmatter)?;
+
     let scaffold = format!(
-        "# Session: {title}
-**ID**: {session_id}
-**Started**: {started_utc}
-**Start Timestamp**: {start_timestamp}
-**LLM**: {adapter}
-**Git Branch**: {branch}
-**Session Tag**: {session_tag}
-**Starting Commit**: {starting_commit}
-
-## Previous Session Context
-<!-- AI: Summarize the last session from last-session.md -->
-
-## Goals
-- [ ] {title}
-
-## Activity Log
-### {time_str} - Session Start
-Session initialized with goal: {title}
-Working on branch: {branch}
-Tagged as: {session_tag}
-
-"
+        "---\n{yaml}---\n\n\
+         ## Previous Session Context\n\
+         <!-- AI: Summarize the last session from last-session.md -->\n\n\
+         ## Goals\n\
+         - [ ] {title}\n\n\
+         ## Activity Log\n\
+         ### {time_str} - Session Start\n\
+         Session initialized with goal: {title}\n\
+         Working on branch: {branch}\n\
+         Tagged as: {session_tag}\n\n",
     );
 
     fs::create_dir_all(session_path.parent().unwrap())?;
@@ -547,12 +577,20 @@ pub fn end_session(project_root: &Path) -> Result<()> {
         file.write_all(appendix.as_bytes())?;
     }
 
-    // 13. Archive to layer/sessions/{ID}.md
+    // 13. Archive to layer/sessions/{ID}.md (mark status: archived)
     let archive_path = project_root
         .join(SESSIONS_DIR)
         .join(format!("{}.md", session_id));
     fs::create_dir_all(project_root.join(SESSIONS_DIR))?;
-    fs::copy(&session_path, &archive_path)?;
+    let session_content = fs::read_to_string(&session_path)?;
+    let archived_content = if session_content.starts_with("---") {
+        // YAML frontmatter — update status for archive
+        session_content.replacen("status: active", "status: archived", 1)
+    } else {
+        // Legacy format — archive as-is
+        session_content
+    };
+    fs::write(&archive_path, archived_content)?;
 
     // 14. Update last-session.md pointer
     let last_session_content = format!(
@@ -628,9 +666,31 @@ fn read_session_id(session_path: &Path) -> Result<String> {
 
 /// Read a field value from active session markdown.
 ///
-/// Looks for lines matching `prefix<value>` and returns the value.
+/// Tries YAML frontmatter first (new format), falls back to line-matching
+/// (legacy `**Field**: value` format) for backward compatibility with
+/// 538 existing session files.
 fn read_session_field(session_path: &Path, prefix: &str) -> Result<String> {
     let contents = fs::read_to_string(session_path)?;
+
+    // Try YAML frontmatter first
+    if let Some(fm) = parse_session_frontmatter(&contents) {
+        let value = match prefix {
+            "**ID**: " => Some(fm.id),
+            "# Session: " => Some(fm.title),
+            "**Started**: " => Some(fm.created.clone()),
+            "**Start Timestamp**: " => Some(fm.start_timestamp.to_string()),
+            "**LLM**: " => Some(fm.llm),
+            "**Git Branch**: " => Some(fm.git.branch),
+            "**Session Tag**: " => Some(fm.git.start_tag),
+            "**Starting Commit**: " => Some(fm.git.starting_commit),
+            _ => None,
+        };
+        if let Some(v) = value {
+            return Ok(v);
+        }
+    }
+
+    // Fall back to line-matching (legacy format)
     for line in contents.lines() {
         if let Some(value) = line.strip_prefix(prefix) {
             return Ok(value.trim().to_string());
@@ -641,6 +701,17 @@ fn read_session_field(session_path: &Path, prefix: &str) -> Result<String> {
         prefix.trim(),
         session_path.display()
     )
+}
+
+/// Parse YAML frontmatter from a session markdown file.
+///
+/// Returns `None` if the file doesn't start with `---` or YAML parsing fails.
+/// Used by `read_session_field` for the new frontmatter format.
+fn parse_session_frontmatter(content: &str) -> Option<SessionFrontmatter> {
+    let rest = content.strip_prefix("---")?;
+    let end = rest.find("\n---")?;
+    let yaml_str = &rest[..end];
+    serde_yaml::from_str(yaml_str).ok()
 }
 
 /// Parse insertion count from git diff --stat summary line.
