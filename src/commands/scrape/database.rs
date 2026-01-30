@@ -116,10 +116,7 @@ mod tests {
 
         assert_eq!(get_last_processed(&conn, "test")?, None);
         set_last_processed(&conn, "test", "val")?;
-        assert_eq!(
-            get_last_processed(&conn, "test")?,
-            Some("val".to_string())
-        );
+        assert_eq!(get_last_processed(&conn, "test")?, Some("val".to_string()));
 
         Ok(())
     }

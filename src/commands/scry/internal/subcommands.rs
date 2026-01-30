@@ -5,8 +5,8 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-use patina::eventlog;
 use crate::retrieval::{QueryEngine, QueryOptions};
+use patina::eventlog;
 
 use super::enrichment::truncate_content;
 use super::logging::{get_query_results, log_scry_feedback, log_scry_use};

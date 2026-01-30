@@ -558,6 +558,25 @@ pub fn status_porcelain() -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Get list of files changed between a ref and HEAD
+pub fn files_changed_since(from_ref: &str) -> Result<Vec<String>> {
+    let range = format!("{}..HEAD", from_ref);
+    let output = Command::new("git")
+        .args(["diff", "--name-only", &range])
+        .output()
+        .context("Failed to get files changed since ref")?;
+
+    if !output.status.success() {
+        return Ok(vec![]);
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| l.to_string())
+        .collect())
+}
+
 /// Get recent commits as oneline format
 pub fn log_oneline(count: usize) -> Result<String> {
     let output = Command::new("git")
