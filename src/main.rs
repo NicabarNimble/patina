@@ -339,6 +339,12 @@ enum Commands {
         json: bool,
     },
 
+    /// Manage development sessions (start, update, note, end)
+    Session {
+        #[command(subcommand)]
+        command: commands::session::SessionCommands,
+    },
+
     /// Query codebase structure (modules, imports, call graph)
     Assay {
         #[command(subcommand)]
@@ -1051,6 +1057,9 @@ fn main() -> Result<()> {
                 // Default behavior: show version
                 commands::version::execute(json, components)?;
             }
+        }
+        Some(Commands::Session { command }) => {
+            commands::session::execute(command)?;
         }
         Some(Commands::Serve { host, port, mcp }) => {
             if mcp {
