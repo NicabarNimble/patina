@@ -15,7 +15,7 @@ pub use operations::{
     add_all, add_paths, add_remote, branch_exists, branch_rename, checkout, checkout_new_branch,
     commit, commits_ahead, commits_behind, commits_behind_upstream, current_branch, default_branch,
     fetch, has_remote, has_upstream, is_clean, is_diverged, is_git_repo, rebase, rebase_abort,
-    remote_url, repo_name, stash_push, status_count, tag_exists,
+    remote_url, repo_name, short_sha, stash_push, status_count, tag_exists,
 };
 pub use validation::ensure_patina_branch;
 

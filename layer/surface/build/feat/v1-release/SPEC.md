@@ -248,7 +248,7 @@ Shell scripts currently write `SessionStart`/`SessionEnd` transitions to `.patin
 
 - [x] 1. Extract eventlog to `src/eventlog.rs` (prerequisite refactor)
 - [x] 2. Wire up `patina session` subcommand scaffolding (clap)
-- [ ] 3. Implement `patina session note` (simplest — validates active session read/append)
+- [x] 3. Implement `patina session note` (simplest — validates active session read/append)
 - [ ] 4. Implement `patina session update` (git metrics, append, commit coaching)
 - [ ] 5. Implement `patina session start` (branch handling, tag, scaffold, beliefs)
 - [ ] 6. Implement `patina session end` (tag, metrics, classification, archival)
@@ -467,3 +467,4 @@ Currently statically linked via `ort` crate's `download-binaries` feature.
 | 2026-01-29 | **0.9.1** | Released v0.9.1. Cleaned VERSION_CHANGES, bumped Cargo.toml. |
 | 2026-01-29 | in_progress | 0.9.2 revised: Dual-write sessions, bash→Rust, adapter-agnostic active session. |
 | 2026-01-30 | in_progress | 0.9.2 steps 1-2: eventlog extracted to `src/eventlog.rs`, session subcommand scaffolding wired. |
+| 2026-01-30 | in_progress | 0.9.2 step 3: `patina session note` implemented — dual-write (markdown + eventlog), A/B tested against shell. |
