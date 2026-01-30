@@ -5,7 +5,7 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 
-use crate::commands::scrape::database;
+use patina::eventlog;
 use crate::retrieval::{QueryEngine, QueryOptions};
 
 use super::enrichment::truncate_content;
@@ -36,7 +36,7 @@ pub struct OrientResult {
 pub fn execute_orient(dir_path: &str, limit: usize) -> Result<()> {
     println!("🔮 Scry Orient - What's important in {}\n", dir_path);
 
-    let conn = Connection::open(database::PATINA_DB)
+    let conn = Connection::open(eventlog::PATINA_DB)
         .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
 
     // Check if module_signals table exists
@@ -168,7 +168,7 @@ pub fn execute_recent(query: Option<&str>, days: u32, limit: usize) -> Result<()
             .unwrap_or_default()
     );
 
-    let conn = Connection::open(database::PATINA_DB)
+    let conn = Connection::open(eventlog::PATINA_DB)
         .with_context(|| "Failed to open database. Run 'patina scrape' first.")?;
 
     // Calculate cutoff date
