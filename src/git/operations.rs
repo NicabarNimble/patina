@@ -359,6 +359,20 @@ pub fn rebase_abort() -> Result<()> {
     Ok(())
 }
 
+/// Get the short SHA of HEAD
+pub fn short_sha() -> Result<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .output()
+        .context("Failed to get short SHA")?;
+
+    if !output.status.success() {
+        anyhow::bail!("Failed to get short SHA (no commits?)");
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 /// Check if a tag exists
 pub fn tag_exists(name: &str) -> Result<bool> {
     let output = Command::new("git")
