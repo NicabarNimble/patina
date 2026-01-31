@@ -1,6 +1,7 @@
 pub mod adapter;
 pub mod assay;
 pub mod bench;
+pub mod belief;
 pub mod doctor;
 pub mod eval;
 pub mod init;

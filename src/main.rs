@@ -345,6 +345,12 @@ enum Commands {
         command: commands::session::SessionCommands,
     },
 
+    /// Audit epistemic beliefs — show use/truth metrics
+    Belief {
+        #[command(subcommand)]
+        command: Option<commands::belief::BeliefCommands>,
+    },
+
     /// Query codebase structure (modules, imports, call graph)
     Assay {
         #[command(subcommand)]
@@ -1060,6 +1066,9 @@ fn main() -> Result<()> {
         }
         Some(Commands::Session { command }) => {
             commands::session::execute(command)?;
+        }
+        Some(Commands::Belief { command }) => {
+            commands::belief::execute(command)?;
         }
         Some(Commands::Serve { host, port, mcp }) => {
             if mcp {
