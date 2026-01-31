@@ -1,6 +1,9 @@
 #!/bin/bash
 # Create an epistemic belief file with validation
-# Usage: create-belief.sh --id ID --statement "..." --persona PERSONA --confidence 0.X --evidence "..." [--facets "..."]
+# Usage: create-belief.sh --id ID --statement "..." --persona PERSONA --evidence "..." [--facets "..."] [--entrenchment ...]
+#
+# Note: No --confidence flag. Confidence is COMPUTED by `patina scrape` from
+# real data (citations, evidence links, verified wikilinks). Not fabricated.
 
 set -e
 
@@ -25,7 +28,8 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --confidence)
-            CONFIDENCE="$2"
+            # Accept but ignore --confidence for backwards compatibility
+            echo "Note: --confidence is deprecated. Confidence is now computed by 'patina scrape' from real data."
             shift 2
             ;;
         --evidence)
@@ -64,19 +68,13 @@ if [ -z "$PERSONA" ]; then
     ERRORS="${ERRORS}Error: --persona is required\n"
 fi
 
-if [ -z "$CONFIDENCE" ]; then
-    ERRORS="${ERRORS}Error: --confidence is required\n"
-elif ! [[ "$CONFIDENCE" =~ ^0\.[0-9]+$ ]] && [ "$CONFIDENCE" != "1.0" ]; then
-    ERRORS="${ERRORS}Error: --confidence must be between 0.0 and 1.0\n"
-fi
-
 if [ -z "$EVIDENCE" ]; then
     ERRORS="${ERRORS}Error: --evidence is required (at least one source)\n"
 fi
 
 if [ -n "$ERRORS" ]; then
     echo -e "$ERRORS"
-    echo "Usage: create-belief.sh --id ID --statement \"...\" --persona PERSONA --confidence 0.X --evidence \"...\" [--facets \"...\"]"
+    echo "Usage: create-belief.sh --id ID --statement \"...\" --persona PERSONA --evidence \"...\" [--facets \"...\"]"
     exit 1
 fi
 
@@ -101,36 +99,19 @@ fi
 # Get current date
 TODAY=$(date +%Y-%m-%d)
 
-# Calculate confidence signals (simple heuristic based on overall confidence)
-# In practice, these would be provided separately
-EVIDENCE_SIGNAL=$(printf "%.2f" $(echo "$CONFIDENCE + 0.05" | bc))
-SOURCE_SIGNAL="$CONFIDENCE"
-RECENCY_SIGNAL="0.80"
-SURVIVAL_SIGNAL="0.50"  # New belief, low survival
-ENDORSEMENT_SIGNAL="0.50"  # Not yet endorsed
-
-# Cap evidence signal at 1.0
-if (( $(echo "$EVIDENCE_SIGNAL > 1.0" | bc -l) )); then
-    EVIDENCE_SIGNAL="1.00"
-fi
-
-# Create the belief file
+# Create the belief file — no fabricated confidence scores
+# Metrics are computed by `patina scrape` from real data:
+#   use: cited_by_beliefs, cited_by_sessions, applied_in
+#   truth: evidence_count, evidence_verified, defeated_attacks, external_sources
 cat > "$OUTPUT_FILE" << EOF
 ---
 type: belief
 id: ${ID}
 persona: ${PERSONA}
 facets: ${FACETS_YAML}
-confidence:
-  score: ${CONFIDENCE}
-  signals:
-    evidence: ${EVIDENCE_SIGNAL}
-    source_reliability: ${SOURCE_SIGNAL}
-    recency: ${RECENCY_SIGNAL}
-    survival: ${SURVIVAL_SIGNAL}
-    user_endorsement: ${ENDORSEMENT_SIGNAL}
 entrenchment: ${ENTRENCHMENT}
 status: ${STATUS}
+endorsed: true
 extracted: ${TODAY}
 revised: ${TODAY}
 ---
@@ -165,15 +146,15 @@ ${STATEMENT}
 
 ## Revision Log
 
-- ${TODAY}: Created (confidence: ${CONFIDENCE})
+- ${TODAY}: Created — metrics computed by \`patina scrape\`
 EOF
 
 echo "✓ Belief created: $OUTPUT_FILE"
 echo ""
 echo "Next steps:"
 echo "  1. Review and edit the file to add:"
-echo "     - Additional evidence links"
+echo "     - Additional evidence links (use [[wikilinks]] for verifiable references)"
 echo "     - Support/attack relationships"
 echo "     - Applied-in examples"
-echo "  2. Update layer/surface/epistemic/_index.md"
+echo "  2. Run 'patina scrape' to compute use/truth metrics"
 echo "  3. Commit: git add $OUTPUT_FILE && git commit -m 'belief: add ${ID}'"
