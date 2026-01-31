@@ -23,12 +23,12 @@ pub fn execute(json: bool) -> Result<()> {
         }
     }
 
-    // Check Claude adapter resources
+    // Check Claude adapter skill definitions
     let claude_checks = vec![
-        "session-start.sh",
-        "session-update.sh",
-        "session-end.sh",
-        "session-note.sh",
+        "session-start.md",
+        "session-update.md",
+        "session-end.md",
+        "session-note.md",
     ];
 
     if !json {
@@ -36,12 +36,12 @@ pub fn execute(json: bool) -> Result<()> {
         println!("🤖 Checking Claude adapter...");
     }
 
-    for script in &claude_checks {
-        let full_path = project_root.join("resources/claude").join(script);
+    for resource in &claude_checks {
+        let full_path = project_root.join("resources/claude").join(resource);
         if !full_path.exists() {
-            issues.push(format!("Missing Claude script: {}", script));
+            issues.push(format!("Missing Claude resource: {}", resource));
         } else if !json {
-            println!("  ✓ {}", script);
+            println!("  ✓ {}", resource);
         }
     }
 

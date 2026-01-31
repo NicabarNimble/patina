@@ -68,7 +68,7 @@ All three must be complete for v1.0.
 ```
 0.9.0  - Current (public release, fat binary)
 0.9.1  ✓ Version system fixed, spec-system aligned
-0.9.2  → Session system & adapter parity
+0.9.2  ✓ Session system & adapter parity
 0.9.3  - Epistemic E4 (belief extraction automation)
 0.9.4  - Mother federated query
 0.9.5  - Dynamic ONNX loading
@@ -265,9 +265,9 @@ Shell scripts currently write `SessionStart`/`SessionEnd` transitions to `.patin
 
 **Phase 3: Remove legacy (separate commit, after validation)**
 
-- [ ] 14. Delete shell scripts from `resources/{claude,gemini,opencode}/`
-- [ ] 15. Remove embedded script constants from `session_scripts.rs`
-- [ ] 16. Remove `navigation.db` writes from any remaining code
+- [x] 14. Delete shell scripts from `resources/{claude,gemini,opencode}/`
+- [x] 15. Remove embedded script constants from `session_scripts.rs`
+- [x] 16. Remove `navigation.db` writes from any remaining code
 
 ### Stretch Goals (not required for 0.9.2)
 
@@ -278,16 +278,16 @@ Shell scripts currently write `SessionStart`/`SessionEnd` transitions to `.patin
 
 ### Exit Criteria
 
-- [ ] `patina session start/update/note/end` commands exist in Rust
-- [ ] Commands produce identical markdown output to current shell scripts
-- [ ] Session events written to eventlog at action time
-- [ ] Active session lives in `.patina/local/active-session.md`
-- [ ] YAML frontmatter on new session documents
-- [ ] Scraper handles both YAML frontmatter and legacy markdown headers
-- [ ] Skill definitions call `patina session` instead of shell scripts
-- [ ] All three adapters (Claude, Gemini, OpenCode) use same commands
-- [ ] `navigation.db` session writes removed
-- [ ] Full session lifecycle tested (start → update → note → end → archive)
+- [x] `patina session start/update/note/end` commands exist in Rust
+- [x] Commands produce identical markdown output to current shell scripts
+- [x] Session events written to eventlog at action time
+- [x] Active session lives in `.patina/local/active-session.md`
+- [x] YAML frontmatter on new session documents
+- [x] Scraper handles both YAML frontmatter and legacy markdown headers
+- [x] Skill definitions call `patina session` instead of shell scripts
+- [x] All three adapters (Claude, Gemini, OpenCode) use same commands
+- [x] `navigation.db` session writes removed
+- [x] Full session lifecycle tested (start → update → note → end → archive)
 
 ---
 
@@ -469,3 +469,4 @@ Currently statically linked via `ort` crate's `download-binaries` feature.
 | 2026-01-30 | in_progress | 0.9.2 steps 1-2: eventlog extracted to `src/eventlog.rs`, session subcommand scaffolding wired. |
 | 2026-01-30 | in_progress | 0.9.2 step 3: `patina session note` implemented — dual-write (markdown + eventlog), A/B tested against shell. |
 | 2026-01-31 | in_progress | 0.9.2 Phase 2 complete (steps 10-13): skill definitions call `patina session`, paths → `.patina/local/`, thin wrapper scripts deployed, lifecycle tested. |
+| 2026-01-31 | **0.9.2** | Phase 3 complete (steps 14-16): deleted 12 legacy shell scripts (~640 lines each), updated validate/sync_adapters to reference .md skill definitions, confirmed zero navigation.db writes in Rust. All exit criteria checked. |
