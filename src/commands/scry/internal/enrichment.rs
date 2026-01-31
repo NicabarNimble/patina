@@ -44,28 +44,54 @@ pub fn enrich_results(
 
                 // Check content type based on ID range (order matters: highest offset first)
                 if key >= BELIEF_ID_OFFSET {
-                    // Belief - look up in beliefs table
+                    // Belief - look up in beliefs table with computed metrics
                     let rowid = key - BELIEF_ID_OFFSET;
                     let result = conn.query_row(
-                        "SELECT id, statement, persona, facets, confidence, entrenchment, file_path
+                        "SELECT id, statement, entrenchment, file_path,
+                                cited_by_beliefs, cited_by_sessions, applied_in,
+                                evidence_count, evidence_verified, defeated_attacks
                          FROM beliefs
                          WHERE rowid = ?",
                         [rowid],
                         |row| {
                             let id: String = row.get(0)?;
                             let statement: String = row.get(1)?;
-                            let _persona: String = row.get(2)?;
-                            let facets: Option<String> = row.get(3)?;
-                            let confidence: f64 = row.get(4)?;
-                            let entrenchment: String = row.get(5)?;
-                            let file_path: String = row.get(6)?;
+                            let entrenchment: String = row.get(2)?;
+                            let file_path: String = row.get(3)?;
+                            let cited_by_beliefs: i32 = row.get(4)?;
+                            let cited_by_sessions: i32 = row.get(5)?;
+                            let applied_in: i32 = row.get(6)?;
+                            let evidence_count: i32 = row.get(7)?;
+                            let evidence_verified: i32 = row.get(8)?;
+                            let defeated_attacks: i32 = row.get(9)?;
 
-                            // Build description with confidence indicator
-                            let _facet_str = facets.unwrap_or_default();
+                            // Build description with computed use/truth metrics
+                            let use_total = cited_by_beliefs + cited_by_sessions;
+                            let mut parts = Vec::new();
+                            parts.push(format!("use: {}+{}", cited_by_beliefs, cited_by_sessions));
+                            parts.push(format!("truth: {}/{}", evidence_count, evidence_verified));
+                            if defeated_attacks > 0 {
+                                parts.push(format!("{} defeated", defeated_attacks));
+                            }
+                            if applied_in > 0 {
+                                parts.push(format!("{} applied", applied_in));
+                            }
+                            let metrics_str = parts.join(" | ");
+
+                            // Flag weak beliefs
+                            let health = if evidence_count == 0 && use_total <= 1 {
+                                " WEAK"
+                            } else if evidence_verified == 0 && evidence_count > 0 {
+                                " UNVERIFIED"
+                            } else {
+                                ""
+                            };
+
                             let content = format!(
-                                "{} [confidence: {:.0}%, {}] ({})",
+                                "{} [{}{}] ({}, {})",
                                 statement,
-                                confidence * 100.0,
+                                metrics_str,
+                                health,
                                 entrenchment,
                                 file_path
                             );
