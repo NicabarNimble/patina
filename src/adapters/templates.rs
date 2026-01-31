@@ -13,16 +13,21 @@ use std::path::Path;
 use crate::paths;
 
 // =============================================================================
+// Thin wrapper scripts — shared across all adapters
+// =============================================================================
+// These forward to `patina session` Rust commands. Deployed to .{adapter}/bin/
+// for backward compatibility with any code still calling session-*.sh directly.
+
+const WRAPPER_START: &str = "#!/bin/bash\nexec patina session start \"$@\"\n";
+const WRAPPER_UPDATE: &str = "#!/bin/bash\nexec patina session update \"$@\"\n";
+const WRAPPER_NOTE: &str = "#!/bin/bash\nexec patina session note \"$@\"\n";
+const WRAPPER_END: &str = "#!/bin/bash\nexec patina session end \"$@\"\n";
+
+// =============================================================================
 // Embedded Templates - Claude
 // =============================================================================
 
 mod claude_templates {
-    // Shell scripts (git-integrated)
-    pub const SESSION_START_SH: &str = include_str!("../../resources/claude/session-start.sh");
-    pub const SESSION_UPDATE_SH: &str = include_str!("../../resources/claude/session-update.sh");
-    pub const SESSION_NOTE_SH: &str = include_str!("../../resources/claude/session-note.sh");
-    pub const SESSION_END_SH: &str = include_str!("../../resources/claude/session-end.sh");
-
     // Commands (markdown)
     pub const SESSION_START_MD: &str = include_str!("../../resources/claude/session-start.md");
     pub const SESSION_UPDATE_MD: &str = include_str!("../../resources/claude/session-update.md");
@@ -45,12 +50,6 @@ mod claude_templates {
 // =============================================================================
 
 mod gemini_templates {
-    // Shell scripts (git-integrated)
-    pub const SESSION_START_SH: &str = include_str!("../../resources/gemini/session-start.sh");
-    pub const SESSION_UPDATE_SH: &str = include_str!("../../resources/gemini/session-update.sh");
-    pub const SESSION_NOTE_SH: &str = include_str!("../../resources/gemini/session-note.sh");
-    pub const SESSION_END_SH: &str = include_str!("../../resources/gemini/session-end.sh");
-
     // Commands (TOML format for Gemini)
     pub const SESSION_START_TOML: &str = include_str!("../../resources/gemini/session-start.toml");
     pub const SESSION_UPDATE_TOML: &str =
@@ -68,12 +67,6 @@ mod gemini_templates {
 // =============================================================================
 
 mod opencode_templates {
-    // Shell scripts (git-integrated)
-    pub const SESSION_START_SH: &str = include_str!("../../resources/opencode/session-start.sh");
-    pub const SESSION_UPDATE_SH: &str = include_str!("../../resources/opencode/session-update.sh");
-    pub const SESSION_NOTE_SH: &str = include_str!("../../resources/opencode/session-note.sh");
-    pub const SESSION_END_SH: &str = include_str!("../../resources/opencode/session-end.sh");
-
     // Commands (markdown format, same as Claude)
     pub const SESSION_START_MD: &str = include_str!("../../resources/opencode/session-start.md");
     pub const SESSION_UPDATE_MD: &str = include_str!("../../resources/opencode/session-update.md");
@@ -142,23 +135,11 @@ fn install_claude_templates(adapters_dir: &Path) -> Result<()> {
     fs::create_dir_all(&context_dir)?;
     fs::create_dir_all(&skills_dir)?;
 
-    // Write shell scripts
-    write_executable(
-        &bin_dir.join("session-start.sh"),
-        claude_templates::SESSION_START_SH,
-    )?;
-    write_executable(
-        &bin_dir.join("session-update.sh"),
-        claude_templates::SESSION_UPDATE_SH,
-    )?;
-    write_executable(
-        &bin_dir.join("session-note.sh"),
-        claude_templates::SESSION_NOTE_SH,
-    )?;
-    write_executable(
-        &bin_dir.join("session-end.sh"),
-        claude_templates::SESSION_END_SH,
-    )?;
+    // Write wrapper scripts (forward to patina session commands)
+    write_executable(&bin_dir.join("session-start.sh"), WRAPPER_START)?;
+    write_executable(&bin_dir.join("session-update.sh"), WRAPPER_UPDATE)?;
+    write_executable(&bin_dir.join("session-note.sh"), WRAPPER_NOTE)?;
+    write_executable(&bin_dir.join("session-end.sh"), WRAPPER_END)?;
 
     // Write commands
     fs::write(
@@ -220,23 +201,11 @@ fn install_gemini_templates(adapters_dir: &Path) -> Result<()> {
     fs::create_dir_all(&bin_dir)?;
     fs::create_dir_all(&commands_dir)?;
 
-    // Write shell scripts
-    write_executable(
-        &bin_dir.join("session-start.sh"),
-        gemini_templates::SESSION_START_SH,
-    )?;
-    write_executable(
-        &bin_dir.join("session-update.sh"),
-        gemini_templates::SESSION_UPDATE_SH,
-    )?;
-    write_executable(
-        &bin_dir.join("session-note.sh"),
-        gemini_templates::SESSION_NOTE_SH,
-    )?;
-    write_executable(
-        &bin_dir.join("session-end.sh"),
-        gemini_templates::SESSION_END_SH,
-    )?;
+    // Write wrapper scripts (forward to patina session commands)
+    write_executable(&bin_dir.join("session-start.sh"), WRAPPER_START)?;
+    write_executable(&bin_dir.join("session-update.sh"), WRAPPER_UPDATE)?;
+    write_executable(&bin_dir.join("session-note.sh"), WRAPPER_NOTE)?;
+    write_executable(&bin_dir.join("session-end.sh"), WRAPPER_END)?;
 
     // Write commands (TOML format for Gemini)
     fs::write(
@@ -281,23 +250,11 @@ fn install_opencode_templates(adapters_dir: &Path) -> Result<()> {
     fs::create_dir_all(&bin_dir)?;
     fs::create_dir_all(&commands_dir)?;
 
-    // Write shell scripts
-    write_executable(
-        &bin_dir.join("session-start.sh"),
-        opencode_templates::SESSION_START_SH,
-    )?;
-    write_executable(
-        &bin_dir.join("session-update.sh"),
-        opencode_templates::SESSION_UPDATE_SH,
-    )?;
-    write_executable(
-        &bin_dir.join("session-note.sh"),
-        opencode_templates::SESSION_NOTE_SH,
-    )?;
-    write_executable(
-        &bin_dir.join("session-end.sh"),
-        opencode_templates::SESSION_END_SH,
-    )?;
+    // Write wrapper scripts (forward to patina session commands)
+    write_executable(&bin_dir.join("session-start.sh"), WRAPPER_START)?;
+    write_executable(&bin_dir.join("session-update.sh"), WRAPPER_UPDATE)?;
+    write_executable(&bin_dir.join("session-note.sh"), WRAPPER_NOTE)?;
+    write_executable(&bin_dir.join("session-end.sh"), WRAPPER_END)?;
 
     // Write commands (markdown format, same as Claude)
     fs::write(
@@ -392,9 +349,9 @@ mod tests {
 
     #[test]
     fn test_claude_templates_compile() {
-        // Just verify templates are embedded correctly
-        assert!(!claude_templates::SESSION_START_SH.is_empty());
+        // Verify command definitions are embedded correctly
         assert!(!claude_templates::SESSION_START_MD.is_empty());
+        assert!(!claude_templates::SESSION_END_MD.is_empty());
         // Skills
         assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_MD.is_empty());
         assert!(!claude_templates::SKILL_EPISTEMIC_BELIEFS_CREATE_SH.is_empty());
@@ -403,10 +360,18 @@ mod tests {
 
     #[test]
     fn test_gemini_templates_compile() {
-        // Just verify templates are embedded correctly
-        assert!(!gemini_templates::SESSION_START_SH.is_empty());
+        // Verify command definitions are embedded correctly
         assert!(!gemini_templates::SESSION_START_TOML.is_empty());
         assert!(!gemini_templates::GEMINI_MD.is_empty());
+    }
+
+    #[test]
+    fn test_wrapper_scripts_content() {
+        // Verify wrapper scripts forward to patina session commands
+        assert!(WRAPPER_START.contains("patina session start"));
+        assert!(WRAPPER_UPDATE.contains("patina session update"));
+        assert!(WRAPPER_NOTE.contains("patina session note"));
+        assert!(WRAPPER_END.contains("patina session end"));
     }
 
     #[test]
@@ -426,6 +391,11 @@ mod tests {
         // Deprecated commands should not exist
         assert!(!templates_dir.join(".claude/bin/launch.sh").exists());
         assert!(!templates_dir.join(".claude/bin/persona-start.sh").exists());
+
+        // Wrapper scripts should forward to patina session
+        let wrapper =
+            fs::read_to_string(templates_dir.join(".claude/bin/session-start.sh")).unwrap();
+        assert!(wrapper.contains("patina session start"));
 
         // Skills should be installed
         assert!(templates_dir
@@ -451,5 +421,10 @@ mod tests {
             .join(".gemini/commands/session-start.toml")
             .exists());
         assert!(templates_dir.join("GEMINI.md").exists());
+
+        // Wrapper scripts should forward to patina session
+        let wrapper =
+            fs::read_to_string(templates_dir.join(".gemini/bin/session-start.sh")).unwrap();
+        assert!(wrapper.contains("patina session start"));
     }
 }
