@@ -74,12 +74,9 @@ pub fn execute(json_output: bool) -> Result<i32> {
     let layer_path = project_root.join("layer");
     let pattern_count = count_patterns(&layer_path);
 
-    // Count sessions
-    let sessions_path = adapter.get_sessions_path(&project_root);
-    let session_count = sessions_path
-        .as_ref()
-        .map(|path| count_sessions(path))
-        .unwrap_or(0);
+    // Count sessions from canonical location (layer/sessions/)
+    let sessions_path = project_root.join("layer").join("sessions");
+    let session_count = count_sessions(&sessions_path);
 
     health_check.project_config = ProjectStatus {
         llm: llm.to_string(),

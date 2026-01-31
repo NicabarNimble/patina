@@ -251,10 +251,17 @@ pub fn add_all() -> Result<()> {
 }
 
 /// Stage specific paths (safer for repos with nested git directories)
+///
+/// Skips paths that don't exist or are gitignored.
 pub fn add_paths(paths: &[&str]) -> Result<()> {
     for path in paths {
         // Skip paths that don't exist
         if !std::path::Path::new(path).exists() {
+            continue;
+        }
+
+        // Skip paths that are gitignored
+        if is_ignored(path) {
             continue;
         }
 
@@ -270,6 +277,26 @@ pub fn add_paths(paths: &[&str]) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Check if a path is ignored by .gitignore
+fn is_ignored(path: &str) -> bool {
+    Command::new("git")
+        .args(["check-ignore", "-q", path])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+/// Check if there are staged changes ready to commit
+pub fn has_staged_changes() -> Result<bool> {
+    let output = Command::new("git")
+        .args(["diff", "--cached", "--quiet"])
+        .output()
+        .context("Failed to check staged changes")?;
+
+    // Exit code 1 means there ARE differences (staged changes exist)
+    Ok(!output.status.success())
 }
 
 /// Create a commit
