@@ -19,10 +19,10 @@ milestones:
   status: complete
 - version: 0.9.2
   name: Session system & adapter parity
-  status: in_progress
+  status: complete
 - version: 0.9.3
   name: Epistemic E4 (belief automation)
-  status: pending
+  status: in_progress
 - version: 0.9.4
   name: Mother federated query
   status: pending
@@ -38,7 +38,7 @@ milestones:
 - version: 1.0.0
   name: All pillars complete
   status: pending
-current_milestone: 0.9.2
+current_milestone: 0.9.3
 ---
 
 # feat: v1.0 Release
