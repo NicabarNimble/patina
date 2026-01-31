@@ -254,7 +254,7 @@ Shell scripts currently write `SessionStart`/`SessionEnd` transitions to `.patin
 - [x] 6. Implement `patina session end` (tag, metrics, classification, archival)
 - [x] 7. YAML frontmatter on new session documents
 - [x] 8. Scraper handles both YAML frontmatter and legacy markdown headers
-- [ ] 9. A/B test: diff Rust output vs shell output for full lifecycle
+- [x] 9. A/B test: diff Rust output vs shell output for full lifecycle
 
 **Phase 2: Cut over adapters**
 
