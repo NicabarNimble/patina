@@ -125,11 +125,18 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
     // Re-read branch after potential switch
     let branch = git::current_branch().unwrap_or_else(|_| "none".to_string());
 
-    // 6. Create session tag
+    // 6. Create session tag (detect collision from rapid starts)
     if git::is_git_repo().unwrap_or(false) {
+        if git::tag_exists(&session_tag).unwrap_or(false) {
+            bail!(
+                "Session tag {} already exists.\n\
+                 A session with this ID was already started. Wait a moment and retry.",
+                session_tag
+            );
+        }
         match git::create_tag(&session_tag, &format!("Session start: {}", title)) {
             Ok(()) => println!("Session tagged: {}", session_tag),
-            Err(_) => println!("Could not create tag (may already exist)"),
+            Err(e) => bail!("Failed to create session tag {}: {}", session_tag, e),
         }
     }
 
