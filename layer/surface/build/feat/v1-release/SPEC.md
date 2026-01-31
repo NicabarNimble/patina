@@ -258,10 +258,10 @@ Shell scripts currently write `SessionStart`/`SessionEnd` transitions to `.patin
 
 **Phase 2: Cut over adapters**
 
-- [ ] 10. Skill definitions call `patina session` instead of shell scripts
-- [ ] 11. Active session path changed to `.patina/local/` in all adapters
-- [ ] 12. `session_scripts.rs` deploys `patina session` wrappers
-- [ ] 13. Full session lifecycle tested with each adapter
+- [x] 10. Skill definitions call `patina session` instead of shell scripts
+- [x] 11. Active session path changed to `.patina/local/` in all adapters
+- [x] 12. `session_scripts.rs` deploys `patina session` wrappers
+- [x] 13. Full session lifecycle tested with each adapter
 
 **Phase 3: Remove legacy (separate commit, after validation)**
 
@@ -468,3 +468,4 @@ Currently statically linked via `ort` crate's `download-binaries` feature.
 | 2026-01-29 | in_progress | 0.9.2 revised: Dual-write sessions, bash→Rust, adapter-agnostic active session. |
 | 2026-01-30 | in_progress | 0.9.2 steps 1-2: eventlog extracted to `src/eventlog.rs`, session subcommand scaffolding wired. |
 | 2026-01-30 | in_progress | 0.9.2 step 3: `patina session note` implemented — dual-write (markdown + eventlog), A/B tested against shell. |
+| 2026-01-31 | in_progress | 0.9.2 Phase 2 complete (steps 10-13): skill definitions call `patina session`, paths → `.patina/local/`, thin wrapper scripts deployed, lifecycle tested. |

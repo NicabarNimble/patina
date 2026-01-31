@@ -2,10 +2,10 @@ description = "Update current session with progress"
 prompt = """
 Update the current Patina session:
 
-1. Execute the session update script:
-   `.gemini/bin/session-update.sh`
+1. Execute the session update command:
+   `patina session update`
 
-2. Read the updated `.gemini/context/active-session.md` file
+2. Read the updated `.patina/local/active-session.md` file
 
 3. Fill in the update section with:
    - Work completed since last update
