@@ -12,7 +12,7 @@ related:
 
 # feat: Epistemic Markdown Layer
 
-**Progress:** E0 ✅ | E1 (in progress) | E2 ✅ | E2.5 ✅ | E3 ✅ | E4-E6 (planned)
+**Progress:** E0 ✅ | E1 (in progress) | E2 ✅ | E2.5 ✅ | E3 ✅ | E4 (in progress) | E5-E6 (planned)
 **Prototype:** `layer/surface/epistemic/`
 
 ---
@@ -719,11 +719,75 @@ patina scry "what do we believe about specs"
 → [8] Score: 0.852 | belief.surface | spec-first
 ```
 
-### Phase E4: Extraction Automation
+### Phase E4: Computed Belief Metrics (Use & Truth)
 
-- [ ] `patina surface capture` extracts beliefs from sessions
-- [ ] Connection scoring finds evidence links
-- [ ] Adapter LLM synthesizes rules from patterns
+**North Star:** Replace LLM-fabricated confidence scores with metrics computed from real data. A belief's strength comes from how much it's used and how grounded it is in evidence — not from an LLM picking 0.88.
+
+**Problem:** Current `confidence.signals` are fabricated at creation time by `create-belief.sh` (lines 104-115: adds 0.05 to score for "evidence", hardcodes survival=0.50, endorsement=0.50). These numbers are fiction. Meanwhile, real data exists in the system — sessions cite beliefs, beliefs reference each other, evidence links point to real commits and sessions — but nothing counts it.
+
+**Principle:** Measure, don't guess. (Andrew Ng: "Show me the data, not the model.")
+
+#### Two Axes: Use and Truth
+
+| Axis | Question | Signals |
+|------|----------|---------|
+| **Use** | Is this belief doing work? | Citations by other beliefs, citations by sessions, scry query returns |
+| **Truth** | Is the evidence real? | Evidence link count, verified links (resolve to files), defeated attacks, applied-in entries |
+
+**Why not time/survival?** A belief sitting unchallenged for 60 days isn't stronger — it might just be ignored. Use is active. Truth is verifiable.
+
+#### Computed Schema (replaces `confidence.signals`)
+
+```yaml
+metrics:                        # Computed by `patina scrape`, not by LLM
+  use:
+    cited_by_beliefs: 9         # other beliefs referencing this in Supports/Attacks
+    cited_by_sessions: 4        # sessions mentioning this belief ID
+    applied_in: 3               # entries in ## Applied-In section
+  truth:
+    evidence_count: 9           # entries in ## Evidence section
+    evidence_verified: 7        # evidence [[wikilinks]] that resolve to real files
+    defeated_attacks: 1         # Attacked-By entries with status: defeated
+    external_sources: 1         # evidence from outside the project (papers, docs)
+endorsed: true                  # user explicitly created or confirmed
+```
+
+No composite score. No 0.88. Just counts that tell you *why* to trust (or question) a belief.
+
+**Example — what this reveals:**
+- `measure-first`: cited_by_beliefs=9, cited_by_sessions=4, evidence=9 → load-bearing, well-grounded
+- `spec-drives-tooling`: cited_by_beliefs=0, cited_by_sessions=1, evidence=0 → assertion, not yet tested
+
+#### Build Steps
+
+- [ ] 1. Compute use/truth metrics in belief scraper (`src/commands/scrape/beliefs/mod.rs`)
+  - Cross-reference beliefs table against sessions, other belief files, layer/ patterns
+  - Count evidence links, verify wikilink resolution, count Applied-In entries
+  - Store in new columns on `beliefs` table
+- [ ] 2. Update scry enrichment to surface computed metrics instead of fake confidence
+  - Replace `[confidence: 88%, high]` with `[use: 9+4 | truth: 9/7 | 1 defeated]`
+  - Format: `[use: {belief_citations}+{session_citations} | truth: {evidence}/{verified} | {defeated} defeated]`
+- [ ] 3. Drop fake confidence signals from `create-belief.sh`
+  - Remove `confidence.score` and `confidence.signals` from creation template
+  - Keep: id, statement, persona, facets, entrenchment, status, endorsed
+  - Confidence is computed, not declared
+- [ ] 4. `patina belief audit` command — show all beliefs ranked by use/truth
+  - Table output: belief ID, use metrics, truth metrics, warnings
+  - Warnings: 0 evidence links, unverified wikilinks, no session citations, no Applied-In
+  - Like `patina doctor` but for the epistemic layer
+- [ ] 5. Update existing 43 belief files — remove fake confidence.signals block
+  - Batch migration: strip `confidence:` block from YAML frontmatter
+  - Add `endorsed: true` for beliefs created via explicit user request
+- [ ] 6. Update belief scraper to read new schema (handle both old and new format during migration)
+- [ ] 7. MCP `context` tool includes belief metrics in pattern context
+
+#### E4 Exit Criteria
+
+- [ ] All belief metrics computed from real data (zero fabricated numbers)
+- [ ] `patina belief audit` shows use/truth for all beliefs
+- [ ] Scry results display computed metrics instead of fake confidence
+- [ ] `create-belief.sh` no longer generates confidence.signals
+- [ ] Cross-reference data queryable: "which beliefs have no evidence?" "which are most cited?"
 
 ### Phase E5: Revision Automation
 
@@ -775,19 +839,20 @@ patina scry "what do we believe about specs"
 
 ---
 
-## Current Prototype Statistics (Updated 2026-01-22)
+## Current Prototype Statistics (Updated 2026-01-31)
 
 | Metric | Value |
 |--------|-------|
-| Beliefs | 22 |
+| Beliefs | 43 |
 | Rules | 3 |
-| Avg Confidence | ~0.87 |
+| Highest Use (cited_by_beliefs) | measure-first (9) |
+| Highest Use (cited_by_sessions) | sync-first (6) |
+| Most Evidence Links | error-analysis-over-architecture (12) |
 | Highest Entrenchment | very-high (eventlog-is-truth) |
-| Defeated Attacks | 16 |
-| Active Attacks | 13 |
 | Personas | 1 (architect) |
-| Indexed in Semantic | ✅ 22 beliefs in usearch |
+| Indexed in Semantic | ✅ 43 beliefs in usearch |
 | Queryable via Scry | ✅ Verified working |
+| Confidence Scores | ❌ Fabricated — E4 replaces with computed metrics |
 
 ### Belief Inventory (Top 10 by Confidence)
 
