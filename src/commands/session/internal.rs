@@ -65,13 +65,15 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
             .map(|s| s.lines().count())
             .unwrap_or(0);
         if line_count > 10 {
-            // Archive non-trivial session
+            // Archive non-trivial session (mark as archived in YAML)
             if let Ok(old_id) = read_session_id(&session_path) {
                 let archive_path = project_root
                     .join(SESSIONS_DIR)
                     .join(format!("{}.md", old_id));
                 fs::create_dir_all(project_root.join(SESSIONS_DIR))?;
-                fs::copy(&session_path, &archive_path)?;
+                let content = fs::read_to_string(&session_path)?;
+                let archived = content.replacen("status: active", "status: archived", 1);
+                fs::write(&archive_path, archived)?;
                 println!("  Archived to {}/{}.md", SESSIONS_DIR, old_id);
             }
         } else {
@@ -85,9 +87,8 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
     let session_id = now.format("%Y%m%d-%H%M%S").to_string();
     let session_tag = format!("session-{}-{}-start", session_id, adapter);
 
-    // 3. Git context
+    // 3. Git context (branch re-read after potential switch below)
     let branch = git::current_branch().unwrap_or_else(|_| "none".to_string());
-    let starting_commit = git::head_sha().unwrap_or_else(|_| "none".to_string());
 
     // 4. Check for uncommitted changes
     if !git::is_clean().unwrap_or(true) {
@@ -122,8 +123,9 @@ pub fn start_session(project_root: &Path, title: &str, adapter: Option<&str>) ->
         }
     }
 
-    // Re-read branch after potential switch
+    // Re-read branch and capture starting commit after potential switch
     let branch = git::current_branch().unwrap_or_else(|_| "none".to_string());
+    let starting_commit = git::head_sha().unwrap_or_else(|_| "none".to_string());
 
     // 6. Create session tag (detect collision from rapid starts)
     if git::is_git_repo().unwrap_or(false) {
@@ -499,7 +501,11 @@ pub fn end_session(project_root: &Path) -> Result<()> {
     let commits_made = git::commits_since_count(&starting_commit).unwrap_or(0);
     let patterns_modified = changed_files
         .iter()
-        .filter(|f| f.starts_with("layer/") || f.ends_with(".md"))
+        .filter(|f| {
+            f.starts_with("layer/core/")
+                || f.starts_with("layer/surface/")
+                || f.starts_with("layer/topics/")
+        })
         .count();
 
     // 5. Classify work type
