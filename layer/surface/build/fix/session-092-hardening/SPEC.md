@@ -27,9 +27,9 @@ Deep review of session system identified 9 issues across 9 commands that touch s
 | 2 | `patina doctor` counts sessions from `.claude/context/sessions/` (doesn't exist) instead of `layer/sessions/` | Medium | Small | **Fixed** |
 | 3 | `patina adapter refresh` fails when adapter dir is gitignored | Medium | Small | **Fixed** |
 | 4 | Rapid session start creates duplicate tags (same-second collision) | Low | Small | **Fixed** |
-| 5 | Starting commit captured before branch switch (metrics wrong if work branch diverged) | Medium | Small | Pending |
-| 6 | Incomplete session archive retains `status: active` in YAML | Low | Trivial | Pending |
-| 7 | `patterns_modified` counts all `.md` files (inflates classification) | Low | Small | Pending |
+| 5 | Starting commit captured before branch switch (metrics wrong if work branch diverged) | Medium | Small | **Fixed** |
+| 6 | Incomplete session archive retains `status: active` in YAML | Low | Trivial | **Fixed** |
+| 7 | `patterns_modified` counts all `.md` files (inflates classification) | Low | Small | **Fixed** |
 | 8 | Dual-format dispatch table maintenance risk (`read_session_field` prefix matching) | Low | Design debt | Deferred |
 | 9 | User prompts extraction is Claude-specific (`~/.claude/history.jsonl`) | Low | By design | Deferred |
 
@@ -51,17 +51,15 @@ Deep review of session system identified 9 issues across 9 commands that touch s
 ### Fix 4: Session tag collision guard
 - `src/commands/session/internal.rs`: Check `tag_exists()` before creating session tag; bail with clear error instead of silent failure
 
-## Pending Fixes
-
 ### Fix 5: Starting commit after branch switch
-- `src/commands/session/internal.rs`: Move `head_sha()` call from line 90 to after the branch switch block (after line 123)
+- `src/commands/session/internal.rs`: Moved `head_sha()` from before branch switch to after, so `starting_commit` reflects the actual branch HEAD
 - Impact: Only affects `main` → `work` auto-switch path where `work` already exists and has diverged
 
 ### Fix 6: Incomplete session archive status
-- `src/commands/session/internal.rs`: Add `replacen("status: active", "status: archived", 1)` before `fs::copy` in the incomplete session cleanup path (line 74)
+- `src/commands/session/internal.rs`: Read file content, `replacen("status: active", "status: archived", 1)`, write to archive instead of raw `fs::copy`
 
 ### Fix 7: Tighten patterns_modified filter
-- `src/commands/session/internal.rs`: Change filter from `f.starts_with("layer/") || f.ends_with(".md")` to `f.starts_with("layer/core/") || f.starts_with("layer/surface/") || f.starts_with("layer/topics/")`
+- `src/commands/session/internal.rs`: Changed filter to only count files under `layer/core/`, `layer/surface/`, `layer/topics/`
 - Excludes: `CLAUDE.md`, `README.md`, session files, spec files from pattern count
 
 ## Deferred Items
@@ -76,8 +74,8 @@ Deep review of session system identified 9 issues across 9 commands that touch s
 - [x] Scry queries log session_id from YAML frontmatter
 - [x] MCP server uses shared session ID function
 - [x] Duplicate session start is caught and rejected
-- [ ] Starting commit captured after branch switch
-- [ ] Incomplete session archive updates status to archived
-- [ ] patterns_modified filter excludes non-pattern .md files
+- [x] Starting commit captured after branch switch
+- [x] Incomplete session archive updates status to archived
+- [x] patterns_modified filter excludes non-pattern .md files
 - [ ] All fixes pass `cargo fmt`, `cargo clippy`, `cargo test`
 - [ ] Committed and pushed
