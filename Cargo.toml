@@ -5,7 +5,7 @@ resolver = "2"
 
 [package]
 name = "patina-ai"
-version = "0.9.1"
+version = "0.9.2"
 edition = "2021"
 license = "MIT"
 description = "Context orchestration for AI development - captures and evolves patterns over time"
