@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: version-semver-alignment
-status: pending
+status: complete
 created: 2026-01-31
 sessions:
   origin: 20260131-093100
@@ -104,8 +104,8 @@ the new numbering. Milestone names stay the same, version numbers shift.
 
 ## Exit Criteria
 
-- [ ] `patina version milestone` bumps 0.10.0 → 0.11.0 (not 0.10.0 → 0.10.1)
-- [ ] `patina version patch` bumps 0.10.0 → 0.10.1
-- [ ] Fix specs have `affects_since` field
-- [ ] v1-release SPEC reflects new numbering
-- [ ] Existing 0.9.0-0.9.2 tags untouched
+- [x] `patina version milestone` bumps 0.10.0 → 0.11.0 (not 0.10.0 → 0.10.1)
+- [x] `patina version patch` bumps 0.10.0 → 0.10.1
+- [x] Fix specs have `affects_since` field
+- [x] v1-release SPEC reflects new numbering
+- [x] Existing 0.9.0-0.9.2 tags untouched
