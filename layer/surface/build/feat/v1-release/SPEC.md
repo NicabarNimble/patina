@@ -296,16 +296,18 @@ Shell scripts currently write `SessionStart`/`SessionEnd` transitions to `.patin
 
 **Spec:** [[spec-epistemic-layer.md]]
 
-**Current:** E0-E3 complete. 35 beliefs captured and indexed in scry. Queryable via `patina scry "what do we believe about X"`.
+**Current:** E0-E3 complete. 43 beliefs captured and indexed in scry. Queryable via `patina scry "what do we believe about X"`. LLM belief surfacing via skill works well (E2). Fake confidence scores identified as fiction — no real measurement behind them.
 
 **Remaining:**
-- E4: Belief extraction automation (suggest beliefs from session patterns)
-- Validation stability (confidence signals, revision workflow)
+- E4: Replace fabricated confidence with computed use/truth metrics from real data
+- Belief audit command for epistemic layer health
+- MCP context tool includes beliefs
 
 **Exit criteria:**
-- [ ] `patina` suggests beliefs from session content
-- [ ] Belief confidence updates based on evidence accumulation
-- [ ] Belief query integrated into MCP tools
+- [ ] Belief metrics computed from real data (citations, evidence, verified links)
+- [ ] `patina belief audit` shows use/truth for all beliefs
+- [ ] Scry results display computed metrics, not fake confidence
+- [ ] Belief query integrated into MCP tools (scry ✅, context pending)
 
 ---
 
