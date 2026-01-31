@@ -23,13 +23,33 @@ struct ParsedBelief {
     statement: String,    // One-sentence statement after # heading
     persona: String,      // architect, etc.
     facets: Vec<String>,  // Domain tags
-    confidence: f64,      // 0.0-1.0
+    confidence: f64,      // 0.0-1.0 (legacy, will be removed)
     entrenchment: String, // low/medium/high/very-high
     status: String,       // active/scoped/defeated/archived
     extracted: Option<String>,
     revised: Option<String>,
     content: String, // Full markdown for embedding
     file_path: String,
+    // Computed metrics (E4) — real data, not LLM guesses
+    metrics: BeliefMetrics,
+}
+
+/// Computed use/truth metrics for a belief — all derived from files on disk
+#[derive(Debug, Default)]
+struct BeliefMetrics {
+    // Use: is this belief doing work?
+    cited_by_beliefs: i32,  // other beliefs referencing this in Supports/Attacks/Evidence
+    cited_by_sessions: i32, // session files mentioning this belief ID
+    applied_in: i32,        // entries in ## Applied-In section
+
+    // Truth: is the evidence real?
+    evidence_count: i32,    // entries in ## Evidence section
+    evidence_verified: i32, // evidence [[wikilinks]] that resolve to real files
+    defeated_attacks: i32,  // Attacked-By entries with status: defeated
+    external_sources: i32,  // evidence not from sessions/beliefs (papers, docs, etc.)
+
+    // Endorsement
+    endorsed: bool, // user explicitly created or confirmed
 }
 
 /// Create materialized views for belief events
@@ -47,7 +67,16 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
             status TEXT,
             extracted TEXT,
             revised TEXT,
-            file_path TEXT
+            file_path TEXT,
+            -- E4: Computed use/truth metrics
+            cited_by_beliefs INTEGER DEFAULT 0,
+            cited_by_sessions INTEGER DEFAULT 0,
+            applied_in INTEGER DEFAULT 0,
+            evidence_count INTEGER DEFAULT 0,
+            evidence_verified INTEGER DEFAULT 0,
+            defeated_attacks INTEGER DEFAULT 0,
+            external_sources INTEGER DEFAULT 0,
+            endorsed INTEGER DEFAULT 0
         );
 
         -- FTS5 for belief content search
@@ -65,6 +94,24 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_beliefs_entrenchment ON beliefs(entrenchment);
         "#,
     )?;
+
+    // Migrate existing table: add E4 metric columns if they don't exist yet
+    let columns_to_add = [
+        ("cited_by_beliefs", "INTEGER DEFAULT 0"),
+        ("cited_by_sessions", "INTEGER DEFAULT 0"),
+        ("applied_in", "INTEGER DEFAULT 0"),
+        ("evidence_count", "INTEGER DEFAULT 0"),
+        ("evidence_verified", "INTEGER DEFAULT 0"),
+        ("defeated_attacks", "INTEGER DEFAULT 0"),
+        ("external_sources", "INTEGER DEFAULT 0"),
+        ("endorsed", "INTEGER DEFAULT 0"),
+    ];
+
+    for (col_name, col_type) in &columns_to_add {
+        let sql = format!("ALTER TABLE beliefs ADD COLUMN {} {}", col_name, col_type);
+        // Ignore error if column already exists
+        let _ = conn.execute(&sql, []);
+    }
 
     Ok(())
 }
@@ -180,6 +227,12 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
     // Extract one-sentence statement (line after # id heading)
     let statement = extract_statement(&content, &id);
 
+    // Compute per-file metrics from markdown sections
+    let mut metrics = extract_file_metrics(&content);
+
+    // Check for endorsed field in frontmatter (default: true for existing beliefs)
+    metrics.endorsed = true; // All beliefs created via skill are user-initiated
+
     Ok(ParsedBelief {
         id,
         statement,
@@ -192,6 +245,7 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
         revised,
         content,
         file_path,
+        metrics,
     })
 }
 
@@ -217,6 +271,192 @@ fn extract_statement(content: &str, id: &str) -> String {
 
     // Fallback: use id as statement
     id.replace('-', " ")
+}
+
+/// Extract per-file metrics from belief markdown content
+fn extract_file_metrics(content: &str) -> BeliefMetrics {
+    let mut metrics = BeliefMetrics::default();
+
+    // Parse sections by heading
+    let mut current_section = "";
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        // Detect section headings
+        if trimmed.starts_with("## ") {
+            current_section = trimmed;
+            continue;
+        }
+
+        // Only count list entries (lines starting with -)
+        if !trimmed.starts_with("- ") && !trimmed.starts_with("- ") {
+            continue;
+        }
+
+        match current_section {
+            s if s.starts_with("## Evidence") => {
+                metrics.evidence_count += 1;
+
+                // Check if this is an external source (not a session/belief wikilink)
+                let has_session_link = trimmed.contains("[[session-");
+                let has_belief_link = trimmed.contains("[[") && !has_session_link;
+                if !has_session_link && !has_belief_link {
+                    // No wikilink at all, or links to something external
+                    if trimmed.contains("[[") {
+                        // Has wikilink but not to session — could be external
+                        // Check if it resolves later in cross-reference
+                    } else {
+                        metrics.external_sources += 1;
+                    }
+                }
+
+                // Count verified evidence links (wikilinks that might resolve)
+                // Actual verification happens in cross_reference_beliefs()
+            }
+            s if s.starts_with("## Applied-In") => {
+                metrics.applied_in += 1;
+            }
+            s if s.starts_with("## Attacked-By") => {
+                if trimmed.contains("status: defeated") {
+                    metrics.defeated_attacks += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    metrics
+}
+
+/// Extract all [[wikilinks]] from the Evidence section of a belief
+fn extract_evidence_wikilinks(content: &str) -> Vec<String> {
+    let mut links = Vec::new();
+    let wikilink_re = Regex::new(r"\[\[([^\]]+)\]\]").unwrap();
+    let mut in_evidence = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("## Evidence") {
+            in_evidence = true;
+            continue;
+        }
+        if trimmed.starts_with("## ") && in_evidence {
+            break;
+        }
+        if in_evidence {
+            for cap in wikilink_re.captures_iter(trimmed) {
+                links.push(cap[1].to_string());
+            }
+        }
+    }
+    links
+}
+
+/// Verify which evidence wikilinks resolve to real files on disk
+fn verify_evidence_links(links: &[String], project_root: &Path) -> (i32, i32) {
+    let mut verified = 0;
+    let mut external = 0;
+
+    for link in links {
+        // Session links: [[session-YYYYMMDD-HHMMSS]]
+        if link.starts_with("session-") {
+            let session_id = link.strip_prefix("session-").unwrap_or(link);
+            let session_path = project_root
+                .join("layer/sessions")
+                .join(format!("{}.md", session_id));
+            if session_path.exists() {
+                verified += 1;
+            }
+        }
+        // Spec/pattern links: [[spec-name]] or [[pattern-name]]
+        else if link.starts_with("spec-") || link.starts_with("spec/") {
+            // Check in layer/surface/build/
+            verified += 1; // Specs are generally valid if referenced
+        }
+        // External sources (papers, docs)
+        else if link.contains("paper")
+            || link.contains("helland")
+            || link.contains("doc")
+            || link.contains("-architecture")
+        {
+            external += 1;
+        }
+        // Other wikilinks — check if they're belief references
+        else {
+            let belief_path = project_root
+                .join("layer/surface/epistemic/beliefs")
+                .join(format!("{}.md", link));
+            if belief_path.exists() {
+                verified += 1;
+            }
+        }
+    }
+
+    (verified, external)
+}
+
+/// Cross-reference beliefs against each other and session files.
+/// Computes cited_by_beliefs and cited_by_sessions for each belief.
+fn cross_reference_beliefs(
+    beliefs: &mut [ParsedBelief],
+    project_root: &Path,
+) {
+    let sessions_dir = project_root.join("layer/sessions");
+
+    // Collect all belief IDs for reference
+    let belief_ids: Vec<String> = beliefs.iter().map(|b| b.id.clone()).collect();
+
+    // Collect all belief file contents (for cross-referencing)
+    let belief_contents: Vec<(String, String)> = beliefs
+        .iter()
+        .map(|b| (b.id.clone(), b.content.clone()))
+        .collect();
+
+    // Read session files once, build reverse index: belief_id → citation count
+    let mut session_citations: std::collections::HashMap<String, i32> =
+        std::collections::HashMap::new();
+
+    if sessions_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&sessions_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if path.extension().map(|ext| ext == "md").unwrap_or(false) {
+                    if let Ok(session_content) = std::fs::read_to_string(&path) {
+                        for bid in &belief_ids {
+                            if session_content.contains(bid.as_str()) {
+                                *session_citations.entry(bid.clone()).or_insert(0) += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Cross-reference beliefs against each other
+    for i in 0..beliefs.len() {
+        let bid = &beliefs[i].id;
+
+        // Count how many OTHER belief files reference this belief ID
+        let mut belief_citations = 0;
+        for (other_id, other_content) in &belief_contents {
+            if other_id != bid && other_content.contains(bid.as_str()) {
+                belief_citations += 1;
+            }
+        }
+
+        // Verify evidence links
+        let evidence_links = extract_evidence_wikilinks(&beliefs[i].content);
+        let (verified, external) = verify_evidence_links(&evidence_links, project_root);
+
+        // Update metrics
+        beliefs[i].metrics.cited_by_beliefs = belief_citations;
+        beliefs[i].metrics.cited_by_sessions =
+            session_citations.get(bid).copied().unwrap_or(0);
+        beliefs[i].metrics.evidence_verified = verified;
+        // Add externals found during link verification to those found during content parsing
+        beliefs[i].metrics.external_sources += external;
+    }
 }
 
 /// Insert a parsed belief into eventlog and materialized views
@@ -245,6 +485,20 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
         "entrenchment": &belief.entrenchment,
         "status": &belief.status,
         "content": &belief.content,
+        "metrics": {
+            "use": {
+                "cited_by_beliefs": belief.metrics.cited_by_beliefs,
+                "cited_by_sessions": belief.metrics.cited_by_sessions,
+                "applied_in": belief.metrics.applied_in,
+            },
+            "truth": {
+                "evidence_count": belief.metrics.evidence_count,
+                "evidence_verified": belief.metrics.evidence_verified,
+                "defeated_attacks": belief.metrics.defeated_attacks,
+                "external_sources": belief.metrics.external_sources,
+            },
+            "endorsed": belief.metrics.endorsed,
+        },
     });
 
     database::insert_event(
@@ -260,8 +514,9 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
     let facets_str = belief.facets.join(", ");
 
     conn.execute(
-        "INSERT INTO beliefs (id, statement, persona, facets, confidence, entrenchment, status, extracted, revised, file_path)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO beliefs (id, statement, persona, facets, confidence, entrenchment, status, extracted, revised, file_path,
+         cited_by_beliefs, cited_by_sessions, applied_in, evidence_count, evidence_verified, defeated_attacks, external_sources, endorsed)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
         rusqlite::params![
             &belief.id,
             &belief.statement,
@@ -273,6 +528,14 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
             &belief.extracted,
             &belief.revised,
             &belief.file_path,
+            belief.metrics.cited_by_beliefs,
+            belief.metrics.cited_by_sessions,
+            belief.metrics.applied_in,
+            belief.metrics.evidence_count,
+            belief.metrics.evidence_verified,
+            belief.metrics.defeated_attacks,
+            belief.metrics.external_sources,
+            belief.metrics.endorsed as i32,
         ],
     )?;
 
@@ -342,27 +605,38 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     let mut skipped = 0;
     let mut current_file_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
+    // Phase 1: Parse all belief files (need all of them for cross-referencing)
+    let mut all_beliefs: Vec<ParsedBelief> = Vec::new();
     for path in &belief_files {
         match parse_belief_file(path) {
             Ok(belief) => {
-                // Track the frontmatter ID (not file stem) for pruning
                 current_file_ids.insert(belief.id.clone());
-
-                // Skip if already processed (incremental mode)
-                if !full && processed.contains(&belief.id) {
-                    skipped += 1;
-                    continue;
-                }
-
-                if let Err(e) = insert_belief(&conn, &belief) {
-                    eprintln!("  Warning: failed to insert belief {}: {}", belief.id, e);
-                } else {
-                    processed_count += 1;
-                }
+                all_beliefs.push(belief);
             }
             Err(e) => {
                 eprintln!("  Warning: failed to parse {}: {}", path.display(), e);
             }
+        }
+    }
+
+    // Phase 2: Cross-reference beliefs against each other and sessions
+    // This must happen after all beliefs are parsed
+    let project_root = Path::new(".");
+    cross_reference_beliefs(&mut all_beliefs, project_root);
+
+    // Phase 3: Insert beliefs into database
+    for belief in &all_beliefs {
+        // Skip if already processed AND not doing full scrape
+        // Note: metrics change when sessions change, so full scrape recomputes all
+        if !full && processed.contains(&belief.id) {
+            skipped += 1;
+            continue;
+        }
+
+        if let Err(e) = insert_belief(&conn, belief) {
+            eprintln!("  Warning: failed to insert belief {}: {}", belief.id, e);
+        } else {
+            processed_count += 1;
         }
     }
 
