@@ -296,22 +296,8 @@ fn extract_file_metrics(content: &str) -> BeliefMetrics {
         match current_section {
             s if s.starts_with("## Evidence") => {
                 metrics.evidence_count += 1;
-
-                // Check if this is an external source (not a session/belief wikilink)
-                let has_session_link = trimmed.contains("[[session-");
-                let has_belief_link = trimmed.contains("[[") && !has_session_link;
-                if !has_session_link && !has_belief_link {
-                    // No wikilink at all, or links to something external
-                    if trimmed.contains("[[") {
-                        // Has wikilink but not to session — could be external
-                        // Check if it resolves later in cross-reference
-                    } else {
-                        metrics.external_sources += 1;
-                    }
-                }
-
-                // Count verified evidence links (wikilinks that might resolve)
-                // Actual verification happens in cross_reference_beliefs()
+                // Verification and external source detection happen in
+                // verify_evidence_section() during cross_reference_beliefs()
             }
             s if s.starts_with("## Applied-In") => {
                 metrics.applied_in += 1;
@@ -328,10 +314,16 @@ fn extract_file_metrics(content: &str) -> BeliefMetrics {
     metrics
 }
 
-/// Extract all [[wikilinks]] from the Evidence section of a belief
-fn extract_evidence_wikilinks(content: &str) -> Vec<String> {
-    let mut links = Vec::new();
+/// Verify evidence lines from a belief file against real files on disk.
+/// Handles both `[[wikilink]]` format and bare `session-YYYYMMDD-HHMMSS:` references.
+fn verify_evidence_section(content: &str, project_root: &Path) -> (i32, i32) {
+    let mut verified = 0;
+    let mut external = 0;
     let wikilink_re = Regex::new(r"\[\[([^\]]+)\]\]").unwrap();
+    // Match bare session IDs: session-YYYYMMDD-HHMMSS (with optional colon/space after)
+    let bare_session_re = Regex::new(r"(?:^|\s)(session-)?(\d{8}-\d{6})[\s:,]").unwrap();
+    // Match bare YYYYMMDD-HHMMSS session IDs (without "session-" prefix)
+    let session_id_re = Regex::new(r"\b(\d{8}-\d{6})\b").unwrap();
     let mut in_evidence = false;
 
     for line in content.lines() {
@@ -343,56 +335,100 @@ fn extract_evidence_wikilinks(content: &str) -> Vec<String> {
         if trimmed.starts_with("## ") && in_evidence {
             break;
         }
-        if in_evidence {
-            for cap in wikilink_re.captures_iter(trimmed) {
-                links.push(cap[1].to_string());
-            }
+        if !in_evidence || !trimmed.starts_with("- ") {
+            continue;
         }
-    }
-    links
-}
 
-/// Verify which evidence wikilinks resolve to real files on disk
-fn verify_evidence_links(links: &[String], project_root: &Path) -> (i32, i32) {
-    let mut verified = 0;
-    let mut external = 0;
+        let mut line_verified = false;
 
-    for link in links {
-        // Session links: [[session-YYYYMMDD-HHMMSS]]
-        if link.starts_with("session-") {
-            let session_id = link.strip_prefix("session-").unwrap_or(link);
-            let session_path = project_root
-                .join("layer/sessions")
-                .join(format!("{}.md", session_id));
-            if session_path.exists() {
-                verified += 1;
+        // 1. Check [[wikilinks]]
+        for cap in wikilink_re.captures_iter(trimmed) {
+            let link = &cap[1];
+            if try_verify_link(link, project_root) {
+                line_verified = true;
+            } else if is_external_source(link) {
+                external += 1;
+                line_verified = true;
             }
         }
-        // Spec/pattern links: [[spec-name]] or [[pattern-name]]
-        else if link.starts_with("spec-") || link.starts_with("spec/") {
-            // Check in layer/surface/build/
-            verified += 1; // Specs are generally valid if referenced
-        }
-        // External sources (papers, docs)
-        else if link.contains("paper")
-            || link.contains("helland")
-            || link.contains("doc")
-            || link.contains("-architecture")
-        {
-            external += 1;
-        }
-        // Other wikilinks — check if they're belief references
-        else {
-            let belief_path = project_root
-                .join("layer/surface/epistemic/beliefs")
-                .join(format!("{}.md", link));
-            if belief_path.exists() {
-                verified += 1;
+
+        // 2. Check bare session references (e.g., "session-20260129-074742:" or just "20260129-074742")
+        if !line_verified {
+            for cap in bare_session_re.captures_iter(trimmed) {
+                let session_id = &cap[2];
+                let session_path = project_root
+                    .join("layer/sessions")
+                    .join(format!("{}.md", session_id));
+                if session_path.exists() {
+                    line_verified = true;
+                    break;
+                }
             }
+        }
+
+        // 3. Fallback: look for any YYYYMMDD-HHMMSS pattern that matches a session file
+        if !line_verified {
+            for cap in session_id_re.captures_iter(trimmed) {
+                let session_id = &cap[1];
+                let session_path = project_root
+                    .join("layer/sessions")
+                    .join(format!("{}.md", session_id));
+                if session_path.exists() {
+                    line_verified = true;
+                    break;
+                }
+            }
+        }
+
+        if line_verified {
+            verified += 1;
         }
     }
 
     (verified, external)
+}
+
+/// Try to verify a single wikilink against files on disk
+fn try_verify_link(link: &str, project_root: &Path) -> bool {
+    // Session links: [[session-YYYYMMDD-HHMMSS]]
+    if link.starts_with("session-") {
+        let session_id = link.strip_prefix("session-").unwrap_or(link);
+        let session_path = project_root
+            .join("layer/sessions")
+            .join(format!("{}.md", session_id));
+        return session_path.exists();
+    }
+
+    // Spec links: [[spec-name]] or [[spec/path]]
+    if link.starts_with("spec-") || link.starts_with("spec/") {
+        return true; // Specs are valid if referenced
+    }
+
+    // Check as belief file
+    let belief_path = project_root
+        .join("layer/surface/epistemic/beliefs")
+        .join(format!("{}.md", link));
+    if belief_path.exists() {
+        return true;
+    }
+
+    // Check as a file path directly (e.g., [[CLAUDE.md]])
+    let direct_path = project_root.join(link);
+    if direct_path.exists() {
+        return true;
+    }
+
+    false
+}
+
+/// Check if a link looks like an external source (not in-project)
+fn is_external_source(link: &str) -> bool {
+    let lower = link.to_lowercase();
+    lower.contains("paper")
+        || lower.contains("helland")
+        || lower.contains("blog")
+        || lower.contains("rfc")
+        || lower.contains("doi")
 }
 
 /// Cross-reference beliefs against each other and session files.
@@ -445,16 +481,14 @@ fn cross_reference_beliefs(
             }
         }
 
-        // Verify evidence links
-        let evidence_links = extract_evidence_wikilinks(&beliefs[i].content);
-        let (verified, external) = verify_evidence_links(&evidence_links, project_root);
+        // Verify evidence lines (handles both [[wikilinks]] and bare session-ID references)
+        let (verified, external) = verify_evidence_section(&beliefs[i].content, project_root);
 
         // Update metrics
         beliefs[i].metrics.cited_by_beliefs = belief_citations;
         beliefs[i].metrics.cited_by_sessions =
             session_citations.get(bid).copied().unwrap_or(0);
         beliefs[i].metrics.evidence_verified = verified;
-        // Add externals found during link verification to those found during content parsing
         beliefs[i].metrics.external_sources += external;
     }
 }
