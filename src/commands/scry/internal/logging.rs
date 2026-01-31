@@ -51,12 +51,28 @@ pub fn generate_query_id() -> String {
     format!("q_{}_{}", now.format("%Y%m%d_%H%M%S"), random_suffix)
 }
 
-/// Get the active session ID from .claude/context/active-session.md
+/// Get the active session ID from .patina/local/active-session.md
 ///
 /// Returns None if no active session or file doesn't exist.
 /// This is best-effort - we don't want to fail scry if session detection fails.
+/// Supports both YAML frontmatter (new) and `**ID**: value` (legacy) formats.
 pub fn get_active_session_id() -> Option<String> {
-    let content = std::fs::read_to_string(".claude/context/active-session.md").ok()?;
+    let content = std::fs::read_to_string(".patina/local/active-session.md").ok()?;
+
+    // Try YAML frontmatter first (new format: id: field between --- markers)
+    // Only match top-level id: (no leading whitespace) to avoid nested fields
+    if let Some(after_start) = content.strip_prefix("---") {
+        if let Some(end) = after_start.find("---") {
+            let frontmatter = &after_start[..end];
+            for line in frontmatter.lines() {
+                if let Some(value) = line.strip_prefix("id:") {
+                    return Some(value.trim().to_string());
+                }
+            }
+        }
+    }
+
+    // Fall back to legacy format
     for line in content.lines() {
         if line.starts_with("**ID**:") {
             return Some(line.replace("**ID**:", "").trim().to_string());

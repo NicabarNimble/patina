@@ -922,14 +922,7 @@ fn log_mcp_query(query: &str, mode: &str, results: &[FusedResult]) -> Option<Str
     const DB_PATH: &str = ".patina/local/data/patina.db";
 
     // Get session_id from active session
-    let session_id = std::fs::read_to_string(".claude/context/active-session.md")
-        .ok()
-        .and_then(|content| {
-            content
-                .lines()
-                .find(|l| l.starts_with("**ID**:"))
-                .map(|l| l.replace("**ID**:", "").trim().to_string())
-        })?;
+    let session_id = crate::commands::scry::internal::logging::get_active_session_id()?;
 
     // Generate query_id
     let now = chrono::Utc::now();
@@ -1469,14 +1462,7 @@ fn handle_use(query_id: &str, rank: usize) -> Result<String> {
         .to_string();
 
     // Get session_id from active session
-    let session_id = std::fs::read_to_string(".claude/context/active-session.md")
-        .ok()
-        .and_then(|content| {
-            content
-                .lines()
-                .find(|l| l.starts_with("**ID**:"))
-                .map(|l| l.replace("**ID**:", "").trim().to_string())
-        });
+    let session_id = crate::commands::scry::internal::logging::get_active_session_id();
 
     // Log the usage event
     let use_data = serde_json::json!({
