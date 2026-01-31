@@ -22,7 +22,7 @@
 ```
 0.9.0  - Public release (fat binary)
 0.9.1  ✓ Version/spec system alignment
-0.9.2  → Session system & adapter parity
+0.9.2  ✓ Session system & adapter parity
 0.9.3  - Epistemic E4 (belief automation)
 0.9.4  - Mother federated query
 0.9.5  - Dynamic ONNX loading
