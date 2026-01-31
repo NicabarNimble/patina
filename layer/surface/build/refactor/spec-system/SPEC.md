@@ -121,6 +121,8 @@ id: kebab-case-name
 status: design | ready | in_progress | complete | archived
 created: YYYY-MM-DD
 updated: YYYY-MM-DD
+# Fix specs only: version that introduced the bug
+# affects_since: "0.x.y"
 sessions:
   origin: YYYYMMDD-HHMMSS
   work: [session-ids]
@@ -212,7 +214,7 @@ Milestones connect specs to version bumps. Use them when:
 **Milestone Rules:**
 
 1. **One `in_progress` at a time** - Focus. Complete current before starting next.
-2. **Version must be sequential** - 0.8.2 → 0.8.3, no skipping
+2. **Version must be sequential** - 0.10.0 → 0.11.0, no skipping
 3. **Completing = version bump** - When milestone status → complete, `patina version milestone` bumps version
 4. **Exit criteria per milestone** - Each milestone should have clear criteria in the spec body
 5. **Scraped into index** - `patina scrape layer` extracts milestones for fast lookup
