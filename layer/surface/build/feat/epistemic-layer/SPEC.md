@@ -760,18 +760,18 @@ No composite score. No 0.88. Just counts that tell you *why* to trust (or questi
 
 #### Build Steps
 
-- [ ] 1. Compute use/truth metrics in belief scraper (`src/commands/scrape/beliefs/mod.rs`)
+- [x] 1. Compute use/truth metrics in belief scraper (`src/commands/scrape/beliefs/mod.rs`)
   - Cross-reference beliefs table against sessions, other belief files, layer/ patterns
   - Count evidence links, verify wikilink resolution, count Applied-In entries
   - Store in new columns on `beliefs` table
-- [ ] 2. Update scry enrichment to surface computed metrics instead of fake confidence
+- [x] 2. Update scry enrichment to surface computed metrics instead of fake confidence
   - Replace `[confidence: 88%, high]` with `[use: 9+4 | truth: 9/7 | 1 defeated]`
   - Format: `[use: {belief_citations}+{session_citations} | truth: {evidence}/{verified} | {defeated} defeated]`
-- [ ] 3. Drop fake confidence signals from `create-belief.sh`
+- [x] 3. Drop fake confidence signals from `create-belief.sh`
   - Remove `confidence.score` and `confidence.signals` from creation template
   - Keep: id, statement, persona, facets, entrenchment, status, endorsed
   - Confidence is computed, not declared
-- [ ] 4. `patina belief audit` command — show all beliefs ranked by use/truth
+- [x] 4. `patina belief audit` command — show all beliefs ranked by use/truth
   - Table output: belief ID, use metrics, truth metrics, warnings
   - Warnings: 0 evidence links, unverified wikilinks, no session citations, no Applied-In
   - Like `patina doctor` but for the epistemic layer
@@ -783,11 +783,11 @@ No composite score. No 0.88. Just counts that tell you *why* to trust (or questi
 
 #### E4 Exit Criteria
 
-- [ ] All belief metrics computed from real data (zero fabricated numbers)
-- [ ] `patina belief audit` shows use/truth for all beliefs
-- [ ] Scry results display computed metrics instead of fake confidence
-- [ ] `create-belief.sh` no longer generates confidence.signals
-- [ ] Cross-reference data queryable: "which beliefs have no evidence?" "which are most cited?"
+- [x] All belief metrics computed from real data (zero fabricated numbers)
+- [x] `patina belief audit` shows use/truth for all beliefs
+- [x] Scry results display computed metrics instead of fake confidence
+- [x] `create-belief.sh` no longer generates confidence.signals
+- [x] Cross-reference data queryable: "which beliefs have no evidence?" "which are most cited?"
 
 ### Phase E5: Revision Automation
 
