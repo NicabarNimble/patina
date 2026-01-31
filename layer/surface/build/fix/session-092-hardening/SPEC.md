@@ -1,7 +1,7 @@
 ---
 type: fix
 id: session-092-hardening
-status: in_progress
+status: complete
 created: 2026-01-31
 affects_since: 0.9.2
 sessions:
@@ -77,5 +77,5 @@ Deep review of session system identified 9 issues across 9 commands that touch s
 - [x] Starting commit captured after branch switch
 - [x] Incomplete session archive updates status to archived
 - [x] patterns_modified filter excludes non-pattern .md files
-- [ ] All fixes pass `cargo fmt`, `cargo clippy`, `cargo test`
-- [ ] Committed and pushed
+- [x] All fixes pass `cargo fmt`, `cargo clippy`, `cargo test`
+- [x] Committed and pushed

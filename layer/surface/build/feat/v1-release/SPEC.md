@@ -20,25 +20,25 @@ milestones:
 - version: 0.9.2
   name: Session system & adapter parity
   status: complete
-- version: 0.9.3
+- version: 0.10.0
   name: Epistemic E4 (belief automation)
   status: in_progress
-- version: 0.9.4
+- version: 0.11.0
   name: Mother federated query
   status: pending
-- version: 0.9.5
+- version: 0.12.0
   name: Dynamic ONNX loading
   status: pending
-- version: 0.9.6
+- version: 0.13.0
   name: WASM grammars
   status: pending
-- version: 0.9.7
+- version: 0.14.0
   name: GitHub releases + Homebrew
   status: pending
 - version: 1.0.0
   name: All pillars complete
   status: pending
-current_milestone: 0.9.3
+current_milestone: 0.10.0
 ---
 
 # feat: v1.0 Release
@@ -63,27 +63,28 @@ All three must be complete for v1.0.
 
 ## Versioning Strategy
 
-**Model:** Semver patches from 0.9.0 → 1.0.0
+**Model:** Semver — MINOR for milestones, PATCH for fixes
 
 ```
-0.9.0  - Current (public release, fat binary)
+0.9.0  - Public release (fat binary)
 0.9.1  ✓ Version system fixed, spec-system aligned
 0.9.2  ✓ Session system & adapter parity
-0.9.3  - Epistemic E4 (belief extraction automation)
-0.9.4  - Mother federated query
-0.9.5  - Dynamic ONNX loading
-0.9.6  - WASM grammars
-0.9.7  - GitHub releases + Homebrew
+0.9.3  ✓ Fix: session 0.9.2 hardening
+0.10.0 - Epistemic E4 (belief extraction automation)
+0.11.0 - Mother federated query
+0.12.0 - Dynamic ONNX loading
+0.13.0 - WASM grammars
+0.14.0 - GitHub releases + Homebrew
 1.0.0  - All pillars complete
 ```
 
-Each patch = one meaningful milestone toward a pillar.
+Each MINOR = one milestone toward a pillar. PATCH reserved for fixes.
 
 **Principle:** All three adapter LLMs must have the same level of excellence.
 
 ---
 
-## Immediate Next: 0.9.2 — Session System & Adapter Parity
+## Completed: 0.9.2 — Session System & Adapter Parity
 
 Move session mechanics from ~640 lines of bash into Patina Rust commands, making sessions adapter-agnostic while preserving the division of labor that makes them work: **Patina handles mechanics (git tags, scaffolding, metrics, classification, archival), LLMs handle meaning (narrative, context bridging, belief capture, goal tracking).**
 
@@ -470,3 +471,4 @@ Currently statically linked via `ort` crate's `download-binaries` feature.
 | 2026-01-30 | in_progress | 0.9.2 step 3: `patina session note` implemented — dual-write (markdown + eventlog), A/B tested against shell. |
 | 2026-01-31 | in_progress | 0.9.2 Phase 2 complete (steps 10-13): skill definitions call `patina session`, paths → `.patina/local/`, thin wrapper scripts deployed, lifecycle tested. |
 | 2026-01-31 | **0.9.2** | Phase 3 complete (steps 14-16): deleted 12 legacy shell scripts (~640 lines each), updated validate/sync_adapters to reference .md skill definitions, confirmed zero navigation.db writes in Rust. All exit criteria checked. |
+| 2026-01-31 | in_progress | Semver alignment: milestones→MINOR (0.10.0+), PATCH reserved for fixes. Added `patina version patch` command. Old 0.9.0-0.9.2 numbering unchanged. |

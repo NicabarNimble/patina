@@ -111,7 +111,7 @@ enum Commands {
         json: bool,
     },
 
-    /// Manage project versioning (Phase.Milestone model)
+    /// Manage project versioning (semver: MAJOR.MINOR.PATCH)
     Version {
         #[command(subcommand)]
         command: Option<commands::version::VersionCommands>,

@@ -517,6 +517,91 @@ fn rescrape_layer() -> Result<()> {
     Ok(())
 }
 
+/// Bump PATCH version for a fix release
+///
+/// Increments the patch component: 0.9.2 → 0.9.3
+/// Simpler than milestone — no spec milestone table to update.
+pub fn bump_patch(description: &str, no_tag: bool, dry_run: bool) -> Result<()> {
+    let old_version = read_cargo_version()?;
+
+    // Parse and increment patch
+    let parts: Vec<u32> = old_version
+        .split('.')
+        .map(|s| {
+            s.parse::<u32>()
+                .with_context(|| format!("Invalid version component: {}", s))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    if parts.len() != 3 {
+        anyhow::bail!("Expected semver format (x.y.z), got '{}'", old_version);
+    }
+
+    let new_version = format!("{}.{}.{}", parts[0], parts[1], parts[2] + 1);
+
+    // Check if versioning is enabled (owned vs fork)
+    let versioning_enabled = patina::project::is_versioning_enabled(Path::new("."));
+
+    if !versioning_enabled {
+        anyhow::bail!("Version bumping is disabled for fork repos. Set upstream.owned = true in .patina/config.toml.");
+    }
+
+    if dry_run {
+        println!("Dry run - would perform these changes:\n");
+        println!("Patch release: v{} - {}", new_version, description);
+        println!("Cargo.toml: {} -> {}", old_version, new_version);
+        if !no_tag {
+            println!("git tag: v{}", new_version);
+        }
+        return Ok(());
+    }
+
+    // Run safeguard checks
+    run_safeguard_checks(&new_version)?;
+
+    // Update Cargo.toml
+    update_cargo_version(&new_version)?;
+
+    // Commit the patch release
+    let commit_msg = format!("release: v{} - {}", new_version, description);
+    let output = Command::new("git")
+        .args(["add", "Cargo.toml"])
+        .output()
+        .context("Failed to stage Cargo.toml")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git add failed: {}", stderr);
+    }
+
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_msg])
+        .output()
+        .context("Failed to commit patch release")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("nothing to commit") {
+            anyhow::bail!("git commit failed: {}", stderr);
+        }
+    }
+
+    // Create git tag
+    if !no_tag {
+        create_git_tag(&new_version, description)?;
+    }
+
+    // Output
+    println!("\n✓ Patch release: v{}", new_version);
+    println!("  {}", description);
+    println!("  Cargo.toml: {} -> {}", old_version, new_version);
+    if !no_tag {
+        println!("  Tagged: v{}", new_version);
+    }
+
+    Ok(())
+}
+
 /// Start a new development phase
 ///
 /// DEPRECATED: This command uses the Phase.Milestone model which has been
