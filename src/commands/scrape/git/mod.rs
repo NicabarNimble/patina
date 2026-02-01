@@ -144,6 +144,102 @@ fn find_session_for_commit(commit_time: &str, sessions: &[SessionBounds]) -> Opt
     None
 }
 
+// ============================================================================
+// Git Tag Scraping
+// ============================================================================
+
+/// A parsed git tag
+#[derive(Debug)]
+struct GitTag {
+    name: String,
+    sha: String,
+    date: String,
+    tagger: String,
+    message: String,
+}
+
+/// Parse all git tags (lightweight and annotated)
+fn parse_all_tags() -> Result<Vec<GitTag>> {
+    let output = Command::new("git")
+        .args([
+            "tag",
+            "-l",
+            "--format",
+            "%(refname:short)|%(objectname:short)|%(creatordate:iso-strict)|%(taggername)|%(contents:subject)",
+        ])
+        .output()
+        .context("Failed to run git tag")?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut tags = Vec::new();
+
+    for line in stdout.lines() {
+        if line.is_empty() {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.splitn(5, '|').collect();
+        if parts.len() < 3 {
+            continue;
+        }
+
+        tags.push(GitTag {
+            name: parts[0].to_string(),
+            sha: parts.get(1).unwrap_or(&"").to_string(),
+            date: parts.get(2).unwrap_or(&"").to_string(),
+            tagger: parts.get(3).unwrap_or(&"").to_string(),
+            message: parts.get(4).unwrap_or(&"").to_string(),
+        });
+    }
+
+    Ok(tags)
+}
+
+/// Insert git tags into materialized view (and eventlog for project repos)
+fn insert_tags(conn: &Connection, tags: &[GitTag], skip_eventlog: bool) -> Result<usize> {
+    // Clear and rebuild — tags are cheap and this avoids stale deleted tags
+    conn.execute("DELETE FROM git_tags", [])?;
+
+    let mut stmt = conn.prepare(
+        "INSERT OR REPLACE INTO git_tags (tag_name, sha, tag_date, tagger_name, message) VALUES (?1, ?2, ?3, ?4, ?5)",
+    )?;
+
+    for tag in tags {
+        if !skip_eventlog {
+            let event_data = json!({
+                "tag_name": &tag.name,
+                "sha": &tag.sha,
+                "tag_date": &tag.date,
+                "tagger_name": &tag.tagger,
+                "message": &tag.message,
+            });
+
+            database::insert_event(
+                conn,
+                "git.tag",
+                &tag.date,
+                &tag.name,
+                None,
+                &event_data.to_string(),
+            )?;
+        }
+
+        stmt.execute(rusqlite::params![
+            &tag.name,
+            &tag.sha,
+            &tag.date,
+            &tag.tagger,
+            &tag.message,
+        ])?;
+    }
+
+    Ok(tags.len())
+}
+
 /// Parsed commit from git log
 #[derive(Debug)]
 struct GitCommit {
@@ -199,11 +295,21 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
             PRIMARY KEY (file_a, file_b)
         );
 
+        -- Git tags (all tags, not just session tags)
+        CREATE TABLE IF NOT EXISTS git_tags (
+            tag_name TEXT PRIMARY KEY,
+            sha TEXT,
+            tag_date TEXT,
+            tagger_name TEXT,
+            message TEXT
+        );
+
         -- Indexes for common queries
         CREATE INDEX IF NOT EXISTS idx_commits_timestamp ON commits(timestamp);
         CREATE INDEX IF NOT EXISTS idx_commits_author ON commits(author_email);
         CREATE INDEX IF NOT EXISTS idx_commit_files_path ON commit_files(file_path);
         CREATE INDEX IF NOT EXISTS idx_co_changes_count ON co_changes(count DESC);
+        CREATE INDEX IF NOT EXISTS idx_git_tags_date ON git_tags(tag_date);
         "#,
     )?;
 
@@ -522,6 +628,13 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
 
     // Create materialized views for git events
     create_materialized_views(&conn)?;
+
+    // Scrape all git tags (always full — cheap and idempotent)
+    let tags = parse_all_tags()?;
+    let tag_count = insert_tags(&conn, &tags, skip_eventlog)?;
+    if tag_count > 0 {
+        println!("  Indexed {} git tags", tag_count);
+    }
 
     // Get last SHA for incremental scraping
     let since_sha = if full { None } else { get_last_sha(&conn)? };
