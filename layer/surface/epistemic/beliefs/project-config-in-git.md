@@ -52,6 +52,20 @@ Project configuration should be tracked in git, only machine-specific settings b
 - `.patina/oxidize.yaml` tracked as project recipe, not machine-specific
 - `.gitignore` updated with clear comments explaining what's machine-specific vs project-level
 
+## Verification
+
+```verify type="sql" label="config.toml is git-tracked" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path = '.patina/config.toml'
+```
+
+```verify type="sql" label="oxidize.yaml is git-tracked" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path = '.patina/oxidize.yaml'
+```
+
+```verify type="sql" label="Machine-specific local/ not tracked" expect="= 0"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE '.patina/local/%'
+```
+
 ## Revision Log
 
 - 2026-01-17: Created (confidence: 0.85)

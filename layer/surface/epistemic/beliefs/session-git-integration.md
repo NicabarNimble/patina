@@ -56,6 +56,20 @@ Session tracking should use git tags and commits as first-class events, not sepa
 - `/session-update` uses git diff to detect uncommitted changes
 - Session classification uses git metrics: commits, files changed, patterns modified
 
+## Verification
+
+```verify type="sql" label="Session start tags exist" expect=">= 100"
+SELECT COUNT(*) FROM git_tags WHERE tag_name LIKE 'session-%-start'
+```
+
+```verify type="sql" label="Session end tags exist" expect=">= 100"
+SELECT COUNT(*) FROM git_tags WHERE tag_name LIKE 'session-%-end'
+```
+
+```verify type="sql" label="Commits linked to sessions" expect=">= 10"
+SELECT COUNT(*) FROM commits WHERE sha IN (SELECT DISTINCT source_id FROM eventlog WHERE event_type = 'git.commit' AND data LIKE '%session_id%')
+```
+
 ## Revision Log
 
 - 2026-01-17: Created (confidence: 0.87)
