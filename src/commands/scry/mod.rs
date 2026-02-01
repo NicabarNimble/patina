@@ -55,6 +55,8 @@ pub struct ScryOptions {
     pub include_persona: bool,
     pub hybrid: bool,
     pub explain: bool,
+    /// Force lexical (FTS5) search mode, bypassing auto-detection heuristics
+    pub lexical: bool,
     /// Routing strategy for cross-project queries (default: All)
     pub routing: RoutingStrategy,
 }
@@ -72,6 +74,7 @@ impl Default for ScryOptions {
             include_persona: true, // Include persona by default
             hybrid: false,
             explain: false,
+            lexical: false,
             routing: RoutingStrategy::default(),
         }
     }
@@ -124,8 +127,12 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
         (None, Some(q)) => {
             println!("Query: \"{}\"\n", q);
 
-            // If dimension explicitly specified, use vector search (skip lexical auto-detect)
-            if options.dimension.is_some() {
+            if options.lexical {
+                // Explicit --lexical flag forces FTS5 mode
+                println!("Mode: Lexical (FTS5) [forced]\n");
+                internal::search::scry_lexical(q, &options)?
+            } else if options.dimension.is_some() {
+                // If dimension explicitly specified, use vector search (skip lexical auto-detect)
                 println!(
                     "Mode: Vector ({} dimension)\n",
                     options.dimension.as_deref().unwrap()
@@ -173,7 +180,9 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
 
     // Log query for feedback loop (Phase 3)
     let query_id = if let Some(q) = query {
-        let mode = if options.dimension.is_some() {
+        let mode = if options.lexical {
+            "lexical"
+        } else if options.dimension.is_some() {
             options.dimension.as_deref().unwrap_or("semantic")
         } else if is_lexical_query(q) {
             "lexical"
