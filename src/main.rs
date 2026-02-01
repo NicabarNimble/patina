@@ -213,6 +213,10 @@ enum Commands {
         /// Show detailed oracle contributions for each result
         #[arg(long)]
         explain: bool,
+
+        /// Force lexical (FTS5) search mode, bypassing auto-detection
+        #[arg(long, conflicts_with = "command")]
+        lexical: bool,
     },
 
     /// Evaluate retrieval quality across dimensions
@@ -904,6 +908,7 @@ fn main() -> Result<()> {
             no_persona,
             hybrid,
             explain,
+            lexical,
         }) => {
             // Handle subcommands first
             if let Some(subcmd) = command {
@@ -948,6 +953,7 @@ fn main() -> Result<()> {
                     include_persona: !no_persona,
                     hybrid,
                     explain,
+                    lexical,
                     routing: routing_strategy,
                 };
                 commands::scry::execute(query.as_deref(), options)?;

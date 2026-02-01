@@ -235,22 +235,36 @@ pub fn scry(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
 }
 
 /// Check if query looks like a lexical/exact-match query
+///
+/// This function gates the routing decision: lexical queries go to FTS5,
+/// everything else to semantic vector search. It must be at least as
+/// permissive as `is_code_like()` in query_prep.rs — otherwise code
+/// patterns get routed to semantic mode where they produce noise.
 pub fn is_lexical_query(query: &str) -> bool {
     let lower = query.to_lowercase();
 
-    // Explicit lexical patterns
+    // Explicit lexical patterns (natural language triggers)
     lower.starts_with("find ")
         || lower.starts_with("where is ")
         || lower.starts_with("show me the ")
         || lower.starts_with("show me ")
         || lower.contains(" defined")
-        // Code symbol patterns
+        // Code symbol patterns (original)
         || query.contains("::")
         || query.contains("()")
         || query.contains("fn ")
         || query.contains("struct ")
         || query.contains("const ")
         || query.contains("impl ")
+        // Aligned with is_code_like() — these were missing and caused
+        // insert_event, create_uid_if_missing, allow(dead_code) etc.
+        // to fall through to semantic mode
+        || (query.contains('_') && !query.contains(' '))  // snake_case without spaces
+        || query.chars().all(|c| c.is_alphanumeric() || c == '_')  // single identifier
+        || (query.contains('(') && query.contains(')'))  // parens (not just "()" pair)
+        // Keyword at end of query (e.g., "async fn" has no trailing space)
+        || lower.ends_with(" fn")
+        || lower.ends_with(" struct")
 }
 
 /// Lexical search using FTS5 for exact matches

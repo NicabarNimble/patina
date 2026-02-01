@@ -89,11 +89,7 @@ pub fn enrich_results(
 
                             let content = format!(
                                 "{} [{}{}] ({}, {})",
-                                statement,
-                                metrics_str,
-                                health,
-                                entrenchment,
-                                file_path
+                                statement, metrics_str, health, entrenchment, file_path
                             );
 
                             Ok(ScryResult {
