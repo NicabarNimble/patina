@@ -240,6 +240,44 @@ fn insert_tags(conn: &Connection, tags: &[GitTag], skip_eventlog: bool) -> Resul
     Ok(tags.len())
 }
 
+// ============================================================================
+// Git Tracked Files
+// ============================================================================
+
+/// Get list of git-tracked files
+fn parse_tracked_files() -> Result<Vec<String>> {
+    let output = Command::new("git")
+        .args(["ls-files"])
+        .output()
+        .context("Failed to run git ls-files")?;
+
+    if !output.status.success() {
+        return Ok(Vec::new());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(String::from)
+        .collect())
+}
+
+/// Insert tracked files into materialized view
+fn insert_tracked_files(conn: &Connection, files: &[String]) -> Result<usize> {
+    // Clear and rebuild — fast and avoids stale entries from deleted files
+    conn.execute("DELETE FROM git_tracked_files", [])?;
+
+    let mut stmt =
+        conn.prepare("INSERT INTO git_tracked_files (file_path, status) VALUES (?1, 'tracked')")?;
+
+    for file in files {
+        stmt.execute([file])?;
+    }
+
+    Ok(files.len())
+}
+
 /// Parsed commit from git log
 #[derive(Debug)]
 struct GitCommit {
@@ -293,6 +331,12 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
             file_b TEXT,
             count INTEGER,
             PRIMARY KEY (file_a, file_b)
+        );
+
+        -- Git tracked files (from git ls-files)
+        CREATE TABLE IF NOT EXISTS git_tracked_files (
+            file_path TEXT PRIMARY KEY,
+            status TEXT DEFAULT 'tracked'
         );
 
         -- Git tags (all tags, not just session tags)
@@ -634,6 +678,13 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     let tag_count = insert_tags(&conn, &tags, skip_eventlog)?;
     if tag_count > 0 {
         println!("  Indexed {} git tags", tag_count);
+    }
+
+    // Scrape git tracked files (always full — fast rebuild from git ls-files)
+    let tracked = parse_tracked_files()?;
+    let tracked_count = insert_tracked_files(&conn, &tracked)?;
+    if tracked_count > 0 {
+        println!("  Indexed {} tracked files", tracked_count);
     }
 
     // Get last SHA for incremental scraping
