@@ -12,7 +12,7 @@ related:
 
 # feat: Epistemic Markdown Layer
 
-**Progress:** E0 ✅ | E1 (in progress) | E2 ✅ | E2.5 ✅ | E3 ✅ | E4 (in progress) | E5-E6 (planned)
+**Progress:** E0 ✅ | E1 (in progress) | E2 ✅ | E2.5 ✅ | E3 ✅ | E4 (steps 1-4 ✅, steps 5-10 in progress) | E5-E6 (planned)
 **Prototype:** `layer/surface/epistemic/`
 
 ---
@@ -775,11 +775,24 @@ No composite score. No 0.88. Just counts that tell you *why* to trust (or questi
   - Table output: belief ID, use metrics, truth metrics, warnings
   - Warnings: 0 evidence links, unverified wikilinks, no session citations, no Applied-In
   - Like `patina doctor` but for the epistemic layer
-- [ ] 5. Update existing 43 belief files — remove fake confidence.signals block
+- [ ] 5. Backfill evidence provenance — every evidence line must cite its source session
+  - 17 unverified evidence lines across 13 beliefs: all were articulated during sessions but the LLM didn't cite the session
+  - 8 lines need `[[wikilinks]]` added (bare file/spec refs, truncated session IDs)
+  - 2 lines have `[[commit-*]]` refs the verifier doesn't handle (fix in step 6)
+  - 7 lines are narrative reasoning with no session link — find the origin session and add it
+  - Target: 80/80 evidence verified (100%)
+- [ ] 6. Fix verifier: `[[commit-*]]` via `git rev-parse`, broader reference recognition
+  - Add `git rev-parse` verification for `[[commit-HASH]]` wikilinks
+  - Fuzzy session matching: `[[session-20260105]]` → find `layer/sessions/20260105-*.md`
+- [ ] 7. Update `create-belief.sh` to auto-attach current session ID to every evidence line
+  - The skill knows the active session (from `.patina/local/active-session.md`)
+  - Every evidence line written at creation time gets `[[session-{id}]]:` prefix
+  - Prevents future provenance gaps — no more orphaned reasoning
+- [ ] 8. Update existing 44 belief files — remove fake confidence.signals block
   - Batch migration: strip `confidence:` block from YAML frontmatter
   - Add `endorsed: true` for beliefs created via explicit user request
-- [ ] 6. Update belief scraper to read new schema (handle both old and new format during migration)
-- [ ] 7. MCP `context` tool includes belief metrics in pattern context
+- [ ] 9. Update belief scraper to read new schema (handle both old and new format during migration)
+- [ ] 10. MCP `context` tool includes belief metrics in pattern context
 
 #### E4 Exit Criteria
 
@@ -788,6 +801,11 @@ No composite score. No 0.88. Just counts that tell you *why* to trust (or questi
 - [x] Scry results display computed metrics instead of fake confidence
 - [x] `create-belief.sh` no longer generates confidence.signals
 - [x] Cross-reference data queryable: "which beliefs have no evidence?" "which are most cited?"
+- [ ] 100% evidence verification — every evidence line traces to a real file/session/commit
+- [ ] Verifier handles `[[commit-*]]` and fuzzy session IDs
+- [ ] `create-belief.sh` auto-attaches session provenance to evidence lines
+- [ ] Fake `confidence.signals` removed from all belief files
+- [ ] MCP `context` tool surfaces belief metrics
 
 ### Phase E5: Revision Automation
 
@@ -852,6 +870,7 @@ No composite score. No 0.88. Just counts that tell you *why* to trust (or questi
 | Personas | 1 (architect) |
 | Indexed in Semantic | ✅ 43 beliefs in usearch |
 | Queryable via Scry | ✅ Verified working |
+| Evidence Verified | 63/80 (79%) → target 80/80 (100%) via E4 steps 5-6 |
 | Confidence Scores | ❌ Fabricated — E4 replaces with computed metrics |
 
 ### Belief Inventory (Top 10 by Confidence)
