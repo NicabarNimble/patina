@@ -323,9 +323,8 @@ Rules are hypotheses until:
 
 ```
 layer/surface/epistemic/
-├── _index.md                    # Graph overview, statistics
 ├── VALIDATION.md                # Testing approach
-├── beliefs/
+├── beliefs/                     # 45 belief files (source of truth)
 │   ├── spec-first.md
 │   ├── dont-build-what-exists.md
 │   ├── smart-model-in-room.md
@@ -336,6 +335,15 @@ layer/surface/epistemic/
     ├── use-adapter-for-synthesis.md
     └── capture-at-boundary.md
 ```
+
+**Removed: `_index.md`** (Session 20260201-084453). The file was a manually-maintained
+materialized view of belief state — statistics, inventory tables, argument graph, attack
+graph — that drifted as the system grew from 15 to 45 beliefs. All derived data is now
+computed by `patina scrape` and displayed by `patina belief audit`. Process documentation
+(belief creation, enrichment) lives in `SKILL.md`. Academic grounding (AGM framework) lives
+in this SPEC. Keeping a hand-maintained summary file violated Helland's principle: derived
+data should not masquerade as source data. The file was actively misleading (showed removed
+`--confidence` flag, reported 15 beliefs when 45 exist).
 
 ---
 
@@ -804,11 +812,17 @@ No composite score. No 0.88. Just counts that tell you *why* to trust (or questi
 - [ ] Fake `confidence.signals` removed from all belief files
 - [ ] MCP `context` tool surfaces belief metrics
 
-### Phase E4.5: Verification Queries — Structural Evidence (Exploring)
+### Phase E4.5: Belief Verification — Connecting Beliefs to Ingredients
 
-**North Star:** Beliefs should be falsifiable. A claim like "no async in the codebase" should be tested against the codebase itself — not just supported by session testimony.
+**Promoted to standalone spec:** See [[belief-verification]] (`layer/surface/build/feat/belief-verification/SPEC.md`)
 
-**Insight (Session 20260131-210617):** The `patina scrape` pipeline already builds a rich knowledge database (function_facts, call_graph, code_search, commits, sessions, co_changes, import_facts, type_vocabulary — ~46K rows total). Beliefs have 95 belief-to-belief links and 43 session links, but almost zero links to this structural data. The data exists. The beliefs don't query it.
+E4.5 was expanded from "add SQL queries to beliefs" into a full measurement-driven design after
+running a 10-belief x 6-layer evidence experiment (Session 20260201-084453). Key findings: SQL +
+Assay are the strong proof layers (not just SQL), scry has a lexical routing bug that must be
+fixed before it's useful for verification, and process beliefs correctly have no structural proof.
+The original design context below is preserved; the new spec contains the full build plan.
+
+**Original insight (Session 20260131-210617):** The `patina scrape` pipeline already builds a rich knowledge database (function_facts, call_graph, code_search, commits, sessions, co_changes, import_facts, type_vocabulary — ~46K rows total). Beliefs have 95 belief-to-belief links and 43 session links, but almost zero links to this structural data. The data exists. The beliefs don't query it.
 
 **Andrew Ng framing:** Three levels of evidence quality:
 1. **Testimony** — "We discussed this in a session." (What beliefs have now — 84% of evidence.)
