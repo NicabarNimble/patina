@@ -27,10 +27,10 @@ Session tracking should use git tags and commits as first-class events, not sepa
 
 ## Evidence
 
-- Git history shows 10 session tags in 2 days: `session-TIMESTAMP-claude-start` and `session-TIMESTAMP-claude-end` (weight: 0.90)
-- [[CLAUDE.md]] Session-Git Commands section: "Integrated Git workflow into session tracking" (weight: 0.88)
-- `.claude/bin/session-start.sh` automatically creates git tags at session boundaries (weight: 0.92)
-- Session files include git metrics: commits, files changed, session tags (weight: 0.85)
+- [[session-20260117-072948]]: Git history shows 10 session tags in 2 days: `session-TIMESTAMP-claude-start` and `session-TIMESTAMP-claude-end` (weight: 0.90)
+- [[session-20260117-072948]]: [[CLAUDE.md]] Session-Git Commands section: "Integrated Git workflow into session tracking" (weight: 0.88)
+- [[session-20260117-072948]]: [[.claude/bin/session-start.sh]] automatically creates git tags at session boundaries (weight: 0.92)
+- [[session-20260117-072948]]: Session files include git metrics: commits, files changed, session tags (weight: 0.85)
 
 ## Supports
 

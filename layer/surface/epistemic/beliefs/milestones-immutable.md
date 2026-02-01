@@ -28,7 +28,7 @@ Milestones are immutable goals that define the "what" (destination), while spec 
 ## Evidence
 
 - session-20260126-074256: User articulated workflow: "milestones should not change... if it does change then we learned our milestone was wrong and we need to go back and make a new milestone" (weight: 0.95)
-- Parallel to git philosophy: commits are immutable, branches move forward (weight: 0.8)
+- [[session-20260126-074256]]: Parallel to git philosophy: commits are immutable, branches move forward (weight: 0.8)
 
 ## Supports
 

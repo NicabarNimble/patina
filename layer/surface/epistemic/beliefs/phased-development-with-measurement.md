@@ -30,7 +30,7 @@ Complex features should be built in phases, with each phase starting with measur
 - [[spec/mothership-graph]] G0 (baseline measurement) → G1 (graph CLI) → G2 (routing) → G2.5 (feedback loop) - each phase started with metrics (weight: 0.92)
 - [[spec-epistemic-layer]] E0 (prototype) → E1 (manual population) → E2 (creation system) → E3 (scry integration) - phased with validation criteria (weight: 0.90)
 - [[spec-epistemic-layer]] Andrew Ng methodology: "Establish a baseline first" before iterating (weight: 0.88)
-- Git history shows G0-G2.5 commits each tagged phase completion with measurement results (weight: 0.85)
+- [[session-20260117-072948]]: Git history shows G0-G2.5 commits each tagged phase completion with measurement results (weight: 0.85)
 
 ## Supports
 

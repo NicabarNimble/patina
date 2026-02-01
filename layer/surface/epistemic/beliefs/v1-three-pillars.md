@@ -29,8 +29,8 @@ v1.0 requires finalizing exactly three pillars: epistemic layer (beliefs), mothe
 
 - session-20260129-074742: Crystallized v1.0 focus from discussion of specs, versioning, and distribution. User confirmed these three as THE dependencies for 1.0. (weight: 0.95)
 - session-20260127-085434: Distribution architecture emerged from crates.io blocker (60MB grammars). WASM + dynamic ONNX chosen. (weight: 0.85)
-- spec-epistemic-layer: E0-E3 complete, 35 beliefs indexed. E4 (automation) identified as remaining work. (weight: 0.80)
-- spec-mother: Federated query and persona fusion identified as remaining work. (weight: 0.80)
+- [[session-20260129-074742]]: [[spec-epistemic-layer]] E0-E3 complete, 35 beliefs indexed. E4 (automation) identified as remaining work. (weight: 0.80)
+- [[session-20260129-074742]]: [[spec-mother]] Federated query and persona fusion identified as remaining work. (weight: 0.80)
 
 ## Supports
 

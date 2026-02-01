@@ -28,7 +28,7 @@ Project configuration should be tracked in git, only machine-specific settings b
 ## Evidence
 
 - [[session-20260116-221800]] CI failed because `.patina/config.toml` was gitignored → CI created default config with wrong embedding model (`all-minilm-l6-v2` instead of project's `e5-base-v2`) (weight: 0.92)
-- [[commit-b5d318e7]] Fixed by re-tracking config.toml with note: "only `[environment]` section is machine-specific" (weight: 0.90)
+- [[session-20260117-072948]]: [[commit-b5d318e7]] Fixed by re-tracking config.toml with note: "only `[environment]` section is machine-specific" (weight: 0.90)
 - [[session-20260116-154950]] Same issue with `oxidize.yaml` being gitignored (weight: 0.85)
 
 ## Supports

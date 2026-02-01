@@ -29,7 +29,7 @@ Make small, focused commits frequently rather than batching changes into large c
 
 - [[CLAUDE.md]] Git Discipline section: "Commit often, use scalpel not shotgun. One commit = one purpose" (weight: 0.95)
 - [[session-20260116-221800]] Session ended with 8 commits, each focused on specific fix (weight: 0.85)
-- Git history shows ~150+ commits in 2 weeks with clear single-purpose messages (weight: 0.90)
+- [[session-20260117-072948]]: Git history shows ~150+ commits in 2 weeks with clear single-purpose messages (weight: 0.90)
 
 ## Supports
 

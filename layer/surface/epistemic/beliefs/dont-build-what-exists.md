@@ -29,7 +29,7 @@ Before implementing new functionality, check what already exists. 90% of what yo
 
 - [[session-20260115-053944]] - "Connection scoring uses existing tools" (weight: 0.95)
 - [[session-20260115-053944]] - "90% of Mother's job already exists in oxidize/scry" (weight: 0.90)
-- [[commit-6aa7817e]] - Used existing assay tables for derive queries (weight: 0.85)
+- [[session-20260116-054624]]: [[commit-6aa7817e]] - Used existing assay tables for derive queries (weight: 0.85)
 
 ## Supports
 
