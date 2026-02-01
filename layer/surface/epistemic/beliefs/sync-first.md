@@ -32,6 +32,20 @@ Use synchronous, blocking code by default. Async adds complexity (infects codeba
 - [[session-20250804-073015]] - "Borrow checker works best without async runtime complexity" (weight: 0.85)
 - [[session-20250730-065949]] - "Chose blocking reqwest client for simplicity in CLI context" (weight: 0.80)
 
+## Verification
+
+```verify type="sql" label="No async functions" expect="= 0"
+SELECT COUNT(*) FROM function_facts WHERE is_async = 1
+```
+
+```verify type="sql" label="No tokio imports" expect="= 0"
+SELECT COUNT(*) FROM import_facts WHERE import_path LIKE '%tokio%'
+```
+
+```verify type="sql" label="No async imports" expect="= 0"
+SELECT COUNT(*) FROM import_facts WHERE import_path LIKE '%async%'
+```
+
 ## Supports
 
 - [[simple-error-handling]]
