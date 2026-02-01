@@ -722,6 +722,25 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     }
     if verified_count > 0 {
         println!("  Ran verification queries for {} beliefs", verified_count);
+
+        // Update aggregate columns on beliefs table for existing beliefs.
+        // Phase 3 skips already-processed beliefs during incremental scrape,
+        // so we need to push verification aggregates directly.
+        // No-op for beliefs not yet in the table (Phase 3 will insert them).
+        for belief in &all_beliefs {
+            if !belief.verification_queries.is_empty() {
+                let _ = conn.execute(
+                    "UPDATE beliefs SET verification_total = ?1, verification_passed = ?2, verification_failed = ?3, verification_errored = ?4 WHERE id = ?5",
+                    rusqlite::params![
+                        belief.verification.total,
+                        belief.verification.passed,
+                        belief.verification.failed,
+                        belief.verification.errored,
+                        belief.id,
+                    ],
+                );
+            }
+        }
     }
 
     // Phase 3: Insert beliefs into database

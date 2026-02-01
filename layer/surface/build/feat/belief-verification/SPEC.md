@@ -7,13 +7,14 @@ updated: 2026-02-01
 sessions:
   origin: 20260201-084453
   phase1: 20260201-130711
+  phase2: 20260201-142813
 related:
   - layer/surface/build/feat/epistemic-layer/SPEC.md
 ---
 
 # feat: Belief Verification — Connecting Beliefs to Their Ingredients
 
-**Progress:** Measurement complete | Spec drafted | **Phase 1 complete** (SQL verification wired, sync-first 3/3)
+**Progress:** Measurement complete | Spec drafted | **Phase 1 complete** | **Phase 2 complete** (assay/temporal verification, 4 beliefs 10/10)
 **Parent:** epistemic-layer (E4.5)
 **Principle:** Measure before building (Andrew Ng). Don't architect first — prove which connections produce signal.
 
@@ -572,6 +573,24 @@ Design notes:
 - No FK constraint on `belief_verifications` — Phase 2.5 stores results before Phase 3 inserts beliefs
 - Assay/temporal query types are stubbed with clear error messages ("not yet supported")
 
+### Phase 2 Implementation (Session 20260201-142813)
+
+Files changed:
+- `src/commands/scrape/beliefs/verification.rs` — assay DSL (command registry, parser, SQL builder), temporal queries, LIKE escaping, 50 tests total
+- `src/commands/scrape/beliefs/mod.rs` — post-Phase 2.5 UPDATE to push aggregates to existing beliefs during incremental scrape
+- `layer/surface/epistemic/beliefs/eventlog-is-truth.md` — 2 verification queries (1 SQL + 1 assay)
+- `layer/surface/epistemic/beliefs/self-healing-invariants.md` — 2 verification queries (2 assay)
+- `layer/surface/epistemic/beliefs/commit-early-commit-often.md` — 3 verification queries (2 SQL + 1 temporal)
+
+Design notes:
+- Assay DSL: `<command> --pattern "<pattern>"` with optional `| count(distinct <field>)`. Commands: callers, callees, functions, imports, importers
+- No assay refactoring: builds counting SQL from command registry instead of calling execute_* functions. Avoids truncation (no LIMIT), avoids row deserialization
+- LIKE wildcards escaped in patterns (`%` → `\%`, `_` → `\_`). ESCAPE clause embedded per-LIKE in WHERE clause (not appended at end — critical for OR clauses)
+- Per-command field validation: distinct fields are allowlisted per command (callers allows file/caller/callee/call_type, importers allows only file)
+- Temporal queries: `derive-moments | summary.<field>` with allowlisted fields. Runs SQL directly against commits table, no dependency on moments table
+- Aggregation as strict enum: CountAll, CountDistinct(field). Default is CountAll when no pipe
+- Incremental scrape fix: Phase 2.5 now UPDATEs beliefs table aggregate columns directly, since Phase 3 skips already-processed beliefs
+
 ---
 
 ## Build Steps
@@ -590,25 +609,27 @@ Design notes:
 - [x] 6. Integrate into scraper `run()` as Phase 2.5 — after cross_reference, before insert
 - [x] 7. Update `patina belief audit` — V-OK column, verify-contested/verify-error warnings
 
-### Phase 2: Wire Up Assay Verification
+### Phase 2: Wire Up Assay Verification — COMPLETE (Session 20260201-142813)
 
-- [ ] 8. Implement `run_verification_query()` for `type="assay"` — call assay functions
-  programmatically from scraper (callers, functions, importers, derive)
-- [ ] 9. Define assay query DSL — `callers --pattern "X" | count(distinct file)` or similar
-  compact syntax that maps to assay API calls
-- [ ] 10. Add `type="temporal"` for derive-moments queries
+- [x] 8. Implement `run_verification_query()` for `type="assay"` — assay DSL with command
+  registry, builds counting SQL directly (no row fetching)
+- [x] 9. Define assay query DSL — `callers --pattern "X" | count(distinct file)` with
+  strict enum aggregation, per-command field validation, LIKE escaping
+- [x] 10. Add `type="temporal"` for derive-moments queries — `derive-moments | summary.<field>`
+  with allowlisted fields, SQL runs directly against commits table
 
-### Phase 3: Proof-of-Concept Beliefs
+### Phase 3: Proof-of-Concept Beliefs — COMPLETE (Session 20260201-142813)
 
 - [x] 11. Add `## Verification` to `sync-first` — 3 SQL queries (is_async, tokio imports,
   async imports) — pulled forward to Phase 1 as smoke test, 3/3 passing
-- [ ] 12. Add `## Verification` to `eventlog-is-truth` — 1 SQL (caller count) + 1 assay
-  (callers across distinct files)
-- [ ] 13. Add `## Verification` to `commit-early-commit-often` — 2 SQL (total commits, avg
-  files/commit) + 1 temporal (derive-moments)
-- [ ] 14. Add `## Verification` to `self-healing-invariants` — 1 assay (functions matching
-  migration pattern)
-- [ ] 15. End-to-end test: scrape → audit → verify all results display correctly
+- [x] 12. Add `## Verification` to `eventlog-is-truth` — 1 SQL (caller count) + 1 assay
+  (callers across distinct files) — 2/2 passing
+- [x] 13. Add `## Verification` to `commit-early-commit-often` — 2 SQL (total commits, avg
+  files/commit) + 1 temporal (derive-moments) — 3/3 passing
+- [x] 14. Add `## Verification` to `self-healing-invariants` — 2 assay (functions matching
+  migration and create_uid patterns) — 2/2 passing
+- [x] 15. End-to-end test: scrape → audit → verify all 10 queries across 4 beliefs display
+  correctly — 10 passed, 0 contested, 0 errors
 
 ### Phase 4: Fix Scry Lexical (Independent)
 
@@ -642,10 +663,10 @@ the important beliefs can be verified, and the verification engine connects them
 ### Engine Exit (Phases 1-3)
 
 - [x] Scraper parses and executes `## Verification` queries from belief files
-- [ ] SQL and assay query types both work — SQL done, assay Phase 2
+- [x] SQL and assay query types both work — SQL Phase 1, assay+temporal Phase 2
 - [x] Safety: only SELECT queries and allowlisted assay commands execute
 - [x] `patina belief audit` shows V-OK column with pass/total per belief
-- [ ] At least 4 beliefs have live verification queries passing — 1/4 (sync-first)
+- [x] At least 4 beliefs have live verification queries passing — 4/4 (sync-first, eventlog-is-truth, commit-early-commit-often, self-healing-invariants)
 - [ ] Success criterion: **maintaining these 4 feels effortless**
 - [x] Per-query results stored with status, result, error, timestamp, freshness
 

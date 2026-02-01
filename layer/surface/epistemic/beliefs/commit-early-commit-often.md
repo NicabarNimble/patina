@@ -31,6 +31,20 @@ Make small, focused commits frequently rather than batching changes into large c
 - [[session-20260116-221800]] Session ended with 8 commits, each focused on specific fix (weight: 0.85)
 - [[session-20260117-072948]]: Git history shows ~150+ commits in 2 weeks with clear single-purpose messages (weight: 0.90)
 
+## Verification
+
+```verify type="sql" label="Total commits in project" expect=">= 1000"
+SELECT COUNT(*) FROM commits
+```
+
+```verify type="sql" label="Avg files per commit under 10" expect="< 10"
+SELECT AVG(fc) FROM (SELECT COUNT(*) as fc FROM commit_files GROUP BY sha)
+```
+
+```verify type="temporal" label="Commit frequency from moments" expect=">= 1000"
+derive-moments | summary.total_commits
+```
+
 ## Supports
 
 - [[eventlog-is-truth]] - Granular commits create better audit trail
