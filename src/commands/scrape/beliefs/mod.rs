@@ -3,6 +3,9 @@
 //! Uses unified eventlog pattern:
 //! - Inserts belief.surface events into eventlog table
 //! - Creates materialized views (beliefs) from eventlog
+//! - Runs verification queries (Phase 2.5) and stores results
+
+mod verification;
 
 use anyhow::Result;
 use regex::Regex;
@@ -32,15 +35,19 @@ struct ParsedBelief {
     file_path: String,
     // Computed metrics (E4) — real data, not LLM guesses
     metrics: BeliefMetrics,
+    // Verification queries from ## Verification section
+    verification_queries: Vec<verification::VerificationQuery>,
+    // Verification aggregates (computed during Phase 2.5)
+    verification: verification::VerificationAggregates,
 }
 
 /// Computed use/truth metrics for a belief — all derived from files on disk
 #[derive(Debug, Default)]
 struct BeliefMetrics {
     // Use: is this belief doing work?
-    cited_by_beliefs: i32,  // other beliefs referencing this in Supports/Attacks/Evidence
+    cited_by_beliefs: i32, // other beliefs referencing this in Supports/Attacks/Evidence
     cited_by_sessions: i32, // session files mentioning this belief ID
-    applied_in: i32,        // entries in ## Applied-In section
+    applied_in: i32,       // entries in ## Applied-In section
 
     // Truth: is the evidence real?
     evidence_count: i32,    // entries in ## Evidence section
@@ -112,6 +119,9 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
         // Ignore error if column already exists
         let _ = conn.execute(&sql, []);
     }
+
+    // Create verification tables (belief_verifications + aggregate columns on beliefs)
+    verification::create_tables(conn)?;
 
     Ok(())
 }
@@ -233,6 +243,9 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
     // Check for endorsed field in frontmatter (default: true for existing beliefs)
     metrics.endorsed = true; // All beliefs created via skill are user-initiated
 
+    // Parse verification queries from ## Verification section
+    let verification_queries = verification::parse_verification_blocks(&content);
+
     Ok(ParsedBelief {
         id,
         statement,
@@ -246,6 +259,8 @@ fn parse_belief_file(path: &Path) -> Result<ParsedBelief> {
         content,
         file_path,
         metrics,
+        verification_queries,
+        verification: verification::VerificationAggregates::default(),
     })
 }
 
@@ -462,10 +477,7 @@ fn is_external_source(link: &str) -> bool {
 
 /// Cross-reference beliefs against each other and session files.
 /// Computes cited_by_beliefs and cited_by_sessions for each belief.
-fn cross_reference_beliefs(
-    beliefs: &mut [ParsedBelief],
-    project_root: &Path,
-) {
+fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
     let sessions_dir = project_root.join("layer/sessions");
 
     // Collect all belief IDs for reference
@@ -515,8 +527,7 @@ fn cross_reference_beliefs(
 
         // Update metrics
         beliefs[i].metrics.cited_by_beliefs = belief_citations;
-        beliefs[i].metrics.cited_by_sessions =
-            session_citations.get(bid).copied().unwrap_or(0);
+        beliefs[i].metrics.cited_by_sessions = session_citations.get(bid).copied().unwrap_or(0);
         beliefs[i].metrics.evidence_verified = verified;
         beliefs[i].metrics.external_sources += external;
     }
@@ -578,8 +589,9 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
 
     conn.execute(
         "INSERT INTO beliefs (id, statement, persona, facets, confidence, entrenchment, status, extracted, revised, file_path,
-         cited_by_beliefs, cited_by_sessions, applied_in, evidence_count, evidence_verified, defeated_attacks, external_sources, endorsed)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+         cited_by_beliefs, cited_by_sessions, applied_in, evidence_count, evidence_verified, defeated_attacks, external_sources, endorsed,
+         verification_total, verification_passed, verification_failed, verification_errored)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
         rusqlite::params![
             &belief.id,
             &belief.statement,
@@ -599,6 +611,10 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
             belief.metrics.defeated_attacks,
             belief.metrics.external_sources,
             belief.metrics.endorsed as i32,
+            belief.verification.total,
+            belief.verification.passed,
+            belief.verification.failed,
+            belief.verification.errored,
         ],
     )?;
 
@@ -686,6 +702,27 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     // This must happen after all beliefs are parsed
     let project_root = Path::new(".");
     cross_reference_beliefs(&mut all_beliefs, project_root);
+
+    // Phase 2.5: Run verification queries
+    // Executes SQL queries from ## Verification sections, stores per-query results,
+    // and computes aggregates. Runs on every scrape (D5: always verify).
+    let data_freshness = if full { "full" } else { "incremental" };
+    let mut verified_count = 0;
+    for belief in &mut all_beliefs {
+        if !belief.verification_queries.is_empty() {
+            let (_results, aggregates) = verification::run_verification_queries(
+                &conn,
+                &belief.id,
+                &belief.verification_queries,
+                data_freshness,
+            );
+            belief.verification = aggregates;
+            verified_count += 1;
+        }
+    }
+    if verified_count > 0 {
+        println!("  Ran verification queries for {} beliefs", verified_count);
+    }
 
     // Phase 3: Insert beliefs into database
     for belief in &all_beliefs {

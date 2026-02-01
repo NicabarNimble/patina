@@ -1,18 +1,19 @@
 ---
 type: feat
 id: belief-verification
-status: exploring
+status: building
 created: 2026-02-01
 updated: 2026-02-01
 sessions:
   origin: 20260201-084453
+  phase1: 20260201-130711
 related:
   - layer/surface/build/feat/epistemic-layer/SPEC.md
 ---
 
 # feat: Belief Verification — Connecting Beliefs to Their Ingredients
 
-**Progress:** Measurement complete | Spec drafted | Implementation planned
+**Progress:** Measurement complete | Spec drafted | **Phase 1 complete** (SQL verification wired, sync-first 3/3)
 **Parent:** epistemic-layer (E4.5)
 **Principle:** Measure before building (Andrew Ng). Don't architect first — prove which connections produce signal.
 
@@ -555,21 +556,39 @@ any tagged repo. This is how the belief network scales across projects.
 
 ---
 
+## Implementation Notes
+
+### Phase 1 Implementation (Session 20260201-130711)
+
+Files added/changed:
+- `src/commands/scrape/beliefs/verification.rs` — new module: parsing, safety, execution, storage (20 tests)
+- `src/commands/scrape/beliefs/mod.rs` — Phase 2.5 in pipeline, aggregate columns, `mod verification`
+- `src/commands/belief/mod.rs` — V-OK column, verify-contested/verify-error warnings
+- `layer/surface/epistemic/beliefs/sync-first.md` — first belief with `## Verification` section
+
+Design notes:
+- `verification.rs` is a sibling file (like `code/database.rs`), not an `internal/` module — follows existing scraper patterns
+- `belief_verifications` table uses DROP+CREATE (not IF NOT EXISTS) — results are transient, recomputed every scrape
+- No FK constraint on `belief_verifications` — Phase 2.5 stores results before Phase 3 inserts beliefs
+- Assay/temporal query types are stubbed with clear error messages ("not yet supported")
+
+---
+
 ## Build Steps
 
-### Phase 1: Wire Up SQL Verification (Minimum Viable)
+### Phase 1: Wire Up SQL Verification (Minimum Viable) — COMPLETE (Session 20260201-130711)
 
-- [ ] 1. Parse `## Verification` sections from belief markdown — extract fenced blocks with
+- [x] 1. Parse `## Verification` sections from belief markdown — extract fenced blocks with
   `verify` info-string, parse `type`, `label`, `expect` attributes
-- [ ] 2. Implement `validate_query_safety()` — SELECT-only for SQL type, allowlisted
+- [x] 2. Implement `validate_query_safety()` — SELECT-only for SQL type, allowlisted
   subcommands for assay type
-- [ ] 3. Implement `run_verification_query()` for `type="sql"` — execute against SQLite, compare
+- [x] 3. Implement `run_verification_query()` for `type="sql"` — execute against SQLite, compare
   result to expectation
-- [ ] 4. Create `belief_verifications` table — per-query results with status, result, error,
+- [x] 4. Create `belief_verifications` table — per-query results with status, result, error,
   timestamp, freshness
-- [ ] 5. Add aggregate columns to `beliefs` table — verification_total, passed, failed, errored
-- [ ] 6. Integrate into scraper `run()` as Phase 2.5 — after cross_reference, before insert
-- [ ] 7. Update `patina belief audit` — V-OK column, verify-contested/verify-error warnings
+- [x] 5. Add aggregate columns to `beliefs` table — verification_total, passed, failed, errored
+- [x] 6. Integrate into scraper `run()` as Phase 2.5 — after cross_reference, before insert
+- [x] 7. Update `patina belief audit` — V-OK column, verify-contested/verify-error warnings
 
 ### Phase 2: Wire Up Assay Verification
 
@@ -581,8 +600,8 @@ any tagged repo. This is how the belief network scales across projects.
 
 ### Phase 3: Proof-of-Concept Beliefs
 
-- [ ] 11. Add `## Verification` to `sync-first` — 3 SQL queries (is_async, tokio imports,
-  async imports)
+- [x] 11. Add `## Verification` to `sync-first` — 3 SQL queries (is_async, tokio imports,
+  async imports) — pulled forward to Phase 1 as smoke test, 3/3 passing
 - [ ] 12. Add `## Verification` to `eventlog-is-truth` — 1 SQL (caller count) + 1 assay
   (callers across distinct files)
 - [ ] 13. Add `## Verification` to `commit-early-commit-often` — 2 SQL (total commits, avg
@@ -622,13 +641,13 @@ the important beliefs can be verified, and the verification engine connects them
 
 ### Engine Exit (Phases 1-3)
 
-- [ ] Scraper parses and executes `## Verification` queries from belief files
-- [ ] SQL and assay query types both work
-- [ ] Safety: only SELECT queries and allowlisted assay commands execute
-- [ ] `patina belief audit` shows V-OK column with pass/total per belief
-- [ ] At least 4 beliefs have live verification queries passing
+- [x] Scraper parses and executes `## Verification` queries from belief files
+- [ ] SQL and assay query types both work — SQL done, assay Phase 2
+- [x] Safety: only SELECT queries and allowlisted assay commands execute
+- [x] `patina belief audit` shows V-OK column with pass/total per belief
+- [ ] At least 4 beliefs have live verification queries passing — 1/4 (sync-first)
 - [ ] Success criterion: **maintaining these 4 feels effortless**
-- [ ] Per-query results stored with status, result, error, timestamp, freshness
+- [x] Per-query results stored with status, result, error, timestamp, freshness
 
 ### Coverage Exit (Phases 5-6)
 
