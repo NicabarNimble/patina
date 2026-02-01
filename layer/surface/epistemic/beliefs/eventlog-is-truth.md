@@ -32,6 +32,16 @@ The append-only eventlog is the canonical source of truth. All tables (commits, 
 - [[spec-ref-repo-storage]] - Eventlog for expensive/original knowledge (weight: 0.85)
 - [[helland-paper]] - Academic grounding (weight: 0.80)
 
+## Verification
+
+```verify type="sql" label="insert_event callers" expect=">= 20"
+SELECT COUNT(*) FROM call_graph WHERE callee LIKE '%insert_event%'
+```
+
+```verify type="assay" label="insert_event across files" expect=">= 5"
+callers --pattern "insert_event" | count(distinct file)
+```
+
 ## Supports
 
 - [[rebuild-from-source]]

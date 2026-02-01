@@ -29,6 +29,16 @@ Prefer self-healing invariants over fail-fast guards - operations that need a pr
 
 - session-20260121-102727: database-identity Phase 1 chose auto-create UIDs over fail guards (weight: 0.9)
 
+## Verification
+
+```verify type="assay" label="migration functions exist" expect=">= 2"
+functions --pattern "migration"
+```
+
+```verify type="assay" label="create_uid functions exist" expect=">= 1"
+functions --pattern "create_uid"
+```
+
 ## Supports
 
 <!-- Add beliefs this supports -->
