@@ -28,8 +28,8 @@ Before implementing safety checks or guards, analyze the actual workflow pattern
 ## Evidence
 
 - session-20260126-074256: Analyzed git history before designing version safeguards. Found user is typically 30 commits ahead of remote - blocking on "ahead" would break normal workflow. (weight: 0.95)
-- Typical CI advice says "block if ahead of remote" but this user's pattern is commit-often-push-rarely. Theoretical advice was wrong for this workflow. (weight: 0.9)
-- Version safeguards designed from evidence: dirty tree (block), behind remote (block), ahead of remote (allow - it's normal). (weight: 0.9)
+- [[session-20260126-074256]]: Typical CI advice says "block if ahead of remote" but this user's pattern is commit-often-push-rarely. Theoretical advice was wrong for this workflow. (weight: 0.9)
+- [[session-20260126-074256]]: Version safeguards designed from evidence: dirty tree (block), behind remote (block), ahead of remote (allow - it's normal). (weight: 0.9)
 
 ## Supports
 

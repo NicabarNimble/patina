@@ -28,7 +28,7 @@ Before building infrastructure, measure the current state and prove the problem 
 ## Evidence
 
 - [[spec/mothership-graph]] - Phase G0 measured dumb routing before building graph (weight: 0.95)
-- [[session-20260105]] - "Don't build infrastructure before proving the problem exists with data" (weight: 0.90)
+- [[session-20260105-100012]] - "Don't build infrastructure before proving the problem exists with data" (weight: 0.90)
 - [[spec-review-q4-2025]] - MRR regression caught because of measurement culture (weight: 0.85)
 
 ## Supports

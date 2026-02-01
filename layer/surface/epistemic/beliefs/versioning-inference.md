@@ -32,8 +32,8 @@ This avoids redundant config flags. The upstream relationship already tells us w
 ## Evidence
 
 - session-20260126-074256: Discussed explicit `versioning.enabled` flag vs inference. User chose inference: "i think we should infer right?" (weight: 0.9)
-- Existing `[upstream]` config already distinguishes owned vs fork repos (weight: 0.85)
-- Implemented in `is_versioning_enabled()` - checks `upstream.remote == "origin"` (weight: 0.9)
+- [[session-20260126-074256]]: Existing `[upstream]` config already distinguishes owned vs fork repos (weight: 0.85)
+- [[session-20260126-074256]]: Implemented in [[src/project/internal.rs]] `is_versioning_enabled()` - checks `upstream.remote == "origin"` (weight: 0.9)
 
 ## Supports
 

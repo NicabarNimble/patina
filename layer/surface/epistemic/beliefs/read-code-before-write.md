@@ -29,7 +29,7 @@ Always read existing code before writing new code. Understanding existing patter
 
 - [[session-20260122-220957]] - E3 implementation followed ID offset pattern after reading oxidize/enrichment code (weight: 0.95)
 - [[session-20260122-154954]] - Mother-naming refactor read 50+ files before surgical edits (weight: 0.90)
-- CLAUDE.md instructs: "NEVER propose changes to code you haven't read" (weight: 0.85)
+- [[session-20260122-220957]]: [[CLAUDE.md]] instructs: "NEVER propose changes to code you haven't read" (weight: 0.85)
 
 ## Supports
 
