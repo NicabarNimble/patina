@@ -396,7 +396,36 @@ fn try_verify_link(link: &str, project_root: &Path) -> bool {
         let session_path = project_root
             .join("layer/sessions")
             .join(format!("{}.md", session_id));
-        return session_path.exists();
+        if session_path.exists() {
+            return true;
+        }
+        // Fuzzy match: [[session-20260105]] → find layer/sessions/20260105-*.md
+        if session_id.len() == 8 {
+            let sessions_dir = project_root.join("layer/sessions");
+            if let Ok(entries) = std::fs::read_dir(&sessions_dir) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    if let Some(name) = entry.file_name().to_str() {
+                        if name.starts_with(session_id) && name.ends_with(".md") {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    // Commit links: [[commit-HASH]] → verify via git rev-parse
+    if link.starts_with("commit-") {
+        let hash = link.strip_prefix("commit-").unwrap_or(link);
+        if let Ok(output) = std::process::Command::new("git")
+            .args(["rev-parse", "--verify", &format!("{}^{{commit}}", hash)])
+            .current_dir(project_root)
+            .output()
+        {
+            return output.status.success();
+        }
+        return false;
     }
 
     // Spec links: [[spec-name]] or [[spec/path]]
