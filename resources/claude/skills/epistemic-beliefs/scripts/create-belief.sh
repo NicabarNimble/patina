@@ -99,6 +99,18 @@ fi
 # Get current date
 TODAY=$(date +%Y-%m-%d)
 
+# Get active session ID for evidence provenance
+SESSION_ID=""
+ACTIVE_SESSION=".patina/local/active-session.md"
+if [ -f "$ACTIVE_SESSION" ]; then
+    SESSION_ID=$(grep "^id:" "$ACTIVE_SESSION" | head -1 | sed 's/id: *//')
+fi
+
+# Prepend session provenance to evidence if we have an active session
+if [ -n "$SESSION_ID" ]; then
+    EVIDENCE="[[session-${SESSION_ID}]]: ${EVIDENCE}"
+fi
+
 # Create the belief file — no fabricated confidence scores
 # Metrics are computed by `patina scrape` from real data:
 #   use: cited_by_beliefs, cited_by_sessions, applied_in

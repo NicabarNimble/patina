@@ -39,7 +39,7 @@ If user confirms, proceed with belief creation. If user declines, move on.
 
 Before creating a belief, ensure you have:
 - **Statement**: One clear sentence expressing the belief
-- **Evidence**: At least one source — use `[[wikilinks]]` for verifiable references (e.g., `[[session-20260131-150141]]`)
+- **Evidence**: At least one source — use `[[wikilinks]]` for verifiable references. The script auto-prepends the active session ID (e.g., `[[session-20260131-150141]]:`) so every evidence line traces to the conversation where it was articulated
 - **Persona**: Usually "architect" for project-level decisions
 
 **Do NOT guess a confidence score.** Confidence is computed by `patina scrape` from real data:
