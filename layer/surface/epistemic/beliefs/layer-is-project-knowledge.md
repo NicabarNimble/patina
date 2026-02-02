@@ -29,6 +29,20 @@ layer/ is project-specific knowledge that accumulates for ANY project via patina
 
 - session-20260122-102703: Discussion about /eval/ querysets led to clarification - user asked 'will we want to do this on each project?' triggering the distinction (weight: 0.95)
 
+## Verification
+
+```verify type="sql" label="Layer has core patterns tracked in git" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE 'layer/core/%'
+```
+
+```verify type="sql" label="Layer has surface patterns tracked in git" expect=">= 10"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE 'layer/surface/%'
+```
+
+```verify type="sql" label="Layer has sessions tracked in git" expect=">= 10"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE 'layer/sessions/%'
+```
+
 ## Supports
 
 <!-- Add beliefs this supports -->

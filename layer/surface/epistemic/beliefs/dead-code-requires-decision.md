@@ -30,6 +30,12 @@ Dead code requires a human decision, not silent annotation. Surface the code's o
 - session-20260129-074742: Found `#[allow(dead_code)]` on `get_spec_milestones()`. Presented options to user: "use it for progress display" vs "remove it". User chose remove. The annotation was hiding a decision that needed to be made. (weight: 0.9)
 - [[session-20260129-074742]]: User correction: "dead code shouldn't always be deleted... the human should be presented with the dead code reason for creation and what it would mean to be implemented vs deleted" (weight: 0.95)
 
+## Verification
+
+```verify type="sql" label="No allow(dead_code) annotations" expect="= 0"
+SELECT COUNT(*) FROM code_search WHERE context LIKE '%allow(dead\_code)%' ESCAPE '\'
+```
+
 ## Supports
 
 - [[signal-over-noise]]: Surfacing dead code for decision is signal; silencing it is noise

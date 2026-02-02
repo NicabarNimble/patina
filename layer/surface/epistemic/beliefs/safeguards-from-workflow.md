@@ -31,6 +31,16 @@ Before implementing safety checks or guards, analyze the actual workflow pattern
 - [[session-20260126-074256]]: Typical CI advice says "block if ahead of remote" but this user's pattern is commit-often-push-rarely. Theoretical advice was wrong for this workflow. (weight: 0.9)
 - [[session-20260126-074256]]: Version safeguards designed from evidence: dirty tree (block), behind remote (block), ahead of remote (allow - it's normal). (weight: 0.9)
 
+## Verification
+
+```verify type="assay" label="Safeguard function exists in version command" expect=">= 1"
+functions --pattern "safeguard"
+```
+
+```verify type="assay" label="Safeguard function is called" expect=">= 1"
+callers --pattern "safeguard"
+```
+
 ## Supports
 
 - versioning-inference: Both beliefs emphasize deriving behavior from existing state rather than explicit configuration

@@ -35,6 +35,16 @@ This avoids redundant config flags. The upstream relationship already tells us w
 - [[session-20260126-074256]]: Existing `[upstream]` config already distinguishes owned vs fork repos (weight: 0.85)
 - [[session-20260126-074256]]: Implemented in [[src/project/internal.rs]] `is_versioning_enabled()` - checks `upstream.remote == "origin"` (weight: 0.9)
 
+## Verification
+
+```verify type="assay" label="is_versioning_enabled function exists" expect=">= 1"
+functions --pattern "is_versioning_enabled"
+```
+
+```verify type="assay" label="is_versioning_enabled has callers" expect=">= 1"
+callers --pattern "is_versioning_enabled"
+```
+
 ## Supports
 
 - milestones-in-specs: For forks, milestones track YOUR contribution goals even though Cargo.toml is upstream-controlled

@@ -29,6 +29,12 @@ The frontmatter ID field is the canonical identity for indexed content, not the 
 
 - session-20260129-084757: Bug discovery — pruning used file stems but DB uses frontmatter IDs, causing specs like SPEC.md with id:v1-release to be incorrectly pruned (weight: 0.95)
 
+## Verification
+
+```verify type="assay" label="Frontmatter callers across multiple files" expect=">= 3"
+callers --pattern "frontmatter" | count(distinct file)
+```
+
 ## Supports
 
 <!-- Add beliefs this supports -->

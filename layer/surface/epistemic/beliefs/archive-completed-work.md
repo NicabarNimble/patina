@@ -29,6 +29,12 @@ Archive completed work promptly. Completed specs cluttering the active directory
 
 - session-20260122-083510: Cleaned 49 specs down to 15 by archiving 17 completed specs that had git tags but files never deleted
 
+## Verification
+
+```verify type="sql" label="No completed specs in active directories" expect="= 0"
+SELECT COUNT(*) FROM patterns WHERE status = 'complete' AND (file_path LIKE '%build/feat/%' OR file_path LIKE '%build/refactor/%' OR file_path LIKE '%build/fix/%')
+```
+
 ## Supports
 
 <!-- Add beliefs this supports -->

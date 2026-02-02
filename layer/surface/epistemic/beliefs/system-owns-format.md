@@ -29,6 +29,12 @@ For deterministic output, the system should own the format while the LLM provide
 
 - [[session-20260116-095954]]: E2 design principle - LLM provides args to script, script writes markdown with correct format (weight: 0.85)
 
+## Verification
+
+```verify type="sql" label="Validation scripts tracked in git" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE '%scripts/create-belief%'
+```
+
 ## Supports
 
 - [[skills-for-structured-output]] - Skills implement this pattern
