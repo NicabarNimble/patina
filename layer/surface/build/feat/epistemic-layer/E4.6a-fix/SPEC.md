@@ -116,9 +116,15 @@ After the existing kNN search that already finds commit neighbors:
   (replaces broken direct cosine path)
 - [x] 6. Test full cycle: scrape --rebuild, oxidize, scrape, belief audit — verify code grounding
   is nonzero for beliefs with commit neighbors
-- [ ] 7. Make `--impact` default-on in MCP scry (LLM always sees belief reach on code results)
-- [ ] 8. Add grounding accuracy measurement — verification queries that check whether
-  belief reach targets are topically relevant, not just commit-adjacent
+- [x] 7. Make `--impact` default-on in MCP scry (LLM always sees belief reach on code results)
+- [x] 8. Add grounding accuracy measurement — `is_source_code()` classifier, precision% in
+  scrape output. Revealed 9% precision (9 source files out of 93 reach files).
+- [ ] 9. Filter non-source files at the hop — only insert source code files into
+  `belief_code_reach` during `commit_files` walk. Noise enters at the structural hop because
+  commits that touch code also touch docs/configs. Filter at the source, not after.
+- [ ] 10. Build ground-truth eval set — add `verify type="sql"` queries to 5-10 beliefs that
+  check their own reach against expected files. Measures recall (does eventlog-is-truth reach
+  eventlog.rs?) alongside precision. Without recall, precision alone is meaningless.
 
 ---
 
@@ -128,8 +134,33 @@ After the existing kNN search that already finds commit neighbors:
 - [x] `belief_code_reach` populated with file paths reachable from each belief
 - [x] `--impact` shows belief annotations on code results via multi-hop
 - [x] No new embeddings or models required — pure SQL joins after semantic hop
-- [ ] MCP scry returns belief impact by default (no opt-in required)
-- [ ] Grounding accuracy measurable: beliefs can verify their own reach targets
+- [x] MCP scry returns belief impact by default (no opt-in required)
+- [x] Grounding accuracy measurable: precision% reported during scrape
+- [ ] Precision > 50% after source-only filtering
+- [ ] Recall measurable via ground-truth verification queries on 5-10 beliefs
+
+---
+
+## Error Analysis (9% precision)
+
+After steps 1-8, the structural hop (commit → commit_files) produces 93 reach files but only
+9 are source code. The 84 false positives break down as:
+
+| Category | Count | Cause |
+|----------|-------|-------|
+| Belief .md files | ~60 | Commits that create/edit beliefs also touch other belief files |
+| Spec/layer .md files | ~15 | Belief-related commits touch specs and design docs |
+| Config files (.yml, .toml) | ~5 | CI/config touched alongside code changes |
+| Session .md files | ~4 | Session files in same commit |
+
+**Root cause:** The commit→file hop is unfiltered. A commit message like "belief: add
+eventlog-is-infrastructure" scores 0.89 cosine with the eventlog-is-truth belief, but the
+commit only touches `layer/surface/epistemic/beliefs/eventlog-is-infrastructure.md` — no
+actual code. The semantic hop is accurate; the structural hop is noisy.
+
+**Fix:** Filter at the hop. Only insert source code files (.rs, .sh, .py, etc.) into
+`belief_code_reach`. Non-source files are noise for code grounding. This is a pipeline fix,
+not a model fix.
 
 ---
 
@@ -143,11 +174,12 @@ signals). Local-first, edge hardware, no cloud. The constraint is the architectu
 
 ## What This Changes
 
-- `grounding_code_count` becomes meaningful (was always 0, now 27/47 beliefs have code reach)
+- `grounding_code_count` becomes meaningful (was always 0, now source-code-only count)
 - `belief audit` GROUND column shows real code reach (e.g., `6c1m14s`)
 - `find_belief_impact()` uses `belief_code_reach` SQL lookup instead of broken direct cosine
 - MCP scry returns belief impact by default — LLM sees *why* code exists, not just *what*
-- Grounding accuracy is measurable via belief verification queries
+- Grounding precision tracked: source files / total reach files, reported each scrape
+- Ground-truth eval queries on key beliefs measure recall alongside precision
 
 ---
 
@@ -156,4 +188,4 @@ signals). Local-first, edge hardware, no cloud. The constraint is the architectu
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-02 | ready | Specced during session 20260202-130018 |
-| 2026-02-02 | active | Steps 1-6 complete (session 20260202-140700). 39/47 grounded, 93 reach files. Adding default-on + accuracy measurement. |
+| 2026-02-02 | active | Steps 1-8 complete. 39/47 grounded, 93 reach, 9% precision. Error analysis done. Steps 9-10 next. |
