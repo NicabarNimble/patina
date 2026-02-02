@@ -344,6 +344,8 @@ pub fn bump_milestone(
             milestone.spec_id
         );
     }
+    println!("\n  Rebuild to use new version:");
+    println!("    cargo build --release && cargo install --path .");
 
     Ok(())
 }
@@ -602,6 +604,8 @@ pub fn bump_patch(description: &str, no_tag: bool, dry_run: bool) -> Result<()> 
     if !no_tag {
         println!("  Tagged: v{}", new_version);
     }
+    println!("\n  Rebuild to use new version:");
+    println!("    cargo build --release && cargo install --path .");
 
     Ok(())
 }
