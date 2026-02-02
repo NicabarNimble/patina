@@ -125,6 +125,7 @@ Run regularly to catch regressions.
 - [feat/mother/SPEC.md](../surface/build/feat/mother/SPEC.md) - **Pillar 2:** Federated query, persona fusion
 
 **Features:**
+- [feat/spec-drift-detection/SPEC.md](../surface/build/feat/spec-drift-detection/SPEC.md) - **Building:** Detect stale specs before LLM reads them (temporal drift, status contradiction, assertions)
 - [feat/surface-layer/SPEC.md](../surface/build/feat/surface-layer/SPEC.md) - **Design:** Distillation layer with success metrics, `patina surface` command
 
 **In Progress:**
