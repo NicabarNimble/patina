@@ -59,10 +59,10 @@ struct BeliefMetrics {
     endorsed: bool, // user explicitly created or confirmed
 
     // E4.6a: Semantic grounding — how connected is this belief to code/commits/sessions?
-    grounding_score: f32,          // Average similarity to grounded neighbors (0.0-1.0)
-    grounding_code_count: i32,     // Code functions above similarity threshold
-    grounding_commit_count: i32,   // Commits above similarity threshold
-    grounding_session_count: i32,  // Sessions above similarity threshold
+    grounding_score: f32, // Average similarity to grounded neighbors (0.0-1.0)
+    grounding_code_count: i32, // Code functions above similarity threshold
+    grounding_commit_count: i32, // Commits above similarity threshold
+    grounding_session_count: i32, // Sessions above similarity threshold
 }
 
 /// Create materialized views for belief events
@@ -630,7 +630,7 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
             if key == BELIEF_ID_OFFSET + rowid {
                 continue;
             }
-            if key >= PATTERN_ID_OFFSET && key < COMMIT_ID_OFFSET {
+            if (PATTERN_ID_OFFSET..COMMIT_ID_OFFSET).contains(&key) {
                 continue;
             }
             // Skip other beliefs
@@ -642,9 +642,9 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
                 continue;
             }
 
-            if key >= CODE_ID_OFFSET && key < PATTERN_ID_OFFSET {
+            if (CODE_ID_OFFSET..PATTERN_ID_OFFSET).contains(&key) {
                 code_count += 1;
-            } else if key >= COMMIT_ID_OFFSET && key < BELIEF_ID_OFFSET {
+            } else if (COMMIT_ID_OFFSET..BELIEF_ID_OFFSET).contains(&key) {
                 commit_count += 1;
             } else if key < CODE_ID_OFFSET {
                 session_count += 1;
