@@ -838,23 +838,95 @@ for human reading — no code computes over them. This is the E4.6 gap.
 
 ---
 
-### Phase E4.6: Semantic Belief Relationships
+### Phase E4.6: Semantic Belief Grounding
 
-**Problem:** Beliefs exist in the same embedding space as code, commits, and sessions (via
-oxidize at `BELIEF_ID_OFFSET = 4B`), but no code queries relationships *between* beliefs.
-The `cross_reference_beliefs()` function counts citations via substring matching — it doesn't
-distinguish supports from attacks, compute similarity, or detect conflicts. The supports/attacks
-sections in belief markdown are human-readable documentation, not computational graph edges.
+**Problem:** Beliefs exist in the same 256-dimensional cosine vector space as code, commits,
+sessions, and patterns (via oxidize). All five content types share one embedding model (E5-base-v2),
+one MLP projection (768→256), and one usearch index. But nothing queries across these types.
+The infrastructure to answer "which code is this belief about?" or "which beliefs relate to this
+commit?" exists — it's just not connected.
 
-**What E4.5 revealed:** Verification connects beliefs to code (downward: belief → DB). E4.6
-connects beliefs to each other (lateral: belief ↔ belief). Together they complete the measurement
-foundation before E5 adds reasoning.
+**What E4.5 revealed:** Verification connects beliefs to code via deterministic SQL (belief →
+query → DB fact). E4.6 connects beliefs to the broader codebase via semantic proximity (belief ↔
+code/commit/session/belief). Verification proves specific claims; semantic grounding discovers
+where beliefs live in the project.
+
+**Design progression:**
+```
+E4.5:  Belief → SQL/Assay → DB fact         (deterministic proof)
+E4.6a: Belief ↔ code/commit/session          (semantic grounding)
+E4.6b: Belief ↔ belief                       (semantic clustering)
+E5:    Belief graph reasoning + mother        (cross-project)
+```
+
+E4.6a comes first because grounding beliefs in code is more immediately useful than clustering
+beliefs with each other. And belief↔belief similarity is a small step once belief↔code works —
+same infrastructure, different ID offset filter. Together, E4.6a+b lay the measurement foundation
+that E5 reasons over and that mother uses for cross-project belief routing.
+
+**Existing infrastructure (no new models or indexes needed):**
+- `usearch::Index::get(id, &mut vector)` retrieves any point's vector by ID (`search.rs:176-187`)
+- `usearch::Index::search(&vector, limit)` returns kNN across all content types
+- Enrichment layer already decodes all 5 ID ranges (`enrichment.rs:32-256`)
+- `scry_file()` already does exactly this pattern: get vector by ID → search for neighbors
+
+---
+
+#### E4.6a: Belief ↔ Code/Commit/Session Grounding
+
+**What it enables:**
+
+| Direction | Question | Value |
+|-----------|----------|-------|
+| Belief → code | "Which functions relate to sync-first?" | Evidence discovery — find verification targets you haven't written queries for |
+| Belief → commits | "Which commits align with measure-first?" | Testimony discovery — find sessions/commits where belief was applied without explicit citation |
+| Belief → sessions | "Which sessions discussed eventlog-is-truth?" | Fill evidence gaps where belief was relevant but not cited |
+| Code → beliefs | "I changed eventlog.rs — which beliefs might be affected?" | Impact analysis — surface beliefs at risk when code changes |
+
+**Implementation:** Minimal new code. The function retrieves a belief's vector from the index,
+searches for neighbors, and filters by ID range:
+
+```
+1. beliefs table → rowid for belief_id
+2. index.get(BELIEF_ID_OFFSET + rowid, &mut vector)
+3. index.search(&vector, limit)
+4. Filter results by ID range: code (1B-2B), commits (3B-4B), sessions (0-1B)
+5. Enrich via existing enrichment.rs
+```
+
+**Build steps:**
+
+- [ ] 1. Add `scry --belief <id>` mode — retrieve belief embedding, kNN across all types
+- [ ] 2. Add `--type` filter for scry belief mode — restrict results to code, commits, sessions,
+  patterns, or beliefs
+- [ ] 3. Surface belief→code grounding in `patina belief audit` — top 3 nearest code regions
+  per belief, showing which code each belief is semantically about
+- [ ] 4. Surface code→belief impact in scry — when scry returns code results, show which beliefs
+  are semantically close (potential impact if this code changes)
+- [ ] 5. Compute belief grounding scores during scrape — for each belief, store nearest code/commit
+  count and average similarity as a "grounding" metric alongside existing use/truth metrics
+
+**Exit criteria:**
+
+- [ ] `patina scry --belief sync-first` returns nearest code, commits, sessions
+- [ ] `patina scry --belief sync-first --type code` filters to code only
+- [ ] Belief audit shows grounding metric (how connected to code vs floating)
+- [ ] At least 5 beliefs show meaningful code grounding (nearest code is actually relevant)
+
+---
+
+#### E4.6b: Belief ↔ Belief Semantic Relationships
+
+**Prerequisite:** E4.6a (same infrastructure, different filter)
+
+Once belief→code grounding works, belief→belief is the same operation with `--type beliefs`.
+But this phase adds structure on top of raw similarity.
 
 **Scope:**
 
-1. **Belief-to-belief semantic similarity** — Compute cosine similarity between belief embeddings
-   already in usearch. Surface clusters in audit: "these 3 beliefs are semantically close."
-   Detect isolated beliefs with no semantic neighbors (potential gaps or orphans).
+1. **Belief-to-belief semantic similarity** — kNN within the belief ID range. Surface clusters
+   in audit: "these 3 beliefs are semantically close." Detect isolated beliefs with no semantic
+   neighbors (potential gaps or orphans).
 
 2. **Relationship type awareness** — Parse supports/attacks/evidence wikilinks with directionality.
    Currently all wikilinks add +1 to `cited_by_beliefs`. Instead: track support edges, attack
@@ -869,28 +941,35 @@ foundation before E5 adds reasoning.
    neighbors and its support/attack edges. Give the LLM context about where a belief sits in the
    network, not just the belief in isolation.
 
+**Build steps:**
+
+- [ ] 6. Compute belief-to-belief cosine similarity from usearch embeddings (reuse E4.6a infra)
+- [ ] 7. Create `belief_edges` table — parse supports/attacks/evidence with edge type
+- [ ] 8. Update `cross_reference_beliefs()` to populate `belief_edges` instead of flat count
+- [ ] 9. Add semantic clustering to `patina belief audit` — group similar beliefs
+- [ ] 10. Add conflict detection — semantic proximity + opposing verification status
+- [ ] 11. Update scry enrichment to show belief neighborhood (nearest beliefs + edges)
+- [ ] 12. Surface orphaned beliefs (no edges, no semantic neighbors)
+
+**Exit criteria:**
+
+- [ ] `belief_edges` table populated with typed edges (support, attack, evidence)
+- [ ] Audit shows belief clusters and semantic conflict warnings
+- [ ] Scry belief results include neighborhood context
+- [ ] Orphaned/isolated beliefs identified
+
+---
+
 **What E4.6 does NOT tackle:**
 - Graph traversal / propagation algorithms (E5)
 - Transitive attack chains (E5)
 - Cross-project belief routing via mother (E5 + mother federation)
 - Automatic belief revision (E5)
 
-**Build Steps (tentative):**
-
-- [ ] 1. Compute belief-to-belief cosine similarity from usearch embeddings
-- [ ] 2. Create `belief_edges` table — parse supports/attacks/evidence with edge type
-- [ ] 3. Update `cross_reference_beliefs()` to populate `belief_edges` instead of flat count
-- [ ] 4. Add semantic clustering to `patina belief audit` — group similar beliefs
-- [ ] 5. Add conflict detection — semantic proximity + opposing verification status
-- [ ] 6. Update scry enrichment to show belief neighborhood (nearest beliefs + edges)
-- [ ] 7. Surface orphaned beliefs (no edges, no semantic neighbors)
-
-**Exit Criteria:**
-
-- [ ] `belief_edges` table populated with typed edges (support, attack, evidence)
-- [ ] Audit shows belief clusters and semantic conflict warnings
-- [ ] Scry belief results include neighborhood context
-- [ ] Orphaned/isolated beliefs identified
+**What E4.6 grounds for the future:** Mother's multi-project belief design needs to know which
+code a belief is about (to verify it against the right repo's DB) and which beliefs cluster
+together (to detect cross-project conflicts). E4.6a+b produce exactly this: per-belief grounding
+scores and typed inter-belief edges. Mother consumes these as inputs, not reimplements them.
 
 ---
 
