@@ -250,6 +250,7 @@ Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 - `spec/session-092-hardening` - fix: Session System 0.9.2 Hardening (2026-02-02)
 - `spec/reports-layer` - refactor: Reports Layer (2026-02-02)
 - `spec/version-semver-alignment` - refactor: Align Version Model with Semver Convention (2026-02-02)
+- `spec/verification-module-split` - refactor: Split verification.rs to Follow dependable-rust (2026-02-02)
 Full list: `git tag -l 'spec/*'`
 
 ---
@@ -267,4 +268,4 @@ Completed specs preserved via git tags. View with: `git show spec/<name>:layer/s
 - `spec/remove-neuro-symbolic-debt` - Prolog removal (~2660 lines)
 - `spec/init-hardening` - Skeleton-only init, adapter refresh/doctor
 
-**All tags:** `git tag -l 'spec/*'` (49 archived specs)
+**All tags:** `git tag -l 'spec/*'` (50 archived specs)
