@@ -91,7 +91,9 @@ pub fn run_verification_queries(
     }
 
     // Store results in belief_verifications table
-    if let Err(e) = internal::exec::store_verification_results(conn, belief_id, &results, data_freshness) {
+    if let Err(e) =
+        internal::exec::store_verification_results(conn, belief_id, &results, data_freshness)
+    {
         eprintln!(
             "  Warning: failed to store verification results for {}: {}",
             belief_id, e
