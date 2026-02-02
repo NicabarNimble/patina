@@ -2,9 +2,9 @@
 
 **Status:** v1.0 roadmap crystallized. Three pillars: epistemic, mother, distribution.
 
-**Version:** 0.9.0 → patches (0.9.x) → 1.0.0
+**Version:** 0.9.x patches → 0.10.0 (epistemic complete) → MINOR milestones → 1.0.0
 
-**Recent:** v0.9.4 (2026-02-02). E4.5 belief verification complete — 47 queries, spec archive command. 46 beliefs, 5 specs archived this session.
+**Recent:** v0.10.0 (2026-02-02). Epistemic layer complete — 48 beliefs, E4-E4.6c done, multi-hop grounding (100% precision, 86% recall), forge semantic integration (81 events).
 
 ---
 
@@ -14,22 +14,22 @@
 
 | Pillar | Current | Target |
 |--------|---------|--------|
-| **Epistemic** | E0-E4.5 done, 46 beliefs, 47 verification queries | E4.6 semantic, E5 revision, E6 curation |
+| **Epistemic** | **COMPLETE** (v0.10.0) — 48 beliefs, verification, grounding, forge | E5/E6 deferred to mother scope |
 | **Mother** | Registry + serve daemon | Federated query, persona fusion |
 | **Distribution** | 52MB fat binary | Slim binary, `patina setup`, Homebrew |
 
-**Patch milestones:**
+**Milestones:**
 ```
-0.9.0  - Public release (fat binary)
+0.9.0  ✓ Public release (fat binary)
 0.9.1  ✓ Version/spec system alignment
 0.9.2  ✓ Session system & adapter parity
-0.9.3  ✓ Epistemic E4 (belief metrics from real data)
-0.9.4  ✓ Epistemic E4.5 (belief verification — 47 queries, spec archive command)
-0.9.5  - Epistemic E4.6 (semantic belief relationships)
-0.9.6  - Mother federated query
-0.9.7  - Dynamic ONNX loading
-0.9.8  - WASM grammars
-0.9.9  - GitHub releases + Homebrew
+0.9.3  ✓ Fix: session 0.9.2 hardening
+0.9.4  ✓ Fix: spec archive command, belief verification
+0.10.0 ✓ Epistemic layer complete (E4-E4.6c)
+0.11.0 - Mother federated query
+0.12.0 - Dynamic ONNX loading
+0.13.0 - WASM grammars
+0.14.0 - GitHub releases + Homebrew
 1.0.0  - All pillars complete
 ```
 
@@ -121,7 +121,7 @@ Run regularly to catch regressions.
 
 **v1.0 Pillars:**
 - [feat/v1-release/SPEC.md](../surface/build/feat/v1-release/SPEC.md) - **Master roadmap:** Three pillars, patch versioning
-- [feat/epistemic-layer/SPEC.md](../surface/build/feat/epistemic-layer/SPEC.md) - **Pillar 1:** E0-E4.5 done (46 beliefs, 47 verification queries), E4.6 semantic next
+- ~~feat/epistemic-layer~~ - **Pillar 1: COMPLETE** (v0.10.0) — 48 beliefs, E4-E4.6c, archived
 - [feat/mother/SPEC.md](../surface/build/feat/mother/SPEC.md) - **Pillar 2:** Federated query, persona fusion
 
 **Features:**
@@ -143,34 +143,26 @@ Run regularly to catch regressions.
 
 ## Current Focus
 
-### Next Session: Spec Drift Fix, then E4.6
+### Next: Mother Federated Query (v0.11.0)
 
-**Priority 1: Spec drift spec** — Write a spec for detecting and surfacing stale context.
-Belief `stale-context-is-hostile-context` identifies the problem (stale specs poison LLM context
-reboots). The spec designs the solution: staleness detection during scrape, warnings in doctor/audit,
-session-start surfacing of stale specs touching current branch. This is a core Patina mission fix —
-the symbiotic relationship between human and LLM breaks when the context layer lies.
+**Epistemic layer is complete** (v0.10.0). The delivery layer problem (intent→principle matching)
+identified during the A/B eval is a mother-scope concern. Next pillar work lives there.
 
-**Priority 2: E4.6a — Semantic belief grounding** — Connect beliefs to code/commits/sessions via
-existing usearch embeddings. `scry --belief <id>` retrieves belief vector, kNN across all content
-types. Infrastructure exists (same model, same index, same enrichment). Belief→code grounding
-enables evidence discovery and impact analysis. See epistemic-layer SPEC Phase E4.6a.
+**Priority 1: Delivery layer** — Beliefs don't reach the LLM during task-oriented work (delta -0.05).
+The belief data is correct and valuable (+2.2 delta for knowledge queries). The gap is
+intent→principle matching at retrieval time. OpenClaw's `contextFiles` pattern and OpenAI Codex's
+`skills/injection.rs` are reference architectures. Mother's federated query could be the right place.
 
-**Priority 3: E4.6b — Belief-to-belief similarity** — Same infrastructure as E4.6a with different
-ID range filter. Typed edges (support/attack/evidence), semantic clustering, conflict detection.
-Lays grounding for mother's multi-project belief routing.
+**Priority 2: Spec drift detection** — Belief `stale-context-is-hostile-context` identifies the
+problem. Spec exists at `feat/spec-drift-detection/SPEC.md`.
 
-### Epistemic Layer (E0-E4.5 Complete) — v1.0 Pillar 1
+### Epistemic Layer — COMPLETE (v0.10.0, archived)
 
-**Problem:** Knowledge systems store facts. Patina needs to store **beliefs with justification and revision**.
+48 beliefs, 25 verification queries, multi-hop code grounding (100% precision, 86% recall),
+forge semantic integration (81 events). A/B eval confirmed belief data valuable; delivery gap
+deferred to mother scope. E4.6b deprioritized, E5/E6 deferred.
 
-**Solution:** Persona-based epistemic belief revision using atomic Markdown propositions. AGM-style operations (expansion, contraction, revision) map to layer lifecycle (surface → core or → dust).
-
-**Progress:** E0-E4.5 complete. 46 beliefs, 47 verification queries (all passing). E4 metrics
-from real data (use/truth). E4.5 verification connects beliefs to DB ingredients (SQL/assay/temporal).
-E4.6 semantic grounding next — beliefs↔code/commit/session similarity using existing embeddings.
-
-**Spec:** [feat/epistemic-layer/SPEC.md](../surface/build/feat/epistemic-layer/SPEC.md)
+**Archived:** `spec/epistemic-layer` (git tag)
 
 ### Signal Over Noise (Exploration)
 

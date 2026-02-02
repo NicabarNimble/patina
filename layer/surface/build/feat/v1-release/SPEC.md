@@ -21,7 +21,7 @@ milestones:
   name: Session system & adapter parity
   status: complete
 - version: 0.10.0
-  name: Epistemic E4 (belief automation)
+  name: Epistemic layer complete (E4-E4.6c)
   status: in_progress
 - version: 0.11.0
   name: Mother federated query
@@ -66,11 +66,12 @@ All three must be complete for v1.0.
 **Model:** Semver — MINOR for milestones, PATCH for fixes
 
 ```
-0.9.0  - Public release (fat binary)
+0.9.0  ✓ Public release (fat binary)
 0.9.1  ✓ Version system fixed, spec-system aligned
 0.9.2  ✓ Session system & adapter parity
 0.9.3  ✓ Fix: session 0.9.2 hardening
-0.10.0 - Epistemic E4 (belief extraction automation)
+0.9.4  ✓ Fix: spec archive command, belief verification
+0.10.0 - Epistemic layer complete (E4-E4.6c)
 0.11.0 - Mother federated query
 0.12.0 - Dynamic ONNX loading
 0.13.0 - WASM grammars
@@ -292,22 +293,23 @@ Shell scripts currently write `SessionStart`/`SessionEnd` transitions to `.patin
 
 ---
 
-## Pillar 1: Epistemic Layer
+## Pillar 1: Epistemic Layer — COMPLETE (v0.10.0)
 
-**Spec:** [[spec-epistemic-layer.md]]
+**Spec:** [[spec-epistemic-layer]] (complete, archiving)
 
-**Current:** E0-E3 complete. 43 beliefs captured and indexed in scry. Queryable via `patina scry "what do we believe about X"`. LLM belief surfacing via skill works well (E2). Fake confidence scores identified as fiction — no real measurement behind them.
-
-**Remaining:**
-- E4: Replace fabricated confidence with computed use/truth metrics from real data
-- Belief audit command for epistemic layer health
-- MCP context tool includes beliefs
+**Delivered:** E0-E4.6c complete. 48 beliefs with computed use/truth metrics, 25 verification queries, multi-hop code grounding (100% precision, 86% recall), forge semantic integration (81 events embedded, 24/47 beliefs with forge neighbors), belief metrics in MCP context tool. A/B eval confirmed belief data is valuable (+2.2 delta for knowledge queries); delivery layer gap identified as mother-scope concern.
 
 **Exit criteria:**
-- [ ] Belief metrics computed from real data (citations, evidence, verified links)
-- [ ] `patina belief audit` shows use/truth for all beliefs
-- [ ] Scry results display computed metrics, not fake confidence
-- [ ] Belief query integrated into MCP tools (scry ✅, context pending)
+- [x] Belief metrics computed from real data — use/truth from citations, evidence, verified links (E4 steps 1-7)
+- [x] `patina belief audit` shows use/truth for all beliefs (E4 step 4)
+- [x] Scry results display computed metrics, not fake confidence (E4 step 2)
+- [x] Belief query integrated into MCP tools — scry `--belief` mode + context `get_belief_metrics()` (E4 step 10)
+- [x] 25 verification queries connecting beliefs to DB ingredients (E4.5)
+- [x] Multi-hop code grounding: belief→commit→file→function (E4.6a-fix)
+- [x] Forge issues/PRs embedded in semantic vector space (E4.6c)
+- [x] Fake confidence signals removed from all belief files (E4 steps 8-9)
+
+**Deferred to mother scope:** E4.6b (belief relationships — eval showed no LLM behavior change), E5 (revision), E6 (curation)
 
 ---
 
