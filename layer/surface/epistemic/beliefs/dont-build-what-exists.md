@@ -5,12 +5,6 @@ persona: architect
 facets: [engineering, efficiency]
 confidence:
   score: 0.90
-  signals:
-    evidence: 0.95
-    source_reliability: 0.90
-    recency: 0.85
-    survival: 0.90
-    user_endorsement: 0.80
 entrenchment: high
 status: active
 extracted: 2026-01-15

@@ -5,12 +5,6 @@ persona: architect
 facets: [engineering, quality, methodology]
 confidence:
   score: 0.88
-  signals:
-    evidence: 0.90
-    source_reliability: 0.85
-    recency: 0.85
-    survival: 0.90
-    user_endorsement: 0.80
 entrenchment: high
 status: active
 extracted: 2026-01-05
