@@ -398,11 +398,13 @@ pub fn find_belief_impact(results: &[ScryResult]) -> Result<HashMap<String, Vec<
 
     for result in results.iter().filter(|r| r.event_type.starts_with("code.")) {
         // Extract file_path from source_id (format: "./src/foo.rs::bar" or "src/foo.rs::bar")
-        let file_path = result
+        // Strip leading "./" to match commit_files format (which uses "src/..." not "./src/...")
+        let raw_path = result
             .source_id
             .split("::")
             .next()
             .unwrap_or(&result.source_id);
+        let file_path = raw_path.strip_prefix("./").unwrap_or(raw_path);
 
         let beliefs: Vec<(String, f32)> = reach_stmt
             .query_map([file_path], |row| {
