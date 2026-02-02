@@ -154,9 +154,9 @@ fn handle_list_tools(req: &Request) -> Response {
                             },
                             "mode": {
                                 "type": "string",
-                                "enum": ["find", "orient", "recent", "why", "use"],
+                                "enum": ["find", "orient", "recent", "why", "use", "belief"],
                                 "default": "find",
-                                "description": "Query mode: 'find' (default), 'orient' (structural ranking), 'recent' (temporal ranking), 'why' (explain result), 'use' (log result usage)"
+                                "description": "Query mode: 'find' (default), 'orient' (structural ranking), 'recent' (temporal ranking), 'why' (explain result), 'use' (log result usage), 'belief' (grounding — find nearest code/commits/sessions for a belief)"
                             },
                             "query_id": {
                                 "type": "string",
@@ -202,6 +202,15 @@ fn handle_list_tools(req: &Request) -> Response {
                                 "type": "array",
                                 "items": { "type": "string" },
                                 "description": "Additional search terms to include (LLM-provided synonyms or code-specific terms that bridge vocabulary gap between user query and codebase terminology)"
+                            },
+                            "belief": {
+                                "type": "string",
+                                "description": "Belief ID for grounding queries — find nearest code, commits, sessions for a belief (E4.6a). Use instead of query."
+                            },
+                            "content_type": {
+                                "type": "string",
+                                "enum": ["code", "commits", "sessions", "patterns", "beliefs"],
+                                "description": "Filter results by content type (used with belief mode)"
                             }
                         },
                         "required": []
@@ -335,6 +344,56 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                                 "content": [{ "type": "text", "text": text }]
                             }),
                         ),
+                        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                    }
+                }
+                "belief" => {
+                    // E4.6a: Belief grounding — find nearest code/commits/sessions
+                    let belief_id = args.get("belief").and_then(|v| v.as_str()).unwrap_or("");
+                    let content_type = args
+                        .get("content_type")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+
+                    if belief_id.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "belief mode requires 'belief' parameter",
+                        );
+                    }
+
+                    let options = crate::commands::scry::ScryOptions {
+                        limit,
+                        belief: Some(belief_id.to_string()),
+                        content_type,
+                        ..Default::default()
+                    };
+
+                    match crate::commands::scry::scry_belief_fn(belief_id, &options) {
+                        Ok(results) => {
+                            let mut text = format!(
+                                "Belief grounding for '{}' ({} results):\n\n",
+                                belief_id,
+                                results.len()
+                            );
+                            for (i, r) in results.iter().enumerate() {
+                                text.push_str(&format!(
+                                    "[{}] Score: {:.3} | {} | {}\n    {}\n\n",
+                                    i + 1,
+                                    r.score,
+                                    r.event_type,
+                                    r.source_id,
+                                    r.content
+                                ));
+                            }
+                            Response::success(
+                                req.id.clone(),
+                                serde_json::json!({
+                                    "content": [{ "type": "text", "text": text }]
+                                }),
+                            )
+                        }
                         Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
                     }
                 }

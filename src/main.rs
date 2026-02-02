@@ -174,6 +174,14 @@ enum Commands {
         #[arg(long, conflicts_with = "command")]
         file: Option<String>,
 
+        /// Belief ID for grounding queries — find nearest code/commits/sessions (E4.6a)
+        #[arg(long, conflicts_with_all = ["command", "file"])]
+        belief: Option<String>,
+
+        /// Filter results by content type (used with --belief): code, commits, sessions, patterns, beliefs
+        #[arg(long, value_name = "TYPE")]
+        content_type: Option<String>,
+
         /// Maximum number of results (default: 10)
         #[arg(long, default_value = "10")]
         limit: usize,
@@ -904,6 +912,8 @@ fn main() -> Result<()> {
             command,
             query,
             file,
+            belief,
+            content_type,
             limit,
             min_score,
             dimension,
@@ -961,6 +971,8 @@ fn main() -> Result<()> {
                     explain,
                     lexical,
                     routing: routing_strategy,
+                    belief,
+                    content_type,
                 };
                 commands::scry::execute(query.as_deref(), options)?;
             }
