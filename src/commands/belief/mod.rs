@@ -2,13 +2,17 @@
 //!
 //! Reads from the `beliefs` table (computed by `patina scrape`) and displays
 //! real metrics instead of fabricated confidence scores.
+//!
+//! E4.6a: --grounding flag computes semantic grounding from usearch embeddings.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Subcommand;
 use rusqlite::Connection;
 use std::path::Path;
+use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
 use super::scrape::database;
+use super::scry::internal::enrichment::{enrich_results, SearchResults};
 
 #[derive(Subcommand, Debug)]
 pub enum BeliefCommands {
@@ -21,6 +25,10 @@ pub enum BeliefCommands {
         /// Show only beliefs with warnings
         #[arg(long)]
         warnings_only: bool,
+
+        /// Show semantic grounding — nearest code/commits/sessions for each belief (E4.6a)
+        #[arg(long)]
+        grounding: bool,
     },
 }
 
@@ -28,13 +36,15 @@ pub fn execute(command: Option<BeliefCommands>) -> Result<()> {
     let cmd = command.unwrap_or(BeliefCommands::Audit {
         sort: "use".to_string(),
         warnings_only: false,
+        grounding: false,
     });
 
     match cmd {
         BeliefCommands::Audit {
             sort,
             warnings_only,
-        } => run_audit(&sort, warnings_only),
+            grounding,
+        } => run_audit(&sort, warnings_only, grounding),
     }
 }
 
@@ -90,7 +100,7 @@ impl BeliefRow {
     }
 }
 
-fn run_audit(sort_by: &str, warnings_only: bool) -> Result<()> {
+fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result<()> {
     let db_path = Path::new(database::PATINA_DB);
     if !db_path.exists() {
         anyhow::bail!("No database found. Run `patina scrape` first.");
@@ -285,5 +295,184 @@ fn run_audit(sort_by: &str, warnings_only: bool) -> Result<()> {
     }
     println!();
 
+    // E4.6a: Semantic grounding report
+    if show_grounding {
+        run_grounding_report(&conn, &rows)?;
+    }
+
     Ok(())
+}
+
+/// Compute and display semantic grounding for each belief (E4.6a)
+///
+/// Uses the usearch semantic index to find each belief's nearest neighbors
+/// across all content types. Shows what code, commits, and sessions each
+/// belief is semantically connected to.
+fn run_grounding_report(conn: &Connection, rows: &[BeliefRow]) -> Result<()> {
+    // Get embeddings path
+    let model = crate::commands::scry::internal::search::get_embedding_model();
+    let index_path = format!(
+        ".patina/local/data/embeddings/{}/projections/semantic.usearch",
+        model
+    );
+
+    if !Path::new(&index_path).exists() {
+        println!("  Grounding: semantic index not found. Run `patina oxidize` first.\n");
+        return Ok(());
+    }
+
+    // Load usearch index
+    let index_options = IndexOptions {
+        dimensions: 256,
+        metric: MetricKind::Cos,
+        quantization: ScalarKind::F32,
+        ..Default::default()
+    };
+
+    let index = Index::new(&index_options).context("Failed to create index")?;
+    index
+        .load(&index_path)
+        .context("Failed to load semantic index")?;
+
+    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+    const CODE_ID_OFFSET: i64 = 1_000_000_000;
+    const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
+    const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
+    const GROUNDING_LIMIT: usize = 20; // Search this many neighbors
+    const DISPLAY_LIMIT: usize = 3; // Show top 3 per type
+
+    println!("  ── Semantic Grounding (E4.6a) ──\n");
+
+    let mut grounded_count = 0;
+    let mut floating_count = 0;
+
+    for row in rows {
+        // Look up belief's rowid
+        let rowid: Result<i64, _> = conn.query_row(
+            "SELECT rowid FROM beliefs WHERE id = ?",
+            [&row.id],
+            |r| r.get(0),
+        );
+
+        let rowid = match rowid {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        let belief_key = (BELIEF_ID_OFFSET + rowid) as u64;
+
+        // Get belief's vector
+        let mut vector = vec![0.0_f32; 256];
+        if index.get(belief_key, &mut vector).is_err() {
+            continue;
+        }
+
+        // Check for zero vector (not in index)
+        let magnitude: f32 = vector.iter().map(|v| v * v).sum::<f32>().sqrt();
+        if magnitude < 0.001 {
+            continue;
+        }
+
+        // Search for neighbors
+        let matches = match index.search(&vector, GROUNDING_LIMIT + 2) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        let results = SearchResults {
+            keys: matches.keys,
+            distances: matches.distances,
+        };
+
+        let enriched = match enrich_results(conn, &results, "semantic", 0.0) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        // Filter out self entries and categorize
+        let mut code_results = Vec::new();
+        let mut commit_results = Vec::new();
+        let mut session_results = Vec::new();
+
+        for r in &enriched {
+            if r.source_id == row.id
+                && (r.event_type == "belief.surface" || r.event_type.starts_with("pattern."))
+            {
+                continue; // Skip self
+            }
+
+            let key = r.id;
+            if key >= CODE_ID_OFFSET && key < PATTERN_ID_OFFSET {
+                code_results.push(r);
+            } else if key >= COMMIT_ID_OFFSET && key < BELIEF_ID_OFFSET {
+                commit_results.push(r);
+            } else if key < CODE_ID_OFFSET {
+                session_results.push(r);
+            }
+        }
+
+        let has_grounding =
+            !code_results.is_empty() || !commit_results.is_empty() || !session_results.is_empty();
+
+        if has_grounding {
+            grounded_count += 1;
+        } else {
+            floating_count += 1;
+        }
+
+        // Display
+        let display_id = if row.id.len() > 35 {
+            format!("{}…", &row.id[..34])
+        } else {
+            row.id.clone()
+        };
+
+        println!(
+            "  {} ({}c {}m {}s)",
+            display_id,
+            code_results.len(),
+            commit_results.len(),
+            session_results.len()
+        );
+
+        // Show top code neighbors
+        for r in code_results.iter().take(DISPLAY_LIMIT) {
+            println!("    code  {:.3}  {}", r.score, truncate(&r.source_id, 60));
+        }
+        for r in commit_results.iter().take(DISPLAY_LIMIT) {
+            println!(
+                "    commit {:.3}  {}",
+                r.score,
+                truncate(&r.content, 60)
+            );
+        }
+        for r in session_results.iter().take(DISPLAY_LIMIT) {
+            println!(
+                "    session {:.3} {}",
+                r.score,
+                truncate(&r.content, 55)
+            );
+        }
+
+        if has_grounding {
+            println!();
+        } else {
+            println!("    (floating — no code/commit/session neighbors)\n");
+        }
+    }
+
+    println!(
+        "  ── Grounding Summary: {} grounded, {} floating ──\n",
+        grounded_count, floating_count
+    );
+
+    Ok(())
+}
+
+fn truncate(s: &str, max: usize) -> String {
+    if s.len() > max {
+        format!("{}…", &s[..max - 1])
+    } else {
+        s.to_string()
+    }
 }
