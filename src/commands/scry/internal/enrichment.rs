@@ -3,8 +3,12 @@
 //! Enriches vector search results with metadata from the SQLite database.
 //! Handles different content types (semantic, temporal, dependency).
 
+use std::collections::HashMap;
+use std::path::Path;
+
 use anyhow::Result;
 use rusqlite::Connection;
+use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
 use super::super::ScryResult;
 
@@ -357,6 +361,123 @@ pub fn truncate_content(content: &str, max_len: usize) -> String {
     } else {
         format!("{}...", &content[..max_len])
     }
+}
+
+/// Find beliefs semantically related to code results (E4.6a step 4)
+///
+/// Computes direct cosine similarity between each code result's vector and
+/// all belief vectors. Standard kNN doesn't work here because beliefs are
+/// sparse in the full index — code has too many closer code/commit neighbors.
+pub fn find_belief_impact(
+    results: &[ScryResult],
+) -> Result<HashMap<i64, Vec<(String, f32)>>> {
+    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+    const MIN_IMPACT_SCORE: f32 = 0.85;
+
+    // Collect code result keys
+    let code_keys: Vec<i64> = results
+        .iter()
+        .filter(|r| r.event_type.starts_with("code."))
+        .map(|r| r.id)
+        .collect();
+
+    if code_keys.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // Load semantic index
+    let model = super::search::get_embedding_model();
+    let index_path = format!(
+        ".patina/local/data/embeddings/{}/projections/semantic.usearch",
+        model
+    );
+
+    if !Path::new(&index_path).exists() {
+        return Ok(HashMap::new());
+    }
+
+    let index_options = IndexOptions {
+        dimensions: 256,
+        metric: MetricKind::Cos,
+        quantization: ScalarKind::F32,
+        ..Default::default()
+    };
+
+    let index = Index::new(&index_options)?;
+    index.load(&index_path)?;
+
+    let db_path = ".patina/local/data/patina.db";
+    let conn = Connection::open(db_path)?;
+
+    // Pre-load all belief vectors (47 beliefs → 47 vector lookups, fast)
+    let belief_vectors: Vec<(String, Vec<f32>)> = {
+        let mut stmt = conn.prepare("SELECT rowid, id FROM beliefs")?;
+        let rows: Vec<(i64, String)> = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let mut vecs = Vec::new();
+        for (rowid, belief_id) in rows {
+            let belief_key = (BELIEF_ID_OFFSET + rowid) as u64;
+            let mut vector = vec![0.0_f32; 256];
+            if index.get(belief_key, &mut vector).is_ok() {
+                let mag: f32 = vector.iter().map(|v| v * v).sum::<f32>().sqrt();
+                if mag > 0.001 {
+                    vecs.push((belief_id, vector));
+                }
+            }
+        }
+        vecs
+    };
+
+    if belief_vectors.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut impact_map: HashMap<i64, Vec<(String, f32)>> = HashMap::new();
+
+    for key in &code_keys {
+        let mut code_vector = vec![0.0_f32; 256];
+        if index.get(*key as u64, &mut code_vector).is_err() {
+            continue;
+        }
+
+        let code_mag: f32 = code_vector.iter().map(|v| v * v).sum::<f32>().sqrt();
+        if code_mag < 0.001 {
+            continue;
+        }
+
+        // Compute cosine similarity with each belief
+        let mut beliefs: Vec<(String, f32)> = belief_vectors
+            .iter()
+            .filter_map(|(belief_id, belief_vec)| {
+                let dot: f32 = code_vector
+                    .iter()
+                    .zip(belief_vec.iter())
+                    .map(|(a, b)| a * b)
+                    .sum();
+                let b_mag: f32 = belief_vec.iter().map(|v| v * v).sum::<f32>().sqrt();
+                let similarity = dot / (code_mag * b_mag);
+
+                if similarity >= MIN_IMPACT_SCORE {
+                    Some((belief_id.clone(), similarity))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        // Sort by similarity descending
+        beliefs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        beliefs.truncate(3); // Top 3 beliefs per code result
+
+        if !beliefs.is_empty() {
+            impact_map.insert(*key, beliefs);
+        }
+    }
+
+    Ok(impact_map)
 }
 
 #[cfg(test)]
