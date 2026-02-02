@@ -16,6 +16,14 @@ Update the current Patina session with Git-aware progress tracking:
    - **Challenges faced**: Errors encountered, debugging steps, solutions found
    - **Patterns observed**: Reusable insights, things that worked well
 
+   **Linking convention** — use `[[wikilinks]]` for all artifact references so `patina scrape` can trace them:
+   - Beliefs: `[[belief-id]]` (e.g., `[[sync-first]]`, `[[read-code-before-write]]`)
+   - Sessions: `[[session-YYYYMMDD-HHMMSS]]` (e.g., `[[session-20260202-155143]]`)
+   - Commits: `[[commit-SHA]]` (e.g., `[[commit-09e2abbf]]`)
+   - Specs: `[[spec-id]]` or relative path link (e.g., `[SPEC.md](layer/surface/build/feat/epistemic-layer/SPEC.md)`)
+   - Source files: backtick paths (e.g., `src/mcp/server.rs`)
+   Unlinked plain-text mentions are invisible to the knowledge graph.
+
 6. **Check for beliefs to capture**: Review the update and ask yourself:
    - Any design decisions made? ("We chose X because Y")
    - Any repeated patterns? (Said 3+ times)
