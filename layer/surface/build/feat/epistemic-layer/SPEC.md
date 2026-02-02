@@ -901,9 +901,9 @@ searches for neighbors, and filters by ID range:
   patterns, or beliefs
 - [x] 3. Surface belief→code grounding in `patina belief audit` — top 3 nearest code regions
   per belief, showing which code each belief is semantically about
-- [ ] 4. Surface code→belief impact in scry — when scry returns code results, show which beliefs
+- [x] 4. Surface code→belief impact in scry — when scry returns code results, show which beliefs
   are semantically close (potential impact if this code changes)
-- [ ] 5. Compute belief grounding scores during scrape — for each belief, store nearest code/commit
+- [x] 5. Compute belief grounding scores during scrape — for each belief, store nearest code/commit
   count and average similarity as a "grounding" metric alongside existing use/truth metrics
 
 **Exit criteria:**
