@@ -368,9 +368,7 @@ pub fn truncate_content(content: &str, max_len: usize) -> String {
 /// Computes direct cosine similarity between each code result's vector and
 /// all belief vectors. Standard kNN doesn't work here because beliefs are
 /// sparse in the full index — code has too many closer code/commit neighbors.
-pub fn find_belief_impact(
-    results: &[ScryResult],
-) -> Result<HashMap<i64, Vec<(String, f32)>>> {
+pub fn find_belief_impact(results: &[ScryResult]) -> Result<HashMap<i64, Vec<(String, f32)>>> {
     const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
     const MIN_IMPACT_SCORE: f32 = 0.85;
 

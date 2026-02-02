@@ -29,8 +29,8 @@ pub use internal::subcommands::{
 };
 
 // Re-export search functions for external use
-pub use internal::search::{scry, scry_lexical, scry_text};
 pub use internal::search::scry_belief as scry_belief_fn;
+pub use internal::search::{scry, scry_lexical, scry_text};
 
 /// Result from a scry query
 #[derive(Debug, Clone)]
