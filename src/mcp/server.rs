@@ -216,8 +216,8 @@ fn handle_list_tools(req: &Request) -> Response {
                             },
                             "impact": {
                                 "type": "boolean",
-                                "default": false,
-                                "description": "Show belief impact for code results — which beliefs are semantically close (E4.6a)"
+                                "default": true,
+                                "description": "Show belief impact for code results — which beliefs reach code via multi-hop grounding (E4.6a). Default: true."
                             }
                         },
                         "required": []
@@ -439,10 +439,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         .get("include_issues")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false);
-                    let impact = args
-                        .get("impact")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
+                    let impact = args.get("impact").and_then(|v| v.as_bool()).unwrap_or(true);
 
                     // Extract expanded_terms for vocabulary gap bridging
                     let expanded_terms: Vec<&str> = args
@@ -1063,11 +1060,7 @@ fn annotate_impact(results: &[FusedResult], mut text: String) -> String {
     let scry_results: Vec<ScryResult> = results
         .iter()
         .map(|r| {
-            let event_type = r
-                .metadata
-                .event_type
-                .clone()
-                .unwrap_or_default();
+            let event_type = r.metadata.event_type.clone().unwrap_or_default();
             ScryResult {
                 id: 0, // MCP results don't carry usearch keys; resolved via source_id
                 content: r.content.clone(),
