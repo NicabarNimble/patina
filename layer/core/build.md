@@ -130,6 +130,7 @@ Run regularly to catch regressions.
 - [refactor/database-identity/SPEC.md](../surface/build/refactor/database-identity/SPEC.md) - **Phase 1 done:** UIDs everywhere, Phase 2-3 remain
 
 **Refactors:**
+- [refactor/verification-module-split/SPEC.md](../surface/build/refactor/verification-module-split/SPEC.md) - **Building:** Split verification.rs to follow dependable-rust
 - [refactor/spec-system/SPEC.md](../surface/build/refactor/spec-system/SPEC.md) - **In Progress:** New folder-based spec format
 - [refactor/reports-layer/SPEC.md](../surface/build/refactor/reports-layer/SPEC.md) - **In Progress:** Unify eval/reports under `layer/surface/reports/`
 
