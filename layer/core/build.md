@@ -265,6 +265,7 @@ Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 - `spec/verification-module-split` - refactor: Split verification.rs to Follow dependable-rust (2026-02-02)
 - `spec/spec-archive-on-complete` - fix: Archive Specs on Completion (2026-02-02)
 - `spec/belief-verification` - feat: Belief Verification — Connecting Beliefs to Their Ingredients (2026-02-02)
+- `spec/epistemic-layer` - feat: Epistemic Markdown Layer (2026-02-02)
 Full list: `git tag -l 'spec/*'`
 
 ---
@@ -282,4 +283,4 @@ Completed specs preserved via git tags. View with: `git show spec/<name>:layer/s
 - `spec/remove-neuro-symbolic-debt` - Prolog removal (~2660 lines)
 - `spec/init-hardening` - Skeleton-only init, adapter refresh/doctor
 
-**All tags:** `git tag -l 'spec/*'` (52 archived specs)
+**All tags:** `git tag -l 'spec/*'` (53 archived specs)
