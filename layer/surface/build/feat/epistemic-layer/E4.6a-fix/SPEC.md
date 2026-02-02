@@ -1,7 +1,7 @@
 ---
 type: feat
 id: epistemic-e4.6a-fix
-status: active
+status: complete
 created: 2026-02-02
 updated: 2026-02-02
 sessions:
@@ -119,12 +119,10 @@ After the existing kNN search that already finds commit neighbors:
 - [x] 7. Make `--impact` default-on in MCP scry (LLM always sees belief reach on code results)
 - [x] 8. Add grounding accuracy measurement — `is_source_code()` classifier, precision% in
   scrape output. Revealed 9% precision (9 source files out of 93 reach files).
-- [ ] 9. Filter non-source files at the hop — only insert source code files into
-  `belief_code_reach` during `commit_files` walk. Noise enters at the structural hop because
-  commits that touch code also touch docs/configs. Filter at the source, not after.
-- [ ] 10. Build ground-truth eval set — add `verify type="sql"` queries to 5-10 beliefs that
-  check their own reach against expected files. Measures recall (does eventlog-is-truth reach
-  eventlog.rs?) alongside precision. Without recall, precision alone is meaningless.
+- [x] 9. Filter non-source files at the hop — `is_source_code()` gate in commit_files walk.
+  Result: 93 → 9 reach files, precision 9% → 100%.
+- [x] 10. Build ground-truth eval set — 7 beliefs with grounding recall verification queries.
+  Result: 3/7 pass (43% recall), 4/7 contested (commit neighbors only touched docs).
 
 ---
 
@@ -136,8 +134,8 @@ After the existing kNN search that already finds commit neighbors:
 - [x] No new embeddings or models required — pure SQL joins after semantic hop
 - [x] MCP scry returns belief impact by default (no opt-in required)
 - [x] Grounding accuracy measurable: precision% reported during scrape
-- [ ] Precision > 50% after source-only filtering
-- [ ] Recall measurable via ground-truth verification queries on 5-10 beliefs
+- [x] Precision > 50% after source-only filtering (achieved: 100%)
+- [x] Recall measurable via ground-truth verification queries on 7 beliefs (measured: 43%)
 
 ---
 
@@ -188,4 +186,5 @@ signals). Local-first, edge hardware, no cloud. The constraint is the architectu
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-02 | ready | Specced during session 20260202-130018 |
-| 2026-02-02 | active | Steps 1-8 complete. 39/47 grounded, 93 reach, 9% precision. Error analysis done. Steps 9-10 next. |
+| 2026-02-02 | active | Steps 1-8 complete. 39/47 grounded, 93 reach, 9% precision. Error analysis done. |
+| 2026-02-02 | complete | Steps 9-10 done. 100% precision (9 source files), 43% recall (3/7 ground-truth pass). |
