@@ -57,6 +57,12 @@ struct BeliefMetrics {
 
     // Endorsement
     endorsed: bool, // user explicitly created or confirmed
+
+    // E4.6a: Semantic grounding — how connected is this belief to code/commits/sessions?
+    grounding_score: f32,          // Average similarity to grounded neighbors (0.0-1.0)
+    grounding_code_count: i32,     // Code functions above similarity threshold
+    grounding_commit_count: i32,   // Commits above similarity threshold
+    grounding_session_count: i32,  // Sessions above similarity threshold
 }
 
 /// Create materialized views for belief events
@@ -83,7 +89,12 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
             evidence_verified INTEGER DEFAULT 0,
             defeated_attacks INTEGER DEFAULT 0,
             external_sources INTEGER DEFAULT 0,
-            endorsed INTEGER DEFAULT 0
+            endorsed INTEGER DEFAULT 0,
+            -- E4.6a: Semantic grounding metrics
+            grounding_score REAL DEFAULT 0.0,
+            grounding_code_count INTEGER DEFAULT 0,
+            grounding_commit_count INTEGER DEFAULT 0,
+            grounding_session_count INTEGER DEFAULT 0
         );
 
         -- FTS5 for belief content search
@@ -112,6 +123,11 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
         ("defeated_attacks", "INTEGER DEFAULT 0"),
         ("external_sources", "INTEGER DEFAULT 0"),
         ("endorsed", "INTEGER DEFAULT 0"),
+        // E4.6a: Semantic grounding metrics
+        ("grounding_score", "REAL DEFAULT 0.0"),
+        ("grounding_code_count", "INTEGER DEFAULT 0"),
+        ("grounding_commit_count", "INTEGER DEFAULT 0"),
+        ("grounding_session_count", "INTEGER DEFAULT 0"),
     ];
 
     for (col_name, col_type) in &columns_to_add {
@@ -533,6 +549,136 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
     }
 }
 
+/// Compute semantic grounding metrics for all beliefs (E4.6a step 5)
+///
+/// Loads the usearch semantic index (built by `patina oxidize`) and computes
+/// how each belief connects to code, commits, and sessions. Updates the
+/// beliefs table with counts and average similarity.
+///
+/// Runs AFTER Phase 3 insertion so beliefs have rowids in the DB.
+/// After a rebuild, rowids change and won't match the index (grounding = 0).
+/// Next `patina oxidize` + `patina scrape` cycle restores the mapping.
+fn compute_belief_grounding(conn: &Connection) -> Result<()> {
+    use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
+
+    let model = crate::commands::scry::internal::search::get_embedding_model();
+    let index_path = format!(
+        ".patina/local/data/embeddings/{}/projections/semantic.usearch",
+        model
+    );
+
+    if !Path::new(&index_path).exists() {
+        return Ok(());
+    }
+
+    let index_options = IndexOptions {
+        dimensions: 256,
+        metric: MetricKind::Cos,
+        quantization: ScalarKind::F32,
+        ..Default::default()
+    };
+
+    let index = Index::new(&index_options)?;
+    index.load(&index_path)?;
+
+    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+    const CODE_ID_OFFSET: i64 = 1_000_000_000;
+    const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
+    const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
+    const SEARCH_LIMIT: usize = 20;
+    const MIN_SCORE: f32 = 0.85;
+
+    // Read all beliefs from DB
+    let mut stmt = conn.prepare("SELECT rowid, id FROM beliefs")?;
+    let beliefs: Vec<(i64, String)> = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let total = beliefs.len();
+    let mut grounded = 0;
+
+    for (rowid, belief_id) in &beliefs {
+        let belief_key = (BELIEF_ID_OFFSET + rowid) as u64;
+
+        let mut vector = vec![0.0_f32; 256];
+        if index.get(belief_key, &mut vector).is_err() {
+            continue;
+        }
+
+        let magnitude: f32 = vector.iter().map(|v| v * v).sum::<f32>().sqrt();
+        if magnitude < 0.001 {
+            continue;
+        }
+
+        let matches = match index.search(&vector, SEARCH_LIMIT + 2) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        let mut code_count = 0i32;
+        let mut commit_count = 0i32;
+        let mut session_count = 0i32;
+        let mut total_score: f32 = 0.0;
+        let mut total_count = 0i32;
+
+        for i in 0..matches.keys.len() {
+            let key = matches.keys[i] as i64;
+            let score = 1.0 - matches.distances[i];
+
+            // Skip self and pattern entries (belief appears as both)
+            if key == BELIEF_ID_OFFSET + rowid {
+                continue;
+            }
+            if key >= PATTERN_ID_OFFSET && key < COMMIT_ID_OFFSET {
+                continue;
+            }
+            // Skip other beliefs
+            if key >= BELIEF_ID_OFFSET {
+                continue;
+            }
+
+            if score < MIN_SCORE {
+                continue;
+            }
+
+            if key >= CODE_ID_OFFSET && key < PATTERN_ID_OFFSET {
+                code_count += 1;
+            } else if key >= COMMIT_ID_OFFSET && key < BELIEF_ID_OFFSET {
+                commit_count += 1;
+            } else if key < CODE_ID_OFFSET {
+                session_count += 1;
+            }
+
+            total_score += score;
+            total_count += 1;
+        }
+
+        let grounding_score = if total_count > 0 {
+            total_score / total_count as f32
+        } else {
+            0.0
+        };
+
+        // UPDATE the beliefs row with grounding metrics
+        conn.execute(
+            "UPDATE beliefs SET grounding_score = ?1, grounding_code_count = ?2, grounding_commit_count = ?3, grounding_session_count = ?4 WHERE id = ?5",
+            rusqlite::params![grounding_score, code_count, commit_count, session_count, belief_id],
+        )?;
+
+        if total_count > 0 {
+            grounded += 1;
+        }
+    }
+
+    println!(
+        "  Computed grounding for {} beliefs ({} grounded)",
+        total, grounded
+    );
+
+    Ok(())
+}
+
 /// Insert a parsed belief into eventlog and materialized views
 fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
     let event_type = "belief.surface";
@@ -572,6 +718,12 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
                 "external_sources": belief.metrics.external_sources,
             },
             "endorsed": belief.metrics.endorsed,
+            "grounding": {
+                "score": belief.metrics.grounding_score,
+                "code": belief.metrics.grounding_code_count,
+                "commits": belief.metrics.grounding_commit_count,
+                "sessions": belief.metrics.grounding_session_count,
+            },
         },
     });
 
@@ -590,8 +742,9 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
     conn.execute(
         "INSERT INTO beliefs (id, statement, persona, facets, confidence, entrenchment, status, extracted, revised, file_path,
          cited_by_beliefs, cited_by_sessions, applied_in, evidence_count, evidence_verified, defeated_attacks, external_sources, endorsed,
-         verification_total, verification_passed, verification_failed, verification_errored)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+         verification_total, verification_passed, verification_failed, verification_errored,
+         grounding_score, grounding_code_count, grounding_commit_count, grounding_session_count)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
         rusqlite::params![
             &belief.id,
             &belief.statement,
@@ -615,6 +768,10 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
             belief.verification.passed,
             belief.verification.failed,
             belief.verification.errored,
+            belief.metrics.grounding_score,
+            belief.metrics.grounding_code_count,
+            belief.metrics.grounding_commit_count,
+            belief.metrics.grounding_session_count,
         ],
     )?;
 
@@ -763,6 +920,15 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         "  Processed {} beliefs ({} skipped)",
         processed_count, skipped
     );
+
+    // Phase 3.5: Compute semantic grounding (E4.6a step 5)
+    // Must run AFTER insert so beliefs have rowids in the DB.
+    // Uses usearch index from a previous `patina oxidize` run.
+    // After rebuild, rowids change and won't match the index → grounding = 0
+    // (expected; next oxidize+scrape cycle will fix this).
+    if let Err(e) = compute_belief_grounding(&conn) {
+        eprintln!("  Warning: grounding computation failed: {}", e);
+    }
 
     // Prune stale entries: delete DB entries for IDs that no longer exist on disk
     let file_ids = current_file_ids;

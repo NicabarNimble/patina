@@ -61,6 +61,11 @@ struct BeliefRow {
     verification_passed: i32,
     verification_failed: i32,
     verification_errored: i32,
+    // E4.6a: Semantic grounding
+    grounding_score: f32,
+    grounding_code_count: i32,
+    grounding_commit_count: i32,
+    grounding_session_count: i32,
 }
 
 impl BeliefRow {
@@ -73,6 +78,23 @@ impl BeliefRow {
             "\u{2014}".to_string() // em dash
         } else {
             format!("{}/{}", self.verification_passed, self.verification_total)
+        }
+    }
+
+    fn grounding_total(&self) -> i32 {
+        self.grounding_code_count + self.grounding_commit_count + self.grounding_session_count
+    }
+
+    fn grounding_display(&self) -> String {
+        if self.grounding_total() == 0 {
+            "\u{2014}".to_string() // em dash
+        } else {
+            format!(
+                "{}c{}m{}s",
+                self.grounding_code_count,
+                self.grounding_commit_count,
+                self.grounding_session_count
+            )
         }
     }
 
@@ -95,6 +117,9 @@ impl BeliefRow {
         }
         if self.verification_errored > 0 {
             warnings.push("verify-error");
+        }
+        if self.grounding_total() == 0 && self.grounding_score == 0.0 {
+            warnings.push("floating");
         }
         warnings
     }
@@ -122,6 +147,7 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
     let order_clause = match sort_by {
         "truth" => "evidence_count DESC, evidence_verified DESC",
         "weak" => "(cited_by_beliefs + cited_by_sessions) ASC, evidence_count ASC",
+        "grounding" => "grounding_score DESC, (grounding_code_count + grounding_commit_count + grounding_session_count) DESC",
         _ => "(cited_by_beliefs + cited_by_sessions) DESC, evidence_count DESC", // "use" default
     };
 
@@ -130,28 +156,36 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
         .prepare("SELECT verification_total FROM beliefs LIMIT 1")
         .is_ok();
 
-    let sql = if has_verification {
-        format!(
-            "SELECT id, entrenchment, cited_by_beliefs, cited_by_sessions, applied_in,
-                    evidence_count, evidence_verified, defeated_attacks,
-                    verification_total, verification_passed, verification_failed, verification_errored
-             FROM beliefs
-             ORDER BY {}",
-            order_clause
-        )
-    } else {
-        format!(
-            "SELECT id, entrenchment, cited_by_beliefs, cited_by_sessions, applied_in,
-                    evidence_count, evidence_verified, defeated_attacks
-             FROM beliefs
-             ORDER BY {}",
-            order_clause
-        )
-    };
+    // Check if grounding columns exist
+    let has_grounding = conn
+        .prepare("SELECT grounding_score FROM beliefs LIMIT 1")
+        .is_ok();
+
+    let sql = format!(
+        "SELECT id, entrenchment, cited_by_beliefs, cited_by_sessions, applied_in,
+                evidence_count, evidence_verified, defeated_attacks{}{}
+         FROM beliefs
+         ORDER BY {}",
+        if has_verification {
+            ", verification_total, verification_passed, verification_failed, verification_errored"
+        } else {
+            ""
+        },
+        if has_grounding {
+            ", grounding_score, grounding_code_count, grounding_commit_count, grounding_session_count"
+        } else {
+            ""
+        },
+        order_clause
+    );
 
     let mut stmt = conn.prepare(&sql)?;
     let rows: Vec<BeliefRow> = stmt
         .query_map([], |row| {
+            let base_idx = 8; // 0-7 are always present
+            let v_offset = base_idx;
+            let g_offset = if has_verification { v_offset + 4 } else { v_offset };
+
             Ok(BeliefRow {
                 id: row.get(0)?,
                 entrenchment: row.get(1)?,
@@ -161,10 +195,14 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
                 evidence_count: row.get(5)?,
                 evidence_verified: row.get(6)?,
                 defeated_attacks: row.get(7)?,
-                verification_total: if has_verification { row.get(8)? } else { 0 },
-                verification_passed: if has_verification { row.get(9)? } else { 0 },
-                verification_failed: if has_verification { row.get(10)? } else { 0 },
-                verification_errored: if has_verification { row.get(11)? } else { 0 },
+                verification_total: if has_verification { row.get(v_offset)? } else { 0 },
+                verification_passed: if has_verification { row.get(v_offset + 1)? } else { 0 },
+                verification_failed: if has_verification { row.get(v_offset + 2)? } else { 0 },
+                verification_errored: if has_verification { row.get(v_offset + 3)? } else { 0 },
+                grounding_score: if has_grounding { row.get(g_offset)? } else { 0.0 },
+                grounding_code_count: if has_grounding { row.get(g_offset + 1)? } else { 0 },
+                grounding_commit_count: if has_grounding { row.get(g_offset + 2)? } else { 0 },
+                grounding_session_count: if has_grounding { row.get(g_offset + 3)? } else { 0 },
             })
         })?
         .filter_map(|r| r.ok())
@@ -191,12 +229,12 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
         sort_by
     );
     println!(
-        "  {:<36} {:>5} {:>5} {:>4} {:>4} {:>4} {:>4} {:>5} {:>9} WARNINGS",
-        "BELIEF", "B-USE", "S-USE", "EVID", "VERI", "DEFT", "APPL", "V-OK", "ENTRENCH"
+        "  {:<36} {:>5} {:>5} {:>4} {:>4} {:>4} {:>4} {:>5} {:>9} {:>7} WARNINGS",
+        "BELIEF", "B-USE", "S-USE", "EVID", "VERI", "DEFT", "APPL", "V-OK", "ENTRENCH", "GROUND"
     );
     println!(
-        "  {:<36} {:>5} {:>5} {:>4} {:>4} {:>4} {:>4} {:>5} {:>9} ────────",
-        "──────", "─────", "─────", "────", "────", "────", "────", "─────", "─────────"
+        "  {:<36} {:>5} {:>5} {:>4} {:>4} {:>4} {:>4} {:>5} {:>9} {:>7} ────────",
+        "──────", "─────", "─────", "────", "────", "────", "────", "─────", "─────────", "───────"
     );
 
     let mut warning_count = 0;
@@ -219,7 +257,7 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
         };
 
         println!(
-            "  {:<36} {:>5} {:>5} {:>4} {:>4} {:>4} {:>4} {:>5} {:>9} {}",
+            "  {:<36} {:>5} {:>5} {:>4} {:>4} {:>4} {:>4} {:>5} {:>9} {:>7} {}",
             display_id,
             row.cited_by_beliefs,
             row.cited_by_sessions,
@@ -229,6 +267,7 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
             row.applied_in,
             row.v_ok_display(),
             row.entrenchment,
+            row.grounding_display(),
             warning_str,
         );
     }
@@ -250,6 +289,10 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
     let total_passed: i32 = rows.iter().map(|r| r.verification_passed).sum();
     let total_failed: i32 = rows.iter().map(|r| r.verification_failed).sum();
     let total_errored: i32 = rows.iter().map(|r| r.verification_errored).sum();
+
+    // Grounding stats
+    let grounded: usize = rows.iter().filter(|r| r.grounding_total() > 0).count();
+    let floating: usize = rows.len() - grounded;
 
     println!("\n  ── Summary ──");
     println!("  Total beliefs: {}", rows.len());
@@ -275,6 +318,12 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
             total_queries, beliefs_with_queries, total_passed, total_failed, total_errored
         );
     }
+    if grounded > 0 || floating > 0 {
+        println!(
+            "  Grounding: {} grounded, {} floating",
+            grounded, floating
+        );
+    }
     if warning_count > 0 {
         println!("\n  Warnings: {}", warning_count);
         if with_no_evidence > 0 {
@@ -285,6 +334,9 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
         }
         if unused > 0 {
             println!("    {} beliefs with no citations", unused);
+        }
+        if floating > 0 {
+            println!("    {} beliefs floating (no code/commit/session grounding)", floating);
         }
         if total_failed > 0 {
             println!("    {} beliefs with contested verification", total_failed);
