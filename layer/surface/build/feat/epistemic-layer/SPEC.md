@@ -915,12 +915,117 @@ searches for neighbors, and filters by ID range:
 
 ---
 
+#### E4.6a-fix: Multi-Hop Code Grounding
+
+**Prerequisite:** E4.6a complete. Discovery from hardening session 20260202-130018.
+
+**Problem:** E4.6a assumed direct cosine similarity between belief embeddings and code function
+embeddings would work at the 0.85 threshold. It doesn't. After full rebuild + oxidize + scrape,
+`grounding_code_count` is **zero for all 47 beliefs**. Code function representations are terse
+signatures ("Function `insert_event` in `./src/eventlog.rs`, params: conn, event_type...") while
+beliefs are natural language claims ("The eventlog is shared infrastructure"). These come from
+different text distributions — the embedding model (e5-base-v2) projects them to the same 256-dim
+space but cosine similarity never reaches 0.85 across that gap.
+
+This is not a threshold problem. Lowering the threshold would let noise in. It's a distribution
+mismatch: **same-type similarity works, cross-type similarity doesn't.**
+
+| Pair Type | Cosine Score | Works? |
+|-----------|-------------|--------|
+| Belief ↔ belief | 0.87-0.93 | Yes — same distribution (natural language claims) |
+| Belief ↔ commit | 0.85-0.91 | Yes — both natural language about intent |
+| Belief ↔ session | 0.85-0.91 | Yes — both natural language about work |
+| Belief ↔ code | < 0.85 | **No** — signatures vs. claims, different distributions |
+
+**Solution: Multi-hop grounding.** Use semantic hops where they work (belief → commit) combined
+with structural hops where they're exact (commit → files → functions). Each tool operates within
+its strength. No new embeddings needed.
+
+**Hop chain:**
+
+```
+belief
+  │ semantic (cosine ≥ 0.85, already works)
+  ▼
+commit(s)
+  │ structural (commit_files table, exact)
+  ▼
+file_path(s)
+  │ structural (function_facts table, exact)
+  ▼
+function(s)
+  │ structural (module_signals table, exact)
+  ▼
+signals (importer_count, activity_level, is_entry_point)
+```
+
+**Confidence:** Product of hop scores. If belief→commit scores 0.89, that's the confidence for
+all files in that commit. Files touched by multiple belief-adjacent commits get higher aggregate
+confidence. A file touched by 3 commits at 0.87, 0.89, 0.91 is more confidently grounded than
+one touched by a single commit at 0.91.
+
+**Storage:** New table `belief_code_reach` computed during scrape:
+
+```sql
+CREATE TABLE IF NOT EXISTS belief_code_reach (
+    belief_id TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    reach_score REAL,          -- aggregate confidence across hops
+    commit_count INTEGER,      -- how many belief-adjacent commits touch this file
+    function_count INTEGER,    -- functions in this file
+    hop_path TEXT,             -- e.g., "commit:abc1234,commit:def5678"
+    PRIMARY KEY (belief_id, file_path)
+);
+```
+
+**Implementation:** Extend `compute_belief_grounding()` in `src/commands/scrape/beliefs/mod.rs`.
+After the existing kNN search that already finds commit neighbors:
+
+1. For each belief, collect commit SHAs from neighbors in COMMIT_ID_OFFSET range (already found)
+2. Look up those SHAs in `commit_files` → collect file_paths
+3. Aggregate: count commits per file, compute reach_score as max(commit_scores) for that file
+4. Look up function_count from `function_facts` per file
+5. INSERT INTO `belief_code_reach`
+6. Update `grounding_code_count` on beliefs table from reach data (count of files with reach > 0)
+
+**What this changes:**
+- `grounding_code_count` becomes meaningful (currently always 0)
+- `belief audit` GROUND column shows real code reach
+- `--impact` can use `belief_code_reach` instead of direct cosine for code→belief linking
+- Future: `scry --impact` checks which beliefs reach a file when that file appears in results
+
+**Build steps:**
+
+- [ ] 1. Create `belief_code_reach` table in `create_materialized_views()`
+- [ ] 2. Extend `compute_belief_grounding()` — after kNN, walk commit neighbors through
+  `commit_files` to collect file paths and aggregate scores
+- [ ] 3. Populate `belief_code_reach` with per-file entries
+- [ ] 4. Update `grounding_code_count` from reach data instead of direct cosine
+- [ ] 5. Update `find_belief_impact()` to use `belief_code_reach` for code→belief linking
+  (replaces broken direct cosine path)
+- [ ] 6. Test full cycle: scrape --rebuild, oxidize, scrape, belief audit — verify code grounding
+  is nonzero for beliefs with commit neighbors
+
+**Exit criteria:**
+
+- [ ] `grounding_code_count` > 0 for beliefs with commit neighbors (currently always 0)
+- [ ] `belief_code_reach` populated with file paths reachable from each belief
+- [ ] `--impact` shows belief annotations on code results via multi-hop
+- [ ] No new embeddings or models required — pure SQL joins after semantic hop
+
+**Design principle:** Combine patina's tools within their limitations. Semantic search bridges
+natural language (belief ↔ commit). Structural joins bridge exact relationships (commit → file →
+function → signals). Local-first, edge hardware, no cloud. The constraint is the architecture.
+
+---
+
 #### E4.6b: Belief ↔ Belief Semantic Relationships
 
-**Prerequisite:** E4.6a (same infrastructure, different filter)
+**Prerequisite:** E4.6a (same infrastructure, different filter). E4.6a-fix not required —
+belief↔belief cosine works (same distribution).
 
-Once belief→code grounding works, belief→belief is the same operation with `--type beliefs`.
-But this phase adds structure on top of raw similarity.
+Belief→belief is the same operation as belief→commit with a different ID range filter.
+This phase adds structure on top of raw similarity.
 
 **Scope:**
 
@@ -960,6 +1065,78 @@ But this phase adds structure on top of raw similarity.
 
 ---
 
+#### E4.6c: Forge Semantic Integration
+
+**Prerequisite:** Forge scraper operational (it is). Discovery from session 20260202-130018.
+
+**Problem:** Forge data (GitHub/Gitea issues and PRs) is scraped into eventlog as `forge.issue`
+and `forge.pr` events with materialized views (`forge_issues`, `forge_prs`). But forge events
+are **never embedded** — `oxidize` skips them entirely. Issues and PRs are lexical-only citizens:
+findable via `scry --include-issues` (FTS5 text match) but invisible to semantic search, belief
+grounding, and impact analysis.
+
+**Content type reach audit:**
+
+| Content | Scraped | Embedded | Lexical | Semantic Neighbors | Grounding Hop |
+|---------|---------|----------|---------|-------------------|---------------|
+| Code functions | Yes | Yes (1B offset) | Yes | Yes | Multi-hop (E4.6a-fix) |
+| Commits | Yes | Yes (3B offset) | Yes | Yes | Direct cosine |
+| Sessions | Yes | Yes (eventlog seq) | Yes | Yes | Direct cosine |
+| Patterns | Yes | Yes (2B offset) | Yes | Yes | Direct cosine |
+| Beliefs | Yes | Yes (4B offset) | Yes | Yes | Direct cosine |
+| **Forge issues** | **Yes** | **No** | **Yes (opt-in)** | **No** | **None** |
+| **Forge PRs** | **Yes** | **No** | **Yes (opt-in)** | **No** | **None** |
+
+This means: an issue titled "eventlog module should be shared infrastructure" is invisible when
+computing grounding for the `eventlog-is-infrastructure` belief. A PR titled "refactor: extract
+eventlog to lib" that directly implements a belief produces no semantic signal.
+
+**Solution:** Add forge events to the `oxidize` embedding pipeline with a new ID offset range.
+
+**ID offset scheme (extend existing):**
+
+```
+0          - 999,999,999   → eventlog entries (sessions, observations)
+1,000,000,000 - 1,999,999,999 → CODE_ID_OFFSET (function_facts)
+2,000,000,000 - 2,999,999,999 → PATTERN_ID_OFFSET (patterns)
+3,000,000,000 - 3,999,999,999 → COMMIT_ID_OFFSET (commits)
+4,000,000,000 - 4,999,999,999 → BELIEF_ID_OFFSET (beliefs)
+5,000,000,000 - 5,999,999,999 → FORGE_ID_OFFSET (issues + PRs)  ← NEW
+```
+
+**Embedding content for forge events:**
+- Issues: `"{title}\n{body}"` (title + body, truncated to embedding model's context window)
+- PRs: `"{title}\n{body}"` (same format — PRs are issues with merge metadata)
+
+**What this enables:**
+- `scry "authentication"` finds semantically relevant issues without `--include-issues` flag
+- Belief grounding walks through forge events: belief → nearest issues/PRs → linked commits/files
+- Impact analysis: when code changes, surface not just beliefs but related issues
+- Multi-hop: belief → issue → PR → merge commit → commit_files → code (full traceability)
+
+**Build steps:**
+
+- [ ] 1. Add `FORGE_ID_OFFSET` constant (5B) to enrichment.rs offset scheme
+- [ ] 2. Add forge event embedding to oxidize pipeline — read from eventlog where
+  `event_type IN ('forge.issue', 'forge.pr')`, embed title+body, insert at FORGE_ID_OFFSET + seq
+- [ ] 3. Add forge enrichment to `enrich_results()` — look up forge_issues/forge_prs by seq
+- [ ] 4. Remove `include_issues` opt-in gate from semantic oracle (forge results appear naturally)
+- [ ] 5. Add forge to belief grounding — count forge neighbors alongside commit/session counts
+- [ ] 6. Test: scrape forge, oxidize, scry for issue content — verify semantic results appear
+
+**Exit criteria:**
+
+- [ ] Forge issues/PRs appear in semantic scry results without `--include-issues`
+- [ ] `scry --belief <id>` finds semantically related issues
+- [ ] Belief grounding counts include forge neighbors
+- [ ] No regression on existing semantic search quality
+
+**Constraint note:** This project uses forge data from a single GitHub repo. The embedding cost
+is proportional to issue+PR count — typically hundreds, not millions. Local-first, edge-hardware
+compatible. The same model and projection used for all other content types.
+
+---
+
 **What E4.6 does NOT tackle:**
 - Graph traversal / propagation algorithms (E5)
 - Transitive attack chains (E5)
@@ -968,8 +1145,10 @@ But this phase adds structure on top of raw similarity.
 
 **What E4.6 grounds for the future:** Mother's multi-project belief design needs to know which
 code a belief is about (to verify it against the right repo's DB) and which beliefs cluster
-together (to detect cross-project conflicts). E4.6a+b produce exactly this: per-belief grounding
-scores and typed inter-belief edges. Mother consumes these as inputs, not reimplements them.
+together (to detect cross-project conflicts). E4.6a provides the semantic bridge (belief→commit),
+E4.6a-fix provides the structural bridge (commit→code via multi-hop), E4.6b provides typed
+inter-belief edges, and E4.6c brings forge data into the semantic space. Mother consumes these
+as inputs, not reimplements them.
 
 ---
 
