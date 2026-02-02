@@ -44,6 +44,15 @@ threshold. Uses semantic hop (belief→commit) + structural hop (commit→files�
 
 **Then:** E4.6c (forge embeddings), E4.6b (belief clustering), E4 steps 8-10 (schema migration).
 
+**E4.6 does NOT tackle:** graph traversal/propagation algorithms, transitive attack chains,
+cross-project belief routing via mother, or automatic belief revision — all E5 scope.
+
+**E4.6 grounds for the future:** Mother's multi-project belief design needs to know which code a
+belief is about (to verify against the right repo's DB) and which beliefs cluster together (to
+detect cross-project conflicts). E4.6a provides the semantic bridge (belief→commit), E4.6a-fix
+the structural bridge (commit→code via multi-hop), E4.6b typed inter-belief edges, and E4.6c
+forge data in the semantic space. Mother consumes these as inputs, not reimplements them.
+
 ---
 
 ## See Also
