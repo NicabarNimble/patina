@@ -742,9 +742,12 @@ the important beliefs can be verified, and the verification engine connects them
 ### Project-Agnostic Exit
 
 - [ ] Verification system works on at least 1 ref repo (not just Patina itself)
-- [ ] No Patina-specific assumptions in the verification engine
-- [ ] Schema reference documents available tables in a way any project's LLM can use
-- [ ] Process beliefs from any project stay testimony-grounded without warnings
+- [x] No Patina-specific assumptions in the verification engine — all queries are authored in
+  belief markdown, not hardcoded. Engine runs SQL/assay/temporal against whatever tables exist.
+- [x] Schema reference documents available tables in a way any project's LLM can use —
+  `references/verification-schema.md` is generic (table/column/type, no Patina-specific content)
+- [x] Process beliefs from any project stay testimony-grounded without warnings — beliefs
+  without `## Verification` show `—` in V-OK column, no verify-contested or verify-error warnings
 
 ---
 
