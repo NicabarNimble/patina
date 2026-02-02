@@ -244,7 +244,7 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
         println!("    {}", truncate_content(&result.content, 200));
 
         // Show belief impact for code results
-        if let Some(beliefs) = impact_map.get(&result.id) {
+        if let Some(beliefs) = impact_map.get(&result.source_id) {
             let belief_strs: Vec<String> = beliefs
                 .iter()
                 .map(|(id, score)| format!("{} ({:.2})", id, score))
