@@ -707,6 +707,10 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
                 .collect();
 
             for file_path in files {
+                // Filter at the hop: only source code files enter reach
+                if !is_source_code(&file_path) {
+                    continue;
+                }
                 let entry = file_reach
                     .entry(file_path)
                     .or_insert_with(|| (0.0_f32, Vec::new()));
@@ -718,8 +722,8 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
             }
         }
 
-        // Insert reach entries and count functions per file
-        let mut source_file_count = 0i32;
+        // Insert reach entries — all entries are source code (filtered at the hop)
+        let source_file_count = file_reach.len() as i32;
         for (file_path, (reach_score, shas)) in &file_reach {
             // Count functions in this file from function_facts
             let function_count: i32 = conn
@@ -729,11 +733,6 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
                     |row| row.get(0),
                 )
                 .unwrap_or(0);
-
-            // Classify: only source code files count for grounding_code_count
-            if is_source_code(file_path) {
-                source_file_count += 1;
-            }
 
             let hop_path = shas
                 .iter()
