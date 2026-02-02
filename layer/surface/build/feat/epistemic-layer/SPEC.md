@@ -12,7 +12,7 @@ related:
 
 # feat: Epistemic Markdown Layer
 
-**Progress:** E0 ✅ | E1 (in progress) | E2 ✅ | E2.5 ✅ | E3 ✅ | E4 (steps 1-7 ✅, steps 8-10 remaining) | E4.5 (exploring) | E5-E6 (planned)
+**Progress:** E0 ✅ | E1 (in progress) | E2 ✅ | E2.5 ✅ | E3 ✅ | E4 (steps 1-7 ✅, steps 8-10 remaining) | **E4.5 ✅** (archived: `spec/belief-verification`) | E4.6 (planned: semantic) | E5-E6 (planned)
 **Prototype:** `layer/surface/epistemic/`
 
 ---
@@ -812,184 +812,140 @@ No composite score. No 0.88. Just counts that tell you *why* to trust (or questi
 - [ ] Fake `confidence.signals` removed from all belief files
 - [ ] MCP `context` tool surfaces belief metrics
 
-### Phase E4.5: Belief Verification — Connecting Beliefs to Ingredients
+### Phase E4.5: Belief Verification — COMPLETE (archived: `spec/belief-verification`)
 
-**Promoted to standalone spec:** See [[belief-verification]] (`layer/surface/build/feat/belief-verification/SPEC.md`)
+**Result:** 28 build steps across 6 phases. 47 verification queries (47 pass, 0 contested, 0 errors).
+24 of 27 structurally testable beliefs verified (89% coverage). 17 process beliefs correctly have
+no structural proof. Engine supports SQL, assay DSL, and temporal query types.
 
-E4.5 was expanded from "add SQL queries to beliefs" into a full measurement-driven design after
-running a 10-belief x 6-layer evidence experiment (Session 20260201-084453). Key findings: SQL +
-Assay are the strong proof layers (not just SQL), scry has a lexical routing bug that must be
-fixed before it's useful for verification, and process beliefs correctly have no structural proof.
-The original design context below is preserved; the new spec contains the full build plan.
+**Standalone spec:** `git show spec/belief-verification:layer/surface/build/feat/belief-verification/SPEC.md`
 
-**Original insight (Session 20260131-210617):** The `patina scrape` pipeline already builds a rich knowledge database (function_facts, call_graph, code_search, commits, sessions, co_changes, import_facts, type_vocabulary — ~46K rows total). Beliefs have 95 belief-to-belief links and 43 session links, but almost zero links to this structural data. The data exists. The beliefs don't query it.
+**Key outcomes:**
+- 10-belief x 6-layer evidence experiment (Andrew Ng methodology) proved SQL + Assay are the
+  strong proof layers; semantic search adds noise for verification
+- Scry lexical routing bug fixed (Phase 4) — code symbols now trigger FTS5 mode
+- Git tags + tracked files indexed (Phase 5) — unblocked 4 coverage-gapped beliefs
+- Verification engine is project-agnostic by construction (no Patina-specific paths)
+- `patina spec archive` command created as side-effect (5 completed specs archived)
+- 2 beliefs captured: `ground-before-reasoning`, `practical-memory-over-epistemic-formalism`
 
-**Andrew Ng framing:** Three levels of evidence quality:
-1. **Testimony** — "We discussed this in a session." (What beliefs have now — 84% of evidence.)
-2. **Artifact** — "This commit removed tokio." (4 commit links total across all beliefs.)
-3. **Measurement** — "Zero async functions across 1,591 functions." (Data exists in DB. No belief uses it.)
+**Helland boundary:** Verification queries (in belief files, source of truth) → results (in DB,
+derived, recomputed every scrape). Derived data never flows backwards.
 
-**Helland framing (Data on the Outside vs Inside):**
-
-Beliefs currently reference **outside data** (session testimony — non-deterministic, unreproducible) but not **inside data** (patina.db tables — deterministic, re-derivable). That's backwards from where trust should come from.
-
-The boundary map:
-
-```
-Human decision  →  LLM conversation  →  Belief file     →  Verification query  →  DB result
-  (outside)         (outside)           (captured)          (captured)             (derived)
-  unreproducible    non-deterministic    source of truth     deterministic          materialized view
-                                         in git              re-runnable            rebuilt every scrape
-```
-
-Each arrow is a boundary crossing. Each crossing either **captures** (writes to durable store) or **derives** (computes from existing data). Key principle: **derived data never flows backwards** — verification results live in the DB (materialized view), never written back to belief files (source of truth). This is why the scraper never modifies belief files: it would mix derived data into the source of truth.
-
-The verification query itself crosses a non-deterministic boundary (LLM generates SQL) but once committed to the belief file, it becomes deterministic and re-runnable. This is the capture-at-boundary pattern applied to structural evidence.
-
-**Two evidence types, complementary by design:**
-
-Not all beliefs are structurally testable — and that's correct. Beliefs about **code structure** (sync-first, eventlog-is-truth) live at the deterministic inside — SQL verification queries are the right evidence. Beliefs about **process** (measure-first, spec-first) live at the human decision boundary — session testimony IS the right evidence. Forcing SQL queries onto process beliefs mixes levels. The two types complement each other; neither replaces the other.
-
-**Design Decision: Option C (LLM generates once, scraper runs mechanically)**
-
-Three options considered (Session 20260131-210617):
-
-| Option | Approach | Cost at scrape time | Who writes queries |
-|--------|----------|--------------------|--------------------|
-| A | Human writes queries in belief file manually | Zero (SQL only) | Human |
-| B | Convention-based mapping (belief ID → hardcoded queries in Rust) | Zero (SQL only) | Developer in Rust |
-| **C** | **LLM generates queries at creation/enrichment; scraper re-runs them** | **Zero (SQL only)** | **LLM once, then mechanical** |
-
-**Why C:** The expensive part (deciding what to query) happens once during conversation. The cheap part (running SQL) happens every scrape. No LLM inference at scrape time. The LLM speaks SQL fluently and understands the belief's intent — better positioned than a hardcoded mapping. Queries live in the belief file (portable, auditable), not buried in Rust code.
-
-**Why not A:** Requires the user to know the DB schema and write SQL by hand. Friction kills adoption.
-**Why not B:** Every new belief needs a Rust code change. Doesn't scale. Couples belief content to scraper implementation.
-
-#### Proposed Format
-
-A new `## Verification` section in belief markdown files:
-
-```markdown
-## Verification
-
-```verify label="No async functions in codebase" expect="= 0"
-SELECT COUNT(*) FROM function_facts WHERE is_async = 1
-```
-
-```verify label="No tokio imports" expect="= 0"
-SELECT COUNT(*) FROM import_facts WHERE import_path LIKE '%tokio%'
-```
-```
-
-- Fenced code blocks with `verify` info-string
-- `label` = human-readable assertion, `expect` = comparison (`= 0`, `> 5`, `>= 1`, `< 10`)
-- SQL must be SELECT-only (scraper validates)
-- Result = first column of first row compared against expectation
-
-#### Available Tables for Queries
-
-| Table | Rows | What it knows |
-|-------|------|---------------|
-| `function_facts` | 1,591 | is_async, is_public, is_unsafe, return_type, parameter_count |
-| `call_graph` | 18,909 | caller → callee edges, file, line_number |
-| `code_search` | 2,955 | all symbols (functions, structs, enums) with file:line |
-| `commits` | 1,520 | sha, message, author, timestamp |
-| `commit_files` | — | files changed per commit, lines added/removed |
-| `sessions` | 551 | title, branch, classification, files_changed |
-| `co_changes` | 20,634 | files that change together |
-| `import_facts` | — | import paths, imported names |
-| `type_vocabulary` | — | structs, enums, traits with visibility and usage count |
-| `patterns` | 111 | layer patterns (core, surface) with status and tags |
-
-#### Example Queries for Real Beliefs
-
-**sync-first** (structurally testable — strong candidate):
-- `function_facts WHERE is_async = 1` expect `= 0`
-- `import_facts WHERE import_path LIKE '%tokio%'` expect `= 0`
-- `import_facts WHERE import_path LIKE '%rusqlite%'` expect `>= 1`
-
-**eventlog-is-truth** (structurally testable):
-- `call_graph WHERE callee LIKE '%insert_event%'` expect `> 10`
-- `sqlite_master WHERE name = 'eventlog'` expect `>= 1`
-
-**commit-early-commit-often** (measurable from git data):
-- avg files per commit expect `< 10`
-- total commits expect `> 100`
-
-**measure-first** (process principle — harder to test structurally):
-- Can verify measurement infrastructure exists, but can't verify the principle itself
-- ~15 of 44 beliefs have meaningful structural tests; the rest are process/principle beliefs
-
-#### Open Questions
-
-1. ~~**How many beliefs are structurally testable?**~~ **RESOLVED (Helland analysis, Session 20260131-210617):** Not all beliefs are structurally testable — and that's correct by design. Code-structure beliefs (sync-first, eventlog-is-truth) get SQL verification queries. Process beliefs (measure-first, spec-first) stay grounded in session testimony. Two evidence types, complementary, not competing. Estimate: ~15 of 44 beliefs are candidates for structural verification.
-
-2. **Skill context size.** Exposing the full DB schema to the LLM is a lot of tokens. Should the schema be a progressive-disclosure reference file the skill loads on demand? Or inline in SKILL.md?
-
-3. **What does failure mean? Two distinct failure modes:**
-   - **World changed:** `sync-first` query returns 1 because someone added an `async fn`. The belief is now contested by its own structural evidence. The audit warns; automated revision is E5's job.
-   - **Query is wrong:** `eventlog-is-truth` query checks `callee = 'insert_event'` but call_graph stores full paths like `crate::eventlog::insert_event`. Query returns 0, but the belief is true. This is measure-the-measurement — fix the query, not the belief.
-
-   Both are normal operations. Query revision (fixing a bad query) is expected — the LLM's SQL generation crossed a non-deterministic boundary and may need correction. Errors (bad SQL, missing table) are counted separately from failures (query ran, expectation not met).
-
-4. **Verification vs Applied-In.** Currently `## Applied-In` is free text describing where beliefs manifest. Verification queries test structural claims. Are these complementary or overlapping? Should Applied-In entries become verifiable too?
-
-5. **Query staleness.** If the DB schema changes (table renamed, column dropped), queries break. Errors are counted separately from failures. Is that sufficient, or do queries need versioning?
-
-6. **Incremental vs full.** Verification queries depend on the full DB state (all tables populated). In incremental scrape mode, should we skip verification? Or always run it since the queries are cheap?
-
-#### Implementation Notes
-
-**Primary file:** `src/commands/scrape/beliefs/mod.rs` — parsing, execution, DB schema, integration
-- New structs: `VerificationQuery { label, sql, expect }`, `Expectation` enum (Eq/Gt/Ge/Lt/Le/Ne)
-- New fields on `BeliefMetrics`: `verification_total`, `verification_passed`, `verification_failed`
-- New functions: `parse_verification_queries()`, `validate_query_safety()`, `run_verification_queries()`
-- Integration point: Phase 2.5 in `run()` — after `cross_reference_beliefs()` (line ~688), before insertion loop (line ~690). All other tables are populated at this point because the belief scraper runs last in the pipeline.
-- DB migration: 3 new `INTEGER DEFAULT 0` columns on `beliefs` table (same pattern as E4 metric columns)
-
-**Audit file:** `src/commands/belief/mod.rs` — display changes
-- Extend `BeliefRow` with 3 new fields, add `V-OK` column (passed/total), add `verification-failing` warning
-
-**Skill files:** `.claude/skills/epistemic-beliefs/SKILL.md` + `resources/claude/skills/epistemic-beliefs/SKILL.md`
-- New section teaching LLM the format, available tables, and when to add queries
-- Schema reference as progressive-disclosure content (loaded on demand, not always in context)
-
-#### Build Steps (tentative — pending exploration)
-
-- [ ] 1. Implement `parse_verification_queries()` and `Expectation` in belief scraper
-- [ ] 2. Implement `validate_query_safety()` (SELECT-only enforcement)
-- [ ] 3. Implement `run_verification_queries()` execution against DB
-- [ ] 4. Add `verification_total/passed/failed` to BeliefMetrics + beliefs table
-- [ ] 5. Integrate into scraper `run()` as Phase 2.5 (after cross-reference, before insert)
-- [ ] 6. Update `patina belief audit` to show V-OK column and verification-failing warning
-- [ ] 7. Update skill SKILL.md with verification query format + available tables
-- [ ] 8. Add `## Verification` to 3-4 proof-of-concept beliefs (sync-first, eventlog-is-truth, commit-early-commit-often)
-- [ ] 9. End-to-end test: scrape → audit → verify results display correctly
-
-#### E4.5 Exit Criteria
-
-- [ ] Scraper parses and executes `## Verification` queries from belief files
-- [ ] Safety: only SELECT queries execute; DML/DDL rejected
-- [ ] `patina belief audit` shows verification pass/total per belief
-- [ ] At least 3 beliefs have live verification queries passing
-- [ ] Skill teaches LLM how to write verification queries with correct format
-- [ ] Open questions above resolved or explicitly deferred
+**What E4.5 revealed about what's next:** The verification engine connects beliefs to code facts
+(deterministic). But belief-to-belief relationships (supports/attacks/similarity) remain metadata
+for human reading — no code computes over them. This is the E4.6 gap.
 
 ---
 
-### Phase E5: Revision Automation
+### Phase E4.6: Semantic Belief Relationships
 
-- [ ] Conflict detection on new belief
-- [ ] Entrenchment calculation
-- [ ] Adapter LLM proposes resolution
-- [ ] User approval flow
+**Problem:** Beliefs exist in the same embedding space as code, commits, and sessions (via
+oxidize at `BELIEF_ID_OFFSET = 4B`), but no code queries relationships *between* beliefs.
+The `cross_reference_beliefs()` function counts citations via substring matching — it doesn't
+distinguish supports from attacks, compute similarity, or detect conflicts. The supports/attacks
+sections in belief markdown are human-readable documentation, not computational graph edges.
+
+**What E4.5 revealed:** Verification connects beliefs to code (downward: belief → DB). E4.6
+connects beliefs to each other (lateral: belief ↔ belief). Together they complete the measurement
+foundation before E5 adds reasoning.
+
+**Scope:**
+
+1. **Belief-to-belief semantic similarity** — Compute cosine similarity between belief embeddings
+   already in usearch. Surface clusters in audit: "these 3 beliefs are semantically close."
+   Detect isolated beliefs with no semantic neighbors (potential gaps or orphans).
+
+2. **Relationship type awareness** — Parse supports/attacks/evidence wikilinks with directionality.
+   Currently all wikilinks add +1 to `cited_by_beliefs`. Instead: track support edges, attack
+   edges, and evidence edges separately. Store in a `belief_edges` table (from_id, to_id,
+   edge_type, section_source).
+
+3. **Semantic conflict detection** — When two beliefs are close in embedding space but have
+   opposing verification results (one passes, one contested), or are connected by attack edges,
+   surface this as a warning in audit. This is *detection*, not resolution (E5 handles resolution).
+
+4. **Belief neighborhood in scry** — When scry returns a belief, also return its closest semantic
+   neighbors and its support/attack edges. Give the LLM context about where a belief sits in the
+   network, not just the belief in isolation.
+
+**What E4.6 does NOT tackle:**
+- Graph traversal / propagation algorithms (E5)
+- Transitive attack chains (E5)
+- Cross-project belief routing via mother (E5 + mother federation)
+- Automatic belief revision (E5)
+
+**Build Steps (tentative):**
+
+- [ ] 1. Compute belief-to-belief cosine similarity from usearch embeddings
+- [ ] 2. Create `belief_edges` table — parse supports/attacks/evidence with edge type
+- [ ] 3. Update `cross_reference_beliefs()` to populate `belief_edges` instead of flat count
+- [ ] 4. Add semantic clustering to `patina belief audit` — group similar beliefs
+- [ ] 5. Add conflict detection — semantic proximity + opposing verification status
+- [ ] 6. Update scry enrichment to show belief neighborhood (nearest beliefs + edges)
+- [ ] 7. Surface orphaned beliefs (no edges, no semantic neighbors)
+
+**Exit Criteria:**
+
+- [ ] `belief_edges` table populated with typed edges (support, attack, evidence)
+- [ ] Audit shows belief clusters and semantic conflict warnings
+- [ ] Scry belief results include neighborhood context
+- [ ] Orphaned/isolated beliefs identified
+
+---
+
+### Phase E5: Revision and Cross-Project Reasoning
+
+**Prerequisite:** E4.6 (semantic relationships provide the detection layer E5 reasons over)
+
+**Problem:** E4.6 detects relationships and conflicts. E5 acts on them. When beliefs conflict —
+within a project or across projects — the system needs a resolution path. Today, conflicts are
+invisible. E5 makes them visible and resolvable.
+
+**Scope:**
+
+#### 5a. Within-project revision
+
+- [ ] Conflict detection on new belief (trigger: new belief's embedding is close to existing
+  belief with opposing supports/attacks)
+- [ ] Entrenchment-based ordering — when conflict detected, surface which belief is more costly
+  to remove (higher use metrics, more dependents, longer survival)
+- [ ] Adapter LLM proposes resolution (keep both with scopes, weaken one, split into cases,
+  replace one)
+- [ ] User approval flow — revision logged to eventlog as `surface.belief.revise`
+
+#### 5b. Transitive reasoning
+
+- [ ] Attack chain detection — if A attacks B and B supports C, surface the indirect threat to C
+- [ ] Support cluster identification — beliefs that form reinforcing clusters (mutual support)
+  are collectively stronger than isolated beliefs
+- [ ] Weakness propagation — if a high-entrenchment belief's verification starts failing, surface
+  all beliefs that depend on it via support edges
+
+#### 5c. Cross-project belief routing (requires mother federation)
+
+- [ ] Beliefs scoped to a project vs. beliefs held by the persona across projects
+- [ ] Ref repo beliefs — structural claims about third-party codebases, verified against that
+  repo's `patina.db`, held in the persona layer (not in the ref repo)
+- [ ] Mother mediation — when project A's belief contradicts project B's belief, mother surfaces
+  the conflict with context from both projects' verification results
+- [ ] Universal beliefs — claims that apply to all projects (layer/core candidates), promoted
+  when verified across multiple project DBs
+
+**Exit Criteria:**
+
+- [ ] Conflicting belief triggers revision flow with LLM proposal
+- [ ] User can approve/reject revision
+- [ ] Revision logged in eventlog
+- [ ] Transitive attack/support chains surfaced in audit
+- [ ] At least 1 cross-project belief verified against a ref repo DB
 
 ### Phase E6: Curation Automation
 
-- [ ] Importance scoring based on usage
-- [ ] Promotion: surface → core
-- [ ] Archival: surface → dust
-- [ ] Resurrection: dust → surface
+- [ ] Importance scoring based on usage + verification health + semantic centrality
+- [ ] Promotion: surface → core (high entrenchment, verified across time, high use)
+- [ ] Archival: surface → dust (low use, stale, no verification queries)
+- [ ] Resurrection: dust → surface (re-validated by new evidence or cross-project confirmation)
 
 ---
 
@@ -1027,22 +983,24 @@ SELECT COUNT(*) FROM import_facts WHERE import_path LIKE '%tokio%'
 
 ---
 
-## Current Prototype Statistics (Updated 2026-01-31)
+## Current Prototype Statistics (Updated 2026-02-02)
 
 | Metric | Value |
 |--------|-------|
-| Beliefs | 44 |
+| Beliefs | 46 |
 | Rules | 3 |
+| Verification Queries | 47 (47 pass, 0 contested, 0 errors) |
+| Structural Coverage | 24/27 testable beliefs = 89% |
 | Highest Use (cited_by_beliefs) | measure-first (10) |
 | Highest Use (cited_by_sessions) | sync-first (6) |
 | Most Evidence Links | error-analysis-over-architecture (12) |
 | Highest Entrenchment | very-high (eventlog-is-truth) |
 | Personas | 1 (architect) |
-| Indexed in Semantic | ✅ 44 beliefs in usearch |
+| Indexed in Semantic | ✅ 46 beliefs in usearch |
 | Queryable via Scry | ✅ Verified working |
 | Evidence Verified | ✅ 81/81 (100%) — E4 steps 5-7 complete |
-| Confidence Scores | ❌ Fabricated in 43/44 files — E4 step 8 pending |
-| Structural Evidence | ❌ Zero beliefs link to code/DB — E4.5 exploring |
+| Confidence Scores | ❌ Fabricated in 43/46 files — E4 step 8 pending |
+| Belief-to-Belief Semantics | ❌ Not computed — E4.6 planned |
 
 ### Belief Inventory (Top 10 by Confidence)
 
