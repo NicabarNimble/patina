@@ -35,6 +35,10 @@ The frontmatter ID field is the canonical identity for indexed content, not the 
 callers --pattern "frontmatter" | count(distinct file)
 ```
 
+```verify type="sql" label="Grounding reaches frontmatter code" expect=">= 1"
+SELECT COUNT(*) FROM belief_code_reach WHERE belief_id = 'frontmatter-id-is-identity' AND file_path LIKE '%frontmatter%'
+```
+
 ## Supports
 
 <!-- Add beliefs this supports -->

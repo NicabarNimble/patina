@@ -42,6 +42,10 @@ SELECT COUNT(*) FROM call_graph WHERE callee LIKE '%insert_event%'
 callers --pattern "insert_event" | count(distinct file)
 ```
 
+```verify type="sql" label="Grounding reaches eventlog code" expect=">= 1"
+SELECT COUNT(*) FROM belief_code_reach WHERE belief_id = 'eventlog-is-truth' AND file_path LIKE '%eventlog%'
+```
+
 ## Supports
 
 - [[rebuild-from-source]]

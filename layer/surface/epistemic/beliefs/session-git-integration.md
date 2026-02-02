@@ -70,6 +70,10 @@ SELECT COUNT(*) FROM git_tags WHERE tag_name LIKE 'session-%-end'
 SELECT COUNT(*) FROM commits WHERE sha IN (SELECT DISTINCT source_id FROM eventlog WHERE event_type = 'git.commit' AND data LIKE '%session_id%')
 ```
 
+```verify type="sql" label="Grounding reaches session scripts" expect=">= 1"
+SELECT COUNT(*) FROM belief_code_reach WHERE belief_id = 'session-git-integration' AND file_path LIKE '%session%'
+```
+
 ## Revision Log
 
 - 2026-01-17: Created (confidence: 0.87)

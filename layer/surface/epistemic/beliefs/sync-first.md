@@ -46,6 +46,10 @@ SELECT COUNT(*) FROM import_facts WHERE import_path LIKE '%tokio%'
 SELECT COUNT(*) FROM import_facts WHERE import_path LIKE '%async%'
 ```
 
+```verify type="sql" label="Grounding reaches Rust source" expect=">= 1"
+SELECT COUNT(*) FROM belief_code_reach WHERE belief_id = 'sync-first' AND file_path LIKE '%.rs'
+```
+
 ## Supports
 
 - [[simple-error-handling]]
