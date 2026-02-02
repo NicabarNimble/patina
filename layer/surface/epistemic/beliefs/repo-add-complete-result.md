@@ -29,6 +29,12 @@ Reference repos should get full semantic search by default - one command, comple
 
 - session-20260125-141105: Discovered repo add only ran scrape, leaving repos without semantic search. Fixed by wiring oxidize into repo add. (weight: 0.9)
 
+## Verification
+
+```verify type="sql" label="oxidize_repo called from repo command" expect=">= 1"
+SELECT COUNT(*) FROM call_graph WHERE callee LIKE '%oxidize\_repo%' ESCAPE '\' AND file LIKE '%repo/%'
+```
+
 ## Supports
 
 - [[layer/core/unix-philosophy]]: One tool, one job, done well

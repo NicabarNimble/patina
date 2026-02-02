@@ -29,6 +29,16 @@ Milestones belong in specs, not separate files. Git is the source of truth - der
 
 - session-20260126-060540: Analyzed Option A (frontmatter), B (milestones.toml), C (hybrid). Chose A+scrape - source in spec, derive index. (weight: 0.9)
 
+## Verification
+
+```verify type="sql" label="No separate milestone files" expect="= 0"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE '%milestones.toml%' OR file_path LIKE '%milestones.yaml%' OR file_path LIKE '%milestones.json%'
+```
+
+```verify type="sql" label="Milestones populated from specs" expect=">= 1"
+SELECT COUNT(*) FROM milestones
+```
+
 ## Supports
 
 - milestones-immutable: If milestones live in git, they inherit git's append-only nature

@@ -29,6 +29,16 @@ Spec tables drive version tooling — change the data, not the code
 
 - session-20260131-150141: Shifting milestones from PATCH to MINOR required zero version command logic changes — only the spec milestone table was updated. patina version milestone reads from spec index, so the tooling followed automatically. (weight: 0.9)
 
+## Verification
+
+```verify type="sql" label="Version command has 3+ spec-reading functions" expect=">= 3"
+SELECT COUNT(*) FROM function_facts WHERE file LIKE '%version/internal%' AND name LIKE '%spec%'
+```
+
+```verify type="sql" label="Version command has milestone functions from specs" expect=">= 3"
+SELECT COUNT(*) FROM function_facts WHERE file LIKE '%version/%' AND name LIKE '%milestone%'
+```
+
 ## Supports
 
 - spec-is-contract: Specs as source of truth means tooling reads from them, not the reverse

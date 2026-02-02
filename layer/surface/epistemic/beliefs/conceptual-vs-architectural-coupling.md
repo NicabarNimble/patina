@@ -29,6 +29,12 @@ Related concepts don't imply shared modules - conceptual grouping (both about 's
 
 - session-20260126-134036: vault and scanner are both 'about secrets' but share no types, state, or dependencies - keeping them separate honors independence (weight: 0.9)
 
+## Verification
+
+```verify type="sql" label="Zero cross-command-module imports" expect="= 0"
+SELECT COUNT(*) FROM import_facts WHERE file LIKE '%/commands/%' AND import_path LIKE '%commands/%' AND file <> import_path
+```
+
 ## Supports
 
 <!-- Add beliefs this supports -->

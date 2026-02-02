@@ -32,6 +32,20 @@ v1.0 requires finalizing exactly three pillars: epistemic layer (beliefs), mothe
 - [[session-20260129-074742]]: [[spec-epistemic-layer]] E0-E3 complete, 35 beliefs indexed. E4 (automation) identified as remaining work. (weight: 0.80)
 - [[session-20260129-074742]]: [[spec-mother]] Federated query and persona fusion identified as remaining work. (weight: 0.80)
 
+## Verification
+
+```verify type="sql" label="Epistemic layer spec exists" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE '%feat/epistemic-layer/SPEC.md'
+```
+
+```verify type="sql" label="Mother spec exists" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE '%feat/mother/SPEC.md'
+```
+
+```verify type="sql" label="V1 release spec exists" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE '%feat/v1-release/SPEC.md'
+```
+
 ## Supports
 
 - [[specs-source-of-truth]]: Specs drive the roadmap, v1.0 pillars are spec-defined

@@ -29,6 +29,16 @@ CLI can unify independent modules under one namespace without implying architect
 
 - session-20260126-134036: patina secrets presents unified UX for vault+scanner, but src/secrets/ and src/scanner/ are independent modules with no shared code (weight: 0.9)
 
+## Verification
+
+```verify type="sql" label="Zero cross-command-module imports" expect="= 0"
+SELECT COUNT(*) FROM import_facts WHERE file LIKE '%/commands/%' AND import_path LIKE '%commands/%' AND file <> import_path
+```
+
+```verify type="assay" label="CLI dispatches to multiple command modules" expect=">= 10"
+importers --pattern "commands" | count(distinct file)
+```
+
 ## Supports
 
 <!-- Add beliefs this supports -->

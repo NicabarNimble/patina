@@ -29,6 +29,16 @@ Context should be loaded progressively - metadata always available, details on-d
 
 - [[session-20260116-095954]]: Skills use three-level loading (metadata → SKILL.md → resources) as documented in Claude Code skills system (weight: 0.90)
 
+## Verification
+
+```verify type="sql" label="Skills have SKILL.md for progressive loading" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE 'resources/%/skills/%/SKILL.md'
+```
+
+```verify type="sql" label="Skills have reference docs for on-demand detail" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE 'resources/%/skills/%/references/%'
+```
+
 ## Supports
 
 - [[smart-model-in-room]] - LLM can request details when needed

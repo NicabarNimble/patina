@@ -29,6 +29,12 @@ When adding capability, prefer composing existing tools over building parallel s
 
 - session-20260121-071314: Discovered while designing belief validation - using scry/git/grep for validation means improvements cascade automatically, unlike the abandoned Prolog system which required separate maintenance (weight: 0.95)
 
+## Verification
+
+```verify type="sql" label="Scry/assay/oxidize reused across 10+ command files" expect=">= 10"
+SELECT COUNT(DISTINCT file) FROM call_graph WHERE (callee LIKE '%scry%' OR callee LIKE '%assay%' OR callee LIKE '%oxidize%') AND file LIKE '%commands/%'
+```
+
 ## Supports
 
 - [[dont-build-what-exists]] - composition reuses what exists
