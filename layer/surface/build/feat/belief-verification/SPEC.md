@@ -713,6 +713,16 @@ Design notes:
 
 ---
 
+## Prerequisite Refactor
+
+**Spec:** [refactor/verification-module-split/SPEC.md](../../refactor/verification-module-split/SPEC.md)
+
+Before closing exit criteria, `verification.rs` (1737 lines, 5 concerns in one file) must be
+split to follow `dependable-rust`. Code review found manual section headers substituting for
+file boundaries. The split is a pure internal restructure — zero public API changes.
+
+---
+
 ## Exit Criteria
 
 The exit is not "3 query types work." The exit is: **the ingredient coverage is rich enough that
