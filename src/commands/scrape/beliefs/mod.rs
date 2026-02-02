@@ -561,6 +561,15 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
     }
 }
 
+/// Classify a file path as source code (vs docs, configs, layer files)
+fn is_source_code(path: &str) -> bool {
+    const SOURCE_EXTENSIONS: &[&str] = &[
+        ".rs", ".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".c", ".cpp", ".h", ".java", ".rb",
+        ".sh", ".sql", ".swift", ".kt", ".zig",
+    ];
+    SOURCE_EXTENSIONS.iter().any(|ext| path.ends_with(ext))
+}
+
 /// Compute semantic grounding metrics for all beliefs (E4.6a step 5)
 ///
 /// Loads the usearch semantic index (built by `patina oxidize`) and computes
@@ -613,6 +622,7 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
     let total = beliefs.len();
     let mut grounded = 0;
     let mut total_reach_files = 0u32;
+    let mut total_source_files = 0u32;
 
     for (rowid, belief_id) in &beliefs {
         let belief_key = (BELIEF_ID_OFFSET + rowid) as u64;
@@ -709,7 +719,7 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
         }
 
         // Insert reach entries and count functions per file
-        let reach_count = file_reach.len() as i32;
+        let mut source_file_count = 0i32;
         for (file_path, (reach_score, shas)) in &file_reach {
             // Count functions in this file from function_facts
             let function_count: i32 = conn
@@ -719,6 +729,11 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
                     |row| row.get(0),
                 )
                 .unwrap_or(0);
+
+            // Classify: only source code files count for grounding_code_count
+            if is_source_code(file_path) {
+                source_file_count += 1;
+            }
 
             let hop_path = shas
                 .iter()
@@ -740,6 +755,7 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
             )?;
         }
         total_reach_files += file_reach.len() as u32;
+        total_source_files += source_file_count as u32;
 
         let grounding_score = if total_count > 0 {
             total_score / total_count as f32
@@ -747,10 +763,10 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
             0.0
         };
 
-        // grounding_code_count now derived from multi-hop reach, not direct cosine
+        // grounding_code_count = source code files only (not docs/configs)
         conn.execute(
             "UPDATE beliefs SET grounding_score = ?1, grounding_code_count = ?2, grounding_commit_count = ?3, grounding_session_count = ?4 WHERE id = ?5",
-            rusqlite::params![grounding_score, reach_count, commit_count, session_count, belief_id],
+            rusqlite::params![grounding_score, source_file_count, commit_count, session_count, belief_id],
         )?;
 
         if total_count > 0 {
@@ -758,9 +774,14 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
         }
     }
 
+    let precision = if total_reach_files > 0 {
+        (total_source_files as f64 / total_reach_files as f64 * 100.0) as u32
+    } else {
+        0
+    };
     println!(
-        "  Computed grounding for {} beliefs ({} grounded, {} reach files)",
-        total, grounded, total_reach_files
+        "  Computed grounding for {} beliefs ({} grounded, {} reach files, {} source, {}% precision)",
+        total, grounded, total_reach_files, total_source_files, precision
     );
 
     Ok(())

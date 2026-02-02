@@ -1,7 +1,7 @@
 ---
 type: feat
 id: epistemic-e4.6a-fix
-status: ready
+status: active
 created: 2026-02-02
 updated: 2026-02-02
 sessions:
@@ -107,24 +107,29 @@ After the existing kNN search that already finds commit neighbors:
 
 ## Build Steps
 
-- [ ] 1. Create `belief_code_reach` table in `create_materialized_views()`
-- [ ] 2. Extend `compute_belief_grounding()` — after kNN, walk commit neighbors through
+- [x] 1. Create `belief_code_reach` table in `create_materialized_views()`
+- [x] 2. Extend `compute_belief_grounding()` — after kNN, walk commit neighbors through
   `commit_files` to collect file paths and aggregate scores
-- [ ] 3. Populate `belief_code_reach` with per-file entries
-- [ ] 4. Update `grounding_code_count` from reach data instead of direct cosine
-- [ ] 5. Update `find_belief_impact()` to use `belief_code_reach` for code→belief linking
+- [x] 3. Populate `belief_code_reach` with per-file entries
+- [x] 4. Update `grounding_code_count` from reach data instead of direct cosine
+- [x] 5. Update `find_belief_impact()` to use `belief_code_reach` for code→belief linking
   (replaces broken direct cosine path)
-- [ ] 6. Test full cycle: scrape --rebuild, oxidize, scrape, belief audit — verify code grounding
+- [x] 6. Test full cycle: scrape --rebuild, oxidize, scrape, belief audit — verify code grounding
   is nonzero for beliefs with commit neighbors
+- [ ] 7. Make `--impact` default-on in MCP scry (LLM always sees belief reach on code results)
+- [ ] 8. Add grounding accuracy measurement — verification queries that check whether
+  belief reach targets are topically relevant, not just commit-adjacent
 
 ---
 
 ## Exit Criteria
 
-- [ ] `grounding_code_count` > 0 for beliefs with commit neighbors (currently always 0)
-- [ ] `belief_code_reach` populated with file paths reachable from each belief
-- [ ] `--impact` shows belief annotations on code results via multi-hop
-- [ ] No new embeddings or models required — pure SQL joins after semantic hop
+- [x] `grounding_code_count` > 0 for beliefs with commit neighbors (was always 0)
+- [x] `belief_code_reach` populated with file paths reachable from each belief
+- [x] `--impact` shows belief annotations on code results via multi-hop
+- [x] No new embeddings or models required — pure SQL joins after semantic hop
+- [ ] MCP scry returns belief impact by default (no opt-in required)
+- [ ] Grounding accuracy measurable: beliefs can verify their own reach targets
 
 ---
 
@@ -138,10 +143,11 @@ signals). Local-first, edge hardware, no cloud. The constraint is the architectu
 
 ## What This Changes
 
-- `grounding_code_count` becomes meaningful (currently always 0)
-- `belief audit` GROUND column shows real code reach
-- `--impact` can use `belief_code_reach` instead of direct cosine for code→belief linking
-- Future: `scry --impact` checks which beliefs reach a file when that file appears in results
+- `grounding_code_count` becomes meaningful (was always 0, now 27/47 beliefs have code reach)
+- `belief audit` GROUND column shows real code reach (e.g., `6c1m14s`)
+- `find_belief_impact()` uses `belief_code_reach` SQL lookup instead of broken direct cosine
+- MCP scry returns belief impact by default — LLM sees *why* code exists, not just *what*
+- Grounding accuracy is measurable via belief verification queries
 
 ---
 
@@ -150,3 +156,4 @@ signals). Local-first, edge hardware, no cloud. The constraint is the architectu
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-02 | ready | Specced during session 20260202-130018 |
+| 2026-02-02 | active | Steps 1-6 complete (session 20260202-140700). 39/47 grounded, 93 reach files. Adding default-on + accuracy measurement. |
