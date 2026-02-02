@@ -355,6 +355,12 @@ enum Commands {
         command: Option<commands::belief::BeliefCommands>,
     },
 
+    /// Manage spec lifecycle (archive completed specs)
+    Spec {
+        #[command(subcommand)]
+        command: commands::spec::SpecCommands,
+    },
+
     /// Query codebase structure (modules, imports, call graph)
     Assay {
         #[command(subcommand)]
@@ -1076,6 +1082,11 @@ fn main() -> Result<()> {
         Some(Commands::Belief { command }) => {
             commands::belief::execute(command)?;
         }
+        Some(Commands::Spec { command }) => match command {
+            commands::spec::SpecCommands::Archive { id, dry_run } => {
+                commands::spec::archive(&id, dry_run)?;
+            }
+        },
         Some(Commands::Serve { host, port, mcp }) => {
             if mcp {
                 mcp::run_mcp_server()?;
