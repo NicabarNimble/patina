@@ -14,7 +14,7 @@ related:
 
 # feat: Belief Verification — Connecting Beliefs to Their Ingredients
 
-**Progress:** Measurement complete | Spec drafted | **Phase 1 complete** | **Phase 2 complete** (assay/temporal verification, 4 beliefs 10/10)
+**Progress:** Measurement complete | Spec drafted | **Phase 1 complete** | **Phase 2 complete** | **Phase 3 complete** | **Phase 4 complete** (scry lexical fix) | **Phase 5 partial** (git_tags + git_tracked_files) | 6 beliefs, 16/16 queries passing
 **Parent:** epistemic-layer (E4.5)
 **Principle:** Measure before building (Andrew Ng). Don't architect first — prove which connections produce signal.
 
@@ -591,6 +591,32 @@ Design notes:
 - Aggregation as strict enum: CountAll, CountDistinct(field). Default is CountAll when no pipe
 - Incremental scrape fix: Phase 2.5 now UPDATEs beliefs table aggregate columns directly, since Phase 3 skips already-processed beliefs
 
+### Phase 4 Implementation (Session 20260201-173055)
+
+Files changed:
+- `src/commands/scry/internal/search.rs` — aligned `is_lexical_query()` with `is_code_like()` heuristics
+- `src/commands/scry/mod.rs` — added `lexical: bool` to `ScryOptions`, wired into routing and logging
+- `src/main.rs` — added `--lexical` CLI arg to Scry command
+
+Design notes:
+- Added 4 missing heuristics: snake_case without spaces, all-alphanumeric identifier, paren matching (not just `()`), trailing keyword (`ends_with(" fn")`)
+- `--lexical` flag takes priority over `--dimension` in routing — explicit always wins
+- Scry lexical evaluated as verification source: strong for existence checks (symbol lookup returns precise hits), weak for quantitative claims (can't aggregate). SQL and assay remain primary verification types.
+
+### Phase 5 Implementation (Session 20260201-173055)
+
+Files changed:
+- `src/commands/scrape/git/mod.rs` — `git_tags` table, `git_tracked_files` table, parse/insert functions
+- `layer/surface/epistemic/beliefs/session-git-integration.md` — 3 verification queries
+- `layer/surface/epistemic/beliefs/project-config-in-git.md` — 3 verification queries
+
+Design notes:
+- Both tables use DELETE+reinsert (not incremental) — tags and tracked files are cheap to full-scan, and this avoids stale entries from deleted tags/files
+- Tag scraping placed before incremental commit check in `run()` — tags should index even when no new commits exist
+- `%(creatorname)` doesn't exist in git format — used `%(taggername)` (works for both lightweight and annotated tags)
+- No eventlog writes for tracked files — they're derived data from `git ls-files`, not events
+- Verification results: 16/16 across 6 beliefs (sync-first 3/3, eventlog-is-truth 2/2, commit-early-commit-often 3/3, self-healing-invariants 2/2, session-git-integration 3/3, project-config-in-git 3/3)
+
 ---
 
 ## Build Steps
@@ -631,17 +657,22 @@ Design notes:
 - [x] 15. End-to-end test: scrape → audit → verify all 10 queries across 4 beliefs display
   correctly — 10 passed, 0 contested, 0 errors
 
-### Phase 4: Fix Scry Lexical (Independent)
+### Phase 4: Fix Scry Lexical (Independent) — COMPLETE (Session 20260201-173055)
 
-- [ ] 16. Align `is_lexical_query()` with `is_code_like()` heuristics
-- [ ] 17. Add `--lexical` flag to force FTS5 mode
-- [ ] 18. Test: `patina scry "insert_event"` triggers lexical mode and returns code results
-- [ ] 19. Evaluate scry as a future `type="lexical"` verification source
+- [x] 16. Align `is_lexical_query()` with `is_code_like()` heuristics — added snake_case,
+  single-identifier, paren, and trailing-keyword detection
+- [x] 17. Add `--lexical` flag to force FTS5 mode — escape hatch with `[forced]` indicator
+- [x] 18. Test: `patina scry "insert_event"` triggers lexical mode and returns code results —
+  all 5 previously-failing queries now route correctly
+- [x] 19. Evaluate scry as a future `type="lexical"` verification source — viable for existence
+  checks (symbol lookup), not for quantitative verification (counts, aggregations)
 
-### Phase 5: Close Ingredient Coverage Gaps
+### Phase 5: Close Ingredient Coverage Gaps — PARTIAL (Session 20260201-173055)
 
-- [ ] 20. Add git tags to git scraper → `git_tags` table (tag name, SHA, timestamp)
-- [ ] 21. Add git tracking state → `git_tracked_files` table (path, tracked/ignored/untracked)
+- [x] 20. Add git tags to git scraper → `git_tags` table (tag_name PK, sha, tag_date,
+  tagger_name, message) — 996 tags indexed, always full-scraped
+- [x] 21. Add git tracking state → `git_tracked_files` table (file_path PK, status) —
+  1492 files indexed via `git ls-files`, DELETE+reinsert pattern
 - [ ] 22. Evaluate: YAML/TOML config parser for code scraper (CI workflows, project config)
 - [ ] 23. Evaluate: Markdown structured content parser (spec checkboxes, frontmatter status)
 
@@ -672,9 +703,9 @@ the important beliefs can be verified, and the verification engine connects them
 
 ### Coverage Exit (Phases 5-6)
 
-- [ ] Scry lexical routing fixed — code symbols trigger FTS5 mode
-- [ ] Git tags indexed — session-git-integration verifiable
-- [ ] Git tracking state indexed — project-config-in-git verifiable
+- [x] Scry lexical routing fixed — code symbols trigger FTS5 mode (Phase 4)
+- [x] Git tags indexed — session-git-integration verifiable, 3/3 passing (Phase 5)
+- [x] Git tracking state indexed — project-config-in-git verifiable, 3/3 passing (Phase 5)
 - [ ] >= 80% of structurally testable beliefs have live verification queries
 - [ ] Zero beliefs are blocked solely by missing ingredient coverage
 - [ ] Coverage map documented: for each ingredient type, which tables exist, which beliefs use them
