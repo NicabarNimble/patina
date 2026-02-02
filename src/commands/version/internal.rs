@@ -338,7 +338,11 @@ pub fn bump_milestone(
     if let Some(next) = &next_milestone {
         println!("  Next: v{}", next);
     } else {
-        println!("  No more pending milestones!");
+        println!("  Spec fully complete!");
+        println!(
+            "  Archive with: patina spec archive {}",
+            milestone.spec_id
+        );
     }
 
     Ok(())
