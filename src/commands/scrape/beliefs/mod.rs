@@ -304,7 +304,7 @@ fn extract_file_metrics(content: &str) -> BeliefMetrics {
         }
 
         // Only count list entries (lines starting with -)
-        if !trimmed.starts_with("- ") && !trimmed.starts_with("- ") {
+        if !trimmed.starts_with("- ") && !trimmed.starts_with("* ") {
             continue;
         }
 
