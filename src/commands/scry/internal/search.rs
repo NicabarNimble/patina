@@ -238,9 +238,11 @@ pub fn scry_belief(belief_id: &str, options: &ScryOptions) -> Result<Vec<ScryRes
         .with_context(|| format!("Failed to open database: {}", db_path))?;
 
     let rowid: i64 = conn
-        .query_row("SELECT rowid FROM beliefs WHERE id = ?", [belief_id], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT rowid FROM beliefs WHERE id = ?",
+            [belief_id],
+            |row| row.get(0),
+        )
         .with_context(|| format!("Belief '{}' not found in database", belief_id))?;
 
     const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
@@ -271,7 +273,12 @@ pub fn scry_belief(belief_id: &str, options: &ScryOptions) -> Result<Vec<ScryRes
     let mut belief_vector = vec![0.0_f32; 256];
     index
         .get(belief_index, &mut belief_vector)
-        .with_context(|| format!("Failed to get vector for belief '{}' (index {})", belief_id, belief_index))?;
+        .with_context(|| {
+            format!(
+                "Failed to get vector for belief '{}' (index {})",
+                belief_id, belief_index
+            )
+        })?;
 
     println!("Searching for neighbors of belief '{}'...", belief_id);
 
