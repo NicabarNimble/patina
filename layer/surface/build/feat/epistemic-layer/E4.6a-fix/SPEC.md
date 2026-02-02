@@ -1,7 +1,7 @@
 ---
 type: feat
 id: epistemic-e4.6a-fix
-status: active
+status: complete
 created: 2026-02-02
 updated: 2026-02-02
 sessions:
@@ -123,12 +123,9 @@ After the existing kNN search that already finds commit neighbors:
   Result: 93 → 9 reach files, precision 9% → 100%.
 - [x] 10. Build ground-truth eval set — 7 beliefs with grounding recall verification queries.
   Result: 3/7 pass (43% recall), 4/7 contested (commit neighbors only touched docs).
-- [ ] 11. Lexical fallback for zero-source-reach beliefs — when structural hop yields no source
-  files, extract keywords from belief ID (split on `-`) and search `function_facts.file` for
-  matching paths. e.g., `eventlog-is-truth` → keywords `eventlog`, `truth` → match
-  `src/eventlog.rs`. Pure SQL, no embeddings. Only fires when commit hop fails to reach code.
-- [ ] 12. Re-measure recall with lexical fallback — run scrape and check ground-truth queries.
-  Target: recall > 70% (from 43%).
+- [x] 11. Lexical fallback for zero-source-reach beliefs — `extract_belief_keywords()` splits
+  belief ID, removes stop words, searches `function_facts.file`. 14 beliefs recovered.
+- [x] 12. Re-measure: recall 43% → 86% (6/7 pass). 94 source reach files, 100% precision.
 
 ---
 
@@ -142,7 +139,7 @@ After the existing kNN search that already finds commit neighbors:
 - [x] Grounding accuracy measurable: precision% reported during scrape
 - [x] Precision > 50% after source-only filtering (achieved: 100%)
 - [x] Recall measurable via ground-truth verification queries on 7 beliefs (measured: 43%)
-- [ ] Recall > 70% with lexical fallback
+- [x] Recall > 70% with lexical fallback (achieved: 86%, 6/7 pass)
 
 ---
 
@@ -205,4 +202,4 @@ signals). Local-first, edge hardware, no cloud. The constraint is the architectu
 | 2026-02-02 | ready | Specced during session 20260202-130018 |
 | 2026-02-02 | active | Steps 1-8 complete. 39/47 grounded, 93 reach, 9% precision. Error analysis done. |
 | 2026-02-02 | complete | Steps 9-10 done. 100% precision, 43% recall. |
-| 2026-02-02 | active | Steps 11-12: lexical fallback for recall. Target > 70%. |
+| 2026-02-02 | complete | Steps 11-12 done. 94 source files, 100% precision, 86% recall. |
