@@ -378,6 +378,31 @@ surface.rule.apply       {rule_id, context, result}
 
 ---
 
+## Open Questions
+
+1. **Persona explosion**: When do we need multiple personas vs facets?
+2. **Confidence decay**: How fast should confidence decay for fast-moving domains?
+3. **Cross-project attacks**: Can a belief in project A attack a belief in project B?
+4. **Rule inheritance**: Do rules from core apply automatically to surface?
+5. **Visualization**: How to visualize the argument graph? (Obsidian? Custom?)
+6. **Signal vs noise curation**: How to distinguish valuable beliefs from noise as corpus grows?
+   Four-tier model: automated signals → usage tracking → review triggers → human curation.
+   E3 (scry integration) prerequisite for usage data — now complete.
+7. **Structural evidence gap** (Session 20260131-182129): Beliefs have 95 belief-to-belief links
+   and 43 session links but almost zero links to source code — despite all that data existing in
+   `patina.db`. E4.5 verification queries close this partially; E4.6a-fix multi-hop closes it
+   further.
+8. **Which beliefs are structurally testable?** Early estimate: ~15 of 44 beliefs make testable
+   claims about code structure. The rest are process/principle beliefs where structural testing is
+   indirect at best. E4.5 result: 24/27 testable beliefs verified (89% coverage).
+
+Resolved:
+- ~~Skills evolution~~ — Skills are now the standard (Session 20260116-095954)
+- ~~Heredoc limitations~~ — Shell script with command-line args works
+- ~~Skill auto-triggering~~ — Validated across 5 beliefs (Session 20260117-072948)
+
+---
+
 ## References
 
 - AGM Framework: Alchourrón, Gärdenfors, Makinson (1985)
