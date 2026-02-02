@@ -1,7 +1,7 @@
 ---
 type: feat
 id: epistemic-e4.6a-fix
-status: complete
+status: active
 created: 2026-02-02
 updated: 2026-02-02
 sessions:
@@ -123,6 +123,12 @@ After the existing kNN search that already finds commit neighbors:
   Result: 93 → 9 reach files, precision 9% → 100%.
 - [x] 10. Build ground-truth eval set — 7 beliefs with grounding recall verification queries.
   Result: 3/7 pass (43% recall), 4/7 contested (commit neighbors only touched docs).
+- [ ] 11. Lexical fallback for zero-source-reach beliefs — when structural hop yields no source
+  files, extract keywords from belief ID (split on `-`) and search `function_facts.file` for
+  matching paths. e.g., `eventlog-is-truth` → keywords `eventlog`, `truth` → match
+  `src/eventlog.rs`. Pure SQL, no embeddings. Only fires when commit hop fails to reach code.
+- [ ] 12. Re-measure recall with lexical fallback — run scrape and check ground-truth queries.
+  Target: recall > 70% (from 43%).
 
 ---
 
@@ -136,6 +142,7 @@ After the existing kNN search that already finds commit neighbors:
 - [x] Grounding accuracy measurable: precision% reported during scrape
 - [x] Precision > 50% after source-only filtering (achieved: 100%)
 - [x] Recall measurable via ground-truth verification queries on 7 beliefs (measured: 43%)
+- [ ] Recall > 70% with lexical fallback
 
 ---
 
@@ -156,9 +163,19 @@ eventlog-is-infrastructure" scores 0.89 cosine with the eventlog-is-truth belief
 commit only touches `layer/surface/epistemic/beliefs/eventlog-is-infrastructure.md` — no
 actual code. The semantic hop is accurate; the structural hop is noisy.
 
-**Fix:** Filter at the hop. Only insert source code files (.rs, .sh, .py, etc.) into
-`belief_code_reach`. Non-source files are noise for code grounding. This is a pipeline fix,
-not a model fix.
+**Precision fix (step 9):** Filter at the hop. Only insert source code files into
+`belief_code_reach`. Result: 100% precision.
+
+**Recall problem (43%):** 4/7 beliefs have commit neighbors but those commits only touched
+docs. The semantic hop found the right *topic* — the structural hop found no source files.
+But the signal is still there: the commit message says "eventlog", and `function_facts` has
+files with "eventlog" in the path.
+
+**Recall fix (step 11):** Lexical fallback. When a belief has commit neighbors but zero
+source reach, extract keywords from the belief ID and search `function_facts.file` for
+matching paths. `eventlog-is-truth` → keywords `["eventlog"]` → `src/eventlog.rs`. This is
+not a new model or embedding — it's one SQL LIKE query on existing data. The semantic hop
+already confirmed topic relevance; the lexical fallback finds the code that topic maps to.
 
 ---
 
@@ -187,4 +204,5 @@ signals). Local-first, edge hardware, no cloud. The constraint is the architectu
 |------|--------|------|
 | 2026-02-02 | ready | Specced during session 20260202-130018 |
 | 2026-02-02 | active | Steps 1-8 complete. 39/47 grounded, 93 reach, 9% precision. Error analysis done. |
-| 2026-02-02 | complete | Steps 9-10 done. 100% precision (9 source files), 43% recall (3/7 ground-truth pass). |
+| 2026-02-02 | complete | Steps 9-10 done. 100% precision, 43% recall. |
+| 2026-02-02 | active | Steps 11-12: lexical fallback for recall. Target > 70%. |
