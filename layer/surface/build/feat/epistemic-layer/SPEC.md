@@ -3,7 +3,7 @@ type: feat
 id: epistemic-layer
 status: in_progress
 created: 2026-01-16
-updated: 2026-01-22
+updated: 2026-02-02
 sessions:
   origin: 20260116-054624
 related:
@@ -896,8 +896,8 @@ searches for neighbors, and filters by ID range:
 
 **Build steps:**
 
-- [ ] 1. Add `scry --belief <id>` mode — retrieve belief embedding, kNN across all types
-- [ ] 2. Add `--type` filter for scry belief mode — restrict results to code, commits, sessions,
+- [x] 1. Add `scry --belief <id>` mode — retrieve belief embedding, kNN across all types
+- [x] 2. Add `--type` filter for scry belief mode — restrict results to code, commits, sessions,
   patterns, or beliefs
 - [ ] 3. Surface belief→code grounding in `patina belief audit` — top 3 nearest code regions
   per belief, showing which code each belief is semantically about
@@ -908,8 +908,8 @@ searches for neighbors, and filters by ID range:
 
 **Exit criteria:**
 
-- [ ] `patina scry --belief sync-first` returns nearest code, commits, sessions
-- [ ] `patina scry --belief sync-first --type code` filters to code only
+- [x] `patina scry --belief sync-first` returns nearest code, commits, sessions
+- [x] `patina scry --belief sync-first --type code` filters to code only
 - [ ] Belief audit shows grounding metric (how connected to code vs floating)
 - [ ] At least 5 beliefs show meaningful code grounding (nearest code is actually relevant)
 
