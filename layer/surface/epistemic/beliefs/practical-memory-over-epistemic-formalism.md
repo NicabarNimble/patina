@@ -33,6 +33,8 @@ The belief system is a decision memory with regression tests, not an epistemic k
 
 ## Attacked-By
 
+- [[stale-context-is-hostile-context]] (status: active, scope: "E4.6 semantic relationships are practical measurement, not formalism — computing belief similarity and typed edges serves the same 'decision memory with regression tests' goal. The belief over-indexes on 'not a knowledge graph' when what matters is 'measurement before algorithms.' Semantic similarity between beliefs IS measurement.")
+
 ## Applied-In
 
 - Verification system design: chose SQL/assay/temporal queries over graph traversal algorithms
@@ -42,3 +44,4 @@ The belief system is a decision memory with regression tests, not an epistemic k
 ## Revision Log
 
 - 2026-02-02: Created — metrics computed by `patina scrape`
+- 2026-02-02: Scoped — "not a knowledge graph" is too absolute. E4.6 semantic measurement (belief similarity, typed edges, conflict detection) is practical, not formalism. The belief's core insight holds (measurement > algorithms), but computing relationships between beliefs IS measurement.
