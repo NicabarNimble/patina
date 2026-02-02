@@ -109,6 +109,61 @@ Metrics are computed by `patina scrape`, not guessed by the LLM:
 **A strong belief** has high use (many citations) AND high truth (verified evidence).
 **A weak belief** has low use and unverified evidence — it's an assertion, not yet tested.
 
+## Verification Queries
+
+Structural beliefs can include a `## Verification` section with deterministic queries that prove
+the claim against the project's knowledge database. Queries run automatically during `patina scrape`.
+
+### Query Format
+
+````markdown
+## Verification
+
+```verify type="sql" label="No async functions" expect="= 0"
+SELECT COUNT(*) FROM function_facts WHERE is_async = 1
+```
+
+```verify type="assay" label="insert_event is infrastructure" expect=">= 5"
+callers --pattern "insert_event" | count(distinct file)
+```
+
+```verify type="temporal" label="Commit count" expect=">= 100"
+derive-moments | summary.total_commits
+```
+````
+
+### Query Types
+
+| Type | Syntax | When to use |
+|------|--------|-------------|
+| `sql` | Standard SELECT query | Counts, aggregates, existence checks |
+| `assay` | `<command> --pattern "<pat>"` with optional `\| count(distinct <field>)` | Architecture claims (callers, importers) |
+| `temporal` | `derive-moments \| summary.<field>` | Commit patterns (total_commits, rewrite, migration) |
+
+### Assay Commands
+
+| Command | What it queries | Distinct fields |
+|---------|----------------|-----------------|
+| `callers` | call_graph WHERE callee matches | file, caller, callee, call_type |
+| `callees` | call_graph WHERE caller matches | file, caller, callee, call_type |
+| `functions` | function_facts WHERE name matches | file |
+| `imports` | import_facts WHERE import_path matches | file |
+| `importers` | import_facts WHERE file matches | file |
+
+### Expectation Operators
+
+`= N`, `> N`, `>= N`, `< N`, `<= N` — compared against the single numeric result.
+
+### When NOT to Add Verification
+
+Process beliefs (methodology, workflow, evaluation principles) correctly have no structural
+proof — testimony is the right evidence type. Examples: spec-first, measure-first,
+read-code-before-write. Don't force SQL queries onto process beliefs; they produce noise.
+
+### Available Tables
+
+See `references/verification-schema.md` for the full schema reference.
+
 ## Validation Rules
 
 The creation script enforces:
