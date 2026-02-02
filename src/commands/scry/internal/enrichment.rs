@@ -62,8 +62,7 @@ pub fn enrich_results(
                             let timestamp: String = row.get(2)?;
                             let title: String =
                                 row.get::<_, Option<String>>(3)?.unwrap_or_default();
-                            let body: String =
-                                row.get::<_, Option<String>>(4)?.unwrap_or_default();
+                            let body: String = row.get::<_, Option<String>>(4)?.unwrap_or_default();
 
                             let kind = if event_type == "forge.pr" {
                                 "PR"

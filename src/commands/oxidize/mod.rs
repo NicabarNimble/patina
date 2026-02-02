@@ -527,7 +527,11 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
             let title: String = row.get(3)?;
             let body: Option<String> = row.get(4)?;
 
-            let kind = if event_type == "forge.pr" { "PR" } else { "Issue" };
+            let kind = if event_type == "forge.pr" {
+                "PR"
+            } else {
+                "Issue"
+            };
             let desc = match body {
                 Some(b) if !b.is_empty() => format!("{} #{}: {}\n{}", kind, number, title, b),
                 _ => format!("{} #{}: {}", kind, number, title),
