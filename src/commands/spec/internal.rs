@@ -46,17 +46,9 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
         } else {
             println!("  Remove: {}", file_path);
         }
-        println!(
-            "  Update: layer/core/build.md (add to Archived section)"
-        );
-        println!(
-            "  Commit: docs: archive {} (complete)",
-            tag_name
-        );
-        println!(
-            "\nRecover with: git show {}:{}",
-            tag_name, file_path
-        );
+        println!("  Update: layer/core/build.md (add to Archived section)");
+        println!("  Commit: docs: archive {} (complete)", tag_name);
+        println!("\nRecover with: git show {}:{}", tag_name, file_path);
         return Ok(());
     }
 
@@ -72,7 +64,13 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
     println!("Creating tag: {}", tag_name);
     let desc = title.as_deref().unwrap_or(id);
     let output = Command::new("git")
-        .args(["tag", "-a", &tag_name, "-m", &format!("Archived spec: {}", desc)])
+        .args([
+            "tag",
+            "-a",
+            &tag_name,
+            "-m",
+            &format!("Archived spec: {}", desc),
+        ])
         .output()
         .context("Failed to create git tag")?;
     if !output.status.success() {
@@ -139,9 +137,7 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
 fn find_spec(id: &str) -> Result<(String, String, Option<String>)> {
     let db_path = Path::new(".patina/local/data/patina.db");
     if !db_path.exists() {
-        anyhow::bail!(
-            "Knowledge database not found. Run 'patina scrape' first."
-        );
+        anyhow::bail!("Knowledge database not found. Run 'patina scrape' first.");
     }
 
     let conn = Connection::open(db_path).context("Failed to open database")?;
@@ -200,12 +196,7 @@ fn update_build_md(entry: &str) -> Result<()> {
     // Find the "Full list:" line that ends the archived section and insert before it
     let marker = "Full list: `git tag -l 'spec/*'`";
     if let Some(pos) = content.find(marker) {
-        let new_content = format!(
-            "{}{}\n{}",
-            &content[..pos],
-            entry,
-            &content[pos..]
-        );
+        let new_content = format!("{}{}\n{}", &content[..pos], entry, &content[pos..]);
         std::fs::write(build_path, &new_content)
             .with_context(|| format!("Failed to write {}", build_path))?;
 
@@ -214,11 +205,7 @@ fn update_build_md(entry: &str) -> Result<()> {
 
         Ok(())
     } else {
-        anyhow::bail!(
-            "Could not find '{}' marker in {}",
-            marker,
-            build_path
-        );
+        anyhow::bail!("Could not find '{}' marker in {}", marker, build_path);
     }
 }
 

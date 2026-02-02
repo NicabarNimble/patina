@@ -511,8 +511,8 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
     }
 
     // Cross-reference beliefs against each other
-    for i in 0..beliefs.len() {
-        let bid = &beliefs[i].id;
+    for belief in beliefs.iter_mut() {
+        let bid = &belief.id;
 
         // Count how many OTHER belief files reference this belief ID
         let mut belief_citations = 0;
@@ -523,13 +523,13 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
         }
 
         // Verify evidence lines (handles both [[wikilinks]] and bare session-ID references)
-        let (verified, external) = verify_evidence_section(&beliefs[i].content, project_root);
+        let (verified, external) = verify_evidence_section(&belief.content, project_root);
 
         // Update metrics
-        beliefs[i].metrics.cited_by_beliefs = belief_citations;
-        beliefs[i].metrics.cited_by_sessions = session_citations.get(bid).copied().unwrap_or(0);
-        beliefs[i].metrics.evidence_verified = verified;
-        beliefs[i].metrics.external_sources += external;
+        belief.metrics.cited_by_beliefs = belief_citations;
+        belief.metrics.cited_by_sessions = session_citations.get(bid).copied().unwrap_or(0);
+        belief.metrics.evidence_verified = verified;
+        belief.metrics.external_sources += external;
     }
 }
 

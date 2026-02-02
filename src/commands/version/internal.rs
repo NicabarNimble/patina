@@ -339,10 +339,7 @@ pub fn bump_milestone(
         println!("  Next: v{}", next);
     } else {
         println!("  Spec fully complete!");
-        println!(
-            "  Archive with: patina spec archive {}",
-            milestone.spec_id
-        );
+        println!("  Archive with: patina spec archive {}", milestone.spec_id);
     }
     println!("\n  Rebuild to use new version:");
     println!("    cargo build --release && cargo install --path .");
