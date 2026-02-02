@@ -110,6 +110,18 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_beliefs_persona ON beliefs(persona);
         CREATE INDEX IF NOT EXISTS idx_beliefs_status ON beliefs(status);
         CREATE INDEX IF NOT EXISTS idx_beliefs_entrenchment ON beliefs(entrenchment);
+
+        -- E4.6a-fix: Multi-hop code grounding (belief → commit → file → function)
+        CREATE TABLE IF NOT EXISTS belief_code_reach (
+            belief_id TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            reach_score REAL,
+            commit_count INTEGER,
+            function_count INTEGER,
+            hop_path TEXT,
+            PRIMARY KEY (belief_id, file_path)
+        );
+        CREATE INDEX IF NOT EXISTS idx_belief_code_reach_file ON belief_code_reach(file_path);
         "#,
     )?;
 
@@ -588,6 +600,9 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
     const SEARCH_LIMIT: usize = 20;
     const MIN_SCORE: f32 = 0.85;
 
+    // Clear previous reach data
+    conn.execute("DELETE FROM belief_code_reach", [])?;
+
     // Read all beliefs from DB
     let mut stmt = conn.prepare("SELECT rowid, id FROM beliefs")?;
     let beliefs: Vec<(i64, String)> = stmt
@@ -597,6 +612,7 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
 
     let total = beliefs.len();
     let mut grounded = 0;
+    let mut total_reach_files = 0u32;
 
     for (rowid, belief_id) in &beliefs {
         let belief_key = (BELIEF_ID_OFFSET + rowid) as u64;
@@ -616,17 +632,20 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
             Err(_) => continue,
         };
 
-        let mut code_count = 0i32;
         let mut commit_count = 0i32;
         let mut session_count = 0i32;
         let mut total_score: f32 = 0.0;
         let mut total_count = 0i32;
 
+        // E4.6a-fix: Collect commit neighbors for structural hop
+        // (sha, cosine_score) for commits above threshold
+        let mut commit_neighbors: Vec<(String, f32)> = Vec::new();
+
         for i in 0..matches.keys.len() {
             let key = matches.keys[i] as i64;
             let score = 1.0 - matches.distances[i];
 
-            // Skip self and pattern entries (belief appears as both)
+            // Skip self and pattern entries
             if key == BELIEF_ID_OFFSET + rowid {
                 continue;
             }
@@ -642,17 +661,85 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
                 continue;
             }
 
-            if (CODE_ID_OFFSET..PATTERN_ID_OFFSET).contains(&key) {
-                code_count += 1;
-            } else if (COMMIT_ID_OFFSET..BELIEF_ID_OFFSET).contains(&key) {
+            if (COMMIT_ID_OFFSET..BELIEF_ID_OFFSET).contains(&key) {
                 commit_count += 1;
+
+                // Resolve commit rowid → SHA for structural hop
+                let commit_rowid = key - COMMIT_ID_OFFSET;
+                if let Ok(sha) = conn.query_row(
+                    "SELECT sha FROM commits WHERE rowid = ?1",
+                    [commit_rowid],
+                    |row| row.get::<_, String>(0),
+                ) {
+                    commit_neighbors.push((sha, score));
+                }
             } else if key < CODE_ID_OFFSET {
                 session_count += 1;
             }
+            // Note: direct code matches (CODE_ID_OFFSET range) still counted
+            // in total_score but NOT in grounding_code_count (that comes from reach)
 
             total_score += score;
             total_count += 1;
         }
+
+        // E4.6a-fix: Structural hop — commit → commit_files → file_path
+        // Aggregate per-file: max score across touching commits, count of commits
+        let mut file_reach: std::collections::HashMap<String, (f32, Vec<String>)> =
+            std::collections::HashMap::new();
+
+        for (sha, score) in &commit_neighbors {
+            let mut file_stmt =
+                conn.prepare_cached("SELECT file_path FROM commit_files WHERE sha = ?1")?;
+            let files: Vec<String> = file_stmt
+                .query_map([sha], |row| row.get::<_, String>(0))?
+                .filter_map(|r| r.ok())
+                .collect();
+
+            for file_path in files {
+                let entry = file_reach
+                    .entry(file_path)
+                    .or_insert_with(|| (0.0_f32, Vec::new()));
+                // reach_score = max cosine across commits touching this file
+                if *score > entry.0 {
+                    entry.0 = *score;
+                }
+                entry.1.push(sha.clone());
+            }
+        }
+
+        // Insert reach entries and count functions per file
+        let reach_count = file_reach.len() as i32;
+        for (file_path, (reach_score, shas)) in &file_reach {
+            // Count functions in this file from function_facts
+            let function_count: i32 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM function_facts WHERE file = ?1",
+                    [file_path],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+
+            let hop_path = shas
+                .iter()
+                .map(|s| format!("commit:{}", &s[..7.min(s.len())]))
+                .collect::<Vec<_>>()
+                .join(",");
+
+            conn.execute(
+                "INSERT OR REPLACE INTO belief_code_reach (belief_id, file_path, reach_score, commit_count, function_count, hop_path)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                rusqlite::params![
+                    belief_id,
+                    file_path,
+                    reach_score,
+                    shas.len() as i32,
+                    function_count,
+                    hop_path,
+                ],
+            )?;
+        }
+        total_reach_files += file_reach.len() as u32;
 
         let grounding_score = if total_count > 0 {
             total_score / total_count as f32
@@ -660,10 +747,10 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
             0.0
         };
 
-        // UPDATE the beliefs row with grounding metrics
+        // grounding_code_count now derived from multi-hop reach, not direct cosine
         conn.execute(
             "UPDATE beliefs SET grounding_score = ?1, grounding_code_count = ?2, grounding_commit_count = ?3, grounding_session_count = ?4 WHERE id = ?5",
-            rusqlite::params![grounding_score, code_count, commit_count, session_count, belief_id],
+            rusqlite::params![grounding_score, reach_count, commit_count, session_count, belief_id],
         )?;
 
         if total_count > 0 {
@@ -672,8 +759,8 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
     }
 
     println!(
-        "  Computed grounding for {} beliefs ({} grounded)",
-        total, grounded
+        "  Computed grounding for {} beliefs ({} grounded, {} reach files)",
+        total, grounded, total_reach_files
     );
 
     Ok(())
