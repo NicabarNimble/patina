@@ -685,7 +685,8 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
                 continue;
             }
             // Skip other beliefs
-            if (BELIEF_ID_OFFSET..FORGE_ID_OFFSET).contains(&key) && key != BELIEF_ID_OFFSET + rowid {
+            if (BELIEF_ID_OFFSET..FORGE_ID_OFFSET).contains(&key) && key != BELIEF_ID_OFFSET + rowid
+            {
                 continue;
             }
 
