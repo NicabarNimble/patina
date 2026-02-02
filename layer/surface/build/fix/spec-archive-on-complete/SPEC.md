@@ -1,7 +1,7 @@
 ---
 type: fix
 id: spec-archive-on-complete
-status: building
+status: complete
 created: 2026-02-02
 sessions:
   origin: 20260202-063713
@@ -37,21 +37,22 @@ specs, run in bulk, test independently.
 
 ## Build Steps
 
-- [ ] 1. Add `spec` command group to CLI with `archive` subcommand
-- [ ] 2. Implement `spec archive <id>`: find spec file by id in patterns table, validate
+- [x] 1. Add `spec` command group to CLI with `archive` subcommand
+- [x] 2. Implement `spec archive <id>`: find spec file by id in patterns table, validate
   `status: complete`, create `spec/<id>` git tag, remove file + directory, update build.md
   Archives section, commit
-- [ ] 3. Add `--dry-run` flag to show what would happen without executing
-- [ ] 4. Add hint to `version milestone` when `current_milestone` becomes None after bump:
+- [x] 3. Add `--dry-run` flag to show what would happen without executing
+- [x] 4. Add hint to `version milestone` when `current_milestone` becomes None after bump:
   print archive suggestion
-- [ ] 5. Test: create a dummy spec, mark complete, run `patina spec archive`, verify tag
-  exists, file gone, build.md updated
+- [x] 5. Test: archived 4 completed specs (session-092-hardening, reports-layer,
+  version-semver-alignment, verification-module-split), verified tags exist, files removed,
+  build.md updated, `archive-completed-work` belief now passes (47/47)
 
 ---
 
 ## Exit Criteria
 
-- [ ] `patina spec archive <id>` creates tag, removes file, updates build.md, commits
-- [ ] `--dry-run` shows plan without executing
-- [ ] `archive-completed-work` belief passes after archiving existing 4 specs
-- [ ] `patina version milestone` prints hint when spec fully completes
+- [x] `patina spec archive <id>` creates tag, removes file, updates build.md, commits
+- [x] `--dry-run` shows plan without executing
+- [x] `archive-completed-work` belief passes after archiving existing 4 specs (0 contested)
+- [x] `patina version milestone` prints hint when spec fully completes
