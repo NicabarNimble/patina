@@ -184,7 +184,11 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
         .query_map([], |row| {
             let base_idx = 8; // 0-7 are always present
             let v_offset = base_idx;
-            let g_offset = if has_verification { v_offset + 4 } else { v_offset };
+            let g_offset = if has_verification {
+                v_offset + 4
+            } else {
+                v_offset
+            };
 
             Ok(BeliefRow {
                 id: row.get(0)?,
@@ -195,14 +199,46 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
                 evidence_count: row.get(5)?,
                 evidence_verified: row.get(6)?,
                 defeated_attacks: row.get(7)?,
-                verification_total: if has_verification { row.get(v_offset)? } else { 0 },
-                verification_passed: if has_verification { row.get(v_offset + 1)? } else { 0 },
-                verification_failed: if has_verification { row.get(v_offset + 2)? } else { 0 },
-                verification_errored: if has_verification { row.get(v_offset + 3)? } else { 0 },
-                grounding_score: if has_grounding { row.get(g_offset)? } else { 0.0 },
-                grounding_code_count: if has_grounding { row.get(g_offset + 1)? } else { 0 },
-                grounding_commit_count: if has_grounding { row.get(g_offset + 2)? } else { 0 },
-                grounding_session_count: if has_grounding { row.get(g_offset + 3)? } else { 0 },
+                verification_total: if has_verification {
+                    row.get(v_offset)?
+                } else {
+                    0
+                },
+                verification_passed: if has_verification {
+                    row.get(v_offset + 1)?
+                } else {
+                    0
+                },
+                verification_failed: if has_verification {
+                    row.get(v_offset + 2)?
+                } else {
+                    0
+                },
+                verification_errored: if has_verification {
+                    row.get(v_offset + 3)?
+                } else {
+                    0
+                },
+                grounding_score: if has_grounding {
+                    row.get(g_offset)?
+                } else {
+                    0.0
+                },
+                grounding_code_count: if has_grounding {
+                    row.get(g_offset + 1)?
+                } else {
+                    0
+                },
+                grounding_commit_count: if has_grounding {
+                    row.get(g_offset + 2)?
+                } else {
+                    0
+                },
+                grounding_session_count: if has_grounding {
+                    row.get(g_offset + 3)?
+                } else {
+                    0
+                },
             })
         })?
         .filter_map(|r| r.ok())
@@ -319,10 +355,7 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
         );
     }
     if grounded > 0 || floating > 0 {
-        println!(
-            "  Grounding: {} grounded, {} floating",
-            grounded, floating
-        );
+        println!("  Grounding: {} grounded, {} floating", grounded, floating);
     }
     if warning_count > 0 {
         println!("\n  Warnings: {}", warning_count);
@@ -336,7 +369,10 @@ fn run_audit(sort_by: &str, warnings_only: bool, show_grounding: bool) -> Result
             println!("    {} beliefs with no citations", unused);
         }
         if floating > 0 {
-            println!("    {} beliefs floating (no code/commit/session grounding)", floating);
+            println!(
+                "    {} beliefs floating (no code/commit/session grounding)",
+                floating
+            );
         }
         if total_failed > 0 {
             println!("    {} beliefs with contested verification", total_failed);
@@ -400,11 +436,10 @@ fn run_grounding_report(conn: &Connection, rows: &[BeliefRow]) -> Result<()> {
 
     for row in rows {
         // Look up belief's rowid
-        let rowid: Result<i64, _> = conn.query_row(
-            "SELECT rowid FROM beliefs WHERE id = ?",
-            [&row.id],
-            |r| r.get(0),
-        );
+        let rowid: Result<i64, _> =
+            conn.query_row("SELECT rowid FROM beliefs WHERE id = ?", [&row.id], |r| {
+                r.get(0)
+            });
 
         let rowid = match rowid {
             Ok(r) => r,
@@ -454,9 +489,9 @@ fn run_grounding_report(conn: &Connection, rows: &[BeliefRow]) -> Result<()> {
             }
 
             let key = r.id;
-            if key >= CODE_ID_OFFSET && key < PATTERN_ID_OFFSET {
+            if (CODE_ID_OFFSET..PATTERN_ID_OFFSET).contains(&key) {
                 code_results.push(r);
-            } else if key >= COMMIT_ID_OFFSET && key < BELIEF_ID_OFFSET {
+            } else if (COMMIT_ID_OFFSET..BELIEF_ID_OFFSET).contains(&key) {
                 commit_results.push(r);
             } else if key < CODE_ID_OFFSET {
                 session_results.push(r);
@@ -492,18 +527,10 @@ fn run_grounding_report(conn: &Connection, rows: &[BeliefRow]) -> Result<()> {
             println!("    code  {:.3}  {}", r.score, truncate(&r.source_id, 60));
         }
         for r in commit_results.iter().take(DISPLAY_LIMIT) {
-            println!(
-                "    commit {:.3}  {}",
-                r.score,
-                truncate(&r.content, 60)
-            );
+            println!("    commit {:.3}  {}", r.score, truncate(&r.content, 60));
         }
         for r in session_results.iter().take(DISPLAY_LIMIT) {
-            println!(
-                "    session {:.3} {}",
-                r.score,
-                truncate(&r.content, 55)
-            );
+            println!("    session {:.3} {}", r.score, truncate(&r.content, 55));
         }
 
         if has_grounding {
