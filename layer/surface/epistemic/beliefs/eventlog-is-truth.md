@@ -5,12 +5,6 @@ persona: architect
 facets: [data-architecture, persistence]
 confidence:
   score: 0.92
-  signals:
-    evidence: 0.95
-    source_reliability: 0.90
-    recency: 0.90
-    survival: 0.95
-    user_endorsement: 0.85
 entrenchment: very-high
 status: active
 extracted: 2026-01-14

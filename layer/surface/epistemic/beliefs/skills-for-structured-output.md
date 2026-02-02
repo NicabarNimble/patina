@@ -5,12 +5,6 @@ persona: architect
 facets: [tooling, architecture, epistemic]
 confidence:
   score: 0.75
-  signals:
-    evidence: 0.80
-    source_reliability: 0.75
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: medium
 status: active
 extracted: 2026-01-16

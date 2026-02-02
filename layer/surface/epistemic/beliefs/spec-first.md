@@ -5,12 +5,6 @@ persona: architect
 facets: [development-process, design]
 confidence:
   score: 0.85
-  signals:
-    evidence: 0.90
-    source_reliability: 0.85
-    recency: 0.80
-    survival: 0.85
-    user_endorsement: 0.70
 entrenchment: high
 status: active
 extracted: 2026-01-15

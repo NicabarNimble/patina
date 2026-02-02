@@ -5,12 +5,6 @@ persona: architect
 facets: [rust, architecture, simplicity]
 confidence:
   score: 0.88
-  signals:
-    evidence: 0.92
-    source_reliability: 0.90
-    recency: 0.75
-    survival: 0.95
-    user_endorsement: 0.85
 entrenchment: high
 status: active
 extracted: 2025-08-04

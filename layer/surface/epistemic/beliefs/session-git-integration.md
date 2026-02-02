@@ -5,12 +5,6 @@ persona: architect
 facets: [git, session-tracking, workflow, architecture]
 confidence:
   score: 0.87
-  signals:
-    evidence: 0.92
-    source_reliability: 0.87
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: high
 status: active
 extracted: 2026-01-17

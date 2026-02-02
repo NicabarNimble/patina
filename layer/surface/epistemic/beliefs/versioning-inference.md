@@ -5,12 +5,6 @@ persona: architect
 facets: [architecture, versioning, project-config]
 confidence:
   score: 0.80
-  signals:
-    evidence: 0.85
-    source_reliability: 0.85
-    recency: 0.95
-    survival: 0.50
-    user_endorsement: 0.85
 entrenchment: medium
 status: active
 extracted: 2026-01-26

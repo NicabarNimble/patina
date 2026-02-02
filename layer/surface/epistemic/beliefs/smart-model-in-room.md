@@ -5,12 +5,6 @@ persona: architect
 facets: [llm, architecture, cost]
 confidence:
   score: 0.88
-  signals:
-    evidence: 0.90
-    source_reliability: 0.85
-    recency: 0.90
-    survival: 0.80
-    user_endorsement: 0.85
 entrenchment: high
 status: active
 extracted: 2026-01-15

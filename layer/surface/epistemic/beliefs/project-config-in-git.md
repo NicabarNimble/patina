@@ -5,12 +5,6 @@ persona: architect
 facets: [devops, configuration, ci]
 confidence:
   score: 0.85
-  signals:
-    evidence: 0.90
-    source_reliability: 0.85
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: high
 status: active
 extracted: 2026-01-17

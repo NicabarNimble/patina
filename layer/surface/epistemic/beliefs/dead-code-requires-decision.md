@@ -5,12 +5,6 @@ persona: architect
 facets: [code-quality, workflow, human-in-loop]
 confidence:
   score: 0.85
-  signals:
-    evidence: 0.90
-    source_reliability: 0.85
-    recency: 0.95
-    survival: 0.50
-    user_endorsement: 0.90
 entrenchment: medium
 status: active
 extracted: 2026-01-29
