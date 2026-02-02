@@ -1484,12 +1484,133 @@ fn get_project_context(topic: Option<&str>) -> Result<String> {
         }
     }
 
+    // Add belief metrics when topic matches or no topic given
+    let show_beliefs = match topic {
+        None => true,
+        Some(t) => {
+            let t_lower = t.to_lowercase();
+            t_lower.contains("belief") || t_lower.contains("epistemic")
+        }
+    };
+
+    if show_beliefs {
+        if let Ok(belief_section) = get_belief_metrics() {
+            output.push_str(&belief_section);
+        }
+    }
+
     if output.is_empty() {
         if let Some(t) = topic {
             output = format!("No patterns found matching topic: '{}'", t);
         } else {
             output = "No patterns found in the knowledge layer.".to_string();
         }
+    }
+
+    Ok(output)
+}
+
+/// Query belief metrics from the database for the context tool
+fn get_belief_metrics() -> Result<String> {
+    use rusqlite::Connection;
+
+    const DB_PATH: &str = ".patina/local/data/patina.db";
+    let conn = Connection::open(DB_PATH)?;
+
+    // Check if beliefs table exists
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='beliefs'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !table_exists {
+        return Ok(String::new());
+    }
+
+    // Aggregate stats
+    let (total, grounded, reach_files, verif_total, verif_pass, verif_fail): (
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+    ) = conn.query_row(
+        "SELECT
+            COUNT(*),
+            SUM(CASE WHEN grounding_code_count > 0 THEN 1 ELSE 0 END),
+            SUM(grounding_code_count),
+            SUM(verification_total),
+            SUM(verification_passed),
+            SUM(verification_failed)
+         FROM beliefs",
+        [],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ))
+        },
+    )?;
+
+    if total == 0 {
+        return Ok(String::new());
+    }
+
+    let precision = if reach_files > 0 { 100 } else { 0 }; // All reach files are source code (filtered at hop)
+
+    let mut output = String::from("# Epistemic Beliefs\n\n");
+    output.push_str(&format!(
+        "**Total:** {} beliefs | **Grounded:** {}/{} ({:.0}%) | **Reach files:** {} ({}% precision)\n",
+        total,
+        grounded,
+        total,
+        if total > 0 { grounded as f64 / total as f64 * 100.0 } else { 0.0 },
+        reach_files,
+        precision,
+    ));
+    output.push_str(&format!(
+        "**Verification:** {}/{} passed ({} failed)\n\n",
+        verif_pass, verif_total, verif_fail,
+    ));
+
+    // Top beliefs by use count
+    let mut stmt = conn.prepare(
+        "SELECT id, cited_by_beliefs + cited_by_sessions + applied_in as use_count,
+                entrenchment, status
+         FROM beliefs
+         ORDER BY use_count DESC
+         LIMIT 10",
+    )?;
+
+    let top_beliefs: Vec<(String, i64, String, String)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if !top_beliefs.is_empty() {
+        output.push_str("**Top beliefs by use:**\n");
+        for (id, use_count, entrenchment, status) in &top_beliefs {
+            output.push_str(&format!(
+                "- {} (use: {}, entrenchment: {}, status: {})\n",
+                id, use_count, entrenchment, status,
+            ));
+        }
+        output.push('\n');
     }
 
     Ok(output)
