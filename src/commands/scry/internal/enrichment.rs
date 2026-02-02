@@ -363,25 +363,51 @@ pub fn truncate_content(content: &str, max_len: usize) -> String {
     }
 }
 
+/// Resolve usearch key for a code result.
+///
+/// For vector search results, `id` already contains the usearch key (CODE_ID_OFFSET + rowid).
+/// For lexical results, `id` is 0 — look up via source_id (format: "path::name") → function_facts rowid.
+fn resolve_code_key(result: &ScryResult, conn: &Connection) -> Option<i64> {
+    const CODE_ID_OFFSET: i64 = 1_000_000_000;
+
+    if result.id != 0 {
+        return Some(result.id);
+    }
+
+    // Lexical result: look up from source_id (path::name format)
+    let parts: Vec<&str> = result.source_id.splitn(2, "::").collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let (file, name) = (parts[0], parts[1]);
+
+    let rowid: Option<i64> = conn
+        .query_row(
+            "SELECT rowid FROM function_facts WHERE file = ?1 AND name = ?2",
+            rusqlite::params![file, name],
+            |row| row.get(0),
+        )
+        .ok();
+
+    rowid.map(|r| CODE_ID_OFFSET + r)
+}
+
 /// Find beliefs semantically related to code results (E4.6a step 4)
 ///
 /// Computes direct cosine similarity between each code result's vector and
 /// all belief vectors. Standard kNN doesn't work here because beliefs are
 /// sparse in the full index — code has too many closer code/commit neighbors.
-pub fn find_belief_impact(results: &[ScryResult]) -> Result<HashMap<i64, Vec<(String, f32)>>> {
+///
+/// Handles both vector results (id = usearch key) and lexical results (id = 0,
+/// resolved via source_id → function_facts rowid → CODE_ID_OFFSET + rowid).
+/// Find beliefs semantically related to code results, keyed by source_id.
+///
+/// Returns a map from source_id (e.g., "src/foo.rs::bar") to matching beliefs.
+/// Using source_id as key works for both vector results (id=usearch key) and
+/// lexical results (id=0), avoiding ambiguity.
+pub fn find_belief_impact(results: &[ScryResult]) -> Result<HashMap<String, Vec<(String, f32)>>> {
     const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
     const MIN_IMPACT_SCORE: f32 = 0.85;
-
-    // Collect code result keys
-    let code_keys: Vec<i64> = results
-        .iter()
-        .filter(|r| r.event_type.starts_with("code."))
-        .map(|r| r.id)
-        .collect();
-
-    if code_keys.is_empty() {
-        return Ok(HashMap::new());
-    }
 
     // Load semantic index
     let model = super::search::get_embedding_model();
@@ -406,6 +432,20 @@ pub fn find_belief_impact(results: &[ScryResult]) -> Result<HashMap<i64, Vec<(St
 
     let db_path = ".patina/local/data/patina.db";
     let conn = Connection::open(db_path)?;
+
+    // Collect code results with resolved usearch keys
+    let code_entries: Vec<(&str, i64)> = results
+        .iter()
+        .filter(|r| r.event_type.starts_with("code."))
+        .filter_map(|r| {
+            let key = resolve_code_key(r, &conn)?;
+            Some((r.source_id.as_str(), key))
+        })
+        .collect();
+
+    if code_entries.is_empty() {
+        return Ok(HashMap::new());
+    }
 
     // Pre-load all belief vectors (47 beliefs → 47 vector lookups, fast)
     let belief_vectors: Vec<(String, Vec<f32>)> = {
@@ -433,11 +473,11 @@ pub fn find_belief_impact(results: &[ScryResult]) -> Result<HashMap<i64, Vec<(St
         return Ok(HashMap::new());
     }
 
-    let mut impact_map: HashMap<i64, Vec<(String, f32)>> = HashMap::new();
+    let mut impact_map: HashMap<String, Vec<(String, f32)>> = HashMap::new();
 
-    for key in &code_keys {
+    for (source_id, usearch_key) in &code_entries {
         let mut code_vector = vec![0.0_f32; 256];
-        if index.get(*key as u64, &mut code_vector).is_err() {
+        if index.get(*usearch_key as u64, &mut code_vector).is_err() {
             continue;
         }
 
@@ -471,7 +511,7 @@ pub fn find_belief_impact(results: &[ScryResult]) -> Result<HashMap<i64, Vec<(St
         beliefs.truncate(3); // Top 3 beliefs per code result
 
         if !beliefs.is_empty() {
-            impact_map.insert(*key, beliefs);
+            impact_map.insert(source_id.to_string(), beliefs);
         }
     }
 

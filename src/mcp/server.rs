@@ -7,6 +7,8 @@ use std::path::Path;
 
 use super::protocol::{Request, Response};
 use crate::commands::assay::{AssayOptions, QueryType};
+use crate::commands::scry::internal::enrichment::find_belief_impact;
+use crate::commands::scry::ScryResult;
 use crate::retrieval::{FusedResult, QueryEngine, QueryOptions};
 
 /// Check project secrets compliance before starting MCP server.
@@ -211,6 +213,11 @@ fn handle_list_tools(req: &Request) -> Response {
                                 "type": "string",
                                 "enum": ["code", "commits", "sessions", "patterns", "beliefs"],
                                 "description": "Filter results by content type (used with belief mode)"
+                            },
+                            "impact": {
+                                "type": "boolean",
+                                "default": false,
+                                "description": "Show belief impact for code results — which beliefs are semantically close (E4.6a)"
                             }
                         },
                         "required": []
@@ -432,6 +439,10 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         .get("include_issues")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false);
+                    let impact = args
+                        .get("impact")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
 
                     // Extract expanded_terms for vocabulary gap bridging
                     let expanded_terms: Vec<&str> = args
@@ -465,7 +476,14 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         Ok(results) => {
                             // Log query and get query_id for feedback loop (Phase 3)
                             let query_id = log_mcp_query(query, "find", &results);
-                            let text = format_results_with_query_id(&results, query_id.as_deref());
+                            let mut text =
+                                format_results_with_query_id(&results, query_id.as_deref());
+
+                            // E4.6a: Compute belief impact for code results
+                            if impact {
+                                text = annotate_impact(&results, text);
+                            }
+
                             Response::success(
                                 req.id.clone(),
                                 serde_json::json!({
@@ -1034,6 +1052,53 @@ fn format_results_with_query_id(results: &[FusedResult], query_id: Option<&str>)
         ));
     }
     output
+}
+
+/// Annotate formatted results text with belief impact (E4.6a)
+///
+/// Converts FusedResults to ScryResults, computes belief impact, and appends
+/// a belief impact section to the output.
+fn annotate_impact(results: &[FusedResult], mut text: String) -> String {
+    // Convert FusedResults to ScryResults for find_belief_impact
+    let scry_results: Vec<ScryResult> = results
+        .iter()
+        .map(|r| {
+            let event_type = r
+                .metadata
+                .event_type
+                .clone()
+                .unwrap_or_default();
+            ScryResult {
+                id: 0, // MCP results don't carry usearch keys; resolved via source_id
+                content: r.content.clone(),
+                score: r.fused_score,
+                event_type,
+                source_id: r.doc_id.clone(),
+                timestamp: r.metadata.timestamp.clone().unwrap_or_default(),
+            }
+        })
+        .collect();
+
+    if let Ok(impact_map) = find_belief_impact(&scry_results) {
+        if !impact_map.is_empty() {
+            text.push_str("\n--- Belief Impact ---\n");
+            for (i, r) in results.iter().enumerate() {
+                if let Some(beliefs) = impact_map.get(&r.doc_id) {
+                    let belief_strs: Vec<String> = beliefs
+                        .iter()
+                        .map(|(id, score)| format!("{} ({:.2})", id, score))
+                        .collect();
+                    text.push_str(&format!(
+                        "{}. {} → {}\n",
+                        i + 1,
+                        r.doc_id,
+                        belief_strs.join(", ")
+                    ));
+                }
+            }
+        }
+    }
+    text
 }
 
 fn format_results(results: &[FusedResult]) -> String {
