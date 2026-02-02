@@ -243,8 +243,6 @@ fn update_tag_count(content: &str, path: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_tag_name_format() {
         let id = "session-092-hardening";
