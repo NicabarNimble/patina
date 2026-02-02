@@ -899,7 +899,7 @@ searches for neighbors, and filters by ID range:
 - [x] 1. Add `scry --belief <id>` mode — retrieve belief embedding, kNN across all types
 - [x] 2. Add `--type` filter for scry belief mode — restrict results to code, commits, sessions,
   patterns, or beliefs
-- [ ] 3. Surface belief→code grounding in `patina belief audit` — top 3 nearest code regions
+- [x] 3. Surface belief→code grounding in `patina belief audit` — top 3 nearest code regions
   per belief, showing which code each belief is semantically about
 - [ ] 4. Surface code→belief impact in scry — when scry returns code results, show which beliefs
   are semantically close (potential impact if this code changes)
@@ -910,8 +910,8 @@ searches for neighbors, and filters by ID range:
 
 - [x] `patina scry --belief sync-first` returns nearest code, commits, sessions
 - [x] `patina scry --belief sync-first --type code` filters to code only
-- [ ] Belief audit shows grounding metric (how connected to code vs floating)
-- [ ] At least 5 beliefs show meaningful code grounding (nearest code is actually relevant)
+- [x] Belief audit shows grounding metric (how connected to code vs floating)
+- [x] At least 5 beliefs show meaningful code grounding (nearest code is actually relevant)
 
 ---
 
