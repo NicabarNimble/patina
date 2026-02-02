@@ -4,11 +4,9 @@
 //! Handles different content types (semantic, temporal, dependency).
 
 use std::collections::HashMap;
-use std::path::Path;
 
 use anyhow::Result;
 use rusqlite::Connection;
-use usearch::{Index, IndexOptions, MetricKind, ScalarKind};
 
 use super::super::ScryResult;
 
@@ -363,155 +361,58 @@ pub fn truncate_content(content: &str, max_len: usize) -> String {
     }
 }
 
-/// Resolve usearch key for a code result.
+/// Find beliefs related to code results via multi-hop grounding (E4.6a-fix)
 ///
-/// For vector search results, `id` already contains the usearch key (CODE_ID_OFFSET + rowid).
-/// For lexical results, `id` is 0 — look up via source_id (format: "path::name") → function_facts rowid.
-fn resolve_code_key(result: &ScryResult, conn: &Connection) -> Option<i64> {
-    const CODE_ID_OFFSET: i64 = 1_000_000_000;
-
-    if result.id != 0 {
-        return Some(result.id);
-    }
-
-    // Lexical result: look up from source_id (path::name format)
-    let parts: Vec<&str> = result.source_id.splitn(2, "::").collect();
-    if parts.len() != 2 {
-        return None;
-    }
-    let (file, name) = (parts[0], parts[1]);
-
-    let rowid: Option<i64> = conn
-        .query_row(
-            "SELECT rowid FROM function_facts WHERE file = ?1 AND name = ?2",
-            rusqlite::params![file, name],
-            |row| row.get(0),
-        )
-        .ok();
-
-    rowid.map(|r| CODE_ID_OFFSET + r)
-}
-
-/// Find beliefs semantically related to code results (E4.6a step 4)
-///
-/// Computes direct cosine similarity between each code result's vector and
-/// all belief vectors. Standard kNN doesn't work here because beliefs are
-/// sparse in the full index — code has too many closer code/commit neighbors.
-///
-/// Handles both vector results (id = usearch key) and lexical results (id = 0,
-/// resolved via source_id → function_facts rowid → CODE_ID_OFFSET + rowid).
-/// Find beliefs semantically related to code results, keyed by source_id.
+/// Uses belief_code_reach table (belief → commit → file) instead of broken
+/// direct cosine similarity. Extracts file_path from code result source_id
+/// and looks up which beliefs reach that file through commit neighbors.
 ///
 /// Returns a map from source_id (e.g., "src/foo.rs::bar") to matching beliefs.
-/// Using source_id as key works for both vector results (id=usearch key) and
-/// lexical results (id=0), avoiding ambiguity.
 pub fn find_belief_impact(results: &[ScryResult]) -> Result<HashMap<String, Vec<(String, f32)>>> {
-    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
-    const MIN_IMPACT_SCORE: f32 = 0.85;
-
-    // Load semantic index
-    let model = super::search::get_embedding_model();
-    let index_path = format!(
-        ".patina/local/data/embeddings/{}/projections/semantic.usearch",
-        model
-    );
-
-    if !Path::new(&index_path).exists() {
-        return Ok(HashMap::new());
-    }
-
-    let index_options = IndexOptions {
-        dimensions: 256,
-        metric: MetricKind::Cos,
-        quantization: ScalarKind::F32,
-        ..Default::default()
-    };
-
-    let index = Index::new(&index_options)?;
-    index.load(&index_path)?;
-
     let db_path = ".patina/local/data/patina.db";
     let conn = Connection::open(db_path)?;
 
-    // Collect code results with resolved usearch keys
-    let code_entries: Vec<(&str, i64)> = results
-        .iter()
-        .filter(|r| r.event_type.starts_with("code."))
-        .filter_map(|r| {
-            let key = resolve_code_key(r, &conn)?;
-            Some((r.source_id.as_str(), key))
-        })
-        .collect();
+    // Check if belief_code_reach table exists
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='belief_code_reach'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
 
-    if code_entries.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    // Pre-load all belief vectors (47 beliefs → 47 vector lookups, fast)
-    let belief_vectors: Vec<(String, Vec<f32>)> = {
-        let mut stmt = conn.prepare("SELECT rowid, id FROM beliefs")?;
-        let rows: Vec<(i64, String)> = stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-            .filter_map(|r| r.ok())
-            .collect();
-
-        let mut vecs = Vec::new();
-        for (rowid, belief_id) in rows {
-            let belief_key = (BELIEF_ID_OFFSET + rowid) as u64;
-            let mut vector = vec![0.0_f32; 256];
-            if index.get(belief_key, &mut vector).is_ok() {
-                let mag: f32 = vector.iter().map(|v| v * v).sum::<f32>().sqrt();
-                if mag > 0.001 {
-                    vecs.push((belief_id, vector));
-                }
-            }
-        }
-        vecs
-    };
-
-    if belief_vectors.is_empty() {
+    if !table_exists {
         return Ok(HashMap::new());
     }
 
     let mut impact_map: HashMap<String, Vec<(String, f32)>> = HashMap::new();
 
-    for (source_id, usearch_key) in &code_entries {
-        let mut code_vector = vec![0.0_f32; 256];
-        if index.get(*usearch_key as u64, &mut code_vector).is_err() {
-            continue;
-        }
+    // Prepare the reach lookup query once
+    let mut reach_stmt = conn.prepare(
+        "SELECT belief_id, reach_score FROM belief_code_reach
+         WHERE file_path = ?1
+         ORDER BY reach_score DESC
+         LIMIT 3",
+    )?;
 
-        let code_mag: f32 = code_vector.iter().map(|v| v * v).sum::<f32>().sqrt();
-        if code_mag < 0.001 {
-            continue;
-        }
+    for result in results.iter().filter(|r| r.event_type.starts_with("code.")) {
+        // Extract file_path from source_id (format: "./src/foo.rs::bar" or "src/foo.rs::bar")
+        let file_path = result
+            .source_id
+            .split("::")
+            .next()
+            .unwrap_or(&result.source_id);
 
-        // Compute cosine similarity with each belief
-        let mut beliefs: Vec<(String, f32)> = belief_vectors
-            .iter()
-            .filter_map(|(belief_id, belief_vec)| {
-                let dot: f32 = code_vector
-                    .iter()
-                    .zip(belief_vec.iter())
-                    .map(|(a, b)| a * b)
-                    .sum();
-                let b_mag: f32 = belief_vec.iter().map(|v| v * v).sum::<f32>().sqrt();
-                let similarity = dot / (code_mag * b_mag);
-
-                if similarity >= MIN_IMPACT_SCORE {
-                    Some((belief_id.clone(), similarity))
-                } else {
-                    None
-                }
-            })
+        let beliefs: Vec<(String, f32)> = reach_stmt
+            .query_map([file_path], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, f32>(1)?))
+            })?
+            .filter_map(|r| r.ok())
             .collect();
 
-        // Sort by similarity descending
-        beliefs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        beliefs.truncate(3); // Top 3 beliefs per code result
-
         if !beliefs.is_empty() {
-            impact_map.insert(source_id.to_string(), beliefs);
+            impact_map.insert(result.source_id.clone(), beliefs);
         }
     }
 
