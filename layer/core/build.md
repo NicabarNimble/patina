@@ -4,7 +4,7 @@
 
 **Version:** 0.9.0 → patches (0.9.x) → 1.0.0
 
-**Recent:** v1.0 spec restructured (2026-01-29) with three-pillar focus and patch versioning. PR #75 merged (v0.9.0). 35 beliefs indexed. Spec system reorg ongoing.
+**Recent:** v0.9.4 (2026-02-02). E4.5 belief verification complete — 47 queries, spec archive command. 46 beliefs, 5 specs archived this session.
 
 ---
 
@@ -14,7 +14,7 @@
 
 | Pillar | Current | Target |
 |--------|---------|--------|
-| **Epistemic** | E0-E3 done, 35 beliefs | E4 automation, stable validation |
+| **Epistemic** | E0-E4.5 done, 46 beliefs, 47 verification queries | E4.6 semantic, E5 revision, E6 curation |
 | **Mother** | Registry + serve daemon | Federated query, persona fusion |
 | **Distribution** | 52MB fat binary | Slim binary, `patina setup`, Homebrew |
 
@@ -23,11 +23,13 @@
 0.9.0  - Public release (fat binary)
 0.9.1  ✓ Version/spec system alignment
 0.9.2  ✓ Session system & adapter parity
-0.9.3  - Epistemic E4 (belief automation)
-0.9.4  - Mother federated query
-0.9.5  - Dynamic ONNX loading
-0.9.6  - WASM grammars
-0.9.7  - GitHub releases + Homebrew
+0.9.3  ✓ Epistemic E4 (belief metrics from real data)
+0.9.4  ✓ Epistemic E4.5 (belief verification — 47 queries, spec archive command)
+0.9.5  - Epistemic E4.6 (semantic belief relationships)
+0.9.6  - Mother federated query
+0.9.7  - Dynamic ONNX loading
+0.9.8  - WASM grammars
+0.9.9  - GitHub releases + Homebrew
 1.0.0  - All pillars complete
 ```
 
@@ -119,7 +121,7 @@ Run regularly to catch regressions.
 
 **v1.0 Pillars:**
 - [feat/v1-release/SPEC.md](../surface/build/feat/v1-release/SPEC.md) - **Master roadmap:** Three pillars, patch versioning
-- [feat/epistemic-layer/SPEC.md](../surface/build/feat/epistemic-layer/SPEC.md) - **Pillar 1:** E0-E3 done (35 beliefs), E4 automation next
+- [feat/epistemic-layer/SPEC.md](../surface/build/feat/epistemic-layer/SPEC.md) - **Pillar 1:** E0-E4.5 done (46 beliefs, 47 verification queries), E4.6 semantic next
 - [feat/mother/SPEC.md](../surface/build/feat/mother/SPEC.md) - **Pillar 2:** Federated query, persona fusion
 
 **Features:**
@@ -130,9 +132,7 @@ Run regularly to catch regressions.
 - [refactor/database-identity/SPEC.md](../surface/build/refactor/database-identity/SPEC.md) - **Phase 1 done:** UIDs everywhere, Phase 2-3 remain
 
 **Refactors:**
-- [refactor/verification-module-split/SPEC.md](../surface/build/refactor/verification-module-split/SPEC.md) - **Complete:** Split verification.rs to follow dependable-rust
 - [refactor/spec-system/SPEC.md](../surface/build/refactor/spec-system/SPEC.md) - **In Progress:** New folder-based spec format
-- [refactor/reports-layer/SPEC.md](../surface/build/refactor/reports-layer/SPEC.md) - **In Progress:** Unify eval/reports under `layer/surface/reports/`
 
 **Exploration:**
 - [explore/anti-slop/SPEC.md](../surface/build/explore/anti-slop/SPEC.md) - **Active:** Signal over noise, linkage as quality measure
@@ -148,7 +148,7 @@ Run regularly to catch regressions.
 
 **Solution:** Persona-based epistemic belief revision using atomic Markdown propositions. AGM-style operations (expansion, contraction, revision) map to layer lifecycle (surface → core or → dust).
 
-**Progress:** E0-E3 complete. 35 beliefs captured and indexed in scry (BELIEF_ID_OFFSET = 4B). Queryable via `patina scry "what do we believe about X"`. E4 (extraction automation) next.
+**Progress:** E0-E4.5 complete. 46 beliefs with 47 verification queries (all passing). Belief metrics computed from real data (use/truth), verification connects beliefs to DB ingredients (SQL/assay/temporal). E4.6 (semantic belief relationships) next.
 
 **Spec:** [feat/epistemic-layer/SPEC.md](../surface/build/feat/epistemic-layer/SPEC.md)
 
