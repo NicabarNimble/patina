@@ -470,9 +470,9 @@ fn run_grounding_report(conn: &Connection, rows: &[BeliefRow]) -> Result<()> {
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() > max {
-        format!("{}…", &s[..max - 1])
-    } else {
-        s.to_string()
+    if s.chars().count() <= max {
+        return s.to_string();
     }
+    let truncated: String = s.chars().take(max - 1).collect();
+    format!("{}…", truncated)
 }
