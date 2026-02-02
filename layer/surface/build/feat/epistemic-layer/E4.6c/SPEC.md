@@ -1,7 +1,7 @@
 ---
 type: feat
 id: epistemic-e4.6c
-status: ready
+status: complete
 created: 2026-02-02
 updated: 2026-02-02
 sessions:
@@ -78,22 +78,22 @@ Add forge events to the `oxidize` embedding pipeline with a new ID offset range.
 
 ## Build Steps
 
-- [ ] 1. Add `FORGE_ID_OFFSET` constant (5B) to enrichment.rs offset scheme
-- [ ] 2. Add forge event embedding to oxidize pipeline — read from eventlog where
-  `event_type IN ('forge.issue', 'forge.pr')`, embed title+body, insert at FORGE_ID_OFFSET + seq
-- [ ] 3. Add forge enrichment to `enrich_results()` — look up forge_issues/forge_prs by seq
-- [ ] 4. Remove `include_issues` opt-in gate from semantic oracle (forge results appear naturally)
-- [ ] 5. Add forge to belief grounding — count forge neighbors alongside commit/session counts
-- [ ] 6. Test: scrape forge, oxidize, scry for issue content — verify semantic results appear
+- [x] 1. Add `FORGE_ID_OFFSET` constant (5B) to enrichment.rs offset scheme
+- [x] 2. Add forge event embedding to oxidize pipeline — read from eventlog directly
+  (forge_issues/forge_prs views have broken event_seq; queried eventlog WHERE event_type IN)
+- [x] 3. Add forge enrichment to `enrich_results()` — resolve forge keys via eventlog seq
+- [x] 4. Semantic oracle has no include_issues gate — forge results appear naturally after embedding
+- [x] 5. Add forge to belief grounding — grounding_forge_count column, 24/47 beliefs have forge neighbors
+- [x] 6. Tested: 81 forge events embedded, issue #26 + PR #27 appear in semantic scry results
 
 ---
 
 ## Exit Criteria
 
-- [ ] Forge issues/PRs appear in semantic scry results without `--include-issues`
-- [ ] `scry --belief <id>` finds semantically related issues
-- [ ] Belief grounding counts include forge neighbors
-- [ ] No regression on existing semantic search quality
+- [x] Forge issues/PRs appear in semantic scry results without `--include-issues`
+- [x] `scry --belief <id>` finds semantically related issues
+- [x] Belief grounding counts include forge neighbors (24/47 beliefs)
+- [x] No regression on existing semantic search quality (307 tests pass)
 
 ---
 
@@ -110,3 +110,4 @@ same model and projection used for all other content types.
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-02 | ready | Specced during session 20260202-130018 |
+| 2026-02-02 | complete | Built during session 20260202-155143 — 81 events embedded, 24/47 beliefs with forge grounding |
