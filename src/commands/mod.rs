@@ -18,6 +18,7 @@ pub mod scry;
 pub mod secrets;
 pub mod serve;
 pub mod session;
+pub mod spec;
 pub mod upgrade;
 pub mod version;
 pub mod yolo;
