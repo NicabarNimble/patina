@@ -561,6 +561,22 @@ fn cross_reference_beliefs(beliefs: &mut [ParsedBelief], project_root: &Path) {
     }
 }
 
+/// Extract searchable keywords from a belief ID for lexical fallback.
+/// Splits on `-`, removes stop words and short tokens, returns unique keywords.
+fn extract_belief_keywords(belief_id: &str) -> Vec<String> {
+    const STOP_WORDS: &[&str] = &[
+        "is", "the", "a", "an", "in", "on", "of", "for", "to", "and", "or", "not", "no", "over",
+        "vs", "with", "from", "by", "be", "at", "as", "do", "if", "its", "own", "first", "early",
+        "often", "before", "after", "always", "never", "every", "many", "requires", "needs",
+    ];
+    belief_id
+        .split('-')
+        .filter(|w| w.len() >= 3)
+        .filter(|w| !STOP_WORDS.contains(w))
+        .map(|w| w.to_lowercase())
+        .collect()
+}
+
 /// Classify a file path as source code (vs docs, configs, layer files)
 fn is_source_code(path: &str) -> bool {
     const SOURCE_EXTENSIONS: &[&str] = &[
@@ -623,6 +639,7 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
     let mut grounded = 0;
     let mut total_reach_files = 0u32;
     let mut total_source_files = 0u32;
+    let mut total_lexical_fallbacks = 0u32;
 
     for (rowid, belief_id) in &beliefs {
         let belief_key = (BELIEF_ID_OFFSET + rowid) as u64;
@@ -722,6 +739,47 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
             }
         }
 
+        // Lexical fallback: if structural hop found no source files but belief has
+        // commit neighbors, search function_facts.file for belief ID keywords.
+        // The semantic hop confirmed topic relevance; this finds the code for that topic.
+        if file_reach.is_empty() && !commit_neighbors.is_empty() {
+            let keywords = extract_belief_keywords(belief_id);
+            if !keywords.is_empty() {
+                let best_commit_score = commit_neighbors
+                    .iter()
+                    .map(|(_, s)| *s)
+                    .fold(0.0_f32, f32::max);
+                let hop_tag = "lexical-fallback";
+
+                for keyword in &keywords {
+                    let pattern = format!("%{}%", keyword);
+                    let mut kw_stmt = conn.prepare_cached(
+                        "SELECT DISTINCT file FROM function_facts WHERE file LIKE ?1",
+                    )?;
+                    let files: Vec<String> = kw_stmt
+                        .query_map([&pattern], |row| row.get::<_, String>(0))?
+                        .filter_map(|r| r.ok())
+                        .filter(|f| is_source_code(f))
+                        .collect();
+
+                    for file_path in files {
+                        let entry = file_reach
+                            .entry(file_path)
+                            .or_insert_with(|| (0.0_f32, Vec::new()));
+                        if best_commit_score > entry.0 {
+                            entry.0 = best_commit_score;
+                        }
+                        if !entry.1.contains(&hop_tag.to_string()) {
+                            entry.1.push(hop_tag.to_string());
+                        }
+                    }
+                }
+                if !file_reach.is_empty() {
+                    total_lexical_fallbacks += 1;
+                }
+            }
+        }
+
         // Insert reach entries — all entries are source code (filtered at the hop)
         let source_file_count = file_reach.len() as i32;
         for (file_path, (reach_score, shas)) in &file_reach {
@@ -779,8 +837,8 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
         0
     };
     println!(
-        "  Computed grounding for {} beliefs ({} grounded, {} reach files, {} source, {}% precision)",
-        total, grounded, total_reach_files, total_source_files, precision
+        "  Computed grounding for {} beliefs ({} grounded, {} reach files, {} source, {}% precision, {} lexical fallbacks)",
+        total, grounded, total_reach_files, total_source_files, precision, total_lexical_fallbacks
     );
 
     Ok(())
