@@ -248,6 +248,7 @@ Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 - `spec/agentic-rag` - Oracle abstraction, hybrid retrieval, MCP server
 
 - `spec/session-092-hardening` - fix: Session System 0.9.2 Hardening (2026-02-02)
+- `spec/reports-layer` - refactor: Reports Layer (2026-02-02)
 Full list: `git tag -l 'spec/*'`
 
 ---
@@ -265,4 +266,4 @@ Completed specs preserved via git tags. View with: `git show spec/<name>:layer/s
 - `spec/remove-neuro-symbolic-debt` - Prolog removal (~2660 lines)
 - `spec/init-hardening` - Skeleton-only init, adapter refresh/doctor
 
-**All tags:** `git tag -l 'spec/*'` (47 archived specs)
+**All tags:** `git tag -l 'spec/*'` (48 archived specs)
