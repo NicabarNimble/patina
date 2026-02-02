@@ -18,7 +18,7 @@ use internal::enrichment::truncate_content;
 use internal::hybrid::execute_hybrid;
 use internal::logging::log_scry_query;
 use internal::routing::{execute_all_repos, execute_graph_routing, execute_via_mother};
-use internal::search::{is_lexical_query, scry_file};
+use internal::search::{is_lexical_query, scry_belief, scry_file};
 
 // Re-export routing strategy for CLI
 pub use internal::routing::RoutingStrategy;
@@ -30,6 +30,7 @@ pub use internal::subcommands::{
 
 // Re-export search functions for external use
 pub use internal::search::{scry, scry_lexical, scry_text};
+pub use internal::search::scry_belief as scry_belief_fn;
 
 /// Result from a scry query
 #[derive(Debug, Clone)]
@@ -59,6 +60,10 @@ pub struct ScryOptions {
     pub lexical: bool,
     /// Routing strategy for cross-project queries (default: All)
     pub routing: RoutingStrategy,
+    /// Belief ID for belief-grounding queries (E4.6a)
+    pub belief: Option<String>,
+    /// Content type filter for belief queries: code, commits, sessions, patterns, beliefs
+    pub content_type: Option<String>,
 }
 
 impl Default for ScryOptions {
@@ -76,6 +81,8 @@ impl Default for ScryOptions {
             explain: false,
             lexical: false,
             routing: RoutingStrategy::default(),
+            belief: None,
+            content_type: None,
         }
     }
 }
@@ -119,12 +126,20 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     println!();
 
     // Determine query mode
-    let mut results = match (&options.file, query) {
-        (Some(file), _) => {
+    let mut results = match (&options.belief, &options.file, query) {
+        (Some(belief_id), _, _) => {
+            println!("Belief: {}", belief_id);
+            if let Some(ref ct) = options.content_type {
+                println!("Filter: {} only", ct);
+            }
+            println!();
+            scry_belief(belief_id, &options)?
+        }
+        (None, Some(file), _) => {
             println!("File: {}\n", file);
             scry_file(file, &options)?
         }
-        (None, Some(q)) => {
+        (None, None, Some(q)) => {
             println!("Query: \"{}\"\n", q);
 
             if options.lexical {
@@ -147,8 +162,8 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
                 scry_text(q, &options)?
             }
         }
-        (None, None) => {
-            anyhow::bail!("Either a query text or --file must be provided");
+        (None, None, None) => {
+            anyhow::bail!("Either a query text, --file, or --belief must be provided");
         }
     };
 

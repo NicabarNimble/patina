@@ -229,6 +229,95 @@ pub fn scry_file(file_path: &str, options: &ScryOptions) -> Result<Vec<ScryResul
     Ok(results)
 }
 
+/// Belief-based scry - look up belief's vector and find neighbors across all content types
+pub fn scry_belief(belief_id: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
+    let (db_path, embeddings_dir) = get_paths(options)?;
+
+    // Look up belief rowid from beliefs table
+    let conn = Connection::open(&db_path)
+        .with_context(|| format!("Failed to open database: {}", db_path))?;
+
+    let rowid: i64 = conn
+        .query_row("SELECT rowid FROM beliefs WHERE id = ?", [belief_id], |row| {
+            row.get(0)
+        })
+        .with_context(|| format!("Belief '{}' not found in database", belief_id))?;
+
+    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+    let belief_index = (BELIEF_ID_OFFSET + rowid) as u64;
+
+    // Load semantic index (beliefs live in semantic space)
+    let index_path = format!("{}/semantic.usearch", embeddings_dir);
+    if !Path::new(&index_path).exists() {
+        anyhow::bail!(
+            "Semantic index not found: {}. Run 'patina oxidize' first.",
+            index_path
+        );
+    }
+
+    let index_options = IndexOptions {
+        dimensions: 256,
+        metric: MetricKind::Cos,
+        quantization: ScalarKind::F32,
+        ..Default::default()
+    };
+
+    let index = Index::new(&index_options).with_context(|| "Failed to create index")?;
+    index
+        .load(&index_path)
+        .with_context(|| format!("Failed to load index: {}", index_path))?;
+
+    // Get the belief's existing vector from the index
+    let mut belief_vector = vec![0.0_f32; 256];
+    index
+        .get(belief_index, &mut belief_vector)
+        .with_context(|| format!("Failed to get vector for belief '{}' (index {})", belief_id, belief_index))?;
+
+    println!("Searching for neighbors of belief '{}'...", belief_id);
+
+    // Request extra results to account for self-filtering (belief + pattern entries)
+    // and type filtering (code may be sparse in top results)
+    let search_limit = if options.content_type.is_some() {
+        options.limit * 5 + 2
+    } else {
+        options.limit + 2 // +2 for both belief.surface and pattern.surface self-entries
+    };
+
+    let matches = index
+        .search(&belief_vector, search_limit)
+        .with_context(|| "Vector search failed")?;
+
+    // Build SearchResults for enrichment
+    let results = SearchResults {
+        keys: matches.keys,
+        distances: matches.distances,
+    };
+
+    // Enrich with metadata from SQLite
+    let mut enriched = enrich_results(&conn, &results, "semantic", options.min_score)?;
+
+    // Filter out self — belief appears as both belief.surface and pattern.surface
+    enriched.retain(|r| {
+        !(r.source_id == belief_id
+            && (r.event_type == "belief.surface" || r.event_type.starts_with("pattern.")))
+    });
+
+    // Apply content type filter if specified
+    if let Some(ref type_filter) = options.content_type {
+        enriched.retain(|r| match type_filter.as_str() {
+            "code" => r.event_type.starts_with("code."),
+            "commits" => r.event_type == "git.commit",
+            "sessions" => r.event_type.starts_with("session."),
+            "patterns" => r.event_type.starts_with("pattern."),
+            "beliefs" => r.event_type == "belief.surface",
+            _ => true,
+        });
+    }
+
+    enriched.truncate(options.limit);
+    Ok(enriched)
+}
+
 /// Legacy alias for text-based scry
 pub fn scry(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
     scry_text(query, options)
