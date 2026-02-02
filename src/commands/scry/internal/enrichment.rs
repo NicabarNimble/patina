@@ -30,6 +30,7 @@ pub fn enrich_results(
     const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
     const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
     const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+    const FORGE_ID_OFFSET: i64 = 5_000_000_000;
 
     match dimension {
         "semantic" => {
@@ -45,7 +46,52 @@ pub fn enrich_results(
                 }
 
                 // Check content type based on ID range (order matters: highest offset first)
-                if key >= BELIEF_ID_OFFSET {
+                if key >= FORGE_ID_OFFSET {
+                    // Forge event (issue or PR) — look up in eventlog
+                    let event_seq = key - FORGE_ID_OFFSET;
+                    let result = conn.query_row(
+                        "SELECT event_type, source_id, timestamp,
+                                json_extract(data, '$.title') as title,
+                                json_extract(data, '$.body') as body
+                         FROM eventlog
+                         WHERE seq = ?",
+                        [event_seq],
+                        |row| {
+                            let event_type: String = row.get(0)?;
+                            let source_id: String = row.get(1)?;
+                            let timestamp: String = row.get(2)?;
+                            let title: String =
+                                row.get::<_, Option<String>>(3)?.unwrap_or_default();
+                            let body: String =
+                                row.get::<_, Option<String>>(4)?.unwrap_or_default();
+
+                            let kind = if event_type == "forge.pr" {
+                                "PR"
+                            } else {
+                                "Issue"
+                            };
+                            let preview: String = body.chars().take(200).collect();
+                            let content = if preview.is_empty() {
+                                format!("{} #{}: {}", kind, source_id, title)
+                            } else {
+                                format!("{} #{}: {}\n{}", kind, source_id, title, preview)
+                            };
+
+                            Ok(ScryResult {
+                                id: key,
+                                event_type,
+                                source_id: format!("{}#{}", kind.to_lowercase(), source_id),
+                                timestamp,
+                                content,
+                                score,
+                            })
+                        },
+                    );
+
+                    if let Ok(r) = result {
+                        enriched.push(r);
+                    }
+                } else if key >= BELIEF_ID_OFFSET {
                     // Belief - look up in beliefs table with computed metrics
                     let rowid = key - BELIEF_ID_OFFSET;
                     let result = conn.query_row(

@@ -58,11 +58,12 @@ struct BeliefMetrics {
     // Endorsement
     endorsed: bool, // user explicitly created or confirmed
 
-    // E4.6a: Semantic grounding — how connected is this belief to code/commits/sessions?
+    // E4.6a: Semantic grounding — how connected is this belief to code/commits/sessions/forge?
     grounding_score: f32, // Average similarity to grounded neighbors (0.0-1.0)
     grounding_code_count: i32, // Code functions above similarity threshold
     grounding_commit_count: i32, // Commits above similarity threshold
     grounding_session_count: i32, // Sessions above similarity threshold
+    grounding_forge_count: i32, // Forge issues/PRs above similarity threshold
 }
 
 /// Create materialized views for belief events
@@ -94,7 +95,8 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
             grounding_score REAL DEFAULT 0.0,
             grounding_code_count INTEGER DEFAULT 0,
             grounding_commit_count INTEGER DEFAULT 0,
-            grounding_session_count INTEGER DEFAULT 0
+            grounding_session_count INTEGER DEFAULT 0,
+            grounding_forge_count INTEGER DEFAULT 0
         );
 
         -- FTS5 for belief content search
@@ -140,6 +142,7 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
         ("grounding_code_count", "INTEGER DEFAULT 0"),
         ("grounding_commit_count", "INTEGER DEFAULT 0"),
         ("grounding_session_count", "INTEGER DEFAULT 0"),
+        ("grounding_forge_count", "INTEGER DEFAULT 0"),
     ];
 
     for (col_name, col_type) in &columns_to_add {
@@ -619,6 +622,7 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
     index.load(&index_path)?;
 
     const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+    const FORGE_ID_OFFSET: i64 = 5_000_000_000;
     const CODE_ID_OFFSET: i64 = 1_000_000_000;
     const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
     const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
@@ -661,6 +665,7 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
 
         let mut commit_count = 0i32;
         let mut session_count = 0i32;
+        let mut forge_count = 0i32;
         let mut total_score: f32 = 0.0;
         let mut total_count = 0i32;
 
@@ -680,7 +685,7 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
                 continue;
             }
             // Skip other beliefs
-            if key >= BELIEF_ID_OFFSET {
+            if (BELIEF_ID_OFFSET..FORGE_ID_OFFSET).contains(&key) && key != BELIEF_ID_OFFSET + rowid {
                 continue;
             }
 
@@ -688,7 +693,12 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
                 continue;
             }
 
-            if (COMMIT_ID_OFFSET..BELIEF_ID_OFFSET).contains(&key) {
+            if key >= FORGE_ID_OFFSET {
+                // Forge event (issue or PR)
+                forge_count += 1;
+                total_score += score;
+                total_count += 1;
+            } else if (COMMIT_ID_OFFSET..BELIEF_ID_OFFSET).contains(&key) {
                 commit_count += 1;
 
                 // Resolve commit rowid → SHA for structural hop
@@ -700,14 +710,17 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
                 ) {
                     commit_neighbors.push((sha, score));
                 }
+                total_score += score;
+                total_count += 1;
             } else if key < CODE_ID_OFFSET {
                 session_count += 1;
+                total_score += score;
+                total_count += 1;
+            } else {
+                // Code matches — counted in total_score but NOT in grounding_code_count
+                total_score += score;
+                total_count += 1;
             }
-            // Note: direct code matches (CODE_ID_OFFSET range) still counted
-            // in total_score but NOT in grounding_code_count (that comes from reach)
-
-            total_score += score;
-            total_count += 1;
         }
 
         // E4.6a-fix: Structural hop — commit → commit_files → file_path
@@ -822,8 +835,8 @@ fn compute_belief_grounding(conn: &Connection) -> Result<()> {
 
         // grounding_code_count = source code files only (not docs/configs)
         conn.execute(
-            "UPDATE beliefs SET grounding_score = ?1, grounding_code_count = ?2, grounding_commit_count = ?3, grounding_session_count = ?4 WHERE id = ?5",
-            rusqlite::params![grounding_score, source_file_count, commit_count, session_count, belief_id],
+            "UPDATE beliefs SET grounding_score = ?1, grounding_code_count = ?2, grounding_commit_count = ?3, grounding_session_count = ?4, grounding_forge_count = ?5 WHERE id = ?6",
+            rusqlite::params![grounding_score, source_file_count, commit_count, session_count, forge_count, belief_id],
         )?;
 
         if total_count > 0 {
@@ -888,6 +901,7 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
                 "code": belief.metrics.grounding_code_count,
                 "commits": belief.metrics.grounding_commit_count,
                 "sessions": belief.metrics.grounding_session_count,
+                "forge": belief.metrics.grounding_forge_count,
             },
         },
     });
@@ -908,8 +922,8 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
         "INSERT INTO beliefs (id, statement, persona, facets, confidence, entrenchment, status, extracted, revised, file_path,
          cited_by_beliefs, cited_by_sessions, applied_in, evidence_count, evidence_verified, defeated_attacks, external_sources, endorsed,
          verification_total, verification_passed, verification_failed, verification_errored,
-         grounding_score, grounding_code_count, grounding_commit_count, grounding_session_count)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
+         grounding_score, grounding_code_count, grounding_commit_count, grounding_session_count, grounding_forge_count)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)",
         rusqlite::params![
             &belief.id,
             &belief.statement,
@@ -937,6 +951,7 @@ fn insert_belief(conn: &Connection, belief: &ParsedBelief) -> Result<()> {
             belief.metrics.grounding_code_count,
             belief.metrics.grounding_commit_count,
             belief.metrics.grounding_session_count,
+            belief.metrics.grounding_forge_count,
         ],
     )?;
 
