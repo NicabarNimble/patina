@@ -225,6 +225,10 @@ enum Commands {
         /// Force lexical (FTS5) search mode, bypassing auto-detection
         #[arg(long, conflicts_with = "command")]
         lexical: bool,
+
+        /// Show belief impact for code results — which beliefs may be affected (E4.6a)
+        #[arg(long)]
+        impact: bool,
     },
 
     /// Evaluate retrieval quality across dimensions
@@ -925,6 +929,7 @@ fn main() -> Result<()> {
             hybrid,
             explain,
             lexical,
+            impact,
         }) => {
             // Handle subcommands first
             if let Some(subcmd) = command {
@@ -973,6 +978,7 @@ fn main() -> Result<()> {
                     routing: routing_strategy,
                     belief,
                     content_type,
+                    impact,
                 };
                 commands::scry::execute(query.as_deref(), options)?;
             }

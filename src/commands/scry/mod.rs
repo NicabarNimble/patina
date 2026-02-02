@@ -14,7 +14,7 @@ use patina::mother;
 
 use crate::commands::persona;
 
-use internal::enrichment::truncate_content;
+use internal::enrichment::{find_belief_impact, truncate_content};
 use internal::hybrid::execute_hybrid;
 use internal::logging::log_scry_query;
 use internal::routing::{execute_all_repos, execute_graph_routing, execute_via_mother};
@@ -64,6 +64,8 @@ pub struct ScryOptions {
     pub belief: Option<String>,
     /// Content type filter for belief queries: code, commits, sessions, patterns, beliefs
     pub content_type: Option<String>,
+    /// Show belief impact for code results — which beliefs are semantically close (E4.6a)
+    pub impact: bool,
 }
 
 impl Default for ScryOptions {
@@ -83,6 +85,7 @@ impl Default for ScryOptions {
             routing: RoutingStrategy::default(),
             belief: None,
             content_type: None,
+            impact: false,
         }
     }
 }
@@ -217,6 +220,13 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     println!("Found {} results:\n", results.len());
     println!("{}", "─".repeat(60));
 
+    // E4.6a step 4: Compute belief impact for code results
+    let impact_map = if options.impact {
+        find_belief_impact(&results).unwrap_or_default()
+    } else {
+        Default::default()
+    };
+
     for (i, result) in results.iter().enumerate() {
         let timestamp_display = if result.timestamp.is_empty() {
             String::new()
@@ -232,6 +242,15 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
             timestamp_display
         );
         println!("    {}", truncate_content(&result.content, 200));
+
+        // Show belief impact for code results
+        if let Some(beliefs) = impact_map.get(&result.id) {
+            let belief_strs: Vec<String> = beliefs
+                .iter()
+                .map(|(id, score)| format!("{} ({:.2})", id, score))
+                .collect();
+            println!("    beliefs: {}", belief_strs.join(", "));
+        }
     }
 
     println!("\n{}", "─".repeat(60));
