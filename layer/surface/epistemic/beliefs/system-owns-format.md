@@ -35,6 +35,10 @@ For deterministic output, the system should own the format while the LLM provide
 SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE '%scripts/create-belief%'
 ```
 
+```verify type="sql" label="Grounding reaches belief scraper" expect=">= 1"
+SELECT COUNT(*) FROM belief_code_reach WHERE belief_id = 'system-owns-format' AND file_path LIKE '%beliefs%.rs'
+```
+
 ## Supports
 
 - [[skills-for-structured-output]] - Skills implement this pattern

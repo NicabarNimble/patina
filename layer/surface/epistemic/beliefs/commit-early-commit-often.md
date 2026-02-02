@@ -45,6 +45,10 @@ SELECT AVG(fc) FROM (SELECT COUNT(*) as fc FROM commit_files GROUP BY sha)
 derive-moments | summary.total_commits
 ```
 
+```verify type="sql" label="Grounding reaches git-related code" expect=">= 1"
+SELECT COUNT(*) FROM belief_code_reach WHERE belief_id = 'commit-early-commit-often' AND (file_path LIKE '%git%' OR file_path LIKE '%commit%' OR file_path LIKE '%session%')
+```
+
 ## Supports
 
 - [[eventlog-is-truth]] - Granular commits create better audit trail

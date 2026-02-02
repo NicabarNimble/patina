@@ -29,6 +29,12 @@ CI workflows should either do meaningful work or not trigger at all. Use step-le
 
 - session-20260126-211444: pr-gate.yml used job-level if to skip maintainer, causing GitHub to email 'Run failed: no jobs were run' on every PR. Fixed by moving check to step-level if - job always runs, step skips silently. (weight: 0.95)
 
+## Verification
+
+```verify type="sql" label="Grounding reaches CI scripts" expect=">= 1"
+SELECT COUNT(*) FROM belief_code_reach WHERE belief_id = 'ci-gates-not-ci-spam' AND (file_path LIKE '%pre-push%' OR file_path LIKE '%ci%' OR file_path LIKE '%test.yml%')
+```
+
 ## Supports
 
 <!-- Add beliefs this supports -->
