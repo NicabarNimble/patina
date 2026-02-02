@@ -142,13 +142,32 @@ Run regularly to catch regressions.
 
 ## Current Focus
 
-### Epistemic Layer (E0-E3 Complete) — v1.0 Pillar 1
+### Next Session: Spec Drift Fix, then E4.6
+
+**Priority 1: Spec drift spec** — Write a spec for detecting and surfacing stale context.
+Belief `stale-context-is-hostile-context` identifies the problem (stale specs poison LLM context
+reboots). The spec designs the solution: staleness detection during scrape, warnings in doctor/audit,
+session-start surfacing of stale specs touching current branch. This is a core Patina mission fix —
+the symbiotic relationship between human and LLM breaks when the context layer lies.
+
+**Priority 2: E4.6a — Semantic belief grounding** — Connect beliefs to code/commits/sessions via
+existing usearch embeddings. `scry --belief <id>` retrieves belief vector, kNN across all content
+types. Infrastructure exists (same model, same index, same enrichment). Belief→code grounding
+enables evidence discovery and impact analysis. See epistemic-layer SPEC Phase E4.6a.
+
+**Priority 3: E4.6b — Belief-to-belief similarity** — Same infrastructure as E4.6a with different
+ID range filter. Typed edges (support/attack/evidence), semantic clustering, conflict detection.
+Lays grounding for mother's multi-project belief routing.
+
+### Epistemic Layer (E0-E4.5 Complete) — v1.0 Pillar 1
 
 **Problem:** Knowledge systems store facts. Patina needs to store **beliefs with justification and revision**.
 
 **Solution:** Persona-based epistemic belief revision using atomic Markdown propositions. AGM-style operations (expansion, contraction, revision) map to layer lifecycle (surface → core or → dust).
 
-**Progress:** E0-E4.5 complete. 46 beliefs with 47 verification queries (all passing). Belief metrics computed from real data (use/truth), verification connects beliefs to DB ingredients (SQL/assay/temporal). E4.6 (semantic belief relationships) next.
+**Progress:** E0-E4.5 complete. 46 beliefs, 47 verification queries (all passing). E4 metrics
+from real data (use/truth). E4.5 verification connects beliefs to DB ingredients (SQL/assay/temporal).
+E4.6 semantic grounding next — beliefs↔code/commit/session similarity using existing embeddings.
 
 **Spec:** [feat/epistemic-layer/SPEC.md](../surface/build/feat/epistemic-layer/SPEC.md)
 
