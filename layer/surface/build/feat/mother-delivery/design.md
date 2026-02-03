@@ -78,6 +78,8 @@ Option C would improve tagging but not fix the drowning problem — beliefs woul
 **Why A+B combined, not A alone or B alone:**
 Mirrors the proven dual-channel pattern already in production: SemanticOracle (vector) + LexicalOracle (FTS5) for code. Same principle applied to beliefs. Vector catches semantic matches; FTS5 catches keyword matches. Neither alone is sufficient.
 
+**Implementation note (session 20260203-120615):** Channel B requires no new table — `belief_fts` already exists (`scrape/beliefs/mod.rs:103`) with columns `(id, statement, facets, content)` and porter tokenizer. Created during scrape, populated, but never queried at retrieval time. The BeliefOracle becomes its first consumer. See also ADR-6 for the over-fetch strategy needed by Channel A.
+
 **Anchored in:** [[dependable-rust]] (black-box module implementing Oracle trait), [[unix-philosophy]] (focused tool: "find beliefs relevant to this query"), OpenClaw hybrid pattern (0.7 * vector + 0.3 * text).
 
 ### ADR-2: Why two-step applies to BOTH MCP and CLI
@@ -95,6 +97,8 @@ All three are LLM adapters. All benefit from token-efficient snippets with on-de
 One behavior, two interfaces. The [[adapter-pattern]] says: same capability regardless of delivery channel. If snippets are right for MCP (token efficiency), they're right for CLI (same LLM consumer). Different defaults would mean the same LLM gets different information depending on which tool it happens to call — that's an adapter leak.
 
 OpenClaw evidence: `memory_search` always returns 700-char snippets. There is no "full content search" mode. The two-step is fundamental.
+
+**Implementation note (session 20260203-120615):** This is a breaking change to the MCP response shape. The D3 spec adds a `--full` / `mode=full` escape hatch that preserves current full-content behavior during transition. The decision stands — snippets are the right default — but migration requires an opt-in path to the old behavior until adapters are confirmed working with snippets + detail.
 
 **Anchored in:** [[adapter-pattern]] (same behavior regardless of interface), OpenClaw evidence (always snippets).
 
@@ -119,6 +123,8 @@ The "here is small info, if you want bigger info here you go" pattern. Every res
 **Why NOT adapter-specific (no CLAUDE.md, no hooks):**
 Both OpenClaw (system prompt) and Gastown (SessionStart hook) are adapter-coupled. Patina's adapters are Claude Code, OpenCode, and Gemini CLI. Any instruction in CLAUDE.md is invisible to OpenCode. Any hook is invisible to Gemini CLI. MCP tools + CLI commands are the shared interface. We minimize adapter surface and steer everything through patina.
 
+**Implementation note (session 20260203-120615):** The three layers touch different parts of the codebase and can land independently. Layer 1 (tool descriptions) is a small self-contained change. Layer 2 (dynamic beliefs in context) requires wiring `get_project_context()` to SQLite + embeddings — it currently reads `layer/` files from disk only. Layer 3 (graph breadcrumbs) is shared with D3's snippet format. Implementation order: D3 ships snippets without breadcrumbs first, D2 Layer 3 adds the breadcrumb section to the established snippet skeleton.
+
 **Anchored in:** [[adapter-pattern]] (adapter-agnostic delivery), OpenClaw belt-and-suspenders evidence, [[unix-philosophy]] (composable commands in dig-deeper).
 
 ### ADR-4: Why beliefs-as-channel, not intent classifier
@@ -133,15 +139,33 @@ G0 measurement proved brute-force fails: 0% repo recall. The "All" strategy exis
 
 If a project has no graph edges, returning local-only results is better than searching 19 repos and drowning signal in noise. The user can add edges with `patina mother link` if they want cross-project results.
 
+### ADR-6: Why over-fetch before dedicated index
+
+**Decision:** BeliefOracle Channel A uses aggressive over-fetch (`min(limit * 50, total_index_size / 2)`) from the shared USearch index, with a dedicated belief USearch index as fallback if over-fetch proves unreliable.
+
+**Context (session 20260203-120615):** With ~48 beliefs in an index of thousands of code entries, a standard `limit * 2` search (the SemanticOracle default) will likely return zero beliefs in the top results. The beliefs exist in the index but are statistically rare.
+
+**Why over-fetch first, not dedicated index from the start:**
+- Over-fetch is zero infrastructure cost — no new index to build, no new scrape step, no new file to manage. It's a parameter change in the oracle's `query()` method.
+- USearch ANN search is sub-millisecond even at high limits (thousands of results). The post-filter to the 4B-5B range reduces to ~48 candidates. Performance cost is negligible.
+- If over-fetch works, we avoid maintaining a second index that duplicates data already in the main index.
+
+**When to fall back to dedicated index:**
+- If empirical testing shows over-fetch at `limit * 50` still misses beliefs for common queries (ANN approximation might skip the belief region of the vector space entirely)
+- The dedicated index would be tiny (~48 entries), fast to build during scrape, and eliminates the filtering problem entirely
+- This is a measurable decision — run the A/B eval and check belief recall
+
+**Anchored in:** [[dependable-rust]] (start simple, measure, escalate only if needed), pragmatism over premature optimization.
+
 ---
 
-## Resolved Design Questions (session 20260203-065424)
+## Design History
 
-Three open questions from session [[20260202-202802]] were resolved by reading ref repo code and anchoring in [[layer/core]] values:
+**Session [[20260202-202802]]:** Initial design with 5 open questions.
 
-1. **D1 BeliefOracle approach:** A+B combined (vector + FTS5). Mirrors SemanticOracle + LexicalOracle dual-channel pattern. See ADR-1.
-2. **D3 Two-step scope:** Both MCP and CLI get snippets by default. CLI is an LLM tool (Claude Code via Bash, OpenCode via exec), not primarily human. See ADR-2.
-3. **Recall directive placement:** Three-layer delivery (description + response + graph breadcrumbs). Belt-and-suspenders for both interfaces. See ADR-3.
+**Session [[20260203-065424]]:** Resolved D1 (A+B oracle), D3 (two-step scope), and recall placement by reading ref repo code. See ADR-1, ADR-2, ADR-3.
+
+**Session [[20260203-120615]]:** Grounded specs against actual codebase. Discovered `belief_fts` already exists, identified over-fetch risk, added migration strategy for breaking change, clarified D2/D3 dependency ordering. See implementation notes on ADR-1/2/3 and ADR-6.
 
 **Ref repo code reviewed:**
 - OpenClaw: `memory-tool.ts` (tool definitions), `system-prompt.ts` (recall placement), `hybrid.ts` (scoring), `manager.ts` (search architecture)
