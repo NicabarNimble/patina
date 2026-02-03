@@ -11,11 +11,13 @@ related:
   - layer/surface/build/feat/mother-delivery/d1-belief-oracle/SPEC.md
   - layer/surface/build/feat/mother-delivery/d3-two-step-retrieval/SPEC.md
   - layer/surface/build/feat/mother-delivery/design.md
+beliefs:
+  - mcp-is-shim-cli-is-product
 ---
 
-# feat: D0 — Unified Search (QueryEngine as Default)
+# feat: D0 — Unified Search (CLI Owns the Pipeline)
 
-> One search pipeline for CLI and MCP. No flags. Every query gets oracles + RRF fusion.
+> One search pipeline. CLI is the product. MCP wraps it. Every query gets oracles + RRF fusion.
 
 ## Problem
 
@@ -92,14 +94,27 @@ CLI execute()
 **Add:**
 - `--legacy` escape hatch — preserves old direct-search behavior during transition. Deprecated from day one, removed in v0.12.0.
 
-### Output Format Convergence
+### CLI-First Architecture
 
-CLI currently outputs `ScryResult` (event_type, source_id, score). After D0, CLI outputs `FusedResult` (doc_id, fused_score, oracle contributions, metadata).
+**Belief: [[mcp-is-shim-cli-is-product]]** — MCP exists as a discovery shim so LLM adapters know what tools to call. The CLI is the real interface.
 
-This is the same format MCP already uses. D3 (snippets) then only needs to implement one formatter.
+**Before D0:** MCP has its own implementation in `server.rs` — `format_results()`, `format_results_with_query_id()`, `get_project_context()` — parallel to CLI code. Two formatters, two code paths, two behaviors.
+
+**After D0:** CLI owns the QueryEngine pipeline and output formatting. MCP's `server.rs` becomes a thin dispatcher: parse MCP JSON params → call the same code `patina scry` uses → return the output. MCP tool descriptions remain (that's the discovery shim — the reason MCP exists), but MCP handlers delegate to CLI logic.
 
 ```
-# CLI output after D0 (same as MCP):
+# CLI is the product:
+patina scry "how to handle errors"
+
+# MCP wraps CLI:
+scry(query="how to handle errors")  →  calls same code path  →  same output
+```
+
+### Output Format
+
+CLI outputs `FusedResult` (doc_id, fused_score, oracle contributions, metadata). MCP returns the same output — it's a passthrough, not a re-formatter.
+
+```
 query_id: q_20260203_143000_abc
 
 1. [code]   src/retrieval/engine.rs::query_with_options  (0.87)
@@ -110,18 +125,21 @@ query_id: q_20260203_143000_abc
             TemporalOracle(0.85) + LexicalOracle(0.68)
 ```
 
+D3 (snippets) implements one formatter in CLI code. MCP passes it through.
+
 ### Performance
 
 The oracle system runs oracles in parallel via `rayon`. Each oracle is sub-millisecond (USearch ANN, FTS5 BM25). RRF fusion is O(n) over results. Total overhead vs direct search: negligible for the query sizes we handle (~10-50 results).
 
-MCP has been running this path for every query since January with no performance complaints.
+MCP has been running the QueryEngine path for every query since January with no performance complaints — validating the oracle system is production-ready.
 
 ### What This Enables
 
-- **D1 wires in once.** Add BeliefOracle to `default_oracles()`, done. Works for CLI and MCP.
-- **D3 implements once.** Snippet formatting on FusedResult. One formatter, two interfaces.
-- **D2 is consistent.** Breadcrumbs, recall directives, dig-deeper commands — one output format to enhance.
-- **Intent detection works everywhere.** `detect_intent()` → `IntentWeights` → weighted RRF already exists. CLI gets it for free.
+- **D1 wires in once.** Add BeliefOracle to `default_oracles()`, done. Works everywhere.
+- **D3 implements once.** Snippet formatting in CLI code. MCP passes through.
+- **D2 is consistent.** One output format to enhance — CLI owns it.
+- **Intent detection works everywhere.** `detect_intent()` → `IntentWeights` → weighted RRF already exists.
+- **MCP surface shrinks.** `server.rs` handlers become thin dispatchers, not parallel implementations.
 
 ---
 
@@ -131,7 +149,8 @@ MCP has been running this path for every query since January with no performance
 - [ ] `--hybrid` flag removed from CLI args
 - [ ] `--lexical` and `--dimension` flags removed (oracles handle internally)
 - [ ] `--legacy` escape hatch available for old direct-search behavior
-- [ ] CLI output format matches MCP output format (FusedResult with oracle contributions)
+- [ ] CLI output format uses FusedResult with oracle contributions
+- [ ] MCP scry handler delegates to CLI code path (thin wrapper, not parallel implementation)
 - [ ] `--belief` and `--file` modes unchanged (specialized, not default query path)
 - [ ] `patina eval` benchmarks pass — no regression in retrieval quality vs old default
 
