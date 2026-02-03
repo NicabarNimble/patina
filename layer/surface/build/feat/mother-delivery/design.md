@@ -157,6 +157,28 @@ If a project has no graph edges, returning local-only results is better than sea
 
 **Anchored in:** [[dependable-rust]] (start simple, measure, escalate only if needed), pragmatism over premature optimization.
 
+### ADR-7: Why unify CLI search path (D0)
+
+**Decision:** Make QueryEngine (oracles + RRF fusion) the default for all CLI scry queries. Remove `--hybrid`, `--lexical`, and `--dimension` flags. One pipeline, two interfaces.
+
+**Context (session 20260203-120615):** Grounding the delivery specs against the actual codebase revealed CLI and MCP scry are different pipelines. CLI default uses heuristic auto-detection between direct vector search and FTS5 — no oracles, no RRF. MCP always uses QueryEngine. This means D1 (BeliefOracle) would only work for MCP, D3 (snippets) would need two implementations, and the adapter pattern is violated.
+
+**Why not keep the bifurcation and implement D1/D3 twice:**
+- Duplicates oracle logic in the direct search path
+- Maintains two pipelines that must produce consistent results
+- Fights the architecture — the oracle system was designed to be the unified search interface
+- None of the ref repos have dual search paths: OpenClaw has one pipeline (hybrid scoring), Gastown has one delivery path per role, OpenCode calls CLI via exec expecting consistent behavior
+
+**Why the "experimental needs feedback" concern is resolved:**
+`--hybrid` was introduced Dec 2025 as experimental, pending Phase 3 feedback loop. MCP was built later and used the oracle path from day one — it has been the default for every MCP query since January 2026. The oracle system is production-proven by MCP usage. The CLI default simply never completed the transition.
+
+**What stays as-is:**
+- `--belief` and `--file` modes are specialized entity-neighbor queries, not default search. They remain unchanged.
+- `scry_text()` and `scry_lexical()` survive as oracle internals — SemanticOracle and LexicalOracle wrap equivalent logic.
+- `--legacy` escape hatch provides the old direct-search behavior during transition.
+
+**Anchored in:** [[adapter-pattern]] (same behavior regardless of interface), ref repo evidence (one search path), [[dependable-rust]] (completing the architecture, not building around it).
+
 ---
 
 ## Design History
@@ -165,7 +187,7 @@ If a project has no graph edges, returning local-only results is better than sea
 
 **Session [[20260203-065424]]:** Resolved D1 (A+B oracle), D3 (two-step scope), and recall placement by reading ref repo code. See ADR-1, ADR-2, ADR-3.
 
-**Session [[20260203-120615]]:** Grounded specs against actual codebase. Discovered `belief_fts` already exists, identified over-fetch risk, added migration strategy for breaking change, clarified D2/D3 dependency ordering. See implementation notes on ADR-1/2/3 and ADR-6.
+**Session [[20260203-120615]]:** Grounded specs against actual codebase. Discovered `belief_fts` already exists, identified over-fetch risk, added migration strategy for breaking change, clarified D2/D3 dependency ordering. Discovered CLI/MCP bifurcation — CLI default bypasses oracle system entirely. Added D0 (unified search) as foundation change. See implementation notes on ADR-1/2/3, ADR-6, and ADR-7.
 
 **Ref repo code reviewed:**
 - OpenClaw: `memory-tool.ts` (tool definitions), `system-prompt.ts` (recall placement), `hybrid.ts` (scoring), `manager.ts` (search architecture)

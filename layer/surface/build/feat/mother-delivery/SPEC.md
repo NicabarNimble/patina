@@ -37,10 +37,11 @@ Task queries are the dominant use case. The system that's built doesn't serve it
 
 ## Design Changes
 
-Five changes, decomposed into focused sub-specs:
+Six changes, decomposed into focused sub-specs:
 
 | ID | Change | Sub-Spec |
 |----|--------|----------|
+| **D0** | Unified search — QueryEngine as default CLI path | [[d0-unified-search/SPEC.md]] |
 | **D1** | BeliefOracle — beliefs as default search channel | [[d1-belief-oracle/SPEC.md]] |
 | **D2** | Three-layer delivery (description → response → breadcrumbs) | [[d2-three-layer-delivery/SPEC.md]] |
 | **D3** | Two-step retrieval (snippets → detail) | [[d3-two-step-retrieval/SPEC.md]] |
@@ -82,23 +83,30 @@ Graph  = the only strategy
 ## Implementation Order
 
 ```
+D0: Unified search (QueryEngine as default CLI path)
+ │   Foundation — one pipeline for CLI and MCP
+ │   Removes --hybrid, --lexical, --dimension flags
+ │   CLI output converges on FusedResult format
+ │
 D1: BeliefOracle (beliefs as search channel)
- │   Highest impact — directly addresses -0.05 delta
- │
-D3: Two-step retrieval (search → detail)
- │   Changes MCP response shape — do before D2 to stabilize interface
- │
-D2: Context as briefing (dynamic beliefs + recall directive)
- │   Depends on D1 (belief querying) being stable
+ │   Wires into QueryEngine once, works everywhere
+ │   Directly addresses -0.05 delta
  │
 D4: Routing simplification (graph-only)
- │   Independent cleanup — can happen anytime
+ │   Independent cleanup — can happen alongside D0/D1
+ │
+D3: Two-step retrieval (search → detail)
+ │   Implements snippets on FusedResult (one formatter)
+ │   Depends on D0 for unified output format
+ │
+D2: Context as briefing (dynamic beliefs + recall directive)
+ │   Depends on D1 (belief querying) and D3 (response shape)
  │
 D5: Naming cleanup (mothership → mother)
      Independent — can happen anytime
 ```
 
-D1 and D4 can be worked in parallel. D3 should precede D2 so the context tool can reference the new scry interface shape in its recall directive.
+D0 is the foundation — everything else is simpler because there's one pipeline. D0 and D4 can be worked in parallel (both are cleanup/simplification). D1 follows D0 (wires BeliefOracle into the now-unified QueryEngine). D3 follows D0 (implements snippets on the now-unified FusedResult format). D2 follows D1+D3.
 
 ---
 
@@ -108,6 +116,7 @@ D1 and D4 can be worked in parallel. D3 should precede D2 so the context tool ca
 
 Rollup criteria. Sub-spec checkboxes must all pass for these to be checked.
 
+- [ ] **D0: One search pipeline.** CLI `patina scry "query"` uses QueryEngine with all oracles — no `--hybrid` flag, same output format as MCP. Sub-spec: [[d0-unified-search/SPEC.md]]
 - [ ] **D1: Beliefs surface in default queries.** Run `patina scry "how should I handle errors?"` — beliefs appear in results alongside code/commits without `mode=belief`. Sub-spec: [[d1-belief-oracle/SPEC.md]]
 - [ ] **D2: Tool descriptions and recall directive live.** `context` response includes dynamic beliefs + recall directive. `scry` and `context` MCP descriptions include belief/recall language. Sub-spec: [[d2-three-layer-delivery/SPEC.md]]
 - [ ] **D3: Snippets are the default.** `scry` returns compact snippets; `--detail` returns full content for a single result; `--full` preserves legacy behavior. Sub-spec: [[d3-two-step-retrieval/SPEC.md]]
@@ -153,12 +162,14 @@ Carried from Phase 1. Depends on D1 local belief search being validated first.
 | 2026-02-02 | design | Initial monolithic spec (session 20260202-202802) |
 | 2026-02-03 | design | Resolved D1/D3/recall design questions (session 20260203-065424) |
 | 2026-02-03 | design | Decomposed into sub-specs, grounded against codebase (session 20260203-120615) |
+| 2026-02-03 | design | Added D0: discovered CLI/MCP bifurcation, unified search as foundation |
 
 ---
 
 ## See Also
 
 - [[design.md]] — Ref repo evidence (OpenClaw, Gastown), all ADRs, resolved design questions
+- [[d0-unified-search/SPEC.md]] — Foundation: QueryEngine as default CLI path
 - [[d1-belief-oracle/SPEC.md]] — BeliefOracle design and implementation
 - [[d2-three-layer-delivery/SPEC.md]] — Three-layer delivery design
 - [[d3-two-step-retrieval/SPEC.md]] — Two-step retrieval design
