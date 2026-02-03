@@ -134,6 +134,7 @@ Run regularly to catch regressions.
 
 **Refactors:**
 - [refactor/spec-system/SPEC.md](../surface/build/refactor/spec-system/SPEC.md) - **In Progress:** New folder-based spec format
+- [refactor/security-hardening/SPEC.md](../surface/build/refactor/security-hardening/SPEC.md) - **Ready:** HTTP daemon auth, file permissions, model integrity (14 findings, 3 phases)
 
 **Exploration:**
 - [explore/anti-slop/SPEC.md](../surface/build/explore/anti-slop/SPEC.md) - **Active:** Signal over noise, linkage as quality measure
@@ -152,12 +153,13 @@ identified during the A/B eval is a mother-scope concern. Ref repo research ([[o
 [[steveyegge/gastown]]) informed the delivery design — mandatory recall, two-step retrieval,
 ephemeral injection, all adapted for adapter-agnostic MCP delivery.
 
-**5 design changes (D1-D5):**
+**6 design changes (D0-D5):**
+- D0: Unified search — QueryEngine as default CLI path (foundation)
 - D1: Beliefs as default search channel (BeliefOracle in every query) — highest impact
 - D2: Context as dynamic briefing (beliefs + recall directive in MCP response)
 - D3: Two-step retrieval (snippets by default, detail on demand)
 - D4: Routing simplified to graph-only (daemon = transport, "All" removed)
-- D5: Mother naming cleanup (mothership → mother)
+- ~~D5: Mother naming cleanup~~ ✅ Complete (verified 2026-02-03)
 
 **Measurement target:** Re-run task-oriented A/B eval, target delta ≥ 0.0 (stretch: +0.5).
 
