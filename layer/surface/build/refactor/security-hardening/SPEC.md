@@ -231,6 +231,19 @@ patina secrets add test-secret
 
 ---
 
+## Versioning
+
+Security hardening is a patch release, not a feature milestone.
+
+```
+All phases complete → patina version patch → 0.10.1
+                    → patina spec archive security-hardening → spec/security-hardening tag
+```
+
+Precedent: 0.9.3 (session hardening), 0.9.4 (spec archive + belief verification).
+
+---
+
 ## Status Log
 
 | Date | Status | Note |
