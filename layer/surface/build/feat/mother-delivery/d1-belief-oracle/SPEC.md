@@ -62,27 +62,30 @@ impl Oracle for BeliefOracle {
 **Channel A — Vector (semantic similarity):**
 1. Embed query using E5-base-v2 pipeline (same as SemanticOracle)
 2. Project to 256-dim (same projection)
-3. Search USearch index with `limit * 2` (oversample to compensate for filtering)
-4. Filter results to `BELIEF_ID_OFFSET` range (4B-5B)
-5. Enrich from beliefs table: statement, entrenchment, evidence metrics
+3. Search USearch index with aggressive over-fetch, filter to `BELIEF_ID_OFFSET` range (4B-5B)
+4. Enrich from beliefs table: statement, entrenchment, evidence metrics
 
 Reuses the existing semantic index — beliefs are already embedded there. Filtering happens post-search (USearch doesn't support range filters natively).
 
+**Over-fetch strategy:** With ~48 beliefs in an index of thousands of code entries, a naive `limit * 2` search may return zero beliefs in the top results. The oracle must over-fetch aggressively — `min(limit * 50, total_index_size / 2)` — then filter to the 4B-5B range. This is acceptable because USearch ANN search is sub-millisecond even at high limits, and the post-filter reduces to a small result set. If over-fetching proves insufficient, a dedicated belief USearch index (tiny, fast to build during scrape) is the fallback.
+
 **Channel B — FTS5 (keyword):**
 1. Tokenize query for FTS5
-2. Search `beliefs_fts` table (NEW — created during scrape)
+2. Search existing `belief_fts` table (already created during scrape)
 3. Return: belief_id, statement, BM25 score
 
-New table schema (created during `patina scrape`):
+Existing table schema (created during `patina scrape`, `scrape/beliefs/mod.rs:103`):
 ```sql
-CREATE VIRTUAL TABLE beliefs_fts USING fts5(
+CREATE VIRTUAL TABLE IF NOT EXISTS belief_fts USING fts5(
+    id,
     statement,
-    evidence_summary,
-    tags,
-    content='beliefs',
-    content_rowid='rowid'
+    facets,
+    content,
+    tokenize='porter unicode61'
 );
 ```
+
+This table already exists and is populated during scrape but **not queried by any oracle today**. The BeliefOracle becomes its first consumer. The schema is richer than originally proposed — `content` contains the full belief text, `facets` contains domain tags. No new table needed.
 
 Captures keyword matches vector search misses. A query containing "thiserror" matches a belief about "use thiserror derive macros" via exact keyword, not just semantic proximity.
 
@@ -152,10 +155,10 @@ pub struct IntentWeights {
 
 ### Scrape Integration
 
-During `patina scrape`, add FTS5 indexing for beliefs:
+No scrape changes needed — all infrastructure already exists:
 1. Beliefs are already inserted into the `beliefs` table
 2. Beliefs are already embedded in USearch index at `BELIEF_ID_OFFSET + rowid`
-3. NEW: Create and populate `beliefs_fts` table with statement + evidence_summary + tags
+3. `belief_fts` is already created and populated with `(id, statement, facets, content)`
 
 ### Module Layout
 
@@ -171,15 +174,16 @@ src/retrieval/oracles/
 
 ### Cross-Project (Federation)
 
-During graph routing, the BeliefOracle runs against each related project's belief table. A query in `cairo-game` that routes to `patina` via LEARNS_FROM also searches patina's beliefs. Reuses existing `collect_oracle_results_in_context()` pattern — create fresh oracles in target repo's context, collect results, tag with repo name.
+During graph routing, the BeliefOracle runs against each related project's belief table. A query in `cairo-game` that routes to `patina` via LEARNS_FROM also searches patina's beliefs. Reuses the existing `query_repo()` / `query_all_repos()` pattern in `engine.rs` — the QueryEngine already creates fresh oracle instances per repo context, collects results, and performs cross-repo RRF fusion. The BeliefOracle participates in this automatically once wired into `default_oracles()`.
 
 ---
 
 ## Exit Criteria
 
 - [ ] BeliefOracle wired into default query flow — beliefs appear in standard scry results without `mode=belief` or `--belief` flags
-- [ ] `beliefs_fts` table created during `patina scrape` — FTS5 over statement + evidence_summary + tags
+- [ ] BeliefOracle Channel B queries existing `belief_fts` table (no new table needed)
 - [ ] Intent boost — Rationale and Definition intents boost belief oracle weight
+- [ ] Over-fetch validated — confirm beliefs surface reliably with ~48 beliefs in index of thousands (fallback: dedicated belief USearch index)
 - [ ] **Measured:** Re-run task-oriented A/B eval. Target: delta >= 0.0 (beliefs no longer hurt). Stretch: delta >= +0.5
 
 ---

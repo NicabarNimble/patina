@@ -57,7 +57,17 @@ scry(query="vector similarity search")
     patina scry --belief error-handling-thiserror --content-type code
 ```
 
-Each result shows: doc_id, fused score, channel tag, oracle contributions, one-line summary (~120 chars), and graph breadcrumbs (D2 Layer 3).
+Each result shows: doc_id, fused score, channel tag, oracle contributions, and a content-type-aware snippet.
+
+**Snippet format per content type:**
+- **[code]**: function signature + first doc comment line, truncated to ~200 chars. `pub fn query_with_options(&self, query: &str, ...) -> Result<Vec<FusedResult>> // Query with intent detection and...`
+- **[belief]**: full statement + entrenchment. `"Use thiserror derive macros for error types" (entrenchment: 0.8)`
+- **[commit]**: subject line + changed file count. `abc1234: "feat: add cosine distance metric" (4 files)`
+- **[pattern]**: first sentence of pattern content.
+
+OpenClaw uses 700-char snippets. 120 chars is too aggressive — function signatures alone can exceed that. Target ~200 chars for code, full statement for beliefs (typically <150 chars), subject line for commits.
+
+When D2 Layer 3 (graph breadcrumbs) is implemented, breadcrumbs appear after the snippet. D3 ships without breadcrumbs initially — the snippet format is self-contained and useful on its own.
 
 ### Step 2 — Fetch (on demand, both MCP and CLI)
 
@@ -88,19 +98,42 @@ The LLM sees the landscape first, then drills into what matters. This is OpenCla
 
 - The split happens after RRF fusion, before enrichment
 - `enrich_results()` in `enrichment.rs` already reconstructs content from SQLite by ID ranges — this becomes the `detail` path
-- `query_id` infrastructure already exists (Phase 3 feedback loop)
+- `query_id` infrastructure already exists (Phase 3 feedback loop, `log_mcp_query()` in server.rs)
 - Add `mode=detail` / `--detail` handler to both MCP server and CLI command
-- Default mode returns: `doc_id, fused_score, sources[], one_line_summary, graph_breadcrumbs`
-- `one_line_summary`: first line of content, truncated to ~120 chars
-- Graph breadcrumbs: belief links, belief impact, co-change relationships, dig-deeper commands
-- Dig-deeper commands formatted for the delivery channel (CLI syntax for CLI, MCP syntax for MCP)
+- Default mode returns: `doc_id, fused_score, sources[], content_snippet`
+- Content snippets: type-aware formatting (~200 chars for code, full statement for beliefs, subject for commits)
+- Graph breadcrumbs added later by D2 Layer 3 — D3 defines the snippet skeleton, D2 adds the breadcrumb section
+
+### Migration: Breaking Change Strategy
+
+Switching to snippets-by-default changes the MCP response shape. All existing consumers (Claude Code, OpenCode) currently receive full content from `scry`.
+
+**Approach: `--full` escape hatch during transition.**
+```
+# Full content (current behavior, preserved)
+patina scry --full "vector similarity search"
+scry(query="...", mode="full")
+
+# Snippets (new default)
+patina scry "vector similarity search"
+scry(query="...")
+
+# Detail (new, single result)
+patina scry --detail q_abc 1
+scry(mode="detail", query_id="q_abc", rank=1)
+```
+
+`--full` is the current behavior under a new flag. Default switches to snippets. This avoids a hard break — existing adapter CLAUDE.md instructions that mention `scry` continue to work, they just get a more compact default. Any workflow that needs full content can opt in with `--full` or `mode=full`.
+
+`--full` is an escape hatch, not a permanent API surface. It can be deprecated once adapters are confirmed working with snippets + detail.
 
 ---
 
 ## Exit Criteria
 
-- [ ] Snippets by default in BOTH MCP and CLI — default mode returns doc_id + score + one-line summary + graph breadcrumbs, not full content
+- [ ] Snippets by default in BOTH MCP and CLI — default mode returns doc_id + score + content-type-aware snippet (~200 chars for code, full statement for beliefs, subject for commits)
 - [ ] `--detail` / `mode=detail` fetches single result — `patina scry --detail <query_id> <rank>` and `scry(mode=detail, ...)` return full content + annotations for one result
+- [ ] `--full` / `mode=full` escape hatch — preserves current full-content behavior during transition
 - [ ] Token efficiency measured: compare average tokens per scry response before/after
 
 ---
