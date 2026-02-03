@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mother-naming
-status: ready
+status: complete
 created: 2026-01-22
 sessions:
   origin: 20260122-154954
@@ -258,3 +258,4 @@ pub fn get_address() -> Option<String> {
 | Date | Status | Note |
 |------|--------|------|
 | 2026-01-22 | ready | Spec created with complete inventory |
+| 2026-02-03 | complete | Verified against codebase: all renames applied, env var migrated with backward compat, benchmark paths fixed |
