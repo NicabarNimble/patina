@@ -53,9 +53,9 @@ Five changes, decomposed into focused sub-specs:
 
 ### D4: Simplify Routing to Graph-Only (inline)
 
-**Current:** Three routing strategies (Daemon, All, Graph) with `--routing` flag.
+**Current:** Three routing strategies (Daemon, All, Graph) with `--routing` flag. Default is `All` when no flag is passed (`main.rs:963`: `.unwrap_or(RoutingStrategy::All)`).
 
-**Change:** Graph routing is the only strategy. Daemon becomes a transport layer under graph routing. "All" is removed.
+**Change:** Graph routing is the only strategy. Daemon becomes a transport layer under graph routing. "All" is removed. This also changes the default behavior — queries without `--routing` currently search all 19 repos (brute-force), after D4 they search local-only unless graph edges exist.
 
 ```
 scry query flow:
@@ -104,24 +104,33 @@ D1 and D4 can be worked in parallel. D3 should precede D2 so the context tool ca
 
 ## Exit Criteria
 
-### Delivery (required for v0.11.0)
+### v0.11.0 — Required
 
-- [ ] **D1:** BeliefOracle wired into default query flow — see [[d1-belief-oracle/SPEC.md]]
-- [ ] **D2:** Three-layer delivery operational — see [[d2-three-layer-delivery/SPEC.md]]
-- [ ] **D3:** Two-step retrieval in both MCP and CLI — see [[d3-two-step-retrieval/SPEC.md]]
-- [ ] **D4:** Routing simplified — `--routing` flag removed, graph routing is the sole cross-repo strategy
-- [ ] **D5:** Naming cleanup applied — mothership → mother across codebase
+Rollup criteria. Sub-spec checkboxes must all pass for these to be checked.
 
-### Federation (carried from Phase 1)
+- [ ] **D1: Beliefs surface in default queries.** Run `patina scry "how should I handle errors?"` — beliefs appear in results alongside code/commits without `mode=belief`. Sub-spec: [[d1-belief-oracle/SPEC.md]]
+- [ ] **D2: Tool descriptions and recall directive live.** `context` response includes dynamic beliefs + recall directive. `scry` and `context` MCP descriptions include belief/recall language. Sub-spec: [[d2-three-layer-delivery/SPEC.md]]
+- [ ] **D3: Snippets are the default.** `scry` returns compact snippets; `--detail` returns full content for a single result; `--full` preserves legacy behavior. Sub-spec: [[d3-two-step-retrieval/SPEC.md]]
+- [ ] **D4: `--routing` flag removed.** Graph routing is the sole cross-repo strategy, default is local-only.
+- [ ] **D5: Naming cleanup applied.** mothership → mother across codebase.
+- [ ] **A/B eval passes.** Task-oriented delta >= 0.0 (beliefs no longer hurt). 10 queries, same methodology as session 20260202-151214.
+- [ ] **Token efficiency measured.** Compare average tokens per scry response before/after D3.
+
+### v0.11.0 — Stretch
+
+Land if time permits, otherwise carried to v0.12.0.
+
+- [ ] **D2 Layer 3: Graph breadcrumbs in results.** Belief results show links (attacks/supports/reaches), code results show belief impact + structural edges, dig-deeper commands formatted per delivery channel.
+- [ ] **D2 cross-project beliefs in context.** `context` response includes beliefs from related projects via graph traversal (depends on D1 federation being validated).
+- [ ] **A/B eval stretch target.** Task-oriented delta >= +0.5.
+
+### Federation (v0.12.0 or later)
+
+Carried from Phase 1. Depends on D1 local belief search being validated first.
 
 - [ ] Cross-project belief search works via graph routing — query in project A surfaces beliefs from project B via relationship edge
 - [ ] Results tagged with provenance — every result shows `[project:channel]` origin
 - [ ] `patina mother sync` populates all 19 registered repos as graph nodes
-
-### Measurement
-
-- [ ] Task-oriented A/B eval re-run with delivery changes (10 queries, same methodology as session 20260202-151214)
-- [ ] Token efficiency measured: compare average tokens per scry response before/after D3
 - [ ] Graph routing still passes G2 benchmark (100% repo recall for targeted queries)
 
 ---
@@ -134,6 +143,16 @@ D1 and D4 can be worked in parallel. D3 should precede D2 so the context tool ca
 - **Context pressure distillation** — interesting (from OpenClaw), but a prompt engineering concern for session skills, not a code change for this milestone.
 - **Adapter-specific hooks** — no SessionStart hooks, no CLAUDE.md instructions. All delivery through MCP tools and CLI commands.
 - **Windows support** — zero Windows/Microsoft. Mac-focused with Linux for containerized agents.
+
+---
+
+## Status Log
+
+| Date | Status | Note |
+|------|--------|------|
+| 2026-02-02 | design | Initial monolithic spec (session 20260202-202802) |
+| 2026-02-03 | design | Resolved D1/D3/recall design questions (session 20260203-065424) |
+| 2026-02-03 | design | Decomposed into sub-specs, grounded against codebase (session 20260203-120615) |
 
 ---
 
