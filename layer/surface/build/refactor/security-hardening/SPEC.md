@@ -6,6 +6,8 @@ created: 2026-02-03
 sessions:
   origin: 20260203-134222
 related:
+  - layer/core/build.md
+  - layer/surface/build/feat/mother/SPEC.md
   - src/commands/serve/internal.rs
   - src/secrets/vault.rs
   - src/secrets/mod.rs
