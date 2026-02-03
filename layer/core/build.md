@@ -26,7 +26,7 @@
 0.9.3  ✓ Fix: session 0.9.2 hardening
 0.9.4  ✓ Fix: spec archive command, belief verification
 0.10.0 ✓ Epistemic layer complete (E4-E4.6c)
-0.11.0 - Mother federated query
+0.11.0 - Mother delivery + federation
 0.12.0 - Dynamic ONNX loading
 0.13.0 - WASM grammars
 0.14.0 - GitHub releases + Homebrew
@@ -143,15 +143,23 @@ Run regularly to catch regressions.
 
 ## Current Focus
 
-### Next: Mother Federated Query (v0.11.0)
+### Next: Mother Delivery + Federation (v0.11.0)
+
+**Spec:** [feat/mother-delivery/SPEC.md](../surface/build/feat/mother-delivery/SPEC.md)
 
 **Epistemic layer is complete** (v0.10.0). The delivery layer problem (intent→principle matching)
-identified during the A/B eval is a mother-scope concern. Next pillar work lives there.
+identified during the A/B eval is a mother-scope concern. Ref repo research ([[openclaw/openclaw]],
+[[steveyegge/gastown]]) informed the delivery design — mandatory recall, two-step retrieval,
+ephemeral injection, all adapted for adapter-agnostic MCP delivery.
 
-**Priority 1: Delivery layer** — Beliefs don't reach the LLM during task-oriented work (delta -0.05).
-The belief data is correct and valuable (+2.2 delta for knowledge queries). The gap is
-intent→principle matching at retrieval time. OpenClaw's `contextFiles` pattern and OpenAI Codex's
-`skills/injection.rs` are reference architectures. Mother's federated query could be the right place.
+**5 design changes (D1-D5):**
+- D1: Beliefs as default search channel (BeliefOracle in every query) — highest impact
+- D2: Context as dynamic briefing (beliefs + recall directive in MCP response)
+- D3: Two-step retrieval (snippets by default, detail on demand)
+- D4: Routing simplified to graph-only (daemon = transport, "All" removed)
+- D5: Mother naming cleanup (mothership → mother)
+
+**Measurement target:** Re-run task-oriented A/B eval, target delta ≥ 0.0 (stretch: +0.5).
 
 **Priority 2: Spec drift detection** — Belief `stale-context-is-hostile-context` identifies the
 problem. Spec exists at `feat/spec-drift-detection/SPEC.md`.

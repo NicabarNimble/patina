@@ -24,7 +24,7 @@ milestones:
   name: Epistemic layer complete (E4-E4.6c)
   status: complete
 - version: 0.11.0
-  name: Mother federated query
+  name: Mother delivery + federation
   status: in_progress
 - version: 0.12.0
   name: Dynamic ONNX loading
@@ -53,8 +53,8 @@ current_milestone: 0.11.0
 
 | Pillar | Current State | Finalized Means |
 |--------|---------------|-----------------|
-| **Epistemic Layer** | E0-E3 done, 35 beliefs indexed | E4 automation, validation stable, beliefs queryable |
-| **Mother** | Registry works, `serve` daemon exists | Federated query across repos, persona fusion |
+| **Epistemic Layer** | **COMPLETE** (v0.10.0) — 48 beliefs, verification, grounding | E4 automation, validation stable, beliefs queryable |
+| **Mother** | Registry + graph routing + serve daemon | Delivery layer + federated query across repos |
 | **Distribution** | 52MB fat binary, source-only | Slim binary, `patina setup`, Homebrew tap |
 
 All three must be complete for v1.0.
@@ -72,7 +72,7 @@ All three must be complete for v1.0.
 0.9.3  ✓ Fix: session 0.9.2 hardening
 0.9.4  ✓ Fix: spec archive command, belief verification
 0.10.0 - Epistemic layer complete (E4-E4.6c)
-0.11.0 - Mother federated query
+0.11.0 - Mother delivery + federation
 0.12.0 - Dynamic ONNX loading
 0.13.0 - WASM grammars
 0.14.0 - GitHub releases + Homebrew

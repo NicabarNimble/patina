@@ -3,7 +3,7 @@ type: feat
 id: mother
 status: in_progress
 created: 2026-01-01
-updated: 2026-01-29
+updated: 2026-02-02
 related:
   - layer/surface/build/feat/v1-release/SPEC.md
   - layer/surface/build/feat/ref-repo-semantic/SPEC.md
@@ -22,13 +22,17 @@ spec-mother.md (this file)
 │   Git narrative, measurement, intent detection, persona surfaces
 │   Details archived in git (see Completed Phases below)
 │
-├── Phase 1: Federated Query ← NEXT
-│   Local miss → Mother routes → cross-project results
+├── Phase 1: Delivery + Federation ← NEXT (v0.11.0)
+│   Beliefs as search channel, two-step retrieval, context briefing
+│   See: layer/surface/build/feat/mother-delivery/SPEC.md
 │
 ├── Child Specs (complete, tagged):
 │   ├── spec/mothership-graph - Graph routing (~1000 lines)
-│   ├── spec/ref-repo-semantic - 13/13 repos indexed
+│   ├── spec/ref-repo-semantic - 13/13 repos indexed (now 19)
 │   └── spec/vocabulary-gap - LLM query expansion (COMPLETE)
+│
+├── Child Specs (active):
+│   └── mother-delivery - Delivery layer + federation (v0.11.0)
 │
 └── Deferred:
     ├── G3: Auto-detection of edges
@@ -338,16 +342,24 @@ All foundation phases complete. Details preserved in git history.
 
 ## Phased Implementation
 
-### Phase 1: Federated Query
+### Phase 1: Delivery + Federation (v0.11.0)
 
-**Goal:** Local miss → Mother routes → cross-project results.
+**Goal:** Get knowledge to the LLM at the right moment, across projects.
 
-**Tasks:**
-- [ ] Mother registry knows all projects
-- [ ] Query routing based on registry
-- [ ] Results tagged with provenance
+**Redefined:** Original Phase 1 focused on federated query routing. A/B eval (session [[20260202-151214]]) revealed the real gap is **delivery** — beliefs exist but don't reach the LLM during task work (delta -0.05). Federation routing already works (Phase 2). Ref repo research ([[openclaw/openclaw]], [[steveyegge/gastown]]) informed the delivery design.
 
-**Exit:** Query in Project X returns relevant results from Project Y.
+**Full spec:** `layer/surface/build/feat/mother-delivery/SPEC.md`
+
+**Summary:**
+- [ ] D1: Beliefs as default search channel (BeliefOracle in every query)
+- [ ] D2: Context as dynamic briefing (beliefs + recall directive)
+- [ ] D3: Two-step retrieval (snippets → detail on demand)
+- [ ] D4: Routing simplified to graph-only
+- [ ] D5: Mother naming cleanup (mothership → mother)
+- [ ] Cross-project belief search via graph routing
+- [ ] Task-oriented A/B eval re-run: target delta ≥ 0.0
+
+**Exit:** Task-oriented queries benefit from beliefs. Results tagged with provenance. Token-efficient retrieval.
 
 ### Phase 2: Knowledge Graph ✅ COMPLETE
 
