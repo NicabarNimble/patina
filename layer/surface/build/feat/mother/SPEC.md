@@ -209,23 +209,26 @@ Events Generated:
 
 ```
 ~/.patina/
+  # IMPLEMENTED (Phase 2):
+  mother/
+    graph.db              # Relationships (SQLite) ✅
+
+  registry.yaml           # Catalog of all known projects ✅
+
+  personas/default/       # User persona ✅
+    events/               # Persona events
+    persona.db            # Materialized persona
+
+  # PHASE 3+ (not yet implemented):
   events/                 # Aggregated cross-project events
 
   mother/
-    graph.db              # Relationships (SQLite or graph DB)
-
     semantic/
       beliefs.usearch     # Embedded persona beliefs
       patterns.usearch    # Embedded pattern summaries
       projects.usearch    # Embedded project summaries
       domains.usearch     # Embedded domain concepts
       moments.usearch     # Embedded temporal moments (git narrative)
-
-  registry.yaml           # Catalog of all known projects
-
-  personas/default/       # User persona
-    events/               # Persona events
-    persona.db            # Materialized persona
 ```
 
 ---
@@ -355,7 +358,7 @@ All foundation phases complete. Details preserved in git history.
 - [ ] D2: Context as dynamic briefing (beliefs + recall directive)
 - [ ] D3: Two-step retrieval (snippets → detail on demand)
 - [ ] D4: Routing simplified to graph-only
-- [ ] D5: Mother naming cleanup (mothership → mother)
+- [x] D5: Mother naming cleanup (mothership → mother) ✅
 - [ ] Cross-project belief search via graph routing
 - [ ] Task-oriented A/B eval re-run: target delta ≥ 0.0
 

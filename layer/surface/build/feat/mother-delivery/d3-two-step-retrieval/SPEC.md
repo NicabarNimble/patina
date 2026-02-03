@@ -19,7 +19,7 @@ related:
 
 ## Problem
 
-`scry` returns full content for every result. 10 results x full function bodies + annotations + impact analysis = heavy token load. Both MCP and CLI return the same verbose output. LLMs pay for tokens they don't need.
+`scry` returns full content for every result via MCP (`server.rs:1165`). CLI already truncates display to ~200 chars via `truncate_content()` (`enrichment.rs:400-407`), but this is display-only truncation — the underlying data is still full content, and MCP (the primary LLM interface) sends everything. 10 MCP results x full function bodies + annotations + impact analysis = heavy token load. LLMs pay for tokens they don't need.
 
 ---
 
@@ -60,7 +60,7 @@ scry(query="vector similarity search")
 Each result shows: doc_id, fused score, channel tag, oracle contributions, and a content-type-aware snippet.
 
 **Snippet format per content type:**
-- **[code]**: function signature + first doc comment line, truncated to ~200 chars. `pub fn query_with_options(&self, query: &str, ...) -> Result<Vec<FusedResult>> // Query with intent detection and...`
+- **[code]**: function signature + first doc comment line, truncated to ~200 chars. CLI already uses `truncate_content()` at this length for display — D3 makes this the actual response format for MCP too. `pub fn query_with_options(&self, query: &str, ...) -> Result<Vec<FusedResult>> // Query with intent detection and...`
 - **[belief]**: full statement + entrenchment. `"Use thiserror derive macros for error types" (entrenchment: 0.8)`
 - **[commit]**: subject line + changed file count. `abc1234: "feat: add cosine distance metric" (4 files)`
 - **[pattern]**: first sentence of pattern content.

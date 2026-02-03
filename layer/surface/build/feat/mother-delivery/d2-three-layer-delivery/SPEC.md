@@ -19,7 +19,7 @@ related:
 
 ## Problem
 
-`context` reads static markdown files. `scry` returns full content with belief annotations as ignorable metadata. No recall instruction anywhere. The LLM has no nudge to use beliefs, no reinforcement when it does, and no actionable links to follow the knowledge graph.
+`context` reads static markdown files and basic belief metrics from SQLite, but no dynamic belief querying. `scry` returns full content with belief annotations as an appended "Belief Impact" section. Tool descriptions already include recall-style language ("USE THIS FIRST", "USE THIS to understand design rules") — Layer 1 is partially shipped. But there's no recall directive in responses, no reinforcement when the LLM finds beliefs, and no actionable links to follow the knowledge graph.
 
 ---
 
@@ -126,13 +126,13 @@ The interface adapts to the delivery channel; the content is the same.
 Each layer touches a different part of the codebase and can be landed independently:
 
 **Layer 1 (tool descriptions):**
-- Update MCP tool descriptions in `server.rs` tool registration (lines ~146-225)
-- Update CLI `--help` text in clap command definitions
-- Small, self-contained change — no new dependencies
+- **Partially shipped:** MCP tool descriptions already include recall language ("USE THIS FIRST", "USE THIS to understand design rules") and usage tips (expanded_terms examples). See `server.rs` lines ~147-228.
+- Remaining: Update CLI `--help` text in clap command definitions to match MCP descriptions
+- Remaining: Add belief-specific language (e.g., "includes project beliefs and session learnings") to both MCP and CLI descriptions
 
 **Layer 2 (response-level recall):**
 - Extend `get_project_context()` in `server.rs` to query beliefs by topic relevance
-- **Scope note:** `get_project_context()` currently reads `layer/` files from disk — it does NOT query the SQLite database or use the embedding pipeline. Adding dynamic beliefs requires wiring it to the belief query infrastructure (open a connection, embed the topic, search `belief_fts` + USearch). This is a meaningful change, not a simple append.
+- **Scope note:** `get_project_context()` reads `layer/` files from disk AND queries SQLite for basic belief metrics via `get_belief_metrics()` (`server.rs:1514-1617`). However, it does NOT do dynamic belief querying by topic — adding topic-relevant beliefs requires wiring to the belief query infrastructure (embed the topic, search `belief_fts` + USearch, rank by similarity). The SQLite connection exists; the semantic query pipeline does not.
 - Cross-project beliefs require graph traversal via `query_repo()` — the context tool has no graph awareness today. Start with local-project beliefs only; add cross-project as a follow-up once D1 federation is validated.
 - Append recall directive to every context response (MCP and CLI)
 - Rank beliefs by cosine similarity to topic when topic parameter is provided
@@ -147,8 +147,9 @@ Each layer touches a different part of the codebase and can be landed independen
 
 ## Exit Criteria
 
-**Layer 1 (can land first, independently):**
-- [ ] MCP tool descriptions updated — scry and context descriptions include belief/recall language
+**Layer 1 (partially shipped, finish independently):**
+- [x] MCP tool descriptions include recall language ("USE THIS FIRST", "USE THIS to understand design rules")
+- [ ] MCP descriptions updated to mention beliefs explicitly
 - [ ] CLI `--help` text matches MCP descriptions for scry and context commands
 
 **Layer 2 (depends on D1 for belief querying):**

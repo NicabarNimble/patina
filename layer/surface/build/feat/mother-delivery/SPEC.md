@@ -102,8 +102,8 @@ D3: Two-step retrieval (search → detail)
 D2: Context as briefing (dynamic beliefs + recall directive)
  │   Depends on D1 (belief querying) and D3 (response shape)
  │
-D5: Naming cleanup (mothership → mother)
-     Independent — can happen anytime
+D5: Naming cleanup (mothership → mother) ✅ COMPLETE
+     Verified 2026-02-03 — all renames applied
 ```
 
 D0 is the foundation — everything else is simpler because there's one pipeline. D0 and D4 can be worked in parallel (both are cleanup/simplification). D1 follows D0 (wires BeliefOracle into the now-unified QueryEngine). D3 follows D0 (implements snippets on the now-unified FusedResult format). D2 follows D1+D3.
@@ -121,7 +121,7 @@ Rollup criteria. Sub-spec checkboxes must all pass for these to be checked.
 - [ ] **D2: Tool descriptions and recall directive live.** `context` response includes dynamic beliefs + recall directive. `scry` and `context` MCP descriptions include belief/recall language. Sub-spec: [[d2-three-layer-delivery/SPEC.md]]
 - [ ] **D3: Snippets are the default.** `scry` returns compact snippets; `--detail` returns full content for a single result; `--full` preserves legacy behavior. Sub-spec: [[d3-two-step-retrieval/SPEC.md]]
 - [ ] **D4: `--routing` flag removed.** Graph routing is the sole cross-repo strategy, default is local-only.
-- [ ] **D5: Naming cleanup applied.** mothership → mother across codebase.
+- [x] **D5: Naming cleanup applied.** mothership → mother across codebase. ✅ Verified 2026-02-03.
 - [ ] **A/B eval passes.** Task-oriented delta >= 0.0 (beliefs no longer hurt). 10 queries, same methodology as session 20260202-151214.
 - [ ] **Token efficiency measured.** Compare average tokens per scry response before/after D3.
 
