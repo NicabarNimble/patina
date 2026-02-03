@@ -123,22 +123,42 @@ The interface adapts to the delivery channel; the content is the same.
 
 ### Implementation
 
+Each layer touches a different part of the codebase and can be landed independently:
+
+**Layer 1 (tool descriptions):**
+- Update MCP tool descriptions in `server.rs` tool registration (lines ~146-225)
+- Update CLI `--help` text in clap command definitions
+- Small, self-contained change — no new dependencies
+
+**Layer 2 (response-level recall):**
 - Extend `get_project_context()` in `server.rs` to query beliefs by topic relevance
-- Add cross-project belief aggregation via graph traversal
+- **Scope note:** `get_project_context()` currently reads `layer/` files from disk — it does NOT query the SQLite database or use the embedding pipeline. Adding dynamic beliefs requires wiring it to the belief query infrastructure (open a connection, embed the topic, search `belief_fts` + USearch). This is a meaningful change, not a simple append.
+- Cross-project beliefs require graph traversal via `query_repo()` — the context tool has no graph awareness today. Start with local-project beliefs only; add cross-project as a follow-up once D1 federation is validated.
 - Append recall directive to every context response (MCP and CLI)
-- Add graph breadcrumbs to result formatting (belief links, belief impact, structural edges, dig-deeper commands)
-- Detect delivery channel (MCP vs CLI) to format dig-deeper commands appropriately
 - Rank beliefs by cosine similarity to topic when topic parameter is provided
+
+**Layer 3 (graph breadcrumbs):**
+- Add graph breadcrumbs to result formatting in `format_results_with_query_id()` and related formatters
+- Existing infrastructure: `find_belief_impact()` in `enrichment.rs`, `belief_code_reach` table, `StructuralAnnotations`
+- Detect delivery channel (MCP vs CLI) to format dig-deeper commands appropriately
+- This layer is shared with D3 (snippets include breadcrumbs) — define the breadcrumb format here, D3 consumes it
 
 ---
 
 ## Exit Criteria
 
-- [ ] Three-layer delivery — tool/command descriptions, response-level recall, and graph breadcrumbs all present
-- [ ] Context returns dynamic beliefs — `context(topic="error handling")` returns relevant beliefs ranked by topic similarity
+**Layer 1 (can land first, independently):**
+- [ ] MCP tool descriptions updated — scry and context descriptions include belief/recall language
+- [ ] CLI `--help` text matches MCP descriptions for scry and context commands
+
+**Layer 2 (depends on D1 for belief querying):**
+- [ ] Context returns dynamic local beliefs — `context(topic="error handling")` returns relevant beliefs ranked by topic similarity
 - [ ] Recall directive in context response — every context response includes recall instruction with both CLI and MCP syntax
+- [ ] Cross-project beliefs in context response — beliefs from related projects via graph traversal (can defer to after D1 federation validated)
+
+**Layer 3 (shared with D3 snippet format):**
 - [ ] Graph breadcrumbs — belief results show links (attacks/supports/reaches), code results show belief impact + structural edges
-- [ ] Dig-deeper commands — every result includes actionable commands to follow the graph, formatted for the delivery channel
+- [ ] Dig-deeper commands — every result includes actionable commands to follow the graph, formatted for the delivery channel (CLI syntax for CLI, MCP syntax for MCP)
 
 ---
 
