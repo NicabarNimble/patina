@@ -266,7 +266,7 @@ Replace argv-based env prefix with stdin pipe to remote shell.
 - `patina secrets add <name>` prompts with masked input (no echo)
 - `patina secrets add <name> --stdin` reads from stdin (scripting/piping)
 - MUST NOT accept secret values as positional CLI arguments
-- Use `rpassword` crate for masked prompts
+- Use `console::Term::read_secure_line()` for masked prompts (already in tree)
 
 **4b. Key material zeroization** (`src/secrets/identity.rs`):
 - Add `zeroize` crate, use `Zeroizing<String>` for identity strings after use
@@ -281,13 +281,13 @@ Replace argv-based env prefix with stdin pipe to remote shell.
 
 ## New Dependencies
 
-| Crate | Purpose | Phase |
-|-------|---------|-------|
-| `sha2` | ONNX model checksum | Phase 3 |
-| `rpassword` | Masked input for secrets | Phase 4 |
-| `zeroize` | Zero key material on drop | Phase 4 |
+None. All required crates are already in the dependency tree via `age` and `console`:
 
-Check if `sha2` is already a transitive dependency (likely via `age`).
+| Need | Crate | Already via |
+|------|-------|-------------|
+| ONNX checksum | `sha2` | `age` → `sha2 0.10` |
+| Zero key material | `zeroize` | `age` → `zeroize 1.8` |
+| Masked input | `console` | `console 0.15` (has `read_secure_line()`) |
 
 ---
 
@@ -327,7 +327,7 @@ Check if `sha2` is already a transitive dependency (likely via `age`).
 - [ ] Serve token loaded from vault when available, env var as fallback
 
 **Phase 4 (P2 — Defense-in-Depth):**
-- [ ] Secret prompts use masked input (no echo via `rpassword`)
+- [ ] Secret prompts use masked input (no echo via `console`)
 - [ ] `patina secrets add` with `--stdin` flag for scripting
 - [ ] Secret values NEVER accepted as positional CLI arguments
 - [ ] Key material zeroized after use (`Zeroizing<String>`)
