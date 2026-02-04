@@ -235,6 +235,15 @@ enum Commands {
         legacy: bool,
     },
 
+    /// Get project patterns and conventions — USE THIS to understand design rules
+    /// before making architectural changes. Returns core patterns (eternal principles),
+    /// surface patterns (active architecture), and project beliefs.
+    Context {
+        /// Optional topic to focus on (e.g., 'error handling', 'testing', 'architecture')
+        #[arg(long)]
+        topic: Option<String>,
+    },
+
     /// Evaluate retrieval quality across dimensions
     Eval {
         /// Specific dimension to evaluate (semantic, temporal)
@@ -990,6 +999,9 @@ fn main() -> Result<()> {
                 };
                 commands::scry::execute(query.as_deref(), options)?;
             }
+        }
+        Some(Commands::Context { topic }) => {
+            commands::context::execute(topic.as_deref())?;
         }
         Some(Commands::Eval {
             dimension,
