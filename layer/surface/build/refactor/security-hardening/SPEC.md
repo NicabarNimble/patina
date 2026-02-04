@@ -123,17 +123,25 @@ Anchored in [[transport-security-by-trust-boundary]]. Design principle (djb): de
 safe, insecure path hard. Prior art: PostgreSQL, Docker.
 
 **Transport model:**
-- `Unix(PathBuf)` — local path, file permissions are auth, no token
-- `Tcp { addr, token }` — network path, explicit opt-in, bearer token required
+- `Transport::Uds(PathBuf)` — local path, file permissions are auth, no token
+- `Transport::Http { base_url, token }` — network path, explicit opt-in, bearer token required
 
-**2a. Server dual listener** (`src/commands/serve/internal.rs`, `mod.rs`):
+#### 2a. Server dual listener (`serve/internal.rs`, `serve/mod.rs`)
 
-Default: listen on `~/.patina/serve.sock` (unix domain socket). No TCP unless
+Default: listen on `~/.patina/run/serve.sock` (unix domain socket). No TCP unless
 `--host`/`--port` explicitly passed. Flip the djb switch — safe by default.
 
-**Socket directory permissions:** On startup, verify `~/.patina/` is 0o700. Refuse
-to create socket if directory is world/group accessible. Set socket file to 0o600
-after bind. This is the auth — if you can open the socket, you're the right user.
+**Socket directory permissions (non-negotiable):** On startup:
+- Create `~/.patina/run/` if it doesn't exist, with 0o700
+- Verify `~/.patina/run/` is 0o700 and owned by current user. Refuse to start if
+  world/group accessible.
+- Set socket file to 0o600 after bind.
+- This is the auth — if you can open the socket, you're the right user.
+
+**Stale socket cleanup (safe unlink):** On startup, if `serve.sock` exists:
+- Unlink only if: it is a socket AND owned by current user
+- Otherwise refuse to start (do not unlink arbitrary files)
+- Delete socket on clean shutdown
 
 **UDS wire protocol — length-prefix framing:**
 
@@ -141,54 +149,78 @@ after bind. This is the auth — if you can open the socket, you're the right us
 [4 bytes: big-endian u32 payload length][JSON payload]
 ```
 
-No newlines to worry about. Frame size limit: 1 MB (same as HTTP body cap).
-Reject before reading payload if length > MAX_FRAME_SIZE.
+Frame size limit: 1 MB (same as HTTP body cap). Reject before reading payload
+if length > MAX_FRAME_SIZE. Big-endian per network byte order convention.
 
-**Handshake:** First message from client is a hello:
+**Request/response shape:** Every request includes an `id`. Every response echoes it.
+
+Request:
+```json
+{"id":1,"action":"hello","client":"session","version":1}
 ```
-→ {"action":"hello","version":"0.10.0"}
-← {"status":200,"body":{"version":"0.10.0","uptime_secs":123}}
+
+Response:
+```json
+{"id":1,"status":200,"body":{"server":"patina-serve","version":1}}
+```
+
+**Actions:** `hello`, `health`, `scry`, `cache_get`, `cache_set`, `cache_clear`
+
+**Handshake (recommended):** First message from client:
+```
+→ {"id":1,"action":"hello","client":"session","version":1}
+← {"id":1,"status":200,"body":{"server":"patina-serve","version":1}}
 ```
 
 Then request/response pairs:
 ```
-→ {"action":"scry","query":"test","limit":10}
-← {"status":200,"body":{"results":[...],"count":5}}
+→ {"id":2,"action":"scry","query":"test","limit":10}
+← {"id":2,"status":200,"body":{"results":[...],"count":5}}
 
-→ {"action":"cache_get"}
-← {"status":200,"body":{"secrets":{"key":"value"}}}
+→ {"id":3,"action":"cache_get"}
+← {"id":3,"status":200,"body":{"secrets":{"key":"value"}}}
 
-→ {"action":"cache_set","secrets":{"k":"v"},"ttl_secs":600}
-← {"status":200,"body":{"cached":true}}
+→ {"id":4,"action":"cache_set","secrets":{"k":"v"},"ttl_secs":600}
+← {"id":4,"status":200,"body":{"cached":true}}
 
-→ {"action":"cache_clear"}
-← {"status":200,"body":{"cleared":true}}
+→ {"id":5,"action":"cache_clear"}
+← {"id":5,"status":200,"body":{"cleared":true}}
 ```
 
-Handler functions shared between UDS and HTTP paths — extract request dispatch
-from rouille router into standalone functions.
+**Shared handler logic:** Extract current HTTP handlers into standalone functions.
+UDS and HTTP MUST call the same core handlers. No duplicated business logic.
 
-Socket cleanup: remove stale socket on startup (check PID if possible), delete
-on clean shutdown.
+```rust
+fn handle_health(state: &ServerState) -> ActionResponse { ... }
+fn handle_scry(state: &ServerState, req: ScryRequest) -> ActionResponse { ... }
+fn handle_cache_get(state: &ServerState) -> ActionResponse { ... }
+fn handle_cache_set(state: &ServerState, req: CacheSetRequest) -> ActionResponse { ... }
+fn handle_cache_clear(state: &ServerState) -> ActionResponse { ... }
+```
 
 rouille stays for TCP/HTTP path. `std::os::unix::net::UnixListener` for UDS. One
 thread per listener. No new dependencies — stdlib + existing `libc`.
 
-**2b. Session client transport-aware** (`src/secrets/session.rs`):
+**Why not HTTP over UDS?** rouille/tiny-http accept `TcpListener` only. Supporting
+HTTP over UDS would require switching frameworks (often async) or hacking the HTTP
+server internals. We don't need HTTP for local IPC — the protocol is simply "send
+JSON, receive JSON."
+
+#### 2b. Session client transport-aware (`secrets/session.rs`)
 
 Try UDS first (no auth needed). Fall back to HTTP + token if no socket.
 ```rust
 fn connect() -> Transport {
-    let sock = patina_socket_path();
-    if sock.exists() { Transport::Unix(sock) }
-    else { Transport::Http { url: serve_url(), token: serve_token() } }
+    let sock = paths::serve::socket_path();
+    if sock.exists() { Transport::Uds(sock) }
+    else { Transport::Http { base_url: serve_url(), token: serve_token() } }
 }
 ```
 
-**2c. Mother client transport-aware** (`src/mother/internal.rs`):
+#### 2c. Mother client transport-aware (`mother/internal.rs`)
 
-Add token field to `Client`. Accept transport in constructor.
-Local mother: uses UDS (no token). Container mother: uses TCP + bearer token.
+Accept transport in constructor. Local mother: uses UDS (no token). Container
+mother: uses TCP + bearer token passed in constructor.
 
 ### Phase 3: P1 — File Permissions + Model Integrity (4 changes, 4 files)
 
@@ -223,7 +255,20 @@ Replace argv-based env prefix with stdin pipe to remote shell.
 
 ### Phase 4: P2 — Defense-in-Depth (4 changes, 4 files)
 
-Add `rpassword` and `zeroize` crates. Update prompts and key handling. Validate registry paths.
+**4a. Masked secret input** (`src/secrets/mod.rs`, `src/commands/secrets.rs`):
+- `patina secrets add <name>` prompts with masked input (no echo)
+- `patina secrets add <name> --stdin` reads from stdin (scripting/piping)
+- MUST NOT accept secret values as positional CLI arguments
+- Use `rpassword` crate for masked prompts
+
+**4b. Key material zeroization** (`src/secrets/identity.rs`):
+- Add `zeroize` crate, use `Zeroizing<String>` for identity strings after use
+
+**4c. Export key safety** (`src/commands/secrets.rs`):
+- `--export-key` writes to file with 0o600, or requires `--stdout` for pipe use
+
+**4d. Registry path validation** (`src/commands/repo/internal.rs`):
+- Canonicalize and validate against `~/.patina/cache/` prefix during deserialization
 
 ---
 
@@ -231,9 +276,9 @@ Add `rpassword` and `zeroize` crates. Update prompts and key handling. Validate 
 
 | Crate | Purpose | Phase |
 |-------|---------|-------|
-| `sha2` | ONNX model checksum | Phase 2 |
-| `rpassword` | Masked input for secrets | Phase 3 |
-| `zeroize` | Zero key material on drop | Phase 3 |
+| `sha2` | ONNX model checksum | Phase 3 |
+| `rpassword` | Masked input for secrets | Phase 4 |
+| `zeroize` | Zero key material on drop | Phase 4 |
 
 Check if `sha2` is already a transitive dependency (likely via `age`).
 
@@ -252,17 +297,19 @@ Check if `sha2` is already a transitive dependency (likely via `age`).
 - [ ] Execution bounding (timeout + concurrency gate) — deferred, needs proper design
 
 **Phase 2 (Transport Security):**
-- [ ] `patina serve` defaults to unix socket at `~/.patina/serve.sock`
+- [ ] `patina serve` defaults to unix socket at `~/.patina/run/serve.sock`
 - [ ] TCP listener only starts with explicit `--host`/`--port`
-- [ ] Socket directory (`~/.patina/`) verified 0o700 on startup, refuse if open
+- [ ] Socket dir `~/.patina/run/` created 0o700, verified on startup, refuse if open
 - [ ] Socket file set to 0o600 after bind
+- [ ] Stale socket: unlink only if is-socket AND owned-by-current-user, else refuse
 - [ ] UDS uses length-prefix framing (4-byte BE u32 + JSON payload)
 - [ ] Frame size limit: 1 MB, reject before reading if exceeded
+- [ ] Every request carries `id`, every response echoes it
 - [ ] Client hello/version handshake on connect
-- [ ] Stale socket cleanup on startup, delete on clean shutdown
+- [ ] Socket deleted on clean shutdown
 - [ ] `session.rs` connects via UDS first, HTTP+token fallback
-- [ ] `mother/internal.rs` accepts transport enum (Unix or Tcp+token)
-- [ ] Handler functions shared between UDS and HTTP paths
+- [ ] `mother/internal.rs` accepts transport enum (Uds or Http+token)
+- [ ] Handler functions shared between UDS and HTTP paths — no duplicated logic
 
 **Phase 3 (P1 — File Permissions):**
 - [ ] `~/.patina/vault.age` created with 0o600 permissions
@@ -272,7 +319,9 @@ Check if `sha2` is already a transitive dependency (likely via `age`).
 - [ ] Serve token loaded from vault when available, env var as fallback
 
 **Phase 4 (P2 — Defense-in-Depth):**
-- [ ] Secret prompts use masked input (no echo)
+- [ ] Secret prompts use masked input (no echo via `rpassword`)
+- [ ] `patina secrets add` with `--stdin` flag for scripting
+- [ ] Secret values NEVER accepted as positional CLI arguments
 - [ ] Key material zeroized after use (`Zeroizing<String>`)
 - [ ] `--export-key` writes to file (0o600), not stdout
 - [ ] Registry paths canonicalized and validated on load
@@ -304,26 +353,27 @@ curl -sD - -o /dev/null http://127.0.0.1:50051/health | grep -i "x-content-type-
 # Phase 2: Transport security
 # Default: socket only, no TCP
 patina serve
-# → Listening on ~/.patina/serve.sock
+# → Listening on ~/.patina/run/serve.sock
 # → No TCP listener (use --host/--port for network access)
 
-# Verify socket permissions
-stat -f "%Lp" ~/.patina/serve.sock
-# → 600
-stat -f "%Lp" ~/.patina/
+# Verify socket-dir permissions
+stat -f "%Lp" ~/.patina/run/
 # → 700
+stat -f "%Lp" ~/.patina/run/serve.sock
+# → 600
 
-# UDS client works without token
-echo '{"action":"health"}' | patina serve --test-uds  # or socat
-# → {"status":200,"body":{"status":"ok",...}}
+# UDS client works without token (socat for manual testing)
+printf '\x00\x00\x00\x2d{"id":1,"action":"hello","client":"test","version":1}' \
+  | socat - UNIX-CONNECT:~/.patina/run/serve.sock
+# → length-prefixed response with id:1 echoed
 
-# TCP still requires auth
+# TCP still requires auth when explicitly enabled
 patina serve --host 127.0.0.1 --port 50051
 curl -s http://127.0.0.1:50051/api/scry -d '{"query":"test"}'
 # → 401 Unauthorized (same as before)
 
 # Frame size enforcement
-# Send >1MB payload over UDS → rejected before reading
+# Send >1MB length prefix over UDS → rejected before reading payload
 
 # Phase 3: File permissions
 stat -f "%Lp" ~/.patina/vault.age
@@ -360,4 +410,4 @@ Precedent: 0.9.3 (session hardening), 0.9.4 (spec archive + belief verification)
 |------|--------|------|
 | 2026-02-03 | ready | Spec created from security audit (session 20260203-134222) |
 | 2026-02-03 | in-progress | P0 shipped: 6 fixes (auth, read cap, limit cap, security headers, bind warning, consistent errors). Execution bounding deferred — needs RAII guard design. |
-| 2026-02-03 | in-progress | Phase 2 spec: transport security by trust boundary. UDS default, TCP opt-in, length-prefix framing, socket-dir permissions enforcement, frame size limits, hello handshake. Anchored in [[transport-security-by-trust-boundary]]. |
+| 2026-02-03 | in-progress | Phase 2 spec: transport security by trust boundary. UDS at `~/.patina/run/serve.sock` default, TCP opt-in, length-prefix framing (BE u32), request-id echo, socket-dir 0o700 enforcement, safe stale-socket unlink, frame size limits. Phase 4: masked input, refuse secret values as positional args. Anchored in [[transport-security-by-trust-boundary]]. |
