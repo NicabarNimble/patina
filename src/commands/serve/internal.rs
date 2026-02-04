@@ -187,11 +187,11 @@ fn json_error(status: u16, message: &str) -> HttpResponse {
 // Business logic below this line never touches transport types.
 
 /// Route request to handler
-fn route_request(request: &HttpRequest, state: &ServerState) -> HttpResponse {
+fn route_request(request: &HttpRequest, state: &ServerState, require_auth: bool) -> HttpResponse {
     let response = match (request.method.as_str(), request.path.as_str()) {
         ("GET", "/health") => handle_health(state),
         ("GET", "/version") => handle_version(state),
-        ("POST", "/api/scry") => handle_scry(request, state),
+        ("POST", "/api/scry") => handle_scry(request, state, require_auth),
         _ => json_error(404, "Not found"),
     };
     with_security_headers(response)
@@ -221,9 +221,9 @@ fn handle_version(state: &ServerState) -> HttpResponse {
 }
 
 /// Handle POST /api/scry
-fn handle_scry(request: &HttpRequest, state: &ServerState) -> HttpResponse {
-    // Auth check (bearer token required)
-    if !check_auth(request, &state.token) {
+fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -> HttpResponse {
+    // Auth check (required for TCP, skipped for UDS — file permissions are auth)
+    if require_auth && !check_auth(request, &state.token) {
         return json_error(401, "Unauthorized");
     }
 
@@ -362,8 +362,15 @@ fn to_micro(resp: HttpResponse) -> microserver::HttpResponse {
     }
 }
 
-/// Handle one connection on any Read + Write stream
-fn handle_connection(mut stream: impl Read + Write + Send + 'static, state: Arc<ServerState>) {
+/// Handle one connection on any Read + Write stream.
+///
+/// `require_auth`: true for TCP (bearer token required), false for UDS
+/// (file permissions are the auth — if you can open the socket, you're authorized).
+fn handle_connection(
+    mut stream: impl Read + Write + Send + 'static,
+    state: Arc<ServerState>,
+    require_auth: bool,
+) {
     let req = match microserver::read_request(&mut stream) {
         Some(Ok(req)) => from_micro(req),
         Some(Err(msg)) => {
@@ -379,7 +386,7 @@ fn handle_connection(mut stream: impl Read + Write + Send + 'static, state: Arc<
     let resp = if req.body.len() > MAX_BODY_SIZE {
         with_security_headers(json_error(413, "Request too large"))
     } else {
-        route_request(&req, &state)
+        route_request(&req, &state, require_auth)
     };
 
     microserver::write_response(&mut stream, &to_micro(resp));
@@ -387,13 +394,10 @@ fn handle_connection(mut stream: impl Read + Write + Send + 'static, state: Arc<
 
 /// Run the serve daemon
 pub fn run_server(options: ServeOptions) -> Result<()> {
-    // Bearer token auth (needed for TCP, generated anyway for state)
-    let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
-
-    let state = Arc::new(ServerState::new(token));
-
-    // TCP opt-in path (--host flag)
+    // TCP opt-in path (--host flag) — requires bearer token
     if let Some(ref host) = options.host {
+        let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
+        let state = Arc::new(ServerState::new(token));
         let addr = format!("{}:{}", host, options.port);
 
         if host != "127.0.0.1" && host != "localhost" {
@@ -423,7 +427,8 @@ pub fn run_server(options: ServeOptions) -> Result<()> {
         accept_loop_tcp(listener, state);
     }
 
-    // Default: UDS path (no TCP, no token needed for local)
+    // Default: UDS path (no TCP, no token needed — file permissions are auth)
+    let state = Arc::new(ServerState::new(String::new()));
     let listener = super::setup_unix_listener()?;
     let socket_path = patina::paths::serve::socket_path();
 
@@ -442,13 +447,13 @@ pub fn run_server(options: ServeOptions) -> Result<()> {
     accept_loop_uds(listener, state);
 }
 
-/// Accept loop for TCP listener
+/// Accept loop for TCP listener (auth required)
 fn accept_loop_tcp(listener: TcpListener, state: Arc<ServerState>) -> ! {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 let state = Arc::clone(&state);
-                std::thread::spawn(move || handle_connection(stream, state));
+                std::thread::spawn(move || handle_connection(stream, state, true));
             }
             Err(e) => eprintln!("TCP accept error: {}", e),
         }
@@ -456,13 +461,13 @@ fn accept_loop_tcp(listener: TcpListener, state: Arc<ServerState>) -> ! {
     std::process::exit(0);
 }
 
-/// Accept loop for Unix domain socket listener
+/// Accept loop for Unix domain socket listener (no auth — file perms are auth)
 fn accept_loop_uds(listener: std::os::unix::net::UnixListener, state: Arc<ServerState>) -> ! {
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
                 let state = Arc::clone(&state);
-                std::thread::spawn(move || handle_connection(stream, state));
+                std::thread::spawn(move || handle_connection(stream, state, false));
             }
             Err(e) => eprintln!("UDS accept error: {}", e),
         }
