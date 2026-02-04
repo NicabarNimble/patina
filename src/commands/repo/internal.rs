@@ -54,7 +54,7 @@ pub struct RepoEntry {
 }
 
 impl Registry {
-    /// Load registry from default location
+    /// Load registry from default location, validating paths on load.
     pub fn load() -> Result<Self> {
         let path = paths::registry_path();
         if !path.exists() {
@@ -67,8 +67,16 @@ impl Registry {
         let contents = fs::read_to_string(&path)
             .with_context(|| format!("Failed to read registry: {}", path.display()))?;
 
-        serde_yaml::from_str(&contents)
-            .with_context(|| format!("Failed to parse registry: {}", path.display()))
+        let registry: Registry = serde_yaml::from_str(&contents)
+            .with_context(|| format!("Failed to parse registry: {}", path.display()))?;
+
+        // Validate repo paths against expected cache prefix
+        let cache_prefix = paths::repos::cache_dir();
+        for (name, entry) in &registry.repos {
+            validate_repo_path(&entry.path, &cache_prefix, name)?;
+        }
+
+        Ok(registry)
     }
 
     /// Save registry to default location
@@ -998,6 +1006,57 @@ pub fn check_repo_status(repo_path: &str, synced_commit: Option<&str>) -> String
     }
 }
 
+/// Validate that a repo path is under the expected cache prefix.
+///
+/// Canonicalizes the path (resolving symlinks, `..`, etc.) and verifies it
+/// starts with the cache directory. Rejects path traversal attacks from
+/// tampered registry files.
+fn validate_repo_path(path: &str, cache_prefix: &Path, repo_name: &str) -> Result<()> {
+    let repo_path = Path::new(path);
+
+    // Reject paths containing traversal components regardless of existence
+    if path.contains("..") {
+        bail!(
+            "Registry path for '{}' contains path traversal: {}",
+            repo_name,
+            path
+        );
+    }
+
+    // If the path doesn't exist yet (not cloned), validate the raw string.
+    // A legitimate path should start with the cache prefix string.
+    if !repo_path.exists() {
+        let prefix_str = cache_prefix.to_string_lossy();
+        if !path.starts_with(prefix_str.as_ref()) {
+            bail!(
+                "Registry path for '{}' is outside cache directory: {}",
+                repo_name,
+                path
+            );
+        }
+        return Ok(());
+    }
+
+    // For existing paths, canonicalize to resolve symlinks and ..
+    let canonical = repo_path
+        .canonicalize()
+        .with_context(|| format!("Failed to canonicalize path for '{}': {}", repo_name, path))?;
+    let canonical_prefix = cache_prefix
+        .canonicalize()
+        .unwrap_or_else(|_| cache_prefix.to_path_buf());
+
+    if !canonical.starts_with(&canonical_prefix) {
+        bail!(
+            "Registry path for '{}' resolves outside cache directory: {} -> {}",
+            repo_name,
+            path,
+            canonical.display()
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1035,5 +1094,33 @@ mod tests {
         let registry = Registry::default();
         assert_eq!(registry.version, 0);
         assert!(registry.repos.is_empty());
+    }
+
+    #[test]
+    fn test_validate_repo_path_good() {
+        let cache = Path::new("/home/user/.patina/cache/repos");
+        assert!(validate_repo_path(
+            "/home/user/.patina/cache/repos/owner/repo",
+            cache,
+            "owner/repo"
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn test_validate_repo_path_traversal() {
+        let cache = Path::new("/home/user/.patina/cache/repos");
+        assert!(validate_repo_path(
+            "/home/user/.patina/cache/repos/../../etc/passwd",
+            cache,
+            "evil"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_validate_repo_path_outside() {
+        let cache = Path::new("/home/user/.patina/cache/repos");
+        assert!(validate_repo_path("/tmp/evil", cache, "evil").is_err());
     }
 }

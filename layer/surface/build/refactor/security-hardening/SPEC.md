@@ -410,7 +410,7 @@ Replace argv-based env prefix with stdin pipe to remote shell.
 - [x] Secret values NEVER accepted as positional CLI arguments
 - [x] Key material zeroized after use (`Zeroizing<String>`)
 - [x] `--export-key` writes to file (0o600), not stdout
-- [ ] Registry paths canonicalized and validated on load
+- [x] Registry paths canonicalized and validated on load
 
 ---
 
