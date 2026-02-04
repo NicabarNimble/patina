@@ -161,7 +161,8 @@ enum Commands {
         dry_run: bool,
     },
 
-    /// Search knowledge base using vector similarity
+    /// Search codebase knowledge — fast hybrid search over symbols, functions,
+    /// types, git history, session learnings, and project beliefs
     Scry {
         #[command(subcommand)]
         command: Option<ScryCommands>,

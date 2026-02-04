@@ -67,6 +67,14 @@ pub fn get_project_context(topic: Option<&str>) -> Result<String> {
         }
     }
 
+    // Recall directive — always appended so the LLM knows how to search beliefs
+    output.push_str("## Recall Directive\n\n");
+    output.push_str(
+        "Project knowledge accumulates in beliefs — check them before assuming defaults.\n",
+    );
+    output.push_str("  CLI:  patina scry --content-type beliefs \"your question\"\n");
+    output.push_str("  MCP:  scry(content_type=\"beliefs\", query=\"your question\")\n");
+
     Ok(output)
 }
 
