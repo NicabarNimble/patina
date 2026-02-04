@@ -2394,6 +2394,7 @@ dependencies = [
  "walkdir",
  "which",
  "zerocopy 0.7.35",
+ "zeroize",
 ]
 
 [[package]]

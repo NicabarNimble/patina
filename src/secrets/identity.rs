@@ -10,6 +10,7 @@ use age::secrecy::ExposeSecret;
 use age::x25519;
 use anyhow::{bail, Context, Result};
 use std::str::FromStr;
+use zeroize::Zeroizing;
 
 /// Environment variable for identity (CI/headless path).
 pub const IDENTITY_ENV_VAR: &str = "PATINA_IDENTITY";
@@ -25,28 +26,28 @@ fn log_debug(msg: &str) {
 ///
 /// Checks env var first (CI/headless), then Keychain (Mac with Touch ID).
 pub fn get_identity() -> Result<x25519::Identity> {
-    let identity_str = get_identity_string()?;
+    let identity_str = get_identity_string()?; // Zeroizing<String> — zeroed on drop
 
     x25519::Identity::from_str(&identity_str)
         .map_err(|e| anyhow::anyhow!("Invalid age identity: {}", e))
 }
 
-/// Get the identity as a string.
+/// Get the identity as a string (zeroized on drop).
 ///
 /// Useful for export operations.
-pub fn get_identity_string() -> Result<String> {
+pub fn get_identity_string() -> Result<Zeroizing<String>> {
     // 1. Check env first (CI/headless path)
     if let Ok(identity) = std::env::var(IDENTITY_ENV_VAR) {
         if !identity.is_empty() {
             log_debug("source = PATINA_IDENTITY (env var)");
-            return Ok(identity);
+            return Ok(Zeroizing::new(identity));
         }
         log_debug("PATINA_IDENTITY set but empty, falling back to Keychain");
     }
 
     // 2. Fall back to Keychain (Mac with Touch ID)
     log_debug("source = Keychain");
-    keychain::get_identity()
+    Ok(Zeroizing::new(keychain::get_identity()?))
 }
 
 /// Get the public key (recipient) for the current identity.
@@ -57,12 +58,12 @@ pub fn get_recipient() -> Result<String> {
 
 /// Generate a new age identity.
 ///
-/// Returns (identity_string, recipient_string).
-pub fn generate_identity() -> (String, String) {
+/// Returns (identity_string, recipient_string). Identity is zeroized on drop.
+pub fn generate_identity() -> (Zeroizing<String>, String) {
     let identity = x25519::Identity::generate();
     let recipient = identity.to_public();
     (
-        identity.to_string().expose_secret().to_string(),
+        Zeroizing::new(identity.to_string().expose_secret().to_string()),
         recipient.to_string(),
     )
 }
@@ -100,11 +101,11 @@ pub fn import_identity(identity: &str) -> Result<String> {
     Ok(recipient)
 }
 
-/// Export the identity from Keychain.
+/// Export the identity from Keychain (zeroized on drop).
 ///
 /// Returns the identity string for backup.
-pub fn export_identity() -> Result<String> {
-    keychain::get_identity()
+pub fn export_identity() -> Result<Zeroizing<String>> {
+    Ok(Zeroizing::new(keychain::get_identity()?))
 }
 
 /// Check if an identity is available.
