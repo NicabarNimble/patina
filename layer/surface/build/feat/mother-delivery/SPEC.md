@@ -168,6 +168,7 @@ Carried from Phase 1. Depends on D1 local belief search being validated first.
 
 ## See Also
 
+- [[analysis-three-servers.md]] — Historical analysis: how CLI/MCP/serve became three independent search paths
 - [[design.md]] — Ref repo evidence (OpenClaw, Gastown), all ADRs, resolved design questions
 - [[d0-unified-search/SPEC.md]] — Foundation: QueryEngine as default CLI path
 - [[d1-belief-oracle/SPEC.md]] — BeliefOracle design and implementation
