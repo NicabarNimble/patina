@@ -46,11 +46,11 @@ related:
 | 5 | `src/commands/serve/internal.rs` | No warning when binding to 0.0.0.0 | Print security warning to stderr when `--host` is not 127.0.0.1 |
 | 6 | `src/commands/serve/internal.rs` | Error responses mix text and JSON formats | All errors return `{"error": "..."}` with correct status code |
 
-### Deferred: Execution Bounding (needs design)
+### Deferred: Execution Bounding (separate spec)
 
 | # | File | Issue | Needs |
 |---|------|-------|-------|
-| — | `src/commands/serve/internal.rs` | No query execution timeout or concurrency bound | Proper design: RAII drop guard, atomic increment-then-check, panic safety. Naive `thread::spawn` + `recv_timeout` leaks threads on timeout and a bare semaphore has TOCTOU race + panic counter leak. Spec separately. |
+| — | `src/commands/serve/internal.rs` | No query execution timeout or concurrency bound | Proper design: RAII drop guard, atomic increment-then-check, panic safety. Naive `thread::spawn` + `recv_timeout` leaks threads on timeout and a bare semaphore has TOCTOU race + panic counter leak. Design direction: session-aware budgets + rate limiting. Spec separately. |
 
 ### P1: Local Privilege Escalation / Secrets Hygiene
 
@@ -61,6 +61,7 @@ related:
 | 9 | `src/secrets/mod.rs:296` | SSH variant puts decrypted secrets in process argv | Use stdin pipe or `SSH_ASKPASS` protocol instead of command-line env prefix |
 | 10 | `src/embeddings/onnx.rs:73` | ONNX model loaded without integrity verification | Add SHA-256 checksum verification against hardcoded expected hash |
 | 11 | `src/commands/serve/internal.rs` | Serve token bypasses Patina's own secrets infrastructure | Load token from vault via `patina secrets`, fall back to `PATINA_SERVE_TOKEN` env, generate-and-print as last resort |
+| 16 | `src/commands/serve/internal.rs:150-151` | Generated auth token printed to stderr in plain text | Secrets never in outputs. Token printed to stderr leaks to terminal scrollback, log capture, process supervision. With Phase 2 UDS, localhost callers don't need a token at all. For TCP path: write token to `~/.patina/run/serve.token` (0o600), print path not value. |
 
 Item 11 rationale: The serve token is currently a plain env var — visible in `ps auxe`,
 shell history, terminal scrollback, and container environment. On localhost this is
@@ -69,6 +70,12 @@ boundary and should use the same vault/keychain infrastructure that protects oth
 Patina secrets. Load order: vault → env var → generate. This keeps the simple
 `PATINA_SERVE_TOKEN=xxx patina serve` workflow for local dev while giving the
 container path a proper secret.
+
+Item 16 rationale: Principle — secrets never appear in CLI output by default. The
+generated token is currently printed to stderr (`eprintln!("Generated auth token: {}",
+t)`). This leaks to terminal scrollback, tmux capture, log files, and process
+supervisors. Phase 2 eliminates the need entirely for localhost (UDS = no token).
+For the TCP opt-in path, write the token to a file and print the file path.
 
 ### P2: Defense-in-Depth
 
@@ -310,6 +317,7 @@ Check if `sha2` is already a transitive dependency (likely via `age`).
 - [ ] `session.rs` connects via UDS first, HTTP+token fallback
 - [ ] `mother/internal.rs` accepts transport enum (Uds or Http+token)
 - [ ] Handler functions shared between UDS and HTTP paths — no duplicated logic
+- [ ] Generated token never printed to stderr — write to file, print path
 
 **Phase 3 (P1 — File Permissions):**
 - [ ] `~/.patina/vault.age` created with 0o600 permissions
