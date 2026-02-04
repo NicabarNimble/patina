@@ -45,10 +45,7 @@ which = "7.0"
 # HTTP client (blocking only - no async)
 reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false }
 
-# HTTP server (blocking - no async, thread-per-request)
-rouille = "3.6"
-
-# HTTP request parser (zero-copy, zero deps) — used by microserver
+# HTTP request parser (zero-copy, zero deps) — blocking microserver
 httparse = "1.10"
 
 # File watching
