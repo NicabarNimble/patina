@@ -327,7 +327,10 @@ pub fn run_with_secrets_ssh(
 fn shell_join(args: &[String]) -> String {
     args.iter()
         .map(|arg| {
-            if arg.is_empty() || arg.contains(|c: char| c.is_whitespace() || "\"'\\$`!#&|;(){}[]<>?*~".contains(c)) {
+            if arg.is_empty()
+                || arg
+                    .contains(|c: char| c.is_whitespace() || "\"'\\$`!#&|;(){}[]<>?*~".contains(c))
+            {
                 format!("'{}'", arg.replace('\'', "'\\''"))
             } else {
                 arg.clone()
