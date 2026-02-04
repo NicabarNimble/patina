@@ -583,8 +583,14 @@ fn accept_loop_uds(listener: std::os::unix::net::UnixListener, state: Arc<Server
 /// Register Ctrl+C handler to clean up socket on shutdown
 fn ctrlc_cleanup() {
     unsafe {
-        libc::signal(libc::SIGINT, sigint_handler as libc::sighandler_t);
-        libc::signal(libc::SIGTERM, sigint_handler as libc::sighandler_t);
+        libc::signal(
+            libc::SIGINT,
+            sigint_handler as *const () as libc::sighandler_t,
+        );
+        libc::signal(
+            libc::SIGTERM,
+            sigint_handler as *const () as libc::sighandler_t,
+        );
     }
 }
 
