@@ -224,7 +224,7 @@ fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "context",
-                    "description": "Get project patterns and conventions - USE THIS to understand design rules before making architectural changes. Returns core patterns (eternal principles) and surface patterns (active architecture).",
+                    "description": "Get project patterns and conventions - USE THIS to understand design rules before making architectural changes. Returns core patterns (eternal principles) and surface patterns (active architecture). When a topic is provided, includes project beliefs ranked by semantic relevance.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
