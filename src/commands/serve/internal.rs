@@ -2,9 +2,10 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::net::TcpListener;
-use std::sync::Arc;
+use std::net::{Shutdown, TcpListener};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use super::microserver;
@@ -68,11 +69,18 @@ impl HttpResponse {
 
 // === Server state ===
 
+/// Cached secrets entry with expiry
+struct SecretsCacheEntry {
+    secrets: HashMap<String, String>,
+    expires_at: Instant,
+}
+
 /// Server state shared across request handlers
 pub struct ServerState {
     start_time: Instant,
     version: String,
     token: String,
+    secrets_cache: Mutex<Option<SecretsCacheEntry>>,
 }
 
 impl ServerState {
@@ -81,6 +89,7 @@ impl ServerState {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
+            secrets_cache: Mutex::new(None),
         }
     }
 
@@ -192,6 +201,9 @@ fn route_request(request: &HttpRequest, state: &ServerState, require_auth: bool)
         ("GET", "/health") => handle_health(state),
         ("GET", "/version") => handle_version(state),
         ("POST", "/api/scry") => handle_scry(request, state, require_auth),
+        ("GET", "/secrets/cache") => handle_secrets_get(request, state, require_auth),
+        ("POST", "/secrets/cache") => handle_secrets_cache(request, state, require_auth),
+        ("POST", "/secrets/lock") => handle_secrets_lock(request, state, require_auth),
         _ => json_error(404, "Not found"),
     };
     with_security_headers(response)
@@ -339,6 +351,86 @@ fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -
     HttpResponse::json(200, &response)
 }
 
+// === Secrets cache handlers ===
+// Session caching for secrets — avoids repeated Touch ID prompts.
+// Secrets stay in daemon memory, not in files the LLM can read.
+
+/// Request to cache secrets
+#[derive(Deserialize)]
+struct SecretsCacheRequest {
+    secrets: HashMap<String, String>,
+    #[serde(default = "default_ttl_secs")]
+    ttl_secs: u64,
+}
+
+fn default_ttl_secs() -> u64 {
+    600
+}
+
+/// Handle GET /secrets/cache — return cached secrets if not expired
+fn handle_secrets_get(
+    request: &HttpRequest,
+    state: &ServerState,
+    require_auth: bool,
+) -> HttpResponse {
+    if require_auth && !check_auth(request, &state.token) {
+        return json_error(401, "Unauthorized");
+    }
+
+    let cache = state.secrets_cache.lock().unwrap_or_else(|e| e.into_inner());
+    match cache.as_ref() {
+        Some(entry) if entry.expires_at > Instant::now() => {
+            HttpResponse::json(200, &entry.secrets)
+        }
+        _ => json_error(404, "No cached secrets"),
+    }
+}
+
+/// Handle POST /secrets/cache — store secrets with TTL
+fn handle_secrets_cache(
+    request: &HttpRequest,
+    state: &ServerState,
+    require_auth: bool,
+) -> HttpResponse {
+    if require_auth && !check_auth(request, &state.token) {
+        return json_error(401, "Unauthorized");
+    }
+
+    if request.body.is_empty() {
+        return json_error(400, "Missing request body");
+    }
+
+    let body: SecretsCacheRequest = match serde_json::from_slice(&request.body) {
+        Ok(req) => req,
+        Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
+    };
+
+    let ttl = std::time::Duration::from_secs(body.ttl_secs);
+    let mut cache = state.secrets_cache.lock().unwrap_or_else(|e| e.into_inner());
+    *cache = Some(SecretsCacheEntry {
+        secrets: body.secrets,
+        expires_at: Instant::now() + ttl,
+    });
+
+    HttpResponse::json(200, &serde_json::json!({"status": "cached"}))
+}
+
+/// Handle POST /secrets/lock — clear the secrets cache
+fn handle_secrets_lock(
+    request: &HttpRequest,
+    state: &ServerState,
+    require_auth: bool,
+) -> HttpResponse {
+    if require_auth && !check_auth(request, &state.token) {
+        return json_error(401, "Unauthorized");
+    }
+
+    let mut cache = state.secrets_cache.lock().unwrap_or_else(|e| e.into_inner());
+    *cache = None;
+
+    HttpResponse::json(200, &serde_json::json!({"status": "locked"}))
+}
+
 // === Transport: microserver accept loop ===
 // Handles both UDS and TCP via generic Read + Write streams.
 // One request per connection. Thread per connection.
@@ -366,17 +458,21 @@ fn to_micro(resp: HttpResponse) -> microserver::HttpResponse {
 ///
 /// `require_auth`: true for TCP (bearer token required), false for UDS
 /// (file permissions are the auth — if you can open the socket, you're authorized).
+///
+/// Takes `&mut` so the caller retains ownership and can call `shutdown(Write)`
+/// on the concrete stream type after this returns — ensuring the client's
+/// `read_to_end` sees EOF promptly instead of waiting for socket close.
 fn handle_connection(
-    mut stream: impl Read + Write + Send + 'static,
-    state: Arc<ServerState>,
+    stream: &mut (impl Read + Write),
+    state: &ServerState,
     require_auth: bool,
 ) {
-    let req = match microserver::read_request(&mut stream) {
+    let req = match microserver::read_request(stream) {
         Some(Ok(req)) => from_micro(req),
         Some(Err(msg)) => {
             // Parse error — write error response and close
             let resp = to_micro(with_security_headers(json_error(400, &msg)));
-            microserver::write_response(&mut stream, &resp);
+            microserver::write_response(stream, &resp);
             return;
         }
         None => return, // clean close, no response needed
@@ -386,10 +482,10 @@ fn handle_connection(
     let resp = if req.body.len() > MAX_BODY_SIZE {
         with_security_headers(json_error(413, "Request too large"))
     } else {
-        route_request(&req, &state, require_auth)
+        route_request(&req, state, require_auth)
     };
 
-    microserver::write_response(&mut stream, &to_micro(resp));
+    microserver::write_response(stream, &to_micro(resp));
 }
 
 /// Run the serve daemon
@@ -451,9 +547,12 @@ pub fn run_server(options: ServeOptions) -> Result<()> {
 fn accept_loop_tcp(listener: TcpListener, state: Arc<ServerState>) -> ! {
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => {
+            Ok(mut stream) => {
                 let state = Arc::clone(&state);
-                std::thread::spawn(move || handle_connection(stream, state, true));
+                std::thread::spawn(move || {
+                    handle_connection(&mut stream, &state, true);
+                    let _ = stream.shutdown(Shutdown::Write);
+                });
             }
             Err(e) => eprintln!("TCP accept error: {}", e),
         }
@@ -465,9 +564,12 @@ fn accept_loop_tcp(listener: TcpListener, state: Arc<ServerState>) -> ! {
 fn accept_loop_uds(listener: std::os::unix::net::UnixListener, state: Arc<ServerState>) -> ! {
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => {
+            Ok(mut stream) => {
                 let state = Arc::clone(&state);
-                std::thread::spawn(move || handle_connection(stream, state, false));
+                std::thread::spawn(move || {
+                    handle_connection(&mut stream, &state, false);
+                    let _ = stream.shutdown(Shutdown::Write);
+                });
             }
             Err(e) => eprintln!("UDS accept error: {}", e),
         }
