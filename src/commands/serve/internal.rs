@@ -1,7 +1,6 @@
-//! Internal implementation of the Mother server
+//! Internal implementation of the serve daemon
 
 use anyhow::Result;
-use rouille::{router, Request, Response};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::sync::Arc;
@@ -17,6 +16,55 @@ const MAX_BODY_SIZE: usize = 1_048_576;
 
 /// Maximum results per query
 const MAX_LIMIT: usize = 1000;
+
+// === Transport-free request/response types ===
+// Handlers use these — never rouille/hyper/raw-socket types.
+// Transport adapter (rouille today, raw HTTP tomorrow) converts at the boundary.
+
+/// HTTP request independent of transport
+struct HttpRequest {
+    method: String,
+    path: String,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+/// HTTP response independent of transport
+struct HttpResponse {
+    status: u16,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+impl HttpRequest {
+    /// Get header value by name (case-insensitive)
+    fn header(&self, name: &str) -> Option<&str> {
+        let name_lower = name.to_lowercase();
+        self.headers
+            .iter()
+            .find(|(k, _)| k.to_lowercase() == name_lower)
+            .map(|(_, v)| v.as_str())
+    }
+}
+
+impl HttpResponse {
+    /// Create a JSON response
+    fn json(status: u16, value: &impl Serialize) -> Self {
+        Self {
+            status,
+            headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+            body: serde_json::to_vec(value).unwrap_or_default(),
+        }
+    }
+
+    /// Add a header
+    fn with_header(mut self, name: &str, value: &str) -> Self {
+        self.headers.push((name.to_string(), value.to_string()));
+        self
+    }
+}
+
+// === Server state ===
 
 /// Server state shared across request handlers
 pub struct ServerState {
@@ -38,6 +86,8 @@ impl ServerState {
         self.start_time.elapsed().as_secs()
     }
 }
+
+// === API types ===
 
 /// Health check response
 #[derive(Serialize)]
@@ -102,6 +152,8 @@ struct ScryResultJson {
     timestamp: String,
 }
 
+// === Helpers ===
+
 /// Generate a random 32-byte hex token
 fn generate_token() -> String {
     (0..32)
@@ -110,128 +162,76 @@ fn generate_token() -> String {
 }
 
 /// Check bearer token authorization
-fn check_auth(request: &Request, token: &str) -> bool {
+fn check_auth(request: &HttpRequest, token: &str) -> bool {
     request
         .header("Authorization")
         .map(|h| h == format!("Bearer {}", token))
         .unwrap_or(false)
 }
 
-/// Add security headers to a response (CORS deny-by-default: omit origin header entirely)
-fn with_security_headers(response: Response) -> Response {
+/// Add security headers to response
+fn with_security_headers(response: HttpResponse) -> HttpResponse {
     response
-        .with_additional_header("X-Content-Type-Options", "nosniff")
-        .with_additional_header("X-Frame-Options", "DENY")
+        .with_header("X-Content-Type-Options", "nosniff")
+        .with_header("X-Frame-Options", "DENY")
 }
 
 /// Consistent JSON error response
-fn json_error(status: u16, message: &str) -> Response {
-    Response::json(&serde_json::json!({"error": message})).with_status_code(status)
+fn json_error(status: u16, message: &str) -> HttpResponse {
+    HttpResponse::json(status, &serde_json::json!({"error": message}))
 }
 
-/// Run the Mother HTTP server
-pub fn run_server(options: ServeOptions) -> Result<()> {
-    let addr = format!("{}:{}", options.host, options.port);
+// === Transport-free handlers ===
+// Business logic below this line never touches transport types.
 
-    // Fix 6: Bind warning when not localhost
-    if options.host != "127.0.0.1" && options.host != "localhost" {
-        eprintln!(
-            "WARNING: Binding to {} exposes the server to the network.",
-            options.host
-        );
-        eprintln!(
-            "  The server has no encryption (HTTP only). Use a reverse proxy for production."
-        );
-    }
-
-    // Fix 1: Bearer token auth
-    let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| {
-        let t = generate_token();
-        eprintln!("Generated auth token: {}", t);
-        eprintln!("  Set PATINA_SERVE_TOKEN={} to use a fixed token", t);
-        t
-    });
-
-    let state = Arc::new(ServerState::new(token));
-
-    println!("🚀 Mother daemon starting...");
-    println!("   Listening on http://{}", addr);
-    println!("   Press Ctrl+C to stop\n");
-
-    rouille::start_server(&addr, move |request| {
-        let state = Arc::clone(&state);
-        handle_request(request, &state)
-    });
-}
-
-/// Route requests to handlers
-fn handle_request(request: &Request, state: &ServerState) -> Response {
-    let response = router!(request,
-        // Health check (no auth required)
-        (GET) ["/health"] => {
-            handle_health(state)
-        },
-
-        // Version info (no auth required)
-        (GET) ["/version"] => {
-            handle_version(state)
-        },
-
-        // Scry API - semantic/lexical search (auth required)
-        (POST) ["/api/scry"] => {
-            handle_scry(request, state)
-        },
-
-        // 404 for unknown routes
-        _ => {
-            json_error(404, "Not found")
-        }
-    );
-
+/// Route request to handler
+fn route_request(request: &HttpRequest, state: &ServerState) -> HttpResponse {
+    let response = match (request.method.as_str(), request.path.as_str()) {
+        ("GET", "/health") => handle_health(state),
+        ("GET", "/version") => handle_version(state),
+        ("POST", "/api/scry") => handle_scry(request, state),
+        _ => json_error(404, "Not found"),
+    };
     with_security_headers(response)
 }
 
 /// Handle GET /health
-fn handle_health(state: &ServerState) -> Response {
-    let response = HealthResponse {
-        status: "ok".to_string(),
-        version: state.version.clone(),
-        uptime_secs: state.uptime_secs(),
-    };
-
-    Response::json(&response)
+fn handle_health(state: &ServerState) -> HttpResponse {
+    HttpResponse::json(
+        200,
+        &HealthResponse {
+            status: "ok".to_string(),
+            version: state.version.clone(),
+            uptime_secs: state.uptime_secs(),
+        },
+    )
 }
 
 /// Handle GET /version
-fn handle_version(state: &ServerState) -> Response {
-    Response::json(&serde_json::json!({
-        "version": state.version,
-        "name": "patina-mother"
-    }))
+fn handle_version(state: &ServerState) -> HttpResponse {
+    HttpResponse::json(
+        200,
+        &serde_json::json!({
+            "version": state.version,
+            "name": "patina-mother"
+        }),
+    )
 }
 
 /// Handle POST /api/scry
-fn handle_scry(request: &Request, state: &ServerState) -> Response {
+fn handle_scry(request: &HttpRequest, state: &ServerState) -> HttpResponse {
     // Auth check (bearer token required)
     if !check_auth(request, &state.token) {
         return json_error(401, "Unauthorized");
     }
 
-    // Read body with size cap — do not trust Content-Length
-    let data = match request.data() {
-        Some(d) => d,
-        None => return json_error(400, "Missing request body"),
-    };
-    let mut buf = Vec::new();
-    if let Err(e) = data.take((MAX_BODY_SIZE + 1) as u64).read_to_end(&mut buf) {
-        return json_error(400, &format!("Failed to read body: {}", e));
-    }
-    if buf.len() > MAX_BODY_SIZE {
-        return json_error(413, "Request too large");
+    // Body already read and size-checked at transport boundary
+    if request.body.is_empty() {
+        return json_error(400, "Missing request body");
     }
 
-    // Parse JSON from bytes
-    let mut body: ScryRequest = match serde_json::from_slice(&buf) {
+    // Parse JSON from body
+    let mut body: ScryRequest = match serde_json::from_slice(&request.body) {
         Ok(req) => req,
         Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
     };
@@ -334,5 +334,94 @@ fn handle_scry(request: &Request, state: &ServerState) -> Response {
         results: json_results,
     };
 
-    Response::json(&response)
+    HttpResponse::json(200, &response)
+}
+
+// === rouille transport adapter ===
+// Converts between rouille types and transport-free types.
+// Replaced entirely when rouille is removed (commit 4).
+
+/// Convert rouille request to transport-free HttpRequest
+fn from_rouille(request: &rouille::Request) -> HttpRequest {
+    let headers: Vec<(String, String)> = request
+        .headers()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+
+    // Read body with size cap (Read::take, not Content-Length trust)
+    let body = match request.data() {
+        Some(data) => {
+            let mut buf = Vec::new();
+            let _ = data.take((MAX_BODY_SIZE + 1) as u64).read_to_end(&mut buf);
+            buf
+        }
+        None => Vec::new(),
+    };
+
+    HttpRequest {
+        method: request.method().to_string(),
+        path: request.url().to_string(),
+        headers,
+        body,
+    }
+}
+
+/// Convert transport-free HttpResponse to rouille response
+fn to_rouille(response: HttpResponse) -> rouille::Response {
+    let content_type = response
+        .headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case("Content-Type"))
+        .map(|(_, v)| v.clone())
+        .unwrap_or_else(|| "application/octet-stream".to_string());
+
+    let mut r =
+        rouille::Response::from_data(content_type, response.body).with_status_code(response.status);
+
+    for (name, value) in &response.headers {
+        if !name.eq_ignore_ascii_case("Content-Type") {
+            r = r.with_additional_header(name.clone(), value.clone());
+        }
+    }
+    r
+}
+
+/// Run the serve daemon
+pub fn run_server(options: ServeOptions) -> Result<()> {
+    let addr = format!("{}:{}", options.host, options.port);
+
+    // Bind warning when not localhost
+    if options.host != "127.0.0.1" && options.host != "localhost" {
+        eprintln!(
+            "WARNING: Binding to {} exposes the server to the network.",
+            options.host
+        );
+        eprintln!(
+            "  The server has no encryption (HTTP only). Use a reverse proxy for production."
+        );
+    }
+
+    // Bearer token auth
+    let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| {
+        let t = generate_token();
+        eprintln!("Generated auth token: {}", t);
+        eprintln!("  Set PATINA_SERVE_TOKEN={} to use a fixed token", t);
+        t
+    });
+
+    let state = Arc::new(ServerState::new(token));
+
+    println!("🚀 Mother daemon starting...");
+    println!("   Listening on http://{}", addr);
+    println!("   Press Ctrl+C to stop\n");
+
+    rouille::start_server(&addr, move |request| {
+        let state = Arc::clone(&state);
+        let req = from_rouille(request);
+        // Body size enforcement at transport boundary
+        if req.body.len() > MAX_BODY_SIZE {
+            return to_rouille(with_security_headers(json_error(413, "Request too large")));
+        }
+        to_rouille(route_request(&req, &state))
+    });
 }
