@@ -7,6 +7,8 @@ use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 /// Registry format version.
@@ -92,6 +94,10 @@ impl SecretsRegistry {
 
         fs::write(path, full_content)
             .with_context(|| format!("Failed to write secrets registry: {:?}", path))?;
+
+        // Restrict to owner-only (0o600) — registry maps secret names to env vars
+        #[cfg(unix)]
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
 
         Ok(())
     }

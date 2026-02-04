@@ -398,8 +398,8 @@ Replace argv-based env prefix with stdin pipe to remote shell.
 - [x] `curl --unix-socket` works for testing UDS endpoints
 
 **Phase 3 (P1 — File Permissions):**
-- [ ] `~/.patina/vault.age` created with 0o600 permissions
-- [ ] `~/.patina/secrets.toml` created with 0o600 permissions
+- [x] `~/.patina/vault.age` created with 0o600 permissions
+- [x] `~/.patina/secrets.toml` created with 0o600 permissions
 - [ ] ONNX model verified via SHA-256 before loading
 - [ ] `patina secrets run` over SSH does not expose secrets in `ps auxe`
 - [ ] Serve token loaded from vault when available, env var as fallback
