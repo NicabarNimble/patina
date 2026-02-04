@@ -287,8 +287,11 @@ fn connect() -> Transport {
 
 #### 2d. Mother client (`mother/internal.rs`)
 
-Accept transport in constructor. Local mother: UDS (no token). Container mother:
-TCP + bearer token via `reqwest`.
+UDS-first for localhost addresses, TCP+bearer token for remote. Same pattern as
+`session.rs`: `Client::new(address)` detects localhost via `is_localhost()`, loads
+token via `serve_token()` (file → env resolution). Each method (`health`, `scry`)
+tries UDS first when `try_uds` is true, falls back to TCP+token. `reqwest` stays
+for remote/container path.
 
 #### 2e. Secrets never in output (#16)
 
@@ -378,21 +381,21 @@ Replace argv-based env prefix with stdin pipe to remote shell.
 - [ ] Execution bounding (timeout + concurrency gate) — deferred, needs proper design
 
 **Phase 2 (Transport Security):**
-- [ ] `rouille` removed from Cargo.toml, replaced by `httparse` + blocking microserver
-- [ ] `patina serve` defaults to unix socket at `~/.patina/run/serve.sock`
-- [ ] TCP listener only starts with explicit `--host`/`--port`
-- [ ] Both transports speak HTTP/1.1 — one protocol, same handlers
-- [ ] Socket dir `~/.patina/run/` created 0o700, verified on startup, refuse if open
-- [ ] Socket file set to 0o600 after bind
-- [ ] Stale socket: unlink only if is-socket AND owned-by-current-user, else refuse
-- [ ] Header cap: 32 KiB. Body cap: 1 MiB (read cap via `Read::take`, not Content-Length trust)
-- [ ] No chunked encoding, no keep-alive (one request per connection)
-- [ ] Socket deleted on clean shutdown
-- [ ] `session.rs` connects via UDS first (small HTTP-over-UDS client), HTTP+token fallback
-- [ ] `mother/internal.rs` accepts transport enum (Uds or Http+token)
-- [ ] Handlers are transport-free — no rouille types, no HTTP types in business logic
-- [ ] Generated token never printed to stderr — write to file, print path
-- [ ] `curl --unix-socket` works for testing UDS endpoints
+- [x] `rouille` removed from Cargo.toml, replaced by `httparse` + blocking microserver
+- [x] `patina serve` defaults to unix socket at `~/.patina/run/serve.sock`
+- [x] TCP listener only starts with explicit `--host`/`--port`
+- [x] Both transports speak HTTP/1.1 — one protocol, same handlers
+- [x] Socket dir `~/.patina/run/` created 0o700, verified on startup, refuse if open
+- [x] Socket file set to 0o600 after bind
+- [x] Stale socket: unlink only if is-socket AND owned-by-current-user, else refuse
+- [x] Header cap: 32 KiB. Body cap: 1 MiB (read cap via `Read::take`, not Content-Length trust)
+- [x] No chunked encoding, no keep-alive (one request per connection)
+- [x] Socket deleted on clean shutdown
+- [x] `session.rs` connects via UDS first (small HTTP-over-UDS client), HTTP+token fallback
+- [x] `mother/internal.rs` UDS-first for localhost, TCP+bearer token for remote
+- [x] Handlers are transport-free — no rouille types, no HTTP types in business logic
+- [x] Generated token never printed to stderr — write to file, print path
+- [x] `curl --unix-socket` works for testing UDS endpoints
 
 **Phase 3 (P1 — File Permissions):**
 - [ ] `~/.patina/vault.age` created with 0o600 permissions
@@ -499,3 +502,4 @@ Precedent: 0.9.3 (session hardening), 0.9.4 (spec archive + belief verification)
 | 2026-02-03 | ready | Spec created from security audit (session 20260203-134222) |
 | 2026-02-03 | in-progress | P0 shipped: 6 fixes (auth, read cap, limit cap, security headers, bind warning, consistent errors). Execution bounding deferred — needs RAII guard design. |
 | 2026-02-03 | in-progress | Phase 2 revised: replace rouille with blocking HTTP-over-UDS microserver. Drop custom length-prefix protocol — one protocol (HTTP) over both transports. `httparse` replaces `rouille` (net dep reduction). `curl --unix-socket` for testing. Transport-free handlers. Anchored in [[transport-security-by-trust-boundary]], [[use-whats-in-the-tree]]. |
+| 2026-02-04 | in-progress | Phase 2 complete: `mother/internal.rs` updated — UDS-first for localhost (same pattern as session.rs), TCP+bearer token for remote. Fixes pre-existing bug: mother client sent no auth header → 401 since Phase 1. Added `is_localhost()`, `serve_token()`, UDS client functions, 7 unit tests. All 15 Phase 2 exit criteria checked. |
