@@ -1,7 +1,7 @@
 ---
 type: fix
 id: cli-queryengine-default
-status: design
+status: complete
 created: 2026-02-04
 sessions:
   origin: 20260204-110139
