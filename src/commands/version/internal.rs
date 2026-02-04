@@ -14,6 +14,53 @@ use std::process::Command;
 const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // ============================================================================
+// Spec Frontmatter Types (for YAML round-trip)
+// ============================================================================
+
+/// Sessions can be either a simple list or a structured object
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum Sessions {
+    /// Simple list of session IDs: [20260108-200725, ...]
+    List(Vec<String>),
+    /// Structured with origin and work: { origin: ..., work: [...] }
+    Structured {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        origin: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        work: Vec<String>,
+    },
+}
+
+/// Milestone in spec frontmatter
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SpecMilestoneEntry {
+    pub version: String,
+    pub name: String,
+    pub status: String,
+}
+
+/// Complete spec frontmatter - all fields optional except those always present
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpecFrontmatter {
+    pub r#type: String,
+    pub id: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sessions: Option<Sessions>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub related: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub milestones: Vec<SpecMilestoneEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_milestone: Option<String>,
+}
+
+// ============================================================================
 // Data Structures
 // ============================================================================
 
@@ -291,8 +338,11 @@ pub fn bump_milestone(
     if let Some(next) = &next_milestone {
         println!("  Next: v{}", next);
     } else {
-        println!("  No more pending milestones!");
+        println!("  Spec fully complete!");
+        println!("  Archive with: patina spec archive {}", milestone.spec_id);
     }
+    println!("\n  Rebuild to use new version:");
+    println!("    cargo build --release && cargo install --path .");
 
     Ok(())
 }
@@ -358,42 +408,98 @@ fn get_next_pending_milestone(spec_id: &str, current_version: &str) -> Option<St
     .ok()
 }
 
+/// Parse spec file into frontmatter and body
+fn parse_spec_file(content: &str) -> Result<(SpecFrontmatter, String)> {
+    // Extract frontmatter between --- markers
+    let content = content
+        .strip_prefix("---")
+        .ok_or_else(|| anyhow::anyhow!("Spec file must start with '---' frontmatter delimiter"))?;
+
+    let end = content.find("\n---").ok_or_else(|| {
+        anyhow::anyhow!("Spec file must have closing '---' frontmatter delimiter")
+    })?;
+
+    let frontmatter_str = &content[..end];
+    let body = &content[end + 4..]; // Skip "\n---"
+
+    let frontmatter: SpecFrontmatter = serde_yaml::from_str(frontmatter_str)
+        .with_context(|| format!("Failed to parse frontmatter:\n{}", frontmatter_str))?;
+
+    Ok((frontmatter, body.to_string()))
+}
+
+/// Serialize spec back to file content
+fn serialize_spec_file(frontmatter: &SpecFrontmatter, body: &str) -> Result<String> {
+    let yaml = serde_yaml::to_string(frontmatter)?;
+    Ok(format!("---\n{}---{}", yaml, body))
+}
+
 /// Update spec YAML to mark milestone complete and advance to next
+///
+/// Uses serde_yaml for type-safe parsing and modification.
+/// Note: This normalizes YAML formatting (quotes, array style).
 fn update_spec_milestone(
     spec_path: &str,
     current_version: &str,
     next_version: Option<&str>,
 ) -> Result<()> {
     let content = fs::read_to_string(spec_path)?;
+    let (mut frontmatter, body) = parse_spec_file(&content)?;
 
-    // Update the milestone status from in_progress to complete
-    let pattern = format!(
-        r#"(?m)(- version: "{}"[\s\S]*?status: )in_progress"#,
-        regex::escape(current_version)
-    );
-    let re = regex::Regex::new(&pattern)?;
-    let content = re.replace(&content, "${1}complete").to_string();
+    // Find and update current milestone status
+    let mut found_current = false;
+    for milestone in &mut frontmatter.milestones {
+        if milestone.version == current_version {
+            if milestone.status != "in_progress" {
+                anyhow::bail!(
+                    "Milestone {} has status '{}', expected 'in_progress'",
+                    current_version,
+                    milestone.status
+                );
+            }
+            milestone.status = "complete".to_string();
+            found_current = true;
+        }
+    }
 
-    // Update current_milestone to next version
-    let content = if let Some(next) = next_version {
-        // Also mark next milestone as in_progress
-        let next_pattern = format!(
-            r#"(?m)(- version: "{}"[\s\S]*?status: )pending"#,
-            regex::escape(next)
+    if !found_current {
+        anyhow::bail!(
+            "Milestone {} not found in spec frontmatter",
+            current_version
         );
-        let next_re = regex::Regex::new(&next_pattern)?;
-        let content = next_re.replace(&content, "${1}in_progress").to_string();
+    }
 
-        // Update current_milestone pointer
-        let cm_re = regex::Regex::new(r#"(?m)^current_milestone: "[^"]+""#)?;
-        cm_re
-            .replace(&content, &format!(r#"current_milestone: "{}""#, next))
-            .to_string()
+    // If there's a next version, mark it in_progress and update current_milestone
+    if let Some(next) = next_version {
+        let mut found_next = false;
+        for milestone in &mut frontmatter.milestones {
+            if milestone.version == next {
+                if milestone.status != "pending" {
+                    anyhow::bail!(
+                        "Next milestone {} has status '{}', expected 'pending'",
+                        next,
+                        milestone.status
+                    );
+                }
+                milestone.status = "in_progress".to_string();
+                found_next = true;
+            }
+        }
+
+        if !found_next {
+            anyhow::bail!("Next milestone {} not found in spec frontmatter", next);
+        }
+
+        frontmatter.current_milestone = Some(next.to_string());
     } else {
-        content
-    };
+        // No next milestone - clear current_milestone
+        frontmatter.current_milestone = None;
+    }
 
-    fs::write(spec_path, content)?;
+    // Write back
+    let new_content = serialize_spec_file(&frontmatter, &body)?;
+    fs::write(spec_path, new_content)?;
+
     Ok(())
 }
 
@@ -414,8 +520,102 @@ fn rescrape_layer() -> Result<()> {
     Ok(())
 }
 
+/// Bump PATCH version for a fix release
+///
+/// Increments the patch component: 0.9.2 → 0.9.3
+/// Simpler than milestone — no spec milestone table to update.
+pub fn bump_patch(description: &str, no_tag: bool, dry_run: bool) -> Result<()> {
+    let old_version = read_cargo_version()?;
+
+    // Parse and increment patch
+    let parts: Vec<u32> = old_version
+        .split('.')
+        .map(|s| {
+            s.parse::<u32>()
+                .with_context(|| format!("Invalid version component: {}", s))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    if parts.len() != 3 {
+        anyhow::bail!("Expected semver format (x.y.z), got '{}'", old_version);
+    }
+
+    let new_version = format!("{}.{}.{}", parts[0], parts[1], parts[2] + 1);
+
+    // Check if versioning is enabled (owned vs fork)
+    let versioning_enabled = patina::project::is_versioning_enabled(Path::new("."));
+
+    if !versioning_enabled {
+        anyhow::bail!("Version bumping is disabled for fork repos. Set upstream.owned = true in .patina/config.toml.");
+    }
+
+    if dry_run {
+        println!("Dry run - would perform these changes:\n");
+        println!("Patch release: v{} - {}", new_version, description);
+        println!("Cargo.toml: {} -> {}", old_version, new_version);
+        if !no_tag {
+            println!("git tag: v{}", new_version);
+        }
+        return Ok(());
+    }
+
+    // Run safeguard checks
+    run_safeguard_checks(&new_version)?;
+
+    // Update Cargo.toml
+    update_cargo_version(&new_version)?;
+
+    // Commit the patch release
+    let commit_msg = format!("release: v{} - {}", new_version, description);
+    let output = Command::new("git")
+        .args(["add", "Cargo.toml"])
+        .output()
+        .context("Failed to stage Cargo.toml")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git add failed: {}", stderr);
+    }
+
+    let output = Command::new("git")
+        .args(["commit", "-m", &commit_msg])
+        .output()
+        .context("Failed to commit patch release")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("nothing to commit") {
+            anyhow::bail!("git commit failed: {}", stderr);
+        }
+    }
+
+    // Create git tag
+    if !no_tag {
+        create_git_tag(&new_version, description)?;
+    }
+
+    // Output
+    println!("\n✓ Patch release: v{}", new_version);
+    println!("  {}", description);
+    println!("  Cargo.toml: {} -> {}", old_version, new_version);
+    if !no_tag {
+        println!("  Tagged: v{}", new_version);
+    }
+    println!("\n  Rebuild to use new version:");
+    println!("    cargo build --release && cargo install --path .");
+
+    Ok(())
+}
+
 /// Start a new development phase
+///
+/// DEPRECATED: This command uses the Phase.Milestone model which has been
+/// superseded by semver patches (0.9.x → 1.0.0). Use spec milestones instead.
 pub fn bump_phase(name: &str, no_tag: bool, dry_run: bool) -> Result<()> {
+    eprintln!("⚠️  DEPRECATED: 'patina version phase' uses the old Phase.Milestone model.");
+    eprintln!("   Use spec milestones with 'patina version milestone' instead.");
+    eprintln!("   See: layer/surface/build/feat/v1-release/SPEC.md\n");
+
     let mut state = load_or_create_state()?;
     let old_version = state.version.current.clone();
 
@@ -463,7 +663,14 @@ pub fn bump_phase(name: &str, no_tag: bool, dry_run: bool) -> Result<()> {
 }
 
 /// Initialize version tracking
+///
+/// DEPRECATED: Creates .patina/version.toml which is no longer used.
+/// Version now comes from Cargo.toml, milestones from specs.
 pub fn init_version(phase: u32, phase_name: &str, milestone: u32) -> Result<()> {
+    eprintln!("⚠️  DEPRECATED: 'patina version init' creates .patina/version.toml which is no longer used.");
+    eprintln!("   Version is now read from Cargo.toml, milestones from specs.");
+    eprintln!("   See: layer/surface/build/feat/v1-release/SPEC.md\n");
+
     let version_path = Path::new(".patina/version.toml");
 
     if version_path.exists() {
@@ -505,23 +712,59 @@ pub fn init_version(phase: u32, phase_name: &str, milestone: u32) -> Result<()> 
 // Output Helpers
 // ============================================================================
 
-fn output_json(components: bool) -> Result<()> {
-    let state = load_or_create_state()?;
+/// Print a milestone in human-readable format
+fn print_milestone(milestone: &SpecMilestone) {
+    let status_icon = match milestone.status.as_str() {
+        "complete" => "✓",
+        "in_progress" => "→",
+        _ => "○",
+    };
+    println!(
+        "Next: v{} {} {} ({})",
+        milestone.version, status_icon, milestone.name, milestone.spec_id
+    );
+}
 
+/// Warn if milestone version doesn't make sense relative to Cargo.toml version
+fn check_version_coherence(milestone: &SpecMilestone) {
+    // Parse versions for comparison (simple semver check)
+    let cargo_parts: Vec<u32> = CORE_VERSION
+        .split('.')
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    let milestone_parts: Vec<u32> = milestone
+        .version
+        .split('.')
+        .filter_map(|s| s.parse().ok())
+        .collect();
+
+    if cargo_parts.len() >= 3 && milestone_parts.len() >= 3 {
+        // Milestone should be > current version (it's "next")
+        let cargo_tuple = (cargo_parts[0], cargo_parts[1], cargo_parts[2]);
+        let milestone_tuple = (milestone_parts[0], milestone_parts[1], milestone_parts[2]);
+
+        if milestone_tuple <= cargo_tuple {
+            eprintln!(
+                "⚠️  Milestone v{} <= Cargo.toml v{} (stale spec or already released?)",
+                milestone.version, CORE_VERSION
+            );
+        }
+    }
+}
+
+fn output_json(components: bool) -> Result<()> {
+    // Cargo.toml is the sole source of truth for version
     let mut version_info = json!({
-        "patina": CORE_VERSION,
-        "phase": state.version.phase,
-        "phase_name": state.version.phase_name,
-        "milestone": state.version.milestone,
+        "version": CORE_VERSION,
     });
 
-    // Add current spec milestone from index (if available)
+    // Add current spec milestone from index (what we're working toward)
     if let Some(milestone) = get_current_spec_milestone() {
-        version_info["spec_milestone"] = json!({
-            "spec_id": milestone.spec_id,
+        version_info["next"] = json!({
             "version": milestone.version,
             "name": milestone.name,
             "status": milestone.status,
+            "spec": milestone.spec_id,
         });
     }
 
@@ -535,30 +778,38 @@ fn output_json(components: bool) -> Result<()> {
 }
 
 fn output_human(components: bool) -> Result<()> {
-    let state_result = load_version_state();
-
-    // Always show core version
+    // Cargo.toml is the sole source of truth for version
     println!("patina {CORE_VERSION}");
 
-    // Show phase/milestone if version.toml exists
-    if let Ok(state) = state_result {
-        println!(
-            "Phase {}: {} (milestone {})",
-            state.version.phase, state.version.phase_name, state.version.milestone
-        );
-    }
-
-    // Show current spec milestone from index (if available)
-    if let Some(milestone) = get_current_spec_milestone() {
-        let status_icon = match milestone.status.as_str() {
-            "complete" => "✓",
-            "in_progress" => "→",
-            _ => "○",
-        };
-        println!(
-            "Spec: {} v{} {} {}",
-            milestone.spec_id, milestone.version, status_icon, milestone.name
-        );
+    // Show current spec milestone from index (what we're working toward)
+    match get_active_milestones() {
+        MilestoneQueryResult::NoDatabase => {
+            eprintln!("  (no index - run 'patina scrape layer')");
+        }
+        MilestoneQueryResult::QueryFailed(e) => {
+            eprintln!("  (index error: {} - try 'patina scrape layer --full')", e);
+        }
+        MilestoneQueryResult::NoActiveMilestones => {
+            // No warning needed - just no active work tracked
+        }
+        MilestoneQueryResult::Single(milestone) => {
+            print_milestone(&milestone);
+            check_version_coherence(&milestone);
+        }
+        MilestoneQueryResult::Multiple(milestones) => {
+            eprintln!(
+                "⚠️  Multiple specs have active milestones ({} specs) - clean up stale entries",
+                milestones.len()
+            );
+            for m in &milestones {
+                eprintln!("    - {} @ {}", m.spec_id, m.version);
+            }
+            // Show the highest version one as "current"
+            if let Some(milestone) = milestones.last() {
+                print_milestone(milestone);
+                check_version_coherence(milestone);
+            }
+        }
     }
 
     if components {
@@ -866,69 +1117,179 @@ pub struct SpecMilestone {
     pub status: String,
 }
 
-/// Get current milestone from scraped spec index
-///
-/// Looks for specs with current_milestone set and returns the matching milestone info.
-fn get_current_spec_milestone() -> Option<SpecMilestone> {
-    let db_path = Path::new(".patina/local/data/patina.db");
-    if !db_path.exists() {
-        return None;
-    }
-
-    let conn = Connection::open(db_path).ok()?;
-
-    // Find patterns with current_milestone set and join with milestones table
-    let mut stmt = conn
-        .prepare(
-            r#"
-            SELECT m.spec_id, m.version, m.name, m.status
-            FROM patterns p
-            JOIN milestones m ON p.id = m.spec_id AND p.current_milestone = m.version
-            WHERE p.current_milestone IS NOT NULL
-            LIMIT 1
-            "#,
-        )
-        .ok()?;
-
-    stmt.query_row([], |row| {
-        Ok(SpecMilestone {
-            spec_id: row.get(0)?,
-            version: row.get(1)?,
-            name: row.get(2)?,
-            status: row.get(3)?,
-        })
-    })
-    .ok()
+/// Result of querying active milestones
+#[derive(Debug)]
+pub enum MilestoneQueryResult {
+    /// No database found
+    NoDatabase,
+    /// Database exists but query failed (schema issue?)
+    QueryFailed(String),
+    /// No specs have current_milestone set
+    NoActiveMilestones,
+    /// Single active milestone (ideal state)
+    Single(SpecMilestone),
+    /// Multiple specs have current_milestone (needs cleanup)
+    Multiple(Vec<SpecMilestone>),
 }
 
-/// Get all milestones for a spec
-#[allow(dead_code)]
-fn get_spec_milestones(spec_id: &str) -> Vec<SpecMilestone> {
+/// Get all active milestones from scraped spec index
+///
+/// Returns structured result distinguishing between:
+/// - No database (not scraped yet)
+/// - Query failure (schema issues)
+/// - No active milestones
+/// - Single milestone (normal)
+/// - Multiple milestones (needs attention)
+fn get_active_milestones() -> MilestoneQueryResult {
     let db_path = Path::new(".patina/local/data/patina.db");
     if !db_path.exists() {
-        return Vec::new();
+        return MilestoneQueryResult::NoDatabase;
     }
 
     let conn = match Connection::open(db_path) {
         Ok(c) => c,
-        Err(_) => return Vec::new(),
+        Err(e) => return MilestoneQueryResult::QueryFailed(e.to_string()),
     };
 
+    // Find ALL patterns with current_milestone set
     let mut stmt = match conn.prepare(
-        "SELECT spec_id, version, name, status FROM milestones WHERE spec_id = ?1 ORDER BY version",
+        r#"
+        SELECT m.spec_id, m.version, m.name, m.status
+        FROM patterns p
+        JOIN milestones m ON p.id = m.spec_id AND p.current_milestone = m.version
+        WHERE p.current_milestone IS NOT NULL
+        ORDER BY m.version
+        "#,
     ) {
         Ok(s) => s,
-        Err(_) => return Vec::new(),
+        Err(e) => return MilestoneQueryResult::QueryFailed(e.to_string()),
     };
 
-    stmt.query_map([spec_id], |row| {
+    let milestones: Vec<SpecMilestone> = match stmt.query_map([], |row| {
         Ok(SpecMilestone {
             spec_id: row.get(0)?,
             version: row.get(1)?,
             name: row.get(2)?,
             status: row.get(3)?,
         })
-    })
-    .map(|rows| rows.filter_map(|r| r.ok()).collect())
-    .unwrap_or_default()
+    }) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(e) => return MilestoneQueryResult::QueryFailed(e.to_string()),
+    };
+
+    match milestones.len() {
+        0 => MilestoneQueryResult::NoActiveMilestones,
+        1 => MilestoneQueryResult::Single(milestones.into_iter().next().unwrap()),
+        _ => MilestoneQueryResult::Multiple(milestones),
+    }
+}
+
+/// Get current milestone from scraped spec index (simple wrapper for backward compat)
+fn get_current_spec_milestone() -> Option<SpecMilestone> {
+    match get_active_milestones() {
+        MilestoneQueryResult::Single(m) => Some(m),
+        MilestoneQueryResult::Multiple(mut v) => v.pop(), // return last (highest version)
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_spec_frontmatter_parse_roundtrip() {
+        let yaml = r#"---
+type: feat
+id: v1-release
+status: in_progress
+created: 2026-01-27
+updated: 2026-01-29
+sessions:
+  origin: 20260127-085434
+  work: [20260129-074742]
+related:
+  - spec/go-public
+  - spec-epistemic-layer
+milestones:
+  - version: "0.9.1"
+    name: Version & spec system alignment
+    status: in_progress
+  - version: "0.9.2"
+    name: Epistemic E4
+    status: pending
+current_milestone: "0.9.1"
+---
+
+# feat: v1.0 Release
+
+Body content here.
+"#;
+
+        // Parse
+        let (frontmatter, body) = parse_spec_file(yaml).expect("should parse");
+
+        assert_eq!(frontmatter.id, "v1-release");
+        assert_eq!(frontmatter.r#type, "feat");
+        assert_eq!(frontmatter.milestones.len(), 2);
+        assert_eq!(frontmatter.milestones[0].version, "0.9.1");
+        assert_eq!(frontmatter.milestones[0].status, "in_progress");
+        assert_eq!(frontmatter.current_milestone, Some("0.9.1".to_string()));
+        assert!(body.contains("# feat: v1.0 Release"));
+
+        // Serialize back
+        let output = serialize_spec_file(&frontmatter, &body).expect("should serialize");
+
+        // Parse again to verify round-trip
+        let (fm2, body2) = parse_spec_file(&output).expect("should parse again");
+        assert_eq!(fm2.id, frontmatter.id);
+        assert_eq!(fm2.milestones.len(), frontmatter.milestones.len());
+        assert_eq!(body2.trim(), body.trim());
+    }
+
+    #[test]
+    fn test_sessions_list_format() {
+        let yaml = r#"---
+type: refactor
+id: test-spec
+status: in_progress
+sessions: [20260108-200725, 20260109-063849]
+---
+
+# Test
+"#;
+
+        let (frontmatter, _) = parse_spec_file(yaml).expect("should parse list format");
+        match frontmatter.sessions {
+            Some(Sessions::List(list)) => {
+                assert_eq!(list.len(), 2);
+                assert_eq!(list[0], "20260108-200725");
+            }
+            _ => panic!("Expected Sessions::List"),
+        }
+    }
+
+    #[test]
+    fn test_sessions_structured_format() {
+        let yaml = r#"---
+type: feat
+id: test-spec
+status: in_progress
+sessions:
+  origin: 20260127-085434
+  work: [20260129-074742]
+---
+
+# Test
+"#;
+
+        let (frontmatter, _) = parse_spec_file(yaml).expect("should parse structured format");
+        match frontmatter.sessions {
+            Some(Sessions::Structured { origin, work }) => {
+                assert_eq!(origin, Some("20260127-085434".to_string()));
+                assert_eq!(work.len(), 1);
+            }
+            _ => panic!("Expected Sessions::Structured"),
+        }
+    }
 }

@@ -111,7 +111,7 @@ enum Commands {
         json: bool,
     },
 
-    /// Manage project versioning (Phase.Milestone model)
+    /// Manage project versioning (semver: MAJOR.MINOR.PATCH)
     Version {
         #[command(subcommand)]
         command: Option<commands::version::VersionCommands>,
@@ -174,6 +174,14 @@ enum Commands {
         #[arg(long, conflicts_with = "command")]
         file: Option<String>,
 
+        /// Belief ID for grounding queries — find nearest code/commits/sessions (E4.6a)
+        #[arg(long, conflicts_with_all = ["command", "file"])]
+        belief: Option<String>,
+
+        /// Filter results by content type (used with --belief): code, commits, sessions, patterns, beliefs
+        #[arg(long, value_name = "TYPE")]
+        content_type: Option<String>,
+
         /// Maximum number of results (default: 10)
         #[arg(long, default_value = "10")]
         limit: usize,
@@ -213,6 +221,14 @@ enum Commands {
         /// Show detailed oracle contributions for each result
         #[arg(long)]
         explain: bool,
+
+        /// Force lexical (FTS5) search mode, bypassing auto-detection
+        #[arg(long, conflicts_with = "command")]
+        lexical: bool,
+
+        /// Show belief impact for code results — which beliefs may be affected (E4.6a)
+        #[arg(long)]
+        impact: bool,
     },
 
     /// Evaluate retrieval quality across dimensions
@@ -303,13 +319,13 @@ enum Commands {
         json: bool,
     },
 
-    /// Start the Mother daemon (Ollama-style HTTP server)
+    /// Start the Mother daemon (default: Unix socket, opt-in: TCP)
     Serve {
-        /// Host to bind to (default: 127.0.0.1, use 0.0.0.0 for container access)
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
+        /// Bind to TCP host (enables network access; default: UDS only)
+        #[arg(long)]
+        host: Option<String>,
 
-        /// Port to bind to
+        /// TCP port (only used with --host)
         #[arg(long, default_value = "50051")]
         port: u16,
 
@@ -337,6 +353,24 @@ enum Commands {
         /// Output as JSON instead of markdown
         #[arg(long)]
         json: bool,
+    },
+
+    /// Manage development sessions (start, update, note, end)
+    Session {
+        #[command(subcommand)]
+        command: commands::session::SessionCommands,
+    },
+
+    /// Audit epistemic beliefs — show use/truth metrics
+    Belief {
+        #[command(subcommand)]
+        command: Option<commands::belief::BeliefCommands>,
+    },
+
+    /// Manage spec lifecycle (archive completed specs)
+    Spec {
+        #[command(subcommand)]
+        command: commands::spec::SpecCommands,
     },
 
     /// Query codebase structure (modules, imports, call graph)
@@ -882,6 +916,8 @@ fn main() -> Result<()> {
             command,
             query,
             file,
+            belief,
+            content_type,
             limit,
             min_score,
             dimension,
@@ -892,6 +928,8 @@ fn main() -> Result<()> {
             no_persona,
             hybrid,
             explain,
+            lexical,
+            impact,
         }) => {
             // Handle subcommands first
             if let Some(subcmd) = command {
@@ -936,7 +974,11 @@ fn main() -> Result<()> {
                     include_persona: !no_persona,
                     hybrid,
                     explain,
+                    lexical,
                     routing: routing_strategy,
+                    belief,
+                    content_type,
+                    impact,
                 };
                 commands::scry::execute(query.as_deref(), options)?;
             }
@@ -1052,6 +1094,17 @@ fn main() -> Result<()> {
                 commands::version::execute(json, components)?;
             }
         }
+        Some(Commands::Session { command }) => {
+            commands::session::execute(command)?;
+        }
+        Some(Commands::Belief { command }) => {
+            commands::belief::execute(command)?;
+        }
+        Some(Commands::Spec { command }) => match command {
+            commands::spec::SpecCommands::Archive { id, dry_run } => {
+                commands::spec::archive(&id, dry_run)?;
+            }
+        },
         Some(Commands::Serve { host, port, mcp }) => {
             if mcp {
                 mcp::run_mcp_server()?;

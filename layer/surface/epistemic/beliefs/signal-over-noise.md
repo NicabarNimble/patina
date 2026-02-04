@@ -5,12 +5,6 @@ persona: architect
 facets: [quality, contribution-evaluation, anti-slop]
 confidence:
   score: 0.82
-  signals:
-    evidence: 0.87
-    source_reliability: 0.82
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: medium
 status: active
 extracted: 2026-01-23

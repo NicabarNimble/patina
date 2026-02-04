@@ -1,16 +1,16 @@
 Add a human note to the current Patina session with Git context:
 
-1. Run the session note script with your insight:
-   - Execute: `.claude/bin/session-note.sh "$ARGUMENTS"`
-   - Example: `.claude/bin/session-note.sh "discovered dual session architecture is key"`
+1. Run the session note command with your insight:
+   - Execute: `patina session note "$ARGUMENTS"`
+   - Example: `patina session note "discovered dual session architecture is key"`
 
-2. The script will add Git context [branch@sha] to the note
+2. The command will add Git context [branch@sha] to the note
 
 3. Confirm the note was added:
    - Say: "Note added [branch@sha]: [what user said]"
 
 4. If the note contains keywords (breakthrough, discovered, solved, fixed):
-   - The script will suggest a checkpoint commit
+   - The command will suggest a checkpoint commit
    - Consider: `git commit -am "checkpoint: [discovery]"`
 
 5. Purpose of Git-linked notes:

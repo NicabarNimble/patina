@@ -54,28 +54,21 @@ fn sync_claude_adapter(dry_run: bool) -> Result<()> {
     // 3. Update files if needed
 
     let files_to_sync = vec![
-        ("resources/claude/session-start.sh", "Session start script"),
         (
-            "resources/claude/session-update.sh",
-            "Session update script",
-        ),
-        ("resources/claude/session-end.sh", "Session end script"),
-        ("resources/claude/session-note.sh", "Session note script"),
-        (
-            "resources/claude/commands/session-start",
-            "Session start command",
+            "resources/claude/session-start.md",
+            "Session start skill definition",
         ),
         (
-            "resources/claude/commands/session-update",
-            "Session update command",
+            "resources/claude/session-update.md",
+            "Session update skill definition",
         ),
         (
-            "resources/claude/commands/session-end",
-            "Session end command",
+            "resources/claude/session-end.md",
+            "Session end skill definition",
         ),
         (
-            "resources/claude/commands/session-note",
-            "Session note command",
+            "resources/claude/session-note.md",
+            "Session note skill definition",
         ),
     ];
 

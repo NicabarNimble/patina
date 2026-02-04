@@ -2,6 +2,9 @@
 name = "patina-metal"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
+description = "Tree-sitter based code parsing for patina-ai"
+repository = "https://github.com/NicabarNimble/patina"
 
 [dependencies]
 tree-sitter = "0.24"

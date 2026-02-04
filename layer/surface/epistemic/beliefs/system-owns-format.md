@@ -5,12 +5,6 @@ persona: architect
 facets: [architecture, llm, tooling]
 confidence:
   score: 0.80
-  signals:
-    evidence: 0.85
-    source_reliability: 0.80
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: medium
 status: active
 extracted: 2026-01-16
@@ -28,6 +22,16 @@ For deterministic output, the system should own the format while the LLM provide
 ## Evidence
 
 - [[session-20260116-095954]]: E2 design principle - LLM provides args to script, script writes markdown with correct format (weight: 0.85)
+
+## Verification
+
+```verify type="sql" label="Validation scripts tracked in git" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE '%scripts/create-belief%'
+```
+
+```verify type="sql" label="Grounding reaches belief scraper" expect=">= 1"
+SELECT COUNT(*) FROM belief_code_reach WHERE belief_id = 'system-owns-format' AND file_path LIKE '%beliefs%.rs'
+```
 
 ## Supports
 

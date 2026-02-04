@@ -14,11 +14,11 @@ use patina::mother;
 
 use crate::commands::persona;
 
-use internal::enrichment::truncate_content;
+use internal::enrichment::{find_belief_impact, truncate_content};
 use internal::hybrid::execute_hybrid;
 use internal::logging::log_scry_query;
 use internal::routing::{execute_all_repos, execute_graph_routing, execute_via_mother};
-use internal::search::{is_lexical_query, scry_file};
+use internal::search::{is_lexical_query, scry_belief, scry_file};
 
 // Re-export routing strategy for CLI
 pub use internal::routing::RoutingStrategy;
@@ -29,6 +29,7 @@ pub use internal::subcommands::{
 };
 
 // Re-export search functions for external use
+pub use internal::search::scry_belief as scry_belief_fn;
 pub use internal::search::{scry, scry_lexical, scry_text};
 
 /// Result from a scry query
@@ -55,8 +56,16 @@ pub struct ScryOptions {
     pub include_persona: bool,
     pub hybrid: bool,
     pub explain: bool,
+    /// Force lexical (FTS5) search mode, bypassing auto-detection heuristics
+    pub lexical: bool,
     /// Routing strategy for cross-project queries (default: All)
     pub routing: RoutingStrategy,
+    /// Belief ID for belief-grounding queries (E4.6a)
+    pub belief: Option<String>,
+    /// Content type filter for belief queries: code, commits, sessions, patterns, beliefs
+    pub content_type: Option<String>,
+    /// Show belief impact for code results — which beliefs are semantically close (E4.6a)
+    pub impact: bool,
 }
 
 impl Default for ScryOptions {
@@ -72,7 +81,11 @@ impl Default for ScryOptions {
             include_persona: true, // Include persona by default
             hybrid: false,
             explain: false,
+            lexical: false,
             routing: RoutingStrategy::default(),
+            belief: None,
+            content_type: None,
+            impact: false,
         }
     }
 }
@@ -116,16 +129,28 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     println!();
 
     // Determine query mode
-    let mut results = match (&options.file, query) {
-        (Some(file), _) => {
+    let mut results = match (&options.belief, &options.file, query) {
+        (Some(belief_id), _, _) => {
+            println!("Belief: {}", belief_id);
+            if let Some(ref ct) = options.content_type {
+                println!("Filter: {} only", ct);
+            }
+            println!();
+            scry_belief(belief_id, &options)?
+        }
+        (None, Some(file), _) => {
             println!("File: {}\n", file);
             scry_file(file, &options)?
         }
-        (None, Some(q)) => {
+        (None, None, Some(q)) => {
             println!("Query: \"{}\"\n", q);
 
-            // If dimension explicitly specified, use vector search (skip lexical auto-detect)
-            if options.dimension.is_some() {
+            if options.lexical {
+                // Explicit --lexical flag forces FTS5 mode
+                println!("Mode: Lexical (FTS5) [forced]\n");
+                internal::search::scry_lexical(q, &options)?
+            } else if options.dimension.is_some() {
+                // If dimension explicitly specified, use vector search (skip lexical auto-detect)
                 println!(
                     "Mode: Vector ({} dimension)\n",
                     options.dimension.as_deref().unwrap()
@@ -140,8 +165,8 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
                 scry_text(q, &options)?
             }
         }
-        (None, None) => {
-            anyhow::bail!("Either a query text or --file must be provided");
+        (None, None, None) => {
+            anyhow::bail!("Either a query text, --file, or --belief must be provided");
         }
     };
 
@@ -173,7 +198,9 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
 
     // Log query for feedback loop (Phase 3)
     let query_id = if let Some(q) = query {
-        let mode = if options.dimension.is_some() {
+        let mode = if options.lexical {
+            "lexical"
+        } else if options.dimension.is_some() {
             options.dimension.as_deref().unwrap_or("semantic")
         } else if is_lexical_query(q) {
             "lexical"
@@ -193,6 +220,13 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
     println!("Found {} results:\n", results.len());
     println!("{}", "─".repeat(60));
 
+    // E4.6a step 4: Compute belief impact for code results
+    let impact_map = if options.impact {
+        find_belief_impact(&results).unwrap_or_default()
+    } else {
+        Default::default()
+    };
+
     for (i, result) in results.iter().enumerate() {
         let timestamp_display = if result.timestamp.is_empty() {
             String::new()
@@ -208,6 +242,15 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
             timestamp_display
         );
         println!("    {}", truncate_content(&result.content, 200));
+
+        // Show belief impact for code results
+        if let Some(beliefs) = impact_map.get(&result.source_id) {
+            let belief_strs: Vec<String> = beliefs
+                .iter()
+                .map(|(id, score)| format!("{} ({:.2})", id, score))
+                .collect();
+            println!("    beliefs: {}", belief_strs.join(", "));
+        }
     }
 
     println!("\n{}", "─".repeat(60));

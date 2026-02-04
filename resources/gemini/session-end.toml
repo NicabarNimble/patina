@@ -2,11 +2,10 @@ description = "End and archive the current session"
 prompt = """
 End and archive the current Patina session:
 
-1. Execute the session end script:
-   `.gemini/bin/session-end.sh`
+1. Execute the session end command:
+   `patina session end`
 
 2. The session has been archived to:
-   - `.gemini/context/sessions/[session-id].md`
    - `layer/sessions/[session-id].md`
 
 3. `last-session.md` has been updated with a pointer to this session

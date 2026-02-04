@@ -1,13 +1,13 @@
 Update the current Patina session with Git-aware progress tracking:
 
-1. Execute the session update script:
-   `.opencode/bin/session-update.sh`
+1. Execute the session update command:
+   `patina session update`
 
-2. The script will show what time period to document (e.g., "14:15 → 14:45")
+2. The command will show what time period to document (e.g., "14:15 → 14:45")
 
 3. Note the Git status shown (uncommitted changes, last commit time)
 
-4. Read `.opencode/context/active-session.md` and find the new update section
+4. Read `.patina/local/active-session.md` and find the new update section
 
 5. Fill in the update section with what happened during that time period:
    - **Work completed**: Code written, files modified, problems solved
@@ -24,7 +24,7 @@ Update the current Patina session with Git-aware progress tracking:
 
    If yes, suggest to user: "This sounds like a belief worth capturing: '{statement}'. Should I create it?"
 
-7. If the script suggests a commit (30+ minutes or 100+ lines changed), consider:
+7. If the command suggests a commit (30+ minutes or 100+ lines changed), consider:
    - Creating a checkpoint: `git commit -am "checkpoint: [description]"`
    - Breaking large changes into smaller logical commits
 

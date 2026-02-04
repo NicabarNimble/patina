@@ -1,8 +1,37 @@
 # Build Recipe
 
-**Status:** Architectural alignment - internal code quality meets core values.
+**Status:** v1.0 roadmap crystallized. Three pillars: epistemic, mother, distribution.
 
-**Recent:** E3 complete (2026-01-22) - beliefs now indexed and queryable via scry (23 beliefs, ID offset 4B). New exploration: `explore/anti-slop` - signal over noise thesis, linkage as quality measure. Commit enrichment bug fixed - scry returns `git.commit` results. Spec system reorg ongoing - new folder format, 46 archived specs.
+**Version:** 0.9.x patches → 0.10.0 (epistemic complete) → MINOR milestones → 1.0.0
+
+**Recent:** v0.10.0 (2026-02-02). Epistemic layer complete — 48 beliefs, E4-E4.6c done, multi-hop grounding (100% precision, 86% recall), forge semantic integration (81 events).
+
+---
+
+## v1.0 Roadmap
+
+**Spec:** [feat/v1-release/SPEC.md](../surface/build/feat/v1-release/SPEC.md)
+
+| Pillar | Current | Target |
+|--------|---------|--------|
+| **Epistemic** | **COMPLETE** (v0.10.0) — 48 beliefs, verification, grounding, forge | E5/E6 deferred to mother scope |
+| **Mother** | Registry + serve daemon | Federated query, persona fusion |
+| **Distribution** | 52MB fat binary | Slim binary, `patina setup`, Homebrew |
+
+**Milestones:**
+```
+0.9.0  ✓ Public release (fat binary)
+0.9.1  ✓ Version/spec system alignment
+0.9.2  ✓ Session system & adapter parity
+0.9.3  ✓ Fix: session 0.9.2 hardening
+0.9.4  ✓ Fix: spec archive command, belief verification
+0.10.0 ✓ Epistemic layer complete (E4-E4.6c)
+0.11.0 - Mother delivery + federation
+0.12.0 - Dynamic ONNX loading
+0.13.0 - WASM grammars
+0.14.0 - GitHub releases + Homebrew
+1.0.0  - All pillars complete
+```
 
 ---
 
@@ -20,7 +49,7 @@ A local-first RAG network: portable project knowledge + personal mother.
 
 ## The Architecture
 
-**Spec:** [spec-pipeline.md](../surface/build/spec-pipeline.md)
+**Spec:** [reference/spec-pipeline.md](../surface/build/reference/spec-pipeline.md)
 
 ```
                             GIT (source of truth)
@@ -90,21 +119,22 @@ Run regularly to catch regressions.
 
 ### Active
 
+**v1.0 Pillars:**
+- [feat/v1-release/SPEC.md](../surface/build/feat/v1-release/SPEC.md) - **Master roadmap:** Three pillars, patch versioning
+- ~~feat/epistemic-layer~~ - **Pillar 1: COMPLETE** (v0.10.0) — 48 beliefs, E4-E4.6c, archived
+- [feat/mother/SPEC.md](../surface/build/feat/mother/SPEC.md) - **Pillar 2:** Federated query, persona fusion
+
 **Features:**
+- [feat/spec-drift-detection/SPEC.md](../surface/build/feat/spec-drift-detection/SPEC.md) - **Building:** Detect stale specs before LLM reads them (temporal drift, status contradiction, assertions)
 - [feat/surface-layer/SPEC.md](../surface/build/feat/surface-layer/SPEC.md) - **Design:** Distillation layer with success metrics, `patina surface` command
 
 **In Progress:**
-- [spec-epistemic-layer.md](../surface/build/spec-epistemic-layer.md) - **E0-E3 done:** Belief system validated, beliefs indexed in scry (23 total)
-- [spec-mother.md](../surface/build/spec-mother.md) - **Phase 1 next:** Federated query (vocabulary gap resolved)
-- [spec-ref-repo-semantic.md](../surface/build/spec-ref-repo-semantic.md) - **Phase 1-2 done:** Commit-based training working
-- [spec-database-identity.md](../surface/build/spec-database-identity.md) - **Phase 1 done:** UIDs everywhere, Phase 2-3 remain
+- [feat/ref-repo-semantic/SPEC.md](../surface/build/feat/ref-repo-semantic/SPEC.md) - **Phase 1-2 done:** Commit-based training working
+- [refactor/database-identity/SPEC.md](../surface/build/refactor/database-identity/SPEC.md) - **Phase 1 done:** UIDs everywhere, Phase 2-3 remain
 
 **Refactors:**
 - [refactor/spec-system/SPEC.md](../surface/build/refactor/spec-system/SPEC.md) - **In Progress:** New folder-based spec format
-- [refactor/reports-layer/SPEC.md](../surface/build/refactor/reports-layer/SPEC.md) - **In Progress:** Unify eval/reports under `layer/surface/reports/`
-
-**Ready:**
-- [spec-launcher-polish.md](../surface/build/spec-launcher-polish.md) - **Ready:** MCP auto-config on launch
+- [refactor/security-hardening/SPEC.md](../surface/build/refactor/security-hardening/SPEC.md) - **Ready:** HTTP daemon auth, file permissions, model integrity (14 findings, 3 phases)
 
 **Exploration:**
 - [explore/anti-slop/SPEC.md](../surface/build/explore/anti-slop/SPEC.md) - **Active:** Signal over noise, linkage as quality measure
@@ -114,15 +144,35 @@ Run regularly to catch regressions.
 
 ## Current Focus
 
-### Epistemic Layer (E0-E3 Complete)
+### Next: Mother Delivery + Federation (v0.11.0)
 
-**Problem:** Knowledge systems store facts. Patina needs to store **beliefs with justification and revision**.
+**Spec:** [feat/mother-delivery/SPEC.md](../surface/build/feat/mother-delivery/SPEC.md)
 
-**Solution:** Persona-based epistemic belief revision using atomic Markdown propositions. AGM-style operations (expansion, contraction, revision) map to layer lifecycle (surface → core or → dust).
+**Epistemic layer is complete** (v0.10.0). The delivery layer problem (intent→principle matching)
+identified during the A/B eval is a mother-scope concern. Ref repo research ([[openclaw/openclaw]],
+[[steveyegge/gastown]]) informed the delivery design — mandatory recall, two-step retrieval,
+ephemeral injection, all adapted for adapter-agnostic MCP delivery.
 
-**Progress:** E0-E3 complete. 23 beliefs captured and indexed in scry (BELIEF_ID_OFFSET = 4B). Queryable via `patina scry "what do we believe about X"`. E4 (extraction automation) next.
+**6 design changes (D0-D5):**
+- D0: Unified search — QueryEngine as default CLI path (foundation)
+- D1: Beliefs as default search channel (BeliefOracle in every query) — highest impact
+- D2: Context as dynamic briefing (beliefs + recall directive in MCP response)
+- D3: Two-step retrieval (snippets by default, detail on demand)
+- D4: Routing simplified to graph-only (daemon = transport, "All" removed)
+- ~~D5: Mother naming cleanup~~ ✅ Complete (verified 2026-02-03)
 
-**Spec:** [spec-epistemic-layer.md](../surface/build/spec-epistemic-layer.md)
+**Measurement target:** Re-run task-oriented A/B eval, target delta ≥ 0.0 (stretch: +0.5).
+
+**Priority 2: Spec drift detection** — Belief `stale-context-is-hostile-context` identifies the
+problem. Spec exists at `feat/spec-drift-detection/SPEC.md`.
+
+### Epistemic Layer — COMPLETE (v0.10.0, archived)
+
+48 beliefs, 25 verification queries, multi-hop code grounding (100% precision, 86% recall),
+forge semantic integration (81 events). A/B eval confirmed belief data valuable; delivery gap
+deferred to mother scope. E4.6b deprioritized, E5/E6 deferred.
+
+**Archived:** `spec/epistemic-layer` (git tag)
 
 ### Signal Over Noise (Exploration)
 
@@ -166,9 +216,9 @@ Run regularly to catch regressions.
 
 Living documentation (not phased work):
 
-- [spec-architectural-alignment.md](../surface/build/spec-architectural-alignment.md) - Command/library alignment matrices
-- [spec-pipeline.md](../surface/build/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
-- [spec-assay.md](../surface/build/spec-assay.md) - Structural queries + signals
+- [reference/spec-architectural-alignment.md](../surface/build/reference/spec-architectural-alignment.md) - Command/library alignment matrices
+- [reference/spec-pipeline.md](../surface/build/reference/spec-pipeline.md) - Pipeline architecture (scrape → oxidize/assay → scry)
+- [reference/spec-assay.md](../surface/build/reference/spec-assay.md) - Structural queries + signals
 
 ### Deferred
 
@@ -219,6 +269,13 @@ Completed specs preserved via `git show spec/<name>:path/to/spec.md`:
 - `spec/mcp-retrieval-polish` - MCP tool rename, temporal oracle, hybrid mode
 - `spec/agentic-rag` - Oracle abstraction, hybrid retrieval, MCP server
 
+- `spec/session-092-hardening` - fix: Session System 0.9.2 Hardening (2026-02-02)
+- `spec/reports-layer` - refactor: Reports Layer (2026-02-02)
+- `spec/version-semver-alignment` - refactor: Align Version Model with Semver Convention (2026-02-02)
+- `spec/verification-module-split` - refactor: Split verification.rs to Follow dependable-rust (2026-02-02)
+- `spec/spec-archive-on-complete` - fix: Archive Specs on Completion (2026-02-02)
+- `spec/belief-verification` - feat: Belief Verification — Connecting Beliefs to Their Ingredients (2026-02-02)
+- `spec/epistemic-layer` - feat: Epistemic Markdown Layer (2026-02-02)
 Full list: `git tag -l 'spec/*'`
 
 ---
@@ -236,4 +293,4 @@ Completed specs preserved via git tags. View with: `git show spec/<name>:layer/s
 - `spec/remove-neuro-symbolic-debt` - Prolog removal (~2660 lines)
 - `spec/init-hardening` - Skeleton-only init, adapter refresh/doctor
 
-**All tags:** `git tag -l 'spec/*'` (46 archived specs)
+**All tags:** `git tag -l 'spec/*'` (53 archived specs)

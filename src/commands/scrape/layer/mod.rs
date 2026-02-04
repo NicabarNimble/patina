@@ -423,24 +423,22 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
 
     let mut processed_count = 0;
     let mut skipped = 0;
+    let mut current_file_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for path in &pattern_files {
-        let id = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
-
-        // Skip if already processed (incremental mode)
-        if !full && processed.contains(&id) {
-            skipped += 1;
-            continue;
-        }
-
         match parse_pattern_file(path) {
             Ok(pattern) => {
+                // Track the frontmatter ID (not file stem) for pruning
+                current_file_ids.insert(pattern.id.clone());
+
+                // Skip if already processed (incremental mode)
+                if !full && processed.contains(&pattern.id) {
+                    skipped += 1;
+                    continue;
+                }
+
                 if let Err(e) = insert_pattern(&conn, &pattern) {
-                    eprintln!("  Warning: failed to insert {}: {}", id, e);
+                    eprintln!("  Warning: failed to insert {}: {}", pattern.id, e);
                 } else {
                     processed_count += 1;
                 }
@@ -455,6 +453,34 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         "  Processed {} patterns ({} skipped)",
         processed_count, skipped
     );
+
+    // Prune stale entries: delete DB entries for IDs that no longer exist on disk
+    let file_ids = current_file_ids;
+
+    let mut stmt = conn.prepare("SELECT id FROM patterns")?;
+    let db_ids: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut pruned = 0;
+    for db_id in &db_ids {
+        if !file_ids.contains(db_id) {
+            // Delete from all related tables
+            conn.execute("DELETE FROM patterns WHERE id = ?1", [db_id])?;
+            conn.execute("DELETE FROM pattern_fts WHERE id = ?1", [db_id])?;
+            conn.execute("DELETE FROM milestones WHERE spec_id = ?1", [db_id])?;
+            conn.execute(
+                "DELETE FROM eventlog WHERE source_id = ?1 AND event_type LIKE 'pattern.%'",
+                [db_id],
+            )?;
+            pruned += 1;
+        }
+    }
+
+    if pruned > 0 {
+        println!("  Pruned {} stale entries", pruned);
+    }
 
     let elapsed = start.elapsed();
     let db_size = std::fs::metadata(db_path)

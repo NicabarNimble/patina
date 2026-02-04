@@ -395,8 +395,14 @@ fn refresh(name: &str, no_commit: bool) -> Result<()> {
 
         let refs: Vec<&str> = files_to_add.iter().map(|s| s.as_str()).collect();
         patina::git::add_paths(&refs)?;
-        patina::git::commit(&format!("chore: refresh {} adapter", name))?;
-        println!("✓ Committed adapter refresh");
+
+        // Only commit if there are staged changes (paths may have been gitignored)
+        if patina::git::has_staged_changes()? {
+            patina::git::commit(&format!("chore: refresh {} adapter", name))?;
+            println!("  ✓ Committed adapter refresh");
+        } else {
+            println!("  ℹ No trackable changes to commit (adapter dir may be gitignored)");
+        }
     }
 
     println!("\n✨ {} adapter refreshed successfully!", name);

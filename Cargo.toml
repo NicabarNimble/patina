@@ -5,9 +5,13 @@ resolver = "2"
 
 [package]
 name = "patina-ai"
-version = "0.9.0"
+version = "0.10.1"
 edition = "2021"
 license = "MIT"
+description = "Context orchestration for AI development - captures and evolves patterns over time"
+repository = "https://github.com/NicabarNimble/patina"
+keywords = ["ai", "development", "patterns", "context", "embeddings"]
+categories = ["command-line-utilities", "development-tools"]
 
 [features]
 default = []
@@ -41,8 +45,8 @@ which = "7.0"
 # HTTP client (blocking only - no async)
 reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"], default-features = false }
 
-# HTTP server (blocking - no async, thread-per-request)
-rouille = "3.6"
+# HTTP request parser (zero-copy, zero deps) — blocking microserver
+httparse = "1.10"
 
 # File watching
 notify = "6.1"
@@ -69,7 +73,7 @@ glob = "0.3"
 serde_yaml = "0.9"
 
 # Semantic analysis - moved to patina-metal
-patina-metal = { path = "patina-metal" }
+patina-metal = { version = "0.1.0", path = "patina-metal" }
 walkdir = "2"
 ignore = "0.4"
 
@@ -87,6 +91,9 @@ regex = "1.12.2"
 
 # Secrets v2 - age encryption and macOS Keychain
 age = { version = "0.11", features = ["armor"] }
+sha2 = "0.10"  # ONNX model integrity verification (already in tree via age)
+console = "0.15"  # Masked input for secrets (already in tree)
+zeroize = "1.8"  # Zero key material after use (already in tree via age)
 atty = "0.2"  # TTY detection for interactive prompts
 
 # macOS-only: Keychain integration for Touch ID protected secrets

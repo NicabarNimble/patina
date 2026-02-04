@@ -6,11 +6,11 @@
 //!
 //! # Versioning Model
 //!
-//! Patina uses Phase.Milestone versioning: `MAJOR.PHASE.MILESTONE`
+//! Patina uses semver: `MAJOR.MINOR.PATCH`
 //!
-//! - **MAJOR**: Production-ready declaration (0.x = pre-production)
-//! - **PHASE**: Major development era (new theme = phase bump)
-//! - **MILESTONE**: Significant completion within a phase
+//! - **MAJOR**: Stability commitment (0.x = pre-production, 1.0 = stable)
+//! - **MINOR**: Milestones — new functionality (0.10.0, 0.11.0, ...)
+//! - **PATCH**: Fixes only (0.10.1, 0.10.2, ...)
 //!
 //! # Example
 //!
@@ -20,11 +20,11 @@
 //! // Show current version
 //! version::show(false).expect("Failed to show version");
 //!
-//! // Bump milestone (0.8.1 -> 0.8.2)
+//! // Complete milestone and bump MINOR (0.9.3 -> 0.10.0)
 //! version::milestone("Implemented feature X").expect("Failed to bump milestone");
 //!
-//! // Start new phase (0.8.x -> 0.9.0)
-//! version::phase("Production Ready").expect("Failed to start phase");
+//! // Bump PATCH for fix release (0.10.0 -> 0.10.1)
+//! version::patch("Fix session bugs").expect("Failed to bump patch");
 //! ```
 
 mod internal;
@@ -45,7 +45,7 @@ pub enum VersionCommands {
         components: bool,
     },
 
-    /// Complete current spec milestone and bump version
+    /// Complete current spec milestone and bump MINOR version
     Milestone {
         /// Override description (default: from spec milestone name)
         #[arg(short, long)]
@@ -60,7 +60,21 @@ pub enum VersionCommands {
         dry_run: bool,
     },
 
-    /// Start a new development phase (0.8.x -> 0.9.0)
+    /// Bump PATCH version for a fix release (0.9.2 -> 0.9.3)
+    Patch {
+        /// Description for the fix release
+        description: String,
+
+        /// Skip creating git tag
+        #[arg(long)]
+        no_tag: bool,
+
+        /// Dry run - show what would change without modifying files
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Start a new development phase (DEPRECATED — use milestone)
     Phase {
         /// Name of the new phase
         name: String,
@@ -108,6 +122,11 @@ pub fn execute_subcommand(command: VersionCommands) -> Result<()> {
             no_tag,
             dry_run,
         } => milestone(description.as_deref(), no_tag, dry_run),
+        VersionCommands::Patch {
+            description,
+            no_tag,
+            dry_run,
+        } => patch(&description, no_tag, dry_run),
         VersionCommands::Phase {
             name,
             no_tag,
@@ -131,7 +150,7 @@ pub fn show(json: bool, components: bool) -> Result<()> {
     internal::show_version(json, components)
 }
 
-/// Complete current spec milestone and bump version
+/// Complete current spec milestone and bump MINOR version
 ///
 /// Reads current milestone from spec (via index) and:
 /// - Marks it complete in spec YAML
@@ -147,6 +166,23 @@ pub fn show(json: bool, components: bool) -> Result<()> {
 /// * `dry_run` - Show changes without writing files
 pub fn milestone(description: Option<&str>, no_tag: bool, dry_run: bool) -> Result<()> {
     internal::bump_milestone(description, no_tag, dry_run)
+}
+
+/// Bump PATCH version for a fix release
+///
+/// Increments the patch component of the current version (0.9.2 → 0.9.3):
+/// - Runs safeguard checks (clean tree, not behind remote, tag doesn't exist)
+/// - Updates `Cargo.toml` version field
+/// - Commits the version bump
+/// - Creates annotated git tag (unless `--no-tag`)
+///
+/// # Arguments
+///
+/// * `description` - Description for the fix release
+/// * `no_tag` - Skip creating git tag
+/// * `dry_run` - Show changes without writing files
+pub fn patch(description: &str, no_tag: bool, dry_run: bool) -> Result<()> {
+    internal::bump_patch(description, no_tag, dry_run)
 }
 
 /// Start a new development phase
@@ -192,5 +228,12 @@ mod tests {
             dry_run: true,
         };
         assert!(matches!(milestone, VersionCommands::Milestone { .. }));
+
+        let patch = VersionCommands::Patch {
+            description: "Fix session bugs".to_string(),
+            no_tag: false,
+            dry_run: true,
+        };
+        assert!(matches!(patch, VersionCommands::Patch { .. }));
     }
 }

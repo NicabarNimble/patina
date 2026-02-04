@@ -53,7 +53,7 @@ pub use self::vault::VaultStatus;
 use crate::paths;
 use anyhow::{bail, Result};
 use std::collections::HashMap;
-use std::io::{self, BufRead, Write};
+use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -271,7 +271,10 @@ pub fn run_with_secrets(project_root: Option<&Path>, command: &[String]) -> Resu
     Ok(status.code().unwrap_or(1))
 }
 
-/// Run a command on a remote host via SSH with secrets injected.
+/// Run a command on a remote host via SSH with secrets injected via stdin.
+///
+/// Secrets are piped as `export` statements to a remote `bash -s` shell,
+/// so they never appear in process arguments (invisible to `ps auxe`).
 pub fn run_with_secrets_ssh(
     project_root: Option<&Path>,
     host: &str,
@@ -287,24 +290,54 @@ pub fn run_with_secrets_ssh(
     // Load registries to get env var mappings
     let env_map = load_env_mappings(project_root)?;
 
-    // Build env prefix for SSH
-    let mut env_prefix = String::new();
+    // Build stdin script: export secrets then exec the user's command.
+    // exec replaces the shell so secrets don't linger in the process tree.
+    let mut stdin_script = String::new();
     for (name, value) in &secrets {
         if let Some(env_var) = env_map.get(name) {
-            // Escape single quotes in value for shell
             let escaped_value = value.replace('\'', "'\\''");
-            env_prefix.push_str(&format!("{}='{}' ", env_var, escaped_value));
+            stdin_script.push_str(&format!("export {}='{}'\n", env_var, escaped_value));
         }
     }
+    stdin_script.push_str(&format!("exec {}\n", shell_join(command)));
 
-    println!("✓ Injecting {} secrets via SSH", secrets.len());
+    println!("✓ Injecting {} secrets via SSH (stdin)", secrets.len());
 
-    // Construct remote command with env vars
-    let remote_cmd = format!("{}{}", env_prefix, command.join(" "));
+    // Pipe secrets via stdin to bash -s on the remote host.
+    // bash -s reads commands from stdin — secrets never touch argv.
+    let mut child = Command::new("ssh")
+        .arg(host)
+        .arg("bash")
+        .arg("-s")
+        .stdin(Stdio::piped())
+        .spawn()?;
 
-    let status = Command::new("ssh").arg(host).arg(&remote_cmd).status()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(stdin_script.as_bytes())?;
+        // Drop closes the pipe, sending EOF to remote bash
+    }
+
+    let status = child.wait()?;
 
     Ok(status.code().unwrap_or(1))
+}
+
+/// Join command arguments with proper shell quoting.
+/// Arguments containing shell metacharacters are single-quoted.
+fn shell_join(args: &[String]) -> String {
+    args.iter()
+        .map(|arg| {
+            if arg.is_empty()
+                || arg
+                    .contains(|c: char| c.is_whitespace() || "\"'\\$`!#&|;(){}[]<>?*~".contains(c))
+            {
+                format!("'{}'", arg.replace('\'', "'\\''"))
+            } else {
+                arg.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 // =============================================================================
@@ -325,8 +358,8 @@ pub fn lock_session() -> Result<()> {
 // Identity Management
 // =============================================================================
 
-/// Export the identity (for backup).
-pub fn export_identity() -> Result<String> {
+/// Export the identity (for backup, zeroized on drop).
+pub fn export_identity() -> Result<zeroize::Zeroizing<String>> {
     identity::export_identity()
 }
 
@@ -478,16 +511,14 @@ fn load_env_mappings(project_root: Option<&Path>) -> Result<HashMap<String, Stri
     Ok(mappings)
 }
 
-/// Prompt for a secret value interactively.
+/// Prompt for a secret value interactively (masked, no echo).
 pub fn prompt_for_value(name: &str) -> Result<String> {
-    print!("Value for {}: ", name);
-    io::stdout().flush()?;
+    let term = console::Term::stderr();
+    let value = term
+        .read_secure_line()
+        .map_err(|e| anyhow::anyhow!("Failed to read secret for '{}': {}", name, e))?;
 
-    let stdin = io::stdin();
-    let mut line = String::new();
-    stdin.lock().read_line(&mut line)?;
-
-    Ok(line.trim().to_string())
+    Ok(value.trim().to_string())
 }
 
 #[cfg(test)]

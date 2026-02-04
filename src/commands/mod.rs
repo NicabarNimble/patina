@@ -1,5 +1,6 @@
 pub mod adapter;
 pub mod assay;
+pub mod belief;
 pub mod bench;
 pub mod doctor;
 pub mod eval;
@@ -16,6 +17,8 @@ pub mod scrape;
 pub mod scry;
 pub mod secrets;
 pub mod serve;
+pub mod session;
+pub mod spec;
 pub mod upgrade;
 pub mod version;
 pub mod yolo;

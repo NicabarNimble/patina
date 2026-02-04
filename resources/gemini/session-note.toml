@@ -2,10 +2,10 @@ description = "Add a note to the current session"
 prompt = """
 Add a note to the current Patina session:
 
-1. Execute the session note script:
-   `.gemini/bin/session-note.sh {{args}}`
+1. Execute the session note command:
+   `patina session note "{{args}}"`
 
-2. The note has been added to `.gemini/context/active-session.md`
+2. The note has been added to `.patina/local/active-session.md`
 
 Notes are valuable for capturing insights, decisions, and observations during development.
 """
