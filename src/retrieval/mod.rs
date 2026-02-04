@@ -16,9 +16,11 @@ mod fusion;
 mod intent;
 mod oracle;
 mod oracles;
+pub mod snippet;
 
 pub use engine::{QueryEngine, QueryOptions, RetrievalConfig};
 pub use fusion::FusedResult;
+pub use snippet::snippet;
 
 // Re-export types for MCP JSON serialization and annotations
 #[allow(unused_imports)]

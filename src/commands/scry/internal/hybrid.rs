@@ -118,7 +118,11 @@ pub fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> 
                 }
             }
 
-            println!("   Content: {}", truncate_content(&result.content, 150));
+            if options.full {
+                println!("   Content:\n{}", &result.content);
+            } else {
+                println!("   Content: {}", truncate_content(&result.content, 150));
+            }
         } else {
             // Default concise output with ranks
             let mut contributions_str: String = result
@@ -143,7 +147,11 @@ pub fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> 
                 result.fused_score,
                 contributions_str
             );
-            println!("    {}", truncate_content(&result.content, 200));
+            if options.full {
+                println!("    {}", &result.content);
+            } else {
+                println!("    {}", truncate_content(&result.content, 200));
+            }
         }
     }
 
@@ -151,7 +159,10 @@ pub fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> 
 
     // Show query_id for feedback commands
     if let Some(ref qid) = query_id {
-        println!("\nQuery ID: {} (use with 'scry open/copy/feedback')", qid);
+        println!(
+            "\nQuery ID: {} (use with 'scry --detail {} --rank N' for full content)",
+            qid, qid
+        );
     }
 
     Ok(())

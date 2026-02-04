@@ -218,6 +218,18 @@ enum Commands {
         #[arg(long)]
         impact: bool,
 
+        /// Fetch full content for a single result from a previous query (D3 scan-then-focus)
+        #[arg(long, value_name = "QUERY_ID", conflicts_with_all = ["command", "query", "file", "belief", "full"])]
+        detail: Option<String>,
+
+        /// Rank of the result to fetch (1-indexed, used with --detail)
+        #[arg(long, default_value = "1", requires = "detail")]
+        rank: usize,
+
+        /// Return full content for all results (escape hatch, deprecated)
+        #[arg(long, conflicts_with_all = ["command", "detail"])]
+        full: bool,
+
         /// Use legacy single-oracle search (deprecated, removed in v0.12.0)
         #[arg(long, conflicts_with = "command")]
         legacy: bool,
@@ -919,6 +931,9 @@ fn main() -> Result<()> {
             no_persona,
             explain,
             impact,
+            detail,
+            rank,
+            full,
             legacy,
         }) => {
             // Handle subcommands first
@@ -947,6 +962,9 @@ fn main() -> Result<()> {
                         commands::scry::execute_feedback(&query_id, &signal, comment.as_deref())?;
                     }
                 }
+            } else if let Some(ref query_id) = detail {
+                // D3: --detail mode — fetch full content for one result
+                commands::scry::execute_detail(query_id, rank)?;
             } else {
                 // Parse routing strategy
                 let routing_strategy = commands::scry::RoutingStrategy::parse(&routing)
@@ -967,6 +985,7 @@ fn main() -> Result<()> {
                     belief,
                     content_type,
                     impact,
+                    full,
                     legacy,
                 };
                 commands::scry::execute(query.as_deref(), options)?;
