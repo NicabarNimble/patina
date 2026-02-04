@@ -2,10 +2,12 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::io::Read;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::sync::Arc;
 use std::time::Instant;
 
+use super::microserver;
 use super::ServeOptions;
 use crate::commands::persona;
 use crate::commands::scry::{self, ScryOptions, ScryResult};
@@ -337,64 +339,56 @@ fn handle_scry(request: &HttpRequest, state: &ServerState) -> HttpResponse {
     HttpResponse::json(200, &response)
 }
 
-// === rouille transport adapter ===
-// Converts between rouille types and transport-free types.
-// Replaced entirely when rouille is removed (commit 4).
+// === Transport: microserver accept loop ===
+// Handles both UDS and TCP via generic Read + Write streams.
+// One request per connection. Thread per connection.
 
-/// Convert rouille request to transport-free HttpRequest
-fn from_rouille(request: &rouille::Request) -> HttpRequest {
-    let headers: Vec<(String, String)> = request
-        .headers()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect();
-
-    // Read body with size cap (Read::take, not Content-Length trust)
-    let body = match request.data() {
-        Some(data) => {
-            let mut buf = Vec::new();
-            let _ = data.take((MAX_BODY_SIZE + 1) as u64).read_to_end(&mut buf);
-            buf
-        }
-        None => Vec::new(),
-    };
-
+/// Convert microserver request to internal HttpRequest
+fn from_micro(req: microserver::HttpRequest) -> HttpRequest {
     HttpRequest {
-        method: request.method().to_string(),
-        path: request.url().to_string(),
-        headers,
-        body,
+        method: req.method,
+        path: req.path,
+        headers: req.headers,
+        body: req.body,
     }
 }
 
-/// Convert transport-free HttpResponse to rouille response
-fn to_rouille(response: HttpResponse) -> rouille::Response {
-    let content_type = response
-        .headers
-        .iter()
-        .find(|(k, _)| k.eq_ignore_ascii_case("Content-Type"))
-        .map(|(_, v)| v.clone())
-        .unwrap_or_else(|| "application/octet-stream".to_string());
-
-    let mut r =
-        rouille::Response::from_data(content_type, response.body).with_status_code(response.status);
-
-    for (name, value) in &response.headers {
-        if !name.eq_ignore_ascii_case("Content-Type") {
-            r = r.with_additional_header(name.clone(), value.clone());
-        }
+/// Convert internal HttpResponse to microserver response
+fn to_micro(resp: HttpResponse) -> microserver::HttpResponse {
+    microserver::HttpResponse {
+        status: resp.status,
+        headers: resp.headers,
+        body: resp.body,
     }
-    r
+}
+
+/// Handle one connection on any Read + Write stream
+fn handle_connection(mut stream: impl Read + Write + Send + 'static, state: Arc<ServerState>) {
+    let req = match microserver::read_request(&mut stream) {
+        Some(Ok(req)) => from_micro(req),
+        Some(Err(msg)) => {
+            // Parse error — write error response and close
+            let resp = to_micro(with_security_headers(json_error(400, &msg)));
+            microserver::write_response(&mut stream, &resp);
+            return;
+        }
+        None => return, // clean close, no response needed
+    };
+
+    // Body size enforcement at transport boundary
+    let resp = if req.body.len() > MAX_BODY_SIZE {
+        with_security_headers(json_error(413, "Request too large"))
+    } else {
+        route_request(&req, &state)
+    };
+
+    microserver::write_response(&mut stream, &to_micro(resp));
 }
 
 /// Run the serve daemon
 pub fn run_server(options: ServeOptions) -> Result<()> {
     // Bearer token auth (needed for TCP, generated anyway for state)
-    let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| {
-        let t = generate_token();
-        eprintln!("Generated auth token: {}", t);
-        eprintln!("  Set PATINA_SERVE_TOKEN={} to use a fixed token", t);
-        t
-    });
+    let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
 
     let state = Arc::new(ServerState::new(token));
 
@@ -412,36 +406,79 @@ pub fn run_server(options: ServeOptions) -> Result<()> {
             );
         }
 
+        let token_path = patina::paths::serve::token_path();
+        std::fs::write(&token_path, state.token.as_bytes())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&token_path, std::fs::Permissions::from_mode(0o600))?;
+        }
+        eprintln!("Auth token written to {}", token_path.display());
+
+        let listener = TcpListener::bind(&addr)?;
         println!("🚀 Mother daemon starting...");
         println!("   Listening on http://{}", addr);
         println!("   Press Ctrl+C to stop\n");
 
-        rouille::start_server(&addr, move |request| {
-            let state = Arc::clone(&state);
-            let req = from_rouille(request);
-            if req.body.len() > MAX_BODY_SIZE {
-                return to_rouille(with_security_headers(json_error(413, "Request too large")));
-            }
-            to_rouille(route_request(&req, &state))
-        });
+        accept_loop_tcp(listener, state);
     }
 
     // Default: UDS path (no TCP, no token needed for local)
+    let listener = super::setup_unix_listener()?;
     let socket_path = patina::paths::serve::socket_path();
+
+    // Clean up socket on Ctrl+C
+    ctrlc_cleanup();
+
     println!("🚀 Mother daemon starting...");
     println!("   Listening on {}", socket_path.display());
+    println!(
+        "   Test: curl -s --unix-socket {} http://localhost/health",
+        socket_path.display()
+    );
     println!("   No TCP listener (use --host/--port for network access)");
     println!("   Press Ctrl+C to stop\n");
 
-    // TODO: Wire UDS accept loop in commit 4 (currently placeholder)
-    // For now, fall back to TCP on localhost if no --host
-    let addr = format!("127.0.0.1:{}", options.port);
-    rouille::start_server(&addr, move |request| {
-        let state = Arc::clone(&state);
-        let req = from_rouille(request);
-        if req.body.len() > MAX_BODY_SIZE {
-            return to_rouille(with_security_headers(json_error(413, "Request too large")));
+    accept_loop_uds(listener, state);
+}
+
+/// Accept loop for TCP listener
+fn accept_loop_tcp(listener: TcpListener, state: Arc<ServerState>) -> ! {
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                let state = Arc::clone(&state);
+                std::thread::spawn(move || handle_connection(stream, state));
+            }
+            Err(e) => eprintln!("TCP accept error: {}", e),
         }
-        to_rouille(route_request(&req, &state))
-    });
+    }
+    std::process::exit(0);
+}
+
+/// Accept loop for Unix domain socket listener
+fn accept_loop_uds(listener: std::os::unix::net::UnixListener, state: Arc<ServerState>) -> ! {
+    for stream in listener.incoming() {
+        match stream {
+            Ok(stream) => {
+                let state = Arc::clone(&state);
+                std::thread::spawn(move || handle_connection(stream, state));
+            }
+            Err(e) => eprintln!("UDS accept error: {}", e),
+        }
+    }
+    std::process::exit(0);
+}
+
+/// Register Ctrl+C handler to clean up socket on shutdown
+fn ctrlc_cleanup() {
+    unsafe {
+        libc::signal(libc::SIGINT, sigint_handler as libc::sighandler_t);
+        libc::signal(libc::SIGTERM, sigint_handler as libc::sighandler_t);
+    }
+}
+
+extern "C" fn sigint_handler(_: libc::c_int) {
+    super::cleanup_socket();
+    std::process::exit(0);
 }
