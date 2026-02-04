@@ -1,9 +1,11 @@
 //! Evaluation framework for validating retrieval quality
 //!
 //! Tests the unified QueryEngine pipeline + per-oracle ablation.
-//! Ground truth: function_facts co-retrieval (semantic), co_changes (temporal).
+//! Ground truth: function_facts (semantic), co_changes (temporal), beliefs (knowledge).
 //!
-//! Key question: "Does the unified pipeline improve over individual oracles?"
+//! Key questions:
+//! - "Does the unified pipeline improve over individual oracles?"
+//! - "Do beliefs help knowledge queries without hurting structural queries?"
 
 use anyhow::Result;
 use rusqlite::Connection;
@@ -22,6 +24,28 @@ pub struct EvalResults {
     pub random_baseline: f32,
 }
 
+/// Belief self-retrieval results (MRR-based)
+#[derive(Debug)]
+pub struct BeliefSelfResults {
+    pub engine: String,
+    pub num_queries: usize,
+    pub mrr: f32,
+    pub hit_rate: f32,
+}
+
+/// Belief-code co-retrieval results (split metrics per reviewer feedback)
+#[derive(Debug)]
+pub struct BeliefCoResults {
+    pub engine: String,
+    pub num_queries: usize,
+    /// Fraction of queries where belief:<id> appeared in top-K
+    pub belief_present_rate: f32,
+    /// Avg(reached files in top-K / min(K, reach_count))
+    pub reach_recall: f32,
+    /// Fraction where belief present AND ≥1 reached file
+    pub co_retrieval_rate: f32,
+}
+
 /// Run evaluation
 pub fn execute(dimension: Option<String>) -> Result<()> {
     println!("📊 Evaluation Framework\n");
@@ -30,7 +54,7 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
     let db_path = ".patina/local/data/patina.db";
     let conn = Connection::open(db_path)?;
 
-    // Create engines: unified (all oracles), and per-oracle ablation
+    // Create engines: unified (all oracles), ablation per-oracle, and belief delta
     let unified = QueryEngine::new();
     let semantic_only = QueryEngine::with_config(RetrievalConfig {
         oracle_filter: Some(vec!["semantic".to_string()]),
@@ -40,6 +64,16 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
         oracle_filter: Some(vec!["temporal".to_string()]),
         ..Default::default()
     });
+    // D1 measurement: all oracles EXCEPT belief — delta measures belief impact
+    let no_belief = QueryEngine::with_config(RetrievalConfig {
+        oracle_filter: Some(vec![
+            "semantic".to_string(),
+            "lexical".to_string(),
+            "temporal".to_string(),
+            "persona".to_string(),
+        ]),
+        ..Default::default()
+    });
 
     let mut all_results = Vec::new();
 
@@ -47,6 +81,11 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
     if dimension.is_none() || dimension.as_deref() == Some("semantic") {
         println!("━━━ Unified Pipeline (code → same-file) ━━━\n");
         let results = eval_semantic_co_retrieval(&conn, &unified, "unified")?;
+        print_results(&results);
+        all_results.push(results);
+
+        println!("\n━━━ Ablation: no-belief (code → same-file) ━━━\n");
+        let results = eval_semantic_co_retrieval(&conn, &no_belief, "no-belief")?;
         print_results(&results);
         all_results.push(results);
 
@@ -68,13 +107,44 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
         print_results(&results);
         all_results.push(results);
 
+        println!("\n━━━ Ablation: no-belief (file → co-change) ━━━\n");
+        let results = eval_temporal_file(&conn, &no_belief, "no-belief")?;
+        print_results(&results);
+        all_results.push(results);
+
         println!("\n━━━ Ablation: temporal-only (file → co-change) ━━━\n");
         let results = eval_temporal_file(&conn, &temporal_only, "temporal-only")?;
         print_results(&results);
         all_results.push(results);
     }
 
-    // Summary table
+    // Belief tests: knowledge-query ground truth
+    let mut self_results = Vec::new();
+    let mut co_results = Vec::new();
+
+    if dimension.is_none() || dimension.as_deref() == Some("belief") {
+        println!("\n━━━ Unified Pipeline (belief self-retrieval) ━━━\n");
+        let results = eval_belief_self_retrieval(&conn, &unified, "unified")?;
+        print_belief_self_results(&results);
+        self_results.push(results);
+
+        println!("\n━━━ Ablation: no-belief (belief self-retrieval) ━━━\n");
+        let results = eval_belief_self_retrieval(&conn, &no_belief, "no-belief")?;
+        print_belief_self_results(&results);
+        self_results.push(results);
+
+        println!("\n━━━ Unified Pipeline (belief→code co-retrieval) ━━━\n");
+        let results = eval_belief_code_co_retrieval(&conn, &unified, "unified")?;
+        print_belief_co_results(&results);
+        co_results.push(results);
+
+        println!("\n━━━ Ablation: no-belief (belief→code co-retrieval) ━━━\n");
+        let results = eval_belief_code_co_retrieval(&conn, &no_belief, "no-belief")?;
+        print_belief_co_results(&results);
+        co_results.push(results);
+    }
+
+    // Summary table: structural tests
     println!("\n━━━ Summary ━━━\n");
     println!(
         "{:<35} {:>12} {:>12} {:>12}",
@@ -95,6 +165,124 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
             vs_random
         );
     }
+
+    // Summary table: belief tests
+    if !self_results.is_empty() {
+        println!(
+            "\n{:<35} {:>12} {:>12}",
+            "Pipeline (self-retrieval)", "MRR", "Hit Rate"
+        );
+        println!("{}", "─".repeat(63));
+        for r in &self_results {
+            println!(
+                "{:<35} {:>12.3} {:>11.1}%",
+                r.engine, r.mrr, r.hit_rate * 100.0,
+            );
+        }
+    }
+
+    if !co_results.is_empty() {
+        println!(
+            "\n{:<35} {:>10} {:>10} {:>10}",
+            "Pipeline (co-retrieval)", "B.Pres", "ReachR", "Co-Retr"
+        );
+        println!("{}", "─".repeat(69));
+        for r in &co_results {
+            println!(
+                "{:<35} {:>9.1}% {:>9.1}% {:>9.1}%",
+                r.engine,
+                r.belief_present_rate * 100.0,
+                r.reach_recall * 100.0,
+                r.co_retrieval_rate * 100.0,
+            );
+        }
+    }
+
+    // D1 belief delta: full picture
+    const STRUCTURAL_BUDGET_PP: f32 = 5.0; // max acceptable regression in percentage points
+    let mut d1_pass = true;
+
+    println!("\n━━━ D1 Belief Delta (unified vs no-belief) ━━━\n");
+    println!(
+        "{:<25} {:>12} {:>12} {:>8} {:>8}",
+        "Test", "Unified", "No-Belief", "Delta", "Verdict"
+    );
+    println!("{}", "─".repeat(69));
+
+    // Self-retrieval delta (MRR)
+    if let (Some(u), Some(nb)) = (
+        self_results.iter().find(|r| r.engine == "unified"),
+        self_results.iter().find(|r| r.engine == "no-belief"),
+    ) {
+        let delta = u.mrr - nb.mrr;
+        let verdict = if delta >= 0.0 { "PASS" } else { "FAIL" };
+        if delta < 0.0 {
+            d1_pass = false;
+        }
+        println!(
+            "{:<25} {:>8.3}MRR {:>8.3}MRR {:>+7.3} {:>8}",
+            "self-retrieval", u.mrr, nb.mrr, delta, verdict
+        );
+    }
+
+    // Co-retrieval delta (co_retrieval_rate)
+    if let (Some(u), Some(nb)) = (
+        co_results.iter().find(|r| r.engine == "unified"),
+        co_results.iter().find(|r| r.engine == "no-belief"),
+    ) {
+        let delta = u.co_retrieval_rate - nb.co_retrieval_rate;
+        let verdict = if delta >= 0.0 { "PASS" } else { "FAIL" };
+        if delta < 0.0 {
+            d1_pass = false;
+        }
+        println!(
+            "{:<25} {:>9.1}%   {:>9.1}%   {:>+6.1}% {:>8}",
+            "belief→code",
+            u.co_retrieval_rate * 100.0,
+            nb.co_retrieval_rate * 100.0,
+            delta * 100.0,
+            verdict
+        );
+    }
+
+    // Structural test deltas (P@10, budget-enforced)
+    let test_names: Vec<String> = all_results.iter().map(|r| r.test_name.clone()).collect();
+    for test in test_names.iter().collect::<HashSet<_>>() {
+        let unified_r = all_results
+            .iter()
+            .find(|r| r.engine == "unified" && &r.test_name == test);
+        let no_belief_r = all_results
+            .iter()
+            .find(|r| r.engine == "no-belief" && &r.test_name == test);
+        if let (Some(u), Some(nb)) = (unified_r, no_belief_r) {
+            let delta_pp = (u.precision_at_10 - nb.precision_at_10) * 100.0;
+            let within_budget = delta_pp >= -STRUCTURAL_BUDGET_PP;
+            let verdict = if within_budget {
+                "PASS"
+            } else {
+                d1_pass = false;
+                "FAIL"
+            };
+            println!(
+                "{:<25} {:>11.1}% {:>11.1}% {:>+6.1}pp {:>5} (budget: {}pp)",
+                test,
+                u.precision_at_10 * 100.0,
+                nb.precision_at_10 * 100.0,
+                delta_pp,
+                verdict,
+                STRUCTURAL_BUDGET_PP,
+            );
+        }
+    }
+
+    println!(
+        "\n{}",
+        if d1_pass {
+            "D1 VERDICT: PASS — knowledge gains positive, structural regression within budget"
+        } else {
+            "D1 VERDICT: FAIL — see failing tests above"
+        }
+    );
 
     Ok(())
 }
@@ -439,6 +627,238 @@ fn eval_temporal_file(
         },
         random_baseline,
     })
+}
+
+// ============================================================================
+// Belief evaluation: self-retrieval + code co-retrieval
+// ============================================================================
+
+/// Belief self-retrieval: query with belief statement, check if belief appears in results
+///
+/// Ground truth: beliefs table. MRR = average of 1/rank for each belief found.
+/// Hit rate = fraction of beliefs found in top-K at all.
+fn eval_belief_self_retrieval(
+    conn: &Connection,
+    engine: &QueryEngine,
+    engine_name: &str,
+) -> Result<BeliefSelfResults> {
+    let mut stmt = conn.prepare("SELECT id, statement FROM beliefs ORDER BY id")?;
+    let mut beliefs: Vec<(String, String)> = Vec::new();
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let id: String = row.get(0)?;
+        let statement: String = row.get(1)?;
+        beliefs.push((id, statement));
+    }
+
+    println!("Testing {} beliefs (self-retrieval)", beliefs.len());
+
+    if beliefs.is_empty() {
+        return Ok(BeliefSelfResults {
+            engine: engine_name.to_string(),
+            num_queries: 0,
+            mrr: 0.0,
+            hit_rate: 0.0,
+        });
+    }
+
+    let k = 10;
+    let mut total_rr = 0.0;
+    let mut hits = 0;
+    let mut num_queries = 0;
+
+    for (id, statement) in &beliefs {
+        let expected_doc_id = format!("belief:{}", id);
+
+        if let Ok(results) = engine.query(statement, k) {
+            let rank = results
+                .iter()
+                .position(|r| r.doc_id == expected_doc_id)
+                .map(|pos| pos + 1); // 1-indexed
+
+            if let Some(r) = rank {
+                total_rr += 1.0 / r as f32;
+                hits += 1;
+            }
+
+            num_queries += 1;
+
+            if num_queries <= 5 {
+                let rank_str = rank.map(|r| format!("@{}", r)).unwrap_or("miss".to_string());
+                println!("  {} — {}", id, rank_str);
+            }
+        }
+    }
+
+    if num_queries > 5 {
+        println!("  ... and {} more beliefs", num_queries - 5);
+    }
+
+    let mrr = if num_queries > 0 {
+        total_rr / num_queries as f32
+    } else {
+        0.0
+    };
+    let hit_rate = if num_queries > 0 {
+        hits as f32 / num_queries as f32
+    } else {
+        0.0
+    };
+
+    Ok(BeliefSelfResults {
+        engine: engine_name.to_string(),
+        num_queries,
+        mrr,
+        hit_rate,
+    })
+}
+
+/// Belief-code co-retrieval: query with belief statement, check for belief AND reached code
+///
+/// Split metrics:
+/// - belief_present_rate: is belief:<id> in top-K?
+/// - reach_recall@K: reached files in top-K / min(K, reach_count)
+/// - co_retrieval_rate: belief present AND ≥1 reached file (the product claim)
+fn eval_belief_code_co_retrieval(
+    conn: &Connection,
+    engine: &QueryEngine,
+    engine_name: &str,
+) -> Result<BeliefCoResults> {
+    // Load beliefs that have code reach entries
+    let mut stmt = conn.prepare(
+        "SELECT b.id, b.statement, GROUP_CONCAT(bcr.file_path, '|') as files
+         FROM beliefs b
+         JOIN belief_code_reach bcr ON b.id = bcr.belief_id
+         GROUP BY b.id
+         HAVING COUNT(bcr.file_path) >= 1
+         ORDER BY b.id",
+    )?;
+
+    let mut beliefs_with_reach: Vec<(String, String, Vec<String>)> = Vec::new();
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let id: String = row.get(0)?;
+        let statement: String = row.get(1)?;
+        let files_str: String = row.get(2)?;
+        let files: Vec<String> = files_str
+            .split('|')
+            .map(|f| normalize_path(f))
+            .collect();
+        beliefs_with_reach.push((id, statement, files));
+    }
+
+    println!(
+        "Testing {} beliefs with code reach",
+        beliefs_with_reach.len()
+    );
+
+    if beliefs_with_reach.is_empty() {
+        return Ok(BeliefCoResults {
+            engine: engine_name.to_string(),
+            num_queries: 0,
+            belief_present_rate: 0.0,
+            reach_recall: 0.0,
+            co_retrieval_rate: 0.0,
+        });
+    }
+
+    let k = 10;
+    let mut belief_present_count = 0;
+    let mut total_reach_recall = 0.0;
+    let mut co_retrieval_count = 0;
+    let mut num_queries = 0;
+
+    for (id, statement, reached_files) in &beliefs_with_reach {
+        let expected_belief = format!("belief:{}", id);
+
+        if let Ok(results) = engine.query(statement, k) {
+            // Belief-present@K
+            let belief_present = results.iter().any(|r| r.doc_id == expected_belief);
+            if belief_present {
+                belief_present_count += 1;
+            }
+
+            // Reach-hit@K: normalize by min(K, reach_count)
+            let reached_set: HashSet<&str> = reached_files.iter().map(|f| f.as_str()).collect();
+            let reach_hits = results
+                .iter()
+                .take(k)
+                .filter(|r| {
+                    let file = extract_file_from_doc_id(&r.doc_id);
+                    reached_set.contains(file.as_str())
+                })
+                .count();
+            let max_possible = k.min(reached_files.len());
+            let recall = if max_possible > 0 {
+                reach_hits as f32 / max_possible as f32
+            } else {
+                0.0
+            };
+            total_reach_recall += recall;
+
+            // Co-retrieval: belief present AND ≥1 reached file
+            if belief_present && reach_hits >= 1 {
+                co_retrieval_count += 1;
+            }
+
+            num_queries += 1;
+
+            if num_queries <= 5 {
+                let bp = if belief_present { "✓" } else { "✗" };
+                println!(
+                    "  {} — belief:{} reach:{}/{} files",
+                    id, bp, reach_hits, reached_files.len()
+                );
+            }
+        }
+    }
+
+    if num_queries > 5 {
+        println!("  ... and {} more beliefs", num_queries - 5);
+    }
+
+    let belief_present_rate = if num_queries > 0 {
+        belief_present_count as f32 / num_queries as f32
+    } else {
+        0.0
+    };
+    let reach_recall = if num_queries > 0 {
+        total_reach_recall / num_queries as f32
+    } else {
+        0.0
+    };
+    let co_retrieval_rate = if num_queries > 0 {
+        co_retrieval_count as f32 / num_queries as f32
+    } else {
+        0.0
+    };
+
+    Ok(BeliefCoResults {
+        engine: engine_name.to_string(),
+        num_queries,
+        belief_present_rate,
+        reach_recall,
+        co_retrieval_rate,
+    })
+}
+
+fn print_belief_self_results(results: &BeliefSelfResults) {
+    println!("\nResults ({} beliefs):", results.num_queries);
+    println!("  MRR:       {:.3}", results.mrr);
+    println!("  Hit rate:  {:.1}%", results.hit_rate * 100.0);
+}
+
+fn print_belief_co_results(results: &BeliefCoResults) {
+    println!("\nResults ({} beliefs with code reach):", results.num_queries);
+    println!(
+        "  Belief present: {:.1}%",
+        results.belief_present_rate * 100.0
+    );
+    println!("  Reach recall:   {:.1}%", results.reach_recall * 100.0);
+    println!(
+        "  Co-retrieval:   {:.1}% (belief + ≥1 code)",
+        results.co_retrieval_rate * 100.0
+    );
 }
 
 // ============================================================================

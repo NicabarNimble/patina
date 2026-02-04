@@ -1,7 +1,7 @@
 ---
 type: feat
 id: d0-unified-search
-status: implementation
+status: complete
 created: 2026-02-03
 updated: 2026-02-04
 sessions:
@@ -152,7 +152,7 @@ MCP has been running the QueryEngine path for every query since January with no 
 - [x] CLI output format uses FusedResult with oracle contributions ✅ via execute_hybrid
 - [x] MCP scry handler uses QueryEngine (same pipeline as CLI) ✅ already did since Dec 2025
 - [x] `--belief` and `--file` modes unchanged (specialized, not default query path) ✅ untouched
-- [ ] `patina eval` updated — unified pipeline + per-oracle ablation (see Eval Design below)
+- [x] `patina eval` updated — unified pipeline + per-oracle ablation (see Eval Design below) ✅ 52edbf20
 - [x] Serve daemon unified — `handle_scry()` always uses QueryEngine ✅ 65c16818
 
 ---
