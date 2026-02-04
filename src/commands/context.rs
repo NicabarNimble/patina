@@ -46,19 +46,9 @@ pub fn get_project_context(topic: Option<&str>) -> Result<String> {
         }
     }
 
-    // Add belief metrics when topic matches or no topic given
-    let show_beliefs = match topic {
-        None => true,
-        Some(t) => {
-            let t_lower = t.to_lowercase();
-            t_lower.contains("belief") || t_lower.contains("epistemic")
-        }
-    };
-
-    if show_beliefs {
-        if let Ok(belief_section) = get_belief_metrics() {
-            output.push_str(&belief_section);
-        }
+    // Beliefs are always eligible — topic changes the query, not whether beliefs exist
+    if let Ok(belief_section) = get_belief_metrics() {
+        output.push_str(&belief_section);
     }
 
     if output.is_empty() {
@@ -204,28 +194,57 @@ fn read_patterns(dir: &Path, topic: Option<&str>) -> Result<Vec<(String, String)
                 continue;
             }
 
-            let content = fs::read_to_string(&path)?;
-
-            // If topic filter provided, check if content matches
+            // If topic filter provided, match against filename and title only
+            // (not full body — substring on markdown bodies returns false positives)
             if let Some(t) = topic {
                 let topic_lower = t.to_lowercase();
-                let content_lower = content.to_lowercase();
                 let name_lower = name.to_lowercase();
 
-                if !content_lower.contains(&topic_lower) && !name_lower.contains(&topic_lower) {
+                // Extract title from first # line without reading full content
+                let content = fs::read_to_string(&path)?;
+                let title = extract_title(&content);
+                let title_lower = title.to_lowercase();
+
+                if !name_lower.contains(&topic_lower) && !title_lower.contains(&topic_lower) {
                     continue;
                 }
-            }
 
-            // Extract summary (first non-frontmatter paragraph)
-            let summary = extract_summary(&content);
-            patterns.push((name, summary));
+                let summary = extract_summary(&content);
+                patterns.push((name, summary));
+            } else {
+                let content = fs::read_to_string(&path)?;
+                let summary = extract_summary(&content);
+                patterns.push((name, summary));
+            }
         }
     }
 
     // Sort by name for consistent output
     patterns.sort_by(|a, b| a.0.cmp(&b.0));
     Ok(patterns)
+}
+
+/// Extract the title from markdown content (first # line after frontmatter)
+fn extract_title(content: &str) -> String {
+    let mut in_frontmatter = false;
+    for line in content.lines() {
+        if line == "---" {
+            in_frontmatter = !in_frontmatter;
+            continue;
+        }
+        if in_frontmatter {
+            continue;
+        }
+        let trimmed = line.trim();
+        if trimmed.starts_with('#') {
+            return trimmed.trim_start_matches('#').trim().to_string();
+        }
+        // Stop after first non-empty, non-frontmatter line that isn't a title
+        if !trimmed.is_empty() {
+            break;
+        }
+    }
+    String::new()
 }
 
 /// Extract a summary from markdown content (skip frontmatter, get first paragraphs)
