@@ -38,11 +38,17 @@ related:
 | # | File | Issue | Fix |
 |---|------|-------|-----|
 | 1 | `src/commands/serve/internal.rs` | No authentication on any endpoint | Add bearer token auth (read from `PATINA_SERVE_TOKEN` or generate on start, print to stderr) |
-| 2 | `src/commands/serve/internal.rs` | No request body size limit (rouille accepts unbounded) | Add `Content-Length` check, reject >1MB |
+| 2 | `src/commands/serve/internal.rs` | No request body size limit (rouille accepts unbounded) | Read cap via `Read::take()` — do not trust Content-Length header |
 | 3 | `src/commands/serve/internal.rs` | `limit` field accepts any `usize` value | Cap at 1000 in `handle_scry()` before query execution |
-| 4 | `src/commands/serve/internal.rs` | No query execution timeout | Wrap query in `std::thread` with timeout, return 504 on expiry |
-| 5 | `src/commands/serve/internal.rs` | No CORS headers | Add `Access-Control-Allow-Origin: null` (deny all cross-origin) |
-| 6 | `src/commands/serve/internal.rs:98` | No warning when binding to 0.0.0.0 | Print security warning to stderr when `--host` is not 127.0.0.1 |
+| 4 | `src/commands/serve/internal.rs` | No security headers | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` (omit CORS origin entirely) |
+| 5 | `src/commands/serve/internal.rs` | No warning when binding to 0.0.0.0 | Print security warning to stderr when `--host` is not 127.0.0.1 |
+| 6 | `src/commands/serve/internal.rs` | Error responses mix text and JSON formats | All errors return `{"error": "..."}` with correct status code |
+
+### Deferred: Execution Bounding (needs design)
+
+| # | File | Issue | Needs |
+|---|------|-------|-------|
+| — | `src/commands/serve/internal.rs` | No query execution timeout or concurrency bound | Proper design: RAII drop guard, atomic increment-then-check, panic safety. Naive `thread::spawn` + `recv_timeout` leaks threads on timeout and a bare semaphore has TOCTOU race + panic counter leak. Spec separately. |
 
 ### P1: Local Privilege Escalation / Secrets Hygiene
 
@@ -52,15 +58,24 @@ related:
 | 8 | `src/secrets/registry.rs:81-96` | Secrets registry world-readable (maps names to env vars) | Same: 0o600 on `secrets.toml` |
 | 9 | `src/secrets/mod.rs:296` | SSH variant puts decrypted secrets in process argv | Use stdin pipe or `SSH_ASKPASS` protocol instead of command-line env prefix |
 | 10 | `src/embeddings/onnx.rs:73` | ONNX model loaded without integrity verification | Add SHA-256 checksum verification against hardcoded expected hash |
+| 11 | `src/commands/serve/internal.rs` | Serve token bypasses Patina's own secrets infrastructure | Load token from vault via `patina secrets`, fall back to `PATINA_SERVE_TOKEN` env, generate-and-print as last resort |
+
+Item 11 rationale: The serve token is currently a plain env var — visible in `ps auxe`,
+shell history, terminal scrollback, and container environment. On localhost this is
+acceptable, but on `0.0.0.0` (container use case) the token is the sole network
+boundary and should use the same vault/keychain infrastructure that protects other
+Patina secrets. Load order: vault → env var → generate. This keeps the simple
+`PATINA_SERVE_TOKEN=xxx patina serve` workflow for local dev while giving the
+container path a proper secret.
 
 ### P2: Defense-in-Depth
 
 | # | File | Issue | Fix |
 |---|------|-------|-----|
-| 11 | `src/secrets/mod.rs:482-491` | Secret input not masked (echoed to terminal) | Use `rpassword` crate for sensitive prompts |
-| 12 | `src/secrets/identity.rs` | Identity strings not zeroized after use | Add `zeroize` crate, use `Zeroizing<String>` for key material |
-| 13 | `src/commands/secrets.rs:258` | `--export-key` prints private key to stdout | Write to file with 0o600 permissions, or require `--stdout` flag for pipe use |
-| 14 | `src/commands/repo/internal.rs:70-71` | Registry YAML path field not validated on load | Canonicalize and validate against `~/.patina/cache/` prefix during deserialization |
+| 12 | `src/secrets/mod.rs:482-491` | Secret input not masked (echoed to terminal) | Use `rpassword` crate for sensitive prompts |
+| 13 | `src/secrets/identity.rs` | Identity strings not zeroized after use | Add `zeroize` crate, use `Zeroizing<String>` for key material |
+| 14 | `src/commands/secrets.rs:258` | `--export-key` prints private key to stdout | Write to file with 0o600 permissions, or require `--stdout` flag for pipe use |
+| 15 | `src/commands/repo/internal.rs:70-71` | Registry YAML path field not validated on load | Canonicalize and validate against `~/.patina/cache/` prefix during deserialization |
 
 ---
 
@@ -82,52 +97,23 @@ related:
 
 ### Phase 1: P0 — HTTP Daemon (6 changes, 1 file)
 
-All changes in `src/commands/serve/internal.rs`:
+All changes in `src/commands/serve/internal.rs`. Shipped.
 
-**1a. Bearer token auth:**
-```rust
-fn check_auth(request: &Request, token: &str) -> bool {
-    request.header("Authorization")
-        .map(|h| h == format!("Bearer {}", token))
-        .unwrap_or(false)
-}
+**1. Bearer token auth** — `PATINA_SERVE_TOKEN` env or random 32-byte hex on start.
+`check_auth()` validates `Authorization: Bearer <token>` header.
 
-// In run_server():
-let token = std::env::var("PATINA_SERVE_TOKEN")
-    .unwrap_or_else(|_| {
-        let t = generate_token();  // random 32-byte hex
-        eprintln!("Generated auth token: {}", t);
-        eprintln!("  Set PATINA_SERVE_TOKEN={} to use a fixed token", t);
-        t
-    });
-```
+**2. Body size enforcement (read cap)** — `Read::take(MAX_BODY_SIZE + 1)` on the
+actual body stream, then check `buf.len() > MAX_BODY_SIZE`. Does not trust
+Content-Length (can be absent or wrong).
 
-**1b. Request limits:**
-```rust
-fn handle_scry(request: &Request, token: &str) -> Response {
-    // Body size check
-    if let Some(len) = request.header("Content-Length") {
-        if len.parse::<usize>().unwrap_or(0) > 1_048_576 {
-            return Response::text("Request too large").with_status_code(413);
-        }
-    }
+**3. Limit cap** — `body.limit = body.limit.min(1000)` before query execution.
 
-    let mut body: ScryRequest = /* parse */;
-    body.limit = body.limit.min(1000);  // Cap limit
-}
-```
+**4. Security headers** — `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`
+on all responses. No `Access-Control-Allow-Origin` header (omission is safer than `null`).
 
-**1c. CORS deny + bind warning:**
-```rust
-// Add to all responses:
-.with_additional_header("Access-Control-Allow-Origin", "null")
+**5. Bind warning** — stderr warning when `--host` is not `127.0.0.1` or `localhost`.
 
-// In run_server():
-if options.host != "127.0.0.1" && options.host != "localhost" {
-    eprintln!("WARNING: Binding to {} exposes the server to the network.", options.host);
-    eprintln!("  The server has no encryption (HTTP only). Use a reverse proxy for production.");
-}
-```
+**6. Consistent JSON errors** — `json_error()` helper, all paths return `{"error": "..."}`.
 
 ### Phase 2: P1 — File Permissions + Model Integrity (4 changes, 4 files)
 
@@ -181,18 +167,21 @@ Check if `sha2` is already a transitive dependency (likely via `age`).
 ## Exit Criteria
 
 **Phase 1 (P0):**
-- [ ] `patina serve` requires `Authorization: Bearer <token>` on `/api/scry`
-- [ ] `/health` and `/version` remain open (healthcheck compatibility)
-- [ ] Request body >1MB rejected with 413
-- [ ] `limit` capped at 1000 regardless of input
-- [ ] CORS deny header on all responses
-- [ ] Warning printed when `--host` is not localhost
+- [x] `patina serve` requires `Authorization: Bearer <token>` on `/api/scry`
+- [x] `/health` and `/version` remain open (healthcheck compatibility)
+- [x] Request body >1MB rejected with 413 (read cap via `Read::take`, not Content-Length trust)
+- [x] `limit` capped at 1000 regardless of input
+- [x] Security headers on all responses (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`)
+- [x] Warning printed when `--host` is not localhost
+- [x] All error responses use consistent JSON format (`{"error": "..."}`)
+- [ ] Execution bounding (timeout + concurrency gate) — deferred, needs proper design
 
 **Phase 2 (P1):**
 - [ ] `~/.patina/vault.age` created with 0o600 permissions
 - [ ] `~/.patina/secrets.toml` created with 0o600 permissions
 - [ ] ONNX model verified via SHA-256 before loading
 - [ ] `patina secrets run` over SSH does not expose secrets in `ps auxe`
+- [ ] Serve token loaded from vault when available, env var as fallback
 
 **Phase 3 (P2):**
 - [ ] Secret prompts use masked input (no echo)
@@ -206,14 +195,23 @@ Check if `sha2` is already a transitive dependency (likely via `age`).
 
 ```bash
 # Phase 1: HTTP daemon
-curl http://127.0.0.1:50051/api/scry -d '{"query":"test"}' -H "Content-Type: application/json"
-# → 401 Unauthorized (no token)
+curl -s http://127.0.0.1:50051/api/scry -d '{"query":"test"}' -H "Content-Type: application/json"
+# → {"error":"Unauthorized"} 401 (no token)
 
-curl http://127.0.0.1:50051/api/scry -d '{"query":"test"}' -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json"
+curl -s http://127.0.0.1:50051/api/scry -d '{"query":"test"}' -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json"
 # → 200 OK (valid token)
 
-curl http://127.0.0.1:50051/api/scry -d '{"query":"test","limit":99999}' -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json"
+curl -s http://127.0.0.1:50051/api/scry -d '{"query":"test","limit":99999}' -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json"
 # → Results with max 1000 (capped)
+
+# Body size — enforced by read cap, not Content-Length header:
+dd if=/dev/zero bs=1048577 count=1 2>/dev/null | curl -s -X POST http://127.0.0.1:50051/api/scry -d @- -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json"
+# → {"error":"Request too large"} 413
+
+# Security headers present on all responses:
+curl -sD - -o /dev/null http://127.0.0.1:50051/health | grep -i "x-content-type-options\|x-frame-options"
+# → X-Content-Type-Options: nosniff
+# → X-Frame-Options: DENY
 
 # Phase 2: File permissions
 stat -f "%Lp" ~/.patina/vault.age
@@ -249,3 +247,4 @@ Precedent: 0.9.3 (session hardening), 0.9.4 (spec archive + belief verification)
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-03 | ready | Spec created from security audit (session 20260203-134222) |
+| 2026-02-03 | in-progress | P0 shipped: 6 fixes (auth, read cap, limit cap, security headers, bind warning, consistent errors). Execution bounding (timeout + concurrency gate) deferred — naive thread::spawn + semaphore had TOCTOU race, panic leak, and thread abandonment. Needs proper design with RAII guard. |
