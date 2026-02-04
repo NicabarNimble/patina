@@ -355,8 +355,8 @@ pub fn lock_session() -> Result<()> {
 // Identity Management
 // =============================================================================
 
-/// Export the identity (for backup).
-pub fn export_identity() -> Result<String> {
+/// Export the identity (for backup, zeroized on drop).
+pub fn export_identity() -> Result<zeroize::Zeroizing<String>> {
     identity::export_identity()
 }
 

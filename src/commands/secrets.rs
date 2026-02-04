@@ -256,9 +256,9 @@ fn export_key(confirm: bool) -> Result<()> {
         return Ok(());
     }
 
-    let identity = secrets::export_identity()?;
+    let identity = secrets::export_identity()?; // Zeroizing<String> — zeroed on drop
     println!("⚠️  PRIVATE KEY - DO NOT SHARE");
-    println!("{}", identity);
+    println!("{}", &*identity);
 
     Ok(())
 }

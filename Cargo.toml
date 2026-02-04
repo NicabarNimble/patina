@@ -93,6 +93,7 @@ regex = "1.12.2"
 age = { version = "0.11", features = ["armor"] }
 sha2 = "0.10"  # ONNX model integrity verification (already in tree via age)
 console = "0.15"  # Masked input for secrets (already in tree)
+zeroize = "1.8"  # Zero key material after use (already in tree via age)
 atty = "0.2"  # TTY detection for interactive prompts
 
 # macOS-only: Keychain integration for Touch ID protected secrets
