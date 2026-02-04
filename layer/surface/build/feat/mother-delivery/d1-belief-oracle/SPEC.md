@@ -1,7 +1,7 @@
 ---
 type: feat
 id: d1-belief-oracle
-status: design
+status: implementation
 created: 2026-02-02
 updated: 2026-02-03
 sessions:
@@ -180,10 +180,10 @@ During graph routing, the BeliefOracle runs against each related project's belie
 
 ## Exit Criteria
 
-- [ ] BeliefOracle wired into default query flow — beliefs appear in standard scry results without `mode=belief` or `--belief` flags
-- [ ] BeliefOracle Channel B queries existing `belief_fts` table (no new table needed)
-- [ ] Intent boost — Rationale and Definition intents boost belief oracle weight
-- [ ] Over-fetch validated — confirm beliefs surface reliably with ~48 beliefs in index of thousands (fallback: dedicated belief USearch index)
+- [x] BeliefOracle wired into default query flow — beliefs appear in standard scry results without `mode=belief` or `--belief` flags ✅ 1c81d112
+- [x] BeliefOracle Channel B queries existing `belief_fts` table (no new table needed) ✅ 1c81d112
+- [x] Intent boost — Rationale and Definition intents boost belief oracle weight ✅ 1c81d112 (Rationale 1.5x, Definition 1.5x)
+- [x] Over-fetch validated — confirm beliefs surface reliably with ~48 beliefs in index of thousands (fallback: dedicated belief USearch index) ✅ 1c81d112 (min(limit*50, index_size/2), beliefs surface at positions 2-10)
 - [ ] **Measured:** Re-run task-oriented A/B eval. Target: delta >= 0.0 (beliefs no longer hurt). Stretch: delta >= +0.5
 
 ---
