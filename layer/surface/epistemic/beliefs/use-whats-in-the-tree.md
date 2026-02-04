@@ -34,7 +34,7 @@ Before writing code, check cargo tree and existing patterns. Use dependencies al
 
 ## Attacked-By
 
-- Sometimes the right tool genuinely isn't in the tree. This belief is "check first," not "never add deps." A missing capability that requires 500 lines of hand-rolled code vs. a well-audited 50-line crate should favor the crate.
+- Sometimes the right tool genuinely isn't in the tree. This belief is "check first and present tradeoffs," not "never add deps." When an existing dep is a poor fit or a new crate is clearly better, present the pros and cons: compile cost, audit surface, version coordination, maintenance burden vs. hand-rolling risk, code quality, and time. The decision is the human's.
 
 ## Applied-In
 
