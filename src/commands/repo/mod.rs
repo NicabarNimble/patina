@@ -68,6 +68,10 @@ pub enum RepoCommands {
         /// Also run oxidize to build semantic indices
         #[arg(long)]
         oxidize: bool,
+
+        /// Also fetch and index GitHub issues
+        #[arg(long)]
+        with_issues: bool,
     },
 
     /// Remove a repository
@@ -111,14 +115,27 @@ pub fn execute_cli(
             no_oxidize,
         },
         (Some(RepoCommands::List { status }), _) => RepoCommand::List { status },
-        (Some(RepoCommands::Update { name, all, oxidize }), _) => {
+        (
+            Some(RepoCommands::Update {
+                name,
+                all,
+                oxidize,
+                with_issues,
+            }),
+            _,
+        ) => {
             if all {
                 RepoCommand::Update {
                     name: None,
                     oxidize,
+                    with_issues,
                 }
             } else {
-                RepoCommand::Update { name, oxidize }
+                RepoCommand::Update {
+                    name,
+                    oxidize,
+                    with_issues,
+                }
             }
         }
         (Some(RepoCommands::Remove { name }), _) => RepoCommand::Remove { name },
@@ -157,14 +174,14 @@ pub fn list() -> Result<Vec<RepoEntry>> {
     internal::list_repos()
 }
 
-/// Update a repository (git pull + rescrape + optional oxidize)
-pub fn update(name: &str, oxidize: bool) -> Result<()> {
-    internal::update_repo(name, oxidize)
+/// Update a repository (git pull + rescrape + optional oxidize + optional issues)
+pub fn update(name: &str, oxidize: bool, with_issues: bool) -> Result<()> {
+    internal::update_repo(name, oxidize, with_issues)
 }
 
 /// Update all repositories
-pub fn update_all(oxidize: bool) -> Result<()> {
-    internal::update_all_repos(oxidize)
+pub fn update_all(oxidize: bool, with_issues: bool) -> Result<()> {
+    internal::update_all_repos(oxidize, with_issues)
 }
 
 /// Remove a repository
@@ -286,11 +303,15 @@ pub fn execute(command: RepoCommand) -> Result<()> {
             }
             Ok(())
         }
-        RepoCommand::Update { name, oxidize } => {
+        RepoCommand::Update {
+            name,
+            oxidize,
+            with_issues,
+        } => {
             if let Some(n) = name {
-                update(&n, oxidize)
+                update(&n, oxidize, with_issues)
             } else {
-                update_all(oxidize)
+                update_all(oxidize, with_issues)
             }
         }
         RepoCommand::Remove { name } => remove(&name),
@@ -313,6 +334,7 @@ pub enum RepoCommand {
     Update {
         name: Option<String>,
         oxidize: bool,
+        with_issues: bool,
     },
     Remove {
         name: String,
