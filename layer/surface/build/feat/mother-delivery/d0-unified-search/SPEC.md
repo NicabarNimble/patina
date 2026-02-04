@@ -158,6 +158,7 @@ MCP has been running the QueryEngine path for every query since January with no 
 
 ## See Also
 
+- [[../analysis-three-servers.md]] — Historical analysis: how CLI/MCP/serve became three independent search paths (grounded in git + sessions)
 - [[design.md]] — ADR-7 (to be added: Why unify CLI search path)
 - [[d1-belief-oracle/SPEC.md]] — Depends on D0: BeliefOracle wires into QueryEngine which is now the only path
 - [[d3-two-step-retrieval/SPEC.md]] — Depends on D0: snippets implement on FusedResult only
