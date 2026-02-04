@@ -388,20 +388,7 @@ fn to_rouille(response: HttpResponse) -> rouille::Response {
 
 /// Run the serve daemon
 pub fn run_server(options: ServeOptions) -> Result<()> {
-    let addr = format!("{}:{}", options.host, options.port);
-
-    // Bind warning when not localhost
-    if options.host != "127.0.0.1" && options.host != "localhost" {
-        eprintln!(
-            "WARNING: Binding to {} exposes the server to the network.",
-            options.host
-        );
-        eprintln!(
-            "  The server has no encryption (HTTP only). Use a reverse proxy for production."
-        );
-    }
-
-    // Bearer token auth
+    // Bearer token auth (needed for TCP, generated anyway for state)
     let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| {
         let t = generate_token();
         eprintln!("Generated auth token: {}", t);
@@ -411,14 +398,47 @@ pub fn run_server(options: ServeOptions) -> Result<()> {
 
     let state = Arc::new(ServerState::new(token));
 
+    // TCP opt-in path (--host flag)
+    if let Some(ref host) = options.host {
+        let addr = format!("{}:{}", host, options.port);
+
+        if host != "127.0.0.1" && host != "localhost" {
+            eprintln!(
+                "WARNING: Binding to {} exposes the server to the network.",
+                host
+            );
+            eprintln!(
+                "  The server has no encryption (HTTP only). Use a reverse proxy for production."
+            );
+        }
+
+        println!("🚀 Mother daemon starting...");
+        println!("   Listening on http://{}", addr);
+        println!("   Press Ctrl+C to stop\n");
+
+        rouille::start_server(&addr, move |request| {
+            let state = Arc::clone(&state);
+            let req = from_rouille(request);
+            if req.body.len() > MAX_BODY_SIZE {
+                return to_rouille(with_security_headers(json_error(413, "Request too large")));
+            }
+            to_rouille(route_request(&req, &state))
+        });
+    }
+
+    // Default: UDS path (no TCP, no token needed for local)
+    let socket_path = patina::paths::serve::socket_path();
     println!("🚀 Mother daemon starting...");
-    println!("   Listening on http://{}", addr);
+    println!("   Listening on {}", socket_path.display());
+    println!("   No TCP listener (use --host/--port for network access)");
     println!("   Press Ctrl+C to stop\n");
 
+    // TODO: Wire UDS accept loop in commit 4 (currently placeholder)
+    // For now, fall back to TCP on localhost if no --host
+    let addr = format!("127.0.0.1:{}", options.port);
     rouille::start_server(&addr, move |request| {
         let state = Arc::clone(&state);
         let req = from_rouille(request);
-        // Body size enforcement at transport boundary
         if req.body.len() > MAX_BODY_SIZE {
             return to_rouille(with_security_headers(json_error(413, "Request too large")));
         }

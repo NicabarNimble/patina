@@ -19,6 +19,9 @@
 //! ├── registry.yaml            # Project/repo registry
 //! ├── adapters/                # LLM adapter templates
 //! ├── personas/default/events/ # Source (valuable)
+//! ├── run/                     # Runtime (socket, pid, token)
+//! │   ├── serve.sock           # Unix domain socket
+//! │   └── serve.token          # Bearer token file (TCP only)
 //! └── cache/                   # Derived (rebuildable)
 //!     ├── repos/               # Cloned reference repos
 //!     └── personas/default/    # Materialized indices
@@ -140,6 +143,29 @@ pub mod secrets {
     /// Note: plural - project vault has multiple recipients
     pub fn project_recipients_path(root: &Path) -> PathBuf {
         root.join(".patina").join("recipients.txt")
+    }
+}
+
+/// Serve daemon runtime paths (socket, pid, token)
+pub mod serve {
+    use super::*;
+
+    /// Runtime directory: `~/.patina/run/`
+    /// Permissions: 0o700 (owner only)
+    pub fn run_dir() -> PathBuf {
+        patina_home().join("run")
+    }
+
+    /// Unix domain socket: `~/.patina/run/serve.sock`
+    /// Permissions: 0o600 (owner only)
+    pub fn socket_path() -> PathBuf {
+        run_dir().join("serve.sock")
+    }
+
+    /// Bearer token file (TCP only): `~/.patina/run/serve.token`
+    /// Permissions: 0o600 (owner only)
+    pub fn token_path() -> PathBuf {
+        run_dir().join("serve.token")
     }
 }
 
@@ -317,6 +343,18 @@ mod tests {
         assert!(lock.to_string_lossy().ends_with("models.lock"));
         // Lock is at ~/.patina/, not in cache
         assert!(!lock.to_string_lossy().contains("cache"));
+    }
+
+    #[test]
+    fn test_serve_paths() {
+        let run = serve::run_dir();
+        assert!(run.to_string_lossy().ends_with(".patina/run"));
+
+        let sock = serve::socket_path();
+        assert!(sock.to_string_lossy().ends_with("run/serve.sock"));
+
+        let token = serve::token_path();
+        assert!(token.to_string_lossy().ends_with("run/serve.token"));
     }
 
     #[test]

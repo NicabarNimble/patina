@@ -319,13 +319,13 @@ enum Commands {
         json: bool,
     },
 
-    /// Start the Mother daemon (Ollama-style HTTP server)
+    /// Start the Mother daemon (default: Unix socket, opt-in: TCP)
     Serve {
-        /// Host to bind to (default: 127.0.0.1, use 0.0.0.0 for container access)
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
+        /// Bind to TCP host (enables network access; default: UDS only)
+        #[arg(long)]
+        host: Option<String>,
 
-        /// Port to bind to
+        /// TCP port (only used with --host)
         #[arg(long, default_value = "50051")]
         port: u16,
 
