@@ -19,6 +19,10 @@ Patina accumulates knowledge like the protective layer that forms on metal - you
 ## Build Recipe
 - `layer/core/build.md` - Persistent roadmap and task tracking across sessions. Start here when picking up development work. Contains phased tasks with links to detailed specs.
 
+## AI Workflow Rules
+- **NEVER use plan mode** — just read code and do the work directly
+- Read code before write code. Spec changes before code changes.
+
 ## Development Guidelines
 - **Rust-first**: Pure Rust at runtime, no Python subprocess dependencies
   - Embeddings: ONNX Runtime via `ort` crate (not Python/CoreML)
