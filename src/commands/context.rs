@@ -8,6 +8,8 @@ use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
+use crate::retrieval::{BeliefOracle, Oracle};
+
 /// Get project context from the knowledge layer
 ///
 /// Reads patterns from layer/core/ (eternal principles) and layer/surface/ (active patterns)
@@ -47,8 +49,14 @@ pub fn get_project_context(topic: Option<&str>) -> Result<String> {
     }
 
     // Beliefs are always eligible — topic changes the query, not whether beliefs exist
-    if let Ok(belief_section) = get_belief_metrics() {
-        output.push_str(&belief_section);
+    if let Some(t) = topic {
+        // Topic provided: semantic ranking via BeliefOracle
+        output.push_str(&get_topic_beliefs(t));
+    } else {
+        // No topic: aggregate stats + top beliefs by use count
+        if let Ok(belief_section) = get_belief_metrics() {
+            output.push_str(&belief_section);
+        }
     }
 
     if output.is_empty() {
@@ -166,6 +174,42 @@ pub fn get_belief_metrics() -> Result<String> {
     }
 
     Ok(output)
+}
+
+/// Query beliefs ranked by semantic relevance to a topic
+///
+/// Uses BeliefOracle's hybrid search (vector 0.7 + FTS5 0.3) to find
+/// beliefs relevant to the given topic. Falls back to aggregate metrics
+/// if the oracle is unavailable.
+fn get_topic_beliefs(topic: &str) -> String {
+    let oracle = BeliefOracle::new();
+    if !oracle.is_available() {
+        // Fall back to aggregate metrics if no index
+        return get_belief_metrics().unwrap_or_default();
+    }
+
+    match oracle.query(topic, 5) {
+        Ok(results) if !results.is_empty() => {
+            let mut output = format!(
+                "# Active Beliefs (ranked by relevance to \"{}\")\n\n",
+                topic
+            );
+            for r in &results {
+                // doc_id is "belief:{id}" — strip prefix for display
+                let id = r.doc_id.strip_prefix("belief:").unwrap_or(&r.doc_id);
+                output.push_str(&format!(
+                    "- **{}** (score: {:.2}): {}\n",
+                    id, r.score, r.content
+                ));
+            }
+            output.push('\n');
+            output
+        }
+        _ => {
+            // No results or error — fall back to aggregate metrics
+            get_belief_metrics().unwrap_or_default()
+        }
+    }
 }
 
 /// Read markdown patterns from a directory
