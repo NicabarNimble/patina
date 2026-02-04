@@ -10,8 +10,6 @@ use std::time::Instant;
 
 use super::microserver;
 use super::ServeOptions;
-use crate::commands::persona;
-use crate::commands::scry::{self, ScryOptions, ScryResult};
 use crate::retrieval::{QueryEngine, QueryOptions};
 
 /// Maximum request body size (1 MB)
@@ -113,8 +111,6 @@ struct HealthResponse {
 struct ScryRequest {
     /// Query text
     query: String,
-    /// Optional dimension (semantic, temporal, dependency)
-    dimension: Option<String>,
     /// Optional repo name
     repo: Option<String>,
     /// Query all repos
@@ -123,26 +119,13 @@ struct ScryRequest {
     /// Include GitHub issues
     #[serde(default)]
     include_issues: bool,
-    /// Include persona knowledge (default: true)
-    #[serde(default = "default_include_persona")]
-    include_persona: bool,
     /// Maximum results (default: 10)
     #[serde(default = "default_limit")]
     limit: usize,
-    /// Minimum score (default: 0.0)
-    #[serde(default)]
-    min_score: f32,
-    /// Use hybrid search (RRF fusion of all oracles)
-    #[serde(default)]
-    hybrid: bool,
 }
 
 fn default_limit() -> usize {
     10
-}
-
-fn default_include_persona() -> bool {
-    true
 }
 
 /// Scry API response
@@ -253,20 +236,19 @@ fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -
     // Cap limit
     body.limit = body.limit.min(MAX_LIMIT);
 
-    // Handle hybrid mode (RRF fusion) vs standard mode
-    let results: Vec<ScryResult> = if body.hybrid {
-        // Use QueryEngine with RRF fusion
-        let engine = QueryEngine::new();
-        let query_opts = QueryOptions {
-            repo: body.repo.clone(),
-            all_repos: body.all_repos,
-            include_issues: body.include_issues,
-        };
+    // Always use QueryEngine with all oracles + RRF fusion
+    let engine = QueryEngine::new();
+    let query_opts = QueryOptions {
+        repo: body.repo,
+        all_repos: body.all_repos,
+        include_issues: body.include_issues,
+    };
 
-        match engine.query_with_options(&body.query, body.limit, &query_opts) {
-            Ok(fused) => fused
+    match engine.query_with_options(&body.query, body.limit, &query_opts) {
+        Ok(results) => {
+            let json_results: Vec<ScryResultJson> = results
                 .into_iter()
-                .map(|r| ScryResult {
+                .map(|r| ScryResultJson {
                     id: 0,
                     content: r.content,
                     score: r.fused_score,
@@ -274,81 +256,17 @@ fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -
                     source_id: r.doc_id,
                     timestamp: r.metadata.timestamp.unwrap_or_default(),
                 })
-                .collect(),
-            Err(e) => {
-                return json_error(500, &format!("Hybrid scry failed: {}", e));
-            }
+                .collect();
+
+            let response = ScryResponse {
+                count: json_results.len(),
+                results: json_results,
+            };
+
+            HttpResponse::json(200, &response)
         }
-    } else {
-        // Standard mode - single oracle + manual persona
-        let options = ScryOptions {
-            limit: body.limit,
-            min_score: body.min_score,
-            dimension: body.dimension,
-            file: None, // File-based queries not supported via API yet
-            repo: body.repo,
-            all_repos: body.all_repos,
-            include_issues: body.include_issues,
-            include_persona: body.include_persona,
-            hybrid: false,
-            explain: false,
-            ..Default::default()
-        };
-
-        let mut results: Vec<ScryResult> = match scry::scry_text(&body.query, &options) {
-            Ok(results) => results,
-            Err(e) => {
-                return json_error(500, &format!("Scry failed: {}", e));
-            }
-        };
-
-        // Query persona if enabled
-        if options.include_persona {
-            if let Ok(persona_results) =
-                persona::query(&body.query, options.limit, options.min_score, None)
-            {
-                for p in persona_results {
-                    results.push(ScryResult {
-                        id: 0,
-                        content: p.content,
-                        score: p.score,
-                        event_type: "[PERSONA]".to_string(),
-                        source_id: format!("{} ({})", p.source, p.domains.join(", ")),
-                        timestamp: p.timestamp,
-                    });
-                }
-            }
-        }
-
-        // Sort combined results by score and truncate
-        results.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-        results.truncate(options.limit);
-        results
-    };
-
-    // Convert to JSON response
-    let json_results: Vec<ScryResultJson> = results
-        .into_iter()
-        .map(|r| ScryResultJson {
-            id: r.id,
-            content: r.content,
-            score: r.score,
-            event_type: r.event_type,
-            source_id: r.source_id,
-            timestamp: r.timestamp,
-        })
-        .collect();
-
-    let response = ScryResponse {
-        count: json_results.len(),
-        results: json_results,
-    };
-
-    HttpResponse::json(200, &response)
+        Err(e) => json_error(500, &format!("Scry failed: {}", e)),
+    }
 }
 
 // === Secrets cache handlers ===

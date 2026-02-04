@@ -190,10 +190,6 @@ enum Commands {
         #[arg(long, default_value = "0.0")]
         min_score: f32,
 
-        /// Dimension to search (semantic, temporal, dependency)
-        #[arg(long, value_enum, conflicts_with = "command")]
-        dimension: Option<Dimension>,
-
         /// Query a specific external repo (registered via 'patina repo')
         #[arg(long)]
         repo: Option<String>,
@@ -214,21 +210,17 @@ enum Commands {
         #[arg(long)]
         no_persona: bool,
 
-        /// Use hybrid search (fuse all oracles via RRF)
-        #[arg(long, conflicts_with = "command")]
-        hybrid: bool,
-
         /// Show detailed oracle contributions for each result
         #[arg(long)]
         explain: bool,
 
-        /// Force lexical (FTS5) search mode, bypassing auto-detection
-        #[arg(long, conflicts_with = "command")]
-        lexical: bool,
-
         /// Show belief impact for code results — which beliefs may be affected (E4.6a)
         #[arg(long)]
         impact: bool,
+
+        /// Use legacy single-oracle search (deprecated, removed in v0.12.0)
+        #[arg(long, conflicts_with = "command")]
+        legacy: bool,
     },
 
     /// Evaluate retrieval quality across dimensions
@@ -920,16 +912,14 @@ fn main() -> Result<()> {
             content_type,
             limit,
             min_score,
-            dimension,
             repo,
             all_repos,
             routing,
             include_issues,
             no_persona,
-            hybrid,
             explain,
-            lexical,
             impact,
+            legacy,
         }) => {
             // Handle subcommands first
             if let Some(subcmd) = command {
@@ -966,19 +956,18 @@ fn main() -> Result<()> {
                 let options = commands::scry::ScryOptions {
                     limit,
                     min_score,
-                    dimension: dimension.map(|d| d.as_str().to_string()),
+                    dimension: None,
                     file,
                     repo,
                     all_repos,
                     include_issues,
                     include_persona: !no_persona,
-                    hybrid,
                     explain,
-                    lexical,
                     routing: routing_strategy,
                     belief,
                     content_type,
                     impact,
+                    legacy,
                 };
                 commands::scry::execute(query.as_deref(), options)?;
             }
