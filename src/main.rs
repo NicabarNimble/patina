@@ -199,10 +199,6 @@ enum Commands {
         #[arg(long)]
         all_repos: bool,
 
-        /// Routing strategy for --all-repos: 'all' (search everything) or 'graph' (use mother graph)
-        #[arg(long, default_value = "all")]
-        routing: String,
-
         /// Include GitHub issues in search results
         #[arg(long)]
         include_issues: bool,
@@ -936,7 +932,6 @@ fn main() -> Result<()> {
             min_score,
             repo,
             all_repos,
-            routing,
             include_issues,
             no_persona,
             explain,
@@ -976,11 +971,6 @@ fn main() -> Result<()> {
                 // D3: --detail mode — fetch full content for one result
                 commands::scry::execute_detail(query_id, rank)?;
             } else {
-                // Parse routing strategy
-                let routing_strategy = commands::scry::RoutingStrategy::parse(&routing)
-                    .unwrap_or(commands::scry::RoutingStrategy::All);
-
-                // Default behavior: query-based search
                 let options = commands::scry::ScryOptions {
                     limit,
                     min_score,
@@ -991,7 +981,6 @@ fn main() -> Result<()> {
                     include_issues,
                     include_persona: !no_persona,
                     explain,
-                    routing: routing_strategy,
                     belief,
                     content_type,
                     impact,

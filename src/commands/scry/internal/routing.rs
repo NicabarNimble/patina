@@ -1,10 +1,7 @@
 //! Remote and multi-repo routing for scry
 //!
 //! Handles routing queries to mother daemon and cross-repo searches.
-//!
-//! Routing strategies:
-//! - **all**: Dumb routing - search ALL repos (current behavior)
-//! - **graph**: Smart routing - use mother graph to filter relevant repos
+//! Graph routing is the sole cross-repo strategy (D4).
 
 use std::path::Path;
 
@@ -18,26 +15,6 @@ use super::super::{ScryOptions, ScryResult};
 use super::enrichment::truncate_content;
 use super::logging::{log_scry_query_with_routing, EdgeInfo, RoutedResult, RoutingContext};
 use super::search::scry_text;
-
-/// Routing strategy for cross-project queries
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum RoutingStrategy {
-    /// Search all repos (dumb routing)
-    #[default]
-    All,
-    /// Use mother graph for smart routing
-    Graph,
-}
-
-impl RoutingStrategy {
-    pub fn parse(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "all" => Some(RoutingStrategy::All),
-            "graph" => Some(RoutingStrategy::Graph),
-            _ => None,
-        }
-    }
-}
 
 /// Execute scry via mother daemon
 pub fn execute_via_mother(query: Option<&str>, options: &ScryOptions) -> Result<()> {
@@ -97,122 +74,7 @@ pub fn execute_via_mother(query: Option<&str>, options: &ScryOptions) -> Result<
     Ok(())
 }
 
-/// Execute query across all repos (current project + all reference repos)
-pub fn execute_all_repos(query: Option<&str>, options: &ScryOptions) -> Result<()> {
-    let query = query.ok_or_else(|| anyhow::anyhow!("Query required for --all-repos"))?;
-
-    println!("Mode: All Repos (cross-project search)\n");
-    println!("Query: \"{}\"\n", query);
-
-    let mut all_results: Vec<(String, ScryResult)> = Vec::new();
-
-    // 1. Query current project if we're in one
-    let in_project = Path::new(".patina/local/data/patina.db").exists();
-    if in_project {
-        println!("📂 Searching current project...");
-        let project_options = ScryOptions {
-            repo: None,
-            all_repos: false,
-            ..options.clone()
-        };
-        match scry_text(query, &project_options) {
-            Ok(results) => {
-                println!("   Found {} results", results.len());
-                for r in results {
-                    all_results.push(("[PROJECT]".to_string(), r));
-                }
-            }
-            Err(e) => {
-                eprintln!("   ⚠️  Project search failed: {}", e);
-            }
-        }
-    }
-
-    // 2. Query all registered reference repos
-    let repos = crate::commands::repo::list()?;
-    for repo in repos {
-        println!("📚 Searching {}...", repo.name);
-        let repo_options = ScryOptions {
-            repo: Some(repo.name.clone()),
-            all_repos: false,
-            ..options.clone()
-        };
-        match scry_text(query, &repo_options) {
-            Ok(results) => {
-                println!("   Found {} results", results.len());
-                for r in results {
-                    all_results.push((format!("[{}]", repo.name.to_uppercase()), r));
-                }
-            }
-            Err(e) => {
-                eprintln!("   ⚠️  {} search failed: {}", repo.name, e);
-            }
-        }
-    }
-
-    // 3. Query persona if enabled
-    if options.include_persona {
-        println!("🧠 Searching persona...");
-        if let Ok(persona_results) = persona::query(query, options.limit, options.min_score, None) {
-            println!("   Found {} results", persona_results.len());
-            for p in persona_results {
-                all_results.push((
-                    "[PERSONA]".to_string(),
-                    ScryResult {
-                        id: 0,
-                        content: p.content,
-                        score: p.score,
-                        event_type: p.source.clone(),
-                        source_id: p.domains.join(", "),
-                        timestamp: p.timestamp,
-                    },
-                ));
-            }
-        }
-    }
-
-    // 4. Sort by score and take top limit
-    all_results.sort_by(|a, b| {
-        b.1.score
-            .partial_cmp(&a.1.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    all_results.truncate(options.limit);
-
-    println!();
-
-    if all_results.is_empty() {
-        println!("No results found across any repos.");
-        return Ok(());
-    }
-
-    println!("Found {} results (combined):\n", all_results.len());
-    println!("{}", "─".repeat(60));
-
-    for (i, (source, result)) in all_results.iter().enumerate() {
-        let timestamp_display = if result.timestamp.is_empty() {
-            String::new()
-        } else {
-            format!(" | {}", result.timestamp)
-        };
-        println!(
-            "\n[{}] {} Score: {:.3} | {} | {}{}",
-            i + 1,
-            source,
-            result.score,
-            result.event_type,
-            result.source_id,
-            timestamp_display
-        );
-        println!("    {}", truncate_content(&result.content, 200));
-    }
-
-    println!("\n{}", "─".repeat(60));
-
-    Ok(())
-}
-
-/// Execute query using graph-based routing
+/// Execute query using graph-based routing (sole cross-repo strategy)
 ///
 /// Smart routing flow:
 /// 1. Detect current project from graph

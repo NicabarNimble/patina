@@ -17,11 +17,8 @@ use crate::commands::persona;
 use internal::enrichment::{find_belief_impact, truncate_content};
 use internal::hybrid::execute_hybrid;
 use internal::logging::log_scry_query;
-use internal::routing::{execute_all_repos, execute_graph_routing, execute_via_mother};
+use internal::routing::{execute_graph_routing, execute_via_mother};
 use internal::search::{is_lexical_query, scry_belief, scry_file};
-
-// Re-export routing strategy for CLI
-pub use internal::routing::RoutingStrategy;
 
 // Re-export subcommands for CLI
 pub use internal::subcommands::{
@@ -56,8 +53,6 @@ pub struct ScryOptions {
     pub include_issues: bool,
     pub include_persona: bool,
     pub explain: bool,
-    /// Routing strategy for cross-project queries (default: All)
-    pub routing: RoutingStrategy,
     /// Belief ID for belief-grounding queries (E4.6a)
     pub belief: Option<String>,
     /// Content type filter for belief queries: code, commits, sessions, patterns, beliefs
@@ -82,7 +77,6 @@ impl Default for ScryOptions {
             include_issues: false,
             include_persona: true, // Include persona by default
             explain: false,
-            routing: RoutingStrategy::default(),
             belief: None,
             content_type: None,
             impact: false,
@@ -101,17 +95,9 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
 
     println!("🔮 Scry - Searching knowledge base\n");
 
-    // Handle cross-project routing modes
+    // Cross-project: graph routing is the sole strategy (D4)
     if options.all_repos {
-        // Check routing strategy
-        match options.routing {
-            RoutingStrategy::Graph => {
-                return execute_graph_routing(query, &options);
-            }
-            RoutingStrategy::All => {
-                return execute_all_repos(query, &options);
-            }
-        }
+        return execute_graph_routing(query, &options);
     }
 
     // Handle special modes that bypass QueryEngine
