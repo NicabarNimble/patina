@@ -152,8 +152,96 @@ MCP has been running the QueryEngine path for every query since January with no 
 - [x] CLI output format uses FusedResult with oracle contributions ✅ via execute_hybrid
 - [x] MCP scry handler uses QueryEngine (same pipeline as CLI) ✅ already did since Dec 2025
 - [x] `--belief` and `--file` modes unchanged (specialized, not default query path) ✅ untouched
-- [ ] `patina eval` benchmarks pass — no regression in retrieval quality vs old default
+- [ ] `patina eval` updated — unified pipeline + per-oracle ablation (see Eval Design below)
 - [x] Serve daemon unified — `handle_scry()` always uses QueryEngine ✅ 65c16818
+
+---
+
+## Eval Design
+
+> Spec challenge (session 20260204-123509): First attempt replaced legacy `scry()` calls with QueryEngine, losing per-oracle measurement. Reverted. Correct design below.
+
+### The Problem
+
+`eval/mod.rs` calls `scry()` which is an alias for `scry_text()` — the legacy direct vector search. Eval never touches QueryEngine. It tests the old path, not what users get.
+
+Additionally, `scry_text()` uses `ScryOptions.dimension` to select USearch indices (semantic.usearch, temporal.usearch). QueryEngine ignores this field — oracles auto-detect. The dimension field is vestigial in the unified path.
+
+### Wrong Approach (reverted)
+
+Replace `scry()` with `QueryEngine` and use `oracle_filter` for ablation. This **lost raw component measurement**: RRF scores differ from cosine scores, FusedResult doc_ids differ from eventlog seq IDs, and session observations deduplicate by source_id under RRF.
+
+### Correct Approach: Default the Switches
+
+Old world: plain (single oracle) was default, `--hybrid` was the feature.
+Wrong fix: unified is default, plain is gone.
+Right fix: **unified is default, plain becomes ablation switches. Measure more, not less.**
+
+`patina eval` runs all tests through multiple engines in one pass:
+
+```
+Engines created:
+  unified       = QueryEngine::new()                          (all oracles + RRF)
+  semantic-only = QueryEngine { oracle_filter: ["semantic"] } (ablation)
+  temporal-only = QueryEngine { oracle_filter: ["temporal"] } (ablation)
+
+For each ground truth test:
+  Run same queries through each engine
+  Collect results with engine label
+```
+
+### Ground Truth Changes
+
+**Semantic eval (code → same-file functions):**
+- Old: session observations → same-session observations. Matched by eventlog seq ID.
+- Problem: SemanticOracle maps seq → source_id as doc_id. Multiple observations from same session share one source_id → RRF deduplicates → max 1 hit per session.
+- New: functions in same file should co-retrieve. doc_ids are `file::function` format — unique per function, no dedup issue. Ground truth from `function_facts` table.
+
+**Temporal file eval (file → co-change partners):**
+- Works with FusedResult. Extract file path from doc_id (before `::`, strip `./`). Match against expected co-change partners. No change needed in ground truth strategy.
+
+**Temporal text eval (score distribution):**
+- No ground truth. Measures score distribution. Adapts `r.score` → `r.fused_score`. Trivial.
+
+### Output Format
+
+```
+━━━ Unified Pipeline (N oracles + RRF) ━━━
+  code → same-file:    P@5=30%  P@10=25%  (N oracles avg)
+  file → co-change:    P@5=15%  P@10=12%
+
+━━━ Ablation: semantic-only ━━━
+  code → same-file:    P@5=25%  P@10=20%
+
+━━━ Ablation: temporal-only ━━━
+  file → co-change:    P@5=10%  P@10=8%
+
+━━━ Summary ━━━
+Pipeline               P@5     P@10    vs Random
+─────────────────────────────────────────────────
+unified (code)         30%     25%     12.5x
+semantic-only (code)   25%     20%     10.0x
+unified (file)         15%     12%     6.0x
+temporal-only (file)   10%      8%     4.0x
+```
+
+**`--dimension semantic`** narrows to semantic tests only (unified + ablation).
+**`--dimension temporal`** narrows to temporal tests only (unified + ablation).
+No flag = everything.
+
+### Implementation Notes
+
+- `eval/mod.rs` imports `QueryEngine`, `RetrievalConfig`, `FusedResult` from `crate::retrieval`
+- Removes import of `scry`, `ScryOptions` — eval no longer uses legacy search path
+- Ground truth loading separated from engine execution (load once, run through multiple engines)
+- `count_file_hits()` helper: matches FusedResult doc_ids against expected file + function names
+- `extract_file_from_doc_id()` helper: strips `./` prefix and `::suffix` from doc_ids
+- `ScryOptions.dimension` field stays (used by legacy path, mother routing) — eval just stops using it
+
+### Beliefs Applied
+
+- [[spec-challenge-traceback]] — stopped coding when removing measurement capability
+- [[bridges-become-permanent]] — `scry()` alias in eval was an invisible bridge to the legacy path
 
 ---
 
