@@ -134,20 +134,20 @@ Five commits, ordered to separate refactor from behavior change:
 ## Exit Criteria
 
 **Prerequisite (refactor):**
-- [ ] Context logic extracted to `src/commands/context.rs` — `server.rs` imports from it
-- [ ] CLI `patina context [--topic]` command exists and returns same output as MCP tool
+- [x] Context logic extracted to `src/commands/context.rs` — `server.rs` imports from it ✅ 2026-02-04
+- [x] CLI `patina context [--topic]` command exists and returns same output as MCP tool ✅ 2026-02-04
 
 **Layer 1 (descriptions):**
 - [x] MCP tool descriptions include recall language ("USE THIS FIRST", "USE THIS to understand design rules")
-- [ ] MCP `context` description mentions beliefs explicitly
-- [ ] MCP `scry` description mentions session learnings
-- [ ] CLI `Scry` doc comment matches MCP description tone
+- [x] MCP `context` description mentions beliefs explicitly ✅ 2026-02-04
+- [x] MCP `scry` description mentions session learnings (already present)
+- [x] CLI `Scry` doc comment matches MCP description tone ✅ 2026-02-04
 
 **Layer 2 (response-level recall):**
-- [ ] Beliefs always shown in context — no gating on topic string
-- [ ] Pattern topic filtering uses filename/title only — `context(topic="error handling")` does not return irrelevant architecture docs
-- [ ] Context with topic returns semantically ranked beliefs — `context(topic="error handling")` returns `error-analysis-over-architecture`
-- [ ] Recall directive in every context response — includes both CLI and MCP syntax with concrete examples
+- [x] Beliefs always shown in context — no gating on topic string ✅ 2026-02-04
+- [x] Pattern topic filtering uses filename/title only — `context(topic="error handling")` does not return irrelevant architecture docs ✅ 2026-02-04
+- [x] Context with topic returns semantically ranked beliefs — `context(topic="error handling")` returns `error-analysis-over-architecture` at rank 3 (score 0.82) ✅ 2026-02-04
+- [x] Recall directive in every context response — includes both CLI and MCP syntax with concrete examples ✅ 2026-02-04
 
 **Deferred to v0.11.0 stretch (Layer 3):**
 - [ ] Graph breadcrumbs — belief results show links (attacks/supports/reaches), code results show belief impact + structural edges

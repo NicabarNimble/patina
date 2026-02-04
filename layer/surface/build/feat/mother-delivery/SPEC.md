@@ -118,9 +118,9 @@ Rollup criteria. Sub-spec checkboxes must all pass for these to be checked.
 
 - [ ] **D0: One search pipeline.** CLI `patina scry "query"` uses QueryEngine with all oracles — no `--hybrid` flag, same output format as MCP. Sub-spec: [[d0-unified-search/SPEC.md]]
 - [ ] **D1: Beliefs surface in default queries.** Run `patina scry "how should I handle errors?"` — beliefs appear in results alongside code/commits without `mode=belief`. Sub-spec: [[d1-belief-oracle/SPEC.md]]
-- [ ] **D2: Tool descriptions and recall directive live.** `context` response includes dynamic beliefs + recall directive. `scry` and `context` MCP descriptions include belief/recall language. Sub-spec: [[d2-three-layer-delivery/SPEC.md]]
+- [x] **D2: Tool descriptions and recall directive live.** `context` response includes dynamic beliefs + recall directive. `scry` and `context` MCP descriptions include belief/recall language. CLI `patina context` command added. Sub-spec: [[d2-three-layer-delivery/SPEC.md]] ✅ 2026-02-04
 - [x] **D3: Snippets are the default.** `scry` returns compact snippets; `--detail` returns full content for a single result; `--full` preserves legacy behavior. Sub-spec: [[d3-two-step-retrieval/SPEC.md]] ✅ 2026-02-04
-- [ ] **D4: `--routing` flag removed.** Graph routing is the sole cross-repo strategy, default is local-only.
+- [x] **D4: `--routing` flag removed.** Graph routing is the sole cross-repo strategy, default is local-only. ✅ 2026-02-04
 - [x] **D5: Naming cleanup applied.** mothership → mother across codebase. ✅ Verified 2026-02-03.
 - [ ] **A/B eval passes.** Task-oriented delta >= 0.0 (beliefs no longer hurt). 10 queries, same methodology as session 20260202-151214.
 - [x] **Token efficiency measured.** CLI 6%, MCP 4% reduction. Modest because enrichment already compact. Real value is scan-then-focus capability. ✅ 2026-02-04
