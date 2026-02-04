@@ -4,7 +4,7 @@
 //! LLMs never see secret values.
 
 use anyhow::{bail, Result};
-use patina::{scanner, secrets};
+use patina::{paths, scanner, secrets};
 use std::env;
 use std::io::{self, BufRead, Write};
 
@@ -69,9 +69,13 @@ pub struct SecretsFlags {
     #[arg(long)]
     pub remove: Option<String>,
 
-    /// Export identity (requires --confirm)
+    /// Export identity to file (requires --confirm, use --stdout for pipe)
     #[arg(long)]
     pub export_key: bool,
+
+    /// Write exported key to stdout instead of file (for piping)
+    #[arg(long)]
+    pub stdout: bool,
 
     /// Import identity from stdin
     #[arg(long)]
@@ -102,7 +106,7 @@ pub fn execute_cli(command: Option<SecretsCommands>, flags: SecretsFlags) -> Res
     }
 
     if flags.export_key {
-        return export_key(flags.confirm);
+        return export_key(flags.confirm, flags.stdout);
     }
 
     if flags.import_key {
@@ -248,17 +252,32 @@ fn run(ssh: Option<&str>, command: &[String]) -> Result<()> {
     Ok(())
 }
 
-/// Export identity key
-fn export_key(confirm: bool) -> Result<()> {
+/// Export identity key to file (default) or stdout (--stdout)
+fn export_key(confirm: bool, to_stdout: bool) -> Result<()> {
     if !confirm {
-        println!("⚠️  This will print your private key.");
+        println!("⚠️  This will export your private key.");
         println!("  Add --confirm to proceed.");
+        println!("  Add --stdout to print to terminal (for piping).");
         return Ok(());
     }
 
     let identity = secrets::export_identity()?; // Zeroizing<String> — zeroed on drop
-    println!("⚠️  PRIVATE KEY - DO NOT SHARE");
-    println!("{}", &*identity);
+
+    if to_stdout {
+        println!("{}", &*identity);
+    } else {
+        let key_path = paths::patina_home().join("identity.age");
+
+        std::fs::write(&key_path, identity.as_bytes())?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))?;
+        }
+
+        println!("✓ Key exported to {} (0o600)", key_path.display());
+    }
 
     Ok(())
 }
