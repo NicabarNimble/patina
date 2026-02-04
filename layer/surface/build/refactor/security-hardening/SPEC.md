@@ -401,7 +401,7 @@ Replace argv-based env prefix with stdin pipe to remote shell.
 - [x] `~/.patina/vault.age` created with 0o600 permissions
 - [x] `~/.patina/secrets.toml` created with 0o600 permissions
 - [x] ONNX model verified via SHA-256 before loading
-- [ ] `patina secrets run` over SSH does not expose secrets in `ps auxe`
+- [x] `patina secrets run` over SSH does not expose secrets in `ps auxe`
 - [ ] Serve token loaded from vault when available, env var as fallback
 
 **Phase 4 (P2 — Defense-in-Depth):**
