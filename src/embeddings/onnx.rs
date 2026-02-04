@@ -4,8 +4,16 @@ use super::EmbeddingEngine;
 use anyhow::{anyhow, bail, Context, Result};
 use ndarray::Array2;
 use ort::{inputs, session::Session, value::Value};
+use sha2::{Digest, Sha256};
 use std::path::Path;
 use tokenizers::Tokenizer;
+
+/// Default model name used for integrity verification
+const DEFAULT_MODEL_NAME: &str = "all-MiniLM-L6-v2";
+
+/// SHA-256 hash of the known-good default model (all-MiniLM-L6-v2 INT8 quantized)
+const DEFAULT_MODEL_SHA256: &str =
+    "afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1";
 
 /// ONNX-based embedding generator
 pub struct OnnxEmbedder {
@@ -66,6 +74,11 @@ impl OnnxEmbedder {
                 model_path.display(),
                 model_path.display()
             );
+        }
+
+        // Verify integrity of the default model before loading
+        if model_name == DEFAULT_MODEL_NAME {
+            verify_model_integrity(model_path, DEFAULT_MODEL_SHA256)?;
         }
 
         let session = Session::builder()
@@ -157,6 +170,22 @@ impl OnnxEmbedder {
 
         vec.iter().map(|x| x / norm).collect()
     }
+}
+
+/// Verify ONNX model file integrity via SHA-256
+fn verify_model_integrity(model_path: &Path, expected_hash: &str) -> Result<()> {
+    let bytes = std::fs::read(model_path)
+        .with_context(|| format!("Failed to read model for integrity check: {:?}", model_path))?;
+    let hash = format!("{:x}", Sha256::digest(&bytes));
+    if hash != expected_hash {
+        bail!(
+            "ONNX model integrity check failed: {:?}\n  Expected: {}\n  Got:      {}",
+            model_path,
+            expected_hash,
+            hash
+        );
+    }
+    Ok(())
 }
 
 impl EmbeddingEngine for OnnxEmbedder {
