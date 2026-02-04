@@ -20,6 +20,8 @@ pub mod snippet;
 
 pub use engine::{QueryEngine, QueryOptions, RetrievalConfig};
 pub use fusion::FusedResult;
+pub use oracle::Oracle;
+pub use oracles::BeliefOracle;
 pub use snippet::snippet;
 
 // Re-export types for MCP JSON serialization and annotations
