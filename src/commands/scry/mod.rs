@@ -143,26 +143,21 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
             scry_file(file, &options)?
         }
         (None, None, Some(q)) => {
-            println!("Query: \"{}\"\n", q);
-
+            // Escape hatches: --lexical and --dimension force single-oracle paths
             if options.lexical {
-                // Explicit --lexical flag forces FTS5 mode
+                println!("Query: \"{}\"\n", q);
                 println!("Mode: Lexical (FTS5) [forced]\n");
                 internal::search::scry_lexical(q, &options)?
             } else if options.dimension.is_some() {
-                // If dimension explicitly specified, use vector search (skip lexical auto-detect)
+                println!("Query: \"{}\"\n", q);
                 println!(
                     "Mode: Vector ({} dimension)\n",
                     options.dimension.as_deref().unwrap()
                 );
                 scry_text(q, &options)?
-            } else if is_lexical_query(q) {
-                // Auto-detect lexical patterns only when no dimension specified
-                println!("Mode: Lexical (FTS5)\n");
-                internal::search::scry_lexical(q, &options)?
             } else {
-                println!("Mode: Semantic (vector)\n");
-                scry_text(q, &options)?
+                // Default: QueryEngine with all oracles + RRF fusion
+                return execute_hybrid(query, &options);
             }
         }
         (None, None, None) => {
