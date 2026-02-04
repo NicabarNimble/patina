@@ -1,12 +1,13 @@
 ---
 type: feat
 id: d3-two-step-retrieval
-status: design
+status: complete
 created: 2026-02-02
-updated: 2026-02-03
+updated: 2026-02-04
 sessions:
   origin: 20260202-202802
   design-resolution: 20260203-065424
+  implementation: 20260204-142556
 related:
   - layer/surface/build/feat/mother-delivery/SPEC.md
   - layer/surface/build/feat/mother-delivery/d1-belief-oracle/SPEC.md
@@ -131,10 +132,39 @@ scry(mode="detail", query_id="q_abc", rank=1)
 
 ## Exit Criteria
 
-- [ ] Snippets by default in BOTH MCP and CLI — default mode returns doc_id + score + content-type-aware snippet (~200 chars for code, full statement for beliefs, subject for commits)
-- [ ] `--detail` / `mode=detail` fetches single result — `patina scry --detail <query_id> <rank>` and `scry(mode=detail, ...)` return full content + annotations for one result
-- [ ] `--full` / `mode=full` escape hatch — preserves current full-content behavior during transition
-- [ ] Token efficiency measured: compare average tokens per scry response before/after
+- [x] Snippets by default in BOTH MCP and CLI — `snippet()` in `src/retrieval/snippet.rs`, MCP `format_results()` uses it, CLI already truncated via `truncate_content()`
+- [x] `--detail` / `mode=detail` fetches single result — `patina scry --detail <query_id> --rank <N>` and `scry(mode="detail", ...)` return full content from eventlog
+- [x] `--full` / `mode=full` escape hatch — preserves full-content behavior, deprecated from day one
+- [x] Token efficiency measured — see results below
+
+### Token Efficiency Measurement (2026-02-04, session [[20260204-142556]])
+
+10 queries, limit=10, CLI and MCP paths:
+
+| Path | Snippets | Full | Reduction |
+|------|----------|------|-----------|
+| CLI  | ~4,406 tokens | ~4,723 tokens | **6%** |
+| MCP  | ~2,467 tokens | ~2,596 tokens | **4%** |
+
+**Why modest?** The enrichment step already produces compact descriptions (not raw code). Beliefs pass through fully (<150 chars). Commits are already "SHA: subject" format. Code descriptions are "Function `name` in `file`, params: ..." which is often under 200 chars.
+
+**The real value is capability, not optimization.** D3's contribution is `--detail` (scan-then-focus), not token savings. The LLM can now scan 10 snippets and drill into the one it needs, instead of receiving everything upfront. See [[capability-not-optimization]].
+
+Token savings will increase as the index grows and code content gets richer (full function bodies from tree-sitter, longer pattern documents, multi-paragraph session summaries).
+
+---
+
+## Implementation Notes (2026-02-04)
+
+**Commit:** [[commit-0c4c5500]] `feat(d3): two-step retrieval — snippets by default, detail on demand`
+
+**Files changed (1 new, 5 modified):**
+- `src/retrieval/snippet.rs` — NEW: type-aware snippet extraction, UTF-8 safe, 7 tests
+- `src/retrieval/mod.rs` — wire snippet module
+- `src/mcp/server.rs` — `format_results()` uses snippets; `detail`/`full` modes; `handle_detail()` + `format_detail_content()`; MCP schema updated
+- `src/commands/scry/mod.rs` — `full` field on ScryOptions; `execute_detail()` + `format_detail()`; belief prefix stripping
+- `src/commands/scry/internal/hybrid.rs` — `--full` bypasses truncation
+- `src/main.rs` — `--detail`, `--rank`, `--full` CLI args
 
 ---
 
@@ -143,3 +173,4 @@ scry(mode="detail", query_id="q_abc", rank=1)
 - [[design.md]] — ADR-2 (Why two-step applies to both MCP and CLI)
 - [[d2-three-layer-delivery/SPEC.md]] — D2 depends on D3's response shape being stable
 - [[../SPEC.md]] — Parent spec (implementation order, non-goals)
+- [[capability-not-optimization]] — Belief captured from D3: frame features as capabilities, not optimizations
