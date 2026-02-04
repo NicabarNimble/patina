@@ -133,8 +133,8 @@ For the TCP opt-in path, write the token to a file and print the file path.
 
 | # | File | Issue | Fix |
 |---|------|-------|-----|
-| 12 | `src/secrets/mod.rs:482-491` | Secret input not masked (echoed to terminal) | Use `rpassword` crate for sensitive prompts |
-| 13 | `src/secrets/identity.rs` | Identity strings not zeroized after use | Add `zeroize` crate, use `Zeroizing<String>` for key material |
+| 12 | `src/secrets/mod.rs:482-491` | Secret input not masked (echoed to terminal) | Use `console::Term::read_secure_line()` (already in tree) |
+| 13 | `src/secrets/identity.rs` | Identity strings not zeroized after use | Use `zeroize::Zeroizing<String>` (already in tree via `age`) |
 | 14 | `src/commands/secrets.rs:258` | `--export-key` prints private key to stdout | Write to file with 0o600 permissions, or require `--stdout` flag for pipe use |
 | 15 | `src/commands/repo/internal.rs:70-71` | Registry YAML path field not validated on load | Canonicalize and validate against `~/.patina/cache/` prefix during deserialization |
 
@@ -176,19 +176,81 @@ on all responses. No `Access-Control-Allow-Origin` header (omission is safer tha
 
 **6. Consistent JSON errors** — `json_error()` helper, all paths return `{"error": "..."}`.
 
-### Phase 2: Transport Security by Trust Boundary (3 files)
+### Phase 2: Transport Security by Trust Boundary
 
-Anchored in [[transport-security-by-trust-boundary]]. Design principle (djb): default
-safe, insecure path hard. Prior art: PostgreSQL, Docker.
+Anchored in [[transport-security-by-trust-boundary]], [[use-whats-in-the-tree]].
+Design principle (djb): default safe, insecure path hard. Prior art: PostgreSQL, Docker.
 
-**Transport model:**
-- `Transport::Uds(PathBuf)` — local path, file permissions are auth, no token
-- `Transport::Http { base_url, token }` — network path, explicit opt-in, bearer token required
+#### Design: Replace rouille with blocking HTTP-over-UDS microserver
 
-#### 2a. Server dual listener (`serve/internal.rs`, `serve/mod.rs`)
+**Key insight:** rouille only accepts `TcpListener`. Rather than running two protocols
+(HTTP for TCP, custom framing for UDS), replace rouille with a minimal blocking HTTP
+server that handles both `UnixListener` and `TcpListener`. One protocol (HTTP)
+everywhere. Same wire format. Same client code. Same `curl` for testing.
 
-Default: listen on `~/.patina/run/serve.sock` (unix domain socket). No TCP unless
-`--host`/`--port` explicitly passed. Flip the djb switch — safe by default.
+**What we drop:** `rouille` (pulls in `tiny-http` + its own HTTP parser).
+**What we add:** `httparse` (~1000 lines, zero deps, zero-copy HTTP/1.x parser).
+Net reduction in dependency surface.
+
+rouille currently touches 3 lines: one import, one `start_server` call, one `router!`
+macro. The business logic (structs, handlers, query engine) is already pure Rust with
+serde. The refactor is surgical.
+
+#### Transport model
+
+- **Default:** `UnixListener` at `~/.patina/run/serve.sock` — file permissions are auth
+- **Opt-in:** `TcpListener` at `--host`/`--port` — bearer token required
+- Both speak HTTP/1.1. Both call the same handlers. Clients don't know the difference.
+
+#### 2a. Microserver (`serve/internal.rs`)
+
+**Intentionally minimal HTTP surface:**
+- One request per connection. Read request, write response, close stream.
+- POST requires Content-Length. Read body with `Read::take(MAX_BODY_SIZE + 1)` —
+  do not trust Content-Length for size enforcement (lesson from P0 Gotcha A).
+- Header cap: 32 KiB. Body cap: 1 MiB.
+- No chunked encoding (reject). No keep-alive (close after response).
+- Sufficient for: `/health`, `/version`, `/api/scry`, `/secrets/cache`, `/secrets/lock`.
+
+**Internal request/response types (transport-free):**
+```rust
+struct HttpRequest {
+    method: String,
+    path: String,
+    headers: Vec<(String, String)>,
+    body: Vec<u8>,
+}
+
+struct HttpResponse {
+    status: u16,
+    body: Vec<u8>,  // JSON
+}
+```
+
+**Router:** Replace `router!` macro with plain match:
+```rust
+match (request.method.as_str(), request.path.as_str()) {
+    ("GET", "/health")    => handle_health(state),
+    ("GET", "/version")   => handle_version(state),
+    ("POST", "/api/scry") => handle_scry(state, &request),
+    _                     => json_error(404, "Not found"),
+}
+```
+
+**Transport-free handlers:**
+```rust
+fn handle_health(state: &ServerState) -> HttpResponse { ... }
+fn handle_scry(state: &ServerState, req: &HttpRequest) -> HttpResponse { ... }
+```
+
+Auth check, body parsing, size enforcement happen in the per-connection handler
+before dispatch. Business logic never sees HTTP.
+
+**Accept loop:** `std::thread::spawn` per connection (same spirit as rouille).
+Both `UnixStream` and `TcpStream` implement `Read + Write` — the per-connection
+handler is generic over the stream type.
+
+#### 2b. Socket safety (`serve/mod.rs`)
 
 **Socket directory permissions (non-negotiable):** On startup:
 - Create `~/.patina/run/` if it doesn't exist, with 0o700
@@ -202,72 +264,19 @@ Default: listen on `~/.patina/run/serve.sock` (unix domain socket). No TCP unles
 - Otherwise refuse to start (do not unlink arbitrary files)
 - Delete socket on clean shutdown
 
-**UDS wire protocol — length-prefix framing:**
+**Peer identity (future enhancement):**
+- macOS: `getpeereid(fd, &uid, &gid)`
+- Linux: `getsockopt(SO_PEERCRED)`
+- Can add later without changing external API.
 
-```
-[4 bytes: big-endian u32 payload length][JSON payload]
-```
-
-Frame size limit: 1 MB (same as HTTP body cap). Reject before reading payload
-if length > MAX_FRAME_SIZE. Big-endian per network byte order convention.
-
-**Request/response shape:** Every request includes an `id`. Every response echoes it.
-
-Request:
-```json
-{"id":1,"action":"hello","client":"session","version":1}
-```
-
-Response:
-```json
-{"id":1,"status":200,"body":{"server":"patina-serve","version":1}}
-```
-
-**Actions:** `hello`, `health`, `scry`, `cache_get`, `cache_set`, `cache_clear`
-
-**Handshake (recommended):** First message from client:
-```
-→ {"id":1,"action":"hello","client":"session","version":1}
-← {"id":1,"status":200,"body":{"server":"patina-serve","version":1}}
-```
-
-Then request/response pairs:
-```
-→ {"id":2,"action":"scry","query":"test","limit":10}
-← {"id":2,"status":200,"body":{"results":[...],"count":5}}
-
-→ {"id":3,"action":"cache_get"}
-← {"id":3,"status":200,"body":{"secrets":{"key":"value"}}}
-
-→ {"id":4,"action":"cache_set","secrets":{"k":"v"},"ttl_secs":600}
-← {"id":4,"status":200,"body":{"cached":true}}
-
-→ {"id":5,"action":"cache_clear"}
-← {"id":5,"status":200,"body":{"cleared":true}}
-```
-
-**Shared handler logic:** Extract current HTTP handlers into standalone functions.
-UDS and HTTP MUST call the same core handlers. No duplicated business logic.
-
-```rust
-fn handle_health(state: &ServerState) -> ActionResponse { ... }
-fn handle_scry(state: &ServerState, req: ScryRequest) -> ActionResponse { ... }
-fn handle_cache_get(state: &ServerState) -> ActionResponse { ... }
-fn handle_cache_set(state: &ServerState, req: CacheSetRequest) -> ActionResponse { ... }
-fn handle_cache_clear(state: &ServerState) -> ActionResponse { ... }
-```
-
-rouille stays for TCP/HTTP path. `std::os::unix::net::UnixListener` for UDS. One
-thread per listener. No new dependencies — stdlib + existing `libc`.
-
-**Why not HTTP over UDS?** rouille/tiny-http accept `TcpListener` only. Supporting
-HTTP over UDS would require switching frameworks (often async) or hacking the HTTP
-server internals. We don't need HTTP for local IPC — the protocol is simply "send
-JSON, receive JSON."
-
-#### 2b. Session client transport-aware (`secrets/session.rs`)
+#### 2c. Session client (`secrets/session.rs`)
 
 Try UDS first (no auth needed). Fall back to HTTP + token if no socket.
+
+UDS client is a small function (~40 lines): open `UnixStream`, write HTTP request
+bytes, read response, parse with `httparse`. No `reqwest` needed for local path.
+`reqwest` stays for the TCP fallback (containers).
+
 ```rust
 fn connect() -> Transport {
     let sock = paths::serve::socket_path();
@@ -276,10 +285,16 @@ fn connect() -> Transport {
 }
 ```
 
-#### 2c. Mother client transport-aware (`mother/internal.rs`)
+#### 2d. Mother client (`mother/internal.rs`)
 
-Accept transport in constructor. Local mother: uses UDS (no token). Container
-mother: uses TCP + bearer token passed in constructor.
+Accept transport in constructor. Local mother: UDS (no token). Container mother:
+TCP + bearer token via `reqwest`.
+
+#### 2e. Secrets never in output (#16)
+
+Generated token never printed to stderr. For TCP opt-in path: write token to
+`~/.patina/run/serve.token` (0o600), print path not value. UDS path needs no
+token at all.
 
 ### Phase 3: P1 — File Permissions + Model Integrity (4 changes, 4 files)
 
@@ -331,9 +346,16 @@ Replace argv-based env prefix with stdin pipe to remote shell.
 
 ---
 
-## New Dependencies
+## Dependencies
 
-None. All required crates are already in the dependency tree via `age` and `console`:
+**Phase 2:** Replace `rouille` with `httparse`. Net dependency reduction.
+
+| Change | Crate | Notes |
+|--------|-------|-------|
+| Remove | `rouille` | Pulls in `tiny-http` + HTTP parser. Only touched 3 lines. |
+| Add | `httparse` | ~1000 lines, zero deps, zero-copy. HTTP/1.x request parser only. |
+
+**Phase 3-4:** All crates already in tree via `age` and `console`:
 
 | Need | Crate | Already via |
 |------|-------|-------------|
@@ -356,20 +378,21 @@ None. All required crates are already in the dependency tree via `age` and `cons
 - [ ] Execution bounding (timeout + concurrency gate) — deferred, needs proper design
 
 **Phase 2 (Transport Security):**
+- [ ] `rouille` removed from Cargo.toml, replaced by `httparse` + blocking microserver
 - [ ] `patina serve` defaults to unix socket at `~/.patina/run/serve.sock`
 - [ ] TCP listener only starts with explicit `--host`/`--port`
+- [ ] Both transports speak HTTP/1.1 — one protocol, same handlers
 - [ ] Socket dir `~/.patina/run/` created 0o700, verified on startup, refuse if open
 - [ ] Socket file set to 0o600 after bind
 - [ ] Stale socket: unlink only if is-socket AND owned-by-current-user, else refuse
-- [ ] UDS uses length-prefix framing (4-byte BE u32 + JSON payload)
-- [ ] Frame size limit: 1 MB, reject before reading if exceeded
-- [ ] Every request carries `id`, every response echoes it
-- [ ] Client hello/version handshake on connect
+- [ ] Header cap: 32 KiB. Body cap: 1 MiB (read cap via `Read::take`, not Content-Length trust)
+- [ ] No chunked encoding, no keep-alive (one request per connection)
 - [ ] Socket deleted on clean shutdown
-- [ ] `session.rs` connects via UDS first, HTTP+token fallback
+- [ ] `session.rs` connects via UDS first (small HTTP-over-UDS client), HTTP+token fallback
 - [ ] `mother/internal.rs` accepts transport enum (Uds or Http+token)
-- [ ] Handler functions shared between UDS and HTTP paths — no duplicated logic
+- [ ] Handlers are transport-free — no rouille types, no HTTP types in business logic
 - [ ] Generated token never printed to stderr — write to file, print path
+- [ ] `curl --unix-socket` works for testing UDS endpoints
 
 **Phase 3 (P1 — File Permissions):**
 - [ ] `~/.patina/vault.age` created with 0o600 permissions
@@ -422,18 +445,23 @@ stat -f "%Lp" ~/.patina/run/
 stat -f "%Lp" ~/.patina/run/serve.sock
 # → 600
 
-# UDS client works without token (socat for manual testing)
-printf '\x00\x00\x00\x2d{"id":1,"action":"hello","client":"test","version":1}' \
-  | socat - UNIX-CONNECT:~/.patina/run/serve.sock
-# → length-prefixed response with id:1 echoed
+# UDS works with curl — same HTTP, no token needed for local
+curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/health
+# → {"status":"ok","version":"0.10.0","uptime_secs":123}
+
+curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/api/scry \
+  -d '{"query":"test"}' -H "Content-Type: application/json"
+# → 200 OK (no bearer token required over UDS)
 
 # TCP still requires auth when explicitly enabled
 patina serve --host 127.0.0.1 --port 50051
 curl -s http://127.0.0.1:50051/api/scry -d '{"query":"test"}'
-# → 401 Unauthorized (same as before)
+# → 401 Unauthorized
 
-# Frame size enforcement
-# Send >1MB length prefix over UDS → rejected before reading payload
+# Body size enforcement (same read-cap approach as P0)
+dd if=/dev/zero bs=1048577 count=1 2>/dev/null | curl -s -X POST \
+  --unix-socket ~/.patina/run/serve.sock http://localhost/api/scry -d @-
+# → {"error":"Request too large"} 413
 
 # Phase 3: File permissions
 stat -f "%Lp" ~/.patina/vault.age
@@ -470,4 +498,4 @@ Precedent: 0.9.3 (session hardening), 0.9.4 (spec archive + belief verification)
 |------|--------|------|
 | 2026-02-03 | ready | Spec created from security audit (session 20260203-134222) |
 | 2026-02-03 | in-progress | P0 shipped: 6 fixes (auth, read cap, limit cap, security headers, bind warning, consistent errors). Execution bounding deferred — needs RAII guard design. |
-| 2026-02-03 | in-progress | Phase 2 spec: transport security by trust boundary. UDS at `~/.patina/run/serve.sock` default, TCP opt-in, length-prefix framing (BE u32), request-id echo, socket-dir 0o700 enforcement, safe stale-socket unlink, frame size limits. Phase 4: masked input, refuse secret values as positional args. Anchored in [[transport-security-by-trust-boundary]]. |
+| 2026-02-03 | in-progress | Phase 2 revised: replace rouille with blocking HTTP-over-UDS microserver. Drop custom length-prefix protocol — one protocol (HTTP) over both transports. `httparse` replaces `rouille` (net dep reduction). `curl --unix-socket` for testing. Transport-free handlers. Anchored in [[transport-security-by-trust-boundary]], [[use-whats-in-the-tree]]. |
