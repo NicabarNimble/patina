@@ -20,9 +20,9 @@ pub enum SecretsCommands {
         #[arg(long)]
         env: Option<String>,
 
-        /// Secret value (if not provided, prompts or reads stdin)
+        /// Read secret value from stdin (for scripting/piping)
         #[arg(long)]
-        value: Option<String>,
+        stdin: bool,
 
         /// Add to global vault instead of project vault
         #[arg(long)]
@@ -131,9 +131,9 @@ pub fn execute(command: SecretsCommands) -> Result<()> {
         SecretsCommands::Add {
             name,
             env,
-            value,
+            stdin,
             global,
-        } => add(&name, env.as_deref(), value.as_deref(), global),
+        } => add(&name, env.as_deref(), stdin, global),
         SecretsCommands::Run { ssh, command } => run(ssh.as_deref(), &command),
         SecretsCommands::AddRecipient { key } => add_recipient(&key),
         SecretsCommands::RemoveRecipient { key } => remove_recipient(&key),
@@ -198,7 +198,7 @@ fn status() -> Result<()> {
 
     println!();
     println!("Commands:");
-    println!("  patina secrets add NAME [--value V]  Add a secret");
+    println!("  patina secrets add NAME [--stdin]     Add a secret");
     println!("  patina secrets run -- CMD            Run with secrets");
     println!("  patina secrets --lock                Clear session cache");
 
@@ -206,21 +206,22 @@ fn status() -> Result<()> {
 }
 
 /// Add a secret to the vault
-fn add(name: &str, env: Option<&str>, value: Option<&str>, global: bool) -> Result<()> {
+fn add(name: &str, env: Option<&str>, from_stdin: bool, global: bool) -> Result<()> {
     let project_root = env::current_dir().ok();
 
-    // Get value: from flag, stdin, or prompt
-    let secret_value = if let Some(v) = value {
-        v.to_string()
-    } else if atty::is(atty::Stream::Stdin) {
-        // Interactive: prompt
-        secrets::prompt_for_value(name)?
-    } else {
-        // Non-interactive: read stdin
+    // Get value: from --stdin flag or interactive masked prompt
+    let secret_value = if from_stdin {
         let stdin = io::stdin();
         let mut line = String::new();
         stdin.lock().read_line(&mut line)?;
         line.trim().to_string()
+    } else if atty::is(atty::Stream::Stdin) {
+        // Interactive: masked prompt (no echo)
+        eprint!("Value for {}: ", name);
+        secrets::prompt_for_value(name)?
+    } else {
+        // Piped input without --stdin flag
+        bail!("Use --stdin to read secret values from a pipe");
     };
 
     if secret_value.is_empty() {
