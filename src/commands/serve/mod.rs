@@ -5,9 +5,10 @@
 //! - Hot model caching (E5 embeddings)
 //! - Cross-project knowledge access
 //!
-//! Design: Blocking HTTP with rouille (no async/tokio)
+//! Design: Blocking HTTP microserver (no async/tokio)
 
 mod internal;
+pub(crate) mod microserver;
 
 use anyhow::Result;
 
