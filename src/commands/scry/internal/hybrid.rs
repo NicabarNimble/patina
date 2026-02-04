@@ -13,7 +13,7 @@ use super::logging::log_scry_query;
 
 /// Execute hybrid search using QueryEngine with RRF fusion
 pub fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> {
-    let query = query.ok_or_else(|| anyhow::anyhow!("Query required for --hybrid"))?;
+    let query = query.ok_or_else(|| anyhow::anyhow!("Query text required"))?;
 
     println!("Mode: Hybrid (RRF fusion of all oracles)\n");
     println!("Query: \"{}\"\n", query);
