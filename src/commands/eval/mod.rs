@@ -176,7 +176,9 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
         for r in &self_results {
             println!(
                 "{:<35} {:>12.3} {:>11.1}%",
-                r.engine, r.mrr, r.hit_rate * 100.0,
+                r.engine,
+                r.mrr,
+                r.hit_rate * 100.0,
             );
         }
     }
@@ -684,7 +686,9 @@ fn eval_belief_self_retrieval(
             num_queries += 1;
 
             if num_queries <= 5 {
-                let rank_str = rank.map(|r| format!("@{}", r)).unwrap_or("miss".to_string());
+                let rank_str = rank
+                    .map(|r| format!("@{}", r))
+                    .unwrap_or("miss".to_string());
                 println!("  {} — {}", id, rank_str);
             }
         }
@@ -740,10 +744,7 @@ fn eval_belief_code_co_retrieval(
         let id: String = row.get(0)?;
         let statement: String = row.get(1)?;
         let files_str: String = row.get(2)?;
-        let files: Vec<String> = files_str
-            .split('|')
-            .map(|f| normalize_path(f))
-            .collect();
+        let files: Vec<String> = files_str.split('|').map(|f| normalize_path(f)).collect();
         beliefs_with_reach.push((id, statement, files));
     }
 
@@ -807,7 +808,10 @@ fn eval_belief_code_co_retrieval(
                 let bp = if belief_present { "✓" } else { "✗" };
                 println!(
                     "  {} — belief:{} reach:{}/{} files",
-                    id, bp, reach_hits, reached_files.len()
+                    id,
+                    bp,
+                    reach_hits,
+                    reached_files.len()
                 );
             }
         }
@@ -849,7 +853,10 @@ fn print_belief_self_results(results: &BeliefSelfResults) {
 }
 
 fn print_belief_co_results(results: &BeliefCoResults) {
-    println!("\nResults ({} beliefs with code reach):", results.num_queries);
+    println!(
+        "\nResults ({} beliefs with code reach):",
+        results.num_queries
+    );
     println!(
         "  Belief present: {:.1}%",
         results.belief_present_rate * 100.0
