@@ -27,6 +27,58 @@ related:
 
 ---
 
+## Threat Model
+
+Patina runs inside an LLM's execution environment (Claude Code, Gemini, etc). The
+LLM has the same UID, filesystem access, and network access as the user. This
+shapes what security can and cannot do.
+
+### The LLM is the exfiltration channel, not the attacker
+
+The LLM runs as you — file permissions, socket permissions, and bearer tokens don't
+stop it. It can run any command you can run. But every token of its context is
+transmitted to the API provider (Anthropic, OpenAI, Google). The LLM doesn't need to
+be malicious. Structurally, everything it sees leaves the machine.
+
+A secret printed to stderr → LLM sees it → sent to the cloud.
+A secret in `ps auxe` → LLM sees it → sent to the cloud.
+A secret in a file the LLM reads → sent to the cloud.
+
+**Design principle: keep secrets out of the context window.** Secrets flow through
+injection paths (`secrets run -- cmd`), never through output paths the LLM observes.
+
+### Who we protect against
+
+| Actor | Threat | Mitigation |
+|-------|--------|------------|
+| Network observers | Sniff bearer tokens, query data on wire | UDS for local (no wire). TCP is explicit opt-in. |
+| Other local users | Read socket, files, connect to daemon | Socket dir 0o700, socket 0o600, vault 0o600 |
+| Other local processes | Probe known ports, read predictable paths | UDS (no TCP port by default), strict dir perms |
+| Containers | Reach host daemon across network boundary | TCP path requires explicit flag + bearer token |
+| Prompt injection | Malicious file tricks LLM into reading secrets | Vault encrypted at rest (ciphertext is useless). Touch ID gates decryption (human in the loop). |
+| LLM context leakage | Secrets appear in conversation → transmitted to API provider | Never print secrets to stdout/stderr. Token to file, not terminal. UDS eliminates token for localhost entirely. |
+
+### Who we do NOT protect against
+
+| Actor | Why not |
+|-------|---------|
+| The LLM itself (locally) | It runs as you. Same UID. Same access. By design. |
+| The user | They're the operator. |
+| API provider with conversation access | The conversation is transmitted. We minimize what enters it, but can't prevent the LLM from running commands that produce secret output. |
+
+### What each layer protects
+
+| Layer | Protects against |
+|-------|-----------------|
+| Age vault (encrypted at rest) | LLM reads file → sees ciphertext. Other users → sees ciphertext. Disk theft → sees ciphertext. |
+| Touch ID / Keychain | Silent decryption. LLM can't decrypt without human's finger on the sensor. |
+| Session cache (serve daemon) | Repeated Touch ID prompts. Secrets stay in daemon memory, not in files the LLM can cat. |
+| UDS transport (Phase 2) | No token generated for localhost → nothing enters LLM context. No TCP port → no network exposure. |
+| File permissions (Phase 3) | Other users reading vault, registry, socket. |
+| No secrets in output (Phase 2, #16) | Token never printed to stderr → never in terminal scrollback → never in LLM context. |
+
+---
+
 ## Critical Bug (Fix First)
 
 `patina serve` binds an HTTP server with **zero authentication** on port 50051. If run with `--host 0.0.0.0` (suggested in help text for containers), the entire knowledge base is queryable by anyone on the network. No CORS headers means browser-based attacks work against localhost too.
