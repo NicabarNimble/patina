@@ -133,7 +133,9 @@ fn uds_get(path: &str) -> Option<Vec<u8>> {
 fn uds_post(path: &str, json_body: &[u8]) -> Option<Vec<u8>> {
     let sock_path = paths::serve::socket_path();
     let mut stream = std::os::unix::net::UnixStream::connect(&sock_path).ok()?;
-    stream.set_read_timeout(Some(Duration::from_secs(30))).ok()?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .ok()?;
 
     let request = format!(
         "POST {} HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",

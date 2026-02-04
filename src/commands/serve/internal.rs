@@ -377,11 +377,12 @@ fn handle_secrets_get(
         return json_error(401, "Unauthorized");
     }
 
-    let cache = state.secrets_cache.lock().unwrap_or_else(|e| e.into_inner());
+    let cache = state
+        .secrets_cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     match cache.as_ref() {
-        Some(entry) if entry.expires_at > Instant::now() => {
-            HttpResponse::json(200, &entry.secrets)
-        }
+        Some(entry) if entry.expires_at > Instant::now() => HttpResponse::json(200, &entry.secrets),
         _ => json_error(404, "No cached secrets"),
     }
 }
@@ -406,7 +407,10 @@ fn handle_secrets_cache(
     };
 
     let ttl = std::time::Duration::from_secs(body.ttl_secs);
-    let mut cache = state.secrets_cache.lock().unwrap_or_else(|e| e.into_inner());
+    let mut cache = state
+        .secrets_cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     *cache = Some(SecretsCacheEntry {
         secrets: body.secrets,
         expires_at: Instant::now() + ttl,
@@ -425,7 +429,10 @@ fn handle_secrets_lock(
         return json_error(401, "Unauthorized");
     }
 
-    let mut cache = state.secrets_cache.lock().unwrap_or_else(|e| e.into_inner());
+    let mut cache = state
+        .secrets_cache
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     *cache = None;
 
     HttpResponse::json(200, &serde_json::json!({"status": "locked"}))
@@ -462,11 +469,7 @@ fn to_micro(resp: HttpResponse) -> microserver::HttpResponse {
 /// Takes `&mut` so the caller retains ownership and can call `shutdown(Write)`
 /// on the concrete stream type after this returns — ensuring the client's
 /// `read_to_end` sees EOF promptly instead of waiting for socket close.
-fn handle_connection(
-    stream: &mut (impl Read + Write),
-    state: &ServerState,
-    require_auth: bool,
-) {
+fn handle_connection(stream: &mut (impl Read + Write), state: &ServerState, require_auth: bool) {
     let req = match microserver::read_request(stream) {
         Some(Ok(req)) => from_micro(req),
         Some(Err(msg)) => {
