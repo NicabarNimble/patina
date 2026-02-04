@@ -1,9 +1,9 @@
 ---
 type: feat
 id: d0-unified-search
-status: design
+status: implementation
 created: 2026-02-03
-updated: 2026-02-03
+updated: 2026-02-04
 sessions:
   origin: 20260203-120615
 related:
@@ -145,14 +145,15 @@ MCP has been running the QueryEngine path for every query since January with no 
 
 ## Exit Criteria
 
-- [ ] Default CLI `patina scry "query"` uses QueryEngine with all oracles (no `--hybrid` flag)
-- [ ] `--hybrid` flag removed from CLI args
-- [ ] `--lexical` and `--dimension` flags removed (oracles handle internally)
-- [ ] `--legacy` escape hatch available for old direct-search behavior
-- [ ] CLI output format uses FusedResult with oracle contributions
-- [ ] MCP scry handler delegates to CLI code path (thin wrapper, not parallel implementation)
-- [ ] `--belief` and `--file` modes unchanged (specialized, not default query path)
+- [x] Default CLI `patina scry "query"` uses QueryEngine with all oracles (no `--hybrid` flag) ✅ c0da8e77
+- [x] `--hybrid` flag removed from CLI args ✅ 65c16818
+- [x] `--lexical` and `--dimension` flags removed (oracles handle internally) ✅ 65c16818 (dimension kept on ScryOptions for eval/ablation)
+- [x] `--legacy` escape hatch available for old direct-search behavior ✅ 65c16818
+- [x] CLI output format uses FusedResult with oracle contributions ✅ via execute_hybrid
+- [x] MCP scry handler uses QueryEngine (same pipeline as CLI) ✅ already did since Dec 2025
+- [x] `--belief` and `--file` modes unchanged (specialized, not default query path) ✅ untouched
 - [ ] `patina eval` benchmarks pass — no regression in retrieval quality vs old default
+- [x] Serve daemon unified — `handle_scry()` always uses QueryEngine ✅ 65c16818
 
 ---
 

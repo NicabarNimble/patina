@@ -2,251 +2,333 @@
 id: spec-spec-as-skill
 status: design
 created: 2026-01-19
-tags: [spec, meta, skills, process]
-references: [unix-philosophy, spec-skills-universal]
+updated: 2026-01-20
+tags: [spec, meta, skills, process, architecture]
+references: [unix-philosophy, progressive-disclosure]
+inspiration: huggingface/skills
 ---
 
-# Spec: Spec as Skill
+# Spec: Specs as Skills
 
-**Problem:** Specs are inconsistent, manually managed, and not easily executable by LLMs.
+**Problem:** Specs are flat files that lose thread, have inconsistent format, and rely on manual build.md curation.
 
-**Solution:** Define spec format as an evolvable template, use a skill to guide spec creation and execution.
+**Solution:** Apply skill architecture to specs - folder-based routing, progressive disclosure (SPEC.md + design.md), conventional commit alignment.
 
-**End goal:** Uniform specs that LLMs can reliably create and execute with human checkpoints.
+**End goal:** Specs are self-routing, discoverable by structure, with clear entry points and deep details separated.
+
+---
+
+## Key Insight
+
+> Specs ARE skills for development work.
+
+The HuggingFace skills repo (`huggingface/skills`) demonstrates the pattern:
+
+| Skill Component | Spec Equivalent |
+|-----------------|-----------------|
+| `skills/hf-trainer/` folder | `feat/mothership-graph/` folder |
+| `SKILL.md` (entry point) | `SPEC.md` (summary + status) |
+| `description` (routing) | Folder path provides routing |
+| `references/` (deep docs) | `design.md` (phases, details) |
+| `scripts/` (executable) | `scripts/` (migration, tests) |
+| `agents/AGENTS.md` (index) | `_active.md`, `_queue.md` |
+
+**The reframe**: Don't create a skill to manage specs. Make specs follow skill structure.
 
 ---
 
 ## Current Pain
 
-1. **Inconsistent format** - Each spec structured differently
-2. **Manual curation** - build.md manually lists specs
-3. **No creation guidance** - LLM guesses at structure each time
-4. **Execution ambiguity** - Unclear when LLM should pause for human
-5. **Status tracking** - Ad-hoc, often stale
-
-## Design Principles
-
-1. **Evolvable** - Format lives in editable document, not code
-2. **LLM-executable** - Clear phases, checkpoints, tasks
-3. **Human-in-loop** - Explicit pause points for review
-4. **Minimal** - Start simple, add structure when pain demands
+1. **Flat files lose thread** - `spec-*.md` disconnected from related docs
+2. **No routing** - Must read file to know what type of work it is
+3. **Giant files** - Summary and details mixed, hard to scan
+4. **Manual curation** - build.md manually maintained
+5. **No conventional commit alignment** - Specs don't map to commit types
 
 ---
 
 ## Architecture
 
 ```
-layer/core/spec-template.md          # Defines current spec format (evolvable)
-                 │
-                 ▼
-.claude/skills/patina-spec/SKILL.md  # Reads template, guides creation/execution
-                 │
-                 ▼
-layer/surface/build/spec-*.md        # Individual specs (uniform format)
+layer/surface/build/
+├── feat/                            # New capabilities
+│   └── {name}/
+│       ├── SPEC.md                  # Entry point (summary + status)
+│       ├── design.md                # Deep details (phases, decisions)
+│       └── scripts/                 # Optional: migration, test scripts
+│
+├── fix/                             # Bug fixes
+│   └── {name}/
+│       └── SPEC.md                  # Often single file (simple fixes)
+│
+├── refactor/                        # Internal improvements
+├── docs/                            # Documentation work
+├── chore/                           # Maintenance tasks
+│
+├── _active.md                       # Currently in progress
+├── _queue.md                        # Priority order (next up)
+└── _archive/                        # Completed specs (or git tags)
 ```
 
-**Key insight:** The skill doesn't hardcode format - it reads the template. Update template, skill adapts.
+**Routing is structural**: Folder path tells you work type. No description-based routing needed.
 
 ---
 
-## Phase 1: Spec Template
+## SPEC.md Format (Entry Point)
 
-Create `layer/core/spec-template.md` that defines:
-
-### Required Frontmatter
-
-```yaml
----
-id: spec-{name}              # Lowercase, hyphenated
-status: design | ready | in-progress | complete | blocked
-created: YYYY-MM-DD
-tags: [relevant, tags]
-references: [core-patterns]  # Links to layer/core/*.md
----
-```
-
-### Required Sections
+Like SKILL.md, this is the scannable summary:
 
 ```markdown
-# Spec: {Title}
+---
+type: feat                           # Matches folder (feat, fix, refactor, docs, chore)
+id: mothership-graph
+status: design | ready | active | blocked | done
+phase: G1                            # Current phase (if phased work)
+created: 2026-01-05
+session-origin: 20260105-131238      # Where this came from
+---
 
-**Problem:** One sentence.
+# feat: Mothership Graph
 
-**Solution:** One sentence.
+**Problem:** Cross-project knowledge is siloed.
+
+**Solution:** SQLite graph connecting projects via semantic edges.
+
+**Next:** Implement edge traversal (G2)
 
 ---
+
+## Quick Reference
+
+[Key commands, patterns, or decisions - scannable]
+
+---
+
+## Status
+
+- **Phase:** G1 (Schema) complete, G2 (Traversal) next
+- **Blocked By:** None
+- **Recent:** Completed baseline measurement (G0)
+
+---
+
+See [[design.md]] for phases, checklists, and implementation details.
+```
+
+**~50-100 lines max.** Everything else goes in design.md.
+
+---
+
+## design.md Format (Deep Details)
+
+Like `references/` in a skill - the full context:
+
+```markdown
+# Design: Mothership Graph
 
 ## Approach
 
-Brief description of strategy. Design decisions.
+[Strategy, key decisions, tradeoffs]
 
 ---
 
-## Phase N: {Phase Name}
+## Phase G0: Measurement (Complete)
 
-### Changes/Steps
-
-Description of what to do.
+### Goal
+[What this phase achieves]
 
 ### Checklist
+- [x] Task 1
+- [x] Task 2
 
+### Outcome
+[What we learned]
+
+---
+
+## Phase G1: Schema (Active)
+
+### Goal
+### Checklist
 - [ ] Task 1
 - [ ] Task 2
 
-**CHECKPOINT** (if human review needed before next phase)
+**CHECKPOINT: Review before G2**
 
 ---
+
+## Phase G2: Traversal (Planned)
+
+[...]
+
+---
+
+## Edge Cases
 
 ## Testing
 
-How to verify the spec worked.
+## References
 ```
-
-### Optional Sections
-
-- `## Edge Cases` - Known edge cases to handle
-- `## Data Safety` - For migrations, what's preserved
-- `## References` - Links to code, docs, external resources
-
-**CHECKPOINT: Review template before building skill**
 
 ---
 
-## Phase 2: Spec Skill
+## Index Files
 
-Create `.claude/skills/patina-spec/SKILL.md`:
+### _active.md
+
+What's being worked NOW (replaces build.md active section):
+
+```markdown
+# Active Specs
+
+## In Progress
+
+| Spec | Phase | Owner | Since |
+|------|-------|-------|-------|
+| [[feat/mothership-graph]] | G1 | - | 2026-01-05 |
+| [[fix/scry-ranking]] | - | - | 2026-01-18 |
+
+## Blocked
+
+| Spec | Blocked By |
+|------|------------|
+| [[feat/cross-project]] | mothership-graph G2 |
+```
+
+### _queue.md
+
+Priority order for what's next:
+
+```markdown
+# Spec Queue
+
+1. [[feat/mothership-graph]] - Core infrastructure
+2. [[refactor/layer-organization]] - This spec!
+3. [[fix/adapter-refresh]] - User-facing bug
+4. [[docs/epistemic-guide]] - Onboarding
+```
+
+---
+
+## The Skill (Helper, Not Router)
+
+The `patina-spec` skill helps create/execute specs but doesn't route to them:
 
 ```yaml
 ---
 name: patina-spec
 description: |
-  Guide for creating and executing specs in Patina. Use when:
-  - User says "create a spec", "let's spec this", "make a spec for X"
+  Create and execute specs in Patina. Use when:
+  - User says "create a spec", "spec this out"
   - Starting work on an existing spec
-  - Reviewing spec status
-  Specs capture phased work with checkpoints for human review.
+  - Reviewing what's active/queued
+  Specs follow skill architecture: SPEC.md summary + design.md details.
 ---
 
 # Spec Management
 
 ## Creating a Spec
 
-1. Read `layer/core/spec-template.md` for current format
-2. Gather from user:
-   - Problem (one sentence)
-   - Solution approach (one sentence)
-   - Phases needed
-   - Where checkpoints belong
-3. Create `layer/surface/build/spec-{name}.md`
-4. Add to build.md active specs list (if significant)
+1. Determine type: feat, fix, refactor, docs, chore
+2. Create folder: `layer/surface/build/{type}/{name}/`
+3. Create SPEC.md with frontmatter and summary
+4. Create design.md if phased work (otherwise SPEC.md is enough)
+5. Add to _queue.md or _active.md
 
 ## Executing a Spec
 
-1. Read the spec file
-2. Create todos from checklist
-3. Work through phases sequentially
-4. STOP at **CHECKPOINT** markers - ask user to review
-5. Mark tasks complete as you go
-6. Update spec status when done
-
-## Spec Statuses
-
-| Status | Meaning |
-|--------|---------|
-| design | Still being shaped, not ready to execute |
-| ready | Approved, ready to implement |
-| in-progress | Currently being worked on |
-| blocked | Waiting on external dependency |
-| complete | Done, may archive |
+1. Read SPEC.md for context and current phase
+2. Read design.md for detailed checklist
+3. Create todos from checklist
+4. Work through phases sequentially
+5. STOP at **CHECKPOINT** markers
+6. Update SPEC.md status and phase as you progress
+7. Move to _archive/ when done (or tag and delete)
 
 ## Finding Specs
 
-- Active: `layer/surface/build/spec-*.md`
-- Deferred: `layer/surface/build/deferred/spec-*.md`
-- Overview: `layer/core/build.md`
+- Active: `layer/surface/build/_active.md`
+- Queue: `layer/surface/build/_queue.md`
+- By type: `layer/surface/build/{feat,fix,refactor,docs,chore}/`
+- Archive: `layer/surface/build/_archive/` or git tags
 ```
 
-**CHECKPOINT: Review skill before using**
-
 ---
 
-## Phase 3: Migrate Existing Specs
+## Migration Strategy
 
-Update existing specs to match template format:
+### Phase 1: Create Structure
 
-### High Priority (Active)
-- [ ] `spec-repo-org-namespace.md` - Already close to format
-- [ ] `spec-skills-focused-adapter.md` - Needs restructure
-- [ ] `spec-surface-layer.md` - Needs restructure
+- [ ] Create `feat/`, `fix/`, `refactor/`, `docs/`, `chore/` folders
+- [ ] Create `_active.md` and `_queue.md`
+- [ ] Create `_archive/` folder
 
-### Lower Priority
-- Defer migration of specs in `deferred/` folder
-- Archive specs remain as-is (historical)
+**CHECKPOINT: Review structure before migrating specs**
 
-**CHECKPOINT: Confirm migration approach before bulk changes**
+### Phase 2: Migrate Active Specs
 
----
+Convert current `spec-*.md` files to new structure:
 
-## Phase 4: Iterate
+| Current | New Location | Notes |
+|---------|--------------|-------|
+| `spec-mothership-graph.md` | `feat/mothership-graph/` | Split to SPEC.md + design.md |
+| `spec-epistemic-layer.md` | `feat/epistemic-layer/` | Large, needs split |
+| `spec-repo-org-namespace.md` | `fix/repo-namespace/` | Done, archive |
+| `spec-skill-derive.md` | Sunset | Superseded by this spec |
 
-As we use the system:
+- [ ] Migrate 2-3 specs as test
+- [ ] Validate structure works
+- [ ] Migrate remaining active specs
 
-1. **Notice friction** - What's hard? What's unclear?
-2. **Update template** - Add/remove/clarify sections
-3. **Skill adapts** - Reads fresh template each time
-4. **Capture learnings** - Create beliefs about what works
+**CHECKPOINT: Review migrations before bulk move**
 
-No code changes needed to evolve the format.
+### Phase 3: Update Tooling
 
----
-
-## What This Is NOT
-
-- **Not a spec registry CLI** - Discovery stays manual (build.md)
-- **Not automated status tracking** - Human updates status
-- **Not rigid** - Template is guidance, not enforcement
-- **Not permanent** - Format will evolve as we learn
-
-Start minimal. Add structure only when pain demands.
-
----
-
-## Checklist
-
-### Phase 1: Template
-- [ ] Create `layer/core/spec-template.md`
-- [ ] Include required frontmatter definition
-- [ ] Include required sections with examples
-- [ ] List optional sections
-
-**CHECKPOINT: Review template**
-
-### Phase 2: Skill
-- [ ] Create `.claude/skills/patina-spec/SKILL.md`
-- [ ] Skill reads template (not hardcoded format)
-- [ ] Include creation guidance
-- [ ] Include execution guidance
-- [ ] Include checkpoint behavior
-
-**CHECKPOINT: Test skill with one spec creation**
-
-### Phase 3: Migration
-- [ ] Update `spec-repo-org-namespace.md` to match
-- [ ] Update other active specs as touched
-- [ ] Leave deferred/archived as-is
+- [ ] Create `patina-spec` skill
+- [ ] Update build.md to point to new structure
+- [ ] Consider: auto-generate _active.md from frontmatter?
 
 ### Phase 4: Iterate
-- [ ] Use for 2-3 specs
+
+- [ ] Use for 2-3 new specs
 - [ ] Note friction points
-- [ ] Update template as needed
-- [ ] Capture beliefs about spec design
+- [ ] Capture learnings as beliefs
+
+---
+
+## What This Changes
+
+| Before | After |
+|--------|-------|
+| `spec-*.md` flat files | `{type}/{name}/SPEC.md` folders |
+| Manual build.md curation | `_active.md`, `_queue.md` |
+| Giant spec files | SPEC.md (summary) + design.md (details) |
+| No work type signal | Folder = conventional commit type |
+| Specs disconnected | Folder groups related files |
+
+## What Stays
+
+| Component | Why |
+|-----------|-----|
+| CHECKPOINTs | Human-in-loop is valuable |
+| Phase structure | Phased work with checklists works |
+| Status tracking | Frontmatter status is useful |
+| Git as memory | Tags for completed specs |
 
 ---
 
 ## Success Criteria
 
-1. New specs follow consistent format
-2. LLM can create specs without guessing structure
-3. LLM knows when to pause for human review
-4. Format can evolve without code changes
-5. Existing workflow (manual curation in build.md) unchanged
+1. **Structural routing** - Folder path tells you work type
+2. **Progressive disclosure** - SPEC.md scannable, design.md detailed
+3. **Discoverable** - _active.md and _queue.md replace manual curation
+4. **Conventional commit aligned** - feat/, fix/, refactor/ match commit prefixes
+5. **Skill helps, doesn't route** - patina-spec creates structure, doesn't own discovery
+
+---
+
+## References
+
+- `huggingface/skills` - Reference implementation of skill architecture
+- `anthropics/skills` - Claude Code skills standard
+- Session 20260120-165543 - Discussion capturing this insight
