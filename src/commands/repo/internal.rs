@@ -259,7 +259,7 @@ pub fn list_repos() -> Result<Vec<RepoEntry>> {
 }
 
 /// Update a specific repository
-pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
+pub fn update_repo(name: &str, oxidize: bool, with_issues: bool) -> Result<()> {
     let mut registry = Registry::load()?;
     let entry = registry
         .repos
@@ -282,6 +282,27 @@ pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
     println!("🔍 Re-scraping codebase...");
     let event_count = scrape_repo(repo_path)?;
 
+    // Fetch GitHub issues if requested
+    let issue_count = if with_issues {
+        let github = &entry.github;
+        println!("🐙 Fetching GitHub issues...");
+        match scrape_github_issues(repo_path, github) {
+            Ok(count) => {
+                println!("  Indexed {} issues/PRs", count);
+                count
+            }
+            Err(e) => {
+                println!(
+                    "  ⚠️  GitHub scrape failed: {}. Continuing without issues.",
+                    e
+                );
+                0
+            }
+        }
+    } else {
+        0
+    };
+
     // Oxidize if requested
     if oxidize {
         println!("\n🧪 Building semantic indices...");
@@ -294,7 +315,10 @@ pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
         registry.save()?;
     }
 
-    println!("\n✅ Updated {} ({} events)", name, event_count);
+    println!("\n✅ Updated {} ({} events", name, event_count);
+    if issue_count > 0 {
+        println!("   + {} issues/PRs indexed", issue_count);
+    }
     if oxidize {
         println!("   Semantic indices built - scry will use vector search");
     }
@@ -303,7 +327,7 @@ pub fn update_repo(name: &str, oxidize: bool) -> Result<()> {
 }
 
 /// Update all repositories
-pub fn update_all_repos(oxidize: bool) -> Result<()> {
+pub fn update_all_repos(oxidize: bool, with_issues: bool) -> Result<()> {
     let repos = list_repos()?;
 
     if repos.is_empty() {
@@ -316,7 +340,7 @@ pub fn update_all_repos(oxidize: bool) -> Result<()> {
     let mut success = 0;
     for repo in &repos {
         print!("  {} ... ", repo.name);
-        match update_repo(&repo.name, oxidize) {
+        match update_repo(&repo.name, oxidize, with_issues) {
             Ok(_) => {
                 println!("✓");
                 success += 1;
