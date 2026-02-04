@@ -12,7 +12,7 @@ use std::time::Instant;
 use super::fusion::{rrf_fuse, rrf_fuse_weighted, FusedResult, StructuralAnnotations};
 use super::intent::{detect_intent, IntentWeights};
 use super::oracle::Oracle;
-use super::oracles::{LexicalOracle, PersonaOracle, SemanticOracle, TemporalOracle};
+use super::oracles::{BeliefOracle, LexicalOracle, PersonaOracle, SemanticOracle, TemporalOracle};
 
 /// Retrieval configuration for QueryEngine
 ///
@@ -73,6 +73,7 @@ impl QueryEngine {
             Box::new(LexicalOracle::new()),
             Box::new(TemporalOracle::new()),
             Box::new(PersonaOracle::new()),
+            Box::new(BeliefOracle::new()),
         ];
 
         Self { oracles, config }
@@ -119,6 +120,7 @@ impl QueryEngine {
             Box::new(LexicalOracle::with_options(include_issues)),
             Box::new(TemporalOracle::new()),
             Box::new(PersonaOracle::new()),
+            Box::new(BeliefOracle::new()),
         ]
     }
 

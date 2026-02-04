@@ -7,11 +7,13 @@
 //! priors/orientation, not relevance signals. See spec-work-deferred.md for
 //! rebuild plan when query-type routing is implemented.
 
+mod belief;
 mod lexical;
 mod persona;
 mod semantic;
 mod temporal;
 
+pub(crate) use belief::BeliefOracle;
 pub(crate) use lexical::LexicalOracle;
 pub(crate) use persona::PersonaOracle;
 pub(crate) use semantic::SemanticOracle;
