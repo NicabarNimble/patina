@@ -402,12 +402,12 @@ Replace argv-based env prefix with stdin pipe to remote shell.
 - [x] `~/.patina/secrets.toml` created with 0o600 permissions
 - [x] ONNX model verified via SHA-256 before loading
 - [x] `patina secrets run` over SSH does not expose secrets in `ps auxe`
-- [ ] Serve token loaded from vault when available, env var as fallback
+- [ ] ~~Serve token loaded from vault when available~~ — **deferred**: vault access triggers Touch ID, blocking background daemon startup. Current token flow (env var → generate → write 0o600 file) is adequate for the trust model. UDS skips auth entirely. Revisit if TCP-to-remote becomes a primary use case.
 
 **Phase 4 (P2 — Defense-in-Depth):**
-- [ ] Secret prompts use masked input (no echo via `console`)
-- [ ] `patina secrets add` with `--stdin` flag for scripting
-- [ ] Secret values NEVER accepted as positional CLI arguments
+- [x] Secret prompts use masked input (no echo via `console`)
+- [x] `patina secrets add` with `--stdin` flag for scripting
+- [x] Secret values NEVER accepted as positional CLI arguments
 - [ ] Key material zeroized after use (`Zeroizing<String>`)
 - [ ] `--export-key` writes to file (0o600), not stdout
 - [ ] Registry paths canonicalized and validated on load

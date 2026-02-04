@@ -53,7 +53,7 @@ pub use self::vault::VaultStatus;
 use crate::paths;
 use anyhow::{bail, Result};
 use std::collections::HashMap;
-use std::io::{self, BufRead, Write};
+use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -508,16 +508,14 @@ fn load_env_mappings(project_root: Option<&Path>) -> Result<HashMap<String, Stri
     Ok(mappings)
 }
 
-/// Prompt for a secret value interactively.
+/// Prompt for a secret value interactively (masked, no echo).
 pub fn prompt_for_value(name: &str) -> Result<String> {
-    print!("Value for {}: ", name);
-    io::stdout().flush()?;
+    let term = console::Term::stderr();
+    let value = term
+        .read_secure_line()
+        .map_err(|e| anyhow::anyhow!("Failed to read secret for '{}': {}", name, e))?;
 
-    let stdin = io::stdin();
-    let mut line = String::new();
-    stdin.lock().read_line(&mut line)?;
-
-    Ok(line.trim().to_string())
+    Ok(value.trim().to_string())
 }
 
 #[cfg(test)]

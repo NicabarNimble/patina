@@ -92,6 +92,7 @@ regex = "1.12.2"
 # Secrets v2 - age encryption and macOS Keychain
 age = { version = "0.11", features = ["armor"] }
 sha2 = "0.10"  # ONNX model integrity verification (already in tree via age)
+console = "0.15"  # Masked input for secrets (already in tree)
 atty = "0.2"  # TTY detection for interactive prompts
 
 # macOS-only: Keychain integration for Touch ID protected secrets
