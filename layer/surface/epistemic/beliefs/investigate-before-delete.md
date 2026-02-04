@@ -5,12 +5,6 @@ persona: architect
 facets: [process, maintenance, knowledge-management]
 confidence:
   score: 0.90
-  signals:
-    evidence: 0.95
-    source_reliability: 0.90
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: medium
 status: active
 extracted: 2026-01-27

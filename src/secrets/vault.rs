@@ -24,6 +24,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::str::FromStr;
 
@@ -188,6 +190,10 @@ pub fn encrypt_vault(vault: &Vault, vault_path: &Path, recipients_path: &Path) -
     // Write
     fs::write(vault_path, encrypted)
         .with_context(|| format!("Failed to write vault: {:?}", vault_path))?;
+
+    // Restrict to owner-only (0o600) — vault contains encrypted secrets
+    #[cfg(unix)]
+    fs::set_permissions(vault_path, fs::Permissions::from_mode(0o600))?;
 
     Ok(())
 }

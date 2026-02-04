@@ -19,9 +19,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        components: clippy, rustfmt
+      run: rustup show # installs toolchain from rust-toolchain.toml
 
     - name: Install DuckDB
       run: |
@@ -86,7 +84,7 @@ jobs:
         fetch-depth: 0
 
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+      run: rustup show # installs toolchain from rust-toolchain.toml
 
     - name: Install DuckDB
       run: |

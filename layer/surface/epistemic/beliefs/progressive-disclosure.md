@@ -5,12 +5,6 @@ persona: architect
 facets: [architecture, llm, context-management]
 confidence:
   score: 0.82
-  signals:
-    evidence: 0.87
-    source_reliability: 0.82
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: medium
 status: active
 extracted: 2026-01-16
@@ -28,6 +22,16 @@ Context should be loaded progressively - metadata always available, details on-d
 ## Evidence
 
 - [[session-20260116-095954]]: Skills use three-level loading (metadata → SKILL.md → resources) as documented in Claude Code skills system (weight: 0.90)
+
+## Verification
+
+```verify type="sql" label="Skills have SKILL.md for progressive loading" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE 'resources/%/skills/%/SKILL.md'
+```
+
+```verify type="sql" label="Skills have reference docs for on-demand detail" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE 'resources/%/skills/%/references/%'
+```
 
 ## Supports
 

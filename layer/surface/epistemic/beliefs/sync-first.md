@@ -5,12 +5,6 @@ persona: architect
 facets: [rust, architecture, simplicity]
 confidence:
   score: 0.88
-  signals:
-    evidence: 0.92
-    source_reliability: 0.90
-    recency: 0.75
-    survival: 0.95
-    user_endorsement: 0.85
 entrenchment: high
 status: active
 extracted: 2025-08-04
@@ -31,6 +25,24 @@ Use synchronous, blocking code by default. Async adds complexity (infects codeba
 - [[session-20250804-073015]] - "Async infects codebase with 'static lifetimes" (weight: 0.90)
 - [[session-20250804-073015]] - "Borrow checker works best without async runtime complexity" (weight: 0.85)
 - [[session-20250730-065949]] - "Chose blocking reqwest client for simplicity in CLI context" (weight: 0.80)
+
+## Verification
+
+```verify type="sql" label="No async functions" expect="= 0"
+SELECT COUNT(*) FROM function_facts WHERE is_async = 1
+```
+
+```verify type="sql" label="No tokio imports" expect="= 0"
+SELECT COUNT(*) FROM import_facts WHERE import_path LIKE '%tokio%'
+```
+
+```verify type="sql" label="No async imports" expect="= 0"
+SELECT COUNT(*) FROM import_facts WHERE import_path LIKE '%async%'
+```
+
+```verify type="sql" label="Grounding reaches Rust source" expect=">= 1"
+SELECT COUNT(*) FROM belief_code_reach WHERE belief_id = 'sync-first' AND file_path LIKE '%.rs'
+```
 
 ## Supports
 

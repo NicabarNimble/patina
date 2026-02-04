@@ -2,12 +2,12 @@ description = "Start a new patina development session"
 prompt = """
 Start a new Patina development session:
 
-1. Execute the session start script:
-   `.gemini/bin/session-start.sh {{args}}`
+1. Execute the session start command:
+   `patina session start "{{args}}"`
 
-2. Read `.gemini/context/last-session.md` if it exists and use it to fill in the "Previous Session Context" section in the active session file. Provide a 2-3 sentence summary of what was accomplished and any open items.
+2. Read `.patina/local/last-session.md` if it exists and use it to fill in the "Previous Session Context" section in the active session file. Provide a 2-3 sentence summary of what was accomplished and any open items.
 
-3. Read the newly created `.gemini/context/active-session.md` file
+3. Read the newly created `.patina/local/active-session.md` file
 
 4. If we've been discussing work already in this conversation:
    - Update the Goals section with specific tasks we've identified

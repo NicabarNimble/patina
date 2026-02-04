@@ -5,12 +5,6 @@ persona: architect
 facets: [architecture, versioning, workflow]
 confidence:
   score: 0.85
-  signals:
-    evidence: 0.90
-    source_reliability: 0.85
-    recency: 0.95
-    survival: 0.50
-    user_endorsement: 0.90
 entrenchment: medium
 status: active
 extracted: 2026-01-26
@@ -28,7 +22,17 @@ Milestones are immutable goals that define the "what" (destination), while spec 
 ## Evidence
 
 - session-20260126-074256: User articulated workflow: "milestones should not change... if it does change then we learned our milestone was wrong and we need to go back and make a new milestone" (weight: 0.95)
-- Parallel to git philosophy: commits are immutable, branches move forward (weight: 0.8)
+- [[session-20260126-074256]]: Parallel to git philosophy: commits are immutable, branches move forward (weight: 0.8)
+
+## Verification
+
+```verify type="sql" label="No edit/modify/delete milestone functions" expect="= 0"
+SELECT COUNT(*) FROM function_facts WHERE name LIKE '%edit\_milestone%' ESCAPE '\' OR name LIKE '%modify\_milestone%' ESCAPE '\' OR name LIKE '%delete\_milestone%' ESCAPE '\'
+```
+
+```verify type="assay" label="Append-only: bump_milestone exists" expect=">= 1"
+functions --pattern "bump_milestone"
+```
 
 ## Supports
 

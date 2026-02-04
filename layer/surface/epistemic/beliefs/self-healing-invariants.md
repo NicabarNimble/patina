@@ -5,12 +5,6 @@ persona: architect
 facets: [architecture, resilience]
 confidence:
   score: 0.85
-  signals:
-    evidence: 0.90
-    source_reliability: 0.85
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: medium
 status: active
 extracted: 2026-01-21
@@ -28,6 +22,16 @@ Prefer self-healing invariants over fail-fast guards - operations that need a pr
 ## Evidence
 
 - session-20260121-102727: database-identity Phase 1 chose auto-create UIDs over fail guards (weight: 0.9)
+
+## Verification
+
+```verify type="assay" label="migration functions exist" expect=">= 2"
+functions --pattern "migration"
+```
+
+```verify type="assay" label="create_uid functions exist" expect=">= 1"
+functions --pattern "create_uid"
+```
 
 ## Supports
 

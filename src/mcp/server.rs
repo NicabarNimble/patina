@@ -7,6 +7,8 @@ use std::path::Path;
 
 use super::protocol::{Request, Response};
 use crate::commands::assay::{AssayOptions, QueryType};
+use crate::commands::scry::internal::enrichment::find_belief_impact;
+use crate::commands::scry::ScryResult;
 use crate::retrieval::{FusedResult, QueryEngine, QueryOptions};
 
 /// Check project secrets compliance before starting MCP server.
@@ -154,9 +156,9 @@ fn handle_list_tools(req: &Request) -> Response {
                             },
                             "mode": {
                                 "type": "string",
-                                "enum": ["find", "orient", "recent", "why", "use"],
+                                "enum": ["find", "orient", "recent", "why", "use", "belief"],
                                 "default": "find",
-                                "description": "Query mode: 'find' (default), 'orient' (structural ranking), 'recent' (temporal ranking), 'why' (explain result), 'use' (log result usage)"
+                                "description": "Query mode: 'find' (default), 'orient' (structural ranking), 'recent' (temporal ranking), 'why' (explain result), 'use' (log result usage), 'belief' (grounding — find nearest code/commits/sessions for a belief)"
                             },
                             "query_id": {
                                 "type": "string",
@@ -202,6 +204,20 @@ fn handle_list_tools(req: &Request) -> Response {
                                 "type": "array",
                                 "items": { "type": "string" },
                                 "description": "Additional search terms to include (LLM-provided synonyms or code-specific terms that bridge vocabulary gap between user query and codebase terminology)"
+                            },
+                            "belief": {
+                                "type": "string",
+                                "description": "Belief ID for grounding queries — find nearest code, commits, sessions for a belief (E4.6a). Use instead of query."
+                            },
+                            "content_type": {
+                                "type": "string",
+                                "enum": ["code", "commits", "sessions", "patterns", "beliefs"],
+                                "description": "Filter results by content type (used with belief mode)"
+                            },
+                            "impact": {
+                                "type": "boolean",
+                                "default": true,
+                                "description": "Show belief impact for code results — which beliefs reach code via multi-hop grounding (E4.6a). Default: true."
                             }
                         },
                         "required": []
@@ -338,6 +354,56 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
                     }
                 }
+                "belief" => {
+                    // E4.6a: Belief grounding — find nearest code/commits/sessions
+                    let belief_id = args.get("belief").and_then(|v| v.as_str()).unwrap_or("");
+                    let content_type = args
+                        .get("content_type")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+
+                    if belief_id.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "belief mode requires 'belief' parameter",
+                        );
+                    }
+
+                    let options = crate::commands::scry::ScryOptions {
+                        limit,
+                        belief: Some(belief_id.to_string()),
+                        content_type,
+                        ..Default::default()
+                    };
+
+                    match crate::commands::scry::scry_belief_fn(belief_id, &options) {
+                        Ok(results) => {
+                            let mut text = format!(
+                                "Belief grounding for '{}' ({} results):\n\n",
+                                belief_id,
+                                results.len()
+                            );
+                            for (i, r) in results.iter().enumerate() {
+                                text.push_str(&format!(
+                                    "[{}] Score: {:.3} | {} | {}\n    {}\n\n",
+                                    i + 1,
+                                    r.score,
+                                    r.event_type,
+                                    r.source_id,
+                                    r.content
+                                ));
+                            }
+                            Response::success(
+                                req.id.clone(),
+                                serde_json::json!({
+                                    "content": [{ "type": "text", "text": text }]
+                                }),
+                            )
+                        }
+                        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                    }
+                }
                 "use" => {
                     // Phase 3: Log result usage from agent
                     let query_id = args.get("query_id").and_then(|v| v.as_str()).unwrap_or("");
@@ -373,6 +439,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         .get("include_issues")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false);
+                    let impact = args.get("impact").and_then(|v| v.as_bool()).unwrap_or(true);
 
                     // Extract expanded_terms for vocabulary gap bridging
                     let expanded_terms: Vec<&str> = args
@@ -406,7 +473,14 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         Ok(results) => {
                             // Log query and get query_id for feedback loop (Phase 3)
                             let query_id = log_mcp_query(query, "find", &results);
-                            let text = format_results_with_query_id(&results, query_id.as_deref());
+                            let mut text =
+                                format_results_with_query_id(&results, query_id.as_deref());
+
+                            // E4.6a: Compute belief impact for code results
+                            if impact {
+                                text = annotate_impact(&results, text);
+                            }
+
                             Response::success(
                                 req.id.clone(),
                                 serde_json::json!({
@@ -922,14 +996,7 @@ fn log_mcp_query(query: &str, mode: &str, results: &[FusedResult]) -> Option<Str
     const DB_PATH: &str = ".patina/local/data/patina.db";
 
     // Get session_id from active session
-    let session_id = std::fs::read_to_string(".claude/context/active-session.md")
-        .ok()
-        .and_then(|content| {
-            content
-                .lines()
-                .find(|l| l.starts_with("**ID**:"))
-                .map(|l| l.replace("**ID**:", "").trim().to_string())
-        })?;
+    let session_id = crate::commands::scry::internal::logging::get_active_session_id()?;
 
     // Generate query_id
     let now = chrono::Utc::now();
@@ -982,6 +1049,49 @@ fn format_results_with_query_id(results: &[FusedResult], query_id: Option<&str>)
         ));
     }
     output
+}
+
+/// Annotate formatted results text with belief impact (E4.6a)
+///
+/// Converts FusedResults to ScryResults, computes belief impact, and appends
+/// a belief impact section to the output.
+fn annotate_impact(results: &[FusedResult], mut text: String) -> String {
+    // Convert FusedResults to ScryResults for find_belief_impact
+    let scry_results: Vec<ScryResult> = results
+        .iter()
+        .map(|r| {
+            let event_type = r.metadata.event_type.clone().unwrap_or_default();
+            ScryResult {
+                id: 0, // MCP results don't carry usearch keys; resolved via source_id
+                content: r.content.clone(),
+                score: r.fused_score,
+                event_type,
+                source_id: r.doc_id.clone(),
+                timestamp: r.metadata.timestamp.clone().unwrap_or_default(),
+            }
+        })
+        .collect();
+
+    if let Ok(impact_map) = find_belief_impact(&scry_results) {
+        if !impact_map.is_empty() {
+            text.push_str("\n--- Belief Impact ---\n");
+            for (i, r) in results.iter().enumerate() {
+                if let Some(beliefs) = impact_map.get(&r.doc_id) {
+                    let belief_strs: Vec<String> = beliefs
+                        .iter()
+                        .map(|(id, score)| format!("{} ({:.2})", id, score))
+                        .collect();
+                    text.push_str(&format!(
+                        "{}. {} → {}\n",
+                        i + 1,
+                        r.doc_id,
+                        belief_strs.join(", ")
+                    ));
+                }
+            }
+        }
+    }
+    text
 }
 
 fn format_results(results: &[FusedResult]) -> String {
@@ -1374,12 +1484,133 @@ fn get_project_context(topic: Option<&str>) -> Result<String> {
         }
     }
 
+    // Add belief metrics when topic matches or no topic given
+    let show_beliefs = match topic {
+        None => true,
+        Some(t) => {
+            let t_lower = t.to_lowercase();
+            t_lower.contains("belief") || t_lower.contains("epistemic")
+        }
+    };
+
+    if show_beliefs {
+        if let Ok(belief_section) = get_belief_metrics() {
+            output.push_str(&belief_section);
+        }
+    }
+
     if output.is_empty() {
         if let Some(t) = topic {
             output = format!("No patterns found matching topic: '{}'", t);
         } else {
             output = "No patterns found in the knowledge layer.".to_string();
         }
+    }
+
+    Ok(output)
+}
+
+/// Query belief metrics from the database for the context tool
+fn get_belief_metrics() -> Result<String> {
+    use rusqlite::Connection;
+
+    const DB_PATH: &str = ".patina/local/data/patina.db";
+    let conn = Connection::open(DB_PATH)?;
+
+    // Check if beliefs table exists
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='beliefs'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !table_exists {
+        return Ok(String::new());
+    }
+
+    // Aggregate stats
+    let (total, grounded, reach_files, verif_total, verif_pass, verif_fail): (
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+    ) = conn.query_row(
+        "SELECT
+            COUNT(*),
+            SUM(CASE WHEN grounding_code_count > 0 THEN 1 ELSE 0 END),
+            SUM(grounding_code_count),
+            SUM(verification_total),
+            SUM(verification_passed),
+            SUM(verification_failed)
+         FROM beliefs",
+        [],
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+            ))
+        },
+    )?;
+
+    if total == 0 {
+        return Ok(String::new());
+    }
+
+    let precision = if reach_files > 0 { 100 } else { 0 }; // All reach files are source code (filtered at hop)
+
+    let mut output = String::from("# Epistemic Beliefs\n\n");
+    output.push_str(&format!(
+        "**Total:** {} beliefs | **Grounded:** {}/{} ({:.0}%) | **Reach files:** {} ({}% precision)\n",
+        total,
+        grounded,
+        total,
+        if total > 0 { grounded as f64 / total as f64 * 100.0 } else { 0.0 },
+        reach_files,
+        precision,
+    ));
+    output.push_str(&format!(
+        "**Verification:** {}/{} passed ({} failed)\n\n",
+        verif_pass, verif_total, verif_fail,
+    ));
+
+    // Top beliefs by use count
+    let mut stmt = conn.prepare(
+        "SELECT id, cited_by_beliefs + cited_by_sessions + applied_in as use_count,
+                entrenchment, status
+         FROM beliefs
+         ORDER BY use_count DESC
+         LIMIT 10",
+    )?;
+
+    let top_beliefs: Vec<(String, i64, String, String)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if !top_beliefs.is_empty() {
+        output.push_str("**Top beliefs by use:**\n");
+        for (id, use_count, entrenchment, status) in &top_beliefs {
+            output.push_str(&format!(
+                "- {} (use: {}, entrenchment: {}, status: {})\n",
+                id, use_count, entrenchment, status,
+            ));
+        }
+        output.push('\n');
     }
 
     Ok(output)
@@ -1469,14 +1700,7 @@ fn handle_use(query_id: &str, rank: usize) -> Result<String> {
         .to_string();
 
     // Get session_id from active session
-    let session_id = std::fs::read_to_string(".claude/context/active-session.md")
-        .ok()
-        .and_then(|content| {
-            content
-                .lines()
-                .find(|l| l.starts_with("**ID**:"))
-                .map(|l| l.replace("**ID**:", "").trim().to_string())
-        });
+    let session_id = crate::commands::scry::internal::logging::get_active_session_id();
 
     // Log the usage event
     let use_data = serde_json::json!({

@@ -1,6 +1,6 @@
 ---
 name: epistemic-beliefs
-description: Guide for creating and managing epistemic beliefs in Patina. Use this skill when synthesizing project decisions into formal beliefs, when the user says "create a belief", "add belief", "capture this as a belief", or when distilling session learnings into the epistemic layer. Beliefs capture project decisions with evidence, confidence signals, and support/attack relationships. IMPORTANT - Proactively suggest belief capture when you notice design decisions, repeated patterns, strong principles, or statements like "we should always", "never do X", "the right way is". Do not wait for magic words.
+description: Guide for creating and managing epistemic beliefs in Patina. Use this skill when synthesizing project decisions into formal beliefs, when the user says "create a belief", "add belief", "capture this as a belief", or when distilling session learnings into the epistemic layer. Beliefs capture project decisions with evidence and support/attack relationships. IMPORTANT - Proactively suggest belief capture when you notice design decisions, repeated patterns, strong principles, or statements like "we should always", "never do X", "the right way is". Do not wait for magic words.
 ---
 
 # Epistemic Beliefs
@@ -39,9 +39,12 @@ If user confirms, proceed with belief creation. If user declines, move on.
 
 Before creating a belief, ensure you have:
 - **Statement**: One clear sentence expressing the belief
-- **Evidence**: At least one source (session, commit, document)
+- **Evidence**: At least one source — use `[[wikilinks]]` for verifiable references. The script auto-prepends the active session ID (e.g., `[[session-20260131-150141]]:`) so every evidence line traces to the conversation where it was articulated
 - **Persona**: Usually "architect" for project-level decisions
-- **Confidence**: Your assessment (0.0-1.0)
+
+**Do NOT guess a confidence score.** Confidence is computed by `patina scrape` from real data:
+- **Use metrics**: How many other beliefs cite this? How many sessions reference it?
+- **Truth metrics**: How many evidence links? Do they resolve to real files? Defeated attacks?
 
 ### Step 2: Use the Creation Script
 
@@ -52,25 +55,30 @@ Execute the belief creation script with required fields:
   --id "belief-id-here" \
   --statement "One sentence belief statement" \
   --persona "architect" \
-  --confidence "0.85" \
-  --evidence "session-YYYYMMDD: description (weight: 0.9)" \
+  --evidence "[[session-YYYYMMDD-HHMMSS]] - description (weight: 0.9)" \
   --facets "domain1,domain2"
 ```
 
 The script will:
 1. Validate all required fields
-2. Generate proper YAML frontmatter
+2. Generate proper YAML frontmatter (no fake confidence scores)
 3. Create the belief file in `layer/surface/epistemic/beliefs/`
 4. Report success or validation errors
 
-### Step 3: Add Optional Sections
+### Step 3: Enrich the Belief
 
-After creation, you may edit the file to add:
-- Additional evidence links
-- Supports relationships (beliefs this supports)
-- Attacks relationships (beliefs this defeats)
-- Attacked-By relationships (known challenges)
-- Applied-In examples (concrete applications)
+After creation, edit the file to add:
+- **Additional evidence links** — use `[[wikilinks]]` so `patina scrape` can verify them
+- **Supports relationships** — beliefs this supports (e.g., `[[measure-first]]`)
+- **Attacks relationships** — beliefs this defeats
+- **Attacked-By relationships** — known challenges to this belief
+- **Applied-In examples** — concrete code/architecture where this belief was applied
+
+The more connections you add, the higher the computed use/truth metrics will be.
+
+### Step 4: Run Scrape
+
+After creating and enriching, run `patina scrape` to compute metrics. The belief will show up in `patina scry` with real numbers.
 
 ## Belief Format Reference
 
@@ -80,41 +88,87 @@ Key fields:
 - **id**: Lowercase, hyphenated identifier (e.g., `sync-first`)
 - **persona**: Epistemic agent (usually `architect`)
 - **facets**: Domain tags (e.g., `rust`, `architecture`)
-- **confidence.score**: 0.0-1.0 overall confidence
 - **entrenchment**: `low`, `medium`, `high`, or `very-high`
 - **status**: `active`, `scoped`, `defeated`, or `archived`
+- **endorsed**: `true` if user explicitly created or confirmed
 
-## Confidence Signals
+## How Metrics Work (E4)
 
-When assessing confidence, consider:
-- **evidence**: Strength of supporting evidence (0.0-1.0)
-- **source_reliability**: How reliable are the sources? (0.0-1.0)
-- **recency**: How recent is the evidence? (0.0-1.0)
-- **survival**: How long unchallenged? (0.0-1.0)
-- **user_endorsement**: Has user explicitly validated? (0.0-1.0)
+Metrics are computed by `patina scrape`, not guessed by the LLM:
 
-## Common Patterns
+| Metric | What it measures | Source |
+|--------|-----------------|--------|
+| `cited_by_beliefs` | Other beliefs referencing this one | Cross-reference belief files |
+| `cited_by_sessions` | Sessions mentioning this belief | Cross-reference session files |
+| `applied_in` | Concrete applications listed | Count ## Applied-In entries |
+| `evidence_count` | Evidence entries | Count ## Evidence entries |
+| `evidence_verified` | Evidence [[wikilinks]] that resolve to real files | File existence check |
+| `defeated_attacks` | Attacks this belief survived | Count ## Attacked-By with status: defeated |
+| `external_sources` | Non-project evidence (papers, docs) | Evidence without session wikilinks |
 
-**High confidence belief** (0.85+):
-- Multiple evidence sources
-- Survived multiple sessions
-- User endorsed or frequently applied
+**A strong belief** has high use (many citations) AND high truth (verified evidence).
+**A weak belief** has low use and unverified evidence — it's an assertion, not yet tested.
 
-**Medium confidence belief** (0.65-0.85):
-- Single strong evidence source
-- Recently created, not yet proven
-- No conflicting evidence
+## Verification Queries
 
-**Low confidence belief** (<0.65):
-- Inferred from context
-- Conflicting evidence exists
-- Needs validation
+Structural beliefs can include a `## Verification` section with deterministic queries that prove
+the claim against the project's knowledge database. Queries run automatically during `patina scrape`.
+
+### Query Format
+
+````markdown
+## Verification
+
+```verify type="sql" label="No async functions" expect="= 0"
+SELECT COUNT(*) FROM function_facts WHERE is_async = 1
+```
+
+```verify type="assay" label="insert_event is infrastructure" expect=">= 5"
+callers --pattern "insert_event" | count(distinct file)
+```
+
+```verify type="temporal" label="Commit count" expect=">= 100"
+derive-moments | summary.total_commits
+```
+````
+
+### Query Types
+
+| Type | Syntax | When to use |
+|------|--------|-------------|
+| `sql` | Standard SELECT query | Counts, aggregates, existence checks |
+| `assay` | `<command> --pattern "<pat>"` with optional `\| count(distinct <field>)` | Architecture claims (callers, importers) |
+| `temporal` | `derive-moments \| summary.<field>` | Commit patterns (total_commits, rewrite, migration) |
+
+### Assay Commands
+
+| Command | What it queries | Distinct fields |
+|---------|----------------|-----------------|
+| `callers` | call_graph WHERE callee matches | file, caller, callee, call_type |
+| `callees` | call_graph WHERE caller matches | file, caller, callee, call_type |
+| `functions` | function_facts WHERE name matches | file |
+| `imports` | import_facts WHERE import_path matches | file |
+| `importers` | import_facts WHERE file matches | file |
+
+### Expectation Operators
+
+`= N`, `> N`, `>= N`, `< N`, `<= N` — compared against the single numeric result.
+
+### When NOT to Add Verification
+
+Process beliefs (methodology, workflow, evaluation principles) correctly have no structural
+proof — testimony is the right evidence type. Examples: spec-first, measure-first,
+read-code-before-write. Don't force SQL queries onto process beliefs; they produce noise.
+
+### Available Tables
+
+See `references/verification-schema.md` for the full schema reference.
 
 ## Validation Rules
 
 The creation script enforces:
 - ID must be lowercase with hyphens only
 - Statement must be non-empty
-- Confidence must be 0.0-1.0
 - At least one evidence source required
 - Persona must be specified
+- `--confidence` is accepted but ignored (deprecated)

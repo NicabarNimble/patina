@@ -7,6 +7,7 @@
 use anyhow::Result;
 use regex::Regex;
 use rusqlite::Connection;
+use serde::Deserialize;
 use serde_json::json;
 use std::path::Path;
 use std::time::Instant;
@@ -15,6 +16,22 @@ use super::database;
 use super::ScrapeStats;
 
 const SESSIONS_DIR: &str = "layer/sessions";
+
+/// YAML frontmatter for new-format sessions (step 7+).
+///
+/// Minimal struct — only the fields the scraper needs. serde skips unknown
+/// fields by default, so `status`, `start_timestamp`, etc. are ignored.
+#[derive(Debug, Deserialize)]
+struct SessionYaml {
+    title: Option<String>,
+    created: Option<String>,
+    git: Option<SessionGitYaml>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SessionGitYaml {
+    branch: Option<String>,
+}
 
 /// Parsed session from markdown file
 #[derive(Debug)]
@@ -93,7 +110,21 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Parse a session markdown file
+/// Parse YAML frontmatter from a session markdown file.
+///
+/// Returns `None` if the file doesn't start with `---` or YAML parsing fails.
+fn parse_yaml_frontmatter(content: &str) -> Option<SessionYaml> {
+    let rest = content.strip_prefix("---")?;
+    let end = rest.find("\n---")?;
+    let yaml_str = &rest[..end];
+    serde_yaml::from_str(yaml_str).ok()
+}
+
+/// Parse a session markdown file.
+///
+/// Tries YAML frontmatter first (new format from step 7), falls back to
+/// regex-based `**Field**: value` / `# Session: <title>` parsing for the
+/// 538 legacy sessions.
 fn parse_session_file(path: &Path) -> Result<ParsedSession> {
     let content = std::fs::read_to_string(path)?;
 
@@ -104,30 +135,38 @@ fn parse_session_file(path: &Path) -> Result<ParsedSession> {
         .unwrap_or("unknown")
         .to_string();
 
-    // Extract title from first line: # Session: <title>
-    let title_re = Regex::new(r"^# Session: (.+)$").unwrap();
-    let title = content
-        .lines()
-        .find_map(|line| title_re.captures(line).map(|c| c[1].to_string()))
-        .unwrap_or_else(|| id.clone());
+    // Extract header metadata — try YAML frontmatter first, fall back to regex
+    let (title, started_at, branch) = if let Some(fm) = parse_yaml_frontmatter(&content) {
+        (
+            fm.title.unwrap_or_else(|| id.clone()),
+            fm.created,
+            fm.git.and_then(|g| g.branch),
+        )
+    } else {
+        // Legacy markdown header format
+        let title_re = Regex::new(r"^# Session: (.+)$").unwrap();
+        let title = content
+            .lines()
+            .find_map(|line| title_re.captures(line).map(|c| c[1].to_string()))
+            .unwrap_or_else(|| id.clone());
+        (
+            title,
+            extract_field(&content, "Started"),
+            extract_field(&content, "Git Branch"),
+        )
+    };
 
-    // Extract metadata fields
-    let started_at = extract_field(&content, "Started");
-    let branch = extract_field(&content, "Git Branch");
+    // Classification, stats, goals, observations come from markdown body (both formats)
     let classification = extract_classification(&content);
     let (files_changed, commits_made) = extract_stats(&content);
-
-    // Extract goals
     let goals = extract_goals(&content);
-
-    // Extract observations from various sections
     let observations = extract_observations(&content);
 
     Ok(ParsedSession {
         id,
         title,
         started_at,
-        ended_at: None, // Could parse from end timestamp if available
+        ended_at: None,
         branch,
         classification,
         files_changed,
@@ -146,7 +185,7 @@ fn extract_field(content: &str, field: &str) -> Option<String> {
 
 /// Extract classification from Session Classification section
 fn extract_classification(content: &str) -> Option<String> {
-    let re = Regex::new(r"Work Type:\s*(\w+)").ok()?;
+    let re = Regex::new(r"Work Type:\s*([\w-]+)").ok()?;
     re.captures(content).map(|c| c[1].to_string())
 }
 
@@ -533,5 +572,111 @@ mod tests {
             extract_field(content, "Started"),
             Some("2025-11-21T16:31:07Z".to_string())
         );
+    }
+
+    #[test]
+    fn test_parse_yaml_frontmatter() {
+        let content = r#"---
+type: session
+id: '20260130-183221'
+title: Complete v0.9.2
+status: active
+llm: claude
+created: '2026-01-30T23:32:21Z'
+start_timestamp: 1769815941000
+git:
+  branch: patina
+  starting_commit: 9c61c5e2
+  start_tag: session-20260130-183221-claude-start
+---
+
+## Goals
+- [ ] Complete v0.9.2
+"#;
+        let fm = parse_yaml_frontmatter(content).expect("should parse YAML frontmatter");
+        assert_eq!(fm.title, Some("Complete v0.9.2".to_string()));
+        assert_eq!(fm.created, Some("2026-01-30T23:32:21Z".to_string()));
+        let git = fm.git.expect("should have git section");
+        assert_eq!(git.branch, Some("patina".to_string()));
+    }
+
+    #[test]
+    fn test_parse_yaml_frontmatter_none_for_legacy() {
+        let content = "# Session: Legacy Session\n**ID**: 20251121-113107\n";
+        assert!(parse_yaml_frontmatter(content).is_none());
+    }
+
+    #[test]
+    fn test_parse_session_file_yaml_format() {
+        let content = r#"---
+type: session
+id: '20260130-183221'
+title: Complete v0.9.2
+status: archived
+llm: claude
+created: '2026-01-30T23:32:21Z'
+start_timestamp: 1769815941000
+git:
+  branch: patina
+  starting_commit: 9c61c5e2
+  start_tag: session-20260130-183221-claude-start
+---
+
+## Goals
+- [ ] Complete v0.9.2
+- [x] Fix parser bug
+
+## Session Classification
+- Work Type: feature
+- Files Changed: 5
+- Commits: 3
+"#;
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("20260130-183221.md");
+        std::fs::write(&file_path, content).unwrap();
+
+        let session = parse_session_file(&file_path).unwrap();
+        assert_eq!(session.id, "20260130-183221");
+        assert_eq!(session.title, "Complete v0.9.2");
+        assert_eq!(session.started_at, Some("2026-01-30T23:32:21Z".to_string()));
+        assert_eq!(session.branch, Some("patina".to_string()));
+        assert_eq!(session.classification, Some("feature".to_string()));
+        assert_eq!(session.files_changed, 5);
+        assert_eq!(session.commits_made, 3);
+        assert_eq!(session.goals.len(), 2);
+        assert!(!session.goals[0].completed);
+        assert!(session.goals[1].completed);
+    }
+
+    #[test]
+    fn test_parse_session_file_legacy_format() {
+        let content = r#"# Session: Legacy Session Title
+**ID**: 20251121-113107
+**Started**: 2025-11-21T16:31:07Z
+**LLM**: claude
+**Git Branch**: work
+**Session Tag**: session-20251121-113107-claude-start
+**Starting Commit**: abc123
+
+## Goals
+- [x] implement feature
+
+## Session Classification
+- Work Type: pattern-work
+- Files Changed: 8
+- Commits: 4
+"#;
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("20251121-113107.md");
+        std::fs::write(&file_path, content).unwrap();
+
+        let session = parse_session_file(&file_path).unwrap();
+        assert_eq!(session.id, "20251121-113107");
+        assert_eq!(session.title, "Legacy Session Title");
+        assert_eq!(session.started_at, Some("2025-11-21T16:31:07Z".to_string()));
+        assert_eq!(session.branch, Some("work".to_string()));
+        assert_eq!(session.classification, Some("pattern-work".to_string()));
+        assert_eq!(session.files_changed, 8);
+        assert_eq!(session.commits_made, 4);
     }
 }

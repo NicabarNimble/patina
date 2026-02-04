@@ -5,12 +5,6 @@ persona: architect
 facets: [architecture, versioning, spec-system]
 confidence:
   score: 0.85
-  signals:
-    evidence: 0.90
-    source_reliability: 0.85
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: medium
 status: active
 extracted: 2026-01-26
@@ -28,6 +22,16 @@ Milestones belong in specs, not separate files. Git is the source of truth - der
 ## Evidence
 
 - session-20260126-060540: Analyzed Option A (frontmatter), B (milestones.toml), C (hybrid). Chose A+scrape - source in spec, derive index. (weight: 0.9)
+
+## Verification
+
+```verify type="sql" label="No separate milestone files" expect="= 0"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE '%milestones.toml%' OR file_path LIKE '%milestones.yaml%' OR file_path LIKE '%milestones.json%'
+```
+
+```verify type="sql" label="Milestones populated from specs" expect=">= 1"
+SELECT COUNT(*) FROM milestones
+```
 
 ## Supports
 

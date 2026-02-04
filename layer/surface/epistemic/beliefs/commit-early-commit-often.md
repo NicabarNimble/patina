@@ -5,12 +5,6 @@ persona: architect
 facets: [git, workflow, development-process]
 confidence:
   score: 0.90
-  signals:
-    evidence: 0.95
-    source_reliability: 0.90
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: high
 status: active
 extracted: 2026-01-17
@@ -29,7 +23,25 @@ Make small, focused commits frequently rather than batching changes into large c
 
 - [[CLAUDE.md]] Git Discipline section: "Commit often, use scalpel not shotgun. One commit = one purpose" (weight: 0.95)
 - [[session-20260116-221800]] Session ended with 8 commits, each focused on specific fix (weight: 0.85)
-- Git history shows ~150+ commits in 2 weeks with clear single-purpose messages (weight: 0.90)
+- [[session-20260117-072948]]: Git history shows ~150+ commits in 2 weeks with clear single-purpose messages (weight: 0.90)
+
+## Verification
+
+```verify type="sql" label="Total commits in project" expect=">= 1000"
+SELECT COUNT(*) FROM commits
+```
+
+```verify type="sql" label="Avg files per commit under 10" expect="< 10"
+SELECT AVG(fc) FROM (SELECT COUNT(*) as fc FROM commit_files GROUP BY sha)
+```
+
+```verify type="temporal" label="Commit frequency from moments" expect=">= 1000"
+derive-moments | summary.total_commits
+```
+
+```verify type="sql" label="Grounding reaches git-related code" expect=">= 1"
+SELECT COUNT(*) FROM belief_code_reach WHERE belief_id = 'commit-early-commit-often' AND (file_path LIKE '%git%' OR file_path LIKE '%commit%' OR file_path LIKE '%session%')
+```
 
 ## Supports
 

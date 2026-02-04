@@ -5,12 +5,6 @@ persona: architect
 facets: [methodology, architecture, measurement, development-process]
 confidence:
   score: 0.89
-  signals:
-    evidence: 0.94
-    source_reliability: 0.89
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: high
 status: active
 extracted: 2026-01-17
@@ -30,7 +24,7 @@ Complex features should be built in phases, with each phase starting with measur
 - [[spec/mothership-graph]] G0 (baseline measurement) → G1 (graph CLI) → G2 (routing) → G2.5 (feedback loop) - each phase started with metrics (weight: 0.92)
 - [[spec-epistemic-layer]] E0 (prototype) → E1 (manual population) → E2 (creation system) → E3 (scry integration) - phased with validation criteria (weight: 0.90)
 - [[spec-epistemic-layer]] Andrew Ng methodology: "Establish a baseline first" before iterating (weight: 0.88)
-- Git history shows G0-G2.5 commits each tagged phase completion with measurement results (weight: 0.85)
+- [[session-20260117-072948]]: Git history shows G0-G2.5 commits each tagged phase completion with measurement results (weight: 0.85)
 
 ## Supports
 

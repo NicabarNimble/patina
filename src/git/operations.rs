@@ -251,10 +251,17 @@ pub fn add_all() -> Result<()> {
 }
 
 /// Stage specific paths (safer for repos with nested git directories)
+///
+/// Skips paths that don't exist or are gitignored.
 pub fn add_paths(paths: &[&str]) -> Result<()> {
     for path in paths {
         // Skip paths that don't exist
         if !std::path::Path::new(path).exists() {
+            continue;
+        }
+
+        // Skip paths that are gitignored
+        if is_ignored(path) {
             continue;
         }
 
@@ -270,6 +277,26 @@ pub fn add_paths(paths: &[&str]) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Check if a path is ignored by .gitignore
+fn is_ignored(path: &str) -> bool {
+    Command::new("git")
+        .args(["check-ignore", "-q", path])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+/// Check if there are staged changes ready to commit
+pub fn has_staged_changes() -> Result<bool> {
+    let output = Command::new("git")
+        .args(["diff", "--cached", "--quiet"])
+        .output()
+        .context("Failed to check staged changes")?;
+
+    // Exit code 1 means there ARE differences (staged changes exist)
+    Ok(!output.status.success())
 }
 
 /// Create a commit
@@ -359,6 +386,34 @@ pub fn rebase_abort() -> Result<()> {
     Ok(())
 }
 
+/// Get the full SHA of HEAD
+pub fn head_sha() -> Result<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .context("Failed to get HEAD SHA")?;
+
+    if !output.status.success() {
+        anyhow::bail!("Failed to get HEAD SHA (no commits?)");
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Get the short SHA of HEAD
+pub fn short_sha() -> Result<String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .output()
+        .context("Failed to get short SHA")?;
+
+    if !output.status.success() {
+        anyhow::bail!("Failed to get short SHA (no commits?)");
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 /// Check if a tag exists
 pub fn tag_exists(name: &str) -> Result<bool> {
     let output = Command::new("git")
@@ -438,6 +493,125 @@ pub fn fetch(remote: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Create an annotated git tag
+pub fn create_tag(name: &str, message: &str) -> Result<()> {
+    let output = Command::new("git")
+        .args(["tag", "-a", name, "-m", message])
+        .output()
+        .context("Failed to create git tag")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "Failed to create tag '{}': {}",
+            name,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    Ok(())
+}
+
+/// Count commits from a given SHA (exclusive) to HEAD
+pub fn commits_since_count(since_sha: &str) -> Result<usize> {
+    let range = format!("{}..HEAD", since_sha);
+    let output = Command::new("git")
+        .args(["rev-list", "--count", &range])
+        .output()
+        .context("Failed to count commits since SHA")?;
+
+    if !output.status.success() {
+        return Ok(0);
+    }
+
+    let count_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(count_str.parse().unwrap_or(0))
+}
+
+/// Get relative time of last commit (e.g., "2 hours ago")
+pub fn last_commit_relative_time() -> Result<String> {
+    let output = Command::new("git")
+        .args(["log", "-1", "--format=%ar"])
+        .output()
+        .context("Failed to get last commit time")?;
+
+    if !output.status.success() {
+        anyhow::bail!("No commits found");
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Get the subject line of the last commit
+pub fn last_commit_message() -> Result<String> {
+    let output = Command::new("git")
+        .args(["log", "-1", "--format=%s"])
+        .output()
+        .context("Failed to get last commit message")?;
+
+    if !output.status.success() {
+        anyhow::bail!("No commits found");
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// Get the diff stat summary line (e.g., "3 files changed, 45 insertions(+), 10 deletions(-)")
+pub fn diff_stat_summary() -> Result<String> {
+    let output = Command::new("git")
+        .args(["diff", "--stat"])
+        .output()
+        .context("Failed to get diff stat")?;
+
+    let stat = String::from_utf8_lossy(&output.stdout);
+    // Last non-empty line is the summary
+    Ok(stat
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim()
+        .to_string())
+}
+
+/// Get git status in porcelain format (machine-parseable)
+pub fn status_porcelain() -> Result<String> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .output()
+        .context("Failed to get git status")?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Get list of files changed between a ref and HEAD
+pub fn files_changed_since(from_ref: &str) -> Result<Vec<String>> {
+    let range = format!("{}..HEAD", from_ref);
+    let output = Command::new("git")
+        .args(["diff", "--name-only", &range])
+        .output()
+        .context("Failed to get files changed since ref")?;
+
+    if !output.status.success() {
+        return Ok(vec![]);
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|l| !l.is_empty())
+        .map(|l| l.to_string())
+        .collect())
+}
+
+/// Get recent commits as oneline format
+pub fn log_oneline(count: usize) -> Result<String> {
+    let output = Command::new("git")
+        .args(["log", "--oneline", &format!("-{}", count)])
+        .output()
+        .context("Failed to get recent commits")?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 #[cfg(test)]

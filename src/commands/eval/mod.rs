@@ -422,7 +422,7 @@ fn print_results(results: &EvalResults) {
 // Feedback Loop Evaluation (Phase 3)
 // ============================================================================
 
-use crate::commands::scrape::database;
+use patina::eventlog;
 
 /// Execute feedback loop evaluation - measure real-world precision
 ///
@@ -431,10 +431,10 @@ pub fn execute_feedback() -> Result<()> {
     println!("📊 Feedback Loop Evaluation\n");
     println!("Measuring real-world retrieval precision from session data...\n");
 
-    let conn = Connection::open(database::PATINA_DB)?;
+    let conn = Connection::open(eventlog::PATINA_DB)?;
 
     // Ensure feedback views exist
-    database::create_feedback_views(&conn)?;
+    eventlog::create_feedback_views(&conn)?;
 
     // Get overall statistics
     let (total_queries, total_retrievals): (i64, i64) = conn.query_row(

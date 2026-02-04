@@ -5,12 +5,6 @@ persona: architect
 facets: [architecture, modularity, rust]
 confidence:
   score: 0.85
-  signals:
-    evidence: 0.90
-    source_reliability: 0.85
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: medium
 status: active
 extracted: 2026-01-26
@@ -28,6 +22,12 @@ Related concepts don't imply shared modules - conceptual grouping (both about 's
 ## Evidence
 
 - session-20260126-134036: vault and scanner are both 'about secrets' but share no types, state, or dependencies - keeping them separate honors independence (weight: 0.9)
+
+## Verification
+
+```verify type="sql" label="Zero cross-command-module imports" expect="= 0"
+SELECT COUNT(*) FROM import_facts WHERE file LIKE '%/commands/%' AND import_path LIKE '%commands/%' AND file <> import_path
+```
 
 ## Supports
 

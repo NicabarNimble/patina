@@ -5,12 +5,6 @@ persona: architect
 facets: [devops, configuration, ci]
 confidence:
   score: 0.85
-  signals:
-    evidence: 0.90
-    source_reliability: 0.85
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: high
 status: active
 extracted: 2026-01-17
@@ -28,7 +22,7 @@ Project configuration should be tracked in git, only machine-specific settings b
 ## Evidence
 
 - [[session-20260116-221800]] CI failed because `.patina/config.toml` was gitignored → CI created default config with wrong embedding model (`all-minilm-l6-v2` instead of project's `e5-base-v2`) (weight: 0.92)
-- [[commit-b5d318e7]] Fixed by re-tracking config.toml with note: "only `[environment]` section is machine-specific" (weight: 0.90)
+- [[session-20260117-072948]]: [[commit-b5d318e7]] Fixed by re-tracking config.toml with note: "only `[environment]` section is machine-specific" (weight: 0.90)
 - [[session-20260116-154950]] Same issue with `oxidize.yaml` being gitignored (weight: 0.85)
 
 ## Supports
@@ -51,6 +45,20 @@ Project configuration should be tracked in git, only machine-specific settings b
 - `.patina/config.toml` now tracked in git (project settings), only temp files gitignored
 - `.patina/oxidize.yaml` tracked as project recipe, not machine-specific
 - `.gitignore` updated with clear comments explaining what's machine-specific vs project-level
+
+## Verification
+
+```verify type="sql" label="config.toml is git-tracked" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path = '.patina/config.toml'
+```
+
+```verify type="sql" label="oxidize.yaml is git-tracked" expect=">= 1"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path = '.patina/oxidize.yaml'
+```
+
+```verify type="sql" label="Machine-specific local/ not tracked" expect="= 0"
+SELECT COUNT(*) FROM git_tracked_files WHERE file_path LIKE '.patina/local/%'
+```
 
 ## Revision Log
 

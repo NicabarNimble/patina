@@ -5,20 +5,19 @@ End the current Patina session with Git work classification:
    - This captures activity since the last update
 
 2. Then archive the session:
-   `.opencode/bin/session-end.sh`
-   
+   `patina session end`
+
    This will:
    - Check for uncommitted changes (warns but doesn't block)
    - Classify work type based on commits (Exploration/Experiment/Feature)
-   - Archive session to .opencode/context/sessions/<ID>.md
-   - Archive session to layer/sessions/<ID>.md  
+   - Archive session to layer/sessions/<ID>.md
    - Update last-session.md pointer
    - Clean up active-session.md
    - Tag the session end point for preservation
 
-3. The script will show:
-   - "✓ Session archived: <ID>.md"
-   - Work classification (🧪 Exploration, 🔬 Experiment, or 🚀 Feature)
+3. The command will show:
+   - "Session archived: <ID>.md"
+   - Work classification
    - Session tags: session-[timestamp]-start..session-[timestamp]-end
 
 4. After archiving, you can:

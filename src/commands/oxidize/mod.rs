@@ -506,9 +506,47 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
 
     let belief_count = events.len() - session_count - code_count - pattern_count - commit_count;
 
+    // 6. Forge events (issues + PRs) — embed title+body for semantic search
+    // Query eventlog directly (forge_issues/forge_prs views have broken event_seq)
+    const FORGE_ID_OFFSET: i64 = 5_000_000_000;
+    {
+        let mut stmt = conn.prepare(
+            "SELECT seq, event_type, source_id,
+                    json_extract(data, '$.title') as title,
+                    json_extract(data, '$.body') as body
+             FROM eventlog
+             WHERE event_type IN ('forge.issue', 'forge.pr')
+               AND title IS NOT NULL",
+        )?;
+
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let seq: i64 = row.get(0)?;
+            let event_type: String = row.get(1)?;
+            let number: String = row.get(2)?;
+            let title: String = row.get(3)?;
+            let body: Option<String> = row.get(4)?;
+
+            let kind = if event_type == "forge.pr" {
+                "PR"
+            } else {
+                "Issue"
+            };
+            let desc = match body {
+                Some(b) if !b.is_empty() => format!("{} #{}: {}\n{}", kind, number, title, b),
+                _ => format!("{} #{}: {}", kind, number, title),
+            };
+
+            events.push((FORGE_ID_OFFSET + seq, desc));
+        }
+    }
+
+    let forge_count =
+        events.len() - session_count - code_count - pattern_count - commit_count - belief_count;
+
     println!(
-        "   Indexed {} session events + {} code facts + {} patterns + {} commits + {} beliefs",
-        session_count, code_count, pattern_count, commit_count, belief_count
+        "   Indexed {} session events + {} code facts + {} patterns + {} commits + {} beliefs + {} forge",
+        session_count, code_count, pattern_count, commit_count, belief_count, forge_count
     );
 
     Ok(events)

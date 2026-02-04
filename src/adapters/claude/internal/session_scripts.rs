@@ -1,4 +1,8 @@
 //! Session script generation for Claude adapter
+//!
+//! Deploys command definitions (.md) and thin wrapper scripts that forward
+//! to `patina session` Rust commands. The wrapper scripts provide backward
+//! compatibility for any code still calling .claude/bin/session-*.sh.
 
 use anyhow::Result;
 use std::fs;
@@ -6,18 +10,21 @@ use std::path::Path;
 
 use super::paths;
 
-// Embed session scripts from resources
-const SESSION_START_SH: &str = include_str!("../../../../resources/claude/session-start.sh");
+// Embed command definitions from resources
 const SESSION_START_MD: &str = include_str!("../../../../resources/claude/session-start.md");
-const SESSION_UPDATE_SH: &str = include_str!("../../../../resources/claude/session-update.sh");
 const SESSION_UPDATE_MD: &str = include_str!("../../../../resources/claude/session-update.md");
-const SESSION_NOTE_SH: &str = include_str!("../../../../resources/claude/session-note.sh");
 const SESSION_NOTE_MD: &str = include_str!("../../../../resources/claude/session-note.md");
-const SESSION_END_SH: &str = include_str!("../../../../resources/claude/session-end.sh");
 const SESSION_END_MD: &str = include_str!("../../../../resources/claude/session-end.md");
 
 // Embed patina-review command from resources
 const PATINA_REVIEW_MD: &str = include_str!("../../../../resources/claude/patina-review.md");
+
+/// Thin wrapper scripts that forward to `patina session` commands.
+/// Deployed to .claude/bin/ for backward compatibility.
+const WRAPPER_START: &str = "#!/bin/bash\nexec patina session start \"$@\"\n";
+const WRAPPER_UPDATE: &str = "#!/bin/bash\nexec patina session update \"$@\"\n";
+const WRAPPER_NOTE: &str = "#!/bin/bash\nexec patina session note \"$@\"\n";
+const WRAPPER_END: &str = "#!/bin/bash\nexec patina session end \"$@\"\n";
 
 /// Create all session scripts and command definitions
 pub fn create_session_scripts(project_path: &Path) -> Result<()> {
@@ -28,20 +35,16 @@ pub fn create_session_scripts(project_path: &Path) -> Result<()> {
     fs::create_dir_all(&commands_path)?;
     fs::create_dir_all(&bin_path)?;
 
-    // Create session-start
-    write_script(&bin_path.join("session-start.sh"), SESSION_START_SH)?;
+    // Deploy wrapper scripts (backward compatibility)
+    write_script(&bin_path.join("session-start.sh"), WRAPPER_START)?;
+    write_script(&bin_path.join("session-update.sh"), WRAPPER_UPDATE)?;
+    write_script(&bin_path.join("session-note.sh"), WRAPPER_NOTE)?;
+    write_script(&bin_path.join("session-end.sh"), WRAPPER_END)?;
+
+    // Deploy command definitions
     fs::write(commands_path.join("session-start.md"), SESSION_START_MD)?;
-
-    // Create session-update
-    write_script(&bin_path.join("session-update.sh"), SESSION_UPDATE_SH)?;
     fs::write(commands_path.join("session-update.md"), SESSION_UPDATE_MD)?;
-
-    // Create session-note
-    write_script(&bin_path.join("session-note.sh"), SESSION_NOTE_SH)?;
     fs::write(commands_path.join("session-note.md"), SESSION_NOTE_MD)?;
-
-    // Create session-end
-    write_script(&bin_path.join("session-end.sh"), SESSION_END_SH)?;
     fs::write(commands_path.join("session-end.md"), SESSION_END_MD)?;
 
     // patina-review command (no shell script, just prompt)

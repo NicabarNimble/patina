@@ -5,12 +5,6 @@ persona: architect
 facets: [architecture, unix-philosophy, maintainability]
 confidence:
   score: 0.85
-  signals:
-    evidence: 0.90
-    source_reliability: 0.85
-    recency: 0.80
-    survival: 0.50
-    user_endorsement: 0.50
 entrenchment: medium
 status: active
 extracted: 2026-01-21
@@ -28,6 +22,12 @@ When adding capability, prefer composing existing tools over building parallel s
 ## Evidence
 
 - session-20260121-071314: Discovered while designing belief validation - using scry/git/grep for validation means improvements cascade automatically, unlike the abandoned Prolog system which required separate maintenance (weight: 0.95)
+
+## Verification
+
+```verify type="sql" label="Scry/assay/oxidize reused across 10+ command files" expect=">= 10"
+SELECT COUNT(DISTINCT file) FROM call_graph WHERE (callee LIKE '%scry%' OR callee LIKE '%assay%' OR callee LIKE '%oxidize%') AND file LIKE '%commands/%'
+```
 
 ## Supports
 

@@ -3,6 +3,8 @@
 //! Enriches vector search results with metadata from the SQLite database.
 //! Handles different content types (semantic, temporal, dependency).
 
+use std::collections::HashMap;
+
 use anyhow::Result;
 use rusqlite::Connection;
 
@@ -28,6 +30,7 @@ pub fn enrich_results(
     const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
     const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
     const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+    const FORGE_ID_OFFSET: i64 = 5_000_000_000;
 
     match dimension {
         "semantic" => {
@@ -43,31 +46,97 @@ pub fn enrich_results(
                 }
 
                 // Check content type based on ID range (order matters: highest offset first)
-                if key >= BELIEF_ID_OFFSET {
-                    // Belief - look up in beliefs table
+                if key >= FORGE_ID_OFFSET {
+                    // Forge event (issue or PR) — look up in eventlog
+                    let event_seq = key - FORGE_ID_OFFSET;
+                    let result = conn.query_row(
+                        "SELECT event_type, source_id, timestamp,
+                                json_extract(data, '$.title') as title,
+                                json_extract(data, '$.body') as body
+                         FROM eventlog
+                         WHERE seq = ?",
+                        [event_seq],
+                        |row| {
+                            let event_type: String = row.get(0)?;
+                            let source_id: String = row.get(1)?;
+                            let timestamp: String = row.get(2)?;
+                            let title: String =
+                                row.get::<_, Option<String>>(3)?.unwrap_or_default();
+                            let body: String = row.get::<_, Option<String>>(4)?.unwrap_or_default();
+
+                            let kind = if event_type == "forge.pr" {
+                                "PR"
+                            } else {
+                                "Issue"
+                            };
+                            let preview: String = body.chars().take(200).collect();
+                            let content = if preview.is_empty() {
+                                format!("{} #{}: {}", kind, source_id, title)
+                            } else {
+                                format!("{} #{}: {}\n{}", kind, source_id, title, preview)
+                            };
+
+                            Ok(ScryResult {
+                                id: key,
+                                event_type,
+                                source_id: format!("{}#{}", kind.to_lowercase(), source_id),
+                                timestamp,
+                                content,
+                                score,
+                            })
+                        },
+                    );
+
+                    if let Ok(r) = result {
+                        enriched.push(r);
+                    }
+                } else if key >= BELIEF_ID_OFFSET {
+                    // Belief - look up in beliefs table with computed metrics
                     let rowid = key - BELIEF_ID_OFFSET;
                     let result = conn.query_row(
-                        "SELECT id, statement, persona, facets, confidence, entrenchment, file_path
+                        "SELECT id, statement, entrenchment, file_path,
+                                cited_by_beliefs, cited_by_sessions, applied_in,
+                                evidence_count, evidence_verified, defeated_attacks
                          FROM beliefs
                          WHERE rowid = ?",
                         [rowid],
                         |row| {
                             let id: String = row.get(0)?;
                             let statement: String = row.get(1)?;
-                            let _persona: String = row.get(2)?;
-                            let facets: Option<String> = row.get(3)?;
-                            let confidence: f64 = row.get(4)?;
-                            let entrenchment: String = row.get(5)?;
-                            let file_path: String = row.get(6)?;
+                            let entrenchment: String = row.get(2)?;
+                            let file_path: String = row.get(3)?;
+                            let cited_by_beliefs: i32 = row.get(4)?;
+                            let cited_by_sessions: i32 = row.get(5)?;
+                            let applied_in: i32 = row.get(6)?;
+                            let evidence_count: i32 = row.get(7)?;
+                            let evidence_verified: i32 = row.get(8)?;
+                            let defeated_attacks: i32 = row.get(9)?;
 
-                            // Build description with confidence indicator
-                            let _facet_str = facets.unwrap_or_default();
+                            // Build description with computed use/truth metrics
+                            let use_total = cited_by_beliefs + cited_by_sessions;
+                            let mut parts = Vec::new();
+                            parts.push(format!("use: {}+{}", cited_by_beliefs, cited_by_sessions));
+                            parts.push(format!("truth: {}/{}", evidence_count, evidence_verified));
+                            if defeated_attacks > 0 {
+                                parts.push(format!("{} defeated", defeated_attacks));
+                            }
+                            if applied_in > 0 {
+                                parts.push(format!("{} applied", applied_in));
+                            }
+                            let metrics_str = parts.join(" | ");
+
+                            // Flag weak beliefs
+                            let health = if evidence_count == 0 && use_total <= 1 {
+                                " WEAK"
+                            } else if evidence_verified == 0 && evidence_count > 0 {
+                                " UNVERIFIED"
+                            } else {
+                                ""
+                            };
+
                             let content = format!(
-                                "{} [confidence: {:.0}%, {}] ({})",
-                                statement,
-                                confidence * 100.0,
-                                entrenchment,
-                                file_path
+                                "{} [{}{}] ({}, {})",
+                                statement, metrics_str, health, entrenchment, file_path
                             );
 
                             Ok(ScryResult {
@@ -335,6 +404,66 @@ pub fn truncate_content(content: &str, max_len: usize) -> String {
     } else {
         format!("{}...", &content[..max_len])
     }
+}
+
+/// Find beliefs related to code results via multi-hop grounding (E4.6a-fix)
+///
+/// Uses belief_code_reach table (belief → commit → file) instead of broken
+/// direct cosine similarity. Extracts file_path from code result source_id
+/// and looks up which beliefs reach that file through commit neighbors.
+///
+/// Returns a map from source_id (e.g., "src/foo.rs::bar") to matching beliefs.
+pub fn find_belief_impact(results: &[ScryResult]) -> Result<HashMap<String, Vec<(String, f32)>>> {
+    let db_path = ".patina/local/data/patina.db";
+    let conn = Connection::open(db_path)?;
+
+    // Check if belief_code_reach table exists
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='belief_code_reach'",
+            [],
+            |row| row.get::<_, i32>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if !table_exists {
+        return Ok(HashMap::new());
+    }
+
+    let mut impact_map: HashMap<String, Vec<(String, f32)>> = HashMap::new();
+
+    // Prepare the reach lookup query once
+    let mut reach_stmt = conn.prepare(
+        "SELECT belief_id, reach_score FROM belief_code_reach
+         WHERE file_path = ?1
+         ORDER BY reach_score DESC
+         LIMIT 3",
+    )?;
+
+    for result in results.iter().filter(|r| r.event_type.starts_with("code.")) {
+        // Extract file_path from source_id (format: "./src/foo.rs::bar" or "src/foo.rs::bar")
+        // Strip leading "./" to match commit_files format (which uses "src/..." not "./src/...")
+        let raw_path = result
+            .source_id
+            .split("::")
+            .next()
+            .unwrap_or(&result.source_id);
+        let file_path = raw_path.strip_prefix("./").unwrap_or(raw_path);
+
+        let beliefs: Vec<(String, f32)> = reach_stmt
+            .query_map([file_path], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, f32>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        if !beliefs.is_empty() {
+            impact_map.insert(result.source_id.clone(), beliefs);
+        }
+    }
+
+    Ok(impact_map)
 }
 
 #[cfg(test)]

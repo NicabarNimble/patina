@@ -5,12 +5,6 @@ persona: architect
 facets: [data-architecture, persistence]
 confidence:
   score: 0.92
-  signals:
-    evidence: 0.95
-    source_reliability: 0.90
-    recency: 0.90
-    survival: 0.95
-    user_endorsement: 0.85
 entrenchment: very-high
 status: active
 extracted: 2026-01-14
@@ -31,6 +25,20 @@ The append-only eventlog is the canonical source of truth. All tables (commits, 
 - [[session-20260114-114833]] - "Git IS the eventlog for git data" (weight: 0.90)
 - [[spec-ref-repo-storage]] - Eventlog for expensive/original knowledge (weight: 0.85)
 - [[helland-paper]] - Academic grounding (weight: 0.80)
+
+## Verification
+
+```verify type="sql" label="insert_event callers" expect=">= 20"
+SELECT COUNT(*) FROM call_graph WHERE callee LIKE '%insert_event%'
+```
+
+```verify type="assay" label="insert_event across files" expect=">= 5"
+callers --pattern "insert_event" | count(distinct file)
+```
+
+```verify type="sql" label="Grounding reaches eventlog code" expect=">= 1"
+SELECT COUNT(*) FROM belief_code_reach WHERE belief_id = 'eventlog-is-truth' AND file_path LIKE '%eventlog%'
+```
 
 ## Supports
 
