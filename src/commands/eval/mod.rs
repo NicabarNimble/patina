@@ -1,20 +1,21 @@
 //! Evaluation framework for validating retrieval quality
 //!
-//! Phase 2.5c: Measure dimension value and query interface effectiveness.
+//! Tests the unified QueryEngine pipeline + per-oracle ablation.
+//! Ground truth: function_facts co-retrieval (semantic), co_changes (temporal).
 //!
-//! Key question: "Which query interfaces work for which dimensions?"
+//! Key question: "Does the unified pipeline improve over individual oracles?"
 
 use anyhow::Result;
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 
-use crate::commands::scry::{scry, ScryOptions};
+use crate::retrieval::{FusedResult, QueryEngine, RetrievalConfig};
 
-/// Evaluation results
+/// Evaluation results for one engine + test combination
 #[derive(Debug)]
 pub struct EvalResults {
-    pub dimension: String,
-    pub query_type: String,
+    pub engine: String,
+    pub test_name: String,
     pub num_queries: usize,
     pub precision_at_5: f32,
     pub precision_at_10: f32,
@@ -24,41 +25,62 @@ pub struct EvalResults {
 /// Run evaluation
 pub fn execute(dimension: Option<String>) -> Result<()> {
     println!("📊 Evaluation Framework\n");
-    println!("Testing retrieval quality for each dimension...\n");
+    println!("Testing retrieval quality: unified pipeline + per-oracle ablation\n");
 
     let db_path = ".patina/local/data/patina.db";
     let conn = Connection::open(db_path)?;
 
+    // Create engines: unified (all oracles), and per-oracle ablation
+    let unified = QueryEngine::new();
+    let semantic_only = QueryEngine::with_config(RetrievalConfig {
+        oracle_filter: Some(vec!["semantic".to_string()]),
+        ..Default::default()
+    });
+    let temporal_only = QueryEngine::with_config(RetrievalConfig {
+        oracle_filter: Some(vec!["temporal".to_string()]),
+        ..Default::default()
+    });
+
     let mut all_results = Vec::new();
 
-    // Evaluate semantic dimension
+    // Semantic tests: --dimension narrows which tests run, not which engines
     if dimension.is_none() || dimension.as_deref() == Some("semantic") {
-        println!("━━━ Semantic Dimension (text → text) ━━━\n");
-        let results = eval_semantic(&conn)?;
+        println!("━━━ Unified Pipeline (code → same-file) ━━━\n");
+        let results = eval_semantic_co_retrieval(&conn, &unified, "unified")?;
+        print_results(&results);
+        all_results.push(results);
+
+        println!("\n━━━ Ablation: semantic-only (code → same-file) ━━━\n");
+        let results = eval_semantic_co_retrieval(&conn, &semantic_only, "semantic-only")?;
         print_results(&results);
         all_results.push(results);
     }
 
-    // Evaluate temporal dimension (text queries - expected to be poor)
+    // Temporal tests
     if dimension.is_none() || dimension.as_deref() == Some("temporal") {
-        println!("\n━━━ Temporal Dimension (text → files) ━━━\n");
-        let results = eval_temporal_text(&conn)?;
+        // Score distribution (unified only, no ground truth)
+        println!("\n━━━ Unified Pipeline (text → score distribution) ━━━\n");
+        eval_temporal_text(&conn, &unified)?;
+
+        // File co-change (unified + temporal-only)
+        println!("\n━━━ Unified Pipeline (file → co-change) ━━━\n");
+        let results = eval_temporal_file(&conn, &unified, "unified")?;
         print_results(&results);
         all_results.push(results);
 
-        println!("\n━━━ Temporal Dimension (file → files) ━━━\n");
-        let results = eval_temporal_file(&conn)?;
+        println!("\n━━━ Ablation: temporal-only (file → co-change) ━━━\n");
+        let results = eval_temporal_file(&conn, &temporal_only, "temporal-only")?;
         print_results(&results);
         all_results.push(results);
     }
 
-    // Summary
+    // Summary table
     println!("\n━━━ Summary ━━━\n");
     println!(
-        "{:<30} {:>12} {:>12} {:>12}",
-        "Dimension/Query", "P@5", "P@10", "vs Random"
+        "{:<35} {:>12} {:>12} {:>12}",
+        "Pipeline", "P@5", "P@10", "vs Random"
     );
-    println!("{}", "─".repeat(70));
+    println!("{}", "─".repeat(75));
     for r in &all_results {
         let vs_random = if r.random_baseline > 0.0 {
             r.precision_at_10 / r.random_baseline
@@ -66,8 +88,8 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
             0.0
         };
         println!(
-            "{:<30} {:>11.1}% {:>11.1}% {:>11.1}x",
-            format!("{} ({})", r.dimension, r.query_type),
+            "{:<35} {:>11.1}% {:>11.1}% {:>11.1}x",
+            format!("{} ({})", r.engine, r.test_name),
             r.precision_at_5 * 100.0,
             r.precision_at_10 * 100.0,
             vs_random
@@ -77,86 +99,109 @@ pub fn execute(dimension: Option<String>) -> Result<()> {
     Ok(())
 }
 
-/// Evaluate semantic dimension: text → text
+// ============================================================================
+// Semantic evaluation: function_facts co-retrieval
+// ============================================================================
+
+/// Evaluate semantic retrieval: functions in same file should co-retrieve
 ///
-/// Strategy: For observations from a session, use one as query,
-/// check if other observations from same session are retrieved.
-fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
-    // Get sessions with multiple observations
-    let mut sessions: HashMap<String, Vec<(i64, String)>> = HashMap::new();
+/// Ground truth: function_facts table. Files with 3+ functions provide
+/// query (one function description) and expected results (other functions
+/// from same file). doc_ids are file::function format — unique per function,
+/// no RRF dedup issue.
+fn eval_semantic_co_retrieval(
+    conn: &Connection,
+    engine: &QueryEngine,
+    engine_name: &str,
+) -> Result<EvalResults> {
+    // Load function_facts grouped by file
+    let mut files: HashMap<String, Vec<(String, String)>> = HashMap::new();
 
     let mut stmt = conn.prepare(
-        "SELECT source_id, seq, json_extract(data, '$.content') as content
-         FROM eventlog
-         WHERE event_type IN ('session.decision', 'session.observation', 'session.pattern')
-           AND content IS NOT NULL AND length(content) > 50
-         ORDER BY source_id, seq",
+        "SELECT file, name, parameters, return_type, is_public, is_async
+         FROM function_facts
+         ORDER BY file, name",
     )?;
 
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
-        let session_id: String = row.get(0)?;
-        let seq: i64 = row.get(1)?;
-        let content: String = row.get(2)?;
-        sessions.entry(session_id).or_default().push((seq, content));
+        let file: String = row.get(0)?;
+        let name: String = row.get(1)?;
+        let params: Option<String> = row.get(2)?;
+        let return_type: Option<String> = row.get(3)?;
+        let is_public: bool = row.get(4)?;
+        let is_async: bool = row.get(5)?;
+
+        // Build description matching what's embedded in the semantic index
+        let mut desc = format!("Function `{}` in `{}`", name, file);
+        if is_public {
+            desc.push_str(", public");
+        }
+        if is_async {
+            desc.push_str(", async");
+        }
+        if let Some(ref p) = params {
+            if !p.is_empty() {
+                desc.push_str(&format!(", params: {}", p));
+            }
+        }
+        if let Some(ref rt) = return_type {
+            if !rt.is_empty() {
+                desc.push_str(&format!(", returns: {}", rt));
+            }
+        }
+
+        files.entry(file).or_default().push((name, desc));
     }
 
-    // Filter to sessions with 3+ observations (need query + expected results)
-    let valid_sessions: Vec<_> = sessions.iter().filter(|(_, obs)| obs.len() >= 3).collect();
+    // Files with 3+ functions have enough for query + expected results
+    let valid_files: Vec<_> = files.iter().filter(|(_, funcs)| funcs.len() >= 3).collect();
 
     println!(
-        "Found {} sessions with 3+ observations",
-        valid_sessions.len()
+        "Found {} files with 3+ functions ({} total functions)",
+        valid_files.len(),
+        files.values().map(|v| v.len()).sum::<usize>()
     );
+
+    if valid_files.is_empty() {
+        return Ok(EvalResults {
+            engine: engine_name.to_string(),
+            test_name: "code→same-file".to_string(),
+            num_queries: 0,
+            precision_at_5: 0.0,
+            precision_at_10: 0.0,
+            random_baseline: 0.0,
+        });
+    }
 
     let mut total_precision_5 = 0.0;
     let mut total_precision_10 = 0.0;
     let mut num_queries = 0;
 
-    // Sample up to 20 sessions for evaluation
-    let sample_size = valid_sessions.len().min(20);
+    // Sample up to 20 files
+    let sample_size = valid_files.len().min(20);
     let mut rng = fastrand::Rng::new();
 
     for i in 0..sample_size {
-        let idx = if sample_size < valid_sessions.len() {
-            rng.usize(..valid_sessions.len())
+        let idx = if sample_size < valid_files.len() {
+            rng.usize(..valid_files.len())
         } else {
             i
         };
 
-        let (session_id, observations) = valid_sessions[idx];
+        let (file_path, functions) = valid_files[idx];
 
-        // Use first observation as query
-        let query = &observations[0].1;
-        let expected_seqs: HashSet<i64> =
-            observations.iter().skip(1).map(|(seq, _)| *seq).collect();
+        // Use first function's description as query
+        let query = &functions[0].1;
+        let expected_file = normalize_path(file_path);
+        let expected_count = functions.len() - 1; // exclude query function itself
 
-        // Run scry
-        let options = ScryOptions {
-            limit: 10,
-            min_score: 0.0,
-            dimension: Some("semantic".to_string()),
-            include_persona: false, // Eval doesn't need persona
-            ..Default::default()
-        };
+        if let Ok(results) = engine.query(query, 10) {
+            let hits_5 = count_file_hits(&results, &expected_file, 5);
+            let hits_10 = count_file_hits(&results, &expected_file, 10);
 
-        if let Ok(results) = scry(query, &options) {
-            let retrieved_seqs: Vec<i64> = results.iter().map(|r| r.id).collect();
-
-            // Calculate precision@5 and precision@10
-            let hits_5 = retrieved_seqs
-                .iter()
-                .take(5)
-                .filter(|id| expected_seqs.contains(id))
-                .count();
-            let hits_10 = retrieved_seqs
-                .iter()
-                .take(10)
-                .filter(|id| expected_seqs.contains(id))
-                .count();
-
-            let p5 = hits_5 as f32 / 5.0_f32.min(expected_seqs.len() as f32);
-            let p10 = hits_10 as f32 / 10.0_f32.min(expected_seqs.len() as f32);
+            let p5 = hits_5 as f32 / 5.0_f32.min(expected_count as f32);
+            let p10 = hits_10 as f32 / 10.0_f32.min(expected_count as f32);
 
             total_precision_5 += p5;
             total_precision_10 += p10;
@@ -164,8 +209,9 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
 
             if num_queries <= 3 {
                 println!(
-                    "  Query from {}: P@5={:.0}%, P@10={:.0}%",
-                    session_id,
+                    "  {} ({} funcs): P@5={:.0}%, P@10={:.0}%",
+                    file_path,
+                    functions.len(),
                     p5 * 100.0,
                     p10 * 100.0
                 );
@@ -177,14 +223,14 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
         println!("  ... and {} more queries", num_queries - 3);
     }
 
-    // Random baseline: chance of hitting same-session observation
-    let total_observations: usize = sessions.values().map(|v| v.len()).sum();
-    let avg_session_size = total_observations as f32 / sessions.len() as f32;
-    let random_baseline = avg_session_size / total_observations as f32;
+    // Random baseline: chance of hitting same-file function
+    let total_functions: usize = files.values().map(|v| v.len()).sum();
+    let avg_file_size = total_functions as f32 / files.len() as f32;
+    let random_baseline = avg_file_size / total_functions as f32;
 
     Ok(EvalResults {
-        dimension: "semantic".to_string(),
-        query_type: "text→text".to_string(),
+        engine: engine_name.to_string(),
+        test_name: "code→same-file".to_string(),
         num_queries,
         precision_at_5: if num_queries > 0 {
             total_precision_5 / num_queries as f32
@@ -200,11 +246,15 @@ fn eval_semantic(conn: &Connection) -> Result<EvalResults> {
     })
 }
 
-/// Evaluate temporal dimension with text queries (expected poor)
-fn eval_temporal_text(conn: &Connection) -> Result<EvalResults> {
-    // Use session observation text as queries against temporal index
-    // This should perform poorly since temporal was trained on file relationships
+// ============================================================================
+// Temporal evaluation: co-change partners + score distribution
+// ============================================================================
 
+/// Evaluate temporal with text queries (score distribution, no ground truth)
+///
+/// Measures whether the unified pipeline returns meaningful score distributions
+/// for text queries. No precision — just diagnostic.
+fn eval_temporal_text(conn: &Connection, engine: &QueryEngine) -> Result<()> {
     let mut stmt = conn.prepare(
         "SELECT json_extract(data, '$.content') as content
          FROM eventlog
@@ -220,28 +270,18 @@ fn eval_temporal_text(conn: &Connection) -> Result<EvalResults> {
     }
 
     println!(
-        "Testing {} text queries against temporal index",
+        "Testing {} text queries (score distribution)",
         queries.len()
     );
 
-    // For temporal with text queries, there's no "correct" answer
-    // We measure if results are even meaningful by checking score distribution
     let mut avg_top_score = 0.0;
     let mut avg_score_variance = 0.0;
     let mut num_queries = 0;
 
     for query in queries.iter().take(10) {
-        let options = ScryOptions {
-            limit: 10,
-            min_score: 0.0,
-            dimension: Some("temporal".to_string()),
-            include_persona: false,
-            ..Default::default()
-        };
-
-        if let Ok(results) = scry(query, &options) {
+        if let Ok(results) = engine.query(query, 10) {
             if !results.is_empty() {
-                let scores: Vec<f32> = results.iter().map(|r| r.score).collect();
+                let scores: Vec<f32> = results.iter().map(|r| r.fused_score).collect();
                 let top = scores[0];
                 let mean = scores.iter().sum::<f32>() / scores.len() as f32;
                 let variance =
@@ -259,28 +299,26 @@ fn eval_temporal_text(conn: &Connection) -> Result<EvalResults> {
         avg_score_variance /= num_queries as f32;
     }
 
-    println!("  Avg top score: {:.3}", avg_top_score);
+    println!("  Avg top fused score: {:.4}", avg_top_score);
     println!(
-        "  Avg score variance: {:.4} (low = results are random-ish)",
+        "  Avg score variance: {:.6} (low = results are random-ish)",
         avg_score_variance
     );
+    println!("  Queries evaluated: {}", num_queries);
 
-    // Without ground truth for text→file, precision is undefined
-    // Report 0 to indicate "not applicable"
-    Ok(EvalResults {
-        dimension: "temporal".to_string(),
-        query_type: "text→files".to_string(),
-        num_queries,
-        precision_at_5: 0.0, // N/A - no ground truth
-        precision_at_10: 0.0,
-        random_baseline: 0.0,
-    })
+    Ok(())
 }
 
-/// Evaluate temporal dimension with file queries (expected good)
-fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
-    // Pick files, find their actual co-change partners, check if retrieved
-
+/// Evaluate temporal with file queries: file → co-change partners
+///
+/// Ground truth: co_changes table. Files that frequently change together
+/// should co-retrieve. Extract file path from FusedResult doc_id (strip
+/// "./" prefix and "::suffix") before matching.
+fn eval_temporal_file(
+    conn: &Connection,
+    engine: &QueryEngine,
+    engine_name: &str,
+) -> Result<EvalResults> {
     // Get files with known co-changes
     let mut stmt = conn.prepare(
         "SELECT file_a, file_b, count
@@ -302,7 +340,7 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
         cochanges.entry(file_b).or_default().insert(file_a);
     }
 
-    // Get files with multiple co-change partners
+    // Files with 2+ co-change partners
     let test_files: Vec<_> = cochanges
         .iter()
         .filter(|(_, partners)| partners.len() >= 2)
@@ -314,39 +352,49 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
         test_files.len()
     );
 
+    if test_files.is_empty() {
+        return Ok(EvalResults {
+            engine: engine_name.to_string(),
+            test_name: "file→co-change".to_string(),
+            num_queries: 0,
+            precision_at_5: 0.0,
+            precision_at_10: 0.0,
+            random_baseline: 0.0,
+        });
+    }
+
     let mut total_precision_5 = 0.0;
     let mut total_precision_10 = 0.0;
     let mut num_queries = 0;
 
     for (file_path, expected_partners) in &test_files {
-        // Query using file description (same format as indexed)
         let query = format!("File: {} ({})", file_path, get_file_type(file_path));
 
-        let options = ScryOptions {
-            limit: 10,
-            min_score: 0.0,
-            dimension: Some("temporal".to_string()),
-            include_persona: false,
-            ..Default::default()
-        };
+        if let Ok(results) = engine.query(&query, 10) {
+            // Extract and normalize file paths from FusedResult doc_ids
+            let retrieved_files: Vec<String> = results
+                .iter()
+                .map(|r| extract_file_from_doc_id(&r.doc_id))
+                .collect();
 
-        if let Ok(results) = scry(&query, &options) {
-            // Extract file paths from results
-            let retrieved_files: Vec<String> =
-                results.iter().map(|r| r.source_id.clone()).collect();
+            // Normalize expected partners for comparison
+            let normalized_partners: HashSet<String> = expected_partners
+                .iter()
+                .map(|p| normalize_path(p))
+                .collect();
 
             let hits_5 = retrieved_files
                 .iter()
                 .take(5)
-                .filter(|f| expected_partners.contains(f.as_str()))
+                .filter(|f| normalized_partners.contains(f.as_str()))
                 .count();
             let hits_10 = retrieved_files
                 .iter()
                 .take(10)
-                .filter(|f| expected_partners.contains(f.as_str()))
+                .filter(|f| normalized_partners.contains(f.as_str()))
                 .count();
 
-            let max_possible = expected_partners.len().min(10);
+            let max_possible = normalized_partners.len().min(10);
             let p5 = hits_5 as f32 / 5.0_f32.min(max_possible as f32);
             let p10 = hits_10 as f32 / max_possible as f32;
 
@@ -376,8 +424,8 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
     let random_baseline = avg_partners / total_files as f32;
 
     Ok(EvalResults {
-        dimension: "temporal".to_string(),
-        query_type: "file→files".to_string(),
+        engine: engine_name.to_string(),
+        test_name: "file→co-change".to_string(),
         num_queries,
         precision_at_5: if num_queries > 0 {
             total_precision_5 / num_queries as f32
@@ -391,6 +439,39 @@ fn eval_temporal_file(conn: &Connection) -> Result<EvalResults> {
         },
         random_baseline,
     })
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/// Extract file path from a FusedResult doc_id, normalized for comparison
+///
+/// Handles different oracle doc_id formats:
+/// - "./src/main.rs::fn:main" → "src/main.rs" (SemanticOracle code facts)
+/// - "src/main.rs" → "src/main.rs" (TemporalOracle co-changes)
+/// - "persona:direct:..." → "persona:direct:..." (no file, won't match)
+fn extract_file_from_doc_id(doc_id: &str) -> String {
+    let path = if let Some(idx) = doc_id.find("::") {
+        &doc_id[..idx]
+    } else {
+        doc_id
+    };
+    normalize_path(path)
+}
+
+/// Normalize path by stripping "./" prefix
+fn normalize_path(path: &str) -> String {
+    path.strip_prefix("./").unwrap_or(path).to_string()
+}
+
+/// Count results in top-K whose doc_id resolves to the expected file
+fn count_file_hits(results: &[FusedResult], expected_file: &str, k: usize) -> usize {
+    results
+        .iter()
+        .take(k)
+        .filter(|r| extract_file_from_doc_id(&r.doc_id) == expected_file)
+        .count()
 }
 
 fn get_file_type(path: &str) -> &'static str {
