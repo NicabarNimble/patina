@@ -5,6 +5,8 @@ status: ready
 created: 2026-02-03
 sessions:
   origin: 20260203-134222
+  work:
+    - 20260203-192041
 related:
   - layer/core/build.md
   - layer/surface/build/feat/mother/SPEC.md
@@ -115,9 +117,82 @@ on all responses. No `Access-Control-Allow-Origin` header (omission is safer tha
 
 **6. Consistent JSON errors** — `json_error()` helper, all paths return `{"error": "..."}`.
 
-### Phase 2: P1 — File Permissions + Model Integrity (4 changes, 4 files)
+### Phase 2: Transport Security by Trust Boundary (3 files)
 
-**2a. Vault permissions** (`src/secrets/vault.rs`):
+Anchored in [[transport-security-by-trust-boundary]]. Design principle (djb): default
+safe, insecure path hard. Prior art: PostgreSQL, Docker.
+
+**Transport model:**
+- `Unix(PathBuf)` — local path, file permissions are auth, no token
+- `Tcp { addr, token }` — network path, explicit opt-in, bearer token required
+
+**2a. Server dual listener** (`src/commands/serve/internal.rs`, `mod.rs`):
+
+Default: listen on `~/.patina/serve.sock` (unix domain socket). No TCP unless
+`--host`/`--port` explicitly passed. Flip the djb switch — safe by default.
+
+**Socket directory permissions:** On startup, verify `~/.patina/` is 0o700. Refuse
+to create socket if directory is world/group accessible. Set socket file to 0o600
+after bind. This is the auth — if you can open the socket, you're the right user.
+
+**UDS wire protocol — length-prefix framing:**
+
+```
+[4 bytes: big-endian u32 payload length][JSON payload]
+```
+
+No newlines to worry about. Frame size limit: 1 MB (same as HTTP body cap).
+Reject before reading payload if length > MAX_FRAME_SIZE.
+
+**Handshake:** First message from client is a hello:
+```
+→ {"action":"hello","version":"0.10.0"}
+← {"status":200,"body":{"version":"0.10.0","uptime_secs":123}}
+```
+
+Then request/response pairs:
+```
+→ {"action":"scry","query":"test","limit":10}
+← {"status":200,"body":{"results":[...],"count":5}}
+
+→ {"action":"cache_get"}
+← {"status":200,"body":{"secrets":{"key":"value"}}}
+
+→ {"action":"cache_set","secrets":{"k":"v"},"ttl_secs":600}
+← {"status":200,"body":{"cached":true}}
+
+→ {"action":"cache_clear"}
+← {"status":200,"body":{"cleared":true}}
+```
+
+Handler functions shared between UDS and HTTP paths — extract request dispatch
+from rouille router into standalone functions.
+
+Socket cleanup: remove stale socket on startup (check PID if possible), delete
+on clean shutdown.
+
+rouille stays for TCP/HTTP path. `std::os::unix::net::UnixListener` for UDS. One
+thread per listener. No new dependencies — stdlib + existing `libc`.
+
+**2b. Session client transport-aware** (`src/secrets/session.rs`):
+
+Try UDS first (no auth needed). Fall back to HTTP + token if no socket.
+```rust
+fn connect() -> Transport {
+    let sock = patina_socket_path();
+    if sock.exists() { Transport::Unix(sock) }
+    else { Transport::Http { url: serve_url(), token: serve_token() } }
+}
+```
+
+**2c. Mother client transport-aware** (`src/mother/internal.rs`):
+
+Add token field to `Client`. Accept transport in constructor.
+Local mother: uses UDS (no token). Container mother: uses TCP + bearer token.
+
+### Phase 3: P1 — File Permissions + Model Integrity (4 changes, 4 files)
+
+**3a. Vault permissions** (`src/secrets/vault.rs`):
 ```rust
 use std::os::unix::fs::PermissionsExt;
 
@@ -125,10 +200,10 @@ fs::write(vault_path, encrypted)?;
 fs::set_permissions(vault_path, fs::Permissions::from_mode(0o600))?;
 ```
 
-**2b. Registry permissions** (`src/secrets/registry.rs`):
+**3b. Registry permissions** (`src/secrets/registry.rs`):
 Same pattern — `fs::set_permissions` after `fs::write`.
 
-**2c. ONNX checksum** (`src/embeddings/onnx.rs`):
+**3c. ONNX checksum** (`src/embeddings/onnx.rs`):
 ```rust
 const EXPECTED_SHA256: &str = "abc123...";  // computed from known-good model
 
@@ -143,10 +218,10 @@ fn verify_model(path: &Path) -> Result<()> {
 }
 ```
 
-**2d. SSH secrets via stdin** (`src/secrets/mod.rs`):
+**3d. SSH secrets via stdin** (`src/secrets/mod.rs`):
 Replace argv-based env prefix with stdin pipe to remote shell.
 
-### Phase 3: P2 — Defense-in-Depth (4 changes, 4 files)
+### Phase 4: P2 — Defense-in-Depth (4 changes, 4 files)
 
 Add `rpassword` and `zeroize` crates. Update prompts and key handling. Validate registry paths.
 
@@ -176,14 +251,27 @@ Check if `sha2` is already a transitive dependency (likely via `age`).
 - [x] All error responses use consistent JSON format (`{"error": "..."}`)
 - [ ] Execution bounding (timeout + concurrency gate) — deferred, needs proper design
 
-**Phase 2 (P1):**
+**Phase 2 (Transport Security):**
+- [ ] `patina serve` defaults to unix socket at `~/.patina/serve.sock`
+- [ ] TCP listener only starts with explicit `--host`/`--port`
+- [ ] Socket directory (`~/.patina/`) verified 0o700 on startup, refuse if open
+- [ ] Socket file set to 0o600 after bind
+- [ ] UDS uses length-prefix framing (4-byte BE u32 + JSON payload)
+- [ ] Frame size limit: 1 MB, reject before reading if exceeded
+- [ ] Client hello/version handshake on connect
+- [ ] Stale socket cleanup on startup, delete on clean shutdown
+- [ ] `session.rs` connects via UDS first, HTTP+token fallback
+- [ ] `mother/internal.rs` accepts transport enum (Unix or Tcp+token)
+- [ ] Handler functions shared between UDS and HTTP paths
+
+**Phase 3 (P1 — File Permissions):**
 - [ ] `~/.patina/vault.age` created with 0o600 permissions
 - [ ] `~/.patina/secrets.toml` created with 0o600 permissions
 - [ ] ONNX model verified via SHA-256 before loading
 - [ ] `patina secrets run` over SSH does not expose secrets in `ps auxe`
 - [ ] Serve token loaded from vault when available, env var as fallback
 
-**Phase 3 (P2):**
+**Phase 4 (P2 — Defense-in-Depth):**
 - [ ] Secret prompts use masked input (no echo)
 - [ ] Key material zeroized after use (`Zeroizing<String>`)
 - [ ] `--export-key` writes to file (0o600), not stdout
@@ -213,16 +301,40 @@ curl -sD - -o /dev/null http://127.0.0.1:50051/health | grep -i "x-content-type-
 # → X-Content-Type-Options: nosniff
 # → X-Frame-Options: DENY
 
-# Phase 2: File permissions
+# Phase 2: Transport security
+# Default: socket only, no TCP
+patina serve
+# → Listening on ~/.patina/serve.sock
+# → No TCP listener (use --host/--port for network access)
+
+# Verify socket permissions
+stat -f "%Lp" ~/.patina/serve.sock
+# → 600
+stat -f "%Lp" ~/.patina/
+# → 700
+
+# UDS client works without token
+echo '{"action":"health"}' | patina serve --test-uds  # or socat
+# → {"status":200,"body":{"status":"ok",...}}
+
+# TCP still requires auth
+patina serve --host 127.0.0.1 --port 50051
+curl -s http://127.0.0.1:50051/api/scry -d '{"query":"test"}'
+# → 401 Unauthorized (same as before)
+
+# Frame size enforcement
+# Send >1MB payload over UDS → rejected before reading
+
+# Phase 3: File permissions
 stat -f "%Lp" ~/.patina/vault.age
 # → 600
 
-# Phase 2: ONNX integrity
+# Phase 3: ONNX integrity
 echo "tampered" >> resources/models/all-MiniLM-L6-v2-int8.onnx
 patina scrape
 # → Error: ONNX model integrity check failed
 
-# Phase 3: Masked input
+# Phase 4: Masked input
 patina secrets add test-secret
 # → Value for test-secret: ******** (not echoed)
 ```
@@ -247,4 +359,5 @@ Precedent: 0.9.3 (session hardening), 0.9.4 (spec archive + belief verification)
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-03 | ready | Spec created from security audit (session 20260203-134222) |
-| 2026-02-03 | in-progress | P0 shipped: 6 fixes (auth, read cap, limit cap, security headers, bind warning, consistent errors). Execution bounding (timeout + concurrency gate) deferred — naive thread::spawn + semaphore had TOCTOU race, panic leak, and thread abandonment. Needs proper design with RAII guard. |
+| 2026-02-03 | in-progress | P0 shipped: 6 fixes (auth, read cap, limit cap, security headers, bind warning, consistent errors). Execution bounding deferred — needs RAII guard design. |
+| 2026-02-03 | in-progress | Phase 2 spec: transport security by trust boundary. UDS default, TCP opt-in, length-prefix framing, socket-dir permissions enforcement, frame size limits, hello handshake. Anchored in [[transport-security-by-trust-boundary]]. |
