@@ -514,8 +514,211 @@ interface database {
 
 ---
 
+## Zed Analysis (2026-02-05)
+
+Studied zed-industries/zed extension system (216 crates, 77 WIT files).
+
+### Zed Architecture
+
+1. **Versioned WIT directories**: `wit/since_v0.0.1/`, `wit/since_v0.1.0/`, etc.
+   - Host has `Extension` enum with variant per version
+   - Method dispatch matches on version, uses `.into()` for type conversion
+   - Expensive but supports backwards compatibility
+
+2. **Single world with capability imports**:
+   ```wit
+   world extension {
+       import http-client;
+       import github;
+       import platform;
+       import process;
+       import nodejs;
+
+       export init-extension: func();
+       export language-server-command: func(...);
+   }
+   ```
+
+3. **Resources for host handles**:
+   ```wit
+   resource worktree {
+       id: func() -> u64;
+       root-path: func() -> string;
+       read-text-file: func(path: string) -> result<string, string>;
+       which: func(binary-name: string) -> option<string>;
+       shell-env: func() -> env-vars;
+   }
+   ```
+
+4. **Two-layer capability grants**:
+   - `extension.toml` manifest declares: `capabilities = [{ process:exec = { command = "ls", args = ["-la"] }}]`
+   - `CapabilityGranter` checks manifest AND host grants before allowing
+
+5. **Extension manifest** (`extension.toml`):
+   ```toml
+   id = "glsl"
+   name = "GLSL"
+   version = "0.2.0"
+   schema_version = 1
+
+   [language_servers.glsl_analyzer]
+   name = "GLSL Analyzer LSP"
+   language = "GLSL"
+
+   [grammars.glsl]
+   repository = "https://github.com/theHamsta/tree-sitter-glsl"
+   commit = "31064ce..."
+   ```
+
+6. **Extension API crate** (`zed_extension_api`):
+   - Provides `Extension` trait with default impls
+   - `register_extension!` macro handles WASI setup + exports
+   - Re-exports WIT-generated types for ergonomic Rust API
+
+### What Patina Should Adopt
+
+| Pattern | Adopt? | Rationale |
+|---------|--------|-----------|
+| Versioned WIT directories | Later | Start with package version, add compat when needed |
+| Single world | No | Keep separate worlds for stricter capability isolation |
+| Resources for handles | Yes | Add `result-cursor` for streaming, `worktree` equivalent |
+| Two-layer grants | Yes | Critical for security |
+| `plugin.toml` manifest | Yes | Define our format |
+| API crate | Yes | `patina_plugin_api` wrapping WIT bindings |
+
+### Key Implementation Detail: Sync/Async Transparency
+
+From Zed Decoded video - extensions see **synchronous** APIs but host runs **async**:
+
+```rust
+// Host side bindgen with async: true
+wasmtime::component::bindgen!({
+    async: true,  // host methods are async fn
+    path: "./wit/since_v0.8.0",
+});
+
+// Extension sees sync call:
+fn download_file(url: &str, path: &str) -> Result<()>;
+
+// Host implements async:
+async fn download_file(&mut self, url: String, path: String) -> Result<()> {
+    // When this awaits, WASM runtime suspends
+    let response = self.http_client.get(&url).await?;
+    // ...
+}
+```
+
+When host yields (e.g., for I/O), the **entire WASM runtime suspends**. This is transparent to the extension - no async rust complexity.
+
+> "We didn't want to have async rust in extensions... it takes the complexity up"
+
+**For Patina**: Apply this pattern. Plugins see sync APIs for `query()`, `embed()`, etc. Host handles async I/O internally.
+
+### Key Implementation Detail: WASI Sandboxing
+
+Extensions use WASI for filesystem access but see a **virtual path**:
+
+```rust
+// Extension thinks it's writing to:
+"/work/model-cache/model.onnx"
+
+// Host translates to real path:
+"~/.patina/plugins/my-oracle/work/model-cache/model.onnx"
+
+fn path_from_extension(extension: &Extension, virtual_path: &str) -> PathBuf {
+    extension.work_dir.join(virtual_path.strip_prefix("/work/").unwrap_or(virtual_path))
+}
+```
+
+**Benefits**:
+- Extensions can't escape their sandbox
+- Standard `fs` APIs work (no special wrappers needed)
+- Host controls real storage location
+
+**For Patina**: Apply this pattern. Each plugin gets isolated work directory.
+
+### Parallelism Options for WASM Host (Respecting sync-first)
+
+Patina has a [[sync-first]] belief: no async in codebase. When adding WASM plugins, we need parallelism without async infection.
+
+**The Problem** (from No Boilerplate "Async Rust Is A Bad Language" video):
+- `tokio::spawn` requires `'static` lifetimes → infects entire codebase
+- Lose ability to reason about one function at a time
+- Concurrency ≠ Parallelism (tokio conflates them)
+
+**The Solution**: "If you scope the async part tighter than the whole program, your life will be better."
+
+| Approach | Async Spread Risk | When to Use | When to Avoid |
+|----------|-------------------|-------------|---------------|
+| `std::thread::scope` | **Zero** | Plugin calls, bounded parallel work. Preserves borrowing. | Thousands of concurrent I/O tasks |
+| `rayon` | **Zero** | CPU-bound parallel (oracles, embeddings, batch processing) | I/O-bound work |
+| `smol` | **Low** | If async truly needed, tiny runtime (1k LOC) | Unless actually needed |
+| `tokio` contained | **Medium** | WASM host I/O if scoped threads insufficient | Never let it escape module |
+| `tokio` everywhere | **☠️** | **Never** | **Always avoid** |
+
+**Recommended: Scoped Threads for Plugin Calls**
+
+```rust
+// Good: No async, borrowing works, compiler helps
+fn call_plugin_oracle(plugin: &WasmPlugin, query: &str) -> Result<Vec<OracleResult>> {
+    std::thread::scope(|s| {
+        s.spawn(|| {
+            plugin.call_query(query)  // Blocks inside, fine for CLI
+        }).join().unwrap()
+    })
+}
+```
+
+The `'static` infection only happens with unscoped `spawn`. With `scope`, we keep borrowing.
+
+**How Zed Contains Async** (if we ever need it):
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 Zed App (sync code)                          │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   gpui_tokio bridge                          │
+│            tokio runtime (2 threads ONLY)                    │
+│              CONTAINED - never escapes                       │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 wasmtime with epoch                          │
+│         config.epoch_interruption(true);                     │
+│         store.epoch_deadline_async_yield_and_update(1);      │
+│                                                              │
+│         Extensions see SYNC APIs                             │
+│         Host yields → WASM suspends → host does I/O          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Key constraints if adding tokio:
+1. Create small runtime (2 threads max)
+2. Contain to ONE module (e.g., `src/wasm_host/runtime.rs`)
+3. Never export async types
+4. Plugins always see sync APIs
+5. Use epoch interruption for cooperative yielding
+
+**Decision for Patina**: Start with `std::thread::scope`. Only add contained tokio if we need many concurrent I/O-heavy plugins and threads don't scale.
+
+### Gaps to Address
+
+1. **Define `plugin.toml`** format for Patina plugins
+2. **Add capability grant system** (manifest + host)
+3. **Add streaming resource** for large result sets
+4. **Create `patina_plugin_api`** crate
+
+---
+
 ## Status Log
 
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-05 | active | Sketched WIT interfaces for all plugin types. Maps directly from existing Rust traits. |
+| 2026-02-05 | active | Analyzed Zed's extension system. Added comparison notes, identified gaps. |
+| 2026-02-05 | active | Added Zed Decoded video insights: sync/async transparency, WASI sandboxing, threading model, historical context. |
+| 2026-02-05 | active | Added parallelism options respecting sync-first: scoped threads recommended, tokio contained if needed. No Boilerplate video context. |
