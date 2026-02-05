@@ -70,17 +70,24 @@ Leaning toward **Option B** — allows grouping related work into one release.
 
 ### 2. What Happens to `target` Field?
 
-**Option A: Remove entirely**
-- Specs don't declare target versions
-- Version is emergent
+**Decision: Remove `target`, add `released`**
 
-**Option B: Advisory only**
-- `target: v0.12-ish` or `target: near-term`
-- For rough planning, not enforced
+`target` is aspirational (often wrong). Replace with `released` — a historical stamp.
 
-**Option C: Keep for MAJOR milestones only**
-- "This feature is required for v1.0"
-- Everything else is just fix/feat flow
+```yaml
+# Before release:
+status: complete
+# (no version field — we don't know yet)
+
+# After release (stamped by `patina version release`):
+status: complete
+released: v0.12.0
+```
+
+- **`target`** = planning artifact, becomes stale → **remove**
+- **`released`** = historical fact, stamped at release time → **add**
+
+The spec file stays clean during development. Version is stamped once, when it ships.
 
 ### 3. Multi-phase Features (Milestones)
 
@@ -139,21 +146,22 @@ patina version major "v1.0"         # deliberate major bump
 
 ## What We'd Remove
 
-- `target` field from specs (or make advisory)
+- `target` field from specs (aspirational, often stale)
 - `milestones` array with version numbers
 - `current_milestone` tracking
 - Complex milestone state machine
 
 ## What We'd Add
 
+- `released` field — stamped at release time (historical fact)
 - Rules engine: spec type → version impact
-- Release command that derives version
+- Release command that derives version and stamps completed specs
 - Optional `phases` for multi-step features (no versions)
 
 ## Exit Criteria (for this explore)
 
 - [ ] Decide: per-spec vs batched releases
-- [ ] Decide: fate of `target` field
+- [x] Decide: fate of `target` field → remove, replace with `released` (stamped at release)
 - [ ] Decide: fate of `milestones` array
 - [ ] Prototype `patina version release` command
 - [ ] Test on real workflow for one release cycle
