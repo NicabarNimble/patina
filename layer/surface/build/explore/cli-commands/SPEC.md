@@ -23,6 +23,18 @@ Walk through all Patina commands to:
 4. Validate the namespace groupings (core, science, dev, infra)
 5. Inform the cli-reorganization spec
 
+## Role in Spec Ecosystem
+
+**This is an `explore` document, not a `feat` spec.** It has no exit criteria or version targets.
+
+| Concern | Role |
+|---------|------|
+| cli-reorganization | Owns command groupings (core, science, dev, infra) |
+| system-introspection | Owns DataContract schema |
+| **this doc** | Working notes that inform those specs |
+
+**After alignment:** This document graduates to `layer/surface/reference/cli-commands.md` as living documentation, maintained alongside code.
+
 ## Mental Model
 
 ```
@@ -80,3 +92,4 @@ For each command, document:
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-05 | active | Created structure for CLI command exploration |
+| 2026-02-05 | active | **Spec alignment:** Clarified role as exploration doc, not feat spec. Feeds into cli-reorganization and system-introspection. Graduates to reference doc after alignment. |
