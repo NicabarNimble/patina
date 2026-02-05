@@ -182,17 +182,8 @@ pub fn execute_cli(
                 daemon::run_server(options)
             }
         }
-        Some(MotherCommands::Stop) => {
-            println!("⚠️  `patina mother stop` is not yet implemented.");
-            println!("   For now, use: pkill -f 'patina mother start'");
-            Ok(())
-        }
-        Some(MotherCommands::Status) => {
-            println!("⚠️  `patina mother status` is not yet implemented.");
-            println!("   For now, test with:");
-            println!("   curl -s --unix-socket ~/.patina/run/serve.sock http://localhost/health");
-            Ok(())
-        }
+        Some(MotherCommands::Stop) => stop_daemon(),
+        Some(MotherCommands::Status) => show_status(),
         Some(MotherCommands::Graph(graph_cmd)) => execute_graph(graph_cmd),
     }
 }
@@ -216,6 +207,148 @@ fn execute_graph(command: GraphCommands) -> Result<()> {
         GraphCommands::Stats => graph::show_stats(),
         GraphCommands::Learn { alpha } => graph::learn_weights(alpha),
     }
+}
+
+// === Daemon lifecycle commands ===
+
+/// Stop the mother daemon
+fn stop_daemon() -> Result<()> {
+    let pid_path = paths::serve::pid_path();
+
+    // Check if PID file exists
+    if !pid_path.exists() {
+        println!("Mother daemon is not running (no PID file).");
+        return Ok(());
+    }
+
+    // Read PID
+    let pid_str = std::fs::read_to_string(&pid_path)
+        .with_context(|| format!("reading PID file {}", pid_path.display()))?;
+    let pid: i32 = pid_str
+        .trim()
+        .parse()
+        .with_context(|| format!("parsing PID from '{}'", pid_str.trim()))?;
+
+    // Check if process is running
+    let is_running = unsafe { libc::kill(pid, 0) == 0 };
+    if !is_running {
+        // Stale PID file — clean up
+        println!("Mother daemon is not running (stale PID file).");
+        let _ = std::fs::remove_file(&pid_path);
+        return Ok(());
+    }
+
+    println!("Stopping mother daemon (PID {})...", pid);
+
+    // Send SIGTERM
+    let result = unsafe { libc::kill(pid, libc::SIGTERM) };
+    if result != 0 {
+        let err = std::io::Error::last_os_error();
+        bail!("Failed to send SIGTERM to PID {}: {}", pid, err);
+    }
+
+    // Wait for process to exit (poll up to 5 seconds)
+    for i in 0..50 {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let still_running = unsafe { libc::kill(pid, 0) == 0 };
+        if !still_running {
+            println!("Mother daemon stopped.");
+            // Clean up files if daemon didn't (shouldn't happen with proper signal handling)
+            let _ = std::fs::remove_file(&pid_path);
+            cleanup_socket();
+            return Ok(());
+        }
+        if i == 25 {
+            println!("   Still waiting...");
+        }
+    }
+
+    // Process didn't exit in time
+    println!("Warning: daemon did not stop within 5 seconds.");
+    println!("   You may need to: kill -9 {}", pid);
+    Ok(())
+}
+
+/// Show daemon status
+fn show_status() -> Result<()> {
+    let pid_path = paths::serve::pid_path();
+    let socket_path = paths::serve::socket_path();
+
+    // Check PID file
+    let pid = if pid_path.exists() {
+        match std::fs::read_to_string(&pid_path) {
+            Ok(s) => s.trim().parse::<i32>().ok(),
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    // Check if process is running
+    let is_running = pid
+        .map(|p| unsafe { libc::kill(p, 0) == 0 })
+        .unwrap_or(false);
+
+    if !is_running {
+        println!("Mother daemon: stopped");
+        if pid.is_some() {
+            println!("   (stale PID file exists — run `patina mother stop` to clean up)");
+        }
+        return Ok(());
+    }
+
+    let pid = pid.unwrap();
+    println!("Mother daemon: running");
+    println!("   PID: {}", pid);
+    println!("   Socket: {}", socket_path.display());
+
+    // Try to get health info via UDS
+    match query_health() {
+        Ok(health) => {
+            println!("   Version: {}", health.version);
+            println!("   Uptime: {}s", health.uptime_secs);
+        }
+        Err(e) => {
+            println!("   Health check failed: {}", e);
+        }
+    }
+
+    Ok(())
+}
+
+/// Health response from daemon
+#[derive(serde::Deserialize)]
+struct HealthInfo {
+    version: String,
+    uptime_secs: u64,
+}
+
+/// Query daemon health via UDS
+fn query_health() -> Result<HealthInfo> {
+    use std::io::{Read, Write};
+    use std::os::unix::net::UnixStream;
+
+    let socket_path = paths::serve::socket_path();
+    let mut stream = UnixStream::connect(&socket_path)
+        .with_context(|| format!("connecting to {}", socket_path.display()))?;
+
+    // Set timeout
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(2)))?;
+
+    // Send HTTP request
+    let request = "GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n";
+    stream.write_all(request.as_bytes())?;
+
+    // Read response
+    let mut response = Vec::new();
+    stream.read_to_end(&mut response)?;
+
+    // Parse HTTP response (simple extraction)
+    let response_str = String::from_utf8_lossy(&response);
+    let body_start = response_str.find("\r\n\r\n").map(|i| i + 4).unwrap_or(0);
+    let body = &response_str[body_start..];
+
+    serde_json::from_str(body).with_context(|| "parsing health response")
 }
 
 // === Socket management (shared with daemon) ===

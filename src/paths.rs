@@ -167,6 +167,12 @@ pub mod serve {
     pub fn token_path() -> PathBuf {
         run_dir().join("serve.token")
     }
+
+    /// PID file: `~/.patina/run/mother.pid`
+    /// Permissions: 0o600 (owner only)
+    pub fn pid_path() -> PathBuf {
+        run_dir().join("mother.pid")
+    }
 }
 
 /// Mother paths (cross-project graph and federation)
@@ -355,6 +361,9 @@ mod tests {
 
         let token = serve::token_path();
         assert!(token.to_string_lossy().ends_with("run/serve.token"));
+
+        let pid = serve::pid_path();
+        assert!(pid.to_string_lossy().ends_with("run/mother.pid"));
     }
 
     #[test]
