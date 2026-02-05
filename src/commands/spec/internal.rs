@@ -357,8 +357,9 @@ pub fn update_spec_status(id: &str, new_status: &str) -> Result<()> {
 
     // 2. Find spec file
     let (file_path, old_status, title) = find_spec(id)?;
+    let old_status_str = old_status.as_deref().unwrap_or("");
 
-    if old_status == new_status {
+    if old_status_str == new_status {
         println!("Spec '{}' already has status '{}'", id, new_status);
         return Ok(());
     }
@@ -410,14 +411,15 @@ pub fn update_spec_status(id: &str, new_status: &str) -> Result<()> {
 pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
     // 1. Find spec in patterns table by id
     let (file_path, status, title) = find_spec(id)?;
+    let status_str = status.as_deref().unwrap_or("");
 
     // 2. Validate status is complete
-    if status != "complete" {
+    if status_str != "complete" {
         anyhow::bail!(
             "Spec '{}' has status '{}', expected 'complete'\n\
              Only completed specs can be archived.",
             id,
-            status
+            status_str
         );
     }
 
@@ -537,7 +539,7 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
 }
 
 /// Find a spec by its frontmatter id in the patterns table
-fn find_spec(id: &str) -> Result<(String, String, Option<String>)> {
+fn find_spec(id: &str) -> Result<(String, Option<String>, Option<String>)> {
     let db_path = Path::new(".patina/local/data/patina.db");
     if !db_path.exists() {
         anyhow::bail!("Knowledge database not found. Run 'patina scrape' first.");
@@ -551,7 +553,7 @@ fn find_spec(id: &str) -> Result<(String, String, Option<String>)> {
         |row| {
             Ok((
                 row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(1)?,
                 row.get::<_, Option<String>>(2)?,
             ))
         },
