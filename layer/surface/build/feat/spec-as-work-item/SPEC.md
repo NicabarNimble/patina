@@ -347,7 +347,7 @@ pub struct PluginSpecTracker { plugin: WasmPlugin }
 - [ ] `patina spec tree <id>` shows dependency graph
 - [ ] Cycle detection in `patina doctor`
 - [ ] Integration with session workflow (auto-update spec status?)
-- [ ] `patina spec list` with filters (--status, --target)
+- [x] `patina spec list` with filters (--status, --target)
 
 ### Future: Plugin Extraction
 
