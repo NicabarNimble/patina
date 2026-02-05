@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mother-daemon-unify
-status: phase2-complete
+status: complete
 created: 2026-02-04
 sessions:
   origin: 20260204-193822
