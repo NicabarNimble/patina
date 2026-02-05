@@ -1,9 +1,9 @@
-# Spec: Three-Layer Architecture
+---
+id: spec-three-layers
+status: deferred
+---
 
-**Status**: Workshop
-**Created**: 2025-12-29
-**Updated**: 2026-01-07
-**Purpose**: Define the separation of concerns across mother, patina, and awaken
+# Spec: Three-Layer Architecture
 
 ---
 

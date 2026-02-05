@@ -1,6 +1,6 @@
 ---
 id: spec-skills-focused-adapter
-status: design
+status: deferred
 created: 2026-01-19
 tags: [spec, skills, adapter, architecture]
 references: [unix-philosophy, dependable-rust, adapter-pattern]

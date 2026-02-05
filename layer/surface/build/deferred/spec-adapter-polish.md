@@ -1,6 +1,6 @@
 ---
 id: spec-adapter-polish
-status: design
+status: deferred
 created: 2026-01-13
 tags: [spec, adapter, scaffold, context, mcp]
 references: [adapter-pattern, dependable-rust, unix-philosophy]

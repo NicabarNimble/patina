@@ -1,9 +1,9 @@
-# Spec: Lab Automation
+---
+id: spec-lab-automation
+status: deferred
+---
 
-**Status:** Ideas (Draft Only)
-**Parent:** [build.md](../../../core/build.md)
-**Depends on:** Model management complete, bench retrieval working
-**Origin:** Observable Scry Phase 3 review — identified need for systematic measurement
+# Spec: Lab Automation
 
 ---
 

@@ -1,6 +1,6 @@
 ---
 id: spec-skill-derive
-status: design
+status: deferred
 created: 2026-01-20
 tags: [skills, epistemic, adapters, generation]
 references: [adapter-pattern, unix-philosophy, progressive-disclosure]

@@ -1,7 +1,9 @@
-# Spec: Model & Runtime Strategy
+---
+id: spec-model-runtime
+status: deferred
+---
 
-**Status:** Blocked until Phase 2.5 evaluation validates architecture
-**Phase:** 6 (Future)
+# Spec: Model & Runtime Strategy
 
 ## Overview
 
