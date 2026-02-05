@@ -27,21 +27,21 @@ This creates friction because:
 
 ## The Simple Model
 
+**A spec is a milestone.**
+
+One spec = one unit of work = one version bump.
+
 ```
-Spec = work item (fix, feat, refactor, explore)
+Complete a spec → bump version based on type → git tag
 
-Complete a spec → its type determines version impact:
-  fix/refactor → contributes to 0.0.x (patch)
-  feat         → contributes to 0.x.0 (minor)
-  explore      → no version impact (research)
-
-Release → look at completed specs since last release:
-  any feat?    → minor bump (0.x.0)
-  only fixes?  → patch bump (0.0.x)
-  → stamp all completed specs with `released: v0.x.x`
+  fix/refactor → patch bump (0.0.x)
+  feat         → minor bump (0.x.0)
+  explore      → no bump (research only)
 ```
 
-No planned versions. No milestone versions. Just: **what did we finish? what type was it?**
+History lives in git. Spec type determines version impact.
+
+No `target`. No `released`. No `milestones` array.
 
 ## Observation
 
@@ -69,43 +69,39 @@ Version is *derived* from completed work, not planned ahead:
 
 ### 1. Bump Granularity
 
-Per-spec or batched?
+**Decision: Per-spec**
 
-**Option A: Per-spec**
+A spec is a milestone. Complete a spec → version bump.
+
 ```bash
 patina spec status my-fix complete
-# → automatically bumps 0.11.0 → 0.11.1
+# → patch bump (0.11.0 → 0.11.1)
+# → git tag v0.11.1
+
+patina spec status new-feature complete
+# → minor bump (0.11.1 → 0.12.0)
+# → git tag v0.12.0
 ```
 
-**Option B: Batched release**
-```bash
-patina version release
-# → looks at all completed specs since last release
-# → determines bump: any feat? → minor. only fixes? → patch
-```
-
-Leaning toward **Option B** — allows grouping related work into one release.
+Simple. No batching complexity. Each spec is a release.
 
 ### 2. What Happens to `target` Field?
 
-**Decision: Remove `target`, add `released`**
-
-`target` is aspirational (often wrong). Replace with `released` — a historical stamp.
-
-```yaml
-# Before release:
-status: complete
-# (no version field — we don't know yet)
-
-# After release (stamped by `patina version release`):
-status: complete
-released: v0.12.0
-```
+**Decision: Remove `target`. No replacement needed.**
 
 - **`target`** = planning artifact, becomes stale → **remove**
-- **`released`** = historical fact, stamped at release time → **add**
+- **`released`** = not needed, git tags are the history
 
-The spec file stays clean during development. Version is stamped once, when it ships.
+```yaml
+# Spec file stays simple:
+type: fix
+id: my-fix
+status: complete
+```
+
+When this spec completes → patch bump → `git tag v0.11.1`
+
+Want to know what version it shipped in? `git log --oneline layer/surface/build/fix/my-fix/`
 
 ### 3. Multi-phase Features (Milestones)
 
@@ -156,34 +152,37 @@ Current:
 ```bash
 patina version milestone  # complete current milestone, bump version
 patina version patch "description"  # manual patch
+patina spec status <id> complete  # just marks complete, no version
 ```
 
 Proposed:
 ```bash
-patina version release              # auto-determine bump from completed work
-patina version release --patch      # force patch (override)
-patina version release --minor      # force minor (override)
-patina version major "v1.0"         # deliberate major bump
+patina spec status <id> complete  # marks complete + auto-bump + git tag
+patina version major "v1.0"       # deliberate major bump (human decision)
 ```
+
+The version command becomes simpler — only needed for major bumps.
+Normal workflow is just `patina spec status <id> complete`.
 
 ## What We'd Remove
 
-- `target` field from specs (aspirational, often stale)
+- `target` field from specs
 - `milestones` array with version numbers
 - `current_milestone` tracking
+- `released` field (git is history)
 - Complex milestone state machine
+- Batched release logic
 
 ## What We'd Add
 
-- `released` field — stamped at release time (historical fact)
 - Rules engine: spec type → version impact
-- Release command that derives version and stamps completed specs
-- Optional `phases` for multi-step features (no versions)
+- Auto-bump on spec completion (integrated into `patina spec status <id> complete`)
+- Git tag created automatically
 
 ## Exit Criteria (for this explore)
 
-- [ ] Decide: per-spec vs batched releases (leaning batched)
-- [x] Decide: fate of `target` field → remove, replace with `released` (stamped at release)
-- [x] Decide: fate of `milestones` array → remove, use phases without versions (or separate specs)
-- [ ] Prototype `patina version release` command
+- [x] Decide: per-spec vs batched releases → **per-spec** (spec = milestone)
+- [x] Decide: fate of `target` field → **remove** (git is history)
+- [x] Decide: fate of `milestones` array → **remove** (spec is the milestone)
+- [ ] Prototype: `patina spec status <id> complete` auto-bumps version + tags
 - [ ] Test on real workflow for one release cycle
