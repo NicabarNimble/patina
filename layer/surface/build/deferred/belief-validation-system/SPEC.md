@@ -1,9 +1,14 @@
-# Belief Validation System
+---
+type: feat
+id: belief-validation-system
+status: ready
+created: 2026-01-21
+target: v0.13.0
+blocked_by: []
+blocks: []
+---
 
-**Status**: Draft
-**Type**: Feature
-**Created**: 2026-01-21
-**Author**: Session collaboration
+# feat: Belief Validation System
 
 ## Problem Statement
 
