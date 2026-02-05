@@ -1,7 +1,7 @@
 ---
 type: explore
 id: agents-and-yolo
-status: open
+status: design
 created: 2026-01-21
 session-origin: 20260121-170710
 ---
