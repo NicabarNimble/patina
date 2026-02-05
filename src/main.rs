@@ -288,10 +288,10 @@ enum Commands {
         command: Option<commands::model::ModelCommands>,
     },
 
-    /// Cross-project relationship graph
+    /// The Patina daemon — cross-project knowledge, caching, and routing
     ///
-    /// Manages the relationship graph between projects and reference repos.
-    /// Used for smart query routing in Phase G2.
+    /// Mother is the always-running daemon that provides hot model caching,
+    /// cross-project knowledge access, secrets caching, and graph-based routing.
     Mother {
         #[command(subcommand)]
         command: Option<commands::mother::MotherCommands>,
@@ -329,7 +329,8 @@ enum Commands {
         json: bool,
     },
 
-    /// Start the Mother daemon (default: Unix socket, opt-in: TCP)
+    /// Start the Mother daemon (DEPRECATED — use `patina mother start`)
+    #[command(hide = true)]
     Serve {
         /// Bind to TCP host (enables network access; default: UDS only)
         #[arg(long)]
@@ -1079,7 +1080,9 @@ fn main() -> Result<()> {
             with_issues,
         }) => commands::repo::execute_cli(command, url, contrib, with_issues)?,
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
-        Some(Commands::Mother { command }) => commands::mother::execute_cli(command)?,
+        Some(Commands::Mother { command }) => {
+            commands::mother::execute_cli(command, mcp::run_mcp_server)?
+        }
         Some(Commands::Secrets { command, flags }) => {
             commands::secrets::execute_cli(command, flags)?
         }
@@ -1116,11 +1119,13 @@ fn main() -> Result<()> {
             }
         },
         Some(Commands::Serve { host, port, mcp }) => {
+            // Deprecated: delegate to mother start with warning
+            eprintln!("Warning: `patina serve` is deprecated, use `patina mother start` instead.");
             if mcp {
                 mcp::run_mcp_server()?;
             } else {
-                let options = commands::serve::ServeOptions { host, port };
-                commands::serve::execute(options)?;
+                let options = commands::mother::DaemonOptions { host, port };
+                commands::mother::daemon::run_server(options)?;
             }
         }
         Some(Commands::Adapter { command }) => commands::adapter::execute(command)?,

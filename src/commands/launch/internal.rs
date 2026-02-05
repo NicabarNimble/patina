@@ -235,17 +235,15 @@ fn ensure_mother_running() -> Result<()> {
 
 /// Start mother as background daemon
 pub fn start_mother_daemon() -> Result<()> {
-    // Get the path to the patina binary
-    let patina_bin = env::current_exe()?;
+    let patina_bin = env::current_exe().context("getting current executable path")?;
 
-    // Spawn serve in background
     Command::new(&patina_bin)
-        .args(["serve"])
+        .args(["mother", "start"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .context("Failed to start mother daemon")?;
+        .context("spawning mother daemon")?;
 
     Ok(())
 }

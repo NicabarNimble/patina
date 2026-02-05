@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: mother-daemon-unify
-status: draft
+status: phase1-complete
 created: 2026-02-04
 sessions:
   origin: 20260204-193822
@@ -104,15 +104,15 @@ Today it shows the graph subcommand help. After unification, bare `patina mother
 
 ## Exit Criteria
 
-- [ ] `patina mother start` starts the daemon (UDS default, TCP opt-in)
-- [ ] `patina mother stop` gracefully shuts down
-- [ ] `patina mother status` shows running state
-- [ ] `patina mother` (bare) shows daemon status
-- [ ] `patina mother graph` shows graph subcommands
-- [ ] `patina serve` still works as hidden alias
-- [ ] `patina serve --mcp` still works (MCP configs unbroken)
-- [ ] Launcher uses `patina mother start` internally
-- [ ] Health check still works via UDS
+- [x] `patina mother start` starts the daemon (UDS default, TCP opt-in)
+- [ ] `patina mother stop` gracefully shuts down (placeholder prints help)
+- [ ] `patina mother status` shows running state (placeholder prints help)
+- [x] `patina mother` (bare) shows daemon status (shows help for now)
+- [x] `patina mother graph` shows graph subcommands
+- [x] `patina serve` still works as hidden alias (with deprecation warning)
+- [x] `patina serve --mcp` still works (MCP configs unbroken)
+- [x] Launcher uses `patina mother start` internally
+- [x] Health check still works via UDS
 
 ## Open Questions
 

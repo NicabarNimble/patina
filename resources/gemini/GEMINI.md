@@ -25,7 +25,7 @@ Source of truth: `.patina/context.md`
 
 ```bash
 patina scry "query"     # Search knowledge base
-patina serve            # Start mother daemon
+patina mother start     # Start mother daemon
 patina rebuild          # Rebuild indices from layer/
 ```
 
