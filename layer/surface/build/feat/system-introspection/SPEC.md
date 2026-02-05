@@ -6,17 +6,39 @@ created: 2026-02-05
 updated: 2026-02-05
 sessions:
   origin: 20260205-064001
+  updated: 20260205-084522
 related:
   - layer/surface/reports/data-flow-cheatsheet.md
   - layer/surface/build/feat/mother-v2/SPEC.md
 beliefs:
   - measure-first
   - measure-the-measurement
+  - simplicity-is-architecture
+references:
+  - "Jerry Nixon - Modern Architecture 101 (NDC Copenhagen 2025)"
 ---
 
 # feat: System Introspection
 
 > Know what you're building. Trace any data from source to reader. Understand before changing.
+
+## Philosophy: Argue Every Box
+
+> "Once you understand it enough to understand why you DON'T want it, then you finally have enough why you would actually want it." — Jerry Nixon
+
+**Simplicity is the best architecture.** The architect's job is to be the guardian of what stays OUT of the solution. Every component should be arguable — you should be able to make a case FOR and AGAINST it.
+
+**Defer decisions.** The longer you can put things off, the cheaper they are to change when you realize you made a mistake. Less is always more.
+
+**But some things can't wait.** In the AI/agentic landscape, the ground is shifting:
+- Embedding models change (e5-base-v2 → nomic-embed → ???)
+- LLM adapters change (Claude Code → OpenCode → Gemini CLI)
+- Interface behavior differs across tools
+- Local vs cloud models have different characteristics
+
+A/B testing isn't a luxury — it's survival infrastructure when your entire stack can change overnight.
+
+---
 
 ## Problem
 
@@ -26,6 +48,7 @@ Patina has grown to:
 - 35,000+ eventlog entries
 - 50+ database tables
 - Multiple storage layers (project, user, mother)
+- Multiple LLM adapters (Claude, Gemini, OpenCode)
 
 **We are losing the mental ability to understand what we're building.**
 
@@ -35,6 +58,13 @@ Symptoms:
 - "Why isn't Y showing up in scry?" means tracing through 5 files
 - New features get "hacked in" because the flow isn't clear
 - The cheatsheet exists but it's static — the code can drift
+- "Did the new model improve retrieval?" — no way to compare
+- "How does Claude Code behave vs OpenCode?" — no visibility
+
+**Two distinct problems:**
+
+1. **Blueprint** — understanding what exists and how it connects (static)
+2. **Experiments** — comparing alternatives in a rapidly changing landscape (comparative)
 
 **The meta-problem:** We measure retrieval quality (MRR, precision) but not system coherence. Andrew Ng's principle applies to architecture too: if you can't measure it, you can't improve it.
 
@@ -53,6 +83,7 @@ patina introspect scry
     - ~/.patina/cache/personas/default/persona.db
   Writes:
     - .patina/local/data/patina.db (eventlog: scry.query, scry.use, scry.feedback)
+  Write Path: action-time
   Oracles: semantic, lexical, temporal, persona, belief
 
 # What writes to the beliefs table?
@@ -78,6 +109,53 @@ patina introspect --trace "layer/surface/epistemic/beliefs/*.md"
      → BeliefOracle reads: semantic.usearch + beliefs table
      → RRF fusion with other oracles
      → result returned
+
+# AGGREGATE VIEWS: Answer "what are ALL the X?"
+
+# What are ALL the raw data sources?
+patina introspect --sources
+  Files:
+    - src/**/* (scrape code)
+    - .git/ (scrape git)
+    - layer/sessions/*.md (scrape sessions)
+    - layer/core/*.md (scrape layer, context)
+    - layer/surface/*.md (scrape layer, context)
+    - layer/surface/epistemic/beliefs/*.md (scrape layer)
+  APIs:
+    - GitHub API (scrape forge)
+  User Input:
+    - stdin/args (persona note)
+    - git status/log (session start/update/end)
+
+# Where do we store ALL of this?
+patina introspect --sinks
+  Project (.patina/local/):
+    - data/patina.db (eventlog, tables, FTS)
+    - data/embeddings/.../semantic.usearch (vectors)
+    - active-session.md (current session)
+  User (~/.patina/):
+    - personas/default/events/*.jsonl (persona source)
+    - cache/personas/default/persona.db (persona materialized)
+    - mother/graph.db (cross-project routing)
+  Layer (git-tracked):
+    - layer/sessions/*.md (session archives)
+    - layer/surface/epistemic/beliefs/*.md (belief source)
+
+# What are the different write paths?
+patina introspect --write-paths
+  scrape (batch import):
+    - scrape code → eventlog → tables
+    - scrape git → eventlog → tables
+    - scrape sessions → eventlog → tables
+    - scrape layer → eventlog → tables
+    - scrape forge → eventlog → tables
+  action-time (user acts):
+    - session start/update/end → eventlog + markdown
+    - scry → eventlog (query, use, feedback)
+    - persona note → jsonl
+  dual-write (eventlog + source file):
+    - session end → eventlog + layer/sessions/*.md
+    - belief create → markdown (source of truth)
 ```
 
 ---
@@ -145,7 +223,38 @@ Level 4: IMPACT
   → patina introspect --impact <path|table>
 ```
 
-### 4. Measure System Coherence
+### 4. Write Path Taxonomy
+
+Not all writes are equal. Understanding HOW data enters the system is as important as WHERE it goes:
+
+```
+SCRAPE (batch import)
+  Pattern: external source → eventlog → materialized tables
+  Commands: scrape code, scrape git, scrape sessions, scrape layer, scrape forge
+  Characteristic: Can re-run, idempotent, incremental via scrape_meta
+
+ACTION-TIME (user acts)
+  Pattern: user action → eventlog (+ optional side effect)
+  Commands: session start/update/end, scry, persona note
+  Characteristic: Happens during use, not batch
+
+DUAL-WRITE (eventlog + source file)
+  Pattern: action → both eventlog AND markdown/yaml file
+  Commands: session end (archive), belief create
+  Characteristic: Source file is truth, eventlog is index
+
+READ-ONLY
+  Pattern: query existing data, no writes
+  Commands: scry (reads), assay, context
+  Note: scry writes to eventlog for tracking, but that's metadata not data
+```
+
+**Why this matters:** When debugging "where did X come from?", knowing the write path tells you:
+- Scrape → check source files + scrape_meta checkpoint
+- Action-time → check eventlog for the action
+- Dual-write → check both markdown AND eventlog
+
+### 5. Measure System Coherence
 
 Like retrieval quality metrics, we need architecture metrics:
 
@@ -161,7 +270,21 @@ Like retrieval quality metrics, we need architecture metrics:
 
 ## Implementation
 
-### Phase 1: Data Contracts
+### The Argue-Every-Box Test
+
+Before adding any component, we must be able to argue FOR and AGAINST it:
+
+| Component | FOR | AGAINST | Verdict |
+|-----------|-----|---------|---------|
+| **Data Contracts** | Know what you're changing before you change it | Maintenance overhead | **Essential** — foundation |
+| **Introspect Command** | Query the blueprint, generate docs | Static, not runtime | **Essential** — developer UX |
+| **Experiment Infrastructure** | Compare models, adapters in volatile landscape | Another system | **Essential** — survival |
+| **Contract Verification** | Catch drift automatically | CI complexity | **Nice to have** |
+| **OTEL Tracing** | Debug production, timing analysis | No prod users yet, complexity | **Defer** |
+
+---
+
+### Phase 1: Data Contracts (Blueprint Foundation)
 
 Add `DataContract` struct and declarations to each command.
 
@@ -176,6 +299,7 @@ pub struct DataContract {
     pub description: &'static str,
     pub reads: &'static [Source],
     pub writes: &'static [Sink],
+    pub write_path: WritePath,  // Categorize how this command writes
 }
 
 pub enum Source {
@@ -185,6 +309,8 @@ pub enum Source {
     Eventlog(&'static str),   // event_type prefix
     Usearch(&'static str),    // usearch index
     ExternalDb(&'static str), // e.g., persona.db
+    Api(&'static str),        // external API (e.g., GitHub)
+    UserInput,                // stdin, args, interactive
 }
 
 pub enum Sink {
@@ -194,28 +320,110 @@ pub enum Sink {
     Usearch(&'static str),
     ExternalDb(&'static str),
     Files(&'static str),
+    Jsonl(&'static str),      // append-only jsonl (persona)
+}
+
+/// Write path taxonomy — how does this command capture data?
+pub enum WritePath {
+    /// Batch import of external data (scrape commands)
+    /// Pattern: read source → eventlog → materialized tables
+    Scrape,
+
+    /// Events written as user acts (session, scry, persona note)
+    /// Pattern: action → eventlog (+ optional side effect)
+    ActionTime,
+
+    /// Write to both eventlog AND source file
+    /// Pattern: action → eventlog + markdown file
+    DualWrite,
+
+    /// Read-only command (scry, assay, context)
+    ReadOnly,
 }
 ```
 
 **Exit:** Every command in `src/commands/` has a `DATA_CONTRACT` constant.
 
-### Phase 2: Introspect Command
+### Phase 2: Introspect Command (Query the Blueprint)
 
 Add `patina introspect` command.
 
 **Subcommands:**
 ```bash
+# Per-command queries
 patina introspect <command>           # Show what a command reads/writes
 patina introspect --table <name>      # Show readers/writers for a table
 patina introspect --event <type>      # Show writers/consumers for event type
+
+# Aggregate views (answer "what are ALL the X?")
+patina introspect --sources           # ALL raw data sources across all commands
+patina introspect --sinks             # ALL storage locations across all commands
+patina introspect --write-paths       # Categorize: scrape | action-time | dual-write
+
+# Schema and analysis
 patina introspect --schema            # Dump full schema awareness
 patina introspect --trace <path>      # Trace data flow from source
 patina introspect --orphans           # Find orphan tables/events
 ```
 
+**Key aggregate questions this answers:**
+- "What are ALL the methods we read raw data?" → `--sources`
+- "Where do we store ALL of this?" → `--sinks`
+- "Is scrape our only way to capture data?" → `--write-paths`
+
 **Exit:** `patina introspect scry` shows accurate reads/writes/oracles.
 
-### Phase 3: Contract Verification
+### Phase 3: Experiment Infrastructure (A/B Testing)
+
+**Why this can't be deferred:** The AI/agentic landscape is in rapid flux. We need to compare:
+- **Embedding models:** e5-base-v2 vs nomic-embed vs future models
+- **LLM adapters:** Claude Code vs OpenCode vs Gemini CLI behavior
+- **Oracle configurations:** belief weight 0.3 vs 0.4, different fusion strategies
+- **Local vs cloud:** same adapter, different model providers
+
+**What we need:**
+```bash
+# Define a configuration
+patina config create my-experiment \
+  --model e5-base-v2 \
+  --belief-weight 0.4 \
+  --adapter claude
+
+# Run eval against a config
+patina eval --config my-experiment
+
+# Compare configs
+patina eval --compare baseline my-experiment
+  baseline:     MRR 0.72, P@5 0.65
+  my-experiment: MRR 0.74, P@5 0.68
+  delta:        +0.02 MRR, +0.03 P@5
+
+# Track which config produced which session
+patina session start "test feature" --config my-experiment
+```
+
+**Configuration dimensions:**
+```rust
+pub struct ExperimentConfig {
+    pub name: String,
+    pub embedding_model: String,      // e5-base-v2, nomic-embed-text
+    pub oracle_weights: OracleWeights,
+    pub adapter: String,              // claude, gemini, opencode
+    pub model_provider: Option<String>, // local, anthropic, openai, google
+}
+```
+
+**Key insight:** The adapter (Claude Code, OpenCode) often brings its own model. We need to track:
+1. Which adapter is being used (the UI/interface)
+2. Which model is actually responding (may be adapter-determined or user-configured)
+
+**Exit:**
+- `patina config list` shows available configurations
+- `patina eval --config X` runs eval with specific config
+- `patina eval --compare A B` shows delta between configs
+- Sessions record which config was active
+
+### Phase 4: Contract Verification
 
 Extend `patina doctor` to verify contracts against reality.
 
@@ -227,7 +435,7 @@ Extend `patina doctor` to verify contracts against reality.
 
 **Exit:** `patina doctor` reports contract violations.
 
-### Phase 4: Impact Analysis
+### Phase 5: Impact Analysis
 
 Add `--impact` mode for change planning.
 
@@ -248,7 +456,7 @@ patina introspect --impact beliefs
 
 **Exit:** `patina introspect --impact X` shows what to test after changing X.
 
-### Phase 5: Coherence Metrics
+### Phase 6: Coherence Metrics
 
 Add metrics to `patina doctor` or `patina eval`.
 
@@ -265,38 +473,71 @@ patina doctor --coherence
 
 ---
 
-## Non-Goals
+## Deferred: Runtime Observability (OTEL)
+
+**Why defer:** "Not going to help during development. Only going to help after you've pushed out and trying to debug while your boss is breathing down your neck." — Jerry Nixon
+
+**When to revisit:** When Patina has production users and we need to debug:
+- Why is scry slow for user X?
+- Which oracle is the bottleneck?
+- What's the P99 latency for context?
+
+**What it would add:**
+- Structured spans (start/end timing per operation)
+- Metrics (latency percentiles, throughput)
+- Distributed traces (causality across commands)
+- Export to Jaeger/Honeycomb/etc.
+
+**Current alternative:** Eventlog already captures business events (`scry.query`, `scry.use`). For timing, we can add simple duration fields to eventlog events without full OTEL complexity.
+
+**The defer test:** Can we argue AGAINST adding OTEL now? Yes — no prod users, adds complexity, existing eventlog covers most needs. Revisit when production debugging becomes the bottleneck.
+
+---
+
+## Non-Goals (For Now)
 
 - **Visual diagrams** — text output is sufficient, diagrams can be generated externally
-- **Runtime tracing** — this is static analysis, not distributed tracing
+- **Runtime tracing (OTEL)** — deferred until production users exist
 - **Automatic contract generation** — contracts are declared, not inferred
+- **MLflow-style experiment tracking** — lightweight config comparison is enough
 
 ---
 
 ## Exit Criteria
 
-### v0.13.0 or v0.14.0 (after mother-v2 foundations)
+### v0.12.0: Blueprint Foundation
 
-- [ ] `DataContract` type exists in `src/introspection/`
+- [ ] `DataContract` type exists in `src/introspection/` with `WritePath` enum
 - [ ] 80%+ of commands have declared contracts
 - [ ] `patina introspect <command>` works for declared commands
 - [ ] `patina introspect --table <name>` shows readers/writers
-- [ ] `patina introspect --orphans` finds unused tables/events
-- [ ] `patina doctor` checks contract accuracy
+- [ ] `patina introspect --sources` shows ALL raw data sources
+- [ ] `patina introspect --sinks` shows ALL storage locations
+- [ ] `patina introspect --write-paths` categorizes scrape vs action-time vs dual-write
 - [ ] Cheatsheet can be regenerated from contracts
 
-### Stretch
+### v0.13.0: Experiment Infrastructure
 
+- [ ] `ExperimentConfig` type for model/adapter/weights
+- [ ] `patina config create/list` commands
+- [ ] `patina eval --config X` runs eval with specific config
+- [ ] `patina eval --compare A B` shows delta between configs
+- [ ] Sessions record which config was active
+
+### Stretch (v0.14.0+)
+
+- [ ] `patina introspect --orphans` finds unused tables/events
 - [ ] `patina introspect --trace <path>` follows full data flow
 - [ ] `patina introspect --impact <X>` suggests tests
+- [ ] `patina doctor` checks contract accuracy
 - [ ] Coherence metrics in `patina doctor --coherence`
 
 ---
 
 ## Open Questions
 
-1. **Where does this command live?** Options:
-   - `patina introspect` (new top-level)
+1. **Where does introspect command live?** Options:
+   - `patina introspect` (new top-level) ← leaning this way
    - `patina doctor introspect` (under doctor)
    - `patina report introspect` (under report)
 
@@ -304,7 +545,15 @@ patina doctor --coherence
 
 3. **Contract drift detection?** Can we detect when code changes but contracts don't?
 
-4. **Integration with tests?** Should contract violations fail CI?
+4. **Config storage location?** Options:
+   - `.patina/local/configs/` (project-local)
+   - `~/.patina/configs/` (user-level, shared across projects)
+   - Both (with inheritance)
+
+5. **Adapter detection:** How do we know which adapter is running? Options:
+   - Environment variable set by adapter
+   - Detect from MCP connection metadata
+   - Explicit `--adapter` flag on session start
 
 ---
 
@@ -321,3 +570,5 @@ patina doctor --coherence
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-05 | design | Created from state-of-union session — recognized need for system observability |
+| 2026-02-05 | design | Added Jerry Nixon framing (argue every box, defer decisions). Elevated A/B testing to essential — AI landscape volatility means experiments are survival infrastructure, not a luxury. OTEL deferred until prod users. |
+| 2026-02-05 | design | Added aggregate views (`--sources`, `--sinks`, `--write-paths`) and `WritePath` taxonomy (scrape, action-time, dual-write). Answers: "What are ALL the X?" questions. |
