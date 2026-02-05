@@ -355,15 +355,17 @@ This spec **supersedes** several others:
 
 ## Open Questions
 
-1. **Which WASM runtime?**
-   - wasmtime (Bytecode Alliance, mature)
-   - wasmer (also mature)
-   - extism (plugin-focused, simpler API)
+1. **Which WASM runtime?** ✅ **DECIDED: wasmtime**
+   - Zed uses wasmtime (v19+), production-proven at scale
+   - Bytecode Alliance, industry standard
+   - Component Model support for WIT interfaces
+   - tree-sitter already uses wasmtime for grammars
 
-2. **Plugin sandboxing level?**
-   - Full sandbox (plugins can't escape)
-   - Capability-based (grant specific permissions)
-   - Trust-based (signed plugins get more access)
+2. **Plugin sandboxing level?** ✅ **DECIDED: Capability-based with two-layer grants**
+   - Pattern from Zed: manifest declares wants, host decides to allow
+   - `plugin.toml` declares `[capabilities]` section
+   - Host checks against granted capabilities before allowing operations
+   - Explicit capability types: `process:exec`, `download-file`, `filesystem`, etc.
 
 3. **Plugin CLI integration?**
    - `patina work ready` (subcommand per plugin)
@@ -371,8 +373,9 @@ This spec **supersedes** several others:
    - Both?
 
 4. **Backward compatibility?**
-   - Ship core with default plugins bundled?
-   - Or clean break — install what you need?
+   - Zed uses versioned WIT directories (`since_v0.1.0/`) + enum dispatch
+   - Start simple with package versions, add directory versioning when needed
+   - Ship core with default plugins bundled initially
 
 5. **Performance budget?**
    - WASM has overhead vs native
@@ -383,6 +386,48 @@ This spec **supersedes** several others:
    - Current adapters are config generators, not runtime
    - Zed's ACP shows "editor as host" pattern
    - See [[agent-protocol]] explore (parked, speculative)
+
+## Zed Learnings (2026-02-05)
+
+Studied Zed's extension system (77 WIT files, 10 version directories):
+
+### Adopted Patterns
+
+1. **wasmtime + WIT/Component Model** - not Extism
+2. **Two-layer capability grants** - manifest + host
+3. **Resources for host handles** - `resource worktree`, etc.
+4. **Extension API crate** - ergonomic Rust wrapper over WIT bindings
+5. **`register_extension!` macro** - handles WASI setup + exports
+
+### Divergence from Zed
+
+1. **Separate worlds per plugin type** (vs Zed's single `extension` world)
+   - Stricter capability isolation: oracle plugins can't see HTTP imports
+   - Trade-off: less flexible, more secure
+
+2. **Package-level versioning** (vs directory-based `since_v0.x.0/`)
+   - Simpler to start, add compat versioning when needed
+   - Zed's approach is expensive (enum dispatch + type conversions)
+
+See [[wit-interfaces]] explore for detailed analysis.
+
+### Zed Decoded Insights (Video Transcript)
+
+From "Zed Decoded: Extensions" video with Marshall and Max:
+
+**Sync/Async Transparency**: Extensions see sync APIs, host runs async. When host yields for I/O, the entire WASM runtime suspends. Transparent to extension.
+
+> "We didn't want to have async rust in extensions... it takes the complexity up"
+
+**Historical context**: They initially considered JavaScript/V8. Prior WASM attempt fizzled because "it wasn't mature enough." WASM Component Model had just become usable - right place, right time (Jan 2024).
+
+**WASI Sandboxing**: Extensions use WASI for filesystem. Can only see inside a certain folder (virtual path). Host translates via `path_from_extension()` helper.
+
+**Threading**: Extensions run on dedicated background thread. Every interaction sent over channel. Some APIs callback to main thread.
+
+**Pain Points**: Version dispatch boilerplate ("not in love with it"), Rust-only for now (WASM GC will enable other languages), manual registry curation.
+
+**Future**: Editor interaction APIs, extension UI, self-serve publishing
 
 ---
 
@@ -397,8 +442,12 @@ This spec **supersedes** several others:
 
 ## References
 
+- [zed-industries/zed](https://github.com/zed-industries/zed) — WIT-based extension system (studied in detail)
+  - `crates/extension_api/wit/` — 77 WIT files across 10 versions
+  - `crates/extension_host/` — wasmtime-based plugin host
+  - `crates/extension_api/src/extension_api.rs` — Extension trait + macro
+- [wasmtime](https://wasmtime.dev/) — Bytecode Alliance WASM runtime (Zed's choice)
 - [Obsidian Plugin API](https://docs.obsidian.md/Plugins/Getting+started/Build+a+plugin)
-- [Extism](https://extism.org/) — WASM plugin framework
 - [tree-sitter WASM](https://tree-sitter.github.io/tree-sitter/playground)
 - [steveyegge/beads](https://github.com/steveyegge/beads) — Work tracking model
 
@@ -409,3 +458,4 @@ This spec **supersedes** several others:
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-05 | draft | Created from session discussion. Key insight: Patina should be a platform with WASM plugins, not a monolith. Work tracking (beads-like) becomes a plugin, not a spec hack. Grammars already planned for WASM, plugins use same runtime. |
+| 2026-02-05 | draft | Deep-dive into Zed's extension system. Decided: wasmtime (not Extism), two-layer capability grants, separate worlds per plugin type (diverging from Zed's single world). Added detailed patterns to adopt and diverge. |
