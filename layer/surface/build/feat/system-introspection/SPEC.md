@@ -1,15 +1,20 @@
 ---
 type: feat
 id: system-introspection
-status: design
+status: draft
 created: 2026-02-05
 updated: 2026-02-05
 sessions:
   origin: 20260205-064001
   updated: 20260205-084522
+target: v0.12.0
+blocked_by: []
+blocks:
+  - cli-reorganization
 related:
   - layer/surface/reports/data-flow-cheatsheet.md
   - layer/surface/build/feat/mother-v2/SPEC.md
+  - layer/surface/build/feat/scrape-layer-unify/SPEC.md
 beliefs:
   - measure-first
   - measure-the-measurement
@@ -505,18 +510,23 @@ patina doctor --coherence
 
 ## Exit Criteria
 
-### v0.12.0: Blueprint Foundation
+### v0.12.0: DataContract Foundation
 
-- [ ] `DataContract` type exists in `src/introspection/` with `WritePath` enum
-- [ ] 80%+ of commands have declared contracts
+- [ ] `DataContract` type exists in `src/introspection/` with `Source`, `Sink`, `WritePath` enums
+- [ ] Schema supports extension (cli-reorganization adds `CommandGroup`)
+- [ ] Scrape commands have declared contracts (scrape code, git, layer, forge)
+
+### v0.13.0: Introspect Command
+
 - [ ] `patina introspect <command>` works for declared commands
 - [ ] `patina introspect --table <name>` shows readers/writers
 - [ ] `patina introspect --sources` shows ALL raw data sources
 - [ ] `patina introspect --sinks` shows ALL storage locations
 - [ ] `patina introspect --write-paths` categorizes scrape vs action-time vs dual-write
+- [ ] 80%+ of commands have declared contracts
 - [ ] Cheatsheet can be regenerated from contracts
 
-### v0.13.0: Experiment Infrastructure
+### v0.14.0: Experiment Infrastructure
 
 - [ ] `ExperimentConfig` type for model/adapter/weights
 - [ ] `patina config create/list` commands
@@ -524,7 +534,7 @@ patina doctor --coherence
 - [ ] `patina eval --compare A B` shows delta between configs
 - [ ] Sessions record which config was active
 
-### Stretch (v0.14.0+)
+### Stretch (v0.15.0+)
 
 - [ ] `patina introspect --orphans` finds unused tables/events
 - [ ] `patina introspect --trace <path>` follows full data flow
@@ -563,6 +573,18 @@ patina doctor --coherence
 - **data-flow-cheatsheet**: The cheatsheet becomes a generated output, not a maintained doc
 - **belief system**: Beliefs about architecture (like `measure-first`) apply to introspection itself
 
+### Ownership Boundaries (aligned 2026-02-05)
+
+| Concern | Owner | This Spec's Role |
+|---------|-------|------------------|
+| `DataContract` schema | **this spec** | Defines `Source`, `Sink`, `WritePath` |
+| `CommandGroup` enum | cli-reorganization | Imports and uses for metadata |
+| `introspect` command | **this spec** | Defines behavior, subcommands |
+| Code file structure | cli-reorganization | Places introspect in `dev/` |
+| Experiment infrastructure | **this spec** | Defines `ExperimentConfig`, `config` command |
+
+**Note:** cli-reorganization may extend `DataContract` with `group` and `related` fields. The core schema lives here.
+
 ---
 
 ## Status Log
@@ -572,3 +594,4 @@ patina doctor --coherence
 | 2026-02-05 | design | Created from state-of-union session — recognized need for system observability |
 | 2026-02-05 | design | Added Jerry Nixon framing (argue every box, defer decisions). Elevated A/B testing to essential — AI landscape volatility means experiments are survival infrastructure, not a luxury. OTEL deferred until prod users. |
 | 2026-02-05 | design | Added aggregate views (`--sources`, `--sinks`, `--write-paths`) and `WritePath` taxonomy (scrape, action-time, dual-write). Answers: "What are ALL the X?" questions. |
+| 2026-02-05 | design | **Spec alignment:** This spec owns DataContract schema and introspect command. cli-reorganization owns CommandGroup and code structure. Version targets aligned: v0.12=DataContract, v0.13=introspect, v0.14=experiments. |

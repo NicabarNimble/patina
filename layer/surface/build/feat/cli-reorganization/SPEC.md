@@ -1,14 +1,17 @@
 ---
 type: feat
 id: cli-reorganization
-status: design
+status: draft
 created: 2026-02-05
 updated: 2026-02-05
 sessions:
   origin: 20260205-084522
+target: v0.12.0
+blocked_by:
+  - system-introspection
+  - scrape-layer-unify
+blocks: []
 related:
-  - layer/surface/build/feat/system-introspection/SPEC.md
-  - layer/surface/build/feat/scrape-layer-unify/SPEC.md
   - layer/surface/build/explore/cli-commands/SPEC.md
 beliefs:
   - simplicity-is-architecture
@@ -383,25 +386,26 @@ Group commands in help output by category.
 
 ## Exit Criteria
 
-### v0.12.0: Code Reorganization
+### v0.12.0: Code Structure + CommandGroup
 
+- [ ] `CommandGroup` enum defined (`Core`, `Science`, `Dev`, `Infra`)
 - [ ] Commands reorganized into `core/`, `science/`, `dev/`, `infra/`
 - [ ] Each group has `mod.rs` with documentation
 - [ ] CLI unchanged (all commands still top-level)
+
+### v0.13.0: Contract Integration + Help
+
+- [ ] `DataContract` extended with `group: CommandGroup` and `related: &[&str]`
+- [ ] 80%+ of commands have declared contracts (parallel with system-introspection)
+- [ ] `patina introspect <command>` works (delivered by system-introspection)
 - [ ] Help screen groups commands by category
-
-### v0.13.0: Data Contracts
-
-- [ ] `DataContract` type with `CommandGroup` enum
-- [ ] 80%+ of commands have declared contracts
-- [ ] `patina introspect <command>` works
 - [ ] Group `mod.rs` files document data flows
 
 ### v0.14.0: New Commands
 
-- [ ] `patina compare` — A/B config comparison
+- [ ] `patina compare` — A/B config comparison (uses ExperimentConfig from system-introspection)
 - [ ] `patina feedback` — extracted from eval
-- [ ] `patina contracts` — list all contracts
+- [ ] `patina contracts` — list all contracts (or `patina introspect --contracts`)
 
 ---
 
@@ -422,10 +426,23 @@ Group commands in help output by category.
 
 ## Relationship to Other Specs
 
-- **system-introspection**: Defines `DataContract`, `patina introspect`
+- **system-introspection**: Defines `DataContract` schema, `patina introspect`
 - **scrape-layer-unify**: Affects `scrape` (core command)
 - **mother-v2**: Affects `mother` (infra command)
-- **explore/cli-commands**: Documents what each command does
+- **explore/cli-commands**: Documents what each command does (graduates to reference after alignment)
+
+### Ownership Boundaries (aligned 2026-02-05)
+
+| Concern | Owner | This Spec's Role |
+|---------|-------|------------------|
+| `DataContract` schema | system-introspection | Extends with `CommandGroup`, `related` |
+| `CommandGroup` enum | **this spec** | Defines core, science, dev, infra |
+| Code file structure | **this spec** | `src/commands/{core,science,dev,infra}/` |
+| `introspect` command design | system-introspection | Places in `dev/` group |
+| `config`, `compare`, `feedback` commands | **this spec** | Defines as new commands, uses experiment infra from system-introspection |
+| Help screen grouping | **this spec** | Groups commands by category in help output |
+
+**Note:** `DataContract` core schema (Source, Sink, WritePath) defined by system-introspection. This spec adds `group: CommandGroup` and `related: &[&str]` fields.
 
 ---
 
@@ -435,3 +452,4 @@ Group commands in help output by category.
 |------|--------|------|
 | 2026-02-05 | design | Created with CLI namespaces (science, dev, infra) |
 | 2026-02-05 | design | **Revised:** Flat CLI, organized code. Namespaces become code organization, not CLI. Key insight: LLMs need to see command + code and understand. Data contracts are the bridge. |
+| 2026-02-05 | design | **Spec alignment:** This spec owns CommandGroup and code structure. system-introspection owns DataContract schema. Version targets aligned: v0.12=structure+CommandGroup, v0.13=contract integration, v0.14=new commands. |

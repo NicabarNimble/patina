@@ -1,10 +1,14 @@
 ---
 type: feat
 id: scrape-layer-unify
-status: design
+status: ready
 created: 2026-02-05
 sessions:
   origin: 20260205-084522
+target: v0.12.0
+blocked_by: []
+blocks:
+  - cli-reorganization
 related:
   - layer/surface/build/feat/system-introspection/SPEC.md
   - layer/surface/build/feat/mother-v2/SPEC.md
@@ -229,13 +233,18 @@ pub const SCRAPE_LAYER_CONTRACT: DataContract = DataContract {
 
 ## Exit Criteria
 
+### v0.12.0: Unified Layer Scraping
+
 - [ ] `patina scrape layer` scrapes sessions (no separate command needed)
 - [ ] Path classification routes to correct sub-scraper
 - [ ] Event types distinguish content types (`pattern.*`, `belief.*`, `session.*`)
 - [ ] `--only <type>` flag works for partial scrapes
 - [ ] `scrape sessions` shows deprecation warning
-- [ ] Data contract updated in introspection
-- [ ] `patina introspect scrape-layer` shows all sources/sinks
+- [ ] Data contract declared (when DataContract type exists)
+
+### v0.13.0: Integration
+
+- [ ] `patina introspect scrape-layer` shows all sources/sinks (after introspect exists)
 
 ---
 
@@ -279,8 +288,23 @@ No new top-level command needed. Just add classification case and sub-scraper.
 
 ---
 
+## Relationship to Other Specs
+
+### Ownership Boundaries (aligned 2026-02-05)
+
+| Concern | Owner | This Spec's Role |
+|---------|-------|------------------|
+| `scrape layer` command behavior | **this spec** | Defines path routing, sub-scrapers |
+| `DataContract` for scrape layer | system-introspection | Declares contract when type exists |
+| Code location | cli-reorganization | Places in `core/scrape/` |
+
+**Implementation order:** This spec can be implemented independently (v0.12.0). DataContract declaration waits for system-introspection to define the type. Introspection integration waits for introspect command.
+
+---
+
 ## Status Log
 
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-05 | design | Created from system-introspection session. Recognized that `scrape sessions` being separate from `scrape layer` violates "one command owns one domain" principle. |
+| 2026-02-05 | design | **Spec alignment:** Target v0.12.0. No dependencies on other specs for core functionality. DataContract and introspect integration are follow-on work. |
