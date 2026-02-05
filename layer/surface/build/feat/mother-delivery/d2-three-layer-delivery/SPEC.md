@@ -1,7 +1,7 @@
 ---
 type: feat
 id: d2-three-layer-delivery
-status: implementation
+status: complete
 created: 2026-02-02
 updated: 2026-02-04
 sessions:

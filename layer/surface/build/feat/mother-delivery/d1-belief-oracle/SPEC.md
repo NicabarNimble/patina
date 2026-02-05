@@ -1,7 +1,7 @@
 ---
 type: feat
 id: d1-belief-oracle
-status: implementation
+status: complete
 created: 2026-02-02
 updated: 2026-02-03
 sessions:
