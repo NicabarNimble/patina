@@ -34,6 +34,15 @@ pub enum SpecCommands {
         #[arg(long)]
         json: bool,
     },
+
+    /// Update a spec's status (draft → ready → active → complete)
+    Status {
+        /// Spec ID to update
+        id: String,
+
+        /// New status (draft, ready, active, complete, abandoned)
+        status: String,
+    },
 }
 
 /// Archive a completed spec: tag, remove, update build.md, commit
@@ -49,4 +58,9 @@ pub fn ready(json: bool) -> Result<()> {
 /// Show specs blocked by incomplete dependencies
 pub fn blocked(json: bool) -> Result<()> {
     internal::show_blocked_specs(json)
+}
+
+/// Update a spec's status
+pub fn status(id: &str, new_status: &str) -> Result<()> {
+    internal::update_spec_status(id, new_status)
 }
