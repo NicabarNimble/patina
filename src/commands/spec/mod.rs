@@ -43,6 +43,21 @@ pub enum SpecCommands {
         /// New status (draft, ready, active, complete, abandoned)
         status: String,
     },
+
+    /// List all specs with optional filters
+    List {
+        /// Filter by status (draft, ready, active, complete, abandoned)
+        #[arg(long)]
+        status: Option<String>,
+
+        /// Filter by target version (e.g., v0.12.0)
+        #[arg(long)]
+        target: Option<String>,
+
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Archive a completed spec: tag, remove, update build.md, commit
@@ -63,4 +78,10 @@ pub fn blocked(json: bool) -> Result<()> {
 /// Update a spec's status
 pub fn status(id: &str, new_status: &str) -> Result<()> {
     internal::update_spec_status(id, new_status)
+}
+
+/// List all specs with optional filters
+pub fn list(status: Option<String>, target: Option<String>, json: bool) -> Result<()> {
+    let filters = internal::ListFilters { status, target };
+    internal::show_spec_list(&filters, json)
 }

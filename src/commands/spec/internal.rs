@@ -233,6 +233,111 @@ pub fn show_blocked_specs(json: bool) -> Result<()> {
 }
 
 // ============================================================================
+// Spec List (spec-as-work-item v0.13.0)
+// ============================================================================
+
+/// Spec info for list display
+#[derive(Debug, Clone, Serialize)]
+pub struct SpecInfo {
+    pub id: String,
+    pub status: Option<String>,
+    pub target: Option<String>,
+    pub title: String,
+}
+
+/// Filter options for spec list
+#[derive(Debug, Clone, Default)]
+pub struct ListFilters {
+    pub status: Option<String>,
+    pub target: Option<String>,
+}
+
+/// Query all specs with optional filters
+pub fn get_all_specs(filters: &ListFilters) -> Result<Vec<SpecInfo>> {
+    let db_path = Path::new(DB_PATH);
+    if !db_path.exists() {
+        anyhow::bail!("Knowledge database not found. Run 'patina scrape' first.");
+    }
+
+    let conn = Connection::open(db_path).context("Failed to open database")?;
+
+    // Build query with optional filters
+    let mut sql = String::from(
+        "SELECT p.id, p.status, p.target, p.title
+         FROM patterns p
+         WHERE p.file_path LIKE 'layer/surface/build/%'",
+    );
+
+    let mut params: Vec<String> = Vec::new();
+
+    if let Some(status) = &filters.status {
+        sql.push_str(" AND p.status = ?");
+        params.push(status.clone());
+    }
+
+    if let Some(target) = &filters.target {
+        sql.push_str(" AND p.target = ?");
+        params.push(target.clone());
+    }
+
+    sql.push_str(" ORDER BY p.status, p.target, p.id");
+
+    let mut stmt = conn.prepare(&sql)?;
+
+    // Convert params to references for rusqlite
+    let param_refs: Vec<&dyn rusqlite::ToSql> =
+        params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+
+    let specs = stmt
+        .query_map(param_refs.as_slice(), |row| {
+            Ok(SpecInfo {
+                id: row.get(0)?,
+                status: row.get::<_, Option<String>>(1)?,
+                target: row.get(2)?,
+                title: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(specs)
+}
+
+/// Display spec list (human-readable or JSON)
+pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
+    let specs = get_all_specs(filters)?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&specs)?);
+        return Ok(());
+    }
+
+    if specs.is_empty() {
+        println!("No specs found.");
+        if filters.status.is_some() || filters.target.is_some() {
+            println!("  (with current filters)");
+        }
+        return Ok(());
+    }
+
+    // Header
+    println!("{:<28} {:<10} {:<10} TITLE", "ID", "STATUS", "TARGET");
+    println!("{:-<80}", "");
+
+    for spec in &specs {
+        let status = spec.status.as_deref().unwrap_or("-");
+        let target = spec.target.as_deref().unwrap_or("-");
+        println!(
+            "{:<28} {:<10} {:<10} {}",
+            spec.id, status, target, spec.title
+        );
+    }
+
+    println!("\n{} spec(s)", specs.len());
+
+    Ok(())
+}
+
+// ============================================================================
 // Status Update (spec-as-work-item Phase 4)
 // ============================================================================
 
