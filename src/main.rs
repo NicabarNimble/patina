@@ -1117,6 +1117,9 @@ fn main() -> Result<()> {
             commands::spec::SpecCommands::Archive { id, dry_run } => {
                 commands::spec::archive(&id, dry_run)?;
             }
+            commands::spec::SpecCommands::Ready { json } => {
+                commands::spec::ready(json)?;
+            }
         },
         Some(Commands::Serve { host, port, mcp }) => {
             // Deprecated: delegate to mother start with warning

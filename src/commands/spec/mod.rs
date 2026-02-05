@@ -20,9 +20,21 @@ pub enum SpecCommands {
         #[arg(long)]
         dry_run: bool,
     },
+
+    /// Show specs ready to work on (unblocked, status=ready/active)
+    Ready {
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Archive a completed spec: tag, remove, update build.md, commit
 pub fn archive(id: &str, dry_run: bool) -> Result<()> {
     internal::archive_spec(id, dry_run)
+}
+
+/// Show specs ready to work on
+pub fn ready(json: bool) -> Result<()> {
+    internal::show_ready_specs(json)
 }

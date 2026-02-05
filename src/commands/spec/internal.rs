@@ -1,7 +1,108 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
+use serde::Serialize;
 use std::path::Path;
 use std::process::Command;
+
+const DB_PATH: &str = ".patina/local/data/patina.db";
+
+// ============================================================================
+// Ready Queue (spec-as-work-item Phase 2)
+// ============================================================================
+
+/// A spec ready to work on (status=ready/active, all blockers complete)
+#[derive(Debug, Clone, Serialize)]
+pub struct ReadySpec {
+    pub id: String,
+    pub status: String,
+    pub target: Option<String>,
+    pub title: String,
+}
+
+/// Query specs ready to work on
+///
+/// Returns specs where:
+/// - File is in layer/surface/build/ (actual specs, not beliefs)
+/// - status IN ('ready', 'active')
+/// - All blocked_by specs have status 'complete' or 'done'
+pub fn get_ready_specs() -> Result<Vec<ReadySpec>> {
+    let db_path = Path::new(DB_PATH);
+    if !db_path.exists() {
+        anyhow::bail!("Knowledge database not found. Run 'patina scrape' first.");
+    }
+
+    let conn = Connection::open(db_path).context("Failed to open database")?;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT p.id, p.status, p.target, p.title
+        FROM patterns p
+        WHERE p.file_path LIKE 'layer/surface/build/%'
+          AND p.status IN ('ready', 'active')
+          AND NOT EXISTS (
+            SELECT 1 FROM spec_deps d
+            JOIN patterns blocker ON d.depends_on = blocker.id
+            WHERE d.spec_id = p.id
+              AND blocker.status NOT IN ('complete', 'done')
+          )
+        ORDER BY p.target, p.id
+        "#,
+    )?;
+
+    let specs = stmt
+        .query_map([], |row| {
+            Ok(ReadySpec {
+                id: row.get(0)?,
+                status: row.get(1)?,
+                target: row.get(2)?,
+                title: row.get(3)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(specs)
+}
+
+/// Display ready specs (human-readable or JSON)
+pub fn show_ready_specs(json: bool) -> Result<()> {
+    let specs = get_ready_specs()?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&specs)?);
+        return Ok(());
+    }
+
+    if specs.is_empty() {
+        println!("No specs ready to work on.");
+        println!("\nHint: Specs need status 'ready' or 'active' with all blockers complete.");
+        return Ok(());
+    }
+
+    // Group by status for display
+    let ready: Vec<_> = specs.iter().filter(|s| s.status == "ready").collect();
+    let active: Vec<_> = specs.iter().filter(|s| s.status == "active").collect();
+
+    if !ready.is_empty() {
+        println!("READY (can start now):");
+        for spec in &ready {
+            let target = spec.target.as_deref().unwrap_or("-");
+            println!("  {:<28} {:<10} {}", spec.id, target, spec.title);
+        }
+    }
+
+    if !active.is_empty() {
+        if !ready.is_empty() {
+            println!();
+        }
+        println!("ACTIVE (in progress):");
+        for spec in &active {
+            let target = spec.target.as_deref().unwrap_or("-");
+            println!("  {:<28} {:<10} {}", spec.id, target, spec.title);
+        }
+    }
+
+    Ok(())
+}
 
 /// Archive a completed spec: create spec/<id> tag, remove file, update build.md, commit
 pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
