@@ -1,4 +1,15 @@
-//! Internal implementation of the serve daemon
+//! Mother daemon server implementation
+//!
+//! Provides HTTP server for:
+//! - Container queries to Mac mother
+//! - Hot model caching (E5 embeddings)
+//! - Cross-project knowledge access
+//!
+//! Design: Blocking HTTP microserver (no async/tokio)
+//!
+//! Transport model:
+//! - Default: Unix domain socket at ~/.patina/run/serve.sock
+//! - Opt-in: TCP at --host/--port (bearer token required)
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -9,7 +20,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use super::microserver;
-use super::ServeOptions;
 use crate::retrieval::{QueryEngine, QueryOptions};
 
 /// Maximum request body size (1 MB)
@@ -19,8 +29,6 @@ const MAX_BODY_SIZE: usize = 1_048_576;
 const MAX_LIMIT: usize = 1000;
 
 // === Transport-free request/response types ===
-// Handlers use these — never rouille/hyper/raw-socket types.
-// Transport adapter (rouille today, raw HTTP tomorrow) converts at the boundary.
 
 /// HTTP request independent of transport
 struct HttpRequest {
@@ -109,17 +117,12 @@ struct HealthResponse {
 /// Scry API request
 #[derive(Deserialize)]
 struct ScryRequest {
-    /// Query text
     query: String,
-    /// Optional repo name
     repo: Option<String>,
-    /// Query all repos
     #[serde(default)]
     all_repos: bool,
-    /// Include GitHub issues
     #[serde(default)]
     include_issues: bool,
-    /// Maximum results (default: 10)
     #[serde(default = "default_limit")]
     limit: usize,
 }
@@ -176,7 +179,6 @@ fn json_error(status: u16, message: &str) -> HttpResponse {
 }
 
 // === Transport-free handlers ===
-// Business logic below this line never touches transport types.
 
 /// Route request to handler
 fn route_request(request: &HttpRequest, state: &ServerState, require_auth: bool) -> HttpResponse {
@@ -217,26 +219,21 @@ fn handle_version(state: &ServerState) -> HttpResponse {
 
 /// Handle POST /api/scry
 fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -> HttpResponse {
-    // Auth check (required for TCP, skipped for UDS — file permissions are auth)
     if require_auth && !check_auth(request, &state.token) {
         return json_error(401, "Unauthorized");
     }
 
-    // Body already read and size-checked at transport boundary
     if request.body.is_empty() {
         return json_error(400, "Missing request body");
     }
 
-    // Parse JSON from body
     let mut body: ScryRequest = match serde_json::from_slice(&request.body) {
         Ok(req) => req,
         Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
     };
 
-    // Cap limit
     body.limit = body.limit.min(MAX_LIMIT);
 
-    // Always use QueryEngine with all oracles + RRF fusion
     let engine = QueryEngine::new();
     let query_opts = QueryOptions {
         repo: body.repo,
@@ -270,10 +267,7 @@ fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -
 }
 
 // === Secrets cache handlers ===
-// Session caching for secrets — avoids repeated Touch ID prompts.
-// Secrets stay in daemon memory, not in files the LLM can read.
 
-/// Request to cache secrets
 #[derive(Deserialize)]
 struct SecretsCacheRequest {
     secrets: HashMap<String, String>,
@@ -285,7 +279,6 @@ fn default_ttl_secs() -> u64 {
     600
 }
 
-/// Handle GET /secrets/cache — return cached secrets if not expired
 fn handle_secrets_get(
     request: &HttpRequest,
     state: &ServerState,
@@ -305,7 +298,6 @@ fn handle_secrets_get(
     }
 }
 
-/// Handle POST /secrets/cache — store secrets with TTL
 fn handle_secrets_cache(
     request: &HttpRequest,
     state: &ServerState,
@@ -337,7 +329,6 @@ fn handle_secrets_cache(
     HttpResponse::json(200, &serde_json::json!({"status": "cached"}))
 }
 
-/// Handle POST /secrets/lock — clear the secrets cache
 fn handle_secrets_lock(
     request: &HttpRequest,
     state: &ServerState,
@@ -357,10 +348,7 @@ fn handle_secrets_lock(
 }
 
 // === Transport: microserver accept loop ===
-// Handles both UDS and TCP via generic Read + Write streams.
-// One request per connection. Thread per connection.
 
-/// Convert microserver request to internal HttpRequest
 fn from_micro(req: microserver::HttpRequest) -> HttpRequest {
     HttpRequest {
         method: req.method,
@@ -370,7 +358,6 @@ fn from_micro(req: microserver::HttpRequest) -> HttpRequest {
     }
 }
 
-/// Convert internal HttpResponse to microserver response
 fn to_micro(resp: HttpResponse) -> microserver::HttpResponse {
     microserver::HttpResponse {
         status: resp.status,
@@ -379,27 +366,17 @@ fn to_micro(resp: HttpResponse) -> microserver::HttpResponse {
     }
 }
 
-/// Handle one connection on any Read + Write stream.
-///
-/// `require_auth`: true for TCP (bearer token required), false for UDS
-/// (file permissions are the auth — if you can open the socket, you're authorized).
-///
-/// Takes `&mut` so the caller retains ownership and can call `shutdown(Write)`
-/// on the concrete stream type after this returns — ensuring the client's
-/// `read_to_end` sees EOF promptly instead of waiting for socket close.
 fn handle_connection(stream: &mut (impl Read + Write), state: &ServerState, require_auth: bool) {
     let req = match microserver::read_request(stream) {
         Some(Ok(req)) => from_micro(req),
         Some(Err(msg)) => {
-            // Parse error — write error response and close
             let resp = to_micro(with_security_headers(json_error(400, &msg)));
             microserver::write_response(stream, &resp);
             return;
         }
-        None => return, // clean close, no response needed
+        None => return,
     };
 
-    // Body size enforcement at transport boundary
     let resp = if req.body.len() > MAX_BODY_SIZE {
         with_security_headers(json_error(413, "Request too large"))
     } else {
@@ -409,8 +386,23 @@ fn handle_connection(stream: &mut (impl Read + Write), state: &ServerState, requ
     microserver::write_response(stream, &to_micro(resp));
 }
 
-/// Run the serve daemon
-pub fn run_server(options: ServeOptions) -> Result<()> {
+/// Options for starting the daemon
+pub struct DaemonOptions {
+    pub host: Option<String>,
+    pub port: u16,
+}
+
+impl Default for DaemonOptions {
+    fn default() -> Self {
+        Self {
+            host: None,
+            port: 50051,
+        }
+    }
+}
+
+/// Run the mother daemon server
+pub fn run_server(options: DaemonOptions) -> Result<()> {
     // TCP opt-in path (--host flag) — requires bearer token
     if let Some(ref host) = options.host {
         let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
@@ -449,7 +441,6 @@ pub fn run_server(options: ServeOptions) -> Result<()> {
     let listener = super::setup_unix_listener()?;
     let socket_path = patina::paths::serve::socket_path();
 
-    // Clean up socket on Ctrl+C
     ctrlc_cleanup();
 
     println!("🚀 Mother daemon starting...");
@@ -464,7 +455,6 @@ pub fn run_server(options: ServeOptions) -> Result<()> {
     accept_loop_uds(listener, state);
 }
 
-/// Accept loop for TCP listener (auth required)
 fn accept_loop_tcp(listener: TcpListener, state: Arc<ServerState>) -> ! {
     for stream in listener.incoming() {
         match stream {
@@ -481,7 +471,6 @@ fn accept_loop_tcp(listener: TcpListener, state: Arc<ServerState>) -> ! {
     std::process::exit(0);
 }
 
-/// Accept loop for Unix domain socket listener (no auth — file perms are auth)
 fn accept_loop_uds(listener: std::os::unix::net::UnixListener, state: Arc<ServerState>) -> ! {
     for stream in listener.incoming() {
         match stream {
@@ -498,7 +487,6 @@ fn accept_loop_uds(listener: std::os::unix::net::UnixListener, state: Arc<Server
     std::process::exit(0);
 }
 
-/// Register Ctrl+C handler to clean up socket on shutdown
 fn ctrlc_cleanup() {
     unsafe {
         libc::signal(

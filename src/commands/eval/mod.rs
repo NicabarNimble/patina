@@ -744,7 +744,7 @@ fn eval_belief_code_co_retrieval(
         let id: String = row.get(0)?;
         let statement: String = row.get(1)?;
         let files_str: String = row.get(2)?;
-        let files: Vec<String> = files_str.split('|').map(|f| normalize_path(f)).collect();
+        let files: Vec<String> = files_str.split('|').map(normalize_path).collect();
         beliefs_with_reach.push((id, statement, files));
     }
 

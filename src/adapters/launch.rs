@@ -254,7 +254,7 @@ pub fn configure_mcp(name: &str) -> Result<()> {
                                 "patina".to_string(),
                                 serde_json::json!({
                                     "command": "patina",
-                                    "args": ["serve", "--mcp-stdio"]
+                                    "args": ["mother", "start", "--mcp"]
                                 }),
                             );
                             // Write back
@@ -426,7 +426,7 @@ const MCP_TEMPLATE: &str = r#"{
   "mcpServers": {
     "patina": {
       "command": "patina",
-      "args": ["serve", "--mcp-stdio"]
+      "args": ["mother", "start", "--mcp"]
     }
   }
 }"#;
