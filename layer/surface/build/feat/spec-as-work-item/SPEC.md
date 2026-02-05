@@ -286,10 +286,34 @@ Implement `patina spec status <id> <status>`:
 // 2. Parse frontmatter
 // 3. Update status field
 // 4. Write file back
-// 5. Run scrape to update database
+// 5. Update database directly
+// 6. If status = complete, trigger auto-release
 ```
 
 **Exit:** `patina spec status <id> active` updates file and database.
+
+### Phase 4b: Auto-Release on Completion (Added 2026-02-05)
+
+**Not from Beads** — emerged from version rules exploration.
+
+When `patina spec status <id> complete` is called:
+
+```
+Spec type determines version impact:
+  fix/refactor → patch bump (0.0.x)
+  feat         → minor bump (0.x.0)
+  explore      → no bump
+
+→ Update Cargo.toml
+→ Commit: "release: v{version} — {spec title}"
+→ Create git tag: v{version}
+```
+
+**Key insight:** A spec IS a milestone. One spec = one version bump. No batching, no `target` planning, no `milestones` array. Git tags are history.
+
+See: [[version-rules-system]], [[spec-is-milestone]]
+
+**Exit:** Completing a spec auto-releases based on type.
 
 ### Phase 5: Cycle Detection
 
@@ -341,12 +365,12 @@ pub struct PluginSpecTracker { plugin: WasmPlugin }
 - [x] `patina spec status <id> <status>` updates spec file
 - [x] Existing specs work with new system (backwards compatible)
 - [x] `--json` output for agent use
+- [x] Auto-release on completion (spec type → version bump → git tag)
 
 ### v0.13.0: Polish
 
 - [ ] `patina spec tree <id>` shows dependency graph
 - [ ] Cycle detection in `patina doctor`
-- [ ] Integration with session workflow (auto-update spec status?)
 - [x] `patina spec list` with filters (--status, --target)
 
 ### Future: Plugin Extraction
@@ -422,3 +446,4 @@ src/commands/
 | 2026-02-05 | draft | Created from beads analysis. Key insight: specs should be work items with ready queue, not documents. |
 | 2026-02-05 | draft | Superseded by patina-platform — work tracking to be WASM plugin. |
 | 2026-02-05 | ready | **UN-SUPERSEDED.** Build native now, extract to plugin later. Deep dive into beads confirmed design. Added trait-based approach for future plugin extraction. Removed blocker on patina-platform. |
+| 2026-02-05 | active | Phases 1-4 complete. Added auto-release: spec completion triggers version bump based on type (fix→patch, feat→minor). "Spec is the milestone" — no batching, no target planning. See [[version-rules-system]], [[spec-is-milestone]]. |
