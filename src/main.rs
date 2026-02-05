@@ -1126,6 +1126,13 @@ fn main() -> Result<()> {
             commands::spec::SpecCommands::Status { id, status } => {
                 commands::spec::status(&id, &status)?;
             }
+            commands::spec::SpecCommands::List {
+                status,
+                target,
+                json,
+            } => {
+                commands::spec::list(status, target, json)?;
+            }
         },
         Some(Commands::Serve { host, port, mcp }) => {
             // Deprecated: delegate to mother start with warning
