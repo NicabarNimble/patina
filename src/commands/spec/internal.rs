@@ -155,6 +155,7 @@ pub fn get_ready_specs() -> Result<Vec<ReadySpec>> {
         SELECT p.id, p.status, p.target, p.title
         FROM patterns p
         WHERE p.file_path LIKE 'layer/surface/build/%'
+          AND p.status IS NOT NULL
           AND p.status IN ('ready', 'active')
           AND NOT EXISTS (
             SELECT 1 FROM spec_deps d
@@ -263,6 +264,7 @@ pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
         JOIN spec_deps d ON d.spec_id = p.id
         JOIN patterns b ON d.depends_on = b.id
         WHERE p.file_path LIKE 'layer/surface/build/%'
+          AND p.status IS NOT NULL
           AND b.status NOT IN ('complete', 'done')
         ORDER BY p.id, d.depends_on
         "#,
@@ -381,7 +383,8 @@ pub fn get_all_specs(filters: &ListFilters) -> Result<Vec<SpecInfo>> {
     let mut sql = String::from(
         "SELECT p.id, p.status, p.target, p.title
          FROM patterns p
-         WHERE p.file_path LIKE 'layer/surface/build/%'",
+         WHERE p.file_path LIKE 'layer/surface/build/%'
+           AND p.status IS NOT NULL",
     );
 
     let mut params: Vec<String> = Vec::new();

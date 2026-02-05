@@ -78,12 +78,12 @@ The `status IS NOT NULL` filter is a minimal, correct fix that leverages the con
 
 ## Exit Criteria
 
-- [ ] `get_all_specs()` excludes patterns without status
-- [ ] `get_ready_specs()` excludes patterns without status
-- [ ] `get_blocked_specs()` excludes patterns without status
-- [ ] `patina spec list` shows only real specs (no sub-docs, no reference docs)
-- [ ] Sub-docs and reference docs remain searchable via `patina scry`
-- [ ] `patina scrape layer` unchanged (scraper is not the problem)
+- [x] `get_all_specs()` excludes patterns without status
+- [x] `get_ready_specs()` excludes patterns without status
+- [x] `get_blocked_specs()` excludes patterns without status
+- [x] `patina spec list` shows only real specs (no sub-docs, no reference docs)
+- [x] Sub-docs and reference docs remain searchable via `patina scry`
+- [x] `patina scrape layer` unchanged (scraper is not the problem)
 
 ---
 
