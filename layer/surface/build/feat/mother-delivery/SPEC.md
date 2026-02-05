@@ -1,7 +1,7 @@
 ---
 type: feat
 id: mother-delivery
-status: design
+status: active
 created: 2026-02-02
 updated: 2026-02-03
 sessions:
@@ -116,8 +116,8 @@ D0 is the foundation — everything else is simpler because there's one pipeline
 
 Rollup criteria. Sub-spec checkboxes must all pass for these to be checked.
 
-- [ ] **D0: One search pipeline.** CLI `patina scry "query"` uses QueryEngine with all oracles — no `--hybrid` flag, same output format as MCP. Sub-spec: [[d0-unified-search/SPEC.md]]
-- [ ] **D1: Beliefs surface in default queries.** Run `patina scry "how should I handle errors?"` — beliefs appear in results alongside code/commits without `mode=belief`. Sub-spec: [[d1-belief-oracle/SPEC.md]]
+- [x] **D0: One search pipeline.** CLI `patina scry "query"` uses QueryEngine with all oracles — no `--hybrid` flag, same output format as MCP. Sub-spec: [[d0-unified-search/SPEC.md]] ✅ 2026-02-04
+- [x] **D1: Beliefs surface in default queries.** Run `patina scry "how should I handle errors?"` — beliefs appear in results alongside code/commits without `mode=belief`. Sub-spec: [[d1-belief-oracle/SPEC.md]] ✅ 2026-02-04
 - [x] **D2: Tool descriptions and recall directive live.** `context` response includes dynamic beliefs + recall directive. `scry` and `context` MCP descriptions include belief/recall language. CLI `patina context` command added. Sub-spec: [[d2-three-layer-delivery/SPEC.md]] ✅ 2026-02-04
 - [x] **D3: Snippets are the default.** `scry` returns compact snippets; `--detail` returns full content for a single result; `--full` preserves legacy behavior. Sub-spec: [[d3-two-step-retrieval/SPEC.md]] ✅ 2026-02-04
 - [x] **D4: `--routing` flag removed.** Graph routing is the sole cross-repo strategy, default is local-only. ✅ 2026-02-04
