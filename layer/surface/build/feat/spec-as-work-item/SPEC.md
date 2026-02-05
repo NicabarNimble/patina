@@ -335,12 +335,12 @@ pub struct PluginSpecTracker { plugin: WasmPlugin }
 
 ### v0.12.0: Core Functionality
 
-- [ ] `blocked_by` / `blocks` fields parsed by scrape into `spec_deps` table
-- [ ] `patina spec ready` shows unblocked specs
+- [x] `blocked_by` / `blocks` fields parsed by scrape into `spec_deps` table
+- [x] `patina spec ready` shows unblocked specs
 - [ ] `patina spec blocked` shows blocked specs with reasons
 - [ ] `patina spec status <id> <status>` updates spec file
-- [ ] Existing specs work with new system (backwards compatible)
-- [ ] `--json` output for agent use
+- [x] Existing specs work with new system (backwards compatible)
+- [x] `--json` output for agent use
 
 ### v0.13.0: Polish
 
