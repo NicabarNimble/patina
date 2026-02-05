@@ -66,6 +66,13 @@ Option B: **Remove** — break the old command, update MCP configs during `patin
 
 Recommend **Option A** — MCP server configs reference `patina serve --mcp` and breaking those silently is worse than keeping a hidden alias.
 
+**Deprecation plan:** The alias must have a removal date. Track via GitHub issue.
+1. v0.11.x: `patina serve` works but prints deprecation warning to stderr on first use
+2. v0.12.0 (or v1.0): remove the alias, `patina serve` → "unknown command, did you mean `patina mother start`?"
+3. `patina adapter refresh` rewrites MCP configs from `serve --mcp` to `mother start --mcp`
+
+Tracked: [#85](https://github.com/NicabarNimble/patina/issues/85)
+
 ### What happens to bare `patina mother`?
 
 Today it shows the graph subcommand help. After unification, bare `patina mother` should show **daemon status** — is it running, PID, uptime, how many projects connected, model cache size. This is the Docker `docker info` / Ollama `ollama ps` equivalent.
