@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
-use regex::RegexBuilder;
 use rusqlite::Connection;
 use serde::Serialize;
 use std::path::Path;
 use std::process::Command;
+
+use patina::spec::{parse_spec_file, serialize_spec_file};
 
 const DB_PATH: &str = ".patina/local/data/patina.db";
 
@@ -364,29 +365,19 @@ pub fn update_spec_status(id: &str, new_status: &str) -> Result<()> {
         return Ok(());
     }
 
-    // 3. Read and update file
+    // 3. Read, parse, update, serialize (serde-based, deterministic)
     let content = std::fs::read_to_string(&file_path)
         .with_context(|| format!("Failed to read {}", file_path))?;
 
-    // Find and replace status line in frontmatter
-    let status_re = RegexBuilder::new(r"^status:\s*\S+")
-        .multi_line(true)
-        .build()
-        .context("Failed to build regex")?;
+    let (mut frontmatter, body) = parse_spec_file(&content)
+        .with_context(|| format!("Failed to parse frontmatter in {}", file_path))?;
 
-    let new_content = status_re.replace(&content, format!("status: {}", new_status));
+    // Update status
+    frontmatter.status = Some(new_status.to_string());
 
-    if new_content == content {
-        anyhow::bail!(
-            "Could not find 'status:' field in frontmatter of {}\n\
-             Add 'status: {}' to the frontmatter manually.",
-            file_path,
-            new_status
-        );
-    }
-
-    // 4. Write file back
-    std::fs::write(&file_path, new_content.as_ref())
+    // 4. Write file back (deterministic YAML output)
+    let new_content = serialize_spec_file(&frontmatter, &body)?;
+    std::fs::write(&file_path, &new_content)
         .with_context(|| format!("Failed to write {}", file_path))?;
 
     // 5. Update database directly (faster than full scrape)

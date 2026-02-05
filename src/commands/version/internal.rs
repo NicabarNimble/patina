@@ -11,54 +11,10 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+// Canonical spec types from patina::spec (see fix/spec-status-serde)
+use patina::spec::{parse_spec_file, serialize_spec_file};
+
 const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-// ============================================================================
-// Spec Frontmatter Types (for YAML round-trip)
-// ============================================================================
-
-/// Sessions can be either a simple list or a structured object
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(untagged)]
-pub enum Sessions {
-    /// Simple list of session IDs: [20260108-200725, ...]
-    List(Vec<String>),
-    /// Structured with origin and work: { origin: ..., work: [...] }
-    Structured {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        origin: Option<String>,
-        #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        work: Vec<String>,
-    },
-}
-
-/// Milestone in spec frontmatter
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SpecMilestoneEntry {
-    pub version: String,
-    pub name: String,
-    pub status: String,
-}
-
-/// Complete spec frontmatter - all fields optional except those always present
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SpecFrontmatter {
-    pub r#type: String,
-    pub id: String,
-    pub status: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub created: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub updated: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sessions: Option<Sessions>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub related: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub milestones: Vec<SpecMilestoneEntry>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub current_milestone: Option<String>,
-}
 
 // ============================================================================
 // Data Structures
@@ -406,32 +362,6 @@ fn get_next_pending_milestone(spec_id: &str, current_version: &str) -> Option<St
         row.get::<_, String>(0)
     })
     .ok()
-}
-
-/// Parse spec file into frontmatter and body
-fn parse_spec_file(content: &str) -> Result<(SpecFrontmatter, String)> {
-    // Extract frontmatter between --- markers
-    let content = content
-        .strip_prefix("---")
-        .ok_or_else(|| anyhow::anyhow!("Spec file must start with '---' frontmatter delimiter"))?;
-
-    let end = content.find("\n---").ok_or_else(|| {
-        anyhow::anyhow!("Spec file must have closing '---' frontmatter delimiter")
-    })?;
-
-    let frontmatter_str = &content[..end];
-    let body = &content[end + 4..]; // Skip "\n---"
-
-    let frontmatter: SpecFrontmatter = serde_yaml::from_str(frontmatter_str)
-        .with_context(|| format!("Failed to parse frontmatter:\n{}", frontmatter_str))?;
-
-    Ok((frontmatter, body.to_string()))
-}
-
-/// Serialize spec back to file content
-fn serialize_spec_file(frontmatter: &SpecFrontmatter, body: &str) -> Result<String> {
-    let yaml = serde_yaml::to_string(frontmatter)?;
-    Ok(format!("---\n{}---{}", yaml, body))
 }
 
 /// Update spec YAML to mark milestone complete and advance to next
@@ -1196,6 +1126,7 @@ fn get_current_spec_milestone() -> Option<SpecMilestone> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use patina::spec::Sessions;
 
     #[test]
     fn test_spec_frontmatter_parse_roundtrip() {
@@ -1285,7 +1216,7 @@ sessions:
 
         let (frontmatter, _) = parse_spec_file(yaml).expect("should parse structured format");
         match frontmatter.sessions {
-            Some(Sessions::Structured { origin, work }) => {
+            Some(Sessions::Structured { origin, work, .. }) => {
                 assert_eq!(origin, Some("20260127-085434".to_string()));
                 assert_eq!(work.len(), 1);
             }
