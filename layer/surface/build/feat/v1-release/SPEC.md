@@ -25,10 +25,10 @@ milestones:
   status: complete
 - version: 0.11.0
   name: Mother delivery + federation
-  status: in_progress
+  status: complete
 - version: 0.12.0
   name: Dynamic ONNX loading
-  status: pending
+  status: in_progress
 - version: 0.13.0
   name: WASM grammars
   status: pending
@@ -38,7 +38,7 @@ milestones:
 - version: 1.0.0
   name: All pillars complete
   status: pending
-current_milestone: 0.11.0
+current_milestone: 0.12.0
 ---
 
 # feat: v1.0 Release
