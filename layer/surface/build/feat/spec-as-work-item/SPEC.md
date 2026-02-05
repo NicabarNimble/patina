@@ -1,7 +1,7 @@
 ---
 type: feat
 id: spec-as-work-item
-status: ready
+status: active
 created: 2026-02-05
 updated: 2026-02-05
 sessions:
@@ -338,7 +338,7 @@ pub struct PluginSpecTracker { plugin: WasmPlugin }
 - [x] `blocked_by` / `blocks` fields parsed by scrape into `spec_deps` table
 - [x] `patina spec ready` shows unblocked specs
 - [x] `patina spec blocked` shows blocked specs with reasons
-- [ ] `patina spec status <id> <status>` updates spec file
+- [x] `patina spec status <id> <status>` updates spec file
 - [x] Existing specs work with new system (backwards compatible)
 - [x] `--json` output for agent use
 
