@@ -5,7 +5,6 @@ status: ready
 created: 2026-02-05
 sessions:
   origin: 20260205-084522
-target: v0.12.0
 blocked_by: []
 blocks:
   - cli-reorganization

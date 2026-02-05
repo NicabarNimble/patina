@@ -1,9 +1,8 @@
 ---
 type: feat
 id: belief-validation-system
-status: ready
+status: deferred
 created: 2026-01-21
-target: v0.13.0
 blocked_by: []
 blocks: []
 ---
