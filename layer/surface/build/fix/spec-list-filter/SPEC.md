@@ -1,15 +1,15 @@
 ---
 type: fix
 id: spec-list-filter
-status: ready
+status: complete
 created: 2026-02-05
 sessions:
   origin: 20260205-163242
 related:
-  - layer/surface/build/refactor/spec-system/SPEC.md
-  - layer/surface/build/feat/spec-as-work-item/SPEC.md
+- layer/surface/build/refactor/spec-system/SPEC.md
+- layer/surface/build/feat/spec-as-work-item/SPEC.md
 beliefs:
-  - spec-is-milestone
+- spec-is-milestone
 ---
 
 # fix: Spec List Includes Non-Spec Patterns
