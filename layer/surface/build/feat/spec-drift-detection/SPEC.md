@@ -1,7 +1,7 @@
 ---
 type: feat
 id: spec-drift-detection
-status: building
+status: design
 created: 2026-02-02
 updated: 2026-02-02
 sessions:

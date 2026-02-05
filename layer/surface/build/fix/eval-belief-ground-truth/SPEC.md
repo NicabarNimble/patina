@@ -1,7 +1,7 @@
 ---
 type: fix
 id: eval-belief-ground-truth
-status: implementation
+status: ready
 created: 2026-02-04
 related:
   - layer/surface/build/feat/mother-delivery/d1-belief-oracle/SPEC.md
