@@ -25,6 +25,24 @@ This creates friction because:
 2. **Manual bookkeeping** — updating `target` fields when plans change
 3. **Version planning != work planning** — we plan work, version should emerge
 
+## The Simple Model
+
+```
+Spec = work item (fix, feat, refactor, explore)
+
+Complete a spec → its type determines version impact:
+  fix/refactor → contributes to 0.0.x (patch)
+  feat         → contributes to 0.x.0 (minor)
+  explore      → no version impact (research)
+
+Release → look at completed specs since last release:
+  any feat?    → minor bump (0.x.0)
+  only fixes?  → patch bump (0.0.x)
+  → stamp all completed specs with `released: v0.x.x`
+```
+
+No planned versions. No milestone versions. Just: **what did we finish? what type was it?**
+
 ## Observation
 
 Semver already encodes work type:
@@ -91,6 +109,8 @@ The spec file stays clean during development. Version is stamped once, when it s
 
 ### 3. Multi-phase Features (Milestones)
 
+**Decision: Phases without versions**
+
 Current: milestones with specific versions
 ```yaml
 milestones:
@@ -100,7 +120,7 @@ milestones:
     name: "Phase 2"
 ```
 
-Proposed: phases without versions
+Proposed: phases without versions (or just use separate specs)
 ```yaml
 phases:
   - name: "Phase 1"
@@ -108,6 +128,8 @@ phases:
   - name: "Phase 2"
     status: in_progress
 ```
+
+Or even simpler: each phase is its own spec (`feat/thing-phase-1`, `feat/thing-phase-2`).
 
 Version is determined at release time, not planning time.
 
@@ -160,8 +182,8 @@ patina version major "v1.0"         # deliberate major bump
 
 ## Exit Criteria (for this explore)
 
-- [ ] Decide: per-spec vs batched releases
+- [ ] Decide: per-spec vs batched releases (leaning batched)
 - [x] Decide: fate of `target` field → remove, replace with `released` (stamped at release)
-- [ ] Decide: fate of `milestones` array
+- [x] Decide: fate of `milestones` array → remove, use phases without versions (or separate specs)
 - [ ] Prototype `patina version release` command
 - [ ] Test on real workflow for one release cycle
