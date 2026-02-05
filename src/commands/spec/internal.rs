@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use regex::RegexBuilder;
 use rusqlite::Connection;
 use serde::Serialize;
 use std::path::Path;
@@ -227,6 +228,75 @@ pub fn show_blocked_specs(json: bool) -> Result<()> {
             }
         }
     }
+
+    Ok(())
+}
+
+// ============================================================================
+// Status Update (spec-as-work-item Phase 4)
+// ============================================================================
+
+/// Valid spec statuses (state machine: draft → ready → active → complete)
+const VALID_STATUSES: &[&str] = &["draft", "ready", "active", "complete", "abandoned"];
+
+/// Update a spec's status in both file and database
+pub fn update_spec_status(id: &str, new_status: &str) -> Result<()> {
+    // 1. Validate new status
+    if !VALID_STATUSES.contains(&new_status) {
+        anyhow::bail!(
+            "Invalid status '{}'. Valid statuses: {}",
+            new_status,
+            VALID_STATUSES.join(", ")
+        );
+    }
+
+    // 2. Find spec file
+    let (file_path, old_status, title) = find_spec(id)?;
+
+    if old_status == new_status {
+        println!("Spec '{}' already has status '{}'", id, new_status);
+        return Ok(());
+    }
+
+    // 3. Read and update file
+    let content = std::fs::read_to_string(&file_path)
+        .with_context(|| format!("Failed to read {}", file_path))?;
+
+    // Find and replace status line in frontmatter
+    let status_re = RegexBuilder::new(r"^status:\s*\S+")
+        .multi_line(true)
+        .build()
+        .context("Failed to build regex")?;
+
+    let new_content = status_re.replace(&content, format!("status: {}", new_status));
+
+    if new_content == content {
+        anyhow::bail!(
+            "Could not find 'status:' field in frontmatter of {}\n\
+             Add 'status: {}' to the frontmatter manually.",
+            file_path,
+            new_status
+        );
+    }
+
+    // 4. Write file back
+    std::fs::write(&file_path, new_content.as_ref())
+        .with_context(|| format!("Failed to write {}", file_path))?;
+
+    // 5. Update database directly (faster than full scrape)
+    let db_path = Path::new(DB_PATH);
+    if db_path.exists() {
+        let conn = Connection::open(db_path).context("Failed to open database")?;
+        conn.execute(
+            "UPDATE patterns SET status = ?1 WHERE id = ?2",
+            rusqlite::params![new_status, id],
+        )?;
+    }
+
+    // 6. Report success
+    let title_str = title.as_deref().unwrap_or(id);
+    println!("Updated: {} → {}", title_str, new_status);
+    println!("  File: {}", file_path);
 
     Ok(())
 }
