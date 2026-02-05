@@ -1,6 +1,6 @@
 ---
 id: spec-spec-as-skill
-status: design
+status: deferred
 created: 2026-01-19
 updated: 2026-01-20
 tags: [spec, meta, skills, process, architecture]

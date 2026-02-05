@@ -1,7 +1,9 @@
-# Spec: GitHub Adapter
+---
+id: spec-github-adapter
+status: deferred
+---
 
-**Status:** Backlog (Phase 1 Partial)
-**Location:** `src/commands/scrape/github/`
+# Spec: GitHub Adapter
 
 ---
 

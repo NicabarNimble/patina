@@ -1,8 +1,9 @@
+---
+id: spec-report
+status: deferred
+---
+
 # Spec: Project Report
-
-**Purpose:** Generate comprehensive state-of-repo reports using patina's own tools. Serves dual purpose: useful output + tool quality measurement.
-
-**Status:** Draft
 
 ---
 

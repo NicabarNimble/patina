@@ -1,6 +1,6 @@
 ---
 id: spec-ref-repo-health
-status: design
+status: deferred
 created: 2026-01-14
 tags: [spec, ref-repo, forge, issues, rate-limit, adapter-tracking]
 references: [spec-forge-sync-v2, spec-patina-local, adapter-pattern]

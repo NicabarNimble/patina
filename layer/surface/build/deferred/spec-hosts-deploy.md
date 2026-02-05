@@ -1,10 +1,9 @@
+---
+id: spec-hosts-deploy
+status: deferred
+---
+
 # Spec: Hosts and Deploy Architecture
-
-**Status:** Ideas (Design Only)
-
-**Purpose:** Define how Patina manages deployment targets (hosts) and deploys projects to them.
-
-**Origin:** Session 20251225 - Design discussion about persistent servers, remote docker-compose workflows, and the relationship between projects and infrastructure.
 
 ---
 

@@ -1,6 +1,9 @@
-# Spec: Build Tracking System
+---
+id: spec-build-system
+status: deferred
+---
 
-**Status:** Backlog (Never Started)
+# Spec: Build Tracking System
 
 **Goal:** Track build tasks across sessions with a TOML file, commit trailers for history, and documentation for LLM guidance.
 
