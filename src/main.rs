@@ -161,7 +161,8 @@ enum Commands {
         dry_run: bool,
     },
 
-    /// Search knowledge base using vector similarity
+    /// Search codebase knowledge — fast hybrid search over symbols, functions,
+    /// types, git history, session learnings, and project beliefs
     Scry {
         #[command(subcommand)]
         command: Option<ScryCommands>,
@@ -190,10 +191,6 @@ enum Commands {
         #[arg(long, default_value = "0.0")]
         min_score: f32,
 
-        /// Dimension to search (semantic, temporal, dependency)
-        #[arg(long, value_enum, conflicts_with = "command")]
-        dimension: Option<Dimension>,
-
         /// Query a specific external repo (registered via 'patina repo')
         #[arg(long)]
         repo: Option<String>,
@@ -201,10 +198,6 @@ enum Commands {
         /// Query all registered repos (current project + reference repos)
         #[arg(long)]
         all_repos: bool,
-
-        /// Routing strategy for --all-repos: 'all' (search everything) or 'graph' (use mother graph)
-        #[arg(long, default_value = "all")]
-        routing: String,
 
         /// Include GitHub issues in search results
         #[arg(long)]
@@ -214,21 +207,38 @@ enum Commands {
         #[arg(long)]
         no_persona: bool,
 
-        /// Use hybrid search (fuse all oracles via RRF)
-        #[arg(long, conflicts_with = "command")]
-        hybrid: bool,
-
         /// Show detailed oracle contributions for each result
         #[arg(long)]
         explain: bool,
 
-        /// Force lexical (FTS5) search mode, bypassing auto-detection
-        #[arg(long, conflicts_with = "command")]
-        lexical: bool,
-
         /// Show belief impact for code results — which beliefs may be affected (E4.6a)
         #[arg(long)]
         impact: bool,
+
+        /// Fetch full content for a single result from a previous query (D3 scan-then-focus)
+        #[arg(long, value_name = "QUERY_ID", conflicts_with_all = ["command", "query", "file", "belief", "full"])]
+        detail: Option<String>,
+
+        /// Rank of the result to fetch (1-indexed, used with --detail)
+        #[arg(long, default_value = "1", requires = "detail")]
+        rank: usize,
+
+        /// Return full content for all results (escape hatch, deprecated)
+        #[arg(long, conflicts_with_all = ["command", "detail"])]
+        full: bool,
+
+        /// Use legacy single-oracle search (deprecated, removed in v0.12.0)
+        #[arg(long, conflicts_with = "command")]
+        legacy: bool,
+    },
+
+    /// Get project patterns and conventions — USE THIS to understand design rules
+    /// before making architectural changes. Returns core patterns (eternal principles),
+    /// surface patterns (active architecture), and project beliefs.
+    Context {
+        /// Optional topic to focus on (e.g., 'error handling', 'testing', 'architecture')
+        #[arg(long)]
+        topic: Option<String>,
     },
 
     /// Evaluate retrieval quality across dimensions
@@ -278,10 +288,10 @@ enum Commands {
         command: Option<commands::model::ModelCommands>,
     },
 
-    /// Cross-project relationship graph
+    /// The Patina daemon — cross-project knowledge, caching, and routing
     ///
-    /// Manages the relationship graph between projects and reference repos.
-    /// Used for smart query routing in Phase G2.
+    /// Mother is the always-running daemon that provides hot model caching,
+    /// cross-project knowledge access, secrets caching, and graph-based routing.
     Mother {
         #[command(subcommand)]
         command: Option<commands::mother::MotherCommands>,
@@ -319,7 +329,8 @@ enum Commands {
         json: bool,
     },
 
-    /// Start the Mother daemon (default: Unix socket, opt-in: TCP)
+    /// Start the Mother daemon (DEPRECATED — use `patina mother start`)
+    #[command(hide = true)]
     Serve {
         /// Bind to TCP host (enables network access; default: UDS only)
         #[arg(long)]
@@ -920,16 +931,16 @@ fn main() -> Result<()> {
             content_type,
             limit,
             min_score,
-            dimension,
             repo,
             all_repos,
-            routing,
             include_issues,
             no_persona,
-            hybrid,
             explain,
-            lexical,
             impact,
+            detail,
+            rank,
+            full,
+            legacy,
         }) => {
             // Handle subcommands first
             if let Some(subcmd) = command {
@@ -957,31 +968,31 @@ fn main() -> Result<()> {
                         commands::scry::execute_feedback(&query_id, &signal, comment.as_deref())?;
                     }
                 }
+            } else if let Some(ref query_id) = detail {
+                // D3: --detail mode — fetch full content for one result
+                commands::scry::execute_detail(query_id, rank)?;
             } else {
-                // Parse routing strategy
-                let routing_strategy = commands::scry::RoutingStrategy::parse(&routing)
-                    .unwrap_or(commands::scry::RoutingStrategy::All);
-
-                // Default behavior: query-based search
                 let options = commands::scry::ScryOptions {
                     limit,
                     min_score,
-                    dimension: dimension.map(|d| d.as_str().to_string()),
+                    dimension: None,
                     file,
                     repo,
                     all_repos,
                     include_issues,
                     include_persona: !no_persona,
-                    hybrid,
                     explain,
-                    lexical,
-                    routing: routing_strategy,
                     belief,
                     content_type,
                     impact,
+                    full,
+                    legacy,
                 };
                 commands::scry::execute(query.as_deref(), options)?;
             }
+        }
+        Some(Commands::Context { topic }) => {
+            commands::context::execute(topic.as_deref())?;
         }
         Some(Commands::Eval {
             dimension,
@@ -1069,7 +1080,9 @@ fn main() -> Result<()> {
             with_issues,
         }) => commands::repo::execute_cli(command, url, contrib, with_issues)?,
         Some(Commands::Model { command }) => commands::model::execute_cli(command)?,
-        Some(Commands::Mother { command }) => commands::mother::execute_cli(command)?,
+        Some(Commands::Mother { command }) => {
+            commands::mother::execute_cli(command, mcp::run_mcp_server)?
+        }
         Some(Commands::Secrets { command, flags }) => {
             commands::secrets::execute_cli(command, flags)?
         }
@@ -1106,11 +1119,13 @@ fn main() -> Result<()> {
             }
         },
         Some(Commands::Serve { host, port, mcp }) => {
+            // Deprecated: delegate to mother start with warning
+            eprintln!("Warning: `patina serve` is deprecated, use `patina mother start` instead.");
             if mcp {
                 mcp::run_mcp_server()?;
             } else {
-                let options = commands::serve::ServeOptions { host, port };
-                commands::serve::execute(options)?;
+                let options = commands::mother::DaemonOptions { host, port };
+                commands::mother::daemon::run_server(options)?;
             }
         }
         Some(Commands::Adapter { command }) => commands::adapter::execute(command)?,

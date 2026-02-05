@@ -49,7 +49,6 @@ pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> 
     let dimension = if let Some(ref dim) = options.dimension {
         dim.as_str()
     } else {
-        // Auto-detect best available dimension
         detect_best_dimension(&embeddings_dir)
     };
     let index_path = format!("{}/{}.usearch", embeddings_dir, dimension);
@@ -120,7 +119,6 @@ pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> 
 pub fn scry_file(file_path: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
     let (db_path, embeddings_dir) = get_paths(options)?;
 
-    // Default to temporal for file-based queries
     let dimension = options.dimension.as_deref().unwrap_or("temporal");
     let index_path = format!("{}/{}.usearch", embeddings_dir, dimension);
 

@@ -26,6 +26,7 @@ pub struct IntentWeights {
     pub lexical: f32,
     pub temporal: f32,
     pub persona: f32,
+    pub belief: f32,
 }
 
 impl IntentWeights {
@@ -40,30 +41,35 @@ impl IntentWeights {
                 lexical: 1.0,
                 temporal: 1.0,
                 persona: 1.0,
+                belief: 1.0,
             },
             QueryIntent::Temporal => Self {
                 semantic: 1.0,
                 lexical: 2.0, // boost commits_fts, sessions
                 temporal: 1.5,
                 persona: 1.0,
+                belief: 1.0,
             },
             QueryIntent::Rationale => Self {
                 semantic: 1.0,
                 lexical: 1.5, // boost patterns, sessions
                 temporal: 1.0,
-                persona: 1.5, // boost beliefs
+                persona: 1.5,
+                belief: 1.5, // boost beliefs — "why" queries
             },
             QueryIntent::Mechanism => Self {
                 semantic: 1.5, // boost code embeddings
                 lexical: 1.0,
                 temporal: 1.0,
                 persona: 1.0,
+                belief: 1.0,
             },
             QueryIntent::Definition => Self {
                 semantic: 1.0,
                 lexical: 1.5, // boost patterns
                 temporal: 1.0,
                 persona: 1.0,
+                belief: 1.5, // boost beliefs — "what is" queries
             },
         }
     }
@@ -75,6 +81,7 @@ impl IntentWeights {
             "lexical" => self.lexical,
             "temporal" => self.temporal,
             "persona" => self.persona,
+            "belief" => self.belief,
             _ => 1.0,
         }
     }

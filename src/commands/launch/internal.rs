@@ -5,7 +5,7 @@
 use anyhow::{bail, Context, Result};
 use std::env;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read as _, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use patina::adapters::launch as adapters;
 use patina::git;
+use patina::paths;
 use patina::project;
 use patina::workspace;
 
@@ -186,21 +187,27 @@ fn resolve_project_path(path_opt: Option<&str>) -> Result<PathBuf> {
     Ok(canonical)
 }
 
-/// Check if mother is running via health endpoint
+/// Check if mother is running via UDS health endpoint
 pub fn check_mother_health() -> bool {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .ok();
+    let sock_path = paths::serve::socket_path();
+    let mut stream = match std::os::unix::net::UnixStream::connect(&sock_path) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
 
-    if let Some(client) = client {
-        client
-            .get("http://127.0.0.1:50051/health")
-            .send()
-            .map(|r| r.status().is_success())
-            .unwrap_or(false)
-    } else {
-        false
+    let request = "GET /health HTTP/1.1\r\nHost: localhost\r\n\r\n";
+    if stream.write_all(request.as_bytes()).is_err() {
+        return false;
+    }
+
+    let mut buf = vec![0u8; 1024];
+    match stream.read(&mut buf) {
+        Ok(n) if n > 0 => {
+            let response = String::from_utf8_lossy(&buf[..n]);
+            response.contains("200")
+        }
+        _ => false,
     }
 }
 
@@ -228,17 +235,15 @@ fn ensure_mother_running() -> Result<()> {
 
 /// Start mother as background daemon
 pub fn start_mother_daemon() -> Result<()> {
-    // Get the path to the patina binary
-    let patina_bin = env::current_exe()?;
+    let patina_bin = env::current_exe().context("getting current executable path")?;
 
-    // Spawn serve in background
     Command::new(&patina_bin)
-        .args(["serve"])
+        .args(["mother", "start"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .context("Failed to start mother daemon")?;
+        .context("spawning mother daemon")?;
 
     Ok(())
 }
