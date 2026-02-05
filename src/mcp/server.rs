@@ -1,15 +1,14 @@
 //! MCP server - stdio transport
 
 use anyhow::Result;
-use std::fs;
 use std::io::{BufRead, BufReader, Write};
-use std::path::Path;
 
 use super::protocol::{Request, Response};
 use crate::commands::assay::{AssayOptions, QueryType};
+use crate::commands::context::get_project_context;
 use crate::commands::scry::internal::enrichment::find_belief_impact;
 use crate::commands::scry::ScryResult;
-use crate::retrieval::{FusedResult, QueryEngine, QueryOptions};
+use crate::retrieval::{snippet, FusedResult, QueryEngine, QueryOptions};
 
 /// Check project secrets compliance before starting MCP server.
 ///
@@ -156,17 +155,17 @@ fn handle_list_tools(req: &Request) -> Response {
                             },
                             "mode": {
                                 "type": "string",
-                                "enum": ["find", "orient", "recent", "why", "use", "belief"],
+                                "enum": ["find", "detail", "full", "orient", "recent", "why", "use", "belief"],
                                 "default": "find",
-                                "description": "Query mode: 'find' (default), 'orient' (structural ranking), 'recent' (temporal ranking), 'why' (explain result), 'use' (log result usage), 'belief' (grounding — find nearest code/commits/sessions for a belief)"
+                                "description": "Query mode: 'find' (default — returns snippets), 'detail' (fetch full content for one result by query_id+rank), 'full' (full content for all results — escape hatch), 'orient' (structural ranking), 'recent' (temporal ranking), 'why' (explain result), 'use' (log result usage), 'belief' (grounding)"
                             },
                             "query_id": {
                                 "type": "string",
-                                "description": "Query ID for use mode (from previous scry response)"
+                                "description": "Query ID from previous scry response (used with 'detail' and 'use' modes)"
                             },
                             "rank": {
                                 "type": "integer",
-                                "description": "Result rank for use mode (1-based)"
+                                "description": "Result rank (1-based) for 'detail' and 'use' modes"
                             },
                             "path": {
                                 "type": "string",
@@ -225,7 +224,7 @@ fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "context",
-                    "description": "Get project patterns and conventions - USE THIS to understand design rules before making architectural changes. Returns core patterns (eternal principles) and surface patterns (active architecture).",
+                    "description": "Get project patterns and conventions - USE THIS to understand design rules before making architectural changes. Returns core patterns (eternal principles) and surface patterns (active architecture). When a topic is provided, includes project beliefs ranked by semantic relevance.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -424,6 +423,89 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                                 "content": [{ "type": "text", "text": text }]
                             }),
                         ),
+                        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                    }
+                }
+                "detail" => {
+                    // D3: Fetch full content for a single result from a previous query
+                    let query_id = args.get("query_id").and_then(|v| v.as_str()).unwrap_or("");
+                    let rank = args.get("rank").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+
+                    if query_id.is_empty() || rank == 0 {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "detail mode requires 'query_id' and 'rank' (1-indexed) parameters",
+                        );
+                    }
+
+                    match handle_detail(query_id, rank) {
+                        Ok(text) => Response::success(
+                            req.id.clone(),
+                            serde_json::json!({
+                                "content": [{ "type": "text", "text": text }]
+                            }),
+                        ),
+                        Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
+                    }
+                }
+                "full" => {
+                    // D3: Escape hatch — full content for all results (deprecated)
+                    let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+                    let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
+                    let all_repos = args
+                        .get("all_repos")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    let include_issues = args
+                        .get("include_issues")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    let impact = args.get("impact").and_then(|v| v.as_bool()).unwrap_or(true);
+
+                    let expanded_terms: Vec<&str> = args
+                        .get("expanded_terms")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+                        .unwrap_or_default();
+
+                    if query.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "full mode requires 'query' parameter",
+                        );
+                    }
+
+                    let full_query = if expanded_terms.is_empty() {
+                        query.to_string()
+                    } else {
+                        format!("{} {}", query, expanded_terms.join(" "))
+                    };
+
+                    let options = QueryOptions {
+                        repo,
+                        all_repos,
+                        include_issues,
+                    };
+
+                    match engine.query_with_options(&full_query, limit, &options) {
+                        Ok(results) => {
+                            let query_id = log_mcp_query(query, "full", &results);
+                            let mut text =
+                                format_results_full_with_query_id(&results, query_id.as_deref());
+
+                            if impact {
+                                text = annotate_impact(&results, text);
+                            }
+
+                            Response::success(
+                                req.id.clone(),
+                                serde_json::json!({
+                                    "content": [{ "type": "text", "text": text }]
+                                }),
+                            )
+                        }
                         Err(e) => Response::error(req.id.clone(), -32603, &e.to_string()),
                     }
                 }
@@ -1039,14 +1121,23 @@ fn log_mcp_query(query: &str, mode: &str, results: &[FusedResult]) -> Option<Str
     Some(query_id)
 }
 
-/// Format results with query_id for feedback (Phase 3)
+/// Format snippet results with query_id (default D3 behavior)
 fn format_results_with_query_id(results: &[FusedResult], query_id: Option<&str>) -> String {
     let mut output = format_results(results);
     if let Some(qid) = query_id {
         output.push_str(&format!(
-            "\n---\nQuery ID: {} (use with scry mode='use' to log usage)\n",
+            "\n---\nQuery ID: {} (use scry mode='detail' with query_id and rank to fetch full content)\n",
             qid
         ));
+    }
+    output
+}
+
+/// Format full-content results with query_id (mode="full" escape hatch)
+fn format_results_full_with_query_id(results: &[FusedResult], query_id: Option<&str>) -> String {
+    let mut output = format_results_full(results);
+    if let Some(qid) = query_id {
+        output.push_str(&format!("\n---\nQuery ID: {} (mode='full')\n", qid));
     }
     output
 }
@@ -1094,6 +1185,69 @@ fn annotate_impact(results: &[FusedResult], mut text: String) -> String {
     text
 }
 
+/// Format result header (shared by snippet and full formatters)
+fn format_result_header(i: usize, result: &FusedResult) -> String {
+    let mut contributions_str: String = result
+        .contributions
+        .iter()
+        .map(|(name, c)| {
+            let score_display = match c.score_type {
+                "co_change_count" => format!("co-changes: {}", c.raw_score as i32),
+                "bm25" => format!("{:.1} BM25", c.raw_score),
+                _ => format!("{:.2}", c.raw_score),
+            };
+            format!("{} #{} ({})", name, c.rank, score_display)
+        })
+        .collect::<Vec<_>>()
+        .join(" | ");
+
+    // Add structural annotations if available
+    let ann = &result.annotations;
+    if let Some(count) = ann.importer_count {
+        if count > 0 {
+            contributions_str.push_str(&format!(" | imp {}", count));
+        }
+    }
+    if let Some(true) = ann.is_entry_point {
+        contributions_str.push_str(" | entry");
+    }
+
+    let source_tag = if result.sources.contains(&"persona") {
+        "[PERSONA] "
+    } else {
+        ""
+    };
+    let mut header = format!(
+        "{}. {}[{}] (score: {:.3})",
+        i + 1,
+        source_tag,
+        contributions_str,
+        result.fused_score
+    );
+
+    // Location: file path or doc_id for non-file results
+    if let Some(ref path) = result.metadata.file_path {
+        header.push_str(&format!(" {}", path));
+    } else {
+        header.push_str(&format!(" {}", result.doc_id));
+    }
+
+    // Event type
+    if let Some(ref event_type) = result.metadata.event_type {
+        header.push_str(&format!(" ({})", event_type));
+    }
+
+    // Timestamp if available
+    if let Some(ref ts) = result.metadata.timestamp {
+        if !ts.is_empty() {
+            header.push_str(&format!(" @{}", ts));
+        }
+    }
+
+    header
+}
+
+/// Format results with type-aware snippets (default D3 behavior)
 fn format_results(results: &[FusedResult]) -> String {
     if results.is_empty() {
         return "No results found.".to_string();
@@ -1101,67 +1255,24 @@ fn format_results(results: &[FusedResult]) -> String {
 
     let mut output = String::new();
     for (i, result) in results.iter().enumerate() {
-        // Header: rank, sources with ranks, fused score
-        let mut contributions_str: String = result
-            .contributions
-            .iter()
-            .map(|(name, c)| {
-                let score_display = match c.score_type {
-                    "co_change_count" => format!("co-changes: {}", c.raw_score as i32),
-                    "bm25" => format!("{:.1} BM25", c.raw_score),
-                    _ => format!("{:.2}", c.raw_score),
-                };
-                format!("{} #{} ({})", name, c.rank, score_display)
-            })
-            .collect::<Vec<_>>()
-            .join(" | ");
-
-        // Add structural annotations if available
-        let ann = &result.annotations;
-        if let Some(count) = ann.importer_count {
-            if count > 0 {
-                contributions_str.push_str(&format!(" | imp {}", count));
-            }
-        }
-        if let Some(true) = ann.is_entry_point {
-            contributions_str.push_str(" | entry");
-        }
-
-        let source_tag = if result.sources.contains(&"persona") {
-            "[PERSONA] "
-        } else {
-            ""
-        };
-        output.push_str(&format!(
-            "{}. {}[{}] (score: {:.3})",
-            i + 1,
-            source_tag,
-            contributions_str,
-            result.fused_score
-        ));
-
-        // Location: file path or doc_id for non-file results
-        if let Some(ref path) = result.metadata.file_path {
-            output.push_str(&format!(" {}", path));
-        } else {
-            // For persona/session results without file path, show doc_id
-            output.push_str(&format!(" {}", result.doc_id));
-        }
-
-        // Event type (e.g., "code_chunk", "session", "observation")
-        if let Some(ref event_type) = result.metadata.event_type {
-            output.push_str(&format!(" ({})", event_type));
-        }
-
-        // Timestamp if available
-        if let Some(ref ts) = result.metadata.timestamp {
-            if !ts.is_empty() {
-                output.push_str(&format!(" @{}", ts));
-            }
-        }
+        output.push_str(&format_result_header(i, result));
         output.push('\n');
+        output.push_str(&snippet(result));
+        output.push_str("\n\n");
+    }
+    output
+}
 
-        // Content
+/// Format results with full content (mode="full" escape hatch)
+fn format_results_full(results: &[FusedResult]) -> String {
+    if results.is_empty() {
+        return "No results found.".to_string();
+    }
+
+    let mut output = String::new();
+    for (i, result) in results.iter().enumerate() {
+        output.push_str(&format_result_header(i, result));
+        output.push('\n');
         output.push_str(&result.content);
         output.push_str("\n\n");
     }
@@ -1446,226 +1557,6 @@ fn handle_why(doc_id: &str, query: &str, engine: &QueryEngine) -> Result<String>
     }
 }
 
-/// Get project context from the knowledge layer
-///
-/// Reads patterns from layer/core/ (eternal principles) and layer/surface/ (active patterns)
-/// Optionally filters by topic if provided
-fn get_project_context(topic: Option<&str>) -> Result<String> {
-    let mut output = String::new();
-
-    // Check if we're in a patina project
-    let layer_path = Path::new("layer");
-    if !layer_path.exists() {
-        return Ok(
-            "No knowledge layer found. Run 'patina init' to initialize a project.".to_string(),
-        );
-    }
-
-    // Read core patterns (eternal principles)
-    let core_path = layer_path.join("core");
-    let core_patterns = read_patterns(&core_path, topic)?;
-
-    // Read surface patterns (active architecture)
-    let surface_path = layer_path.join("surface");
-    let surface_patterns = read_patterns(&surface_path, topic)?;
-
-    // Format output
-    if !core_patterns.is_empty() {
-        output.push_str("# Core Patterns (Eternal Principles)\n\n");
-        for (name, content) in &core_patterns {
-            output.push_str(&format!("## {}\n\n{}\n\n", name, content));
-        }
-    }
-
-    if !surface_patterns.is_empty() {
-        output.push_str("# Surface Patterns (Active Architecture)\n\n");
-        for (name, content) in &surface_patterns {
-            output.push_str(&format!("## {}\n\n{}\n\n", name, content));
-        }
-    }
-
-    // Add belief metrics when topic matches or no topic given
-    let show_beliefs = match topic {
-        None => true,
-        Some(t) => {
-            let t_lower = t.to_lowercase();
-            t_lower.contains("belief") || t_lower.contains("epistemic")
-        }
-    };
-
-    if show_beliefs {
-        if let Ok(belief_section) = get_belief_metrics() {
-            output.push_str(&belief_section);
-        }
-    }
-
-    if output.is_empty() {
-        if let Some(t) = topic {
-            output = format!("No patterns found matching topic: '{}'", t);
-        } else {
-            output = "No patterns found in the knowledge layer.".to_string();
-        }
-    }
-
-    Ok(output)
-}
-
-/// Query belief metrics from the database for the context tool
-fn get_belief_metrics() -> Result<String> {
-    use rusqlite::Connection;
-
-    const DB_PATH: &str = ".patina/local/data/patina.db";
-    let conn = Connection::open(DB_PATH)?;
-
-    // Check if beliefs table exists
-    let table_exists: bool = conn
-        .query_row(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='beliefs'",
-            [],
-            |_| Ok(true),
-        )
-        .unwrap_or(false);
-
-    if !table_exists {
-        return Ok(String::new());
-    }
-
-    // Aggregate stats
-    let (total, grounded, reach_files, verif_total, verif_pass, verif_fail): (
-        i64,
-        i64,
-        i64,
-        i64,
-        i64,
-        i64,
-    ) = conn.query_row(
-        "SELECT
-            COUNT(*),
-            SUM(CASE WHEN grounding_code_count > 0 THEN 1 ELSE 0 END),
-            SUM(grounding_code_count),
-            SUM(verification_total),
-            SUM(verification_passed),
-            SUM(verification_failed)
-         FROM beliefs",
-        [],
-        |row| {
-            Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
-            ))
-        },
-    )?;
-
-    if total == 0 {
-        return Ok(String::new());
-    }
-
-    let precision = if reach_files > 0 { 100 } else { 0 }; // All reach files are source code (filtered at hop)
-
-    let mut output = String::from("# Epistemic Beliefs\n\n");
-    output.push_str(&format!(
-        "**Total:** {} beliefs | **Grounded:** {}/{} ({:.0}%) | **Reach files:** {} ({}% precision)\n",
-        total,
-        grounded,
-        total,
-        if total > 0 { grounded as f64 / total as f64 * 100.0 } else { 0.0 },
-        reach_files,
-        precision,
-    ));
-    output.push_str(&format!(
-        "**Verification:** {}/{} passed ({} failed)\n\n",
-        verif_pass, verif_total, verif_fail,
-    ));
-
-    // Top beliefs by use count
-    let mut stmt = conn.prepare(
-        "SELECT id, cited_by_beliefs + cited_by_sessions + applied_in as use_count,
-                entrenchment, status
-         FROM beliefs
-         ORDER BY use_count DESC
-         LIMIT 10",
-    )?;
-
-    let top_beliefs: Vec<(String, i64, String, String)> = stmt
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, i64>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-            ))
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    if !top_beliefs.is_empty() {
-        output.push_str("**Top beliefs by use:**\n");
-        for (id, use_count, entrenchment, status) in &top_beliefs {
-            output.push_str(&format!(
-                "- {} (use: {}, entrenchment: {}, status: {})\n",
-                id, use_count, entrenchment, status,
-            ));
-        }
-        output.push('\n');
-    }
-
-    Ok(output)
-}
-
-/// Read markdown patterns from a directory
-fn read_patterns(dir: &Path, topic: Option<&str>) -> Result<Vec<(String, String)>> {
-    let mut patterns = Vec::new();
-
-    if !dir.exists() {
-        return Ok(patterns);
-    }
-
-    // Read .md files in the directory
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-
-        // Only process markdown files
-        if path.extension().map(|e| e == "md").unwrap_or(false) {
-            let name = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown")
-                .to_string();
-
-            // Skip certain files
-            if name == "README" || name.starts_with('.') {
-                continue;
-            }
-
-            let content = fs::read_to_string(&path)?;
-
-            // If topic filter provided, check if content matches
-            if let Some(t) = topic {
-                let topic_lower = t.to_lowercase();
-                let content_lower = content.to_lowercase();
-                let name_lower = name.to_lowercase();
-
-                if !content_lower.contains(&topic_lower) && !name_lower.contains(&topic_lower) {
-                    continue;
-                }
-            }
-
-            // Extract summary (first non-frontmatter paragraph)
-            let summary = extract_summary(&content);
-            patterns.push((name, summary));
-        }
-    }
-
-    // Sort by name for consistent output
-    patterns.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(patterns)
-}
-
 /// Handle use mode - log result usage from agent (Phase 3 feedback)
 fn handle_use(query_id: &str, rank: usize) -> Result<String> {
     use rusqlite::Connection;
@@ -1722,43 +1613,147 @@ fn handle_use(query_id: &str, rank: usize) -> Result<String> {
     ))
 }
 
-/// Extract a summary from markdown content (skip frontmatter, get first paragraphs)
-fn extract_summary(content: &str) -> String {
-    let mut lines: Vec<&str> = content.lines().collect();
+/// D3: Fetch full content for a single result from a previous query
+///
+/// Looks up the doc_id at the given rank from the query log, then fetches
+/// the full content from eventlog and formats it for detailed inspection.
+fn handle_detail(query_id: &str, rank: usize) -> Result<String> {
+    use rusqlite::Connection;
 
-    // Skip YAML frontmatter if present
-    if lines.first().map(|l| *l == "---").unwrap_or(false) {
-        if let Some(end) = lines.iter().skip(1).position(|l| *l == "---") {
-            lines = lines[end + 2..].to_vec();
+    const DB_PATH: &str = ".patina/local/data/patina.db";
+    let conn = Connection::open(DB_PATH)?;
+
+    // Look up query results to find doc_id at this rank
+    let data: String = conn.query_row(
+        "SELECT data FROM eventlog WHERE event_type = 'scry.query' AND source_id = ?",
+        [query_id],
+        |row| row.get(0),
+    )?;
+
+    let parsed: serde_json::Value = serde_json::from_str(&data)?;
+    let results = parsed["results"]
+        .as_array()
+        .ok_or_else(|| anyhow::anyhow!("No results in query"))?;
+
+    if rank == 0 || rank > results.len() {
+        anyhow::bail!(
+            "Invalid rank {}. Query had {} results.",
+            rank,
+            results.len()
+        );
+    }
+
+    let result = &results[rank - 1];
+    let doc_id = result["doc_id"].as_str().unwrap_or("");
+    let score = result["score"].as_f64().unwrap_or(0.0);
+    let event_type = result["event_type"].as_str().unwrap_or("");
+
+    // Fetch full content from eventlog by source_id
+    // doc_ids may have prefixes (e.g., "belief:foo") that don't match eventlog source_id ("foo")
+    let lookup_id = if let Some(stripped) = doc_id.strip_prefix("belief:") {
+        stripped
+    } else {
+        doc_id
+    };
+    let full_data: Option<String> = conn
+        .query_row(
+            "SELECT data FROM eventlog WHERE source_id = ? ORDER BY seq DESC LIMIT 1",
+            [lookup_id],
+            |row| row.get(0),
+        )
+        .ok();
+
+    let mut output = format!(
+        "Detail: {} (rank #{}, score: {:.3}, type: {})\n\n",
+        doc_id, rank, score, event_type
+    );
+
+    match full_data {
+        Some(raw_json) => {
+            let content = format_detail_content(event_type, &raw_json);
+            output.push_str(&content);
+        }
+        None => {
+            output.push_str("(No content found in eventlog for this doc_id)");
         }
     }
 
-    // Skip title line (# ...)
-    if lines.first().map(|l| l.starts_with('#')).unwrap_or(false) {
-        lines = lines[1..].to_vec();
-    }
+    output.push_str(&format!("\n\n---\nQuery ID: {}\n", query_id));
+    Ok(output)
+}
 
-    // Get first ~500 chars of meaningful content
-    let mut summary = String::new();
-    for line in lines {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            if !summary.is_empty() {
-                summary.push('\n');
+/// Format full detail content based on event type
+fn format_detail_content(event_type: &str, raw_json: &str) -> String {
+    let parsed: serde_json::Value = match serde_json::from_str(raw_json) {
+        Ok(v) => v,
+        Err(_) => return raw_json.to_string(),
+    };
+
+    match event_type {
+        "code.function" => {
+            let name = parsed["name"].as_str().unwrap_or("unknown");
+            let file = parsed["file"].as_str().unwrap_or("unknown");
+            let is_pub = parsed["is_public"].as_bool().unwrap_or(false);
+            let is_async = parsed["is_async"].as_bool().unwrap_or(false);
+            let params: Vec<&str> = parsed["parameters"]
+                .as_array()
+                .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
+                .unwrap_or_default();
+            let return_type = parsed["return_type"].as_str().unwrap_or("");
+
+            let mut sig = String::new();
+            if is_pub {
+                sig.push_str("pub ");
             }
-            continue;
-        }
-        summary.push_str(trimmed);
-        summary.push(' ');
+            if is_async {
+                sig.push_str("async ");
+            }
+            sig.push_str(&format!("fn {}({})", name, params.join(", ")));
+            if !return_type.is_empty() {
+                sig.push_str(&format!(" -> {}", return_type));
+            }
 
-        if summary.len() > 500 {
-            // Truncate at char boundary
-            let truncated: String = summary.chars().take(500).collect();
-            summary = truncated;
-            summary.push_str("...");
-            break;
+            format!("File: {}\n\n{}", file, sig)
+        }
+        "belief.surface" => {
+            // Belief data has a "content" field with full markdown
+            parsed["content"].as_str().unwrap_or(raw_json).to_string()
+        }
+        "git.commit" => {
+            let message = parsed["message"].as_str().unwrap_or("");
+            let author = parsed["author_name"].as_str().unwrap_or("");
+            let files = parsed["files"].as_array();
+
+            let mut out = format!("Author: {}\nMessage: {}\n", author, message);
+            if let Some(files) = files {
+                out.push_str(&format!("\nFiles changed ({}):\n", files.len()));
+                for f in files.iter().take(20) {
+                    let path = f["path"].as_str().unwrap_or("?");
+                    let change = f["change_type"].as_str().unwrap_or("?");
+                    let added = f["lines_added"].as_u64().unwrap_or(0);
+                    let removed = f["lines_removed"].as_u64().unwrap_or(0);
+                    out.push_str(&format!(
+                        "  {} {} (+{} -{})\n",
+                        change, path, added, removed
+                    ));
+                }
+                if files.len() > 20 {
+                    out.push_str(&format!("  ... and {} more\n", files.len() - 20));
+                }
+            }
+            out
+        }
+        t if t.starts_with("pattern.") => {
+            // Pattern data has a "content" field with full markdown
+            parsed["content"].as_str().unwrap_or(raw_json).to_string()
+        }
+        _ => {
+            // For other types, try "content" field first, then pretty-print JSON
+            if let Some(content) = parsed["content"].as_str() {
+                content.to_string()
+            } else {
+                serde_json::to_string_pretty(&parsed).unwrap_or_else(|_| raw_json.to_string())
+            }
         }
     }
-
-    summary.trim().to_string()
 }

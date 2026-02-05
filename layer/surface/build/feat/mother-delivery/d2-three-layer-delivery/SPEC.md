@@ -1,12 +1,13 @@
 ---
 type: feat
 id: d2-three-layer-delivery
-status: design
+status: implementation
 created: 2026-02-02
-updated: 2026-02-03
+updated: 2026-02-04
 sessions:
   origin: 20260202-202802
   design-resolution: 20260203-065424
+  revised: 20260204-152405
 related:
   - layer/surface/build/feat/mother-delivery/SPEC.md
   - layer/surface/build/feat/mother-delivery/d1-belief-oracle/SPEC.md
@@ -19,153 +20,155 @@ related:
 
 ## Problem
 
-`context` reads static markdown files and basic belief metrics from SQLite, but no dynamic belief querying. `scry` returns full content with belief annotations as an appended "Belief Impact" section. Tool descriptions already include recall-style language ("USE THIS FIRST", "USE THIS to understand design rules") — Layer 1 is partially shipped. But there's no recall directive in responses, no reinforcement when the LLM finds beliefs, and no actionable links to follow the knowledge graph.
+**Updated 2026-02-04:** D1 (BeliefOracle) and D3 (two-step retrieval) shipped since this spec was written. Beliefs are now a first-class search channel in `scry` — they compete via RRF fusion alongside code, commits, and patterns. The original premise ("beliefs are post-processing annotations, not a search channel") is no longer true.
+
+**What's still broken (observed via live queries):**
+
+1. **`context(topic="error handling")` hides beliefs entirely.** The `show_beliefs` gate (`server.rs:1600-1606`) only shows beliefs when topic is None or contains "belief"/"epistemic". A belief called `error-analysis-over-architecture` exists and is directly relevant — the user never sees it.
+
+2. **Pattern topic filtering is broken.** `read_patterns()` does substring matching on full markdown bodies. `context(topic="error handling")` returns embedding architecture, metal parser, orchestration agent docs — none about error handling. The word "error" appears somewhere in their markdown, so they match.
+
+3. **No CLI `context` command.** Only MCP has it. Any CLI-connected LLM (Claude Code via bash, OpenCode via exec) can't access patterns or beliefs through `context` at all.
+
+4. **Tool descriptions don't mention beliefs.** The `context` description says "Returns core patterns and surface patterns" — no mention of beliefs. LLMs don't know beliefs exist until they stumble on them.
+
+5. **`server.rs` is 2,021 lines** mixing protocol, formatting, handlers, query execution, and context logic. Adding more context features makes a monolith worse. Context logic should be extracted before extending it.
 
 ---
 
 ## Design
 
-Three delivery layers, consistent across both MCP and CLI. Belt-and-suspenders — knowledge delivered at multiple touch points so the LLM encounters it regardless of which tool it calls first.
+**Revised 2026-02-04.** Original design had three delivery layers. D1 (BeliefOracle) has since solved the core delivery problem — beliefs are now a default search channel in `scry`. The revised design focuses on fixing what's broken and adding what D1 doesn't cover.
 
-OpenClaw puts recall instructions in both tool description AND system prompt. Patina adapts this: both tool/command description AND tool/command response carry delivery, but without adapter-specific system prompts.
+### Prerequisite: Extract Context Module
+
+`server.rs` is 2,021 lines mixing five concerns: protocol, schema, handlers, formatting, and context logic. Context logic (`get_project_context()`, `get_belief_metrics()`, `read_patterns()`, `extract_summary()`) is ~250 lines that both MCP and CLI should share.
+
+**Extract to `src/commands/context.rs`** — follows existing pattern where `src/commands/` owns business logic and `src/mcp/server.rs` is a thin MCP adapter. `server.rs` imports from the extracted module; the new CLI command calls it directly.
 
 ### Layer 1: Tool/Command Description (the nudge)
 
-The description text is the first thing the LLM sees — before it even calls the tool.
+**MCP tool descriptions** — recall language already shipped. Remaining: mention beliefs explicitly.
 
-**MCP tool descriptions:**
 ```
 scry: "Search codebase knowledge — USE THIS FIRST for any question about the code.
        Fast hybrid search over indexed symbols, functions, types, git history,
-       and session learnings."
+       and session learnings. Prefer this over manual file exploration.
+       TIP: ..."
 
 context: "Get project patterns and conventions — USE THIS to understand design rules
           before making architectural changes. Returns core patterns (eternal
-          principles) and surface patterns (active architecture)."
+          principles), surface patterns (active architecture), and project beliefs
+          ranked by relevance."
 ```
 
-**CLI `--help` text (consumed by LLM adapters calling via Bash/exec):**
-Same content in `patina scry --help` and `patina context --help`. Claude Code reads `--help` output; OpenCode reads it via exec. The help text IS the tool description for CLI consumers.
+**CLI commands:**
+- Update `Scry` doc comment to match MCP description tone
+- Add `patina context [--topic]` CLI command (thin wrapper over extracted module)
 
 ### Layer 2: Response-Level Recall (in the output)
 
-**In `context` response (MCP and CLI):**
+**Rule: beliefs are always eligible.** Topic changes the query and budget, not whether beliefs exist.
+
+- **`topic.is_some()`:** Fetch top N beliefs via `BeliefOracle::query(topic, limit)` (semantic ranking). Fetch patterns via title/filename matching (not full-body substring).
+- **`topic.is_none()`:** Show current "starter pack" (all patterns) plus belief aggregate metrics + top beliefs by use count.
+
+This fixes the "`error-analysis-over-architecture` exists but never appears" class of failure.
+
+**Pattern filtering fix:** Stop substring matching on full markdown bodies. Match against filename and extracted title only. `context(topic="error handling")` should return nothing rather than four irrelevant architecture docs.
+
+**Recall directive** in every `context` response:
 ```
-## Core Patterns
-[existing — layer/core/ principles]
-
-## Active Beliefs (top N by relevance to topic)
-  B-12: "Error handling should use thiserror derive macros" (entrenchment: 0.8)
-  B-07: "Prefer explicit Result<T,E> over panics" (entrenchment: 0.9)
-  B-23: "MCP tools should be adapter-agnostic" (entrenchment: 0.7)
-
-## Cross-Project Beliefs (from Mother graph)
-[beliefs from related projects via graph traversal]
-
 ## Recall Directive
-Before answering questions about project conventions, design decisions, or
-architectural patterns: search for relevant beliefs.
-  CLI:  patina scry --belief <id>
-  MCP:  scry(content_type="beliefs")
 Project knowledge accumulates in beliefs — check them before assuming defaults.
+  CLI:  patina scry --content-type beliefs "your question"
+  MCP:  scry(content_type="beliefs", query="your question")
 ```
 
-The recall directive appears in the **tool/command response**, not in any adapter file. Every LLM that calls `context` (via MCP or CLI) sees it. Includes both CLI and MCP syntax so the LLM uses whichever interface it's connected through.
+Concrete syntax so the LLM doesn't guess.
 
-**In `scry` response (when beliefs are present):**
-```
---- Belief Impact ---
-3 beliefs matched — dig deeper:
-  CLI:  patina scry --belief <id> --content-type code
-  MCP:  scry(belief="<id>", content_type="code")
-```
+### Layer 3: Graph Breadcrumbs (deferred to v0.11.0 stretch)
 
-Lightweight hint, not a full directive. Only appears when belief results are present.
-
-### Layer 3: Graph Breadcrumbs (link tracing in every result)
-
-Every result is a node in the knowledge graph. The output shows its edges — what it links to, why, and how to follow. The LLM sees breadcrumbs and can self-direct exploration.
-
-**Belief results include graph edges:**
-```
-2. [belief] error-handling-thiserror                       (0.83)
-            "Use thiserror derive macros" (entrenchment: 0.8)
-            Links:
-              → attacks: panic-for-prototyping (defeated)
-              → supports: explicit-result-types
-              → reaches: src/retrieval/engine.rs, src/mcp/server.rs (+4 files)
-            Dig deeper:
-              patina scry --belief error-handling-thiserror --content-type code
-```
-
-**Code results include belief impact + structural edges:**
-```
-1. [code]   src/retrieval/engine.rs::query_with_options    (0.87)
-            Belief impact:
-              ← error-handling-thiserror (reach: 0.9)
-              ← onnx-runtime-for-ml (reach: 0.7)
-            Graph:
-              → imports: src/retrieval/fusion.rs, src/retrieval/oracle.rs
-              → co-changes: src/mcp/server.rs (28 times)
-            Dig deeper:
-              patina scry why src/retrieval/engine.rs::query_with_options
-              patina assay --query-type callers --pattern query_with_options
-```
-
-The "Dig deeper" commands are CLI syntax (usable by Claude Code via Bash, OpenCode via exec). For MCP responses, the same section uses MCP tool syntax:
-```
-            Dig deeper:
-              scry(mode="why", doc_id="src/retrieval/engine.rs::query_with_options")
-              assay(query_type="callers", pattern="query_with_options")
-```
-
-The interface adapts to the delivery channel; the content is the same.
+Graph breadcrumbs (attacks/supports/reaches links, structural edges, dig-deeper commands) are deferred. The basics (Layer 1 + Layer 2) don't work yet — polish on broken plumbing has no value. Layer 3 design from the original spec remains valid for when the foundation is solid.
 
 ### Implementation
 
-Each layer touches a different part of the codebase and can be landed independently:
+Five commits, ordered to separate refactor from behavior change:
 
-**Layer 1 (tool descriptions):**
-- **Partially shipped:** MCP tool descriptions already include recall language ("USE THIS FIRST", "USE THIS to understand design rules") and usage tips (expanded_terms examples). See `server.rs` lines ~147-228.
-- Remaining: Update CLI `--help` text in clap command definitions to match MCP descriptions
-- Remaining: Add belief-specific language (e.g., "includes project beliefs and session learnings") to both MCP and CLI descriptions
+**Commit 1 — Extract + CLI surface (refactor, zero behavior change):**
+- Extract `get_project_context()`, `get_belief_metrics()`, `read_patterns()`, `extract_summary()` to `src/commands/context.rs`
+- Add `pub mod context;` to `src/commands/mod.rs`
+- `server.rs` calls `crate::commands::context::get_project_context()`
+- Add `Context { topic }` variant to `Commands` enum in `main.rs`
+- CLI handler: `commands::context::execute(topic)`
+- Verify: MCP `context` tool returns identical output. `patina context` CLI works.
 
-**Layer 2 (response-level recall):**
-- Extend `get_project_context()` in `server.rs` to query beliefs by topic relevance
-- **Scope note:** `get_project_context()` reads `layer/` files from disk AND queries SQLite for basic belief metrics via `get_belief_metrics()` (`server.rs:1514-1617`). However, it does NOT do dynamic belief querying by topic — adding topic-relevant beliefs requires wiring to the belief query infrastructure (embed the topic, search `belief_fts` + USearch, rank by similarity). The SQLite connection exists; the semantic query pipeline does not.
-- Cross-project beliefs require graph traversal via `query_repo()` — the context tool has no graph awareness today. Start with local-project beliefs only; add cross-project as a follow-up once D1 federation is validated.
-- Append recall directive to every context response (MCP and CLI)
-- Rank beliefs by cosine similarity to topic when topic parameter is provided
+**Commit 2 — Fix gating + pattern filtering (behavior fix):**
+- Remove `show_beliefs` gate — beliefs always shown regardless of topic
+- Change `read_patterns()` topic filter: match filename and title only, not full body
+- Title extraction: first `# ` line from markdown (already parsed by `extract_summary()`)
+- Verify: `context(topic="error handling")` no longer returns irrelevant docs. Beliefs always appear.
 
-**Layer 3 (graph breadcrumbs):**
-- Add graph breadcrumbs to result formatting in `format_results_with_query_id()` and related formatters
-- Existing infrastructure: `find_belief_impact()` in `enrichment.rs`, `belief_code_reach` table, `StructuralAnnotations`
-- Detect delivery channel (MCP vs CLI) to format dig-deeper commands appropriately
-- This layer is shared with D3 (snippets include breadcrumbs) — define the breadcrumb format here, D3 consumes it
+**Commit 3 — Topic-ranked beliefs via BeliefOracle (new capability):**
+- Expose `BeliefOracle` query method publicly (currently private to `src/retrieval/oracles/`)
+- In `get_project_context()`: when topic is provided, call `BeliefOracle::query(topic, 5)` to get semantically ranked beliefs
+- Format ranked beliefs as "Active Beliefs" section with statement, entrenchment, and evidence count
+- When no topic: keep existing `get_belief_metrics()` aggregate stats
+- Verify: `context(topic="error handling")` returns `error-analysis-over-architecture` belief
+
+**Commit 4 — Recall directive + descriptions (text changes):**
+- Append recall directive to every `context` response with both CLI and MCP syntax
+- Update MCP `context` description to mention beliefs
+- Update MCP `scry` description to mention session learnings
+- Update CLI `Scry` doc comment to match MCP tone
+- Verify: descriptions visible in `patina scry --help` and MCP tool listing
+
+**Commit 5 — D4 routing cleanup (independent, if time permits):**
+- Remove `RoutingStrategy` enum and `--routing` CLI flag
+- `execute_graph_routing()` becomes sole cross-repo path
+- Delete `execute_all_repos()` (measured failure: 0% repo recall at G0)
+- Verify: `patina scry --all-repos "query"` uses graph routing
 
 ---
 
 ## Exit Criteria
 
-**Layer 1 (partially shipped, finish independently):**
+**Prerequisite (refactor):**
+- [x] Context logic extracted to `src/commands/context.rs` — `server.rs` imports from it ✅ 2026-02-04
+- [x] CLI `patina context [--topic]` command exists and returns same output as MCP tool ✅ 2026-02-04
+
+**Layer 1 (descriptions):**
 - [x] MCP tool descriptions include recall language ("USE THIS FIRST", "USE THIS to understand design rules")
-- [ ] MCP descriptions updated to mention beliefs explicitly
-- [ ] CLI `--help` text matches MCP descriptions for scry and context commands
+- [x] MCP `context` description mentions beliefs explicitly ✅ 2026-02-04
+- [x] MCP `scry` description mentions session learnings (already present)
+- [x] CLI `Scry` doc comment matches MCP description tone ✅ 2026-02-04
 
-**Layer 2 (depends on D1 for belief querying):**
-- [ ] Context returns dynamic local beliefs — `context(topic="error handling")` returns relevant beliefs ranked by topic similarity
-- [ ] Recall directive in context response — every context response includes recall instruction with both CLI and MCP syntax
-- [ ] Cross-project beliefs in context response — beliefs from related projects via graph traversal (can defer to after D1 federation validated)
+**Layer 2 (response-level recall):**
+- [x] Beliefs always shown in context — no gating on topic string ✅ 2026-02-04
+- [x] Pattern topic filtering uses filename/title only — `context(topic="error handling")` does not return irrelevant architecture docs ✅ 2026-02-04
+- [x] Context with topic returns semantically ranked beliefs — `context(topic="error handling")` returns `error-analysis-over-architecture` at rank 3 (score 0.82) ✅ 2026-02-04
+- [x] Recall directive in every context response — includes both CLI and MCP syntax with concrete examples ✅ 2026-02-04
 
-**Layer 3 (shared with D3 snippet format):**
+**Deferred to v0.11.0 stretch (Layer 3):**
 - [ ] Graph breadcrumbs — belief results show links (attacks/supports/reaches), code results show belief impact + structural edges
-- [ ] Dig-deeper commands — every result includes actionable commands to follow the graph, formatted for the delivery channel (CLI syntax for CLI, MCP syntax for MCP)
+- [ ] Dig-deeper commands — every result includes actionable commands formatted for the delivery channel
+- [ ] Cross-project beliefs in context response — beliefs from related projects via graph traversal
+
+---
+
+## Revision History
+
+| Date | Change | Rationale |
+|------|--------|-----------|
+| 2026-02-02 | Original design | Three delivery layers spec |
+| 2026-02-03 | Design resolution | Resolved D1/D3/recall questions |
+| 2026-02-04 | **Revised** | D1 shipped — beliefs are a search channel. Reframed D2 from "deliver beliefs everywhere" to "fix broken context tool + add CLI surface." Added extraction prerequisite. Moved Layer 3 to stretch. |
 
 ---
 
 ## See Also
 
 - [[design.md]] — ADR-3 (Why three-layer delivery)
-- [[d1-belief-oracle/SPEC.md]] — Prerequisite: beliefs must be a search channel first
-- [[d3-two-step-retrieval/SPEC.md]] — D3 must stabilize response shape before D2 references it in recall directives
+- [[d1-belief-oracle/SPEC.md]] — D1 shipped: beliefs are a default search channel (changes D2 assumptions)
+- [[d3-two-step-retrieval/SPEC.md]] — D3 shipped: snippets + detail mode
 - [[../SPEC.md]] — Parent spec (implementation order, non-goals)
