@@ -27,6 +27,13 @@ pub enum SpecCommands {
         #[arg(long)]
         json: bool,
     },
+
+    /// Show specs blocked by incomplete dependencies
+    Blocked {
+        /// Output as JSON (for agent use)
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Archive a completed spec: tag, remove, update build.md, commit
@@ -37,4 +44,9 @@ pub fn archive(id: &str, dry_run: bool) -> Result<()> {
 /// Show specs ready to work on
 pub fn ready(json: bool) -> Result<()> {
     internal::show_ready_specs(json)
+}
+
+/// Show specs blocked by incomplete dependencies
+pub fn blocked(json: bool) -> Result<()> {
+    internal::show_blocked_specs(json)
 }

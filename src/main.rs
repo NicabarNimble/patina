@@ -1120,6 +1120,9 @@ fn main() -> Result<()> {
             commands::spec::SpecCommands::Ready { json } => {
                 commands::spec::ready(json)?;
             }
+            commands::spec::SpecCommands::Blocked { json } => {
+                commands::spec::blocked(json)?;
+            }
         },
         Some(Commands::Serve { host, port, mcp }) => {
             // Deprecated: delegate to mother start with warning

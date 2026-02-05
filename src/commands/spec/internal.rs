@@ -104,6 +104,133 @@ pub fn show_ready_specs(json: bool) -> Result<()> {
     Ok(())
 }
 
+// ============================================================================
+// Blocked View (spec-as-work-item Phase 3)
+// ============================================================================
+
+/// A blocker preventing a spec from being ready
+#[derive(Debug, Clone, Serialize)]
+pub struct Blocker {
+    pub id: String,
+    pub status: String,
+}
+
+/// A spec that is blocked by incomplete dependencies
+#[derive(Debug, Clone, Serialize)]
+pub struct BlockedSpec {
+    pub id: String,
+    pub status: String,
+    pub target: Option<String>,
+    pub title: String,
+    pub blocked_by: Vec<Blocker>,
+}
+
+/// Query specs that are blocked by incomplete dependencies
+///
+/// Returns specs where:
+/// - File is in layer/surface/build/ (actual specs, not beliefs)
+/// - Has at least one blocker with status not in ('complete', 'done')
+pub fn get_blocked_specs() -> Result<Vec<BlockedSpec>> {
+    let db_path = Path::new(DB_PATH);
+    if !db_path.exists() {
+        anyhow::bail!("Knowledge database not found. Run 'patina scrape' first.");
+    }
+
+    let conn = Connection::open(db_path).context("Failed to open database")?;
+
+    // Get all specs with incomplete blockers
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT p.id, p.status, p.target, p.title, d.depends_on, b.status
+        FROM patterns p
+        JOIN spec_deps d ON d.spec_id = p.id
+        JOIN patterns b ON d.depends_on = b.id
+        WHERE p.file_path LIKE 'layer/surface/build/%'
+          AND b.status NOT IN ('complete', 'done')
+        ORDER BY p.id, d.depends_on
+        "#,
+    )?;
+
+    // Group by spec
+    let mut specs: Vec<BlockedSpec> = Vec::new();
+    let mut current_id: Option<String> = None;
+
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,         // spec id
+            row.get::<_, String>(1)?,         // spec status
+            row.get::<_, Option<String>>(2)?, // spec target
+            row.get::<_, String>(3)?,         // spec title
+            row.get::<_, String>(4)?,         // blocker id
+            row.get::<_, String>(5)?,         // blocker status
+        ))
+    })?;
+
+    for row in rows {
+        let (id, status, target, title, blocker_id, blocker_status) = row?;
+
+        if current_id.as_ref() != Some(&id) {
+            // New spec
+            specs.push(BlockedSpec {
+                id: id.clone(),
+                status,
+                target,
+                title,
+                blocked_by: vec![Blocker {
+                    id: blocker_id,
+                    status: blocker_status,
+                }],
+            });
+            current_id = Some(id);
+        } else {
+            // Add blocker to current spec
+            if let Some(spec) = specs.last_mut() {
+                spec.blocked_by.push(Blocker {
+                    id: blocker_id,
+                    status: blocker_status,
+                });
+            }
+        }
+    }
+
+    Ok(specs)
+}
+
+/// Display blocked specs (human-readable or JSON)
+pub fn show_blocked_specs(json: bool) -> Result<()> {
+    let specs = get_blocked_specs()?;
+
+    if json {
+        println!("{}", serde_json::to_string_pretty(&specs)?);
+        return Ok(());
+    }
+
+    if specs.is_empty() {
+        println!("No blocked specs.");
+        return Ok(());
+    }
+
+    println!("BLOCKED:");
+    for spec in &specs {
+        let target = spec.target.as_deref().unwrap_or("-");
+        print!("  {:<28} {:<10}", spec.id, target);
+
+        // Print blockers
+        for (i, blocker) in spec.blocked_by.iter().enumerate() {
+            if i == 0 {
+                println!(" blocked by: {} ({})", blocker.id, blocker.status);
+            } else {
+                println!(
+                    "  {:<28} {:<10}             {} ({})",
+                    "", "", blocker.id, blocker.status
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Archive a completed spec: create spec/<id> tag, remove file, update build.md, commit
 pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
     // 1. Find spec in patterns table by id
