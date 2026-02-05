@@ -3,7 +3,6 @@ type: fix
 id: spec-status-serde
 status: complete
 created: 2026-02-05
-target: v0.12.0
 beliefs:
 - system-owns-format
 - milestones-in-specs

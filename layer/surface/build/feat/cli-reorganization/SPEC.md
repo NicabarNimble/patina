@@ -6,7 +6,6 @@ created: 2026-02-05
 updated: 2026-02-05
 sessions:
   origin: 20260205-084522
-target: v0.12.0
 blocked_by:
   - system-introspection
   - scrape-layer-unify
