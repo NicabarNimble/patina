@@ -1,12 +1,14 @@
 ---
 type: feat
 id: spec-as-work-item
-status: draft
+status: ready
 created: 2026-02-05
+updated: 2026-02-05
 sessions:
   origin: 20260205-102402
-blocked_by:
-  - patina-platform
+  updated: 20260205-130049
+target: v0.12.0
+blocked_by: []
 blocks: []
 related:
   - layer/surface/build/explore/beads-patterns/SPEC.md
@@ -14,14 +16,12 @@ related:
 beliefs:
   - simplicity-is-architecture
   - argue-every-box
+  - unix-philosophy
 references:
-  - "steveyegge/beads - MOLECULES.md, ARCHITECTURE.md"
-superseded_by: patina-platform
+  - "steveyegge/beads - ARCHITECTURE.md, MOLECULES.md, CLI_REFERENCE.md"
 ---
 
 # feat: Spec as Work Item
-
-> **SUPERSEDED:** This spec is now input to [[patina-platform]]. Work tracking will be a WASM plugin (`patina-work`), not modifications to the spec system. The design here informs the plugin requirements.
 
 > A spec should feel like a git branch to developers and a TODO list to agents.
 
@@ -33,7 +33,7 @@ Patina specs are **documents**, not **work items**. They describe what we want b
 - Specs accumulate without closure
 - "related:" links are prose, not blocking semantics
 - No way to ask "what spec can I work on NOW?"
-- Status fields are fuzzy (`design`, `active`) — no clear state machine
+- Status fields are fuzzy — no clear state machine
 - Specs created in one session, forgotten by the next
 - We keep creating specs about specs (meta-loop)
 
@@ -55,13 +55,35 @@ Beads treats everything as work items with:
 
 We need `patina spec ready`.
 
+### What We Take from Beads
+
+| Beads Feature | Patina Equivalent | Notes |
+|---------------|-------------------|-------|
+| `bd ready` | `patina spec ready` | Core feature |
+| `bd blocked` | `patina spec blocked` | Shows blockers |
+| `bd dep tree` | `patina spec tree` | Nice-to-have |
+| `bd close --reason` | `patina spec archive` | Already have |
+| Status flow | draft → ready → active → complete | In frontmatter |
+| blocks/related | blocked_by, blocks, related | In frontmatter, not parsed |
+
+### What We DON'T Take from Beads
+
+| Beads Feature | Why Skip |
+|---------------|----------|
+| Hash-based IDs | Filename IDs work fine for specs |
+| JSONL sync | layer/ + scrape is our pattern |
+| Daemon | mother handles daemon needs |
+| Molecules/wisps | Overkill for spec workflow |
+| Labels | beliefs serve similar purpose |
+| Priority 0-4 | `target: v0.X.0` is better for releases |
+
 ---
 
 ## Design
 
 ### 1. Dependency Semantics
 
-Replace fuzzy `related:` with explicit blocking:
+**Already in our frontmatter:**
 
 ```yaml
 ---
@@ -69,11 +91,12 @@ type: feat
 id: cli-reorganization
 status: ready
 blocked_by:
-  - system-introspection  # Can't reorganize until DataContract exists
+  - system-introspection  # Can't start until this is complete
 blocks:
-  - science-commands      # New commands wait for reorg
+  - science-commands      # Those wait for this
 related:
   - scrape-layer-unify    # Soft link, doesn't block
+target: v0.12.0
 ---
 ```
 
@@ -81,32 +104,34 @@ related:
 
 | Field | Semantic | Affects `spec ready`? |
 |-------|----------|----------------------|
-| `blocked_by` | This spec can't start until those close | Yes |
-| `blocks` | Those specs can't start until this closes | Yes (inverse) |
+| `blocked_by` | This spec can't start until those complete | Yes |
+| `blocks` | Those specs can't start until this completes | Yes (inverse) |
 | `related` | Soft link for context | No |
+
+**Gap:** These fields exist but aren't parsed by scrape. We need to parse them.
 
 ### 2. Status State Machine
 
 Clear, actionable states:
 
 ```
-draft ──▶ ready ──▶ active ──▶ done
-  │                   │         │
-  └───────────────────┴─────────┘
+draft ──▶ ready ──▶ active ──▶ complete
+  │                   │          │
+  └───────────────────┴──────────┘
          (can regress)
 ```
 
-| Status | Meaning | Can work on it? |
-|--------|---------|-----------------|
+| Status | Meaning | Shows in `spec ready`? |
+|--------|---------|------------------------|
 | `draft` | Still designing, not actionable | No |
 | `ready` | Design complete, unblocked, can start | **Yes** |
 | `active` | Currently being implemented | Yes (continue) |
-| `done` | Implemented, exit criteria met | No (archive) |
+| `complete` | Implemented, exit criteria met | No (archive) |
 | `abandoned` | Rejected or superseded | No |
 
-**Key rule:** A spec is `ready` only if:
+**Key rule:** A spec is actionable only if:
 1. Status is `ready` or `active`
-2. All `blocked_by` specs are `done`
+2. All `blocked_by` specs have status `complete`
 
 ### 3. Ready Queue Command
 
@@ -118,140 +143,228 @@ READY (can start now):
 
 BLOCKED:
   cli-reorganization     v0.12.0   blocked by: system-introspection
-  system-introspection   v0.12.0   blocked by: (none, but status=draft)
+  system-introspection   v0.12.0   (status: draft)
 
 ACTIVE (in progress):
-  spec-as-work-item      -         This spec
+  spec-as-work-item      v0.12.0   This spec
 
-$ patina spec ready --all
-# Also shows done/abandoned
+$ patina spec ready --json   # For agent use
 ```
 
-### 4. Spec Lifecycle Commands
+### 4. Blocked View
 
 ```bash
-# Advance spec status
+$ patina spec blocked
+
+cli-reorganization       blocked by: system-introspection (draft)
+                                     scrape-layer-unify (ready)
+
+$ patina spec blocked --json
+```
+
+### 5. Dependency Tree (Nice-to-have)
+
+```bash
+$ patina spec tree cli-reorganization
+
+cli-reorganization (blocked)
+├── blocked by: system-introspection (draft)
+│   └── (no blockers)
+└── blocked by: scrape-layer-unify (ready)
+    └── (no blockers)
+```
+
+### 6. Status Update Command
+
+```bash
+# Advance spec status (edits frontmatter in file)
 patina spec status <id> ready      # Mark as ready to implement
 patina spec status <id> active     # Mark as in-progress
-patina spec status <id> done       # Mark as complete
-
-# Dependency management
-patina spec block <id> <blocked-by-id>    # Add blocker
-patina spec unblock <id> <blocked-by-id>  # Remove blocker
-
-# Query
-patina spec ready                  # Show actionable specs
-patina spec blocked                # Show what's waiting
-patina spec tree <id>              # Show dependency tree
+patina spec status <id> complete   # Mark as complete (then archive)
 ```
 
-### 5. Spec Hierarchy (Optional)
+### 7. Cycle Detection
 
-Like beads molecules, specs can have children:
+Circular dependencies should be detected and warned:
 
-```yaml
----
-type: feat
-id: v0.12-foundation
-status: active
-children:
-  - system-introspection
-  - cli-reorganization
-  - scrape-layer-unify
----
+```bash
+$ patina spec ready
+WARNING: Circular dependency detected:
+  A → B → C → A
+
+$ patina doctor
+  Spec cycles: 1 found (A → B → C → A)
 ```
-
-Parent spec is `done` when all children are `done`.
 
 ---
 
-## Migration
+## Implementation
 
-### Phase 1: Frontmatter Schema
+### Phase 1: Scrape Integration (Foundation)
 
-Update existing specs with new fields:
-
-```yaml
-# Before
-related:
-  - some-other-spec
-
-# After
-blocked_by: []           # Explicit blockers
-blocks: []               # What this blocks
-related:
-  - some-other-spec      # Soft links (unchanged)
-status: draft            # Explicit state
-```
-
-### Phase 2: Scrape Integration
-
-`patina scrape layer` parses new fields:
+Extend `scrape layer` to parse dependency fields:
 
 ```rust
-pub struct SpecMetadata {
-    pub id: String,
-    pub status: SpecStatus,
-    pub blocked_by: Vec<String>,
-    pub blocks: Vec<String>,
-    pub related: Vec<String>,
-    pub target: Option<String>,  // version target
-}
+// In src/commands/scrape/layer/mod.rs
 
-pub enum SpecStatus {
-    Draft,
-    Ready,
-    Active,
-    Done,
-    Abandoned,
+#[derive(Debug, Deserialize)]
+struct SpecFrontmatter {
+    id: String,
+    status: Option<String>,
+    blocked_by: Option<Vec<String>>,
+    blocks: Option<Vec<String>>,
+    target: Option<String>,
+    // ... existing fields
 }
 ```
 
-### Phase 3: Ready Queue
+**New table:**
+
+```sql
+CREATE TABLE spec_deps (
+    spec_id TEXT NOT NULL,
+    depends_on TEXT NOT NULL,
+    UNIQUE(spec_id, depends_on)
+);
+
+-- Also extend patterns table
+ALTER TABLE patterns ADD COLUMN target TEXT;
+```
+
+**Exit:** `blocked_by` and `blocks` fields populate `spec_deps` table.
+
+### Phase 2: Ready Queue
 
 Implement `patina spec ready`:
 
-1. Scrape all specs from `layer/surface/build/`
-2. Build dependency graph
-3. Filter to specs where:
-   - `status` is `ready` or `active`
-   - All `blocked_by` specs have `status: done`
-4. Display sorted by priority/target version
+```rust
+// Query: specs where status in (ready, active) AND all blocked_by are complete
+pub fn get_ready_specs(conn: &Connection) -> Result<Vec<Spec>> {
+    conn.prepare(r#"
+        SELECT p.id, p.title, p.status, p.target
+        FROM patterns p
+        WHERE p.status IN ('ready', 'active')
+          AND NOT EXISTS (
+            SELECT 1 FROM spec_deps d
+            JOIN patterns blocker ON d.depends_on = blocker.id
+            WHERE d.spec_id = p.id
+              AND blocker.status NOT IN ('complete', 'done')
+          )
+        ORDER BY p.target, p.id
+    "#)?.query_map(...)
+}
+```
 
-### Phase 4: Status Commands
+**Exit:** `patina spec ready` shows unblocked specs.
 
-Add `patina spec status`, `patina spec block`, etc.
+### Phase 3: Blocked View
+
+Implement `patina spec blocked`:
+
+```rust
+// Query: specs that have incomplete blockers
+pub fn get_blocked_specs(conn: &Connection) -> Result<Vec<BlockedSpec>> {
+    conn.prepare(r#"
+        SELECT p.id, p.title, d.depends_on, blocker.status
+        FROM patterns p
+        JOIN spec_deps d ON d.spec_id = p.id
+        JOIN patterns blocker ON d.depends_on = blocker.id
+        WHERE blocker.status NOT IN ('complete', 'done')
+        ORDER BY p.id
+    "#)?.query_map(...)
+}
+```
+
+**Exit:** `patina spec blocked` shows blocked specs with reasons.
+
+### Phase 4: Status Command
+
+Implement `patina spec status <id> <status>`:
+
+```rust
+// 1. Find spec file by id
+// 2. Parse frontmatter
+// 3. Update status field
+// 4. Write file back
+// 5. Run scrape to update database
+```
+
+**Exit:** `patina spec status <id> active` updates file and database.
+
+### Phase 5: Cycle Detection
+
+Add to `patina doctor`:
+
+```rust
+// Detect cycles in spec dependency graph
+pub fn detect_spec_cycles(conn: &Connection) -> Result<Vec<Vec<String>>> {
+    // Tarjan's algorithm or simple DFS
+}
+```
+
+**Exit:** `patina doctor` warns about circular dependencies.
+
+---
+
+## Trait-Based Design (Plugin Ready)
+
+Design for future extraction to WASM plugin:
+
+```rust
+/// The interface that becomes WIT later
+pub trait SpecTracker {
+    fn ready(&self) -> Result<Vec<SpecSummary>>;
+    fn blocked(&self) -> Result<Vec<BlockedSpec>>;
+    fn get(&self, id: &str) -> Result<Option<Spec>>;
+    fn update_status(&self, id: &str, status: Status) -> Result<()>;
+    fn add_dep(&self, spec: &str, blocked_by: &str) -> Result<()>;
+    fn remove_dep(&self, spec: &str, blocked_by: &str) -> Result<()>;
+    fn detect_cycles(&self) -> Result<Vec<Vec<String>>>;
+}
+
+// Implementation v1: Native (now)
+pub struct NativeSpecTracker { conn: Connection }
+
+// Implementation v2: WASM plugin (when plugin system exists)
+pub struct PluginSpecTracker { plugin: WasmPlugin }
+```
 
 ---
 
 ## Exit Criteria
 
-### Immediate (this session)
+### v0.12.0: Core Functionality
 
-- [x] Spec created with beads-inspired design
-- [x] Update 3-4 existing specs with new frontmatter schema
-- [ ] Validate dependency graph makes sense
-
-### v0.12.0
-
-- [ ] `blocked_by` / `blocks` fields recognized by scrape
+- [ ] `blocked_by` / `blocks` fields parsed by scrape into `spec_deps` table
 - [ ] `patina spec ready` shows unblocked specs
-- [ ] `patina spec status <id> <status>` works
-- [ ] Existing specs migrated to new schema
+- [ ] `patina spec blocked` shows blocked specs with reasons
+- [ ] `patina spec status <id> <status>` updates spec file
+- [ ] Existing specs work with new system (backwards compatible)
+- [ ] `--json` output for agent use
 
-### v0.13.0
+### v0.13.0: Polish
 
 - [ ] `patina spec tree <id>` shows dependency graph
-- [ ] `patina spec block` / `unblock` commands
-- [ ] Integration with session workflow (auto-update spec status)
+- [ ] Cycle detection in `patina doctor`
+- [ ] Integration with session workflow (auto-update spec status?)
+- [ ] `patina spec list` with filters (--status, --target)
+
+### Future: Plugin Extraction
+
+- [ ] Extract to `patina-spec` crate
+- [ ] Define WIT interface matching `SpecTracker` trait
+- [ ] Compile to WASM plugin
+- [ ] Swap implementation
 
 ---
 
 ## Non-Goals
 
-- **Replacing beads** — Beads is for issue tracking. This is for spec lifecycle.
+- **Replacing beads** — Beads is for general issue tracking. This is for spec lifecycle.
 - **Complex workflow engine** — Keep it simple. Dependencies + ready queue.
 - **Auto-generating specs** — Specs are human decisions, not automation.
+- **Hash-based IDs** — Filename-based IDs work fine for specs.
+- **JSONL format** — Keep markdown, it's human-readable.
 
 ---
 
@@ -259,29 +372,46 @@ Add `patina spec status`, `patina spec block`, etc.
 
 1. **Should explore docs have dependencies?**
    - Explores are research, not deliverables
-   - Maybe they stay document-like, only feats get work-item treatment
+   - Maybe only `feat/` and `refactor/` get work-item treatment
+   - Current: parse all, filter in query
 
-2. **Circular dependency detection?**
-   - `patina spec ready` should warn if cycles exist
-   - Or `patina doctor` checks for cycles
+2. **Version targets vs dependencies?**
+   - Current: `target: v0.12.0` is aspiration
+   - Dependencies are reality (what actually blocks)
+   - Keep both — target for planning, deps for execution
 
-3. **Version targets vs dependencies?**
-   - Current: `target: v0.12.0`
-   - Could derive from dependency depth instead
-   - Or keep both (target is aspiration, deps are reality)
+3. **Command rename later?**
+   - `patina spec` works for now
+   - Could become `patina work` or something else
+   - Functionality matters more than naming
+
+---
+
+## Files to Change
+
+```
+src/commands/
+├── scrape/layer/mod.rs      # Parse blocked_by, blocks, target
+├── spec/
+│   ├── mod.rs               # Add subcommands
+│   ├── ready.rs             # NEW: ready queue
+│   ├── blocked.rs           # NEW: blocked view
+│   ├── status.rs            # NEW: status update
+│   └── internal.rs          # Existing archive logic
+└── doctor.rs                # Add cycle detection
+```
 
 ---
 
 ## Relationship to Other Specs
 
-This spec is **foundational** — it changes how all other specs work.
-
 | Spec | Relationship |
 |------|--------------|
-| system-introspection | Will use new schema |
-| cli-reorganization | Will use new schema |
-| scrape-layer-unify | Will use new schema |
-| beads-patterns (explore) | Source of design inspiration |
+| **patina-platform** | This is Step 0. Build native, extract to plugin later. |
+| **system-introspection** | Will use new schema (DataContract for spec commands) |
+| **cli-reorganization** | Will use new schema, places spec in `infra/` group |
+| **scrape-layer-unify** | Unblocked by this — can start now |
+| **beads-patterns** | Source of design inspiration |
 
 ---
 
@@ -289,5 +419,6 @@ This spec is **foundational** — it changes how all other specs work.
 
 | Date | Status | Note |
 |------|--------|------|
-| 2026-02-05 | ready | Created from beads analysis. Key insight: specs should be work items with ready queue, not documents. |
-| 2026-02-05 | draft | **Superseded by patina-platform.** Work tracking becomes `patina-work` WASM plugin, not spec system changes. This spec becomes requirements input for that plugin. |
+| 2026-02-05 | draft | Created from beads analysis. Key insight: specs should be work items with ready queue, not documents. |
+| 2026-02-05 | draft | Superseded by patina-platform — work tracking to be WASM plugin. |
+| 2026-02-05 | ready | **UN-SUPERSEDED.** Build native now, extract to plugin later. Deep dive into beads confirmed design. Added trait-based approach for future plugin extraction. Removed blocker on patina-platform. |
