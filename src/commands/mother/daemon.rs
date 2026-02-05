@@ -441,9 +441,14 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     let listener = super::setup_unix_listener()?;
     let socket_path = patina::paths::serve::socket_path();
 
-    ctrlc_cleanup();
+    // Write PID file
+    write_pid_file()?;
+
+    // Register signal handlers for cleanup
+    register_signal_handlers();
 
     println!("🚀 Mother daemon starting...");
+    println!("   PID: {}", std::process::id());
     println!("   Listening on {}", socket_path.display());
     println!(
         "   Test: curl -s --unix-socket {} http://localhost/health",
@@ -487,7 +492,31 @@ fn accept_loop_uds(listener: std::os::unix::net::UnixListener, state: Arc<Server
     std::process::exit(0);
 }
 
-fn ctrlc_cleanup() {
+/// Write PID file for daemon lifecycle management
+fn write_pid_file() -> Result<()> {
+    use anyhow::Context;
+    use std::os::unix::fs::PermissionsExt;
+
+    let pid_path = patina::paths::serve::pid_path();
+    let pid = std::process::id();
+
+    std::fs::write(&pid_path, pid.to_string())
+        .with_context(|| format!("writing PID file {}", pid_path.display()))?;
+
+    std::fs::set_permissions(&pid_path, std::fs::Permissions::from_mode(0o600))
+        .with_context(|| format!("setting permissions on {}", pid_path.display()))?;
+
+    Ok(())
+}
+
+/// Clean up PID file on shutdown
+fn cleanup_pid_file() {
+    let pid_path = patina::paths::serve::pid_path();
+    let _ = std::fs::remove_file(&pid_path);
+}
+
+/// Register signal handlers for graceful shutdown
+fn register_signal_handlers() {
     unsafe {
         libc::signal(
             libc::SIGINT,
@@ -501,6 +530,7 @@ fn ctrlc_cleanup() {
 }
 
 extern "C" fn sigint_handler(_: libc::c_int) {
+    cleanup_pid_file();
     super::cleanup_socket();
     std::process::exit(0);
 }
