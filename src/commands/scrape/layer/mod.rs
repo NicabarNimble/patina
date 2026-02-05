@@ -33,7 +33,7 @@ struct ParsedPattern {
     id: String,
     title: String,
     layer: String,          // core, surface
-    status: Option<String>, // active, draft, archived
+    status: Option<String>, // active, draft, archived, ready, complete
     created: Option<String>,
     tags: Vec<String>,
     references: Vec<String>,
@@ -42,6 +42,10 @@ struct ParsedPattern {
     file_path: String,
     milestones: Vec<Milestone>,        // Version-linked milestones
     current_milestone: Option<String>, // Current milestone version
+    // Spec dependency fields (for spec-as-work-item)
+    blocked_by: Vec<String>, // Spec IDs this depends on
+    blocks: Vec<String>,     // Spec IDs that depend on this
+    target: Option<String>,  // Version target (e.g., "v0.12.0")
 }
 
 /// Create materialized views for pattern events
@@ -72,6 +76,15 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
         conn.execute("ALTER TABLE patterns ADD COLUMN current_milestone TEXT", [])?;
     }
 
+    // Migration: add target column if it doesn't exist (spec-as-work-item)
+    let has_target_col: bool = conn
+        .prepare("SELECT 1 FROM pragma_table_info('patterns') WHERE name = 'target'")?
+        .exists([])?;
+
+    if !has_target_col {
+        conn.execute("ALTER TABLE patterns ADD COLUMN target TEXT", [])?;
+    }
+
     // Continue with rest of schema
     conn.execute_batch(
         r#"
@@ -97,12 +110,23 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
             UNIQUE(spec_id, version)
         );
 
+        -- Spec dependencies table (spec-as-work-item)
+        -- Stores blocked_by relationships for ready queue calculation
+        CREATE TABLE IF NOT EXISTS spec_deps (
+            spec_id TEXT NOT NULL,
+            depends_on TEXT NOT NULL,
+            UNIQUE(spec_id, depends_on)
+        );
+
         -- Indexes
         CREATE INDEX IF NOT EXISTS idx_patterns_layer ON patterns(layer);
         CREATE INDEX IF NOT EXISTS idx_patterns_status ON patterns(status);
+        CREATE INDEX IF NOT EXISTS idx_patterns_target ON patterns(target);
         CREATE INDEX IF NOT EXISTS idx_milestones_spec ON milestones(spec_id);
         CREATE INDEX IF NOT EXISTS idx_milestones_status ON milestones(status);
         CREATE INDEX IF NOT EXISTS idx_milestones_version ON milestones(version);
+        CREATE INDEX IF NOT EXISTS idx_spec_deps_spec ON spec_deps(spec_id);
+        CREATE INDEX IF NOT EXISTS idx_spec_deps_depends ON spec_deps(depends_on);
         "#,
     )?;
 
@@ -116,10 +140,18 @@ struct Frontmatter {
     milestones: Vec<Milestone>,
     #[serde(default)]
     current_milestone: Option<String>,
+    // Spec dependency fields (for spec-as-work-item)
+    #[serde(default)]
+    blocked_by: Vec<String>,
+    #[serde(default)]
+    blocks: Vec<String>,
+    #[serde(default)]
+    target: Option<String>,
 }
 
-/// Parse milestones from markdown content using serde_yaml
-fn parse_milestones(content: &str) -> (Vec<Milestone>, Option<String>) {
+/// Parse complex frontmatter fields using serde_yaml
+/// Returns Frontmatter with milestones, blocked_by, blocks, target
+fn parse_frontmatter_yaml(content: &str) -> Frontmatter {
     // Extract frontmatter between --- markers
     if let Some(after_start) = content.strip_prefix("---") {
         if let Some(end) = after_start.find("---") {
@@ -127,11 +159,11 @@ fn parse_milestones(content: &str) -> (Vec<Milestone>, Option<String>) {
 
             // Try to parse with serde_yaml
             if let Ok(fm) = serde_yaml::from_str::<Frontmatter>(frontmatter_str) {
-                return (fm.milestones, fm.current_milestone);
+                return fm;
             }
         }
     }
-    (Vec::new(), None)
+    Frontmatter::default()
 }
 
 /// Parse a pattern markdown file with YAML frontmatter
@@ -222,8 +254,13 @@ fn parse_pattern_file(path: &Path) -> Result<ParsedPattern> {
         }
     }
 
-    // Parse milestones using serde_yaml (complex nested structure)
-    let (milestones, current_milestone) = parse_milestones(&content);
+    // Parse complex frontmatter fields using serde_yaml
+    let frontmatter_yaml = parse_frontmatter_yaml(&content);
+    let milestones = frontmatter_yaml.milestones;
+    let current_milestone = frontmatter_yaml.current_milestone;
+    let blocked_by = frontmatter_yaml.blocked_by;
+    let blocks = frontmatter_yaml.blocks;
+    let target = frontmatter_yaml.target;
 
     // Extract title from first # heading
     let title_re = Regex::new(r"^# (.+)$").unwrap();
@@ -251,6 +288,9 @@ fn parse_pattern_file(path: &Path) -> Result<ParsedPattern> {
         file_path,
         milestones,
         current_milestone,
+        blocked_by,
+        blocks,
+        target,
     })
 }
 
@@ -263,6 +303,7 @@ fn insert_pattern(conn: &Connection, pattern: &ParsedPattern) -> Result<()> {
     conn.execute("DELETE FROM patterns WHERE id = ?1", [&pattern.id])?;
     conn.execute("DELETE FROM pattern_fts WHERE id = ?1", [&pattern.id])?;
     conn.execute("DELETE FROM milestones WHERE spec_id = ?1", [&pattern.id])?;
+    conn.execute("DELETE FROM spec_deps WHERE spec_id = ?1", [&pattern.id])?;
     // Delete from eventlog too
     conn.execute(
         "DELETE FROM eventlog WHERE source_id = ?1 AND event_type LIKE 'pattern.%'",
@@ -281,6 +322,9 @@ fn insert_pattern(conn: &Connection, pattern: &ParsedPattern) -> Result<()> {
         "content": &pattern.content,
         "milestones": &pattern.milestones,
         "current_milestone": &pattern.current_milestone,
+        "blocked_by": &pattern.blocked_by,
+        "blocks": &pattern.blocks,
+        "target": &pattern.target,
     });
 
     database::insert_event(
@@ -297,8 +341,8 @@ fn insert_pattern(conn: &Connection, pattern: &ParsedPattern) -> Result<()> {
     let refs_str = pattern.references.join(", ");
 
     conn.execute(
-        "INSERT INTO patterns (id, title, layer, status, created, tags, refs, purpose, file_path, current_milestone)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO patterns (id, title, layer, status, created, tags, refs, purpose, file_path, current_milestone, target)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         rusqlite::params![
             &pattern.id,
             &pattern.title,
@@ -310,6 +354,7 @@ fn insert_pattern(conn: &Connection, pattern: &ParsedPattern) -> Result<()> {
             &pattern.purpose,
             &pattern.file_path,
             &pattern.current_milestone,
+            &pattern.target,
         ],
     )?;
 
@@ -338,6 +383,14 @@ fn insert_pattern(conn: &Connection, pattern: &ParsedPattern) -> Result<()> {
                 &milestone.name,
                 &milestone.status,
             ],
+        )?;
+    }
+
+    // 6. Insert spec dependencies (blocked_by relationships)
+    for dep in &pattern.blocked_by {
+        conn.execute(
+            "INSERT OR IGNORE INTO spec_deps (spec_id, depends_on) VALUES (?1, ?2)",
+            rusqlite::params![&pattern.id, dep],
         )?;
     }
 
@@ -470,6 +523,7 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
             conn.execute("DELETE FROM patterns WHERE id = ?1", [db_id])?;
             conn.execute("DELETE FROM pattern_fts WHERE id = ?1", [db_id])?;
             conn.execute("DELETE FROM milestones WHERE spec_id = ?1", [db_id])?;
+            conn.execute("DELETE FROM spec_deps WHERE spec_id = ?1", [db_id])?;
             conn.execute(
                 "DELETE FROM eventlog WHERE source_id = ?1 AND event_type LIKE 'pattern.%'",
                 [db_id],
@@ -532,5 +586,40 @@ Some content here.
         );
         assert_eq!(pattern.tags, vec!["rust", "testing"]);
         assert_eq!(pattern.references, vec!["other-pattern"]);
+    }
+
+    #[test]
+    fn test_parse_spec_dependencies() {
+        let content = r#"---
+type: feat
+id: cli-reorganization
+status: ready
+target: v0.12.0
+blocked_by:
+  - system-introspection
+  - scrape-layer-unify
+blocks:
+  - science-commands
+related:
+  - mother-v2
+---
+
+# feat: CLI Reorganization
+
+Some spec content.
+"#;
+        let temp_dir = tempfile::tempdir().unwrap();
+        let file_path = temp_dir.path().join("cli-reorganization.md");
+        std::fs::write(&file_path, content).unwrap();
+
+        let pattern = parse_pattern_file(&file_path).unwrap();
+        assert_eq!(pattern.id, "cli-reorganization");
+        assert_eq!(pattern.status, Some("ready".to_string()));
+        assert_eq!(pattern.target, Some("v0.12.0".to_string()));
+        assert_eq!(
+            pattern.blocked_by,
+            vec!["system-introspection", "scrape-layer-unify"]
+        );
+        assert_eq!(pattern.blocks, vec!["science-commands"]);
     }
 }
