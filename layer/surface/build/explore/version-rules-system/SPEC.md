@@ -1,10 +1,10 @@
 ---
 type: explore
 id: version-rules-system
-status: draft
+status: complete
 created: 2026-02-05
 beliefs:
-  - milestones-in-specs
+- milestones-in-specs
 ---
 
 # explore: Version as Derived Output
