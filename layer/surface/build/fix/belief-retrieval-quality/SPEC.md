@@ -36,41 +36,90 @@ Three issues:
 
 3. **file→co-change regresses -5.8pp** — exceeds 5pp budget by 0.8pp. Beliefs take RRF slots from temporal results. Borderline but consistent.
 
-## Root Cause Analysis (Do First)
+## Root Cause: Structural RRF Disadvantage (2026-02-05)
 
-Before fixing anything, do error analysis per Ng methodology:
+**The fundamental problem:** Beliefs can only appear in ONE oracle (BeliefOracle). Code results appear in 2-4 oracles (lexical + temporal + semantic + dependency). RRF sums scores across oracles, so beliefs are structurally capped.
 
-### Step 1: Categorize self-retrieval misses
+```
+RRF score = Σ 1/(60 + rank_i) for each oracle i containing document d
 
-For the 21.3% of beliefs NOT found in top-10:
-- Are they short statements (low FTS5 signal)?
-- Are they generic (match too many documents)?
-- Are they recent (not yet embedded)?
+Belief at rank 1 in BeliefOracle only:  1/(60+1) = 0.016
+Code file at rank 1 in temporal + rank 23 in lexical: 1/61 + 1/83 = 0.028
+Code file appearing in 3 oracles: 0.03 - 0.06
+```
 
-### Step 2: Categorize co-retrieval failures
+Beliefs can never outscore multi-oracle code results.
 
-For the 78.6% where belief is present but code isn't (57.2% of queries):
-- How many reached files does the belief have? (many = harder)
-- Are the reached files being retrieved by other oracles but deduped away?
-- Are the reached files not in any oracle's results at all?
+### Step 1: Self-retrieval misses (10/47 = 21.3%)
 
-### Step 3: RRF slot analysis
+**Not** caused by statement length, recency, or embedding quality. Caused by **lexical term overlap with code**.
 
-For the file→co-change regression:
-- How many belief results appear in a typical temporal query?
-- Are they displacing the 10th result or the 3rd result?
-- Would capping belief results to K=3 fix the regression?
+The 10 missed beliefs have statements containing terms that heavily match code files:
+- `eventlog-is-infrastructure` — "eventlog" matches `eventlog.rs` functions (106 code_fts hits)
+- `dead-code-requires-decision` — "code" matches recode/scrape files
+- `self-healing-invariants` — "exists", "failed", "guards" match code
+- `investigate-before-delete` — "delete", "trace" match code
+- `compose-over-build` — "tools", "systems" match code + commits
+- `layer-is-project-knowledge` — "patina", "project" match code heavily
+- `error-analysis-over-architecture` — "complexity", "failure" match code
+- `measure-the-measurement` — "metric", "measurement" match code
+- `spec-needs-code-verification` — "implementation", "static" match code
+- `system-owns-format` — appears at rank 10 (borderline miss)
+- `versioning-inference` — "config", "upstream" match code
 
-## Potential Fixes (Prioritize After Error Analysis)
+These terms generate 100+ code_fts + commits_fts + pattern_fts matches, filling all 10 slots with code results scoring 0.016-0.060. The belief at 0.016 gets pushed out.
 
-- **RRF score calibration** — BeliefOracle scores may not be calibrated to compete with temporal/semantic scores
-- **Result count limits** — cap BeliefOracle to N results per query to limit RRF slot consumption
-- **Intent-based routing** — suppress beliefs for clearly-structural queries (file paths, function signatures)
-- **Belief score boosting** — when query semantically matches a belief, boost its RRF weight
+### Step 2: Co-retrieval failures (78.6% belief present, 21.4% co-retrieval)
+
+When the belief IS present (78.6% of queries), its reached code files rarely appear (only 21.4% co-retrieval). Example:
+
+```
+project-config-in-git:  belief ✓ at rank 5, but 1/19 reached files in top-10
+read-code-before-write: belief ✓ at rank 4, but 0/18 reached files in top-10
+cli-unifies-code-separates: belief ✓ at rank 6, but 0/17 reached files in top-10
+```
+
+**Root cause:** The code files a belief applies to aren't the ones that lexically match the belief's statement. "Project configuration should be tracked in git" reaches `src/indexer/database.rs`, but searching that text finds different files that match "configuration" and "git" via lexical/temporal oracles.
+
+### Step 3: file→co-change regression (-5.8pp)
+
+**Beliefs don't appear in file-path queries at all.** Tested `src/main.rs`, `src/retrieval/engine.rs`, `src/commands/scrape/mod.rs` — zero belief results.
+
+The regression comes from RRF noise: with 5 oracles vs 4, each oracle contributes ~2 results. In a 10-result output, the marginal temporal result (rank 4-5) gets displaced by persona/lexical noise that wouldn't be there without the extra oracle competing for slots.
+
+## Proposed Fixes (Ordered by Impact)
+
+### Fix 1: Belief score multiplier in RRF (high impact, low risk)
+
+Multiply BeliefOracle's RRF contribution by a weight to compensate for single-oracle disadvantage. The intent-weight system already supports this:
+
+```rust
+// In IntentWeights
+fn weight_for(&self, source: &str) -> f32 {
+    match source {
+        "belief" => 3.0,  // compensate for no multi-oracle boost
+        _ => 1.0,
+    }
+}
+```
+
+A 3x multiplier would make belief rank 1 score `3 * 0.016 = 0.048`, competitive with 2-oracle code results.
+
+### Fix 2: Add beliefs to LexicalOracle index (high impact, medium effort)
+
+Index belief statements into `pattern_fts` (or a new table the lexical oracle searches). Then beliefs get both BeliefOracle + LexicalOracle scores = natural multi-oracle boost. No RRF weight hacking needed.
+
+### Fix 3: Intent-based belief suppression for structural queries (medium impact)
+
+The intent system already detects structural queries (file paths, function signatures). Suppress BeliefOracle for these intents to eliminate the -5.8pp temporal regression. Beliefs only contribute to knowledge/rationale queries.
+
+### Fix 4: Belief-code injection (directly addresses co-retrieval)
+
+When BeliefOracle returns a high-confidence belief, also inject its top-N reached code files as synthetic results. This directly delivers the "principle + code" product claim without relying on other oracles to independently retrieve the reached files.
 
 ## Exit Criteria
 
-- [ ] Error analysis complete for all three issues (categorized, root causes identified)
+- [x] Error analysis complete for all three issues (categorized, root causes identified)
 - [ ] Self-retrieval MRR >= 0.400 (beliefs in top 2-3 on average)
 - [ ] Co-retrieval rate >= 40% (belief + code delivered together)
 - [ ] file→co-change regression within 5pp budget
