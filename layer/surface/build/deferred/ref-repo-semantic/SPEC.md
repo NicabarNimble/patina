@@ -1,7 +1,7 @@
 ---
 type: feat
 id: ref-repo-semantic
-status: in_progress
+status: deferred
 created: 2026-01-07
 updated: 2026-01-29
 related:
