@@ -1,19 +1,18 @@
 ---
 type: feat
 id: scrape-layer-unify
-status: ready
+status: complete
 created: 2026-02-05
+blocks:
+- cli-reorganization
 sessions:
   origin: 20260205-084522
-blocked_by: []
-blocks:
-  - cli-reorganization
 related:
-  - layer/surface/build/feat/system-introspection/SPEC.md
-  - layer/surface/build/feat/mother-v2/SPEC.md
+- layer/surface/build/feat/system-introspection/SPEC.md
+- layer/surface/build/feat/mother-v2/SPEC.md
 beliefs:
-  - simplicity-is-architecture
-  - unix-philosophy
+- simplicity-is-architecture
+- unix-philosophy
 ---
 
 # feat: Unify `scrape layer`
