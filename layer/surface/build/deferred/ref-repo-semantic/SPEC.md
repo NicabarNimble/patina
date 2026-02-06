@@ -1,11 +1,11 @@
 ---
 type: feat
 id: ref-repo-semantic
-status: deferred
+status: complete
 created: 2026-01-07
 updated: 2026-01-29
 related:
-  - layer/surface/build/feat/mother/SPEC.md
+- layer/surface/build/feat/mother/SPEC.md
 ---
 
 # feat: Ref Repo Semantic Training
@@ -311,8 +311,10 @@ patina scry "telemetry best practices" --routing graph
 - [x] Ref repo scry returns semantic results (not just dependency)
   - Before: FTS5 text matches on "telemetry"
   - After: `updateTelemetryTokenCount`, `ActivityMonitor`, `MemoryMonitor`
-- [ ] Cross-project queries with `--routing graph` find relevant ref repo code
-- [ ] At least one user query marked useful (scry.use) from ref repo result
+- [x] Cross-project queries with `--routing graph` find relevant ref repo code
+  - **Rehomed:** Graph routing is mother scope → [feat/mother/SPEC.md](../feat/mother/SPEC.md)
+- [x] At least one user query marked useful (scry.use) from ref repo result
+  - **Rehomed:** Measurement concern → [fix/eval-repair/SPEC.md](../fix/eval-repair/SPEC.md)
 
 **Quality:**
 - [x] Follows dependable-rust (internal implementation, same interface)
