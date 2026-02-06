@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: database-identity
-status: in_progress
+status: deferred
 created: 2026-01-12
 updated: 2026-01-22
 sessions:
