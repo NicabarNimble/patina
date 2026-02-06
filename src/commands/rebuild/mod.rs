@@ -42,7 +42,7 @@ pub fn execute(options: RebuildOptions) -> Result<()> {
         println!("\n🔍 Dry run - would execute:");
         if !options.oxidize_only {
             println!("   • scrape git (if .git/ exists)");
-            println!("   • scrape sessions ({} files)", validation.session_count);
+            println!("   • scrape layer ({} sessions + patterns)", validation.session_count);
             println!("   • scrape code");
         }
         if !options.scrape_only {
@@ -172,10 +172,10 @@ fn run_scrape(validation: &ValidationResult) -> Result<()> {
         println!("{} commits", stats.items_processed);
     }
 
-    // Sessions scrape
-    print!("   • sessions: ");
-    let stats = scrape::sessions::run(false)?;
-    println!("{} events", stats.items_processed);
+    // Layer scrape (patterns + sessions)
+    print!("   • layer: ");
+    let stats = scrape::layer::run(false)?;
+    println!("{} items", stats.items_processed);
 
     // Code scrape
     print!("   • code: ");

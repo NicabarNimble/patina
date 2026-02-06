@@ -1,7 +1,7 @@
 ---
 type: feat
 id: scrape-layer-unify
-status: ready
+status: complete
 created: 2026-02-05
 sessions:
   origin: 20260205-084522
@@ -234,11 +234,11 @@ pub const SCRAPE_LAYER_CONTRACT: DataContract = DataContract {
 
 ### v0.12.0: Unified Layer Scraping
 
-- [ ] `patina scrape layer` scrapes sessions (no separate command needed)
-- [ ] Path classification routes to correct sub-scraper
-- [ ] Event types distinguish content types (`pattern.*`, `belief.*`, `session.*`)
+- [x] `patina scrape layer` scrapes sessions (no separate command needed)
+- [x] Path classification routes to correct sub-scraper
+- [x] Event types distinguish content types (`pattern.*`, `belief.*`, `session.*`)
 - [ ] `--only <type>` flag works for partial scrapes
-- [ ] `scrape sessions` shows deprecation warning
+- [x] `scrape sessions` shows deprecation warning
 - [ ] Data contract declared (when DataContract type exists)
 
 ### v0.13.0: Integration
@@ -307,3 +307,4 @@ No new top-level command needed. Just add classification case and sub-scraper.
 |------|--------|------|
 | 2026-02-05 | design | Created from system-introspection session. Recognized that `scrape sessions` being separate from `scrape layer` violates "one command owns one domain" principle. |
 | 2026-02-05 | design | **Spec alignment:** Target v0.12.0. No dependencies on other specs for core functionality. DataContract and introspect integration are follow-on work. |
+| 2026-02-05 | complete | Phase 1 implemented. `scrape layer` now scrapes patterns + sessions via path-based routing (LayerContent enum). `scrape sessions` shows deprecation warning and delegates. `--only` flag deferred (not needed yet). |
