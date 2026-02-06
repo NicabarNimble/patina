@@ -20,6 +20,8 @@ const FORGE_ID_OFFSET: i64 = 5_000_000_000;
 
 const VECTOR_WEIGHT: f32 = 0.7;
 const TEXT_WEIGHT: f32 = 0.3;
+/// Max reached code files to inject per belief result
+const REACH_INJECT_LIMIT: usize = 3;
 
 /// Cached resources for belief vector search (loaded once, reused)
 struct BeliefCache {
@@ -348,6 +350,28 @@ fn normalize_fts_scores(hits: &mut [BeliefHit]) {
     }
 }
 
+/// Fetch top-N reached code files for a belief, ordered by reach_score
+fn fetch_reached_files(conn: &Connection, belief_id: &str, limit: usize) -> Vec<(String, f32)> {
+    let mut stmt = match conn.prepare(
+        "SELECT file_path, reach_score FROM belief_code_reach
+         WHERE belief_id = ?1
+         ORDER BY reach_score DESC
+         LIMIT ?2",
+    ) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+
+    stmt.query_map(rusqlite::params![belief_id, limit], |row| {
+        let path: String = row.get(0)?;
+        let score: f64 = row.get(1)?;
+        Ok((path, score as f32))
+    })
+    .ok()
+    .map(|rows| rows.filter_map(|r| r.ok()).collect())
+    .unwrap_or_default()
+}
+
 impl Oracle for BeliefOracle {
     fn name(&self) -> &'static str {
         "belief"
@@ -385,27 +409,59 @@ impl Oracle for BeliefOracle {
         });
         results.truncate(limit);
 
-        // Convert to OracleResult
+        // Convert to OracleResult: beliefs + their reached code files
         let source = self.name();
-        Ok(results
-            .into_iter()
-            .map(|hit| {
-                let score = hit.merged_score();
-                OracleResult {
-                    doc_id: format!("belief:{}", hit.belief_id),
-                    content: hit.content,
-                    source,
-                    score,
-                    score_type: "hybrid_belief",
-                    metadata: OracleMetadata {
-                        file_path: Some(hit.file_path),
-                        timestamp: None,
-                        event_type: Some("belief".to_string()),
-                        matches: None,
-                    },
+        let mut oracle_results = Vec::new();
+
+        // Open DB once for all reach lookups
+        let conn = Connection::open(&self.db_path).ok();
+
+        for hit in &results {
+            let score = hit.merged_score();
+
+            // Add the belief itself
+            oracle_results.push(OracleResult {
+                doc_id: format!("belief:{}", hit.belief_id),
+                content: hit.content.clone(),
+                source,
+                score,
+                score_type: "hybrid_belief",
+                metadata: OracleMetadata {
+                    file_path: Some(hit.file_path.clone()),
+                    timestamp: None,
+                    event_type: Some("belief".to_string()),
+                    matches: None,
+                },
+            });
+
+            // Inject reached code files — delivers "principle + code" together
+            if let Some(ref conn) = conn {
+                let reached = fetch_reached_files(conn, &hit.belief_id, REACH_INJECT_LIMIT);
+                for (file_path, reach_score) in reached {
+                    // Discount: belief score * reach_score (0-1)
+                    let injected_score = score * reach_score;
+                    oracle_results.push(OracleResult {
+                        doc_id: file_path.clone(),
+                        content: format!(
+                            "Reached by belief:{} — {}",
+                            hit.belief_id,
+                            hit.content.chars().take(120).collect::<String>()
+                        ),
+                        source,
+                        score: injected_score,
+                        score_type: "belief_reach",
+                        metadata: OracleMetadata {
+                            file_path: Some(file_path),
+                            timestamp: None,
+                            event_type: Some("belief_reach".to_string()),
+                            matches: None,
+                        },
+                    });
                 }
-            })
-            .collect())
+            }
+        }
+
+        Ok(oracle_results)
     }
 
     fn is_available(&self) -> bool {
