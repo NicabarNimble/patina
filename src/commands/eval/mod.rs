@@ -368,9 +368,9 @@ fn eval_semantic_co_retrieval(
     let mut total_precision_10 = 0.0;
     let mut num_queries = 0;
 
-    // Sample up to 20 files
+    // Sample up to 20 files, seeded for deterministic eval
     let sample_size = valid_files.len().min(20);
-    let mut rng = fastrand::Rng::new();
+    let mut rng = fastrand::Rng::with_seed(42);
 
     for i in 0..sample_size {
         let idx = if sample_size < valid_files.len() {
@@ -530,12 +530,13 @@ fn eval_temporal_file(
         cochanges.entry(file_b).or_default().insert(file_a);
     }
 
-    // Files with 2+ co-change partners
-    let test_files: Vec<_> = cochanges
+    // Files with 2+ co-change partners, sorted for deterministic eval
+    let mut test_files: Vec<_> = cochanges
         .iter()
         .filter(|(_, partners)| partners.len() >= 2)
-        .take(20)
         .collect();
+    test_files.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(b.0)));
+    test_files.truncate(20);
 
     println!(
         "Testing {} files with known co-change partners",
