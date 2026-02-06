@@ -530,13 +530,13 @@ enum ScrapeCommands {
         #[arg(long)]
         full: bool,
     },
-    /// Extract sessions, goals, and observations from session files
+    /// Extract sessions (deprecated — use `scrape layer` instead)
     Sessions {
         /// Full rebuild (ignore incremental)
         #[arg(long)]
         full: bool,
     },
-    /// Extract patterns from layer/core and layer/surface markdown files
+    /// Scrape all layer content: patterns, sessions, specs
     Layer {
         /// Full rebuild (ignore incremental)
         #[arg(long)]

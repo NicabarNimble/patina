@@ -1,9 +1,15 @@
-//! Layer pattern scraper - extracts patterns from layer/core and layer/surface markdown files
+//! Unified layer scraper — one command owns all of layer/
 //!
-//! Uses unified eventlog pattern:
-//! - Inserts pattern.core, pattern.surface events into eventlog table
-//! - Creates materialized views (patterns) from eventlog
-//! - Extracts milestones from specs for version linkage
+//! Routes layer/**/*.md to the appropriate sub-scraper based on path:
+//! - layer/sessions/*.md        → SessionScraper (sessions.rs)
+//! - layer/core/*.md            → PatternScraper (this file)
+//! - layer/surface/*.md         → PatternScraper (this file)
+//! - layer/dust/*.md            → PatternScraper (this file)
+//!
+//! Beliefs (layer/surface/epistemic/beliefs/) are handled by the separate
+//! beliefs scraper — they have their own embedding pipeline.
+
+pub mod sessions;
 
 use anyhow::Result;
 use regex::Regex;
@@ -16,8 +22,28 @@ use std::time::Instant;
 use super::database;
 use super::ScrapeStats;
 
-const CORE_DIR: &str = "layer/core";
-const SURFACE_DIR: &str = "layer/surface";
+const LAYER_DIR: &str = "layer";
+
+/// Content types within the layer directory
+#[derive(Debug, PartialEq)]
+enum LayerContent {
+    Pattern,
+    Session,
+    Belief, // handled separately — skip in layer router
+}
+
+/// Classify a layer file path to its content type
+fn classify_layer_path(path: &Path) -> LayerContent {
+    let path_str = path.to_string_lossy();
+
+    if path_str.contains("sessions/") {
+        LayerContent::Session
+    } else if path_str.contains("epistemic/beliefs/") {
+        LayerContent::Belief
+    } else {
+        LayerContent::Pattern
+    }
+}
 
 /// Milestone from spec frontmatter
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -437,16 +463,70 @@ fn collect_md_files(dir: &Path, recursive: bool) -> Vec<std::path::PathBuf> {
     files
 }
 
-/// Main entry point for layer pattern scraping
+/// Unified entry point: scrape all of layer/ (patterns + sessions)
+///
+/// Walks layer/**/*.md, classifies each file, and routes to the
+/// appropriate sub-scraper. Beliefs are skipped (separate pipeline).
 pub fn run(full: bool) -> Result<ScrapeStats> {
     let start = Instant::now();
     let db_path = Path::new(database::PATINA_DB);
+    let layer_dir = Path::new(LAYER_DIR);
+
+    if !layer_dir.exists() {
+        anyhow::bail!("Layer directory not found: {}", LAYER_DIR);
+    }
 
     // Initialize unified database with eventlog
     let conn = database::initialize(db_path)?;
 
+    // Collect all markdown files from layer/ and classify
+    let all_files = collect_md_files(layer_dir, true);
+
+    let mut pattern_files = Vec::new();
+    let mut session_files = Vec::new();
+
+    for path in all_files {
+        match classify_layer_path(&path) {
+            LayerContent::Pattern => pattern_files.push(path),
+            LayerContent::Session => session_files.push(path),
+            LayerContent::Belief => {} // handled by beliefs scraper
+        }
+    }
+
+    // --- Patterns ---
+    let pattern_count = scrape_patterns(&conn, &pattern_files, full)?;
+
+    // --- Sessions ---
+    let (session_count, session_skipped) =
+        sessions::scrape_sessions(&conn, &session_files, full)?;
+
+    println!(
+        "  {} sessions ({} skipped)",
+        session_count, session_skipped
+    );
+
+    let total = pattern_count + session_count;
+
+    let elapsed = start.elapsed();
+    let db_size = std::fs::metadata(db_path)
+        .map(|m| m.len() / 1024)
+        .unwrap_or(0);
+
+    Ok(ScrapeStats {
+        items_processed: total,
+        time_elapsed: elapsed,
+        database_size_kb: db_size,
+    })
+}
+
+/// Scrape pattern files (core, surface, dust). Returns count of processed patterns.
+fn scrape_patterns(
+    conn: &Connection,
+    pattern_files: &[std::path::PathBuf],
+    full: bool,
+) -> Result<usize> {
     // Create materialized views for pattern events
-    create_materialized_views(&conn)?;
+    create_materialized_views(conn)?;
 
     // Get list of already processed patterns for incremental
     let processed: std::collections::HashSet<String> = if full {
@@ -458,27 +538,19 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     };
 
     if full {
-        println!("📜 Full layer pattern scrape...");
+        println!("📜 Full layer scrape...");
     } else {
         println!(
-            "📜 Incremental layer pattern scrape ({} already processed)...",
+            "📜 Incremental layer scrape ({} already processed)...",
             processed.len()
         );
     }
-
-    // Collect files from core and surface directories
-    let core_path = Path::new(CORE_DIR);
-    let surface_path = Path::new(SURFACE_DIR);
-
-    let mut pattern_files = Vec::new();
-    pattern_files.extend(collect_md_files(core_path, false));
-    pattern_files.extend(collect_md_files(surface_path, true)); // Recursive for surface/build
 
     let mut processed_count = 0;
     let mut skipped = 0;
     let mut current_file_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    for path in &pattern_files {
+    for path in pattern_files {
         match parse_pattern_file(path) {
             Ok(pattern) => {
                 // Track the frontmatter ID (not file stem) for pruning
@@ -490,7 +562,7 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
                     continue;
                 }
 
-                if let Err(e) = insert_pattern(&conn, &pattern) {
+                if let Err(e) = insert_pattern(conn, &pattern) {
                     eprintln!("  Warning: failed to insert {}: {}", pattern.id, e);
                 } else {
                     processed_count += 1;
@@ -503,7 +575,7 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     }
 
     println!(
-        "  Processed {} patterns ({} skipped)",
+        "  {} patterns ({} skipped)",
         processed_count, skipped
     );
 
@@ -536,16 +608,7 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
         println!("  Pruned {} stale entries", pruned);
     }
 
-    let elapsed = start.elapsed();
-    let db_size = std::fs::metadata(db_path)
-        .map(|m| m.len() / 1024)
-        .unwrap_or(0);
-
-    Ok(ScrapeStats {
-        items_processed: processed_count,
-        time_elapsed: elapsed,
-        database_size_kb: db_size,
-    })
+    Ok(processed_count)
 }
 
 #[cfg(test)]
@@ -586,6 +649,34 @@ Some content here.
         );
         assert_eq!(pattern.tags, vec!["rust", "testing"]);
         assert_eq!(pattern.references, vec!["other-pattern"]);
+    }
+
+    #[test]
+    fn test_classify_layer_path() {
+        use std::path::PathBuf;
+
+        assert_eq!(
+            classify_layer_path(&PathBuf::from("layer/sessions/20260205.md")),
+            LayerContent::Session
+        );
+        assert_eq!(
+            classify_layer_path(&PathBuf::from("layer/core/unix-philosophy.md")),
+            LayerContent::Pattern
+        );
+        assert_eq!(
+            classify_layer_path(&PathBuf::from("layer/surface/build/feat/foo/SPEC.md")),
+            LayerContent::Pattern
+        );
+        assert_eq!(
+            classify_layer_path(&PathBuf::from(
+                "layer/surface/epistemic/beliefs/my-belief.md"
+            )),
+            LayerContent::Belief
+        );
+        assert_eq!(
+            classify_layer_path(&PathBuf::from("layer/dust/old-pattern.md")),
+            LayerContent::Pattern
+        );
     }
 
     #[test]
