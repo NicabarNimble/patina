@@ -1,18 +1,18 @@
 ---
 type: refactor
 id: database-identity
-status: deferred
+status: complete
 created: 2026-01-12
 updated: 2026-01-22
 sessions:
   origin: 20260112-061237
   work:
-    - 20260112-093636
-    - 20260121-102727
-    - 20260122-154954
+  - 20260112-093636
+  - 20260121-102727
+  - 20260122-154954
 related:
-  - layer/core/dependable-rust.md
-  - layer/core/unix-philosophy.md
+- layer/core/dependable-rust.md
+- layer/core/unix-philosophy.md
 ---
 
 # refactor: Database Identity (UIDs for Federation)
