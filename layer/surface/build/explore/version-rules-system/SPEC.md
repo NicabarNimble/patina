@@ -184,5 +184,5 @@ Normal workflow is just `patina spec status <id> complete`.
 - [x] Decide: per-spec vs batched releases → **per-spec** (spec = milestone)
 - [x] Decide: fate of `target` field → **remove** (git is history)
 - [x] Decide: fate of `milestones` array → **remove** (spec is the milestone)
-- [ ] Prototype: `patina spec status <id> complete` auto-bumps version + tags
-- [ ] Test on real workflow for one release cycle
+- [x] Prototype: `patina spec status <id> complete` auto-bumps version + tags
+- [x] Test on real workflow for one release cycle
