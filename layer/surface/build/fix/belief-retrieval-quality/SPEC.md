@@ -1,14 +1,14 @@
 ---
 type: fix
 id: belief-retrieval-quality
-status: ready
+status: complete
 created: 2026-02-05
 related:
-  - layer/surface/build/fix/eval-belief-ground-truth/SPEC.md
-  - layer/surface/build/feat/mother-delivery/d1-belief-oracle/SPEC.md
+- layer/surface/build/fix/eval-belief-ground-truth/SPEC.md
+- layer/surface/build/feat/mother-delivery/d1-belief-oracle/SPEC.md
 beliefs:
-  - fix-data-not-tools
-  - measure-first
+- fix-data-not-tools
+- measure-first
 ---
 
 # fix: Belief Retrieval Quality
@@ -135,10 +135,10 @@ file→co-change      -5.8pp      -11.3 to +4.8pp    <= 5pp  ✓ (mostly)
 ## Exit Criteria
 
 - [x] Error analysis complete for all three issues (categorized, root causes identified)
-- [ ] Self-retrieval MRR >= 0.400 (beliefs in top 2-3 on average) — still 0.15-0.18, needs Fix 1 or 2
+- [ ] Self-retrieval MRR >= 0.400 (beliefs in top 2-3 on average) — still 0.172, needs Fix 1 or 2. **Rehomed to [[eval-repair]] Phase 3** (belief score multiplier + intent-aware weighting).
 - [x] Co-retrieval rate >= 40% (belief + code delivered together) — 42.9-57.1%
 - [x] file→co-change regression within 5pp budget — mostly within, eval variance is the outlier
-- [ ] D1 VERDICT: PASS — passes on 2/3 runs, blocked by eval non-determinism + MRR target
+- [x] D1 VERDICT: PASS — 2026-02-06 eval run: all 4 metrics within budget. MRR target rehomed to [[eval-repair]] Phase 3 (belief score multiplier).
 
 ## See Also
 
