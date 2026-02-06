@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: spec-system
-status: in_progress
+status: deferred
 created: 2026-01-22
 updated: 2026-01-26
 sessions:
@@ -304,6 +304,7 @@ Add `patina report specs` to parse frontmatter and show:
 | 2026-01-26 | in_progress | Added milestone format for version linkage |
 | 2026-01-27 | in_progress | Added: GitHub release creation, stale index handling, spec archival re-scrape |
 | 2026-01-27 | in_progress | Added: Forge sync — specs as source of truth, GitHub as read-only window |
+| 2026-02-06 | deferred | Spec format defined and in use (2/13 criteria). Version tooling superseded by auto-release in [[spec-as-work-item]]. Forge sync never started — create separate spec when GitHub integration is prioritized. "No specs with status contradicting reality" rehomed to [[spec-drift-detection]] and [[doctor-dev]]. |
 
 ---
 

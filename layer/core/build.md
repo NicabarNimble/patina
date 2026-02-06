@@ -26,10 +26,14 @@
 0.9.3  ✓ Fix: session 0.9.2 hardening
 0.9.4  ✓ Fix: spec archive command, belief verification
 0.10.0 ✓ Epistemic layer complete (E4-E4.6c)
-0.11.0 - Mother delivery + federation
-0.12.0 - Dynamic ONNX loading
-0.13.0 - WASM grammars
-0.14.0 - GitHub releases + Homebrew
+0.11.0 ✓ Mother delivery D0-D5 (unified search, BeliefOracle, three-layer, two-step, naming)
+0.11.1 ✓ Fix: canonical SpecFrontmatter + auto-release prototype
+0.11.2 ✓ Fix: spec list filter (status IS NOT NULL)
+0.12.0 ✓ Feat: unify scrape layer (patterns + sessions)
+0.13.0 ✓ Feat: spec-as-work-item (ready queue, blocked view, auto-release)
+0.14.0 ✓ Feat: mother delivery A/B eval PASS
+0.14.1 ✓ Fix: belief retrieval quality (co-retrieval 50%, D1 PASS)
+  ...  - Next: eval-repair, spec-tree-and-cycles, doctor-dev, security-hardening
 1.0.0  - All pillars complete
 ```
 
@@ -128,13 +132,14 @@ Run regularly to catch regressions.
 - [feat/spec-drift-detection/SPEC.md](../surface/build/feat/spec-drift-detection/SPEC.md) - **Building:** Detect stale specs before LLM reads them (temporal drift, status contradiction, assertions)
 - [feat/surface-layer/SPEC.md](../surface/build/feat/surface-layer/SPEC.md) - **Design:** Distillation layer with success metrics, `patina surface` command
 
-**In Progress:**
-- [feat/ref-repo-semantic/SPEC.md](../surface/build/feat/ref-repo-semantic/SPEC.md) - **Phase 1-2 done:** Commit-based training working
-- [refactor/database-identity/SPEC.md](../surface/build/refactor/database-identity/SPEC.md) - **Phase 1 done:** UIDs everywhere, Phase 2-3 remain
+**Ready Queue:**
+- [fix/eval-repair/SPEC.md](../surface/build/fix/eval-repair/SPEC.md) - **Ready:** Fix feedback loop, NL eval, fusion quality, product metric
+- [fix/spec-tree-and-cycles/SPEC.md](../surface/build/fix/spec-tree-and-cycles/SPEC.md) - **Ready:** Dependency tree view + cycle detection for ready queue
+- [refactor/security-hardening/SPEC.md](../surface/build/refactor/security-hardening/SPEC.md) - **Ready:** Execution bounding (22/24 done)
 
-**Refactors:**
-- [refactor/spec-system/SPEC.md](../surface/build/refactor/spec-system/SPEC.md) - **In Progress:** New folder-based spec format
-- [refactor/security-hardening/SPEC.md](../surface/build/refactor/security-hardening/SPEC.md) - **Ready:** HTTP daemon auth, file permissions, model integrity (14 findings, 3 phases)
+**Deferred:**
+- [refactor/spec-system/SPEC.md](../surface/build/refactor/spec-system/SPEC.md) - **Deferred:** Format done, forge sync not started
+- feat/ref-repo-semantic, refactor/database-identity — **Deferred:** Partial work, blocked on mother
 
 **Exploration:**
 - [explore/anti-slop/SPEC.md](../surface/build/explore/anti-slop/SPEC.md) - **Active:** Signal over noise, linkage as quality measure
@@ -144,27 +149,25 @@ Run regularly to catch regressions.
 
 ## Current Focus
 
-### Next: Mother Delivery + Federation (v0.11.0)
+### Mother Delivery — COMPLETE (v0.11.0-v0.14.1)
 
-**Spec:** [feat/mother-delivery/SPEC.md](../surface/build/feat/mother-delivery/SPEC.md)
+D0-D5 shipped. A/B eval: **PASS** (2026-02-06). Belief co-retrieval 50%, structural regression
+within budget. Stretch and federation items rehomed to parent [[mother]] spec.
 
-**Epistemic layer is complete** (v0.10.0). The delivery layer problem (intent→principle matching)
-identified during the A/B eval is a mother-scope concern. Ref repo research ([[openclaw/openclaw]],
-[[steveyegge/gastown]]) informed the delivery design — mandatory recall, two-step retrieval,
-ephemeral injection, all adapted for adapter-agnostic MCP delivery.
+### Next: Eval Repair + Spec Integrity
 
-**6 design changes (D0-D5):**
-- D0: Unified search — QueryEngine as default CLI path (foundation)
-- D1: Beliefs as default search channel (BeliefOracle in every query) — highest impact
-- D2: Context as dynamic briefing (beliefs + recall directive in MCP response)
-- D3: Two-step retrieval (snippets by default, detail on demand)
-- D4: Routing simplified to graph-only (daemon = transport, "All" removed)
-- ~~D5: Mother naming cleanup~~ ✅ Complete (verified 2026-02-03)
+**Priority 1: [fix/eval-repair](../surface/build/fix/eval-repair/SPEC.md)** — Feedback loop broken (0%
+precision), no NL query eval, fusion dilutes best oracle. Andrew Ng methodology: fix the instrument,
+then measure the product.
 
-**Measurement target:** Re-run task-oriented A/B eval, target delta ≥ 0.0 (stretch: +0.5).
+**Priority 2: [fix/spec-tree-and-cycles](../surface/build/fix/spec-tree-and-cycles/SPEC.md)** — Ready
+queue works but has no cycle detection (silent deadlock) and no tree view (can't debug blockers).
 
-**Priority 2: Spec drift detection** — Belief `stale-context-is-hostile-context` identifies the
-problem. Spec exists at `feat/spec-drift-detection/SPEC.md`.
+**Priority 3: [feat/doctor-dev](../surface/build/feat/doctor-dev/SPEC.md)** — Beads "deacon patrol"
+pattern. Full state review at session boundaries, catches spec drift and status contradictions.
+
+**Priority 4: Spec drift detection** — Belief `stale-context-is-hostile-context` identifies the
+problem. Spec exists at `feat/spec-drift-detection/SPEC.md`. Doctor --dev consumes its checks.
 
 ### Epistemic Layer — COMPLETE (v0.10.0, archived)
 

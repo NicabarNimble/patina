@@ -236,13 +236,12 @@ pub const SCRAPE_LAYER_CONTRACT: DataContract = DataContract {
 - [x] `patina scrape layer` scrapes sessions (no separate command needed)
 - [x] Path classification routes to correct sub-scraper
 - [x] Event types distinguish content types (`pattern.*`, `belief.*`, `session.*`)
-- [ ] `--only <type>` flag works for partial scrapes
 - [x] `scrape sessions` shows deprecation warning
-- [ ] Data contract declared (when DataContract type exists)
 
-### v0.13.0: Integration
-
-- [ ] `patina introspect scrape-layer` shows all sources/sinks (after introspect exists)
+**Rehomed (2026-02-06):**
+- `--only <type>` flag → deferred (not needed yet, create fix spec when needed)
+- Data contract declaration → blocked by [[system-introspection]] (defines DataContract type)
+- `patina introspect scrape-layer` → blocked by [[system-introspection]]
 
 ---
 
