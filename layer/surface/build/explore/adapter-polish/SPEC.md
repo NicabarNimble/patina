@@ -24,12 +24,29 @@ Patina's scaffold should be the smallest possible surface that connects the LLM 
 4. **Version tracking** — adapter manifest tracks scaffold version, CLI version, template checksums
 5. **Clean refresh** — `adapter refresh` removes obsolete files, preserves user customizations
 
+## Upstream Change Tracking
+
+From ref-repo-health Phase 4: how do we track upstream adapter changes?
+
+We track claude-code issues via forge but don't surface changes relevant to our adapters. Concept: `adapter_observations` table for noting breaking changes, new features, deprecations discovered during sessions.
+
+```bash
+patina adapter observe claude "Skills now support frontmatter schema" \
+    --source "https://github.com/anthropics/claude-code/issues/17000" \
+    --impact "Should migrate /session-* to Skills format"
+
+patina adapter changes claude --since 30d
+```
+
+Open: is this a table in patina.db, a layer/ document, or just session notes with tags?
+
 ## Open Questions
 
 - How does this interact with the skills system evolution?
 - Is `.patina/context/` the right location or should it stay adapter-specific?
 - What's the minimum viable scaffold per adapter?
 - Should adapter parity (Claude/Gemini/OpenCode) be a goal or should we focus on Claude-first?
+- How should upstream adapter changes be tracked and surfaced?
 
 ## References
 
