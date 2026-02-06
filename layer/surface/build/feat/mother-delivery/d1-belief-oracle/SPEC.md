@@ -184,7 +184,7 @@ During graph routing, the BeliefOracle runs against each related project's belie
 - [x] BeliefOracle Channel B queries existing `belief_fts` table (no new table needed) ✅ 1c81d112
 - [x] Intent boost — Rationale and Definition intents boost belief oracle weight ✅ 1c81d112 (Rationale 1.5x, Definition 1.5x)
 - [x] Over-fetch validated — confirm beliefs surface reliably with ~48 beliefs in index of thousands (fallback: dedicated belief USearch index) ✅ 1c81d112 (min(limit*50, index_size/2), beliefs surface at positions 2-10)
-- [ ] **Measured:** Re-run task-oriented A/B eval. Target: delta >= 0.0 (beliefs no longer hurt). Stretch: delta >= +0.5
+- [x] **Measured:** Re-run task-oriented A/B eval. Target: delta >= 0.0. D1 VERDICT: PASS (2026-02-06: +0.172 MRR, +50.0% co-retrieval, +0.8pp code, -1.7pp co-change — all within budget). Stretch (+0.5) rehomed to [[eval-repair]].
 
 ---
 
