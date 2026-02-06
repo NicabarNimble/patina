@@ -1,23 +1,21 @@
 ---
 type: feat
 id: spec-as-work-item
-status: active
+status: complete
 created: 2026-02-05
 updated: 2026-02-05
 sessions:
   origin: 20260205-102402
   updated: 20260205-130049
-blocked_by: []
-blocks: []
 related:
-  - layer/surface/build/explore/beads-patterns/SPEC.md
-  - layer/surface/build/feat/patina-platform/SPEC.md
+- layer/surface/build/explore/beads-patterns/SPEC.md
+- layer/surface/build/feat/patina-platform/SPEC.md
 beliefs:
-  - simplicity-is-architecture
-  - argue-every-box
-  - unix-philosophy
+- simplicity-is-architecture
+- argue-every-box
+- unix-philosophy
 references:
-  - "steveyegge/beads - ARCHITECTURE.md, MOLECULES.md, CLI_REFERENCE.md"
+- steveyegge/beads - ARCHITECTURE.md, MOLECULES.md, CLI_REFERENCE.md
 ---
 
 # feat: Spec as Work Item
@@ -368,16 +366,11 @@ pub struct PluginSpecTracker { plugin: WasmPlugin }
 
 ### v0.13.0: Polish
 
-- [ ] `patina spec tree <id>` shows dependency graph
-- [ ] Cycle detection in `patina doctor`
 - [x] `patina spec list` with filters (--status, --target)
 
-### Future: Plugin Extraction
-
-- [ ] Extract to `patina-spec` crate
-- [ ] Define WIT interface matching `SpecTracker` trait
-- [ ] Compile to WASM plugin
-- [ ] Swap implementation
+**Rehomed (2026-02-06):**
+- `patina spec tree` + cycle detection → [[fix/spec-tree-and-cycles/SPEC.md]]
+- Plugin extraction (crate, WIT, WASM) → stays in [[feat/patina-platform/SPEC.md]] scope
 
 ---
 
@@ -391,22 +384,16 @@ pub struct PluginSpecTracker { plugin: WasmPlugin }
 
 ---
 
-## Open Questions
+## Open Questions (Resolved 2026-02-06)
 
 1. **Should explore docs have dependencies?**
-   - Explores are research, not deliverables
-   - Maybe only `feat/` and `refactor/` get work-item treatment
-   - Current: parse all, filter in query
+   → **No.** Explores are research, not deliverables. Parse all, filter in query. Only `feat/` and `refactor/` get work-item treatment.
 
 2. **Version targets vs dependencies?**
-   - Current: `target: v0.12.0` is aspiration
-   - Dependencies are reality (what actually blocks)
-   - Keep both — target for planning, deps for execution
+   → **Resolved by [[spec-is-milestone]] belief.** Target fields removed. Spec type determines version impact. Dependencies control execution order. No dual system.
 
 3. **Command rename later?**
-   - `patina spec` works for now
-   - Could become `patina work` or something else
-   - Functionality matters more than naming
+   → **Deferred.** `patina spec` works. Functionality > naming.
 
 ---
 
