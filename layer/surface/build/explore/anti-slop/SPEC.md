@@ -8,7 +8,7 @@ sessions:
   origin: 20260123-050814
   work: []
 related:
-  - layer/surface/build/spec-epistemic-layer.md
+  - layer/surface/build/feat/spec-drift-detection/SPEC.md
   - layer/surface/epistemic/beliefs/
 ---
 
