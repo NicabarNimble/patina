@@ -7,7 +7,8 @@
       "layer/core/unix-philosophy.md"
     ],
     "category": "knowledge",
-    "source": "session-20260204-125850"
+    "source": "session-20260204-125850",
+    "split": "train"
   },
   {
     "query": "how does the scrape pipeline work",
@@ -18,7 +19,8 @@
       "src/commands/scrape/code/mod.rs"
     ],
     "category": "knowledge",
-    "source": "real-query"
+    "source": "real-query",
+    "split": "train"
   },
   {
     "query": "why did we choose RRF fusion",
@@ -28,7 +30,8 @@
       "src/retrieval/mod.rs"
     ],
     "category": "rationale",
-    "source": "session-20260204-125850"
+    "source": "session-20260204-125850",
+    "split": "train"
   },
   {
     "query": "how should I handle errors in this project",
@@ -38,7 +41,8 @@
       "CLAUDE.md"
     ],
     "category": "knowledge",
-    "source": "session-20260204-142556"
+    "source": "session-20260204-142556",
+    "split": "test"
   },
   {
     "query": "MCP server protocol",
@@ -48,7 +52,8 @@
       "src/mcp/protocol.rs"
     ],
     "category": "structural",
-    "source": "session-20260204-142556"
+    "source": "session-20260204-142556",
+    "split": "train"
   },
   {
     "query": "belief oracle implementation",
@@ -58,7 +63,8 @@
       "src/commands/belief/mod.rs"
     ],
     "category": "structural",
-    "source": "session-20260204-142556"
+    "source": "session-20260204-142556",
+    "split": "test"
   },
   {
     "query": "session management tracking",
@@ -68,7 +74,8 @@
       "src/commands/session/mod.rs"
     ],
     "category": "structural",
-    "source": "session-20260204-142556"
+    "source": "session-20260204-142556",
+    "split": "train"
   },
   {
     "query": "context delivery retrieval system prompt",
@@ -79,7 +86,8 @@
       "src/commands/context.rs"
     ],
     "category": "knowledge",
-    "source": "session-20260202-163354"
+    "source": "session-20260202-163354",
+    "split": "test"
   },
   {
     "query": "git commit workflow",
@@ -89,7 +97,8 @@
       "CLAUDE.md"
     ],
     "category": "structural",
-    "source": "session-20260204-142556"
+    "source": "session-20260204-142556",
+    "split": "train"
   },
   {
     "query": "version bump release automation",
@@ -99,7 +108,8 @@
       "layer/core/build.md"
     ],
     "category": "knowledge",
-    "source": "session-20260205-213927"
+    "source": "session-20260205-213927",
+    "split": "test"
   },
   {
     "query": "vector similarity search implementation",
@@ -109,7 +119,8 @@
       "src/retrieval/engine.rs"
     ],
     "category": "structural",
-    "source": "session-20260204-142556"
+    "source": "session-20260204-142556",
+    "split": "train"
   },
   {
     "query": "query engine retrieval config",
@@ -119,7 +130,8 @@
       "src/retrieval/fusion.rs"
     ],
     "category": "structural",
-    "source": "session-20260204-142556"
+    "source": "session-20260204-142556",
+    "split": "test"
   },
   {
     "query": "pattern evolution core",
@@ -130,7 +142,8 @@
       "src/scanner/mod.rs"
     ],
     "category": "knowledge",
-    "source": "session-20260204-142556"
+    "source": "session-20260204-142556",
+    "split": "train"
   },
   {
     "query": "mother federated query spec",
@@ -140,7 +153,8 @@
       "src/mother/graph.rs"
     ],
     "category": "knowledge",
-    "source": "session-20260202-202802"
+    "source": "session-20260202-202802",
+    "split": "test"
   },
   {
     "query": "spec system work tracking ready queue",
@@ -151,7 +165,8 @@
       "layer/core/build.md"
     ],
     "category": "structural",
-    "source": "real-query"
+    "source": "real-query",
+    "split": "train"
   },
   {
     "query": "belief scrape population storage retrieval",
@@ -161,7 +176,8 @@
       "src/commands/belief/mod.rs"
     ],
     "category": "knowledge",
-    "source": "session-20260203-120615"
+    "source": "session-20260203-120615",
+    "split": "train"
   },
   {
     "query": "docker container build",
@@ -171,7 +187,8 @@
       "resources/templates/Dockerfile"
     ],
     "category": "structural",
-    "source": "session-20260204-142556"
+    "source": "session-20260204-142556",
+    "split": "test"
   },
   {
     "query": "security hardening secrets",
@@ -180,7 +197,8 @@
       "src/mcp/server.rs"
     ],
     "category": "structural",
-    "source": "session-20260204-142556"
+    "source": "session-20260204-142556",
+    "split": "train"
   },
   {
     "query": "why was MCP server created separately from CLI scry",
@@ -190,7 +208,8 @@
       "src/mcp/mod.rs"
     ],
     "category": "rationale",
-    "source": "session-20260204-103550"
+    "source": "session-20260204-103550",
+    "split": "test"
   },
   {
     "query": "error handling conventions",
@@ -200,7 +219,8 @@
       "CLAUDE.md"
     ],
     "category": "knowledge",
-    "source": "session-20260204-152405"
+    "source": "session-20260204-152405",
+    "split": "train"
   },
   {
     "query": "what patterns should I follow for new commands",
@@ -211,7 +231,8 @@
       "CLAUDE.md"
     ],
     "category": "knowledge",
-    "source": "synthetic"
+    "source": "synthetic",
+    "split": "train"
   },
   {
     "query": "how does the belief verification system work",
@@ -221,7 +242,8 @@
       "layer/surface/epistemic/beliefs"
     ],
     "category": "knowledge",
-    "source": "synthetic"
+    "source": "synthetic",
+    "split": "test"
   },
   {
     "query": "what is the three layer delivery architecture",
@@ -231,7 +253,8 @@
       "src/retrieval/engine.rs"
     ],
     "category": "knowledge",
-    "source": "synthetic"
+    "source": "synthetic",
+    "split": "test"
   },
   {
     "query": "how are embeddings generated and stored",
@@ -241,7 +264,8 @@
       "src/models/mod.rs"
     ],
     "category": "knowledge",
-    "source": "synthetic"
+    "source": "synthetic",
+    "split": "train"
   },
   {
     "query": "what oracles are available in the retrieval system",
@@ -253,6 +277,303 @@
       "src/retrieval/oracles/belief.rs"
     ],
     "category": "structural",
-    "source": "synthetic"
+    "source": "synthetic",
+    "split": "train"
+  },
+  {
+    "query": "when was the belief system introduced",
+    "expected": [
+      "src/commands/belief/mod.rs",
+      "src/retrieval/oracles/belief.rs",
+      "src/commands/scrape/beliefs/mod.rs"
+    ],
+    "category": "knowledge",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "what changed in the retrieval module recently",
+    "expected": [
+      "src/retrieval/engine.rs",
+      "src/retrieval/mod.rs",
+      "src/retrieval/fusion.rs"
+    ],
+    "category": "knowledge",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "history of session tracking feature",
+    "expected": [
+      "src/session.rs",
+      "src/commands/session/mod.rs",
+      "src/commands/scrape/sessions/mod.rs"
+    ],
+    "category": "structural",
+    "source": "synthetic-phase1",
+    "split": "test"
+  },
+  {
+    "query": "when did we add ONNX embedding support",
+    "expected": [
+      "src/embeddings/onnx.rs",
+      "src/embeddings/mod.rs",
+      "src/commands/oxidize/mod.rs"
+    ],
+    "category": "knowledge",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "when was the forge sync added",
+    "expected": [
+      "src/forge/mod.rs",
+      "src/forge/sync/mod.rs",
+      "src/forge/github/mod.rs"
+    ],
+    "category": "structural",
+    "source": "synthetic-phase1",
+    "split": "test"
+  },
+  {
+    "query": "what was introduced in the latest release",
+    "expected": [
+      "src/commands/version/mod.rs",
+      "layer/core/build.md",
+      "src/version.rs"
+    ],
+    "category": "knowledge",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "why do we use SQLite for storage",
+    "expected": [
+      "src/db/sqlite.rs",
+      "src/db/mod.rs",
+      "layer/surface/architecture-sqlite-usearch.md"
+    ],
+    "category": "rationale",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "why is the adapter pattern important for patina",
+    "expected": [
+      "layer/core/adapter-pattern.md",
+      "src/adapters/mod.rs",
+      "layer/core/dependable-rust.md"
+    ],
+    "category": "rationale",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "why did we choose ONNX runtime for embeddings",
+    "expected": [
+      "src/embeddings/onnx.rs",
+      "layer/surface/architecture-patina-embedding.md",
+      "CLAUDE.md"
+    ],
+    "category": "rationale",
+    "source": "synthetic-phase1",
+    "split": "test"
+  },
+  {
+    "query": "why are beliefs separate from patterns",
+    "expected": [
+      "src/commands/belief/mod.rs",
+      "layer/surface/architecture-persona-belief.md",
+      "src/scanner/patterns.rs"
+    ],
+    "category": "rationale",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "what was the reason for using RRF over learned fusion",
+    "expected": [
+      "src/retrieval/fusion.rs",
+      "src/retrieval/engine.rs",
+      "src/retrieval/mod.rs"
+    ],
+    "category": "rationale",
+    "source": "synthetic-phase1",
+    "split": "test"
+  },
+  {
+    "query": "how does intent detection work for queries",
+    "expected": [
+      "src/retrieval/intent.rs",
+      "src/retrieval/engine.rs",
+      "src/retrieval/mod.rs"
+    ],
+    "category": "knowledge",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "how does the persona oracle work",
+    "expected": [
+      "src/retrieval/oracles/persona.rs",
+      "src/commands/persona/mod.rs",
+      "src/retrieval/oracles/mod.rs"
+    ],
+    "category": "structural",
+    "source": "synthetic-phase1",
+    "split": "test"
+  },
+  {
+    "query": "how does the temporal oracle implement co-change ranking",
+    "expected": [
+      "src/retrieval/oracles/temporal.rs",
+      "src/retrieval/oracles/mod.rs",
+      "src/commands/scrape/git/mod.rs"
+    ],
+    "category": "structural",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "how does the forge implement GitHub sync",
+    "expected": [
+      "src/forge/github/mod.rs",
+      "src/forge/sync/mod.rs",
+      "src/forge/mod.rs"
+    ],
+    "category": "structural",
+    "source": "synthetic-phase1",
+    "split": "test"
+  },
+  {
+    "query": "how does the scanner detect code patterns",
+    "expected": [
+      "src/scanner/mod.rs",
+      "src/scanner/patterns.rs",
+      "src/commands/scrape/code/mod.rs"
+    ],
+    "category": "structural",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "what is oxidized knowledge",
+    "expected": [
+      "layer/core/oxidized-knowledge.md",
+      "src/commands/oxidize/mod.rs",
+      "src/embeddings/mod.rs"
+    ],
+    "category": "knowledge",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "what is the safety boundaries pattern",
+    "expected": [
+      "layer/core/safety-boundaries.md",
+      "src/secrets/mod.rs",
+      "CLAUDE.md"
+    ],
+    "category": "knowledge",
+    "source": "synthetic-phase1",
+    "split": "test"
+  },
+  {
+    "query": "what is the session capture pattern",
+    "expected": [
+      "layer/core/session-capture.md",
+      "src/session.rs",
+      "src/commands/session/mod.rs"
+    ],
+    "category": "knowledge",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "explain the epistemic belief system",
+    "expected": [
+      "src/commands/belief/mod.rs",
+      "src/commands/scrape/beliefs/mod.rs",
+      "layer/surface/epistemic/VALIDATION.md"
+    ],
+    "category": "knowledge",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "what is the adapter pattern in this project",
+    "expected": [
+      "layer/core/adapter-pattern.md",
+      "src/adapters/mod.rs",
+      "src/adapters/templates.rs"
+    ],
+    "category": "knowledge",
+    "source": "synthetic-phase1",
+    "split": "test"
+  },
+  {
+    "query": "eventlog event tracking system",
+    "expected": [
+      "src/eventlog.rs",
+      "src/session.rs"
+    ],
+    "category": "structural",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "database migration schema versioning",
+    "expected": [
+      "src/migration.rs",
+      "src/db/sqlite.rs",
+      "src/db/mod.rs"
+    ],
+    "category": "structural",
+    "source": "synthetic-phase1",
+    "split": "test"
+  },
+  {
+    "query": "assay structural code analysis",
+    "expected": [
+      "src/commands/assay/mod.rs",
+      "src/commands/assay/internal/inventory.rs",
+      "src/commands/assay/internal/functions.rs"
+    ],
+    "category": "structural",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "forge github synchronization",
+    "expected": [
+      "src/forge/github/mod.rs",
+      "src/forge/sync/mod.rs",
+      "src/forge/mod.rs"
+    ],
+    "category": "structural",
+    "source": "synthetic-phase1",
+    "split": "train"
+  },
+  {
+    "query": "lexical oracle full-text search",
+    "expected": [
+      "src/retrieval/oracles/lexical.rs",
+      "src/retrieval/oracles/mod.rs",
+      "src/commands/scrape/database.rs"
+    ],
+    "category": "structural",
+    "source": "synthetic-phase1",
+    "split": "test"
+  },
+  {
+    "query": "ONNX model loading inference",
+    "expected": [
+      "src/embeddings/onnx.rs",
+      "src/embeddings/models.rs",
+      "src/models/mod.rs"
+    ],
+    "category": "structural",
+    "source": "synthetic-phase1",
+    "split": "train"
   }
 ]

@@ -13,7 +13,7 @@
 
 mod engine;
 mod fusion;
-mod intent;
+pub mod intent;
 mod oracle;
 mod oracles;
 pub mod snippet;
