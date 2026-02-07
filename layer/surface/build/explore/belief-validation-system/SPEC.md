@@ -7,7 +7,7 @@ updated: 2026-02-06
 sessions:
   origin: 20260206-060219
 related:
-  - layer/surface/build/feat/mother-delivery/d1-belief-oracle/SPEC.md
+  - layer/surface/build/fix/eval-repair/SPEC.md
 beliefs:
   - measure-the-measurement
   - practical-memory-over-epistemic-formalism
