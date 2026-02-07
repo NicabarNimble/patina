@@ -368,7 +368,12 @@ pub fn is_lexical_query(query: &str) -> bool {
         || lower.ends_with(" struct")
 }
 
-/// Lexical search using FTS5 for exact matches
+/// Lexical search using FTS5 with per-table RRF fusion
+///
+/// Each FTS5 table (code, commits, patterns) has different column counts and
+/// corpus sizes, making raw BM25 scores incomparable. We use rank-based fusion
+/// (RRF with k=60, same as outer fusion in retrieval/fusion.rs) to give each
+/// table's results a fair shot regardless of score scale.
 pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
     let (db_path, _) = get_paths(options)?;
 
@@ -380,7 +385,10 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
 
     println!("FTS5 query: {}", fts_query);
 
-    let mut collected: Vec<ScryResult> = Vec::new();
+    // Collect results per-table (each ordered by BM25 within its table)
+    let mut code_results: Vec<ScryResult> = Vec::new();
+    let mut commit_results: Vec<ScryResult> = Vec::new();
+    let mut pattern_results: Vec<ScryResult> = Vec::new();
 
     // 1. Search code_fts
     let event_type_filter = if options.include_issues {
@@ -394,27 +402,23 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
             symbol_name,
             file_path,
             snippet(code_fts, 2, '>>>', '<<<', '...', 64) as snippet,
-            event_type,
-            bm25(code_fts) as score
+            event_type
          FROM code_fts
          WHERE code_fts MATCH ?
            AND ({})
-         ORDER BY score
+         ORDER BY bm25(code_fts)
          LIMIT ?",
         event_type_filter
     );
 
     let mut stmt = conn.prepare(&code_sql)?;
-    let code_results =
+    let rows =
         stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
             let symbol: String = row.get(0)?;
             let file_path: String = row.get(1)?;
             let snippet: String = row.get(2)?;
             let event_type: String = row.get(3)?;
-            let bm25_score: f64 = row.get(4)?;
 
-            // Use file_path directly - it's already source_id format (path::name)
-            // Don't append symbol again (was causing path::name:name doubling)
             let source_id = if event_type == "github.issue" {
                 format!("[ISSUE] {}", symbol)
             } else {
@@ -424,44 +428,41 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
             Ok(ScryResult {
                 id: 0,
                 content: snippet,
-                // BM25 is negative, convert to positive (don't cap - preserve ranking)
-                score: -bm25_score as f32,
+                score: 0.0, // replaced by RRF below
                 event_type,
                 source_id,
                 timestamp: String::new(),
             })
         })?;
-    collected.extend(code_results.filter_map(|r| r.ok()));
+    code_results.extend(rows.filter_map(|r| r.ok()));
 
     // 2. Search commits_fts (git narrative)
     let commits_sql = "SELECT
             sha,
             snippet(commits_fts, 1, '>>>', '<<<', '...', 64) as snippet,
-            author_name,
-            bm25(commits_fts) as score
+            author_name
          FROM commits_fts
          WHERE commits_fts MATCH ?
-         ORDER BY score
+         ORDER BY bm25(commits_fts)
          LIMIT ?";
 
     if let Ok(mut stmt) = conn.prepare(commits_sql) {
-        let commit_results =
+        let rows =
             stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
                 let sha: String = row.get(0)?;
                 let snippet: String = row.get(1)?;
                 let author: String = row.get(2)?;
-                let bm25_score: f64 = row.get(3)?;
 
                 Ok(ScryResult {
                     id: 0,
                     content: format!("{} ({})", snippet, author),
-                    score: -bm25_score as f32,
+                    score: 0.0,
                     event_type: "git.commit".to_string(),
                     source_id: sha,
                     timestamp: String::new(),
                 })
             })?;
-        collected.extend(commit_results.filter_map(|r| r.ok()));
+        commit_results.extend(rows.filter_map(|r| r.ok()));
     }
 
     // 3. Search pattern_fts (layer docs)
@@ -469,23 +470,20 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
             id,
             title,
             snippet(pattern_fts, 2, '>>>', '<<<', '...', 64) as snippet,
-            file_path,
-            bm25(pattern_fts) as score
+            file_path
          FROM pattern_fts
          WHERE pattern_fts MATCH ?
-         ORDER BY score
+         ORDER BY bm25(pattern_fts)
          LIMIT ?";
 
     if let Ok(mut stmt) = conn.prepare(pattern_sql) {
-        let pattern_results =
+        let rows =
             stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
                 let _id: String = row.get(0)?;
                 let title: String = row.get(1)?;
                 let snippet: String = row.get(2)?;
                 let file_path: String = row.get(3)?;
-                let bm25_score: f64 = row.get(4)?;
 
-                // Determine layer from file path
                 let layer = if file_path.contains("layer/core") {
                     "core"
                 } else {
@@ -495,19 +493,30 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
                 Ok(ScryResult {
                     id: 0,
                     content: format!("{}: {}", title, snippet),
-                    // BM25 is negative, convert to positive (don't cap - preserve ranking)
-                    score: -bm25_score as f32,
+                    score: 0.0,
                     event_type: format!("pattern.{}", layer),
-                    // Use file_path (e.g., "layer/core/dependable-rust.md") not id
-                    // ("dependable-rust") — eval and retrieval match on file paths
                     source_id: file_path,
                     timestamp: String::new(),
                 })
             })?;
-        collected.extend(pattern_results.filter_map(|r| r.ok()));
+        pattern_results.extend(rows.filter_map(|r| r.ok()));
     }
 
-    // Sort by score (higher is better) and limit
+    // RRF fusion across tables: k=60 (same as outer fusion in retrieval/fusion.rs)
+    // Each table's results are already ordered by BM25 rank within that table.
+    // RRF score = 1/(k + rank + 1) where rank is 0-indexed.
+    const K: usize = 60;
+
+    let mut collected: Vec<ScryResult> = Vec::new();
+
+    for table_results in [code_results, commit_results, pattern_results] {
+        for (rank, mut result) in table_results.into_iter().enumerate() {
+            result.score = 1.0 / (K + rank + 1) as f32;
+            collected.push(result);
+        }
+    }
+
+    // Sort by RRF score (higher is better) and limit
     collected.sort_by(|a, b| {
         b.score
             .partial_cmp(&a.score)
