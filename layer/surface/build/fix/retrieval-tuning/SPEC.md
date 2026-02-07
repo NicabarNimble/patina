@@ -300,8 +300,11 @@ Product Metrics (last 10 sessions):
 - [x] Error analysis: identified root cause 1 (layer scraper ignores
   .gitignore → 730 dust patterns, ID collision) and root cause 2 (BM25
   scores incommensurate across FTS5 tables with different column counts)
-- [ ] Root cause 1 fix: swap layer scraper to ignore::WalkBuilder
-- [ ] Root cause 2 fix: normalize BM25 per-table before merging
+- [x] Root cause 1 fix: swap layer scraper to ignore::WalkBuilder — [[ce2ca931]]
+  79 patterns (was 808), pruned 729 dust entries. P@10 +1.3pp.
+- [x] Root cause 2 fix: RRF within scry_lexical (rank-based, not score-based)
+  P@10 +6.1pp (43.8%), test P@10 +6.7pp (44.2%), Definition +19.0pp.
+  Train-test gap flipped to +2.0pp (test > train = not overfit).
 
 ```
 Phase 2.5 Results (52 NL queries, F6 fix applied):
@@ -356,17 +359,51 @@ scores to positive, sorts them together, and truncates to limit. BM25
 scores from different FTS5 tables are NOT comparable — they depend on
 column count, corpus size, and document frequency within each table.
 
-Result: `safety-boundaries.md` has BM25 11.63 (highest in pattern_fts)
-but ranks below code_fts entries with 8.66 because the scales are
-incommensurate. 7/24 expected `layer/` files appear in top 10; 17 do not.
+After root cause 1 fix (dust removal), measured BM25 distributions:
+- `code_fts` (4180 rows): scores ~7-9 for typical queries
+- `commits_fts` (1804 rows): scores ~12-13
+- `pattern_fts` (77 rows): scores 0.000006 to ~5.0
+Pattern scores are 1-6 orders of magnitude below code/commit scores.
+`safety-boundaries.md` BM25=4.99 vs code safety.rs BM25=8.66 — patterns
+can never enter top-K when sorted by raw score.
 
-- Fix: normalize BM25 scores per-table before merging. Options:
-  (a) min-max normalize per table, (b) z-score normalize, (c) use
-  rank-based fusion (RRF) within the lexical oracle, (d) separate
-  pattern oracle. Chosen approach: TBD after root cause 1 fix measured.
+- Fix: rank-based fusion (RRF) within `scry_lexical()` — same approach
+  already used in the outer fusion layer (`src/retrieval/fusion.rs`).
+  Query each table separately (already done), rank within each table,
+  assign `1/(k+rank)` with k=60, merge by RRF score. Score-agnostic,
+  completely eliminates scale mismatch. Rank-1 pattern competes equally
+  with rank-1 code result.
 - Impact: this is the higher-impact fix. Even with correct doc_ids
-  (F6 fix), patterns can't enter top-K when their scores are
-  incommensurate with code/commit scores.
+  (F6 fix) and clean corpus (RC1 fix), patterns can't enter top-K
+  when their raw BM25 scores are incommensurate with code/commit scores.
+
+```
+Phase 2.5 Combined Results (RC1 + RC2, 52 NL queries):
+
+                     Phase 2      After RC1      After RC2
+                    (baseline)   (gitignore)   (RRF lexical)
+NL P@10 (all)         37.7%        39.0%          43.8%
+NL MRR (all)          0.422        0.439          0.444
+NL P@5 (all)          28.8%        28.8%          25.4%
+Test P@10             37.5%        35.8%          44.2%
+Train P@10            38.9%        39.9%          41.9%
+Train-test gap        -1.4pp       -4.1pp         +2.0pp
+
+By intent:
+  Definition P@10     28.6%        28.6%          47.6%   (+19.0pp)
+  General P@10        33.4%        34.7%          36.7%    (+3.3pp)
+  Temporal P@10       33.3%        38.9%          50.0%   (+16.7pp)
+  Mechanism P@10      51.2%        51.2%          51.2%    (0.0pp)
+
+Ablation:
+  unified P@10                                    43.8%
+  lexical-only P@10                               35.7%
+  unified-lexical gap  +3.2pp       +3.2pp        +8.1pp
+```
+
+P@5 dropped -3.4pp — patterns entering top-5 displaced some code results.
+Worth investigating but top-10 improvement is substantial and validated on
+held-out test set. Train-test gap flipped positive (test > train).
 
 ### Phase 3: Belief Score Multiplier
 - [ ] Belief MRR improved beyond current 0.241 with held-out validation
