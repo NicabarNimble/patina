@@ -1,10 +1,12 @@
 ---
 type: explore
 id: adapter-polish
-status: active
+status: design
 created: 2026-01-13
-updated: 2026-02-06
+updated: 2026-02-07
 tags: [adapter, scaffold, context, mcp]
+related:
+  - layer/surface/build/feat/skills-focused-adapter/SPEC.md
 references: [adapter-pattern, dependable-rust, unix-philosophy]
 ---
 

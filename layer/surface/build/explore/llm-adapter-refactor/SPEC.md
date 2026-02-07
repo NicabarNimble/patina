@@ -1,11 +1,12 @@
 ---
 type: explore
 id: llm-adapter-refactor
-status: active
+status: design
 created: 2026-02-05
 sessions:
   origin: 20260205-102402
 related:
+  - layer/surface/build/feat/skills-focused-adapter/SPEC.md
   - layer/surface/build/feat/patina-platform/SPEC.md
   - layer/core/dependable-rust.md
 ---
