@@ -1,7 +1,7 @@
 ---
 type: explore
 id: three-layers
-status: active
+status: design
 created: 2026-01-13
 updated: 2026-02-06
 tags: [architecture, authority, convergence]
