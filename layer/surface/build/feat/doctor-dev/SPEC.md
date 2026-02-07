@@ -9,6 +9,7 @@ blocked_by: []
 blocks: []
 related:
   - layer/surface/build/feat/spec-drift-detection/SPEC.md
+  - layer/surface/build/explore/observability/SPEC.md
   - layer/surface/build/fix/spec-tree-and-cycles/SPEC.md
   - layer/surface/build/fix/eval-repair/SPEC.md
 beliefs:
