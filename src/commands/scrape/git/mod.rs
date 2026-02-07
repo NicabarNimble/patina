@@ -72,17 +72,35 @@ fn parse_session_tags() -> Result<Vec<SessionBounds>> {
         let tag_name = parts[0];
         let timestamp = parts[1].to_string();
 
-        // Parse tag name: session-YYYYMMDD-HHMMSS-{start|end}
+        // Parse tag name: session-YYYYMMDD-HHMMSS[-adapter]-{start|end}
+        // Adapter suffix (e.g. "-claude") was added to tags but not to session YAML id.
+        // Extract just the YYYYMMDD-HHMMSS portion to match get_active_session_id().
         if let Some(rest) = tag_name.strip_prefix("session-") {
-            if let Some(session_id) = rest.strip_suffix("-start") {
-                let entry = sessions
-                    .entry(session_id.to_string())
-                    .or_insert((None, None));
+            let (candidate, is_start) =
+                if let Some(c) = rest.strip_suffix("-start") {
+                    (c, true)
+                } else if let Some(c) = rest.strip_suffix("-end") {
+                    (c, false)
+                } else {
+                    continue;
+                };
+
+            // Session ID is YYYYMMDD-HHMMSS (15 chars). Anything after that
+            // is an adapter suffix (e.g. "-claude") that isn't part of the ID.
+            let session_id = if candidate.len() > 15
+                && candidate.as_bytes().get(15) == Some(&b'-')
+            {
+                &candidate[..15]
+            } else {
+                candidate
+            };
+
+            let entry = sessions
+                .entry(session_id.to_string())
+                .or_insert((None, None));
+            if is_start {
                 entry.0 = Some(timestamp);
-            } else if let Some(session_id) = rest.strip_suffix("-end") {
-                let entry = sessions
-                    .entry(session_id.to_string())
-                    .or_insert((None, None));
+            } else {
                 entry.1 = Some(timestamp);
             }
         }
@@ -360,6 +378,42 @@ fn create_materialized_views(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Resolve git rename syntax to the new (destination) path.
+///
+/// Git numstat formats renames as:
+/// - `path/{old => new}/file.rs` → `path/new/file.rs`
+/// - `{old => new}/file.rs` → `new/file.rs`
+/// - `old.rs => new.rs` → `new.rs`
+fn resolve_rename_path(path: &str) -> String {
+    if !path.contains("=>") {
+        return path.to_string();
+    }
+
+    // Handle brace format: "path/{old => new}/rest"
+    if let (Some(open), Some(close)) = (path.find('{'), path.find('}')) {
+        let prefix = &path[..open];
+        let suffix = &path[close + 1..];
+        let rename_part = &path[open + 1..close];
+
+        if let Some(arrow) = rename_part.find(" => ") {
+            let new_name = rename_part[arrow + 4..].trim();
+            return if new_name.is_empty() {
+                // {old => } means moved to parent dir
+                format!("{}{}", prefix, suffix.trim_start_matches('/'))
+            } else {
+                format!("{}{}{}", prefix, new_name, suffix)
+            };
+        }
+    }
+
+    // Handle plain format: "old.rs => new.rs"
+    if let Some(arrow) = path.find(" => ") {
+        return path[arrow + 4..].to_string();
+    }
+
+    path.to_string()
+}
+
 /// Parse git log output into commits
 fn parse_git_log(since_sha: Option<&str>) -> Result<Vec<GitCommit>> {
     // Build git log command
@@ -425,7 +479,7 @@ fn parse_git_log_output(output: &str) -> Result<Vec<GitCommit>> {
             if stat_parts.len() >= 3 {
                 let lines_added = stat_parts[0].parse().unwrap_or(0);
                 let lines_removed = stat_parts[1].parse().unwrap_or(0);
-                let path = stat_parts[2].to_string();
+                let path = resolve_rename_path(stat_parts[2]);
 
                 // Determine change type based on lines
                 let change_type = if lines_added > 0 && lines_removed == 0 {
