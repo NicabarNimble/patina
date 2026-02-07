@@ -6,11 +6,10 @@ created: 2026-02-05
 sessions:
   origin: 20260205-102402
 blocked_by: []
-blocks:
-  - spec-as-work-item
-  - cli-reorganization
-  - system-introspection
+blocks: []
 related:
+  - layer/surface/build/explore/wit-interfaces/SPEC.md
+  - layer/surface/build/explore/llm-adapter-refactor/SPEC.md
   - layer/surface/build/explore/beads-patterns/SPEC.md
 beliefs:
   - unix-philosophy

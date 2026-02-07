@@ -8,7 +8,6 @@ sessions:
   origin: 20260205-084522
 blocked_by:
   - system-introspection
-  - scrape-layer-unify
 blocks: []
 related:
   - layer/surface/build/explore/cli-commands/SPEC.md

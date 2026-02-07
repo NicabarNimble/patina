@@ -1,7 +1,7 @@
 ---
 type: explore
 id: cli-commands
-status: active
+status: design
 created: 2026-02-05
 sessions:
   origin: 20260205-084522
