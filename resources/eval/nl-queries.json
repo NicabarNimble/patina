@@ -1,0 +1,258 @@
+[
+  {
+    "query": "what is the dependable rust pattern",
+    "expected": [
+      "layer/core/dependable-rust.md",
+      "src/adapters/mod.rs",
+      "layer/core/unix-philosophy.md"
+    ],
+    "category": "knowledge",
+    "source": "session-20260204-125850"
+  },
+  {
+    "query": "how does the scrape pipeline work",
+    "expected": [
+      "src/commands/scrape/mod.rs",
+      "layer/core/build.md",
+      "src/commands/scrape/git/mod.rs",
+      "src/commands/scrape/code/mod.rs"
+    ],
+    "category": "knowledge",
+    "source": "real-query"
+  },
+  {
+    "query": "why did we choose RRF fusion",
+    "expected": [
+      "src/retrieval/fusion.rs",
+      "src/retrieval/engine.rs",
+      "src/retrieval/mod.rs"
+    ],
+    "category": "rationale",
+    "source": "session-20260204-125850"
+  },
+  {
+    "query": "how should I handle errors in this project",
+    "expected": [
+      "src/lib.rs",
+      "src/commands/mod.rs",
+      "CLAUDE.md"
+    ],
+    "category": "knowledge",
+    "source": "session-20260204-142556"
+  },
+  {
+    "query": "MCP server protocol",
+    "expected": [
+      "src/mcp/server.rs",
+      "src/mcp/mod.rs",
+      "src/mcp/tools.rs"
+    ],
+    "category": "structural",
+    "source": "session-20260204-142556"
+  },
+  {
+    "query": "belief oracle implementation",
+    "expected": [
+      "src/retrieval/oracles/belief.rs",
+      "src/retrieval/oracles/mod.rs",
+      "src/commands/belief/mod.rs"
+    ],
+    "category": "structural",
+    "source": "session-20260204-142556"
+  },
+  {
+    "query": "session management tracking",
+    "expected": [
+      "src/session.rs",
+      "src/commands/scrape/sessions/mod.rs",
+      "src/commands/session.rs"
+    ],
+    "category": "structural",
+    "source": "session-20260204-142556"
+  },
+  {
+    "query": "context delivery retrieval system prompt",
+    "expected": [
+      "src/mcp/server.rs",
+      "src/retrieval/engine.rs",
+      "src/commands/scry/mod.rs",
+      "src/commands/context.rs"
+    ],
+    "category": "knowledge",
+    "source": "session-20260202-163354"
+  },
+  {
+    "query": "git commit workflow",
+    "expected": [
+      "src/commands/scrape/git/mod.rs",
+      "src/commands/scrape/git/commits.rs",
+      "CLAUDE.md"
+    ],
+    "category": "structural",
+    "source": "session-20260204-142556"
+  },
+  {
+    "query": "version bump release automation",
+    "expected": [
+      "src/commands/version.rs",
+      "src/spec.rs",
+      "layer/core/build.md"
+    ],
+    "category": "knowledge",
+    "source": "session-20260205-213927"
+  },
+  {
+    "query": "vector similarity search implementation",
+    "expected": [
+      "src/retrieval/oracles/semantic.rs",
+      "src/commands/oxidize.rs",
+      "src/retrieval/engine.rs"
+    ],
+    "category": "structural",
+    "source": "session-20260204-142556"
+  },
+  {
+    "query": "query engine retrieval config",
+    "expected": [
+      "src/retrieval/engine.rs",
+      "src/retrieval/mod.rs",
+      "src/retrieval/fusion.rs"
+    ],
+    "category": "structural",
+    "source": "session-20260204-142556"
+  },
+  {
+    "query": "pattern evolution core",
+    "expected": [
+      "layer/core/dependable-rust.md",
+      "layer/core/unix-philosophy.md",
+      "layer/core/adapter-pattern.md",
+      "src/scanner/mod.rs"
+    ],
+    "category": "knowledge",
+    "source": "session-20260204-142556"
+  },
+  {
+    "query": "mother federated query spec",
+    "expected": [
+      "src/mother/mod.rs",
+      "layer/surface/build/feat/mother-delivery/SPEC.md",
+      "src/mother/graph.rs"
+    ],
+    "category": "knowledge",
+    "source": "session-20260202-202802"
+  },
+  {
+    "query": "spec system work tracking ready queue",
+    "expected": [
+      "src/spec.rs",
+      "src/commands/spec/mod.rs",
+      "src/commands/spec/internal.rs",
+      "layer/core/build.md"
+    ],
+    "category": "structural",
+    "source": "real-query"
+  },
+  {
+    "query": "belief scrape population storage retrieval",
+    "expected": [
+      "src/commands/scrape/beliefs/mod.rs",
+      "src/retrieval/oracles/belief.rs",
+      "src/commands/belief/mod.rs"
+    ],
+    "category": "knowledge",
+    "source": "session-20260203-120615"
+  },
+  {
+    "query": "docker container build",
+    "expected": [
+      "src/commands/yolo/mod.rs",
+      "src/commands/yolo/profile.rs",
+      "resources/templates/Dockerfile"
+    ],
+    "category": "structural",
+    "source": "session-20260204-142556"
+  },
+  {
+    "query": "security hardening secrets",
+    "expected": [
+      "src/secrets/mod.rs",
+      "src/mcp/server.rs"
+    ],
+    "category": "structural",
+    "source": "session-20260204-142556"
+  },
+  {
+    "query": "why was MCP server created separately from CLI scry",
+    "expected": [
+      "src/mcp/server.rs",
+      "src/commands/scry/mod.rs",
+      "src/mcp/mod.rs"
+    ],
+    "category": "rationale",
+    "source": "session-20260204-103550"
+  },
+  {
+    "query": "error handling conventions",
+    "expected": [
+      "src/lib.rs",
+      "src/commands/mod.rs",
+      "CLAUDE.md"
+    ],
+    "category": "knowledge",
+    "source": "session-20260204-152405"
+  },
+  {
+    "query": "what patterns should I follow for new commands",
+    "expected": [
+      "layer/core/dependable-rust.md",
+      "layer/core/unix-philosophy.md",
+      "src/commands/mod.rs",
+      "CLAUDE.md"
+    ],
+    "category": "knowledge",
+    "source": "synthetic"
+  },
+  {
+    "query": "how does the belief verification system work",
+    "expected": [
+      "src/commands/scrape/beliefs/verification/mod.rs",
+      "src/commands/belief/mod.rs",
+      "layer/surface/epistemic/beliefs"
+    ],
+    "category": "knowledge",
+    "source": "synthetic"
+  },
+  {
+    "query": "what is the three layer delivery architecture",
+    "expected": [
+      "layer/surface/build/feat/mother-delivery/d2-three-layer-delivery/SPEC.md",
+      "src/mcp/server.rs",
+      "src/retrieval/engine.rs"
+    ],
+    "category": "knowledge",
+    "source": "synthetic"
+  },
+  {
+    "query": "how are embeddings generated and stored",
+    "expected": [
+      "src/commands/oxidize.rs",
+      "src/retrieval/oracles/semantic.rs",
+      "src/models/mod.rs"
+    ],
+    "category": "knowledge",
+    "source": "synthetic"
+  },
+  {
+    "query": "what oracles are available in the retrieval system",
+    "expected": [
+      "src/retrieval/oracles/mod.rs",
+      "src/retrieval/oracles/lexical.rs",
+      "src/retrieval/oracles/semantic.rs",
+      "src/retrieval/oracles/temporal.rs",
+      "src/retrieval/oracles/belief.rs"
+    ],
+    "category": "structural",
+    "source": "synthetic"
+  }
+]

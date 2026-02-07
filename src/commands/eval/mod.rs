@@ -7,7 +7,7 @@
 //! - "Does the unified pipeline improve over individual oracles?"
 //! - "Do beliefs help knowledge queries without hurting structural queries?"
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 
@@ -1148,6 +1148,155 @@ pub fn execute_feedback() -> Result<()> {
     }
 
     println!("\n{}", "─".repeat(60));
+
+    Ok(())
+}
+
+// ============================================================================
+// Natural-Language Query Evaluation (Phase 2)
+// ============================================================================
+
+/// NL query test case loaded from JSON
+#[derive(serde::Deserialize, Debug)]
+struct NlQueryCase {
+    query: String,
+    expected: Vec<String>,
+    category: String,
+    #[allow(dead_code)]
+    source: String,
+}
+
+/// Execute NL query eval from curated test set
+///
+/// Loads queries from resources/eval/nl-queries.json, runs each through the
+/// unified QueryEngine, and measures P@5, P@10, MRR against expected results.
+pub fn execute_nl() -> Result<()> {
+    println!("📊 Natural-Language Query Evaluation\n");
+    println!("Testing retrieval quality with curated real-world queries...\n");
+
+    // Load test set
+    let test_path = "resources/eval/nl-queries.json";
+    let content = std::fs::read_to_string(test_path).context(format!("Cannot read {test_path}"))?;
+    let cases: Vec<NlQueryCase> =
+        serde_json::from_str(&content).context("Failed to parse nl-queries.json")?;
+
+    println!("Loaded {} test queries\n", cases.len());
+
+    let db_path = ".patina/local/data/patina.db";
+    let _conn = Connection::open(db_path)?;
+
+    let unified = QueryEngine::new();
+
+    // Per-query metrics
+    let mut total_p5 = 0.0f32;
+    let mut total_p10 = 0.0f32;
+    let mut total_rr = 0.0f32; // reciprocal rank
+    let mut category_stats: HashMap<String, (f32, f32, f32, usize)> = HashMap::new();
+
+    println!("{:<55} {:>6} {:>6} {:>6}", "Query", "P@5", "P@10", "RR");
+    println!("{}", "─".repeat(77));
+
+    for case in &cases {
+        let results = unified.query(&case.query, 10)?;
+
+        // Normalize expected paths for comparison
+        let expected: HashSet<String> = case.expected.iter().map(|p| normalize_path(p)).collect();
+
+        // Count hits at different K
+        let hits_5 = results
+            .iter()
+            .take(5)
+            .filter(|r| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
+            .count();
+        let hits_10 = results
+            .iter()
+            .take(10)
+            .filter(|r| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
+            .count();
+
+        let p5 = if expected.is_empty() {
+            0.0
+        } else {
+            hits_5 as f32 / expected.len().min(5) as f32
+        };
+        let p10 = if expected.is_empty() {
+            0.0
+        } else {
+            hits_10 as f32 / expected.len().min(10) as f32
+        };
+
+        // Reciprocal rank: 1/rank of first expected result found
+        let rr = results
+            .iter()
+            .enumerate()
+            .find(|(_, r)| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
+            .map(|(i, _)| 1.0 / (i as f32 + 1.0))
+            .unwrap_or(0.0);
+
+        total_p5 += p5;
+        total_p10 += p10;
+        total_rr += rr;
+
+        let entry = category_stats
+            .entry(case.category.clone())
+            .or_insert((0.0, 0.0, 0.0, 0));
+        entry.0 += p5;
+        entry.1 += p10;
+        entry.2 += rr;
+        entry.3 += 1;
+
+        // Truncate query for display
+        let display_q = if case.query.len() > 53 {
+            format!("{}...", &case.query[..50])
+        } else {
+            case.query.clone()
+        };
+        println!(
+            "{:<55} {:>5.0}% {:>5.0}% {:>.3}",
+            display_q,
+            p5 * 100.0,
+            p10 * 100.0,
+            rr
+        );
+    }
+
+    let n = cases.len() as f32;
+    println!("\n{}", "─".repeat(77));
+    println!(
+        "{:<55} {:>5.1}% {:>5.1}% {:>.3}",
+        "AVERAGE",
+        total_p5 / n * 100.0,
+        total_p10 / n * 100.0,
+        total_rr / n
+    );
+
+    // Category breakdown
+    println!("\n━━━ By Category ━━━\n");
+    println!(
+        "{:<20} {:>6} {:>8} {:>8} {:>8}",
+        "Category", "N", "P@5", "P@10", "MRR"
+    );
+    println!("{}", "─".repeat(54));
+
+    let mut cats: Vec<_> = category_stats.iter().collect();
+    cats.sort_by_key(|(k, _)| (*k).clone());
+    for (cat, (p5, p10, rr, count)) in &cats {
+        let n = *count as f32;
+        println!(
+            "{:<20} {:>6} {:>7.1}% {:>7.1}% {:>8.3}",
+            cat,
+            count,
+            p5 / n * 100.0,
+            p10 / n * 100.0,
+            rr / n
+        );
+    }
+
+    println!("\n━━━ Summary ━━━\n");
+    println!("  Queries:     {}", cases.len());
+    println!("  Mean P@5:    {:.1}%", total_p5 / n * 100.0);
+    println!("  Mean P@10:   {:.1}%", total_p10 / n * 100.0);
+    println!("  MRR:         {:.3}", total_rr / n);
 
     Ok(())
 }
