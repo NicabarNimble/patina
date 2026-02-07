@@ -5,15 +5,13 @@ status: complete
 created: 2026-02-06
 sessions:
   origin: 20260206-060219
-blocked_by: []
-blocks: []
 related:
-  - layer/surface/build/explore/lab-automation/SPEC.md
+- layer/surface/build/explore/lab-automation/SPEC.md
 beliefs:
-  - measure-first
-  - measure-the-measurement
-  - fix-data-not-tools
-  - error-analysis-over-architecture
+- measure-first
+- measure-the-measurement
+- fix-data-not-tools
+- error-analysis-over-architecture
 ---
 
 # fix: Eval Repair — Measure the Right Thing
