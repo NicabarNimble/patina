@@ -536,7 +536,7 @@ pub fn update_spec_status(id: &str, new_status: &str) -> Result<()> {
     Ok(())
 }
 
-/// Archive a completed spec: create spec/<id> tag, remove file, update build.md, commit
+/// Archive a completed spec: create spec/<id> tag, remove file, commit
 pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
     // 1. Find spec in patterns table by id
     let (file_path, status, title) = find_spec(id)?;
@@ -580,7 +580,6 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
         } else {
             println!("  Remove: {}", file_path);
         }
-        println!("  Update: layer/core/build.md (add to Archived section)");
         println!("  Commit: docs: archive {} (complete)", tag_name);
         println!("\nRecover with: git show {}:{}", tag_name, file_path);
         return Ok(());
@@ -629,26 +628,12 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
         anyhow::bail!("git rm failed: {}", stderr);
     }
 
-    // 7. Update build.md Archives section
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let archive_entry = format!("- `{}` - {} ({})", tag_name, desc, today);
-    if let Err(e) = update_build_md(&archive_entry) {
-        eprintln!("Warning: failed to update build.md: {}", e);
-        eprintln!("  You may want to add this entry manually:");
-        eprintln!("  {}", archive_entry);
-    }
-
-    // 8. Commit
+    // 7. Commit
     let commit_msg = format!(
         "docs: archive {} (complete)\n\nSpec preserved via git tag: {}\nRecover with: git show {}:{}",
         tag_name, tag_name, tag_name, file_path
     );
     println!("Committing archive");
-
-    // Stage build.md too
-    let _ = Command::new("git")
-        .args(["add", "layer/core/build.md"])
-        .output();
 
     let output = Command::new("git")
         .args(["commit", "-m", &commit_msg])
@@ -721,46 +706,6 @@ fn is_tree_clean() -> Result<bool> {
     Ok(stdout.trim().is_empty())
 }
 
-/// Update build.md to add an entry to the "Archived (git tags)" section
-fn update_build_md(entry: &str) -> Result<()> {
-    let build_path = "layer/core/build.md";
-    let content = std::fs::read_to_string(build_path)
-        .with_context(|| format!("Failed to read {}", build_path))?;
-
-    // Find the "Full list:" line that ends the archived section and insert before it
-    let marker = "Full list: `git tag -l 'spec/*'`";
-    if let Some(pos) = content.find(marker) {
-        let new_content = format!("{}{}\n{}", &content[..pos], entry, &content[pos..]);
-        std::fs::write(build_path, &new_content)
-            .with_context(|| format!("Failed to write {}", build_path))?;
-
-        // Also update the tag count
-        update_tag_count(&new_content, build_path)?;
-
-        Ok(())
-    } else {
-        anyhow::bail!("Could not find '{}' marker in {}", marker, build_path);
-    }
-}
-
-/// Update the "(N archived specs)" count in build.md
-fn update_tag_count(content: &str, path: &str) -> Result<()> {
-    // Match pattern like "(46 archived specs)"
-    if let Some(start) = content.find("archived specs)") {
-        // Walk backwards to find the opening paren and number
-        let prefix = &content[..start];
-        if let Some(paren_pos) = prefix.rfind('(') {
-            let num_str = prefix[paren_pos + 1..].trim();
-            if let Ok(count) = num_str.parse::<u32>() {
-                let old = format!("({} archived specs)", count);
-                let new = format!("({} archived specs)", count + 1);
-                let updated = content.replace(&old, &new);
-                std::fs::write(path, updated)?;
-            }
-        }
-    }
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {
