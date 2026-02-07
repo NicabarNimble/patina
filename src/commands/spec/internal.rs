@@ -102,7 +102,10 @@ fn do_release(version: &str, spec_title: &str, spec_path: &str) -> Result<()> {
         .output()
         .context("Failed to stage files")?;
     if !output.status.success() {
-        anyhow::bail!("git add failed: {}", String::from_utf8_lossy(&output.stderr));
+        anyhow::bail!(
+            "git add failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     let output = Command::new("git")
@@ -705,7 +708,6 @@ fn is_tree_clean() -> Result<bool> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     Ok(stdout.trim().is_empty())
 }
-
 
 #[cfg(test)]
 mod tests {

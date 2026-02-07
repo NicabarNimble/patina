@@ -41,10 +41,7 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     if full {
         println!("📚 Full session scrape...");
     } else {
-        println!(
-            "📚 Incremental session scrape ({} skipped)...",
-            skipped
-        );
+        println!("📚 Incremental session scrape ({} skipped)...", skipped);
     }
 
     println!(
