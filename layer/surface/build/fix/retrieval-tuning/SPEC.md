@@ -105,8 +105,13 @@ synthetic-query problem, not a product-quality problem.
 **F4: Semantic oracle contributes 0% to NL queries.**
 
 With E5-base-v2 (ONNX), semantic search returns nothing useful for natural
-language queries. This may be a model limitation, not a fundamental problem.
-A better embedding model could change this entirely. Do not hardcode suppression.
+language queries. A0 diagnostic (session 20260207-150836) confirmed: pipeline
+IS functional (returns 10 results per query), but results dominated by session
+events (88% of semantic index). Session-trained projection maps NL queries to
+session-space, not code/pattern-space. Additionally, pattern enrichment maps
+`source_id: id` not `file_path`, so even correctly-ranked patterns would fail
+eval matching. Verdict: model+training mismatch, not pipeline bug. Do not
+hardcode suppression — when model/training changes, re-evaluate.
 
 **F5: Belief MRR at 0.172 is still low.**
 
@@ -114,10 +119,20 @@ Beliefs are found (80.9% hit rate) but ranked poorly. The single-oracle RRF
 disadvantage is real. A score multiplier could help, but needs a held-out test
 set before tuning.
 
+**F6: Pattern doc_id mapping bug silently drops all layer/ matches.**
+
+`scry_lexical()` and semantic enrichment return pattern `id` (e.g.,
+"dependable-rust") as `source_id`, but eval expects `file_path` (e.g.,
+"layer/core/dependable-rust.md"). 19/52 queries (37%) expect `layer/` files.
+24 of 161 expected files are `layer/` paths. All invisible to eval scoring.
+Identified in Phase 2.5 diagnostics (session 20260207-150836).
+
 **Knowledge queries are the weakest category.**
 
 P@5 17.3%, MRR 0.332 for knowledge queries (13 of 25). Most expected results
-are `layer/core/` docs or deep code files that aren't well-served by any oracle.
+are `layer/core/` docs or deep code files. F6 (doc_id mapping bug) is a
+major contributor — pattern FTS finds these docs but the wrong doc_id format
+prevents eval from counting them as hits.
 
 ### Overfitting Risk
 
@@ -198,6 +213,44 @@ By intent (after):
   Definition (7)   P@10 28.6%  MRR 0.248
 ```
 
+### Phase 2.5: Diagnostic Fixes (session 20260207-150836)
+
+Two quick diagnostics before Phase 3, suggested by external review.
+
+**A0: Semantic sanity battery — pipeline works, model mismatch confirmed**
+
+- Semantic oracle IS functional — returns 10 results per query
+- Semantic index contains ~27K items: 23,820 session events + 1,883 code
+  facts + 806 patterns + 1,778 commits + 47 beliefs
+- Session events dominate (88% of index) — session-trained projection
+  maps everything to session-space. Semantic results are mostly session
+  events, not code or patterns
+- Pattern enrichment uses pattern `id` (e.g., "dependable-rust") as doc_id,
+  not `file_path` (e.g., "layer/core/dependable-rust.md") — pattern results
+  can never match eval expectations even if ranked correctly
+- Verdict: **model+training mismatch**, not pipeline bug. Semantic
+  suppression (weight=0.0) is correct. When model/training changes,
+  re-evaluate.
+
+**C0: FTS5 corpus audit — doc_id mapping bug found (F6)**
+
+- `layer/core/*.md` files ARE indexed in `pattern_fts` (7 core files)
+- FTS5 tokenization works correctly — `porter unicode61` treats hyphens
+  as separators, "dependable-rust" tokenizes to ["dependable", "rust"]
+- **Bug found:** `scry_lexical()` returns `source_id: id` for pattern
+  results (e.g., "dependable-rust"), but eval expects `file_path`
+  (e.g., "layer/core/dependable-rust.md"). Same bug in semantic
+  enrichment. Pattern results silently fail to match eval expectations.
+- **Impact:** 19/52 queries (37%) expect `layer/` file paths. 24 of 161
+  expected files are `layer/` paths. All get 0 credit from pattern FTS
+  hits.
+- **Fix:** Change `source_id: id` → `source_id: file_path` in:
+  - `src/commands/scry/internal/search.rs` (scry_lexical pattern results)
+  - `src/commands/scry/internal/enrichment.rs` (semantic enrichment)
+- This also corrects the "Definition intent worst at 28.6%" observation —
+  Definition queries predominantly expect `layer/core/` docs which were
+  always invisible due to this mapping bug.
+
 ### Phase 3: Belief Score Multiplier (F5)
 
 Compensate for single-oracle RRF disadvantage:
@@ -238,6 +291,12 @@ Product Metrics (last 10 sessions):
 - [x] No regression on subsystem tests — all improved (co-change +14.9pp, belief MRR +0.072)
 - [x] Train-test gap healthy at -1.4pp (was -0.5pp baseline)
 
+### Phase 2.5: Diagnostic Fixes
+- [ ] F6 (doc_id mapping bug) fixed: pattern source_id uses file_path
+- [ ] Eval re-run with fix, before/after delta documented
+- [ ] Definition intent P@10 improved from 28.6% baseline
+- [ ] No regression on co-change or belief subsystem tests
+
 ### Phase 3: Belief Score Multiplier
 - [ ] Belief MRR improved beyond current 0.241 with held-out validation
 - [ ] Knowledge category MRR improved from current 0.340
@@ -264,8 +323,9 @@ Product Metrics (last 10 sessions):
 - Belief oracle: 6.4% P@10, low but contributes to the unified edge.
   Phase 3 (belief score multiplier) could improve this.
 - Definition intent: weakest P@10 (28.6%) and P@5 (14.3%). Currently below
-  General (33.4%). Boosting lexical/belief for Definition doesn't help enough —
-  the issue may be that `layer/core/` docs aren't well-indexed in FTS5.
+  General (33.4%). Root cause identified (Phase 2.5): doc_id mapping bug (F6)
+  means pattern FTS hits for `layer/core/` docs were invisible to eval.
+  Not an indexing or tokenization issue — `layer/core/` docs ARE in FTS5.
 - Intent detection: 52% coverage. Broadening Mechanism detection could help
   2-3 queries but sample is too small to validate. Needs more queries first.
 - The ONNX model choice (E5-base-v2) drives semantic results — a different
