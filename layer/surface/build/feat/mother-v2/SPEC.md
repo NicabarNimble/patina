@@ -9,7 +9,7 @@ sessions:
   work: []
 related:
   - layer/surface/build/feat/mother/SPEC.md
-  - layer/surface/build/feat/mother-delivery/SPEC.md
+  - layer/surface/build/feat/surface-layer/SPEC.md
   - layer/surface/build/explore/beads-patterns/SPEC.md
   - layer/surface/epistemic/beliefs/mother-is-the-daemon.md
   - layer/surface/epistemic/beliefs/patina-is-knowledge-layer.md
