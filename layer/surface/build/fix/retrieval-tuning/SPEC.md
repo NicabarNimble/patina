@@ -291,12 +291,17 @@ Product Metrics (last 10 sessions):
 - [x] No regression on subsystem tests — all improved (co-change +14.9pp, belief MRR +0.072)
 - [x] Train-test gap healthy at -1.4pp (was -0.5pp baseline)
 
-### Phase 2.5: Diagnostic Fixes
+### Phase 2.5: Diagnostic Fixes + Error Analysis
 - [x] F6 (doc_id mapping bug) fixed: pattern source_id uses file_path
 - [x] Eval re-run with fix, before/after delta documented (see below)
-- [ ] Definition intent P@10 improved from 28.6% baseline — not yet, patterns
-  rank below code in BM25 so rarely enter top 10 even with correct doc_ids
+- [ ] Definition intent P@10 improved from 28.6% baseline — blocked by
+  root causes 1 (ID collision) and 2 (BM25 scale mismatch)
 - [x] No regression on co-change or belief subsystem tests
+- [x] Error analysis: identified root cause 1 (layer scraper ignores
+  .gitignore → 730 dust patterns, ID collision) and root cause 2 (BM25
+  scores incommensurate across FTS5 tables with different column counts)
+- [ ] Root cause 1 fix: swap layer scraper to ignore::WalkBuilder
+- [ ] Root cause 2 fix: normalize BM25 per-table before merging
 
 ```
 Phase 2.5 Results (52 NL queries, F6 fix applied):
@@ -315,6 +320,53 @@ entries — patterns rarely enter top 10 even with correct doc_ids. The fix
 is necessary (correct doc_id mapping) but not sufficient to lift pattern
 retrieval. Future work: consider pattern-specific boosting in RRF or
 separate pattern oracle.
+
+**Error analysis (session 20260207-150836, continued 20260207-153429):**
+
+Systematic trace of 19 queries expecting `layer/` files found 7/24 expected
+files appear in top 10, 17 do not. Two deeper root causes identified:
+
+**Root cause 1: Pattern ID collision — layer scraper ignores .gitignore**
+
+The layer scraper (`src/commands/scrape/layer/mod.rs`) uses raw
+`walkdir::WalkDir` which walks ALL files including gitignored `layer/dust/`.
+The code scraper (`src/commands/scrape/code/extract_v2.rs`) already uses
+`ignore::WalkBuilder` with `.git_ignore(true)` — correct pattern exists
+in codebase but wasn't applied to the layer scraper.
+
+Result: 730 dust patterns indexed in DB. `layer/dust/archive/architecture/
+dependable-rust.md` (no frontmatter) derives `id: dependable-rust` from
+filename, colliding with `layer/core/dependable-rust.md` (which has explicit
+`id: dependable-rust` in frontmatter). Files processed in sorted order →
+dust alphabetically later → overwrites core. The most-expected eval file
+is invisible.
+
+- Fix: swap `collect_md_files` from `walkdir::WalkDir` to
+  `ignore::WalkBuilder` with `.git_ignore(true)`. Same pattern as the
+  code scraper. `ignore v0.4.23` already in dep tree. Eliminates all
+  730 dust entries and the ID collision.
+- Verify: `SELECT id, file_path FROM patterns WHERE id = 'dependable-rust'`
+  should return `layer/core/dependable-rust.md` after re-scrape.
+
+**Root cause 2: BM25 scale mismatch across FTS5 tables**
+
+`scry_lexical()` queries three FTS5 tables (`code_fts`: 4 columns,
+`pattern_fts`: 6 columns, `commits_fts`: 3 columns), converts all BM25
+scores to positive, sorts them together, and truncates to limit. BM25
+scores from different FTS5 tables are NOT comparable — they depend on
+column count, corpus size, and document frequency within each table.
+
+Result: `safety-boundaries.md` has BM25 11.63 (highest in pattern_fts)
+but ranks below code_fts entries with 8.66 because the scales are
+incommensurate. 7/24 expected `layer/` files appear in top 10; 17 do not.
+
+- Fix: normalize BM25 scores per-table before merging. Options:
+  (a) min-max normalize per table, (b) z-score normalize, (c) use
+  rank-based fusion (RRF) within the lexical oracle, (d) separate
+  pattern oracle. Chosen approach: TBD after root cause 1 fix measured.
+- Impact: this is the higher-impact fix. Even with correct doc_ids
+  (F6 fix), patterns can't enter top-K when their scores are
+  incommensurate with code/commit scores.
 
 ### Phase 3: Belief Score Multiplier
 - [ ] Belief MRR improved beyond current 0.241 with held-out validation
