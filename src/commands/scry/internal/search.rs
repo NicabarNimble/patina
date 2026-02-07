@@ -302,9 +302,16 @@ pub fn scry_belief(belief_id: &str, options: &ScryOptions) -> Result<Vec<ScryRes
     let mut enriched = enrich_results(&conn, &results, "semantic", options.min_score)?;
 
     // Filter out self — belief appears as both belief.surface and pattern.surface
+    // Pattern source_id is now file_path (e.g., "layer/surface/epistemic/beliefs/foo.md")
+    // so match on either exact id or file_path containing the belief_id
     enriched.retain(|r| {
-        !(r.source_id == belief_id
-            && (r.event_type == "belief.surface" || r.event_type.starts_with("pattern.")))
+        if r.event_type == "belief.surface" && r.source_id == belief_id {
+            return false; // Exact belief match
+        }
+        if r.event_type.starts_with("pattern.") && r.source_id.contains(belief_id) {
+            return false; // Pattern entry for this belief (file_path contains id)
+        }
+        true
     });
 
     // Apply content type filter if specified
@@ -472,7 +479,7 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
     if let Ok(mut stmt) = conn.prepare(pattern_sql) {
         let pattern_results =
             stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
-                let id: String = row.get(0)?;
+                let _id: String = row.get(0)?;
                 let title: String = row.get(1)?;
                 let snippet: String = row.get(2)?;
                 let file_path: String = row.get(3)?;
@@ -491,7 +498,9 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
                     // BM25 is negative, convert to positive (don't cap - preserve ranking)
                     score: -bm25_score as f32,
                     event_type: format!("pattern.{}", layer),
-                    source_id: id,
+                    // Use file_path (e.g., "layer/core/dependable-rust.md") not id
+                    // ("dependable-rust") — eval and retrieval match on file paths
+                    source_id: file_path,
                     timestamp: String::new(),
                 })
             })?;
