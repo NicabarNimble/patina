@@ -7,6 +7,7 @@ updated: 2026-02-06
 blocked_by: []
 related:
   - layer/surface/build/explore/adapter-polish/SPEC.md
+  - layer/surface/build/explore/llm-adapter-refactor/SPEC.md
   - layer/surface/build/explore/skill-derive/SPEC.md
 references: [unix-philosophy, dependable-rust, adapter-pattern]
 ---
