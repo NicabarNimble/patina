@@ -6,7 +6,11 @@ created: 2026-01-22
 sessions:
   origin: 20260122-102703
   work: []
+blocked_by:
+  - skills-focused-adapter
 related:
+  - layer/surface/build/feat/skills-focused-adapter/SPEC.md
+  - layer/surface/build/explore/skill-derive/SPEC.md
   - .claude/skills/epistemic-beliefs/SKILL.md
   - .claude/bin/session-update.sh
 ---

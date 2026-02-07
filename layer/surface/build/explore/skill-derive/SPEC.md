@@ -1,12 +1,15 @@
 ---
 type: explore
 id: skill-derive
-status: active
+status: design
 created: 2026-01-20
-updated: 2026-02-06
+updated: 2026-02-07
 tags: [skills, epistemic, generation]
+blocked_by:
+  - skills-focused-adapter
 related:
   - layer/surface/build/feat/skills-focused-adapter/SPEC.md
+  - layer/surface/build/refactor/skill-enforcement/SPEC.md
 ---
 
 # Explore: Belief-Driven Skill Generation
