@@ -1185,22 +1185,26 @@ fn score_nl_engine(engine: &QueryEngine, name: &str, cases: &[NlQueryCase]) -> R
         let results = engine.query(&case.query, 10)?;
         let expected: HashSet<String> = case.expected.iter().map(|p| normalize_path(p)).collect();
 
-        let hits_5 = results
+        // Deduplicate by file — multiple doc_ids from the same file count once
+        let unique_files_5: HashSet<String> = results
             .iter()
             .take(5)
-            .filter(|r| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
-            .count();
-        let hits_10 = results
+            .map(|r| extract_file_from_doc_id(&r.doc_id))
+            .filter(|f| expected.contains(f))
+            .collect();
+        let unique_files_10: HashSet<String> = results
             .iter()
             .take(10)
-            .filter(|r| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
-            .count();
+            .map(|r| extract_file_from_doc_id(&r.doc_id))
+            .filter(|f| expected.contains(f))
+            .collect();
 
         let denom_5 = expected.len().clamp(1, 5) as f32;
         let denom_10 = expected.len().clamp(1, 10) as f32;
-        total_p5 += hits_5 as f32 / denom_5;
-        total_p10 += hits_10 as f32 / denom_10;
+        total_p5 += unique_files_5.len() as f32 / denom_5;
+        total_p10 += unique_files_10.len() as f32 / denom_10;
 
+        // MRR: rank of first hit (by file, not by doc_id — same result)
         total_rr += results
             .iter()
             .enumerate()
@@ -1247,21 +1251,24 @@ pub fn execute_nl() -> Result<()> {
         let results = unified.query(&case.query, 10)?;
         let expected: HashSet<String> = case.expected.iter().map(|p| normalize_path(p)).collect();
 
-        let hits_5 = results
+        // Deduplicate by file — multiple doc_ids from the same file count once
+        let unique_files_5: HashSet<String> = results
             .iter()
             .take(5)
-            .filter(|r| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
-            .count();
-        let hits_10 = results
+            .map(|r| extract_file_from_doc_id(&r.doc_id))
+            .filter(|f| expected.contains(f))
+            .collect();
+        let unique_files_10: HashSet<String> = results
             .iter()
             .take(10)
-            .filter(|r| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
-            .count();
+            .map(|r| extract_file_from_doc_id(&r.doc_id))
+            .filter(|f| expected.contains(f))
+            .collect();
 
         let denom_5 = expected.len().clamp(1, 5) as f32;
         let denom_10 = expected.len().clamp(1, 10) as f32;
-        let p5 = hits_5 as f32 / denom_5;
-        let p10 = hits_10 as f32 / denom_10;
+        let p5 = unique_files_5.len() as f32 / denom_5;
+        let p10 = unique_files_10.len() as f32 / denom_10;
 
         let rr = results
             .iter()
