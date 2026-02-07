@@ -11,6 +11,7 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 
+use crate::retrieval::intent::detect_intent;
 use crate::retrieval::{FusedResult, QueryEngine, RetrievalConfig};
 
 /// Evaluation results for one engine + test combination
@@ -1164,6 +1165,7 @@ struct NlQueryCase {
     category: String,
     #[allow(dead_code)]
     source: String,
+    split: String,
 }
 
 /// Aggregated NL eval metrics for one engine configuration
@@ -1222,6 +1224,55 @@ fn score_nl_engine(engine: &QueryEngine, name: &str, cases: &[NlQueryCase]) -> R
     })
 }
 
+/// Score one engine against a subset of NL test cases (by reference)
+fn score_nl_engine_refs(
+    engine: &QueryEngine,
+    name: &str,
+    cases: &[&NlQueryCase],
+) -> Result<NlMetrics> {
+    let mut total_p5 = 0.0f32;
+    let mut total_p10 = 0.0f32;
+    let mut total_rr = 0.0f32;
+
+    for case in cases {
+        let results = engine.query(&case.query, 10)?;
+        let expected: HashSet<String> = case.expected.iter().map(|p| normalize_path(p)).collect();
+
+        let unique_files_5: HashSet<String> = results
+            .iter()
+            .take(5)
+            .map(|r| extract_file_from_doc_id(&r.doc_id))
+            .filter(|f| expected.contains(f))
+            .collect();
+        let unique_files_10: HashSet<String> = results
+            .iter()
+            .take(10)
+            .map(|r| extract_file_from_doc_id(&r.doc_id))
+            .filter(|f| expected.contains(f))
+            .collect();
+
+        let denom_5 = expected.len().clamp(1, 5) as f32;
+        let denom_10 = expected.len().clamp(1, 10) as f32;
+        total_p5 += unique_files_5.len() as f32 / denom_5;
+        total_p10 += unique_files_10.len() as f32 / denom_10;
+
+        total_rr += results
+            .iter()
+            .enumerate()
+            .find(|(_, r)| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
+            .map(|(i, _)| 1.0 / (i as f32 + 1.0))
+            .unwrap_or(0.0);
+    }
+
+    let n = cases.len();
+    Ok(NlMetrics {
+        name: name.to_string(),
+        p5: total_p5 / n as f32,
+        p10: total_p10 / n as f32,
+        mrr: total_rr / n as f32,
+    })
+}
+
 /// Execute NL query eval from curated test set
 ///
 /// Loads queries from resources/eval/nl-queries.json, runs each through the
@@ -1237,12 +1288,21 @@ pub fn execute_nl() -> Result<()> {
     let cases: Vec<NlQueryCase> =
         serde_json::from_str(&content).context("Failed to parse nl-queries.json")?;
 
-    println!("Loaded {} test queries\n", cases.len());
-
     // --- Per-query detail for unified engine ---
     let unified = QueryEngine::new();
 
     let mut category_stats: HashMap<String, (f32, f32, f32, usize)> = HashMap::new();
+    let mut split_stats: HashMap<String, (f32, f32, f32, usize)> = HashMap::new();
+    let mut intent_stats: HashMap<String, (f32, f32, f32, usize)> = HashMap::new();
+
+    let train_count = cases.iter().filter(|c| c.split == "train").count();
+    let test_count = cases.iter().filter(|c| c.split == "test").count();
+    println!(
+        "Loaded {} test queries ({} train, {} test)\n",
+        cases.len(),
+        train_count,
+        test_count
+    );
 
     println!("{:<55} {:>6} {:>6} {:>6}", "Query", "P@5", "P@10", "RR");
     println!("{}", "─".repeat(77));
@@ -1285,6 +1345,24 @@ pub fn execute_nl() -> Result<()> {
         entry.2 += rr;
         entry.3 += 1;
 
+        let split_entry = split_stats
+            .entry(case.split.clone())
+            .or_insert((0.0, 0.0, 0.0, 0));
+        split_entry.0 += p5;
+        split_entry.1 += p10;
+        split_entry.2 += rr;
+        split_entry.3 += 1;
+
+        let intent = detect_intent(&case.query);
+        let intent_name = format!("{:?}", intent);
+        let intent_entry = intent_stats
+            .entry(intent_name)
+            .or_insert((0.0, 0.0, 0.0, 0));
+        intent_entry.0 += p5;
+        intent_entry.1 += p10;
+        intent_entry.2 += rr;
+        intent_entry.3 += 1;
+
         let display_q = if case.query.len() > 53 {
             format!("{}...", &case.query[..50])
         } else {
@@ -1319,6 +1397,62 @@ pub fn execute_nl() -> Result<()> {
             p10 / n * 100.0,
             rr / n
         );
+    }
+
+    // Intent breakdown
+    println!("\n━━━ By Detected Intent ━━━\n");
+    println!(
+        "{:<20} {:>6} {:>8} {:>8} {:>8}",
+        "Intent", "N", "P@5", "P@10", "MRR"
+    );
+    println!("{}", "─".repeat(54));
+
+    let mut intents: Vec<_> = intent_stats.iter().collect();
+    intents.sort_by_key(|(k, _)| (*k).clone());
+    for (intent_name, (p5, p10, rr, count)) in &intents {
+        let n = *count as f32;
+        println!(
+            "{:<20} {:>6} {:>7.1}% {:>7.1}% {:>8.3}",
+            intent_name,
+            count,
+            p5 / n * 100.0,
+            p10 / n * 100.0,
+            rr / n
+        );
+    }
+
+    let total_detected = intent_stats
+        .iter()
+        .filter(|(k, _)| k.as_str() != "General")
+        .map(|(_, (_, _, _, c))| c)
+        .sum::<usize>();
+    println!(
+        "\n  Intent detection coverage: {}/{} ({:.0}%) queries have specific intent",
+        total_detected,
+        cases.len(),
+        total_detected as f32 / cases.len() as f32 * 100.0
+    );
+
+    // Split breakdown (train vs test)
+    println!("\n━━━ By Split (unified) ━━━\n");
+    println!(
+        "{:<20} {:>6} {:>8} {:>8} {:>8}",
+        "Split", "N", "P@5", "P@10", "MRR"
+    );
+    println!("{}", "─".repeat(54));
+
+    for split_name in &["train", "test"] {
+        if let Some((p5, p10, rr, count)) = split_stats.get(*split_name) {
+            let n = *count as f32;
+            println!(
+                "{:<20} {:>6} {:>7.1}% {:>7.1}% {:>8.3}",
+                split_name,
+                count,
+                p5 / n * 100.0,
+                p10 / n * 100.0,
+                rr / n
+            );
+        }
     }
 
     // --- Ablation: per-oracle contribution ---
@@ -1379,9 +1513,41 @@ pub fn execute_nl() -> Result<()> {
         );
     }
 
+    // Per-split ablation (unified only — quick view for tuning validation)
+    let train_cases: Vec<&NlQueryCase> = cases.iter().filter(|c| c.split == "train").collect();
+    let test_cases: Vec<&NlQueryCase> = cases.iter().filter(|c| c.split == "test").collect();
+
+    if !train_cases.is_empty() && !test_cases.is_empty() {
+        println!("\n━━━ Train vs Test (unified engine) ━━━\n");
+        println!(
+            "{:<25} {:>8} {:>8} {:>8}",
+            "Pipeline", "P@5", "P@10", "MRR"
+        );
+        println!("{}", "─".repeat(53));
+
+        let train_m = score_nl_engine_refs(&unified, "unified (train)", &train_cases)?;
+        let test_m = score_nl_engine_refs(&unified, "unified (test)", &test_cases)?;
+
+        for m in &[&train_m, &test_m] {
+            println!(
+                "{:<25} {:>7.1}% {:>7.1}% {:>8.3}",
+                m.name,
+                m.p5 * 100.0,
+                m.p10 * 100.0,
+                m.mrr,
+            );
+        }
+
+        let delta_p10 = (test_m.p10 - train_m.p10) * 100.0;
+        println!(
+            "\n  Train-test gap: {:+.1}pp P@10 (negative = potential overfit)",
+            delta_p10
+        );
+    }
+
     // Summary
     println!("\n━━━ Summary ━━━\n");
-    println!("  Queries:     {}", cases.len());
+    println!("  Queries:     {} ({} train, {} test)", cases.len(), train_count, test_count);
     println!("  Mean P@5:    {:.1}%", unified_metrics.p5 * 100.0);
     println!("  Mean P@10:   {:.1}%", unified_metrics.p10 * 100.0);
     println!("  MRR:         {:.3}", unified_metrics.mrr);
