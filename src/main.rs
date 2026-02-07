@@ -250,6 +250,10 @@ enum Commands {
         /// Show real-world precision from session feedback loop (Phase 3)
         #[arg(long)]
         feedback: bool,
+
+        /// Run natural-language query eval from curated test set
+        #[arg(long)]
+        nl: bool,
     },
 
     /// Benchmark retrieval quality with ground truth
@@ -997,9 +1001,12 @@ fn main() -> Result<()> {
         Some(Commands::Eval {
             dimension,
             feedback,
+            nl,
         }) => {
             if feedback {
                 commands::eval::execute_feedback()?;
+            } else if nl {
+                commands::eval::execute_nl()?;
             } else {
                 commands::eval::execute(dimension.map(|d| d.as_str().to_string()))?;
             }
