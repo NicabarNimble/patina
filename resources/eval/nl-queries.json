@@ -45,7 +45,7 @@
     "expected": [
       "src/mcp/server.rs",
       "src/mcp/mod.rs",
-      "src/mcp/tools.rs"
+      "src/mcp/protocol.rs"
     ],
     "category": "structural",
     "source": "session-20260204-142556"
@@ -65,7 +65,7 @@
     "expected": [
       "src/session.rs",
       "src/commands/scrape/sessions/mod.rs",
-      "src/commands/session.rs"
+      "src/commands/session/mod.rs"
     ],
     "category": "structural",
     "source": "session-20260204-142556"
@@ -94,7 +94,7 @@
   {
     "query": "version bump release automation",
     "expected": [
-      "src/commands/version.rs",
+      "src/commands/version/mod.rs",
       "src/spec.rs",
       "layer/core/build.md"
     ],
@@ -105,7 +105,7 @@
     "query": "vector similarity search implementation",
     "expected": [
       "src/retrieval/oracles/semantic.rs",
-      "src/commands/oxidize.rs",
+      "src/commands/oxidize/mod.rs",
       "src/retrieval/engine.rs"
     ],
     "category": "structural",
@@ -236,7 +236,7 @@
   {
     "query": "how are embeddings generated and stored",
     "expected": [
-      "src/commands/oxidize.rs",
+      "src/commands/oxidize/mod.rs",
       "src/retrieval/oracles/semantic.rs",
       "src/models/mod.rs"
     ],
