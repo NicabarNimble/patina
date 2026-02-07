@@ -34,6 +34,11 @@ impl IntentWeights {
     ///
     /// Philosophy: Boost relevant oracles, but don't penalize others.
     /// Minimum weight is 1.0 to avoid hurting baseline performance.
+    ///
+    /// NOTE: Ablation (eval-repair Phase 2, 25 NL queries) showed semantic and
+    /// persona contribute 0% to NL queries with current E5-base-v2 model.
+    /// However, tuning 25 weight parameters against 25 test queries is overfitting.
+    /// Weights stay uniform until we have a held-out test set. See [[retrieval-tuning]].
     pub fn for_intent(intent: QueryIntent) -> Self {
         match intent {
             QueryIntent::General => Self {
