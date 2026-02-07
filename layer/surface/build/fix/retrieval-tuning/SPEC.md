@@ -292,10 +292,29 @@ Product Metrics (last 10 sessions):
 - [x] Train-test gap healthy at -1.4pp (was -0.5pp baseline)
 
 ### Phase 2.5: Diagnostic Fixes
-- [ ] F6 (doc_id mapping bug) fixed: pattern source_id uses file_path
-- [ ] Eval re-run with fix, before/after delta documented
-- [ ] Definition intent P@10 improved from 28.6% baseline
-- [ ] No regression on co-change or belief subsystem tests
+- [x] F6 (doc_id mapping bug) fixed: pattern source_id uses file_path
+- [x] Eval re-run with fix, before/after delta documented (see below)
+- [ ] Definition intent P@10 improved from 28.6% baseline — not yet, patterns
+  rank below code in BM25 so rarely enter top 10 even with correct doc_ids
+- [x] No regression on co-change or belief subsystem tests
+
+```
+Phase 2.5 Results (52 NL queries, F6 fix applied):
+
+                    Before (F6 bug)     After (F6 fix)   Delta
+NL P@5 (all)             29.5%           28.2%         -1.3pp (noise)
+NL P@10 (all)            38.3%           38.3%          0.0pp
+NL MRR (all)             0.421           0.422         +0.001
+Test P@10                37.5%           35.8%         -1.7pp (noise)
+Train-test gap           -1.4pp          -3.0pp
+lexical-only P@10        34.5%           34.0%         -0.5pp (noise)
+```
+
+Impact is near-zero because pattern BM25 scores rank below code/commit
+entries — patterns rarely enter top 10 even with correct doc_ids. The fix
+is necessary (correct doc_id mapping) but not sufficient to lift pattern
+retrieval. Future work: consider pattern-specific boosting in RRF or
+separate pattern oracle.
 
 ### Phase 3: Belief Score Multiplier
 - [ ] Belief MRR improved beyond current 0.241 with held-out validation
