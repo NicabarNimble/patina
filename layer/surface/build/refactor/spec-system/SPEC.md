@@ -1,9 +1,9 @@
 ---
 type: refactor
 id: spec-system
-status: deferred
+status: complete
 created: 2026-01-22
-updated: 2026-01-26
+updated: 2026-02-06
 sessions:
   origin: 20260122-083510
   work:
@@ -28,17 +28,15 @@ related:
 
 - [x] Spec format documented (this file)
 - [x] Milestone format documented (this file)
-- [ ] Existing specs migrated or archived
-- [ ] `patina scrape layer` extracts milestones from specs
-- [ ] `patina version milestone` reads from scraped index
-- [ ] `patina version milestone` creates GitHub release via forge (not just git tag)
-- [ ] `patina version show` reads Cargo.toml as source of truth (not only stale index)
-- [ ] Spec archival (delete + tag) triggers re-scrape or version command handles missing specs gracefully
-- [ ] No specs with status that contradicts reality
-- [ ] Forge sync: spec exit criteria generate GitHub issues
-- [ ] Forge sync: spec milestones map to GitHub project items
-- [ ] Forge sync: completing a milestone updates issue/project state
-- [ ] Specs are source of truth, GitHub is a read-only window
+- [x] Existing specs migrated or archived (triage sessions 20260206-060219, 20260206-122524)
+- [x] Spec archival (delete + tag) triggers re-scrape or version command handles missing specs gracefully (shipped in [[spec-as-work-item]])
+
+**Rehomed (not this spec's job):**
+- `patina scrape layer` milestones → superseded by [[version-rules-system]] (spec=milestone, no milestones array)
+- `patina version milestone` → superseded by auto-release in [[spec-as-work-item]]
+- `patina version show` Cargo.toml → superseded by auto-release (Cargo.toml always current)
+- Status contradiction detection → [[spec-drift-detection]] + [[doctor-dev]]
+- Forge sync (4 items) → future spec when GitHub integration prioritized
 
 ---
 
@@ -305,6 +303,7 @@ Add `patina report specs` to parse frontmatter and show:
 | 2026-01-27 | in_progress | Added: GitHub release creation, stale index handling, spec archival re-scrape |
 | 2026-01-27 | in_progress | Added: Forge sync — specs as source of truth, GitHub as read-only window |
 | 2026-02-06 | deferred | Spec format defined and in use (2/13 criteria). Version tooling superseded by auto-release in [[spec-as-work-item]]. Forge sync never started — create separate spec when GitHub integration is prioritized. "No specs with status contradicting reality" rehomed to [[spec-drift-detection]] and [[doctor-dev]]. |
+| 2026-02-06 | complete | Core mission accomplished: format shipped, all specs use it, migration complete via triage sessions. Remaining exit criteria rehomed: forge sync → future spec, status contradictions → [[spec-drift-detection]] + [[doctor-dev]], version tooling → [[version-rules-system]] + [[spec-as-work-item]] auto-release. |
 
 ---
 
