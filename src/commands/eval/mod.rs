@@ -935,19 +935,82 @@ use patina::eventlog;
 
 /// Execute feedback loop evaluation - measure real-world precision
 ///
-/// Uses feedback views to correlate scry queries with subsequent commits.
+/// Materializes intermediate results into temp tables for performance,
+/// then reports precision metrics from session query→commit correlation.
 pub fn execute_feedback() -> Result<()> {
     println!("📊 Feedback Loop Evaluation\n");
     println!("Measuring real-world retrieval precision from session data...\n");
 
     let conn = Connection::open(eventlog::PATINA_DB)?;
 
-    // Ensure feedback views exist
-    eventlog::create_feedback_views(&conn)?;
+    // Materialize commit files per session into a temp table (avoids repeated JSON parsing)
+    conn.execute_batch(
+        r#"
+        DROP TABLE IF EXISTS _fb_commit_files;
+        CREATE TEMP TABLE _fb_commit_files AS
+        SELECT session_id, file_path FROM (
+            SELECT
+                json_extract(data, '$.session_id') as session_id,
+                json_extract(f.value, '$.path') as file_path,
+                ROW_NUMBER() OVER (
+                    PARTITION BY json_extract(data, '$.sha'), json_extract(f.value, '$.path')
+                    ORDER BY seq DESC
+                ) as rn
+            FROM eventlog, json_each(json_extract(data, '$.files')) as f
+            WHERE event_type = 'git.commit'
+              AND json_extract(data, '$.session_id') IS NOT NULL
+        ) WHERE rn = 1;
+        CREATE INDEX _fb_cf_session ON _fb_commit_files(session_id);
+        CREATE INDEX _fb_cf_path ON _fb_commit_files(file_path);
+        "#,
+    )?;
+
+    // Materialize query results with hits into a temp table.
+    // Normalize doc_id: strip '::...' suffix and './' prefix before matching.
+    conn.execute_batch(
+        r#"
+        DROP TABLE IF EXISTS _fb_query_hits;
+        CREATE TEMP TABLE _fb_query_hits AS
+        SELECT
+            q_session_id as session_id,
+            query,
+            mode,
+            query_time,
+            doc_id as retrieved_doc_id,
+            rank,
+            score,
+            CASE WHEN cf.file_path IS NOT NULL THEN 1 ELSE 0 END as is_hit
+        FROM (
+            SELECT
+                json_extract(data, '$.session_id') as q_session_id,
+                json_extract(data, '$.query') as query,
+                json_extract(data, '$.mode') as mode,
+                timestamp as query_time,
+                json_extract(r.value, '$.doc_id') as doc_id,
+                -- Normalize: strip '::...' suffix and './' prefix
+                REPLACE(
+                    CASE
+                        WHEN INSTR(json_extract(r.value, '$.doc_id'), '::') > 0
+                        THEN SUBSTR(json_extract(r.value, '$.doc_id'), 1,
+                             INSTR(json_extract(r.value, '$.doc_id'), '::') - 1)
+                        ELSE json_extract(r.value, '$.doc_id')
+                    END,
+                    './', '') as norm_doc_id,
+                json_extract(r.value, '$.rank') as rank,
+                json_extract(r.value, '$.score') as score
+            FROM eventlog, json_each(json_extract(data, '$.results')) as r
+            WHERE event_type = 'scry.query'
+              AND json_extract(data, '$.session_id') IS NOT NULL
+        ) q
+        LEFT JOIN _fb_commit_files cf
+            ON cf.session_id = q.q_session_id
+            AND cf.file_path = q.norm_doc_id;
+        "#,
+    )?;
 
     // Get overall statistics
     let (total_queries, total_retrievals): (i64, i64) = conn.query_row(
-        "SELECT COUNT(DISTINCT query), COUNT(*) FROM feedback_query_hits",
+        "SELECT COUNT(DISTINCT query), COUNT(*) FROM _fb_query_hits",
         [],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
@@ -964,7 +1027,7 @@ pub fn execute_feedback() -> Result<()> {
     }
 
     let total_hits: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM feedback_query_hits WHERE is_hit = 1",
+        "SELECT COUNT(*) FROM _fb_query_hits WHERE is_hit = 1",
         [],
         |row| row.get(0),
     )?;
@@ -986,7 +1049,7 @@ pub fn execute_feedback() -> Result<()> {
     println!("\n━━━ Precision by Rank ━━━\n");
     let mut stmt = conn.prepare(
         "SELECT rank, COUNT(*) as total, SUM(is_hit) as hits
-         FROM feedback_query_hits
+         FROM _fb_query_hits
          GROUP BY rank
          ORDER BY rank",
     )?;
@@ -1018,7 +1081,7 @@ pub fn execute_feedback() -> Result<()> {
     let mut stmt = conn.prepare(
         "SELECT session_id, COUNT(DISTINCT query) as queries,
                 SUM(is_hit) as hits, COUNT(*) as retrievals
-         FROM feedback_query_hits
+         FROM _fb_query_hits
          GROUP BY session_id
          ORDER BY queries DESC
          LIMIT 5",
@@ -1051,7 +1114,7 @@ pub fn execute_feedback() -> Result<()> {
     println!("\n━━━ High-Value Retrievals ━━━\n");
     let mut stmt = conn.prepare(
         "SELECT retrieved_doc_id, COUNT(*) as times_retrieved, SUM(is_hit) as times_committed
-         FROM feedback_query_hits
+         FROM _fb_query_hits
          WHERE is_hit = 1
          GROUP BY retrieved_doc_id
          ORDER BY times_committed DESC
