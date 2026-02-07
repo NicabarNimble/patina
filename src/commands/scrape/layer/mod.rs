@@ -4,10 +4,13 @@
 //! - layer/sessions/*.md        → SessionScraper (sessions.rs)
 //! - layer/core/*.md            → PatternScraper (this file)
 //! - layer/surface/*.md         → PatternScraper (this file)
-//! - layer/dust/*.md            → PatternScraper (this file)
+//! - layer/dust/*.md            → skipped (gitignored, local-only content)
 //!
 //! Beliefs (layer/surface/epistemic/beliefs/) are handled by the separate
 //! beliefs scraper — they have their own embedding pipeline.
+//!
+//! File collection uses `ignore::WalkBuilder` to respect .gitignore,
+//! matching the pattern in the code scraper (extract_v2.rs).
 
 pub mod sessions;
 
@@ -423,7 +426,10 @@ fn insert_pattern(conn: &Connection, pattern: &ParsedPattern) -> Result<()> {
     Ok(())
 }
 
-/// Collect markdown files from a directory (non-recursive by default)
+/// Collect markdown files from a directory, respecting .gitignore.
+///
+/// Uses `ignore::WalkBuilder` (same as code scraper in extract_v2.rs)
+/// to skip gitignored paths like `layer/dust/`.
 fn collect_md_files(dir: &Path, recursive: bool) -> Vec<std::path::PathBuf> {
     let mut files = Vec::new();
 
@@ -432,19 +438,21 @@ fn collect_md_files(dir: &Path, recursive: bool) -> Vec<std::path::PathBuf> {
     }
 
     if recursive {
-        // Walk directory recursively
-        for entry in walkdir::WalkDir::new(dir)
-            .min_depth(1)
-            .into_iter()
+        for entry in ignore::WalkBuilder::new(dir)
+            .hidden(false)
+            .git_ignore(true)
+            .max_depth(None)
+            .build()
             .filter_map(|e| e.ok())
         {
-            if entry
-                .path()
-                .extension()
-                .map(|ext| ext == "md")
-                .unwrap_or(false)
+            let path = entry.path();
+            if path.is_file()
+                && path
+                    .extension()
+                    .map(|ext| ext == "md")
+                    .unwrap_or(false)
             {
-                files.push(entry.path().to_path_buf());
+                files.push(path.to_path_buf());
             }
         }
     } else {
