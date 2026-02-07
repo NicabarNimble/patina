@@ -13,7 +13,6 @@ blocks:
 related:
   - layer/surface/reports/data-flow-cheatsheet.md
   - layer/surface/build/feat/mother-v2/SPEC.md
-  - layer/surface/build/feat/scrape-layer-unify/SPEC.md
 beliefs:
   - measure-first
   - measure-the-measurement
