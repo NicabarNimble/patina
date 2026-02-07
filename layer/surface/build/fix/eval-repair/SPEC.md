@@ -242,13 +242,14 @@ Product Metrics (last 10 sessions):
 - [x] `patina eval --nl` runs NL queries and reports P@5, P@10, MRR
   - Commit 18e71d58
 - [x] Baseline NL metrics recorded
-  - P@5 30.8%, P@10 41.1%, MRR 0.412
+  - **Corrected** (dedup fix 4772bd20): P@5 27.5%, P@10 33.7%, MRR 0.408
+  - Original was inflated by doc_id double-counting (+7.4pp P@10)
   - Knowledge weakest: P@5 17.3%, MRR 0.332
 - [x] Ablation: per-oracle contribution to NL queries measured
-  - lexical-only dominates: P@10 77.2%, MRR 0.416
-  - semantic-only and persona-only: 0% (no NL contribution)
-  - no-belief slightly outperforms unified (+3.0pp P@10)
-  - Commit 0f79d151
+  - **Corrected**: unified (33.7%) slightly beats lexical-only (31.1%) on P@10
+  - Original claim "lexical-only dominates at 77.2%" was inflated (+46pp)
+  - semantic-only and persona-only: 0% (no NL contribution — may be model-dependent)
+  - Commit 0f79d151, corrected 4772bd20
 
 ### Phase 3: Fusion Quality
 
