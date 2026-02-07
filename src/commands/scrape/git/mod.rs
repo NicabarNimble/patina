@@ -76,19 +76,17 @@ fn parse_session_tags() -> Result<Vec<SessionBounds>> {
         // Adapter suffix (e.g. "-claude") was added to tags but not to session YAML id.
         // Extract just the YYYYMMDD-HHMMSS portion to match get_active_session_id().
         if let Some(rest) = tag_name.strip_prefix("session-") {
-            let (candidate, is_start) =
-                if let Some(c) = rest.strip_suffix("-start") {
-                    (c, true)
-                } else if let Some(c) = rest.strip_suffix("-end") {
-                    (c, false)
-                } else {
-                    continue;
-                };
+            let (candidate, is_start) = if let Some(c) = rest.strip_suffix("-start") {
+                (c, true)
+            } else if let Some(c) = rest.strip_suffix("-end") {
+                (c, false)
+            } else {
+                continue;
+            };
 
             // Session ID is YYYYMMDD-HHMMSS (15 chars). Anything after that
             // is an adapter suffix (e.g. "-claude") that isn't part of the ID.
-            let session_id = if candidate.len() > 15
-                && candidate.as_bytes().get(15) == Some(&b'-')
+            let session_id = if candidate.len() > 15 && candidate.as_bytes().get(15) == Some(&b'-')
             {
                 &candidate[..15]
             } else {

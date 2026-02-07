@@ -210,7 +210,10 @@ pub fn execute_sessions(full: bool) -> Result<()> {
 pub fn execute_layer(full: bool) -> Result<()> {
     let stats = layer::run(full)?;
     println!("\n📊 Layer Scrape Summary:");
-    println!("  • Items processed: {} (patterns + sessions)", stats.items_processed);
+    println!(
+        "  • Items processed: {} (patterns + sessions)",
+        stats.items_processed
+    );
     println!("  • Time elapsed: {:?}", stats.time_elapsed);
     println!("  • Database size: {} KB", stats.database_size_kb);
     Ok(())

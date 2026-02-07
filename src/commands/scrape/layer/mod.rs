@@ -497,13 +497,9 @@ pub fn run(full: bool) -> Result<ScrapeStats> {
     let pattern_count = scrape_patterns(&conn, &pattern_files, full)?;
 
     // --- Sessions ---
-    let (session_count, session_skipped) =
-        sessions::scrape_sessions(&conn, &session_files, full)?;
+    let (session_count, session_skipped) = sessions::scrape_sessions(&conn, &session_files, full)?;
 
-    println!(
-        "  {} sessions ({} skipped)",
-        session_count, session_skipped
-    );
+    println!("  {} sessions ({} skipped)", session_count, session_skipped);
 
     let total = pattern_count + session_count;
 
@@ -574,10 +570,7 @@ fn scrape_patterns(
         }
     }
 
-    println!(
-        "  {} patterns ({} skipped)",
-        processed_count, skipped
-    );
+    println!("  {} patterns ({} skipped)", processed_count, skipped);
 
     // Prune stale entries: delete DB entries for IDs that no longer exist on disk
     let file_ids = current_file_ids;
