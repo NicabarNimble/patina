@@ -1,7 +1,7 @@
 ---
 type: explore
 id: observability
-status: active
+status: design
 created: 2026-01-13
 updated: 2026-02-06
 tags: [observability, metrics, events, doctor]
