@@ -8,8 +8,7 @@ sessions:
 blocked_by: []
 blocks: []
 related:
-  - layer/surface/build/fix/belief-retrieval-quality/SPEC.md
-  - layer/surface/build/feat/mother-delivery/d1-belief-oracle/SPEC.md
+  - layer/surface/build/explore/lab-automation/SPEC.md
 beliefs:
   - measure-first
   - measure-the-measurement

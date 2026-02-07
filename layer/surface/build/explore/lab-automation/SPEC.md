@@ -1,10 +1,12 @@
 ---
 type: explore
 id: lab-automation
-status: active
+status: design
 created: 2026-01-13
-updated: 2026-02-06
+updated: 2026-02-07
 tags: [eval, benchmarking, quality, measurement]
+blocked_by:
+  - eval-repair
 references: [measure-first, measure-the-measurement, error-analysis-over-architecture]
 related:
   - layer/surface/build/fix/eval-repair/SPEC.md
