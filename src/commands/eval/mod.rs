@@ -1166,10 +1166,63 @@ struct NlQueryCase {
     source: String,
 }
 
+/// Aggregated NL eval metrics for one engine configuration
+#[derive(Debug, Clone)]
+struct NlMetrics {
+    name: String,
+    p5: f32,
+    p10: f32,
+    mrr: f32,
+}
+
+/// Score one engine against the NL test set, return aggregate metrics
+fn score_nl_engine(engine: &QueryEngine, name: &str, cases: &[NlQueryCase]) -> Result<NlMetrics> {
+    let mut total_p5 = 0.0f32;
+    let mut total_p10 = 0.0f32;
+    let mut total_rr = 0.0f32;
+
+    for case in cases {
+        let results = engine.query(&case.query, 10)?;
+        let expected: HashSet<String> = case.expected.iter().map(|p| normalize_path(p)).collect();
+
+        let hits_5 = results
+            .iter()
+            .take(5)
+            .filter(|r| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
+            .count();
+        let hits_10 = results
+            .iter()
+            .take(10)
+            .filter(|r| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
+            .count();
+
+        let denom_5 = expected.len().clamp(1, 5) as f32;
+        let denom_10 = expected.len().clamp(1, 10) as f32;
+        total_p5 += hits_5 as f32 / denom_5;
+        total_p10 += hits_10 as f32 / denom_10;
+
+        total_rr += results
+            .iter()
+            .enumerate()
+            .find(|(_, r)| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
+            .map(|(i, _)| 1.0 / (i as f32 + 1.0))
+            .unwrap_or(0.0);
+    }
+
+    let n = cases.len();
+    Ok(NlMetrics {
+        name: name.to_string(),
+        p5: total_p5 / n as f32,
+        p10: total_p10 / n as f32,
+        mrr: total_rr / n as f32,
+    })
+}
+
 /// Execute NL query eval from curated test set
 ///
 /// Loads queries from resources/eval/nl-queries.json, runs each through the
 /// unified QueryEngine, and measures P@5, P@10, MRR against expected results.
+/// Includes per-oracle ablation to measure each oracle's contribution.
 pub fn execute_nl() -> Result<()> {
     println!("📊 Natural-Language Query Evaluation\n");
     println!("Testing retrieval quality with curated real-world queries...\n");
@@ -1182,15 +1235,9 @@ pub fn execute_nl() -> Result<()> {
 
     println!("Loaded {} test queries\n", cases.len());
 
-    let db_path = ".patina/local/data/patina.db";
-    let _conn = Connection::open(db_path)?;
-
+    // --- Per-query detail for unified engine ---
     let unified = QueryEngine::new();
 
-    // Per-query metrics
-    let mut total_p5 = 0.0f32;
-    let mut total_p10 = 0.0f32;
-    let mut total_rr = 0.0f32; // reciprocal rank
     let mut category_stats: HashMap<String, (f32, f32, f32, usize)> = HashMap::new();
 
     println!("{:<55} {:>6} {:>6} {:>6}", "Query", "P@5", "P@10", "RR");
@@ -1198,11 +1245,8 @@ pub fn execute_nl() -> Result<()> {
 
     for case in &cases {
         let results = unified.query(&case.query, 10)?;
-
-        // Normalize expected paths for comparison
         let expected: HashSet<String> = case.expected.iter().map(|p| normalize_path(p)).collect();
 
-        // Count hits at different K
         let hits_5 = results
             .iter()
             .take(5)
@@ -1214,28 +1258,17 @@ pub fn execute_nl() -> Result<()> {
             .filter(|r| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
             .count();
 
-        let p5 = if expected.is_empty() {
-            0.0
-        } else {
-            hits_5 as f32 / expected.len().min(5) as f32
-        };
-        let p10 = if expected.is_empty() {
-            0.0
-        } else {
-            hits_10 as f32 / expected.len().min(10) as f32
-        };
+        let denom_5 = expected.len().clamp(1, 5) as f32;
+        let denom_10 = expected.len().clamp(1, 10) as f32;
+        let p5 = hits_5 as f32 / denom_5;
+        let p10 = hits_10 as f32 / denom_10;
 
-        // Reciprocal rank: 1/rank of first expected result found
         let rr = results
             .iter()
             .enumerate()
             .find(|(_, r)| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
             .map(|(i, _)| 1.0 / (i as f32 + 1.0))
             .unwrap_or(0.0);
-
-        total_p5 += p5;
-        total_p10 += p10;
-        total_rr += rr;
 
         let entry = category_stats
             .entry(case.category.clone())
@@ -1245,7 +1278,6 @@ pub fn execute_nl() -> Result<()> {
         entry.2 += rr;
         entry.3 += 1;
 
-        // Truncate query for display
         let display_q = if case.query.len() > 53 {
             format!("{}...", &case.query[..50])
         } else {
@@ -1259,16 +1291,6 @@ pub fn execute_nl() -> Result<()> {
             rr
         );
     }
-
-    let n = cases.len() as f32;
-    println!("\n{}", "─".repeat(77));
-    println!(
-        "{:<55} {:>5.1}% {:>5.1}% {:>.3}",
-        "AVERAGE",
-        total_p5 / n * 100.0,
-        total_p10 / n * 100.0,
-        total_rr / n
-    );
 
     // Category breakdown
     println!("\n━━━ By Category ━━━\n");
@@ -1292,11 +1314,70 @@ pub fn execute_nl() -> Result<()> {
         );
     }
 
+    // --- Ablation: per-oracle contribution ---
+    println!("\n━━━ Ablation: Per-Oracle Contribution ━━━\n");
+
+    let oracles = ["semantic", "lexical", "temporal", "persona", "belief"];
+    let mut ablation_results: Vec<NlMetrics> = Vec::new();
+
+    // Unified baseline
+    let unified_metrics = score_nl_engine(&unified, "unified (all)", &cases)?;
+    ablation_results.push(unified_metrics.clone());
+
+    // Each oracle in isolation
+    for oracle_name in &oracles {
+        let engine = QueryEngine::with_config(RetrievalConfig {
+            oracle_filter: Some(vec![oracle_name.to_string()]),
+            ..Default::default()
+        });
+        let metrics = score_nl_engine(&engine, &format!("{}-only", oracle_name), &cases)?;
+        ablation_results.push(metrics);
+    }
+
+    // No-belief (all except belief)
+    let no_belief = QueryEngine::with_config(RetrievalConfig {
+        oracle_filter: Some(vec![
+            "semantic".to_string(),
+            "lexical".to_string(),
+            "temporal".to_string(),
+            "persona".to_string(),
+        ]),
+        ..Default::default()
+    });
+    let no_belief_metrics = score_nl_engine(&no_belief, "no-belief", &cases)?;
+    ablation_results.push(no_belief_metrics);
+
+    // Print ablation table
+    println!(
+        "{:<25} {:>8} {:>8} {:>8} {:>10}",
+        "Pipeline", "P@5", "P@10", "MRR", "vs Unified"
+    );
+    println!("{}", "─".repeat(63));
+
+    let baseline_p10 = unified_metrics.p10;
+    for m in &ablation_results {
+        let delta = if m.name == "unified (all)" {
+            "—".to_string()
+        } else {
+            let d = (m.p10 - baseline_p10) * 100.0;
+            format!("{:+.1}pp", d)
+        };
+        println!(
+            "{:<25} {:>7.1}% {:>7.1}% {:>8.3} {:>10}",
+            m.name,
+            m.p5 * 100.0,
+            m.p10 * 100.0,
+            m.mrr,
+            delta
+        );
+    }
+
+    // Summary
     println!("\n━━━ Summary ━━━\n");
     println!("  Queries:     {}", cases.len());
-    println!("  Mean P@5:    {:.1}%", total_p5 / n * 100.0);
-    println!("  Mean P@10:   {:.1}%", total_p10 / n * 100.0);
-    println!("  MRR:         {:.3}", total_rr / n);
+    println!("  Mean P@5:    {:.1}%", unified_metrics.p5 * 100.0);
+    println!("  Mean P@10:   {:.1}%", unified_metrics.p10 * 100.0);
+    println!("  MRR:         {:.3}", unified_metrics.mrr);
 
     Ok(())
 }
