@@ -60,7 +60,7 @@ pub enum SpecCommands {
     },
 }
 
-/// Archive a completed spec: tag, remove, update build.md, commit
+/// Archive a completed spec: tag, remove, commit
 pub fn archive(id: &str, dry_run: bool) -> Result<()> {
     internal::archive_spec(id, dry_run)
 }
