@@ -8,7 +8,8 @@ sessions:
 blocked_by: []
 blocks: []
 related:
-  - layer/surface/build/feat/spec-as-work-item/SPEC.md
+  - layer/surface/build/feat/spec-drift-detection/SPEC.md
+  - layer/surface/build/feat/doctor-dev/SPEC.md
 beliefs:
   - stale-context-is-hostile-context
   - process-checkpoints-catch-what-tooling-misses
