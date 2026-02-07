@@ -1,7 +1,7 @@
 ---
 type: fix
 id: eval-repair
-status: ready
+status: complete
 created: 2026-02-06
 sessions:
   origin: 20260206-060219
@@ -229,18 +229,28 @@ Product Metrics (last 10 sessions):
 
 ## Exit Criteria
 
-### Phase 1: Feedback Loop
+### Phase 1: Feedback Loop ✓
 
-- [ ] Root cause of 0% feedback precision identified and documented
-- [ ] `patina eval --feedback` returns > 0% on at least 1 session with known retrieval→edit pairs
-- [ ] Feedback linkage methodology documented (event types, time windows, file matching)
+- [x] Root cause of 0% feedback precision identified and documented
+  - 4 bugs: session ID format mismatch, ROW_NUMBER partition, doc_id `::` suffix, git rename paths
+- [x] `patina eval --feedback` returns > 0% on at least 1 session with known retrieval→edit pairs
+  - Achieved 2.2% precision (commit 38acca48)
+- [x] Feedback linkage methodology documented (event types, time windows, file matching)
 
-### Phase 2: Natural-Language Eval
+### Phase 2: Natural-Language Eval ✓
 
-- [ ] 20+ curated NL queries with expected results in `resources/eval/nl-queries.json`
-- [ ] `patina eval --nl` (or new dimension) runs NL queries and reports P@5, P@10, MRR
-- [ ] Baseline NL metrics recorded
-- [ ] Ablation: per-oracle contribution to NL queries measured
+- [x] 20+ curated NL queries with expected results in `resources/eval/nl-queries.json`
+  - 25 queries across knowledge (13), structural (10), rationale (2) categories
+- [x] `patina eval --nl` runs NL queries and reports P@5, P@10, MRR
+  - Commit 18e71d58
+- [x] Baseline NL metrics recorded
+  - P@5 30.8%, P@10 41.1%, MRR 0.412
+  - Knowledge weakest: P@5 17.3%, MRR 0.332
+- [x] Ablation: per-oracle contribution to NL queries measured
+  - lexical-only dominates: P@10 77.2%, MRR 0.416
+  - semantic-only and persona-only: 0% (no NL contribution)
+  - no-belief slightly outperforms unified (+3.0pp P@10)
+  - Commit 0f79d151
 
 ### Phase 3: Fusion Quality
 
