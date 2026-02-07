@@ -32,49 +32,47 @@ pub struct IntentWeights {
 impl IntentWeights {
     /// Get weights for a specific intent
     ///
-    /// Philosophy: Boost relevant oracles, but don't penalize others.
-    /// Minimum weight is 1.0 to avoid hurting baseline performance.
-    ///
-    /// NOTE: Ablation (eval-repair Phase 2, 25 NL queries) showed semantic and
-    /// persona contribute 0% to NL queries with current E5-base-v2 model.
-    /// However, tuning 25 weight parameters against 25 test queries is overfitting.
-    /// Weights stay uniform until we have a held-out test set. See [[retrieval-tuning]].
+    /// Phase 2 tuning (retrieval-tuning spec, session 20260207-101812):
+    /// - Semantic and persona contribute 0% across all 52 NL queries (E5-base-v2)
+    /// - Suppressed for General intent to reduce RRF noise
+    /// - Validated on held-out test set (32 train / 20 test)
+    /// - When embedding model changes, re-evaluate semantic weight
     pub fn for_intent(intent: QueryIntent) -> Self {
         match intent {
             QueryIntent::General => Self {
-                semantic: 1.0,
+                semantic: 0.0, // 0% P@K on 52 NL queries (E5-base-v2)
                 lexical: 1.0,
                 temporal: 1.0,
-                persona: 1.0,
+                persona: 0.0, // 0% P@K on 52 NL queries
                 belief: 1.0,
             },
             QueryIntent::Temporal => Self {
-                semantic: 1.0,
-                lexical: 2.0, // boost commits_fts, sessions
+                semantic: 0.0, // 0% P@K (E5-base-v2)
+                lexical: 2.0,  // boost commits_fts, sessions
                 temporal: 1.5,
-                persona: 1.0,
+                persona: 0.0, // 0% P@K
                 belief: 1.0,
             },
             QueryIntent::Rationale => Self {
-                semantic: 1.0,
-                lexical: 1.5, // boost patterns, sessions
+                semantic: 0.0, // 0% P@K (E5-base-v2)
+                lexical: 1.5,  // boost patterns, sessions
                 temporal: 1.0,
-                persona: 1.5,
-                belief: 1.5, // boost beliefs — "why" queries
+                persona: 0.0, // was 1.5 but persona=0% P@K
+                belief: 1.5,  // boost beliefs — "why" queries
             },
             QueryIntent::Mechanism => Self {
-                semantic: 1.5, // boost code embeddings
-                lexical: 1.0,
+                semantic: 0.0, // was 1.5 but semantic=0% P@K (E5-base-v2)
+                lexical: 1.5,  // redirect: boost code FTS5 instead
                 temporal: 1.0,
-                persona: 1.0,
+                persona: 0.0, // 0% P@K
                 belief: 1.0,
             },
             QueryIntent::Definition => Self {
-                semantic: 1.0,
-                lexical: 1.5, // boost patterns
+                semantic: 0.0, // 0% P@K (E5-base-v2)
+                lexical: 1.5,  // boost patterns
                 temporal: 1.0,
-                persona: 1.0,
-                belief: 1.5, // boost beliefs — "what is" queries
+                persona: 0.0, // 0% P@K
+                belief: 1.5,  // boost beliefs — "what is" queries
             },
         }
     }
