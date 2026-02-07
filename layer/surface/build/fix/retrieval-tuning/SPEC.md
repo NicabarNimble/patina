@@ -52,10 +52,47 @@ ORIGINAL INFLATED (for reference — DO NOT USE):
   lexical-only P@10 was 77.2% (actually 31.1%, inflated +46.1pp!)
 ```
 
-**Key correction:** Fusion is *slightly beneficial*, not harmful. Unified (33.7%)
-edges lexical-only (31.1%) on P@10 by 2.6pp. The original claim that "lexical-only
-crushes unified" was an artifact of the doc_id double-counting bug — lexical
-returns many doc_ids per file, so it was most inflated.
+### Phase 1 Baseline (52 NL queries, session 20260207-101812)
+
+Expanded from 25 to 52 queries with train/test split (32/20).
+
+```
+EXPANDED Baseline (52 NL queries, uniform weights, train/test split):
+
+Pipeline                       P@5     P@10      MRR
+unified (all)                24.6%    33.3%    0.354
+lexical-only                 26.0%    34.5%    0.412
+temporal-only                 8.3%    21.2%    0.153
+semantic-only                 0.0%     0.0%    0.000
+persona-only                  0.0%     0.0%    0.000
+belief-only                   5.1%     6.4%    0.086
+no-belief                    25.5%    32.7%    0.373
+
+By category:
+  knowledge (23)   P@5 17.0%  P@10 25.7%  MRR 0.340
+  structural (22)  P@5 25.2%  P@10 38.0%  MRR 0.377
+  rationale (7)    P@5 42.9%  P@10 52.4%  MRR 0.331
+
+By detected intent:
+  General (25)     P@5 23.5%  P@10 30.7%  MRR 0.439
+  Temporal (6)     P@5 27.8%  P@10 38.9%  MRR 0.389
+  Rationale (7)    P@5 42.9%  P@10 52.4%  MRR 0.331
+  Definition (7)   P@5  9.5%  P@10 28.6%  MRR 0.243
+  Mechanism (7)    P@5 17.9%  P@10 32.1%  MRR 0.160
+
+By split:
+  train (32)       P@5 23.8%  P@10 34.7%  MRR 0.363
+  test (20)        P@5 24.2%  P@10 34.2%  MRR 0.341
+
+Intent detection coverage: 52% (27/52 queries get specific intent)
+Train-test gap: -0.5pp P@10 (no pre-existing overfit)
+```
+
+**Key correction:** Fusion is *slightly beneficial*, not harmful. With 25 queries,
+unified (33.7%) edged lexical-only (31.1%). With 52 queries, lexical-only (34.5%)
+slightly leads unified (33.3%) by 1.2pp — the expanded query set shifted this
+balance, but the difference is within noise. The original claim that "lexical-only
+crushes unified" was an artifact of the doc_id double-counting bug.
 
 ### What's Actually Wrong (corrected assessment)
 
@@ -84,9 +121,10 @@ are `layer/core/` docs or deep code files that aren't well-served by any oracle.
 
 ### Overfitting Risk
 
-The current NL eval has 25 queries. Intent-aware weighting has 5 weights ×
-5 intents = 25 tunable parameters. This is 1:1 parameters to data points —
-any weight tuning on this test set is overfitting, not generalization.
+The NL eval now has 52 queries (32 train, 20 test). Intent-aware weighting
+has 5 weights × 5 intents = 25 tunable parameters. With 32 training queries,
+the ratio is ~1.3:1 data points to parameters — still tight, but with the
+held-out test set we can now detect overfitting.
 
 **Attempted and reverted (session 20260207-094828):** Suppressed semantic (0.3)
 and persona (0.2) for General intent. NL P@10 appeared to improve from 41.1%
@@ -99,25 +137,25 @@ Weights reverted to uniform baseline. Observations kept as documentation.
 
 ## Pre-Requisites (before any tuning)
 
-1. **Held-out test set** — Split queries into train (15) and test (10), or add
-   25+ new queries. Never tune and evaluate on the same data.
+1. **~~Held-out test set~~** ✅ — 52 queries with train/test split (32/20).
+   Train-test gap is -0.5pp P@10, confirming no pre-existing overfit.
 2. **Model assessment** — Evaluate whether E5-base-v2 is the right embedding
    model before deciding to suppress semantic. ONNX flexibility means we can
    swap models without code changes.
-3. **Per-query intent mapping** — Document which intent each NL query triggers.
-   Most fall through to General (no intent keywords). Intent detection coverage
-   may be the bottleneck, not weight values.
+3. **~~Per-query intent mapping~~** ✅ — Intent detection coverage is 52% (27/52).
+   48% of queries fall through to General. Mechanism intent has worst MRR (0.160)
+   despite decent P@10 (32.1%) — finds files but ranks them poorly.
 
 ## Design
 
-### Phase 1: Expand Eval Coverage
+### Phase 1: Expand Eval Coverage ✅
 
 Before tuning anything, fix the measurement:
 
-- Add 25+ more NL queries to build a proper train/test split
-- Map each query to its detected intent — understand coverage gaps
-- Add intent-breakdown to ablation output (metrics per intent, not just per category)
-- Consider per-oracle metrics by intent (does temporal help for Mechanism queries?)
+- ✅ Add 27 new NL queries (52 total) with train/test split (32/20)
+- ✅ Map each query to detected intent — 52% coverage, 48% General fallthrough
+- ✅ Add intent-breakdown to `eval --nl` output (By Detected Intent section)
+- ✅ Add split-breakdown to `eval --nl` output (By Split + Train vs Test sections)
 
 ### Phase 2: Intent-Aware Weighting (with proper eval)
 
@@ -157,10 +195,10 @@ Product Metrics (last 10 sessions):
 
 ## Exit Criteria
 
-### Phase 1: Eval Coverage
-- [ ] 50+ NL queries with train/test split
-- [ ] Per-intent metric breakdown in ablation output
-- [ ] Documented intent detection coverage (% queries per intent)
+### Phase 1: Eval Coverage ✅
+- [x] 52 NL queries with train/test split (32 train / 20 test)
+- [x] Per-intent metric breakdown in eval --nl output
+- [x] Intent detection coverage: 52% specific, 48% General fallthrough
 
 ### Phase 2: Intent-Aware Weighting
 - [ ] Weights tuned on train set, validated on held-out test set
@@ -182,13 +220,26 @@ Product Metrics (last 10 sessions):
 ## Observations (not yet actionable)
 
 These are findings from the ablation. They are observations, not tuning decisions.
-They require a held-out test set to validate before acting on.
+They now have a held-out test set but still need validation before acting on.
 
-- Semantic oracle (E5-base-v2 ONNX): 0% P@K on all 25 NL queries
-- Persona oracle: 0% P@K on all 25 NL queries
-- Lexical oracle: best MRR (0.417) but fusion slightly beats it on P@10
-- Belief oracle: 8% P@10, low but non-zero — contributes to unified edge
-- Temporal oracle: useful for structural queries, less for knowledge
+**Confirmed across 52 queries (was 25):**
+- Semantic oracle (E5-base-v2 ONNX): still 0% P@K on all 52 NL queries
+- Persona oracle: still 0% P@K on all 52 NL queries
+- Lexical oracle: best single-oracle MRR (0.412), now slightly leads unified on P@10
+  (34.5% vs 33.3%) — the fusion benefit seen with 25 queries is within noise at 52
+- Belief oracle: 6.4% P@10 (was 8.0%), low but non-zero
+- Temporal oracle: 21.2% P@10, useful but not dominant
+
+**New from Phase 1 expansion:**
+- Mechanism intent has worst MRR (0.160) despite decent P@10 (32.1%) — finds relevant
+  files but ranks them low. This is a ranking problem, not a recall problem.
+- Definition intent has worst P@5 (9.5%) — slow to surface pattern docs.
+  Likely needs lexical boost for `layer/core/` content.
+- Rationale intent performs best (52.4% P@10) — "why" questions are well-served
+  by lexical FTS5 matching commit messages and session notes.
+- Intent detection only fires on 52% of queries. The other 48% are keyword-style
+  ("belief oracle implementation") that fall to General. Broadening detection
+  may help more than weight tuning.
 - The ONNX model choice (E5-base-v2) drives semantic results — a different
   model could make semantic the dominant oracle. Don't bake in model assumptions.
 
