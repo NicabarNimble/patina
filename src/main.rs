@@ -507,6 +507,23 @@ enum AssayCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Ranked factual search across code, commits, and patterns (FTS5)
+    Search {
+        /// Search query text
+        query: String,
+
+        /// Maximum number of results
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Include GitHub issues in results
+        #[arg(long)]
+        include_issues: bool,
+    },
 }
 
 /// Common arguments for all scrape subcommands
@@ -1172,6 +1189,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Inventory {
                     pattern,
@@ -1184,6 +1202,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Imports {
                     module,
@@ -1196,6 +1215,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Importers {
                     module,
@@ -1208,6 +1228,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Functions {
                     pattern,
@@ -1220,6 +1241,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Callers {
                     function,
@@ -1232,6 +1254,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Callees {
                     function,
@@ -1244,6 +1267,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Derive { json }) => commands::assay::AssayOptions {
                     query_type: commands::assay::QueryType::Derive,
@@ -1252,6 +1276,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::DeriveMoments { json }) => commands::assay::AssayOptions {
                     query_type: commands::assay::QueryType::DeriveMoments,
@@ -1260,6 +1285,23 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
+                },
+                Some(AssayCommands::Search {
+                    query: search_query,
+                    limit: search_limit,
+                    json: search_json,
+                    include_issues,
+                }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Search {
+                        query: search_query,
+                    },
+                    pattern: None,
+                    limit: search_limit,
+                    json: search_json,
+                    repo,
+                    all_repos,
+                    include_issues,
                 },
             };
             commands::assay::execute(options)?;
