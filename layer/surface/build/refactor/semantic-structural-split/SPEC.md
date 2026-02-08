@@ -414,11 +414,30 @@ conceptual queries" — this is an eval task that requires the eval
 infrastructure Phase 4 builds. Cannot be validated without independent
 scry and assay eval harnesses.
 
-### Phase 3: Consumer-Level Fusion
-- [ ] `patina context` calls both assay and scry
-- [ ] MCP exposes appropriate tools for both factual and semantic queries
-- [ ] Fusion is simple (two signals, not five)
-- [ ] Combined results documented honestly against Phase 2.5 baseline
+### Phase 3: Consumer-Level Fusion — COMPLETE (2026-02-08)
+- [x] `patina context` calls both assay and scry
+- [x] MCP exposes appropriate tools for both factual and semantic queries
+- [x] Fusion is simple (two signals, not five)
+- [x] Combined results documented honestly against Phase 2.5 baseline
+
+**Consumer-level fusion implementation:**
+`get_topic_search_results()` calls `assay_search()` (FTS5 factual) and
+`QueryEngine::query()` (semantic vector) when a topic is provided. Two signals,
+no weights, no RRF — HashSet deduplication with facts-first priority.
+
+**Before (Phase 2 baseline):** `patina context --topic` showed only beliefs
+ranked by FTS5. No factual search results (code/commits/patterns), no semantic
+search results.
+
+**After (Phase 3):** Three independent sections: Factual Matches (assay keyword
+hits — Error struct, compilation errors commit, etc.), Semantic Matches (scry
+vector hits — conceptually related commits not matched by keywords), Active
+Beliefs (FTS5 belief search, unchanged). MCP tool descriptions updated to
+reflect the split: scry indexes "commits, beliefs, and patterns" (not
+code/sessions), context mentions fusion, assay mentions search/cochange/belief.
+
+**Recall directive** updated to show all three search paths:
+meaning (scry), facts (assay search), beliefs (scry content_type=beliefs).
 
 ### Phase 4: Eval Redesign
 - [ ] Assay eval tests factual retrieval independently
