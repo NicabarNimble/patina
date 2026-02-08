@@ -1,6 +1,7 @@
 //! Core search functions for scry command
 //!
-//! Implements semantic vector search, lexical FTS5 search, and file-based queries.
+//! Implements semantic vector search, belief grounding, and file-based queries.
+//! Lexical FTS5 search lives in assay (see src/commands/assay/internal/search.rs).
 
 use std::path::Path;
 
@@ -12,7 +13,6 @@ use patina::embeddings::create_embedder;
 
 use super::super::{ScryOptions, ScryResult};
 use super::enrichment::{enrich_results, SearchResults};
-use super::query_prep::prepare_fts_query;
 
 /// Get database and embeddings paths (handles --repo flag)
 pub fn get_paths(options: &ScryOptions) -> Result<(String, String)> {
@@ -54,14 +54,12 @@ pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> 
     let index_path = format!("{}/{}.usearch", embeddings_dir, dimension);
 
     if !Path::new(&index_path).exists() {
-        // Graceful fallback: index missing, use FTS5 instead
-        eprintln!(
-            "⚠️  {} index not found, falling back to lexical search (FTS5)",
-            dimension
+        anyhow::bail!(
+            "Semantic index not found: {}\n\
+             Run 'patina oxidize' to build the knowledge domain index.\n\
+             For keyword search, use 'patina assay search <query>' instead.",
+            index_path
         );
-        eprintln!("   Run 'patina oxidize' for vector search\n");
-        println!("Mode: Lexical (FTS5) [fallback]\n");
-        return scry_lexical(query, options);
     }
 
     // Create embedder and embed query
@@ -333,235 +331,6 @@ pub fn scry_belief(belief_id: &str, options: &ScryOptions) -> Result<Vec<ScryRes
 /// Legacy alias for text-based scry
 pub fn scry(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
     scry_text(query, options)
-}
-
-/// Check if query looks like a lexical/exact-match query
-///
-/// This function gates the routing decision: lexical queries go to FTS5,
-/// everything else to semantic vector search. It must be at least as
-/// permissive as `is_code_like()` in query_prep.rs — otherwise code
-/// patterns get routed to semantic mode where they produce noise.
-pub fn is_lexical_query(query: &str) -> bool {
-    let lower = query.to_lowercase();
-
-    // Explicit lexical patterns (natural language triggers)
-    lower.starts_with("find ")
-        || lower.starts_with("where is ")
-        || lower.starts_with("show me the ")
-        || lower.starts_with("show me ")
-        || lower.contains(" defined")
-        // Code symbol patterns (original)
-        || query.contains("::")
-        || query.contains("()")
-        || query.contains("fn ")
-        || query.contains("struct ")
-        || query.contains("const ")
-        || query.contains("impl ")
-        // Aligned with is_code_like() — these were missing and caused
-        // insert_event, create_uid_if_missing, allow(dead_code) etc.
-        // to fall through to semantic mode
-        || (query.contains('_') && !query.contains(' '))  // snake_case without spaces
-        || query.chars().all(|c| c.is_alphanumeric() || c == '_')  // single identifier
-        || (query.contains('(') && query.contains(')'))  // parens (not just "()" pair)
-        // Keyword at end of query (e.g., "async fn" has no trailing space)
-        || lower.ends_with(" fn")
-        || lower.ends_with(" struct")
-}
-
-/// Lexical search using FTS5 with per-table min-max normalization
-///
-/// Each FTS5 table (code, commits, patterns) has different column counts and
-/// corpus sizes, making raw BM25 scores incomparable. We normalize per-table
-/// using log1p + min-max to [0,1], preserving within-table score magnitude
-/// while making cross-table scores comparable. The outer fusion (RRF in
-/// retrieval/fusion.rs) then handles cross-oracle combination.
-pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
-    let (db_path, _) = get_paths(options)?;
-
-    let conn = Connection::open(&db_path)
-        .with_context(|| format!("Failed to open database: {}", db_path))?;
-
-    // Prepare the FTS5 query
-    let fts_query = prepare_fts_query(query);
-
-    println!("FTS5 query: {}", fts_query);
-
-    // Collect results per-table with raw BM25 scores
-    let mut code_results: Vec<ScryResult> = Vec::new();
-    let mut commit_results: Vec<ScryResult> = Vec::new();
-    let mut pattern_results: Vec<ScryResult> = Vec::new();
-
-    // 1. Search code_fts
-    let event_type_filter = if options.include_issues {
-        "event_type LIKE 'code.%' OR event_type = 'github.issue'"
-    } else {
-        "event_type LIKE 'code.%'"
-    };
-
-    let code_sql = format!(
-        "SELECT
-            symbol_name,
-            file_path,
-            snippet(code_fts, 2, '>>>', '<<<', '...', 64) as snippet,
-            event_type,
-            bm25(code_fts) as score
-         FROM code_fts
-         WHERE code_fts MATCH ?
-           AND ({})
-         ORDER BY score
-         LIMIT ?",
-        event_type_filter
-    );
-
-    let mut stmt = conn.prepare(&code_sql)?;
-    let rows =
-        stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
-            let symbol: String = row.get(0)?;
-            let file_path: String = row.get(1)?;
-            let snippet: String = row.get(2)?;
-            let event_type: String = row.get(3)?;
-            let bm25_score: f64 = row.get(4)?;
-
-            let source_id = if event_type == "github.issue" {
-                format!("[ISSUE] {}", symbol)
-            } else {
-                file_path.clone()
-            };
-
-            Ok(ScryResult {
-                id: 0,
-                content: snippet,
-                // BM25 is negative in FTS5, convert to positive
-                score: -bm25_score as f32,
-                event_type,
-                source_id,
-                timestamp: String::new(),
-            })
-        })?;
-    code_results.extend(rows.filter_map(|r| r.ok()));
-
-    // 2. Search commits_fts (git narrative)
-    let commits_sql = "SELECT
-            sha,
-            snippet(commits_fts, 1, '>>>', '<<<', '...', 64) as snippet,
-            author_name,
-            bm25(commits_fts) as score
-         FROM commits_fts
-         WHERE commits_fts MATCH ?
-         ORDER BY score
-         LIMIT ?";
-
-    if let Ok(mut stmt) = conn.prepare(commits_sql) {
-        let rows =
-            stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
-                let sha: String = row.get(0)?;
-                let snippet: String = row.get(1)?;
-                let author: String = row.get(2)?;
-                let bm25_score: f64 = row.get(3)?;
-
-                Ok(ScryResult {
-                    id: 0,
-                    content: format!("{} ({})", snippet, author),
-                    score: -bm25_score as f32,
-                    event_type: "git.commit".to_string(),
-                    source_id: sha,
-                    timestamp: String::new(),
-                })
-            })?;
-        commit_results.extend(rows.filter_map(|r| r.ok()));
-    }
-
-    // 3. Search pattern_fts (layer docs)
-    let pattern_sql = "SELECT
-            id,
-            title,
-            snippet(pattern_fts, 2, '>>>', '<<<', '...', 64) as snippet,
-            file_path,
-            bm25(pattern_fts) as score
-         FROM pattern_fts
-         WHERE pattern_fts MATCH ?
-         ORDER BY score
-         LIMIT ?";
-
-    if let Ok(mut stmt) = conn.prepare(pattern_sql) {
-        let rows =
-            stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
-                let _id: String = row.get(0)?;
-                let title: String = row.get(1)?;
-                let snippet: String = row.get(2)?;
-                let file_path: String = row.get(3)?;
-                let bm25_score: f64 = row.get(4)?;
-
-                let layer = if file_path.contains("layer/core") {
-                    "core"
-                } else {
-                    "surface"
-                };
-
-                Ok(ScryResult {
-                    id: 0,
-                    content: format!("{}: {}", title, snippet),
-                    score: -bm25_score as f32,
-                    event_type: format!("pattern.{}", layer),
-                    source_id: file_path,
-                    timestamp: String::new(),
-                })
-            })?;
-        pattern_results.extend(rows.filter_map(|r| r.ok()));
-    }
-
-    // Min-max normalization per table: log1p transform + scale to [0,1]
-    // Preserves within-table magnitude while making cross-table scores comparable.
-    normalize_table(&mut code_results);
-    normalize_table(&mut commit_results);
-    normalize_table(&mut pattern_results);
-
-    // Merge all tables, sort by normalized score desc
-    let mut collected: Vec<ScryResult> = Vec::new();
-    collected.extend(code_results);
-    collected.extend(commit_results);
-    collected.extend(pattern_results);
-
-    collected.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    collected.truncate(options.limit);
-
-    // Filter by min_score
-    collected.retain(|r| r.score >= options.min_score);
-
-    Ok(collected)
-}
-
-/// Normalize a table's BM25 scores to [0,1] using log1p + min-max.
-///
-/// log1p reduces outlier compression (a score of 15 vs 4 becomes 2.77 vs 1.61
-/// instead of dominating the range). Min-max then scales to [0,1] within the
-/// table. If all scores are identical (or only one result), all get 1.0.
-fn normalize_table(results: &mut [ScryResult]) {
-    if results.is_empty() {
-        return;
-    }
-
-    // Transform: log1p to reduce outlier compression
-    let transformed: Vec<f32> = results.iter().map(|r| (r.score as f64 + 1.0).ln() as f32).collect();
-
-    let t_min = transformed.iter().cloned().fold(f32::INFINITY, f32::min);
-    let t_max = transformed.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-    let range = t_max - t_min;
-
-    const EPS: f32 = 1e-8;
-
-    for (result, &t) in results.iter_mut().zip(transformed.iter()) {
-        if range < EPS {
-            // All scores identical or single result — all equally "best"
-            result.score = 1.0;
-        } else {
-            result.score = (t - t_min) / range;
-        }
-    }
 }
 
 /// Detect the best available dimension for vector search
