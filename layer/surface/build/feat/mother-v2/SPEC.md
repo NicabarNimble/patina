@@ -11,11 +11,14 @@ related:
   - layer/surface/build/feat/mother/SPEC.md
   - layer/surface/build/feat/surface-layer/SPEC.md
   - layer/surface/build/explore/beads-patterns/SPEC.md
+  - layer/surface/build/refactor/semantic-structural-split/SPEC.md
   - layer/surface/epistemic/beliefs/mother-is-the-daemon.md
   - layer/surface/epistemic/beliefs/patina-is-knowledge-layer.md
 beliefs:
   - mother-is-the-daemon
   - patina-is-knowledge-layer
+  - mother-owns-ref-repo-indexing
+  - corpus-composition-over-model
 ---
 
 # feat: Mother v2 — The Nervous System
@@ -369,6 +372,9 @@ model = "e5-base-v2"  # Mother resolves path
 
 **Exit:** Delete project model files, `patina oxidize` still works via Mother.
 
+**Discovery from [[semantic-structural-split]] (2026-02-08):**
+`oxidize_for_repo()` in `src/commands/oxidize/mod.rs` currently has the *project* creating recipes inside ref repos — the project reaches past mother to configure shared infra. This violates the ownership boundary. When mother owns environment and models, she should also own ref repo indexing: when to oxidize, which recipe, where to store results. The current function is a stopgap to migrate, not a pattern to preserve. See [[mother-owns-ref-repo-indexing]].
+
 ### Phase 4: Belief Evolution (Values)
 
 Implement promotion from belief to value.
@@ -406,6 +412,9 @@ Extract beliefs from reference repositories.
 - [ ] `patina repo update` re-extracts
 
 **Exit:** `patina scry "error handling" --repo beads --content-type beliefs` returns extracted beliefs.
+
+**Discovery from [[semantic-structural-split]] (2026-02-08):**
+The knowledge corpus (`query_knowledge_corpus()`) already works for ref repos — missing tables (patterns, beliefs) are handled gracefully, producing a commits-only index. This is a working baseline. Ref repos with commits-only knowledge indexes are correct and sufficient per [[corpus-composition-over-model]]. Phase 6 should build on this (adding extracted beliefs to the corpus) rather than designing a separate extraction pipeline from scratch. The indexing infrastructure exists; what's missing is mother owning when and how it runs. See [[mother-owns-ref-repo-indexing]].
 
 ---
 
@@ -453,3 +462,4 @@ Extract beliefs from reference repositories.
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-05 | design | Created from state-of-union session 20260205-064001 |
+| 2026-02-08 | design | Added [[mother-owns-ref-repo-indexing]] + [[corpus-composition-over-model]] discoveries from [[semantic-structural-split]] Phase 2 cleanup |
