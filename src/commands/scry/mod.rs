@@ -15,7 +15,7 @@ use patina::mother;
 use crate::commands::persona;
 
 use internal::enrichment::{find_belief_impact, truncate_content};
-use internal::hybrid::execute_hybrid;
+use internal::semantic::execute_semantic;
 use internal::logging::log_scry_query;
 use internal::routing::{execute_graph_routing, execute_via_mother};
 use internal::search::{is_lexical_query, scry_belief, scry_file};
@@ -128,8 +128,8 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
         return execute_legacy_search(query, &options);
     }
 
-    // Default: QueryEngine with all oracles + RRF fusion
-    execute_hybrid(query, &options)
+    // Default: semantic search via QueryEngine
+    execute_semantic(query, &options)
 }
 
 /// D3: Fetch full content for a single result from a previous query
