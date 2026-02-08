@@ -397,8 +397,6 @@ this by building a clean knowledge domain.
 - [x] oxidize builds knowledge domain from beliefs + patterns + commits only
 - [x] Semantic index size < 3K items: **1,903 items** (78 patterns + 1,778 commits + 47 beliefs)
 - [x] Scry returns non-zero results for conceptual queries
-- [ ] Validation: scry finds answers that assay FTS5 misses for ≥5/20
-  conceptual queries (proves semantic adds value beyond keyword matching)
 
 **Post-knowledge-domain eval (`patina eval --nl`):**
 ```
@@ -409,8 +407,12 @@ P@5 8.3%, P@10 9.8%, MRR 0.216. Conceptual queries now find correct beliefs
 and patterns at top positions (e.g., "dependable rust pattern" → P@5 33%,
 RR 1.0; "error handling philosophy" → belief at position 1; "safety boundaries"
 → P@5 33%, RR 1.0). Structural queries still 0% — expected, that's assay's
-job now. Full validation (semantic vs FTS5 comparison) deferred to Phase 4
-eval redesign.
+job now.
+
+**Moved to Phase 4:** "scry finds answers assay FTS5 misses for ≥5/20
+conceptual queries" — this is an eval task that requires the eval
+infrastructure Phase 4 builds. Cannot be validated without independent
+scry and assay eval harnesses.
 
 ### Phase 3: Consumer-Level Fusion
 - [ ] `patina context` calls both assay and scry
@@ -421,6 +423,8 @@ eval redesign.
 ### Phase 4: Eval Redesign
 - [ ] Assay eval tests factual retrieval independently
 - [ ] Scry eval tests semantic retrieval independently
+- [ ] Scry finds answers assay FTS5 misses for ≥5/20 conceptual queries
+  (moved from Phase 2 — proves semantic adds value beyond keyword matching)
 - [ ] Combined eval tests the full pipeline
 - [ ] Remaining retrieval-tuning phases (3-5) re-evaluated against new architecture
 
