@@ -368,12 +368,13 @@ pub fn is_lexical_query(query: &str) -> bool {
         || lower.ends_with(" struct")
 }
 
-/// Lexical search using FTS5 with per-table RRF fusion
+/// Lexical search using FTS5 with per-table min-max normalization
 ///
 /// Each FTS5 table (code, commits, patterns) has different column counts and
-/// corpus sizes, making raw BM25 scores incomparable. We use rank-based fusion
-/// (RRF with k=60, same as outer fusion in retrieval/fusion.rs) to give each
-/// table's results a fair shot regardless of score scale.
+/// corpus sizes, making raw BM25 scores incomparable. We normalize per-table
+/// using log1p + min-max to [0,1], preserving within-table score magnitude
+/// while making cross-table scores comparable. The outer fusion (RRF in
+/// retrieval/fusion.rs) then handles cross-oracle combination.
 pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
     let (db_path, _) = get_paths(options)?;
 
@@ -385,7 +386,7 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
 
     println!("FTS5 query: {}", fts_query);
 
-    // Collect results per-table (each ordered by BM25 within its table)
+    // Collect results per-table with raw BM25 scores
     let mut code_results: Vec<ScryResult> = Vec::new();
     let mut commit_results: Vec<ScryResult> = Vec::new();
     let mut pattern_results: Vec<ScryResult> = Vec::new();
@@ -402,11 +403,12 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
             symbol_name,
             file_path,
             snippet(code_fts, 2, '>>>', '<<<', '...', 64) as snippet,
-            event_type
+            event_type,
+            bm25(code_fts) as score
          FROM code_fts
          WHERE code_fts MATCH ?
            AND ({})
-         ORDER BY bm25(code_fts)
+         ORDER BY score
          LIMIT ?",
         event_type_filter
     );
@@ -418,6 +420,7 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
             let file_path: String = row.get(1)?;
             let snippet: String = row.get(2)?;
             let event_type: String = row.get(3)?;
+            let bm25_score: f64 = row.get(4)?;
 
             let source_id = if event_type == "github.issue" {
                 format!("[ISSUE] {}", symbol)
@@ -428,7 +431,8 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
             Ok(ScryResult {
                 id: 0,
                 content: snippet,
-                score: 0.0, // replaced by RRF below
+                // BM25 is negative in FTS5, convert to positive
+                score: -bm25_score as f32,
                 event_type,
                 source_id,
                 timestamp: String::new(),
@@ -440,10 +444,11 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
     let commits_sql = "SELECT
             sha,
             snippet(commits_fts, 1, '>>>', '<<<', '...', 64) as snippet,
-            author_name
+            author_name,
+            bm25(commits_fts) as score
          FROM commits_fts
          WHERE commits_fts MATCH ?
-         ORDER BY bm25(commits_fts)
+         ORDER BY score
          LIMIT ?";
 
     if let Ok(mut stmt) = conn.prepare(commits_sql) {
@@ -452,11 +457,12 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
                 let sha: String = row.get(0)?;
                 let snippet: String = row.get(1)?;
                 let author: String = row.get(2)?;
+                let bm25_score: f64 = row.get(3)?;
 
                 Ok(ScryResult {
                     id: 0,
                     content: format!("{} ({})", snippet, author),
-                    score: 0.0,
+                    score: -bm25_score as f32,
                     event_type: "git.commit".to_string(),
                     source_id: sha,
                     timestamp: String::new(),
@@ -470,10 +476,11 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
             id,
             title,
             snippet(pattern_fts, 2, '>>>', '<<<', '...', 64) as snippet,
-            file_path
+            file_path,
+            bm25(pattern_fts) as score
          FROM pattern_fts
          WHERE pattern_fts MATCH ?
-         ORDER BY bm25(pattern_fts)
+         ORDER BY score
          LIMIT ?";
 
     if let Ok(mut stmt) = conn.prepare(pattern_sql) {
@@ -483,6 +490,7 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
                 let title: String = row.get(1)?;
                 let snippet: String = row.get(2)?;
                 let file_path: String = row.get(3)?;
+                let bm25_score: f64 = row.get(4)?;
 
                 let layer = if file_path.contains("layer/core") {
                     "core"
@@ -493,7 +501,7 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
                 Ok(ScryResult {
                     id: 0,
                     content: format!("{}: {}", title, snippet),
-                    score: 0.0,
+                    score: -bm25_score as f32,
                     event_type: format!("pattern.{}", layer),
                     source_id: file_path,
                     timestamp: String::new(),
@@ -502,21 +510,18 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
         pattern_results.extend(rows.filter_map(|r| r.ok()));
     }
 
-    // RRF fusion across tables: k=60 (same as outer fusion in retrieval/fusion.rs)
-    // Each table's results are already ordered by BM25 rank within that table.
-    // RRF score = 1/(k + rank + 1) where rank is 0-indexed.
-    const K: usize = 60;
+    // Min-max normalization per table: log1p transform + scale to [0,1]
+    // Preserves within-table magnitude while making cross-table scores comparable.
+    normalize_table(&mut code_results);
+    normalize_table(&mut commit_results);
+    normalize_table(&mut pattern_results);
 
+    // Merge all tables, sort by normalized score desc
     let mut collected: Vec<ScryResult> = Vec::new();
+    collected.extend(code_results);
+    collected.extend(commit_results);
+    collected.extend(pattern_results);
 
-    for table_results in [code_results, commit_results, pattern_results] {
-        for (rank, mut result) in table_results.into_iter().enumerate() {
-            result.score = 1.0 / (K + rank + 1) as f32;
-            collected.push(result);
-        }
-    }
-
-    // Sort by RRF score (higher is better) and limit
     collected.sort_by(|a, b| {
         b.score
             .partial_cmp(&a.score)
@@ -528,6 +533,35 @@ pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult
     collected.retain(|r| r.score >= options.min_score);
 
     Ok(collected)
+}
+
+/// Normalize a table's BM25 scores to [0,1] using log1p + min-max.
+///
+/// log1p reduces outlier compression (a score of 15 vs 4 becomes 2.77 vs 1.61
+/// instead of dominating the range). Min-max then scales to [0,1] within the
+/// table. If all scores are identical (or only one result), all get 1.0.
+fn normalize_table(results: &mut [ScryResult]) {
+    if results.is_empty() {
+        return;
+    }
+
+    // Transform: log1p to reduce outlier compression
+    let transformed: Vec<f32> = results.iter().map(|r| (r.score as f64 + 1.0).ln() as f32).collect();
+
+    let t_min = transformed.iter().cloned().fold(f32::INFINITY, f32::min);
+    let t_max = transformed.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let range = t_max - t_min;
+
+    const EPS: f32 = 1e-8;
+
+    for (result, &t) in results.iter_mut().zip(transformed.iter()) {
+        if range < EPS {
+            // All scores identical or single result — all equally "best"
+            result.score = 1.0;
+        } else {
+            result.score = (t - t_min) / range;
+        }
+    }
 }
 
 /// Detect the best available dimension for vector search
