@@ -393,12 +393,24 @@ semantic index is polluted with 27K session events (88% of index) and
 trained on session co-occurrence, not semantic meaning. Phase 2 addresses
 this by building a clean knowledge domain.
 
-### Phase 2: First Semantic Domain (Knowledge)
-- [ ] oxidize builds knowledge domain from beliefs + patterns + commits only
-- [ ] Semantic index size < 3K items (down from ~27K)
-- [ ] Scry returns non-zero results for conceptual queries
+### Phase 2: First Semantic Domain (Knowledge) — COMPLETE (2026-02-08)
+- [x] oxidize builds knowledge domain from beliefs + patterns + commits only
+- [x] Semantic index size < 3K items: **1,903 items** (78 patterns + 1,778 commits + 47 beliefs)
+- [x] Scry returns non-zero results for conceptual queries
 - [ ] Validation: scry finds answers that assay FTS5 misses for ≥5/20
   conceptual queries (proves semantic adds value beyond keyword matching)
+
+**Post-knowledge-domain eval (`patina eval --nl`):**
+```
+Mean P@5:  4.3%    Mean P@10: 5.6%    MRR: 0.107
+```
+Improvement from Phase 1 baseline (0%/0%/0.000). Knowledge category shows
+P@5 8.3%, P@10 9.8%, MRR 0.216. Conceptual queries now find correct beliefs
+and patterns at top positions (e.g., "dependable rust pattern" → P@5 33%,
+RR 1.0; "error handling philosophy" → belief at position 1; "safety boundaries"
+→ P@5 33%, RR 1.0). Structural queries still 0% — expected, that's assay's
+job now. Full validation (semantic vs FTS5 comparison) deferred to Phase 4
+eval redesign.
 
 ### Phase 3: Consumer-Level Fusion
 - [ ] `patina context` calls both assay and scry
