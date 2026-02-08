@@ -636,6 +636,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                 json: true, // Always use JSON for MCP
                 repo,
                 all_repos,
+                ..Default::default()
             };
 
             match execute_assay(&options) {
@@ -962,6 +963,14 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
             Ok(serde_json::to_string_pretty(&serde_json::json!({
                 "error": "derive-moments not yet supported in MCP, use 'patina assay derive-moments' CLI"
             }))?)
+        }
+        QueryType::Search { ref query } => {
+            let search_opts = crate::commands::assay::internal::search::SearchOptions {
+                limit: options.limit,
+                include_issues: options.include_issues,
+                repo: options.repo.clone(),
+            };
+            crate::commands::assay::internal::search::assay_search_json(query, &search_opts)
         }
     }
 }
