@@ -237,22 +237,6 @@ fn moment_to_weight(moment_type: Option<&str>) -> f32 {
     }
 }
 
-/// Check if database has session events (user intent signal)
-pub fn has_sessions(conn: &Connection) -> Result<bool> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM eventlog WHERE event_type LIKE 'session.%'",
-        [],
-        |row| row.get(0),
-    )?;
-    Ok(count > 0)
-}
-
-/// Check if database has commits (code cohesion signal)
-pub fn has_commits(conn: &Connection) -> Result<bool> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM commits", [], |row| row.get(0))?;
-    Ok(count > 0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,14 +280,6 @@ mod tests {
                 PRIMARY KEY (file, name)
             );
 
-            CREATE TABLE eventlog (
-                seq INTEGER PRIMARY KEY,
-                event_type TEXT,
-                timestamp TEXT,
-                source_id TEXT,
-                data JSON
-            );
-
             -- Insert test data
             INSERT INTO commits VALUES
                 ('abc123', 'feat: add user authentication flow', 'dev', 'dev@test.com', '2025-01-01', 'main'),
@@ -341,31 +317,5 @@ mod tests {
             assert!(pair.positive.contains("Function"));
             assert!(pair.negative.contains("Function"));
         }
-    }
-
-    #[test]
-    fn test_has_sessions() {
-        let temp_db = create_test_db();
-        let conn = Connection::open(temp_db.path()).unwrap();
-
-        // No sessions initially
-        assert!(!has_sessions(&conn).unwrap());
-
-        // Add a session event
-        conn.execute(
-            "INSERT INTO eventlog (event_type, timestamp, source_id, data) VALUES ('session.start', '2025-01-01', 'test', '{}')",
-            [],
-        )
-        .unwrap();
-
-        assert!(has_sessions(&conn).unwrap());
-    }
-
-    #[test]
-    fn test_has_commits() {
-        let temp_db = create_test_db();
-        let conn = Connection::open(temp_db.path()).unwrap();
-
-        assert!(has_commits(&conn).unwrap());
     }
 }
