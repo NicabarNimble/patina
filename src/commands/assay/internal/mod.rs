@@ -8,6 +8,7 @@ mod imports;
 mod inventory;
 pub(crate) mod query_prep;
 pub(crate) mod search;
+pub(crate) mod temporal;
 mod util;
 
 pub(super) use derive::{execute_derive, execute_derive_moments};

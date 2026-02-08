@@ -524,6 +524,19 @@ enum AssayCommands {
         #[arg(long)]
         include_issues: bool,
     },
+    /// Co-change analysis — find files that frequently change together
+    Cochange {
+        /// File path to analyze
+        file: String,
+
+        /// Maximum number of results
+        #[arg(long, default_value = "20")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Common arguments for all scrape subcommands
@@ -1302,6 +1315,19 @@ fn main() -> Result<()> {
                     repo,
                     all_repos,
                     include_issues,
+                },
+                Some(AssayCommands::Cochange {
+                    file,
+                    limit: cochange_limit,
+                    json: cochange_json,
+                }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Cochange { file },
+                    pattern: None,
+                    limit: cochange_limit,
+                    json: cochange_json,
+                    repo,
+                    all_repos,
+                    ..Default::default()
                 },
             };
             commands::assay::execute(options)?;

@@ -36,6 +36,8 @@ pub enum QueryType {
     DeriveMoments,
     /// Ranked factual search using FTS5
     Search { query: String },
+    /// Co-change analysis for a specific file
+    Cochange { file: String },
 }
 
 /// Options for assay command
@@ -70,6 +72,20 @@ pub fn execute(options: AssayOptions) -> Result<()> {
         return execute_search(query, &search_opts);
     }
 
+    // Handle cochange separately
+    if let QueryType::Cochange { ref file } = options.query_type {
+        let db_path = match &options.repo {
+            Some(name) => crate::commands::repo::get_db_path(name)?,
+            None => DB_PATH.to_string(),
+        };
+        if options.json {
+            let json = internal::temporal::execute_cochange_json(file, options.limit, &db_path)?;
+            println!("{}", json);
+            return Ok(());
+        }
+        return internal::temporal::execute_cochange(file, options.limit, &db_path);
+    }
+
     // Handle all_repos mode: iterate over all registered repos
     if options.all_repos {
         return execute_all_repos(&options);
@@ -98,7 +114,7 @@ pub fn execute(options: AssayOptions) -> Result<()> {
         QueryType::Callees => execute_callees(&conn, &options),
         QueryType::Derive => execute_derive(&conn, &options),
         QueryType::DeriveMoments => execute_derive_moments(&conn, &options),
-        QueryType::Search { .. } => unreachable!("handled above"),
+        QueryType::Search { .. } | QueryType::Cochange { .. } => unreachable!("handled above"),
     }
 }
 
