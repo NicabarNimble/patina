@@ -252,9 +252,13 @@ fn handle_list_tools(req: &Request) -> Response {
                         "properties": {
                             "query_type": {
                                 "type": "string",
-                                "enum": ["inventory", "imports", "importers", "functions", "callers", "callees", "derive"],
+                                "enum": ["inventory", "imports", "importers", "functions", "callers", "callees", "derive", "search", "cochange", "belief"],
                                 "default": "inventory",
-                                "description": "Type of structural query"
+                                "description": "Type of structural query. Use 'search' for ranked FTS5 text search, 'cochange' for temporal co-change analysis, 'belief' for belief grounding."
+                            },
+                            "query": {
+                                "type": "string",
+                                "description": "Search query text (used with 'search' query_type for ranked FTS5 search across code, commits, and patterns)"
                             },
                             "pattern": {
                                 "type": "string",
@@ -603,6 +607,11 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
 
+            let query = args
+                .get("query")
+                .and_then(|v| v.as_str())
+                .map(String::from);
+
             let query_type = match query_type_str {
                 "imports" => QueryType::Imports,
                 "importers" => QueryType::Importers,
@@ -610,6 +619,39 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                 "callers" => QueryType::Callers,
                 "callees" => QueryType::Callees,
                 "derive" => QueryType::Derive,
+                "search" => {
+                    let q = query.or_else(|| pattern.clone()).unwrap_or_default();
+                    if q.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "search query_type requires 'query' or 'pattern' parameter",
+                        );
+                    }
+                    QueryType::Search { query: q }
+                }
+                "cochange" => {
+                    let file = pattern.clone().unwrap_or_default();
+                    if file.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "cochange query_type requires 'pattern' parameter (file path)",
+                        );
+                    }
+                    QueryType::Cochange { file }
+                }
+                "belief" => {
+                    let id = pattern.clone().unwrap_or_default();
+                    if id.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "belief query_type requires 'pattern' parameter (belief ID)",
+                        );
+                    }
+                    QueryType::Belief { id }
+                }
                 _ => QueryType::Inventory,
             };
 
