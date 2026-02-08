@@ -38,6 +38,8 @@ pub enum QueryType {
     Search { query: String },
     /// Co-change analysis for a specific file
     Cochange { file: String },
+    /// Belief grounding — evidence for/against a belief
+    Belief { id: String },
 }
 
 /// Options for assay command
@@ -86,6 +88,11 @@ pub fn execute(options: AssayOptions) -> Result<()> {
         return internal::temporal::execute_cochange(file, options.limit, &db_path);
     }
 
+    // Handle belief grounding separately
+    if let QueryType::Belief { ref id } = options.query_type {
+        return internal::belief::execute_belief_grounding(id, options.limit, options.json);
+    }
+
     // Handle all_repos mode: iterate over all registered repos
     if options.all_repos {
         return execute_all_repos(&options);
@@ -114,7 +121,9 @@ pub fn execute(options: AssayOptions) -> Result<()> {
         QueryType::Callees => execute_callees(&conn, &options),
         QueryType::Derive => execute_derive(&conn, &options),
         QueryType::DeriveMoments => execute_derive_moments(&conn, &options),
-        QueryType::Search { .. } | QueryType::Cochange { .. } => unreachable!("handled above"),
+        QueryType::Search { .. } | QueryType::Cochange { .. } | QueryType::Belief { .. } => {
+            unreachable!("handled above")
+        }
     }
 }
 

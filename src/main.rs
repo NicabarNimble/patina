@@ -537,6 +537,19 @@ enum AssayCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Belief grounding — find evidence and reached code for a belief
+    Belief {
+        /// Belief ID to ground
+        id: String,
+
+        /// Maximum results per section
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Common arguments for all scrape subcommands
@@ -1325,6 +1338,19 @@ fn main() -> Result<()> {
                     pattern: None,
                     limit: cochange_limit,
                     json: cochange_json,
+                    repo,
+                    all_repos,
+                    ..Default::default()
+                },
+                Some(AssayCommands::Belief {
+                    id,
+                    limit: belief_limit,
+                    json: belief_json,
+                }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Belief { id },
+                    pattern: None,
+                    limit: belief_limit,
+                    json: belief_json,
                     repo,
                     all_repos,
                     ..Default::default()

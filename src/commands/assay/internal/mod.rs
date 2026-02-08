@@ -2,6 +2,7 @@
 //!
 //! Follows dependable-rust pattern: private modules with curated re-exports.
 
+pub(crate) mod belief;
 mod derive;
 mod functions;
 mod imports;
