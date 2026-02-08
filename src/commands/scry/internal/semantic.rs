@@ -13,7 +13,7 @@ use super::enrichment::truncate_content;
 use super::logging::log_scry_query;
 
 /// Execute semantic search using QueryEngine
-pub fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> {
+pub fn execute_semantic(query: Option<&str>, options: &ScryOptions) -> Result<()> {
     let query = query.ok_or_else(|| anyhow::anyhow!("Query text required"))?;
 
     println!("Mode: Semantic (knowledge domain)\n");
@@ -46,7 +46,7 @@ pub fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> 
             timestamp: String::new(),
         })
         .collect();
-    let query_id = log_scry_query(query, "hybrid", &log_results);
+    let query_id = log_scry_query(query, "semantic", &log_results);
 
     if results.is_empty() {
         println!("No results found.");
