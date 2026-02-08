@@ -145,7 +145,7 @@ fn handle_list_tools(req: &Request) -> Response {
             "tools": [
                 {
                     "name": "scry",
-                    "description": "Search codebase knowledge - semantic vector search over indexed code, commits, beliefs, patterns, and sessions. Finds conceptually related results even when exact keywords differ. For factual/keyword search (FTS5, temporal co-change, belief grounding), use assay instead. Use expanded_terms to bridge vocabulary gaps between your query and code terminology.",
+                    "description": "Search codebase knowledge - semantic vector search over indexed commits, beliefs, and patterns. Finds conceptually related results even when exact keywords differ. For factual/keyword search (FTS5, temporal co-change, belief grounding), use assay instead. Use expanded_terms to bridge vocabulary gaps between your query and code terminology.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -224,7 +224,7 @@ fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "context",
-                    "description": "Get project patterns and conventions - USE THIS to understand design rules before making architectural changes. Returns core patterns (eternal principles) and surface patterns (active architecture). When a topic is provided, includes project beliefs ranked by semantic relevance.",
+                    "description": "Get project patterns and conventions - USE THIS to understand design rules before making architectural changes. Returns core patterns (eternal principles) and surface patterns (active architecture). When a topic is provided, includes project beliefs ranked by semantic relevance, plus factual matches (assay keyword search) and semantic matches (scry vector search) fused with facts-first priority.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -246,7 +246,7 @@ fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "assay",
-                    "description": "Query codebase structure - modules, imports, functions, call graph. Use for exact structural questions like 'list all modules', 'what imports X', 'show largest files'. For semantic similarity, use scry instead. Use 'derive' to compute/view structural signals (usage, activity, centrality).",
+                    "description": "Query codebase structure - modules, imports, functions, call graph. Use for exact structural questions like 'list all modules', 'what imports X', 'show largest files'. For semantic similarity, use scry instead. Use 'derive' to compute/view structural signals (usage, activity, centrality). Use 'search' for ranked FTS5 text search, 'cochange' for temporal co-change analysis, 'belief' for belief grounding.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
