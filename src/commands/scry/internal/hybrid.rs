@@ -1,7 +1,8 @@
-//! Hybrid search using RRF fusion
+//! Semantic search — knowledge domain vector similarity
 //!
-//! Combines multiple search oracles (semantic, lexical, temporal, etc.)
-//! using Reciprocal Rank Fusion (RRF) for better results.
+//! Searches the knowledge domain (beliefs, patterns, commits) via
+//! E5 embeddings + USearch. After the semantic-structural split,
+//! factual search lives in assay.
 
 use anyhow::Result;
 
@@ -11,11 +12,11 @@ use super::super::{ScryOptions, ScryResult};
 use super::enrichment::truncate_content;
 use super::logging::log_scry_query;
 
-/// Execute hybrid search using QueryEngine with RRF fusion
+/// Execute semantic search using QueryEngine
 pub fn execute_hybrid(query: Option<&str>, options: &ScryOptions) -> Result<()> {
     let query = query.ok_or_else(|| anyhow::anyhow!("Query text required"))?;
 
-    println!("Mode: Hybrid (RRF fusion of all oracles)\n");
+    println!("Mode: Semantic (knowledge domain)\n");
     println!("Query: \"{}\"\n", query);
 
     let engine = QueryEngine::new();
