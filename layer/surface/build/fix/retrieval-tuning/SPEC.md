@@ -302,9 +302,10 @@ Product Metrics (last 10 sessions):
   scores incommensurate across FTS5 tables with different column counts)
 - [x] Root cause 1 fix: swap layer scraper to ignore::WalkBuilder — [[ce2ca931]]
   79 patterns (was 808), pruned 729 dust entries. P@10 +1.3pp.
-- [x] Root cause 2 fix: RRF within scry_lexical (rank-based, not score-based)
-  P@10 +6.1pp (43.8%), test P@10 +6.7pp (44.2%), Definition +19.0pp.
-  Train-test gap flipped to +2.0pp (test > train = not overfit).
+- [x] Root cause 2 attempt 1: inner RRF — P@10 +6.1pp but P@5 -3.4pp
+  (rank-only fusion lost within-table magnitude, RRF-of-RRF diluted signal)
+- [ ] Root cause 2 attempt 2: min-max normalization (log1p + per-table
+  [0,1] scaling). Target: P@10 holds near 43%+, P@5 recovers toward 28%+
 
 ```
 Phase 2.5 Results (52 NL queries, F6 fix applied):
@@ -367,18 +368,16 @@ Pattern scores are 1-6 orders of magnitude below code/commit scores.
 `safety-boundaries.md` BM25=4.99 vs code safety.rs BM25=8.66 — patterns
 can never enter top-K when sorted by raw score.
 
-- Fix: rank-based fusion (RRF) within `scry_lexical()` — same approach
-  already used in the outer fusion layer (`src/retrieval/fusion.rs`).
-  Query each table separately (already done), rank within each table,
-  assign `1/(k+rank)` with k=60, merge by RRF score. Score-agnostic,
-  completely eliminates scale mismatch. Rank-1 pattern competes equally
-  with rank-1 code result.
-- Impact: this is the higher-impact fix. Even with correct doc_ids
-  (F6 fix) and clean corpus (RC1 fix), patterns can't enter top-K
-  when their raw BM25 scores are incommensurate with code/commit scores.
+- Fix attempt 1 (inner RRF): rank-based fusion within `scry_lexical()`.
+  Eliminated scale mismatch but introduced two problems: (a) lost within-
+  table score magnitude (BM25 gap of 15 vs 4 flattened to adjacent ranks),
+  (b) RRF-of-RRF — rank-smoothing inside lexical oracle then again in
+  outer fusion diluted strong lexical signals twice. P@10 improved +6.1pp
+  but P@5 regressed -3.4pp (9 queries lost top-5 hits, correct results
+  pushed to positions 6-10 by equal-weight interleaving).
 
 ```
-Phase 2.5 Combined Results (RC1 + RC2, 52 NL queries):
+Inner RRF results (RC2, 52 NL queries):
 
                      Phase 2      After RC1      After RC2
                     (baseline)   (gitignore)   (RRF lexical)
@@ -394,16 +393,32 @@ By intent:
   General P@10        33.4%        34.7%          36.7%    (+3.3pp)
   Temporal P@10       33.3%        38.9%          50.0%   (+16.7pp)
   Mechanism P@10      51.2%        51.2%          51.2%    (0.0pp)
-
-Ablation:
-  unified P@10                                    43.8%
-  lexical-only P@10                               35.7%
-  unified-lexical gap  +3.2pp       +3.2pp        +8.1pp
 ```
 
-P@5 dropped -3.4pp — patterns entering top-5 displaced some code results.
-Worth investigating but top-10 improvement is substantial and validated on
-held-out test set. Train-test gap flipped positive (test > train).
+P@5 regression traced to equal-weight RRF interleaving: each table's
+rank-1 gets identical score, so pattern/commit entries displace code
+entries from top-5. 9/52 queries lost P@5 hits while keeping or gaining
+P@10 hits. Root cause: RRF throws away score magnitude, treating a strong
+code match identically to a weak pattern match if both are rank-1.
+
+- Fix attempt 2 (min-max normalization): normalize BM25 per-table to
+  [0,1], preserving within-table score magnitude while making cross-table
+  scores comparable. Algorithm:
+  1. Query each FTS5 table, collect results with raw BM25 scores
+  2. Transform: t = log1p(raw_bm25) — reduces outlier compression
+  3. Per-table min-max: norm = (t - t_min) / (t_max - t_min)
+     - epsilon guard: if range < eps, all scores = 1.0
+  4. Merge all tables by normalized score desc, tie-break on raw desc
+  5. No tunable knobs in v1: no gamma, no table priors, no signal floor
+  Key properties:
+  - Preserves within-table magnitude (strong match >> weak match)
+  - Makes cross-table scores comparable (each table's best = 1.0)
+  - Removes RRF-of-RRF (outer fusion uses RRF, inner uses scores)
+  Known weakness: "best of a weak table" normalizes to 1.0. Accepted
+  for v1. If this causes consistent failure, add minimum-signal floor
+  (discard table if top_raw_bm25 < threshold) as next escalation.
+- Impact: should retain P@10 gains from RC2 while recovering P@5 by
+  preserving code's strong lexical signal in top positions.
 
 ### Phase 3: Belief Score Multiplier
 - [ ] Belief MRR improved beyond current 0.241 with held-out validation
