@@ -6,7 +6,6 @@
 pub mod enrichment;
 pub mod semantic;
 pub mod logging;
-pub mod query_prep;
 pub mod routing;
 pub mod search;
 pub mod subcommands;

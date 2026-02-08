@@ -18,7 +18,7 @@ use internal::enrichment::{find_belief_impact, truncate_content};
 use internal::semantic::execute_semantic;
 use internal::logging::log_scry_query;
 use internal::routing::{execute_graph_routing, execute_via_mother};
-use internal::search::{is_lexical_query, scry_belief, scry_file};
+use internal::search::{scry_belief, scry_file};
 
 // Re-export subcommands for CLI
 pub use internal::subcommands::{
@@ -271,14 +271,9 @@ fn execute_legacy_file(file: &str, options: &ScryOptions) -> Result<()> {
 fn execute_legacy_search(query: Option<&str>, options: &ScryOptions) -> Result<()> {
     let q = query.ok_or_else(|| anyhow::anyhow!("Query required"))?;
     println!("Query: \"{}\"\n", q);
+    println!("Mode: Semantic (vector)\n");
 
-    let mut results = if is_lexical_query(q) {
-        println!("Mode: Lexical (FTS5)\n");
-        internal::search::scry_lexical(q, options)?
-    } else {
-        println!("Mode: Semantic (vector)\n");
-        scry_text(q, options)?
-    };
+    let mut results = scry_text(q, options)?;
 
     // Bolt on persona results
     if options.include_persona {
