@@ -47,7 +47,7 @@ A local-first RAG network: portable project knowledge + personal mother.
                           LLM Frontend
 ```
 
-**Core insight:** scry is the API between LLM and codebase knowledge. Everything else prepares for that moment.
+**Core insight:** scry (semantic) and assay (factual) are the two query layers between LLM and codebase knowledge. Everything else prepares for that moment.
 
 | Command | Role | "Do X" |
 |---------|------|--------|
@@ -55,8 +55,10 @@ A local-first RAG network: portable project knowledge + personal mother.
 | scrape code | Extract | Capture symbols, functions, types |
 | scrape forge | Extract | Capture issues, PRs from GitHub/Gitea |
 | oxidize | Prepare (semantic) | Build embeddings from facts |
-| assay | Prepare (structural) | Build signals from facts |
-| scry | Deliver | Fuse and route knowledge to LLM |
+| assay | Query (factual) | Structural signals, FTS5 search, temporal, belief grounding |
+| scry | Query (semantic) | Multi-domain vector similarity — meaning, not keywords |
+
+**Active refactor:** [[semantic-structural-split]] — separating scry (meaning) from assay (facts). Scry currently mixes both; the split restores the intended boundary. START HERE for next development work.
 
 **Values alignment:**
 - [unix-philosophy](unix-philosophy.md): One tool, one job
