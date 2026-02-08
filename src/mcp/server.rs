@@ -972,6 +972,13 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
             };
             crate::commands::assay::internal::search::assay_search_json(query, &search_opts)
         }
+        QueryType::Cochange { ref file } => {
+            crate::commands::assay::internal::temporal::execute_cochange_json(
+                file,
+                options.limit,
+                &db_path,
+            )
+        }
     }
 }
 
