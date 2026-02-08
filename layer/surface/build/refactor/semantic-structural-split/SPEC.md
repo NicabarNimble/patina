@@ -1,0 +1,482 @@
+---
+type: refactor
+id: semantic-structural-split
+status: draft
+created: 2026-02-08
+priority: supersedes
+sessions:
+  origin: 20260208-070221
+blocked_by: []
+blocks: []
+supersedes:
+  - retrieval-tuning   # Phases 3-5 deferred until split validates
+  - eval-repair        # Eval redesign follows from split
+related:
+  - layer/surface/build/feat/mother-v2/SPEC.md
+beliefs:
+  - dependable-rust    # Black-box modules with stable interfaces
+  - unix-philosophy    # One tool, one job, done well
+  - andrew-ng-over-shoulder  # Measure truthfully before shipping
+  - never-tune-on-eval       # Train/test split before tuning
+  - error-analysis-over-architecture  # Understand the problem before adding complexity
+---
+
+# refactor: Semantic-Structural Split
+
+> Separate scry (semantic/meaning) from assay (structural/factual) along their
+> intended design boundary. Scry became a monolith holding 5 oracles, 3 FTS5
+> tables, temporal queries, belief lookup, and vector search. This refactor
+> restores the original intent: scry for meaning, assay for facts.
+
+## Problem
+
+### The Mixing Problem
+
+Scry currently owns five oracles that mix two fundamentally different query types:
+
+| Oracle | Query Type | Data Source | Belongs In |
+|--------|-----------|-------------|------------|
+| Semantic | **Meaning** — vector similarity | USearch index | scry |
+| Lexical | **Factual** — BM25 text match | 3 FTS5 tables | assay |
+| Temporal | **Factual** — co-change frequency | co_changes table | assay |
+| Persona | **Factual** — developer practices | persona files | assay |
+| Belief | **Factual** — belief relationships | beliefs table | assay |
+
+All five produce ranked lists that get RRF-fused in one step. This coupling
+caused compounding problems across 6 sessions of retrieval tuning:
+
+1. **BM25 scale mismatch** (root cause 2): Three FTS5 tables with different
+   column counts produce incomparable BM25 scores. Required min-max
+   normalization as a patch. In assay, tables can be queried independently
+   or normalized within a single factual layer — no cross-type comparison.
+
+2. **P@5 outer fusion dilution**: Non-semantic oracles (temporal, belief)
+   insert low-quality results into top-5 via RRF, pushing correct lexical
+   hits to positions 6-10. A fusion problem created by mixing query types.
+
+3. **25-parameter tuning trap**: 5 oracles x 5 intents = 25 weights. Most
+   complexity exists because one fusion step balances meaning and facts.
+   Splitting reduces this to combining two signals: structural + semantic.
+
+4. **Semantic index pollution**: `query_session_events()` in oxidize/mod.rs
+   embeds 6 source types into one vector space (~27K items, 88% session
+   events). The semantic projection trained on session co-occurrence maps
+   everything to session-space, not meaning-space. Semantic oracle returns
+   0% useful results for NL queries.
+
+5. **Non-isolable debugging**: Every fix exposed the next layer of mixing
+   complexity. Fixing scraper bugs shifted BM25 distributions. Fixing BM25
+   with inner RRF created RRF-of-RRF. Each problem was local but effects
+   cascaded through the shared fusion pipeline.
+
+### What We Learned (6 Sessions of Evidence)
+
+The retrieval-tuning spec documents the full history. Key outcomes:
+
+- Phase 2.5 shipped with 3/4 targets met (P@10 40.7%, test P@10 44.2%, MRR 0.433)
+- P@5 miss (26% vs 28% target) proven to be outer fusion dilution, not normalization
+- Min-max normalization is a correct patch but exists because of the mixing problem
+- Every measurement fix revealed another mixing consequence
+- The eval measured end-to-end but tuning happened at component level — mismatch
+
+### Design Anchors (layer/core)
+
+**[[dependable-rust]]**: Each command is a black-box module. Scry's public
+interface (`scry()`, `scry_text()`, `scry_lexical()`) currently exposes both
+semantic and structural concerns. After split, scry's interface is purely
+semantic. Assay's interface is purely structural/factual. Internal changes
+to either don't cascade.
+
+**[[unix-philosophy]]**: One tool, one job. Scry's job: "find what's
+conceptually related." Assay's job: "find what's factually relevant."
+These are different questions with different algorithms, different data
+structures, and different failure modes. Mixing them violates the principle.
+
+**[[adapter-pattern]]**: The Oracle trait is an adapter interface. After
+split, scry has semantic oracles (vector similarity, conceptual matching).
+Assay has factual oracles (FTS5, temporal, relational). Each set can evolve
+independently.
+
+## Design
+
+### Principle: One Cut, Clean Boundary
+
+The split follows a single principle: **meaning vs. facts**.
+
+- **Scry** answers: "What is conceptually related to this query?"
+  Algorithm: vector similarity across one or more semantic domains.
+
+- **Assay** answers: "What facts are relevant to this query?"
+  Algorithm: FTS5 text search, temporal co-change, belief relationships,
+  call graphs, import relationships.
+
+Fusion of meaning + facts happens at the consumer level (the command or
+tool that calls both), not inside either system.
+
+### Phase 1: Move Factual Oracles to Assay
+
+Move lexical, temporal, persona, and belief oracles from scry to assay.
+Assay gains a new query mode: ranked factual search (alongside its
+existing exact structural queries).
+
+**Assay before:**
+```
+assay inventory    — module metadata
+assay imports      — import relationships
+assay importers    — importer relationships
+assay functions    — function listing
+assay callers      — call graph (callers)
+assay callees      — call graph (callees)
+assay derive       — structural signals
+assay derive-moments — temporal signals
+```
+
+**Assay after (additive):**
+```
+assay search <query>  — ranked factual search (FTS5 + temporal + belief)
+assay belief <id>     — belief grounding (evidence for/against)
+assay cochange <file> — co-change analysis
+```
+
+The existing exact-query subcommands don't change. New ranked-search
+capability is additive.
+
+**Scry after (reductive):**
+```
+scry <query>        — semantic vector search only
+scry orient <path>  — semantic context for a file
+```
+
+Scry's `QueryEngine` reduces from 5 oracles to semantic only. The
+`src/retrieval/` module simplifies significantly.
+
+**What moves:**
+```
+src/retrieval/oracles/lexical.rs   → src/commands/assay/internal/
+src/retrieval/oracles/temporal.rs  → src/commands/assay/internal/
+src/retrieval/oracles/persona.rs   → src/commands/assay/internal/
+src/retrieval/oracles/belief.rs    → src/commands/assay/internal/
+src/commands/scry/internal/search.rs (scry_lexical, normalize_table) → assay
+```
+
+**What stays in scry:**
+```
+src/retrieval/oracles/semantic.rs  — vector similarity oracle
+src/retrieval/engine.rs            — simplified, semantic-only
+src/commands/scry/internal/search.rs (scry_text, scry) — semantic search
+```
+
+**What gets removed:**
+```
+src/retrieval/fusion.rs            — RRF no longer needed inside scry (Phase 1)
+src/retrieval/intent.rs            — intent weights tuned cross-oracle balance
+src/commands/scry/internal/hybrid.rs — hybrid was the 5-oracle orchestrator
+```
+
+### Phase 2: First Semantic Domain — Knowledge
+
+The current semantic index is broken: 27K items, 88% session events,
+trained on session co-occurrence. Before adding domains, build ONE that
+works and prove it adds value over assay's factual search alone.
+
+**Domain: knowledge** (beliefs + patterns + commits)
+
+Why this domain first:
+- Beliefs and patterns are natural language — semantic matching adds value
+  over keyword search (FTS5 can find "dependable-rust" but not "how should
+  I structure my modules?")
+- Commit messages capture the "why" behind changes — conceptual queries
+  like "what changed about error handling?" benefit from meaning, not keywords
+- ~2K items total — small, clean, fast to iterate on
+- Directly measurable: does scry find the right belief when you ask a
+  conceptual question that assay can't answer with keywords?
+
+**What gets embedded:**
+- Beliefs (~74 items) — natural language decisions
+- Patterns (~80 items) — natural language documents about principles
+- Commit messages (~1800 items) — natural language "why" behind changes
+
+**What does NOT get embedded (yet):**
+- Session events — deferred, not deleted. Sessions capture development
+  intent ("what was the user thinking about?") which has real semantic
+  value. But sessions are the largest corpus (88% of current index) and
+  need their own training signal. A session domain must earn its place
+  by proving retrieval value — see Phase 5.
+- Code function signatures — structural data, assay handles this
+- Forge events — deferred until a domain proves valuable
+
+**oxidize changes:**
+- `query_session_events()` refactored to `query_knowledge_corpus()`
+- Builds a single `knowledge.usearch` index
+- Training pairs: belief↔pattern co-reference, commit↔code co-change
+  (start with commit-based pairs as baseline, iterate on training signal)
+
+**Validation:** Run scry with knowledge domain against a small query set
+(~20 conceptual questions). Compare scry results vs assay-only results.
+If scry finds correct answers that assay misses → domain proven. If
+scry adds nothing over assay → investigate training signal before adding
+more domains.
+
+### Phase 3: Consumer-Level Fusion
+
+With scry and assay as independent tools, the consumer decides how to
+combine their answers. Two consumers matter:
+
+**`patina context`** (CLAUDE.md generation):
+- Calls assay for factual context (what files, what beliefs, what changed)
+- Calls scry for semantic context (what's conceptually relevant)
+- Merges results with simple priority (facts first, then meaning for gaps)
+
+**MCP tool** (live session queries):
+- Currently exposes `scry` tool. After split, expose both:
+  - `scry` — "what's related to this concept?"
+  - `assay search` — "what facts match this query?"
+- Or expose a combined `query` tool that calls both and merges
+- Fusion is simple: two ranked lists, interleave or weighted merge
+- No 25-parameter tuning — just "how much meaning vs. facts?"
+
+### Phase 4: Eval Redesign
+
+With the split, eval becomes independently testable:
+
+**Assay eval:**
+- "Given this query, does assay find the right files?" (FTS5 + temporal)
+- Uses existing 52 NL queries (these are mostly factual queries)
+- BM25 normalization tested within assay, no cross-type confusion
+
+**Scry eval:**
+- "Given this concept, does scry find related items?" (vector similarity)
+- Needs new queries designed for semantic matching:
+  - "error handling philosophy" should find [[safety-boundaries]] belief
+  - "module design" should find [[dependable-rust]] pattern
+- Small, focused query set (~20) testing meaning, not fact retrieval
+
+**Combined eval:**
+- "Given a development context, does the system surface the right context?"
+- This is the product metric (Phase 5 from retrieval-tuning)
+- Tested after Phases 1-3 validate the components independently
+
+### Phase 5: Actively Discover Semantic Domains
+
+The knowledge domain is the foundation, not the ceiling. Patina's value
+scales with every semantic dimension that helps the user get better
+context. Phase 5 is an ongoing effort to discover, test, and ship
+domains that add retrieval value. Each domain must prove it helps through
+measurement — but the posture is exploration, not gatekeeping.
+
+**Candidate: session-semantic**
+- Content: session decisions, patterns, goals, context events
+- Training signal: within-session co-occurrence (what user thinks together)
+- Value hypothesis: "what was the reasoning behind X?" finds session
+  discussions that keywords miss — intent and rationale live in sessions
+- Validation: compare session-semantic results vs assay FTS5 on session
+  content. If semantic finds answers FTS5 misses → domain earned.
+- Model: could use same model as knowledge, or could benefit from a
+  dialogue-tuned model — test, don't assume
+
+**Candidate: code-semantic**
+- Content: function signatures, code documentation, module descriptions
+- Training signal: call graph adjacency, co-change frequency
+- Value hypothesis: "how does patina handle X?" finds related code across
+  modules even when naming conventions differ
+- Validation: compare code-semantic vs assay FTS5 on code queries.
+  Code has strong keyword signal (function names are descriptive in Rust) —
+  semantic may add little over good FTS5. Must prove otherwise.
+- Model: may benefit from a code-specific model (CodeBERT, StarCoder
+  embeddings) — test, don't assume
+
+**Domain discovery process (fast iteration, not bureaucracy):**
+1. Notice a gap: "the system missed X because keywords weren't enough"
+2. Hypothesize: "semantic search over [corpus] finds answers that
+   assay FTS5 misses for [query type]"
+3. Build a small eval set (~15-20 queries) with expected results
+4. Run assay-only baseline, measure P@K
+5. Build the domain, run scry, measure P@K
+6. If scry adds measurable value → ship it, keep iterating on quality
+7. If scry adds nothing → investigate training signal or model choice
+   before killing — the hypothesis may be right but the implementation wrong
+8. Each domain gets its own model choice — test which model works best
+   for that content type, don't default to one-size-fits-all
+
+**Where to look for new domains:**
+- Session feedback: when the user says "why didn't you find X?" — that's
+  a domain signal. What kind of content was X? What meaning did the query
+  carry that keywords missed?
+- Error analysis: every eval run that shows assay finding results scry
+  misses (or vice versa) reveals what each layer is good at
+- Cross-project patterns: when mother connects projects, what semantic
+  dimensions carry across? Those are high-value domains.
+- New content types: as patina indexes more (forge events, CI logs,
+  documentation sites), each content type is a candidate domain
+
+**Multi-model support in oxidize:**
+- `oxidize.yaml` already supports per-projection config
+- Extend to allow per-domain model specification:
+  ```yaml
+  domains:
+    knowledge:
+      model: e5-base-v2
+      corpus: [beliefs, patterns, commits]
+      training: belief-pattern-coref
+    sessions:          # earned after Phase 5 validation
+      model: bge-base  # or same model — test decides
+      corpus: [session_events]
+      training: session-cooccurrence
+  ```
+- Infrastructure supports multiple models; domains activate only when earned
+
+**Scry with multiple earned domains:**
+When scry has multiple validated domains, fusion within scry is semantic
+RRF — combining different views of meaning. This is fundamentally different
+from today's mixed fusion (meaning + facts). RRF across semantic domains
+makes sense: each domain answers "what's conceptually related?" from a
+different perspective. The question being fused is the same type.
+
+### Future: Mother's Semantic Layer
+
+Once per-project scry works with multi-domain semantics, mother can build
+a cross-project concept layer on top:
+
+- Mother already has the graph infrastructure (USES, LEARNS_FROM, SIBLING)
+- Today those edges are manually declared
+- With per-project semantic results, mother could discover relationships:
+  "Project A's [[dependable-rust]] is semantically close to Project B's
+  'encapsulation' pattern — shared architectural philosophy"
+- Mother operates at concept-level, not document-level — she understands
+  how projects relate through their beliefs and patterns
+- This is NOT designed here — it follows naturally from the split once
+  per-project semantic domains are validated
+
+This is what gives patina unique value: not just "find similar text" but
+"find related ideas across projects, grounded in beliefs, validated by
+evidence." No basic RAG system does this.
+
+### The Value Imperative
+
+Patina's competitive advantage IS the semantic layer. Assay (factual
+search) is table stakes — any FTS5 wrapper can do keyword search. What
+makes patina worth using is that scry understands meaning in ways that
+keyword search cannot: finding beliefs that apply to unfamiliar code,
+surfacing design rationale when naming conventions differ, connecting
+decisions across sessions that happened months apart.
+
+**The goal is to discover as many value-adding semantic domains as
+possible**, not to minimize domains. Each domain that proves it helps
+the user retrieve better context is a compounding advantage. The
+measurement discipline ([[andrew-ng-over-shoulder]]) exists to ensure
+we're adding real value, not to slow us down — it's a quality gate, not
+a speed limit. We should be actively exploring what dimensions of meaning
+help retrieval, proposing new domain candidates whenever we notice the
+system missing something, and investing in the domains that prove out.
+
+A single-domain scry is a stepping stone, not the destination.
+
+## Exit Criteria
+
+### Phase 1: Move Factual Oracles ← START HERE
+- [ ] Lexical, temporal, persona, belief oracles moved to assay
+- [ ] `assay search <query>` returns ranked FTS5 + temporal + belief results
+- [ ] `assay belief <id>` returns evidence grounding for a belief
+- [ ] `assay cochange <file>` returns co-change analysis
+- [ ] Scry reduced to semantic oracle only (vector search)
+- [ ] `src/retrieval/` simplified: no RRF fusion, no intent weights
+- [ ] All existing tests pass (`cargo test --workspace`)
+- [ ] `cargo clippy --workspace` clean
+- [ ] Existing eval baseline documented: run `patina eval --nl` with
+  assay-only, scry-only, and combined — honest numbers, no target-chasing
+
+### Phase 2: First Semantic Domain (Knowledge)
+- [ ] oxidize builds knowledge domain from beliefs + patterns + commits only
+- [ ] Semantic index size < 3K items (down from ~27K)
+- [ ] Scry returns non-zero results for conceptual queries
+- [ ] Validation: scry finds answers that assay FTS5 misses for ≥5/20
+  conceptual queries (proves semantic adds value beyond keyword matching)
+
+### Phase 3: Consumer-Level Fusion
+- [ ] `patina context` calls both assay and scry
+- [ ] MCP exposes appropriate tools for both factual and semantic queries
+- [ ] Fusion is simple (two signals, not five)
+- [ ] Combined results documented honestly against Phase 2.5 baseline
+
+### Phase 4: Eval Redesign
+- [ ] Assay eval tests factual retrieval independently
+- [ ] Scry eval tests semantic retrieval independently
+- [ ] Combined eval tests the full pipeline
+- [ ] Remaining retrieval-tuning phases (3-5) re-evaluated against new architecture
+
+### Phase 5: Discover and Ship Semantic Domains (ongoing)
+- [ ] Session-semantic hypothesis stated and eval queries built
+- [ ] Session-semantic tested: proves value → ship, or investigate why not
+- [ ] Code-semantic hypothesis stated and eval queries built
+- [ ] Code-semantic tested: proves value → ship, or investigate why not
+- [ ] Multi-model oxidize config validated (if domains need different models)
+- [ ] Domain discovery pipeline established: user feedback → hypothesis →
+  eval → ship cycle is fast and repeatable
+- [ ] At least 2 domains shipping beyond knowledge (patina's value scales
+  with semantic depth — one domain is table stakes, not competitive advantage)
+
+## Migration Strategy
+
+**No flag day.** Each phase is independently shippable:
+
+1. Phase 1 adds `assay search` while scry still works (both available).
+   Scry's oracles can be removed one at a time. Each removal is a commit.
+2. Phase 2 can happen before or after Phase 1 (independent).
+3. Phase 3 depends on Phase 1 completion.
+4. Phase 4 follows Phase 3.
+5. Phase 5 follows Phase 4 (needs eval infrastructure to validate domains).
+
+At each phase, run existing eval to detect regressions. Numbers will change
+(intentionally — the architecture is changing) but we document honestly.
+
+## Superseded Specs
+
+This spec supersedes active work in:
+
+- **retrieval-tuning Phases 3-5**: Belief score multiplier, hub file
+  suppression, and product metrics were designed for the mixed architecture.
+  After split, Phase 3 (belief quality) becomes an assay-internal problem.
+  Phase 4 (hub suppression) becomes an assay concern. Phase 5 (product
+  metrics) follows from Phase 4 eval redesign here.
+
+- **eval-repair**: Eval infrastructure is valid but the eval queries and
+  metrics need reassessment after the split changes what's being measured.
+
+These specs aren't deleted — they contain valuable history and data. But
+active development follows this spec until the split validates, then we
+re-evaluate what remains.
+
+## Risks
+
+1. **Regression during migration**: Moving oracles changes fusion behavior.
+   Mitigation: existing eval runs at each step, honest reporting.
+
+2. **Semantic oracle still returns 0%**: The model mismatch (E5-base-v2
+   trained on session co-occurrence) won't be fixed by Phase 1 alone.
+   Phase 2 (clean semantic index) addresses this, but the training pipeline
+   needs work. Accept that scry may be weak until Phase 2 completes.
+
+3. **Consumer fusion is naive**: Simple two-signal merge may underperform
+   the tuned 5-oracle RRF. Mitigation: the tuned system only achieved
+   40.7% P@10 with significant engineering effort. A clean system that's
+   independently improvable is worth a temporary regression.
+
+4. **Scope creep**: This is a refactor, not a feature. Don't add new
+   capabilities during the split. Move code, verify behavior, simplify
+   interfaces. New features come after.
+
+5. **Too few domains**: Patina's value IS the semantic depth. If we ship
+   with only one domain (knowledge), we're a glorified FTS5 wrapper. The
+   risk isn't adding too many domains — it's not finding enough. Mitigation:
+   actively look for domain opportunities in every session, every error
+   analysis, every user interaction. The measurement discipline keeps
+   quality high, but the exploration posture must stay aggressive.
+
+## References
+
+- [[retrieval-tuning]] — 6 sessions of evidence for why the split is needed
+- [[eval-repair]] — measurement infrastructure that persists through split
+- [[dependable-rust]] — black-box module pattern driving the split
+- [[unix-philosophy]] — one tool, one job principle
+- [[andrew-ng-over-shoulder]] — measure before and after each phase
+- [[never-tune-on-eval]] — eval redesign must precede any post-split tuning
