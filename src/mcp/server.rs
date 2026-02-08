@@ -145,7 +145,7 @@ fn handle_list_tools(req: &Request) -> Response {
             "tools": [
                 {
                     "name": "scry",
-                    "description": "Search codebase knowledge - USE THIS FIRST for any question about the code. Fast hybrid search over indexed symbols, functions, types, git history, and session learnings. Prefer this over manual file exploration. TIP: For temporal queries ('when did we add X') or when user terms differ from code terms, use expanded_terms to add code-specific synonyms (e.g., 'commits_fts', 'LexicalOracle' for 'commit search').",
+                    "description": "Search codebase knowledge - semantic vector search over indexed code, commits, beliefs, patterns, and sessions. Finds conceptually related results even when exact keywords differ. For factual/keyword search (FTS5, temporal co-change, belief grounding), use assay instead. Use expanded_terms to bridge vocabulary gaps between your query and code terminology.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
