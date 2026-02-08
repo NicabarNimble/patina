@@ -45,7 +45,7 @@ pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> 
     let (db_path, embeddings_dir) = get_paths(options)?;
 
     // Determine which dimension to search
-    // For reference repos, only dependency is available; for projects, prefer semantic
+    // For projects, prefer knowledge domain; reference repos may only have dependency
     let dimension = if let Some(ref dim) = options.dimension {
         dim.as_str()
     } else {
@@ -244,8 +244,9 @@ pub fn scry_belief(belief_id: &str, options: &ScryOptions) -> Result<Vec<ScryRes
     const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
     let belief_index = (BELIEF_ID_OFFSET + rowid) as u64;
 
-    // Load semantic index (beliefs live in semantic space)
-    let index_path = format!("{}/semantic.usearch", embeddings_dir);
+    // Load knowledge/semantic index (beliefs live in vector space)
+    let dimension = detect_best_dimension(&embeddings_dir);
+    let index_path = format!("{}/{}.usearch", embeddings_dir, dimension);
     if !Path::new(&index_path).exists() {
         anyhow::bail!(
             "Semantic index not found: {}. Run 'patina oxidize' first.",
@@ -297,7 +298,7 @@ pub fn scry_belief(belief_id: &str, options: &ScryOptions) -> Result<Vec<ScryRes
     };
 
     // Enrich with metadata from SQLite
-    let mut enriched = enrich_results(&conn, &results, "semantic", options.min_score)?;
+    let mut enriched = enrich_results(&conn, &results, dimension, options.min_score)?;
 
     // Filter out self — belief appears as both belief.surface and pattern.surface
     // Pattern source_id is now file_path (e.g., "layer/surface/epistemic/beliefs/foo.md")
@@ -334,15 +335,22 @@ pub fn scry(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
 }
 
 /// Detect the best available dimension for vector search
-/// Priority: semantic > dependency > temporal
-/// Reference repos typically only have dependency
+/// Priority: knowledge > semantic > dependency > temporal
+/// Matches SemanticOracle's preference (knowledge domain first, legacy semantic fallback)
 pub fn detect_best_dimension(embeddings_dir: &str) -> &'static str {
-    // Check for available indices in priority order
+    // Knowledge domain (Phase 2+) — beliefs + patterns + commits
+    let knowledge_path = format!("{}/knowledge.usearch", embeddings_dir);
+    if Path::new(&knowledge_path).exists() {
+        return "knowledge";
+    }
+
+    // Legacy semantic index (pre-split, session-polluted)
     let semantic_path = format!("{}/semantic.usearch", embeddings_dir);
     if Path::new(&semantic_path).exists() {
         return "semantic";
     }
 
+    // Reference repos typically only have dependency
     let dependency_path = format!("{}/dependency.usearch", embeddings_dir);
     if Path::new(&dependency_path).exists() {
         return "dependency";
@@ -353,6 +361,6 @@ pub fn detect_best_dimension(embeddings_dir: &str) -> &'static str {
         return "temporal";
     }
 
-    // Default to semantic (will trigger fallback to FTS5)
-    "semantic"
+    // Default to knowledge (will trigger error with guidance)
+    "knowledge"
 }
