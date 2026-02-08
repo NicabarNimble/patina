@@ -39,10 +39,22 @@ impl SemanticOracle {
 
         let embeddings_dir = format!(".patina/local/data/embeddings/{}/projections", model);
 
+        // Prefer knowledge domain (Phase 2), fall back to legacy semantic
+        let (index_name, proj_name) = if PathBuf::from(format!(
+            "{}/knowledge.usearch",
+            embeddings_dir
+        ))
+        .exists()
+        {
+            ("knowledge", "knowledge")
+        } else {
+            ("semantic", "semantic")
+        };
+
         Self {
             db_path: PathBuf::from(".patina/local/data/patina.db"),
-            index_path: PathBuf::from(format!("{}/semantic.usearch", embeddings_dir)),
-            projection_path: PathBuf::from(format!("{}/semantic.safetensors", embeddings_dir)),
+            index_path: PathBuf::from(format!("{}/{}.usearch", embeddings_dir, index_name)),
+            projection_path: PathBuf::from(format!("{}/{}.safetensors", embeddings_dir, proj_name)),
             cache: OnceLock::new(),
         }
     }
