@@ -12,13 +12,13 @@ use anyhow::{Context, Result};
 use internal::{
     collect_inventory_json, execute_callees, execute_callers, execute_derive,
     execute_derive_moments, execute_functions, execute_importers, execute_imports,
-    execute_inventory, execute_search, SearchOptions,
+    execute_inventory, execute_search,
 };
 use rusqlite::Connection;
 
 // Re-export search types for MCP and external consumers
 #[allow(unused_imports)]
-pub use internal::search::{assay_search, assay_search_json, SearchResult};
+pub use internal::search::{assay_search, assay_search_json, SearchOptions, SearchResult};
 
 const DB_PATH: &str = ".patina/local/data/patina.db";
 

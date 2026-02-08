@@ -1,0 +1,152 @@
+[
+  {
+    "query": "MCP server protocol",
+    "expected": ["src/mcp/server.rs", "src/mcp/mod.rs", "src/mcp/protocol.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "session management tracking",
+    "expected": ["src/session.rs", "src/commands/scrape/sessions/mod.rs", "src/commands/session/mod.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "git commit workflow scrape",
+    "expected": ["src/commands/scrape/git/mod.rs", "src/commands/scrape/git/commits.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "vector similarity search implementation",
+    "expected": ["src/retrieval/oracles/semantic.rs", "src/commands/oxidize/mod.rs", "src/retrieval/engine.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "query engine retrieval config",
+    "expected": ["src/retrieval/engine.rs", "src/retrieval/mod.rs", "src/retrieval/fusion.rs"],
+    "category": "structural",
+    "split": "test"
+  },
+  {
+    "query": "docker container build devcontainer",
+    "expected": ["src/commands/yolo/mod.rs", "src/commands/yolo/profile.rs"],
+    "category": "structural",
+    "split": "test"
+  },
+  {
+    "query": "security hardening secrets",
+    "expected": ["src/secrets/mod.rs", "src/mcp/server.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "spec system work tracking",
+    "expected": ["src/spec.rs", "src/commands/spec/mod.rs", "src/commands/spec/internal.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "belief scrape population storage",
+    "expected": ["src/commands/scrape/beliefs/mod.rs", "src/commands/belief/mod.rs", "src/commands/assay/internal/belief.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "scrape pipeline code extraction",
+    "expected": ["src/commands/scrape/mod.rs", "src/commands/scrape/code/mod.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "eventlog event tracking system",
+    "expected": ["src/eventlog.rs", "src/session.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "database migration schema versioning",
+    "expected": ["src/migration.rs", "src/db/sqlite.rs", "src/db/mod.rs"],
+    "category": "structural",
+    "split": "test"
+  },
+  {
+    "query": "assay structural code analysis",
+    "expected": ["src/commands/assay/mod.rs", "src/commands/assay/internal/inventory.rs", "src/commands/assay/internal/functions.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "forge github synchronization",
+    "expected": ["src/forge/github/mod.rs", "src/forge/sync/mod.rs", "src/forge/mod.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "ONNX model loading inference embeddings",
+    "expected": ["src/embeddings/onnx.rs", "src/embeddings/models.rs", "src/models/mod.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "FTS5 full-text search ranked",
+    "expected": ["src/commands/assay/internal/search.rs", "src/commands/assay/internal/query_prep.rs"],
+    "category": "structural",
+    "split": "test"
+  },
+  {
+    "query": "belief verification evidence grounding",
+    "expected": ["src/commands/scrape/beliefs/verification/mod.rs", "src/commands/assay/internal/belief.rs", "src/commands/belief/mod.rs"],
+    "category": "structural",
+    "split": "test"
+  },
+  {
+    "query": "co-change temporal analysis",
+    "expected": ["src/commands/assay/internal/temporal.rs", "src/commands/scrape/git/mod.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "version bump release automation",
+    "expected": ["src/commands/version/mod.rs", "src/version.rs"],
+    "category": "structural",
+    "split": "test"
+  },
+  {
+    "query": "scanner code pattern detection",
+    "expected": ["src/scanner/mod.rs", "src/scanner/patterns.rs", "src/commands/scrape/code/mod.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "scry semantic search enrichment",
+    "expected": ["src/commands/scry/mod.rs", "src/commands/scry/internal/enrichment.rs", "src/commands/scry/internal/search.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "oxidize embedding index builder",
+    "expected": ["src/commands/oxidize/mod.rs", "src/retrieval/oracles/semantic.rs"],
+    "category": "structural",
+    "split": "test"
+  },
+  {
+    "query": "context delivery command",
+    "expected": ["src/commands/context.rs"],
+    "category": "structural",
+    "split": "train"
+  },
+  {
+    "query": "adapter templates LLM integration",
+    "expected": ["src/adapters/mod.rs", "src/adapters/templates.rs"],
+    "category": "structural",
+    "split": "test"
+  },
+  {
+    "query": "mother federated query graph",
+    "expected": ["src/mother/mod.rs", "src/mother/graph.rs"],
+    "category": "structural",
+    "split": "test"
+  }
+]

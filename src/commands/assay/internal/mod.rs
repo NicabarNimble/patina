@@ -16,5 +16,5 @@ pub(super) use derive::{execute_derive, execute_derive_moments};
 pub(super) use functions::{execute_callees, execute_callers, execute_functions};
 pub(super) use imports::{execute_importers, execute_imports};
 pub(super) use inventory::{collect_inventory_json, execute_inventory};
-pub(super) use search::{execute_search, SearchOptions};
+pub(super) use search::execute_search;
 pub(super) use util::truncate;

@@ -1,11 +1,16 @@
 //! Evaluation framework for validating retrieval quality
 //!
-//! Tests the unified QueryEngine pipeline + per-oracle ablation.
-//! Ground truth: function_facts (semantic), co_changes (temporal), beliefs (knowledge).
+//! Post-split eval modes:
+//! - `--assay`: independent factual retrieval eval (FTS5)
+//! - `--scry`: independent semantic retrieval eval (vectors) + scry-vs-assay comparison
+//! - `--combined`: full pipeline eval (assay + scry together)
 //!
-//! Key questions:
-//! - "Does the unified pipeline improve over individual oracles?"
-//! - "Do beliefs help knowledge queries without hurting structural queries?"
+//! Legacy eval modes (pre-split, kept for historical comparison):
+//! - `--nl`: NL query eval against QueryEngine (52 queries from mixed-oracle era)
+//! - `--feedback`: feedback loop eval from session data
+//! - `--dimension`: structural/temporal/belief co-retrieval tests
+
+mod internal;
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
@@ -1507,4 +1512,23 @@ pub fn execute_nl() -> Result<()> {
     println!("  MRR:         {:.3}", unified_metrics.mrr);
 
     Ok(())
+}
+
+// ============================================================================
+// Post-split eval modes (Phase 4: Eval Redesign)
+// ============================================================================
+
+/// Independent assay eval — tests factual retrieval (FTS5) in isolation
+pub fn execute_assay() -> Result<()> {
+    internal::assay_eval::execute()
+}
+
+/// Independent scry eval — tests semantic retrieval (vectors) + scry-vs-assay comparison
+pub fn execute_scry() -> Result<()> {
+    internal::scry_eval::execute()
+}
+
+/// Combined eval — tests the full retrieval pipeline (assay + scry together)
+pub fn execute_combined() -> Result<()> {
+    internal::combined_eval::execute()
 }
