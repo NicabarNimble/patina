@@ -172,18 +172,22 @@ fn train_projection(
 
     // Generate pairs based on projection type
     let pairs: Vec<TrainingPair> = match name {
+        "knowledge" => {
+            // Knowledge domain: commit-based pairs as baseline training signal
+            // Commits capture code cohesion and project vocabulary
+            println!("   Strategy: commit messages capture project knowledge");
+            generate_commit_pairs(db_path, num_pairs)?
+        }
         "semantic" => {
-            // Check which training signal is available
+            // Legacy: session-based or commit-based pairs (for ref repos)
             let conn = rusqlite::Connection::open(db_path)
                 .with_context(|| format!("Failed to open database: {}", db_path))?;
 
             if has_sessions(&conn)? {
-                // Sessions capture user intent (what user thinks about together)
                 println!("   Strategy: session observations capture user intent");
                 drop(conn);
                 generate_same_session_pairs(db_path, num_pairs)?
             } else if has_commits(&conn)? {
-                // Commits capture code cohesion (what changes together)
                 println!("   Strategy: commit messages capture code cohesion");
                 drop(conn);
                 generate_commit_pairs(db_path, num_pairs)?
@@ -266,6 +270,7 @@ fn build_projection_index(
 
     // Get content to index based on projection type
     let events: Vec<(i64, String)> = match projection_name {
+        "knowledge" => query_knowledge_corpus(&conn)?,
         "semantic" => query_session_events(&conn)?,
         "temporal" => query_file_events(&conn)?,
         "dependency" => dependency::query_function_events(&conn)?,
@@ -319,7 +324,143 @@ fn build_projection_index(
     Ok(())
 }
 
-/// Query session events for semantic index
+/// Query knowledge corpus for semantic index — beliefs + patterns + commits only
+///
+/// Phase 2 of the semantic-structural split: build a clean knowledge domain
+/// instead of the polluted 27K-item session-dominated index. Knowledge items
+/// are natural language content where semantic matching adds value over FTS5.
+fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)>> {
+    let mut events = Vec::new();
+
+    // ID offsets match the enrichment module (enrich_results in scry/internal/enrichment.rs)
+    const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
+    const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
+    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+
+    // 1. Layer patterns from patterns + pattern_fts tables
+    let has_patterns: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='patterns'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if has_patterns {
+        let mut stmt = conn.prepare(
+            "SELECT p.rowid, p.id, p.title, p.purpose, f.content, p.tags, p.file_path
+             FROM patterns p
+             LEFT JOIN pattern_fts f ON p.id = f.id",
+        )?;
+
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let rowid: i64 = row.get(0)?;
+            let id: String = row.get(1)?;
+            let title: String = row.get(2)?;
+            let purpose: Option<String> = row.get(3)?;
+            let content: Option<String> = row.get(4)?;
+            let tags: Option<String> = row.get(5)?;
+            let file_path: String = row.get(6)?;
+
+            let mut desc = format!("Pattern: {} - {}", title, id);
+            if let Some(p) = purpose {
+                desc.push_str(&format!(". Purpose: {}", p));
+            }
+            if let Some(t) = tags {
+                if !t.is_empty() {
+                    desc.push_str(&format!(". Tags: {}", t));
+                }
+            }
+            if let Some(c) = content {
+                let content_preview: String = c.chars().take(500).collect();
+                desc.push_str(&format!(". Content: {}", content_preview));
+            }
+            desc.push_str(&format!(". File: {}", file_path));
+
+            events.push((PATTERN_ID_OFFSET + rowid, desc));
+        }
+    }
+
+    let pattern_count = events.len();
+
+    // 2. Git commits (the "why" behind code changes)
+    let mut stmt = conn.prepare(
+        "SELECT rowid, sha, message FROM commits
+         WHERE message IS NOT NULL AND length(message) > 30
+         ORDER BY rowid",
+    )?;
+
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        let rowid: i64 = row.get(0)?;
+        let sha: String = row.get(1)?;
+        let message: String = row.get(2)?;
+
+        let desc = format!("Commit {}: {}", &sha[..7.min(sha.len())], message);
+        events.push((COMMIT_ID_OFFSET + rowid, desc));
+    }
+
+    let commit_count = events.len() - pattern_count;
+
+    // 3. Epistemic beliefs (project decisions with confidence)
+    let has_beliefs: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='beliefs'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    if has_beliefs {
+        let mut stmt = conn.prepare(
+            "SELECT rowid, id, statement, persona, facets, confidence, entrenchment
+             FROM beliefs
+             WHERE status = 'active'",
+        )?;
+
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let rowid: i64 = row.get(0)?;
+            let id: String = row.get(1)?;
+            let statement: String = row.get(2)?;
+            let persona: String = row.get(3)?;
+            let facets: Option<String> = row.get(4)?;
+            let confidence: f64 = row.get(5)?;
+            let entrenchment: String = row.get(6)?;
+
+            let mut desc = format!("Belief: {} - {}", id, statement);
+            desc.push_str(&format!(". Persona: {}", persona));
+            if let Some(f) = facets {
+                if !f.is_empty() {
+                    desc.push_str(&format!(". Facets: {}", f));
+                }
+            }
+            desc.push_str(&format!(
+                ". Confidence: {:.2}, Entrenchment: {}",
+                confidence, entrenchment
+            ));
+
+            events.push((BELIEF_ID_OFFSET + rowid, desc));
+        }
+    }
+
+    let belief_count = events.len() - pattern_count - commit_count;
+
+    println!(
+        "   Knowledge corpus: {} patterns + {} commits + {} beliefs = {} items",
+        pattern_count,
+        commit_count,
+        belief_count,
+        events.len()
+    );
+
+    Ok(events)
+}
+
+/// Query session events for semantic index (legacy — used by ref repos with "semantic" projection)
 fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)>> {
     let mut events = Vec::new();
 
