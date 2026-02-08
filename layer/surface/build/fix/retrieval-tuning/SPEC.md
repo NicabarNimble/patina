@@ -1,7 +1,7 @@
 ---
 type: fix
 id: retrieval-tuning
-status: draft
+status: complete
 created: 2026-02-07
 sessions:
   origin: 20260207-093335
@@ -9,6 +9,7 @@ blocked_by: []
 blocks: []
 related:
   - layer/surface/build/fix/eval-repair/SPEC.md
+superseded_by: semantic-structural-split
 beliefs:
   - measure-first
   - error-analysis-over-architecture
@@ -16,6 +17,11 @@ beliefs:
 ---
 
 # fix: Retrieval Tuning — Fusion Quality & Product Metrics
+
+> **STATUS: Phases 1-2.5 COMPLETE. Phases 3-5 superseded by
+> [[semantic-structural-split]] which addresses the architectural root cause
+> (mixing semantic and structural queries in scry) that made tuning so difficult.
+> This spec preserved as history — 6 sessions of evidence that informed the split.**
 
 > Continuation of eval-repair Phases 3-4. Now that we can measure (feedback loop,
 > NL eval, per-oracle ablation), use the data to improve retrieval quality.
