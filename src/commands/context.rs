@@ -8,7 +8,8 @@ use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
-use crate::retrieval::{BeliefOracle, Oracle};
+use crate::commands::assay::internal::belief::search_beliefs_fts;
+use rusqlite::Connection;
 
 /// Get project context from the knowledge layer
 ///
@@ -184,39 +185,35 @@ pub fn get_belief_metrics() -> Result<String> {
     Ok(output)
 }
 
-/// Query beliefs ranked by semantic relevance to a topic
+/// Query beliefs ranked by relevance to a topic
 ///
-/// Uses BeliefOracle's hybrid search (vector 0.7 + FTS5 0.3) to find
-/// beliefs relevant to the given topic. Falls back to aggregate metrics
-/// if the oracle is unavailable.
+/// Uses FTS5 keyword search via assay's belief module to find beliefs
+/// relevant to the given topic. Falls back to aggregate metrics if
+/// the database is unavailable.
 fn get_topic_beliefs(topic: &str) -> String {
-    let oracle = BeliefOracle::new();
-    if !oracle.is_available() {
-        // Fall back to aggregate metrics if no index
-        return get_belief_metrics().unwrap_or_default();
-    }
+    const DB_PATH: &str = ".patina/local/data/patina.db";
 
-    match oracle.query(topic, 5) {
+    let conn = match Connection::open(DB_PATH) {
+        Ok(c) => c,
+        Err(_) => return get_belief_metrics().unwrap_or_default(),
+    };
+
+    match search_beliefs_fts(&conn, topic, 5) {
         Ok(results) if !results.is_empty() => {
             let mut output = format!(
                 "# Active Beliefs (ranked by relevance to \"{}\")\n\n",
                 topic
             );
             for r in &results {
-                // doc_id is "belief:{id}" — strip prefix for display
-                let id = r.doc_id.strip_prefix("belief:").unwrap_or(&r.doc_id);
                 output.push_str(&format!(
                     "- **{}** (score: {:.2}): {}\n",
-                    id, r.score, r.content
+                    r.source_id, r.score, r.content
                 ));
             }
             output.push('\n');
             output
         }
-        _ => {
-            // No results or error — fall back to aggregate metrics
-            get_belief_metrics().unwrap_or_default()
-        }
+        _ => get_belief_metrics().unwrap_or_default(),
     }
 }
 

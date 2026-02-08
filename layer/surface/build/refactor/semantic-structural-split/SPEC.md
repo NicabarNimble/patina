@@ -1,24 +1,18 @@
 ---
 type: refactor
 id: semantic-structural-split
-status: draft
+status: ready
 created: 2026-02-08
-priority: supersedes
 sessions:
   origin: 20260208-070221
-blocked_by: []
-blocks: []
-supersedes:
-  - retrieval-tuning   # Phases 3-5 deferred until split validates
-  - eval-repair        # Eval redesign follows from split
 related:
-  - layer/surface/build/feat/mother-v2/SPEC.md
+- layer/surface/build/feat/mother-v2/SPEC.md
 beliefs:
-  - dependable-rust    # Black-box modules with stable interfaces
-  - unix-philosophy    # One tool, one job, done well
-  - andrew-ng-over-shoulder  # Measure truthfully before shipping
-  - never-tune-on-eval       # Train/test split before tuning
-  - error-analysis-over-architecture  # Understand the problem before adding complexity
+- dependable-rust
+- unix-philosophy
+- andrew-ng-over-shoulder
+- never-tune-on-eval
+- error-analysis-over-architecture
 ---
 
 # refactor: Semantic-Structural Split
