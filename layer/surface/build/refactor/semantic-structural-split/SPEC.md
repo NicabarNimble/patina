@@ -137,12 +137,18 @@ capability is additive.
 
 **Scry after (reductive):**
 ```
-scry <query>        — semantic vector search only
-scry orient <path>  — semantic context for a file
+scry <query>        — semantic vector search (core mode)
+scry orient <path>  — structural ranking for a directory
+scry recent [days]  — temporal ranking of recent changes
+scry --belief <id>  — belief grounding (vector neighbors)
+scry --detail/--why — result inspection convenience modes
 ```
 
 Scry's `QueryEngine` reduces from 5 oracles to semantic only. The
-`src/retrieval/` module simplifies significantly.
+`src/retrieval/` module simplifies significantly. The convenience modes
+(orient, recent, why, detail, use) query structural data for context
+but don't participate in fusion — they're separate access patterns.
+The split principle is about *fusion*, not *CLI surface area*.
 
 **What moves:**
 ```
@@ -162,9 +168,16 @@ src/commands/scry/internal/search.rs (scry_text, scry) — semantic search
 
 **What gets removed:**
 ```
-src/retrieval/fusion.rs            — RRF no longer needed inside scry (Phase 1)
 src/retrieval/intent.rs            — intent weights tuned cross-oracle balance
-src/commands/scry/internal/hybrid.rs — hybrid was the 5-oracle orchestrator
+```
+
+**What gets repurposed (not removed):**
+```
+src/retrieval/fusion.rs            — RRF algorithm removed; result type definitions
+                                     (FusedResult, OracleContribution, StructuralAnnotations)
+                                     retained for QueryEngine, MCP, and eval
+src/commands/scry/internal/hybrid.rs — renamed to semantic.rs; thin wrapper around
+                                       QueryEngine (no longer a 5-oracle orchestrator)
 ```
 
 ### Phase 2: First Semantic Domain — Knowledge
@@ -395,7 +408,7 @@ this by building a clean knowledge domain.
 
 ### Phase 2: First Semantic Domain (Knowledge) — COMPLETE (2026-02-08)
 - [x] oxidize builds knowledge domain from beliefs + patterns + commits only
-- [x] Semantic index size < 3K items: **1,903 items** (78 patterns + 1,778 commits + 47 beliefs)
+- [x] Semantic index size < 3K items: **~2K items** (79 patterns + 1,851 commits + 77 beliefs at last count; grows with project)
 - [x] Scry returns non-zero results for conceptual queries
 
 **Post-knowledge-domain eval (`patina eval --nl`):**
