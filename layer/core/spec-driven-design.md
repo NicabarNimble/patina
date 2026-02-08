@@ -4,7 +4,7 @@ layer: core
 status: active
 created: 2026-02-08
 tags: [governance, specs, agentic, process, core-principle]
-references: [dependable-rust, unix-philosophy]
+references: [dependable-rust, unix-philosophy, specs-push-discoveries-outbound]
 ---
 
 # Spec-Driven Design
@@ -94,6 +94,25 @@ code → commit → SPEC → (optional amendment → original SPEC) → session 
 ```
 
 This chain is what makes Patina's knowledge layer trustworthy. Without it, accumulated knowledge is just text. With it, every decision has context, rationale, and history.
+
+### 6. Push Discoveries Outbound
+
+Discoveries made during one spec's execution that affect other specs must be pushed to the destination spec before the originating spec can close. See [[specs-push-discoveries-outbound]].
+
+Without this rule, archiving the originating spec severs the knowledge chain. The discovery lives in session logs (archived), beliefs (only if searched for), and commit messages (buried). None of these paths naturally surface when opening the destination spec.
+
+```
+Working on SPEC A → discover something that affects SPEC B
+
+Bad:  Note it in session log, archive SPEC A, SPEC B never knows
+Good: Push discovery to SPEC B (beliefs, related links, discovery notes)
+      THEN archive SPEC A
+```
+
+This applies at all three layers:
+- **Process**: check for outbound discoveries before closing a spec
+- **Tooling**: `patina spec discover <target> "note"` (future)
+- **Structural**: `discoveries` field in frontmatter, warned at close time (future)
 
 ## Relationship to Other Patterns
 
