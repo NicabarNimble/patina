@@ -1,16 +1,16 @@
 # Patina Data Flow Cheatsheet
 
 > Quick reference for tracing data through the Patina system.
-> Updated: 2026-02-05 | Session: 20260205-064001
+> Updated: 2026-02-08 | Session: 20260208-144855 (post semantic-structural split)
 
 ## Big Picture
 
 - **Source of truth:** filesystem + `.git/` + `layer/` + `~/.patina/personas/.../events/*.jsonl`
 - **Derived stores:** `.patina/local/data/patina.db` + `.patina/local/data/embeddings/.../*.usearch` + `~/.patina/cache/.../persona.db`
 - **Readers:**
-  - `scry` = DB + vectors only
-  - `assay` = DB only
-  - `context` = **layer files direct-read** + (beliefs via SQL or BeliefOracle)
+  - `scry` = semantic vectors only (knowledge domain: beliefs + patterns + commits)
+  - `assay` = DB only (FTS5 keyword search, structural queries, co-change, belief grounding)
+  - `context` = **layer files direct-read** + (topic: assay factual + scry semantic + beliefs)
   - **Mother** = federation over *outputs/artifacts*, not indexing
 - **Eventlog** = append-only audit trail inside `patina.db` (LiveStore pattern)
 
@@ -25,7 +25,7 @@
 
 **Materialized tables:** `function_facts`, `import_facts`, `call_graph`, `code_fts`
 
-**Read by:** `assay` (all), `scry` (semantic+lexical via DB content)
+**Read by:** `assay` (all structural + FTS5 queries)
 
 ### `patina scrape git`
 **Writes:** `.patina/local/data/patina.db`
@@ -34,7 +34,7 @@
 
 **Materialized tables:** `commits`, `co_changes(file_a,file_b,count)`, `commits_fts`
 
-**Read by:** `scry` lexical (commit text), `scry` temporal (co_changes), `assay derive` (activity signals)
+**Read by:** `assay search` (FTS5 commit text), `assay cochange` (co_changes), `assay derive` (activity signals), `scry` (commit messages embedded in knowledge domain)
 
 ### `patina scrape layer`
 **Writes:** `.patina/local/data/patina.db`
@@ -43,7 +43,7 @@
 
 **Materialized tables/indices:** `patterns`, `beliefs`, `belief_fts`, `pattern_fts`
 
-**Read by:** `scry` belief (SQL/FTS), `context` beliefs (no-topic aggregate)
+**Read by:** `assay search` (FTS5), `assay belief` (grounding), `scry` (beliefs + patterns embedded in knowledge domain), `context` beliefs (no-topic aggregate)
 
 ### `patina scrape sessions`
 **Writes:** `.patina/local/data/patina.db`
@@ -52,14 +52,14 @@
 
 **Tables:** `sessions(id, title, started_at, ended_at, branch, classification, ...)`, `goals`, `observations`
 
-**Read by:** `scry` semantic (session content embedded in `semantic.usearch`)
+**Read by:** `assay search` (FTS5 session text). Sessions are NOT embedded in the knowledge domain (deferred to Phase 5 pending validation).
 
 ### `patina scrape forge`
 **Writes:** `.patina/local/data/patina.db`
 
 **Eventlog:** `forge.*` (issues, PRs from GitHub)
 
-**Read by:** `scry` (when `--include-issues`), embedded in semantic.usearch (5B-6B range)
+**Read by:** `assay search` (FTS5 when `--include-issues`). Forge events are NOT embedded in the knowledge domain.
 
 ### `patina persona note`
 **Writes:** `~/.patina/personas/default/events/*.jsonl` (source stream)
@@ -71,14 +71,14 @@
 
 **Tables:** `knowledge(id, content, domains, timestamp)`
 
-**Read by:** `scry` persona oracle
+**Read by:** `scry` (legacy persona bolting, deprecated)
 
 ### `patina oxidize`
-**Reads:** `patina.db` + `persona.db` (+ eventlog for stable ID mapping)
+**Reads:** `patina.db` (beliefs, patterns, commits from eventlog)
 
-**Writes:** `.patina/local/data/embeddings/e5-base-v2/projections/semantic.usearch`
+**Writes:** `.patina/local/data/embeddings/e5-base-v2/projections/knowledge.usearch` (+ knowledge.safetensors projection)
 
-**Read by:** `scry` semantic oracle, `BeliefOracle::query()` (topic beliefs)
+**Read by:** `scry` semantic oracle (QueryEngine), `context` topic queries (via scry)
 
 ### `patina assay derive`
 **Reads:** `git.commit` events and/or materialized git tables
@@ -97,7 +97,7 @@
 **Note:** These write at action-time, not via scrape. Dual-write with markdown files.
 
 ### `patina scry`
-**Reads:** All oracles (semantic, lexical, temporal, persona, belief)
+**Reads:** Semantic oracle only (knowledge.usearch via QueryEngine)
 
 **Writes:** `.patina/local/data/patina.db` (eventlog)
 
@@ -105,48 +105,52 @@
 
 ---
 
-## Scry: Oracles → Storage
+## Post-Split: Scry vs Assay
 
-| Oracle | Storage | Needs | Covers |
-|--------|---------|-------|--------|
-| **Semantic** | `semantic.usearch` | `oxidize` | code, sessions, patterns, beliefs, forge (by ID range) |
-| **Lexical** | `patina.db` FTS5 | `scrape *` | `code_fts`, `commits_fts`, `belief_fts` |
-| **Temporal** | `patina.db` | `scrape git` | `co_changes(file_a, file_b, count)` |
-| **Persona** | `persona.db` | `persona materialize` | `knowledge` table |
-| **Belief** | `patina.db` + `semantic.usearch` | `scrape layer` + `oxidize` | `beliefs` table + vector range 4B-5B |
+| Tool | Storage | Needs | Covers |
+|------|---------|-------|--------|
+| **scry** (semantic) | `knowledge.usearch` | `oxidize` | beliefs, patterns, commits (knowledge domain) |
+| **assay search** (factual) | `patina.db` FTS5 | `scrape *` | `code_fts`, `commits_fts`, `pattern_fts`, `belief_fts` |
+| **assay cochange** | `patina.db` | `scrape git` | `co_changes(file_a, file_b, count)` |
+| **assay belief** | `patina.db` | `scrape layer` | `beliefs` table (evidence grounding) |
+| **assay derive** | `patina.db` | `scrape git` | `module_signals` (activity, centrality) |
 
 ---
 
-## Vector ID Ranges (semantic.usearch)
+## Vector ID Ranges (knowledge.usearch)
 
-A single USearch index holds multiple content types by encoding **type in the ID offset**.
+A single USearch index holds knowledge domain content by encoding **type in the ID offset**.
 
 | Range | Content |
 |-------|---------|
-| `0 - ~N` | Code symbols (functions, types, etc.) |
-| `1B - 2B` | Session content |
+| `0 - ~N` | Commit messages |
 | `2B - 3B` | Pattern content |
 | `4B - 5B` | Belief content |
-| `5B - 6B` | Forge content (issues/PRs) |
+
+**Not embedded** (deferred to Phase 5+): code symbols, sessions, forge events.
 
 ---
 
-## Context: The "Odd One Out"
+## Context: Consumer-Level Fusion (Phase 3)
 
 ### Direct filesystem reads (no scrape)
 - `layer/core/*.md`
 - `layer/surface/*.md`
 
-### Beliefs
-- **No topic:** SQL aggregate over `patina.db:beliefs`
-- **With topic:** `BeliefOracle::query()` (requires `oxidize`)
+### With topic (fusion)
+- **Factual matches:** `assay_search()` (FTS5 keyword hits across code, commits, patterns)
+- **Semantic matches:** `QueryEngine::query()` (vector similarity in knowledge domain)
+- **Beliefs:** FTS5 belief search, ranked by relevance
+- Merge: facts first, then meaning for gaps (HashSet dedup by source_id)
 
-### Why direct reads?
+### Without topic
+- SQL aggregate over `patina.db:beliefs` (all active beliefs)
+- No factual/semantic search (would return random results without focus)
+
+### Why direct reads for patterns?
 1. Patterns are meant to be human-readable briefings
 2. No need to embed/index them — just render summaries
 3. Keeps patterns as git-tracked source of truth (not derived)
-
-Beliefs are different — they need semantic ranking for topic queries.
 
 ---
 
@@ -220,16 +224,14 @@ feedback_ratings          -- good/bad ratings
 SOURCES (truth)              DERIVED (indexed)             READERS
 ─────────────────            ─────────────────             ───────
 src/**/*
-.git/                        ──► patina.db ◄──────────────► assay (structure)
+.git/                        ──► patina.db ◄──────────────► assay (facts: FTS5, structure, co-change)
 layer/**/*.md                        │
                                      ▼
-                             semantic.usearch ◄───────────► scry (search)
-                                     ▲
-~/.patina/personas/            ──► persona.db ◄────────────┘
-  events/*.jsonl
+                             knowledge.usearch ◄──────────► scry (meaning: vector similarity)
 
-layer/core/*.md               ────────────────────────────► context (direct)
-layer/surface/*.md            ────────────────────────────► context (direct)
+layer/core/*.md               ────────────────────────────► context (direct read)
+layer/surface/*.md            ────────────────────────────► context (direct read)
+                                                           context (topic: assay + scry fusion)
 
 Mother (federation)           ────────────────────────────► operates on outputs/artifacts
 ```
@@ -276,7 +278,7 @@ sqlite3 .patina/local/data/patina.db ".tables" | tr ' ' '\n' | grep fts
 
 ### Project: `.patina/local/data/`
 - `patina.db` — everything structured (eventlog + materialized tables)
-- `embeddings/.../projections/semantic.usearch` — vectors
+- `embeddings/.../projections/knowledge.usearch` — vectors (knowledge domain)
 
 ### User: `~/.patina/`
 - `personas/default/events/*.jsonl` — persona source stream
@@ -286,4 +288,4 @@ sqlite3 .patina/local/data/patina.db ".tables" | tr ' ' '\n' | grep fts
 ### Layer: `layer/` (git-tracked)
 - `core/*.md`, `surface/*.md` — context direct reads
 - `surface/epistemic/beliefs/*.md` — scraped → DB → embedded
-- `sessions/*.md` — scraped → DB → embedded
+- `sessions/*.md` — scraped → DB (not embedded; deferred to Phase 5)
