@@ -11,7 +11,6 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 
-use crate::retrieval::intent::detect_intent;
 use crate::retrieval::{FusedResult, QueryEngine, RetrievalConfig};
 
 /// Evaluation results for one engine + test combination
@@ -1293,7 +1292,6 @@ pub fn execute_nl() -> Result<()> {
 
     let mut category_stats: HashMap<String, (f32, f32, f32, usize)> = HashMap::new();
     let mut split_stats: HashMap<String, (f32, f32, f32, usize)> = HashMap::new();
-    let mut intent_stats: HashMap<String, (f32, f32, f32, usize)> = HashMap::new();
 
     let train_count = cases.iter().filter(|c| c.split == "train").count();
     let test_count = cases.iter().filter(|c| c.split == "test").count();
@@ -1353,16 +1351,6 @@ pub fn execute_nl() -> Result<()> {
         split_entry.2 += rr;
         split_entry.3 += 1;
 
-        let intent = detect_intent(&case.query);
-        let intent_name = format!("{:?}", intent);
-        let intent_entry = intent_stats
-            .entry(intent_name)
-            .or_insert((0.0, 0.0, 0.0, 0));
-        intent_entry.0 += p5;
-        intent_entry.1 += p10;
-        intent_entry.2 += rr;
-        intent_entry.3 += 1;
-
         let display_q = if case.query.len() > 53 {
             format!("{}...", &case.query[..50])
         } else {
@@ -1398,40 +1386,6 @@ pub fn execute_nl() -> Result<()> {
             rr / n
         );
     }
-
-    // Intent breakdown
-    println!("\n━━━ By Detected Intent ━━━\n");
-    println!(
-        "{:<20} {:>6} {:>8} {:>8} {:>8}",
-        "Intent", "N", "P@5", "P@10", "MRR"
-    );
-    println!("{}", "─".repeat(54));
-
-    let mut intents: Vec<_> = intent_stats.iter().collect();
-    intents.sort_by_key(|(k, _)| (*k).clone());
-    for (intent_name, (p5, p10, rr, count)) in &intents {
-        let n = *count as f32;
-        println!(
-            "{:<20} {:>6} {:>7.1}% {:>7.1}% {:>8.3}",
-            intent_name,
-            count,
-            p5 / n * 100.0,
-            p10 / n * 100.0,
-            rr / n
-        );
-    }
-
-    let total_detected = intent_stats
-        .iter()
-        .filter(|(k, _)| k.as_str() != "General")
-        .map(|(_, (_, _, _, c))| c)
-        .sum::<usize>();
-    println!(
-        "\n  Intent detection coverage: {}/{} ({:.0}%) queries have specific intent",
-        total_detected,
-        cases.len(),
-        total_detected as f32 / cases.len() as f32 * 100.0
-    );
 
     // Split breakdown (train vs test)
     println!("\n━━━ By Split (unified) ━━━\n");
