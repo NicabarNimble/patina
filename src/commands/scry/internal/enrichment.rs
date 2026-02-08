@@ -33,7 +33,7 @@ pub fn enrich_results(
     const FORGE_ID_OFFSET: i64 = 5_000_000_000;
 
     match dimension {
-        "semantic" => {
+        "knowledge" | "semantic" => {
             // Semantic index contains eventlog entries, code facts, and patterns
             for i in 0..results.keys.len() {
                 let key = results.keys[i] as i64;
