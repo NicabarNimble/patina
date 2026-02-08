@@ -254,6 +254,18 @@ enum Commands {
         /// Run natural-language query eval from curated test set
         #[arg(long)]
         nl: bool,
+
+        /// Independent assay eval (factual/FTS5 retrieval)
+        #[arg(long)]
+        assay: bool,
+
+        /// Independent scry eval (semantic/vector retrieval) + scry-vs-assay comparison
+        #[arg(long)]
+        scry: bool,
+
+        /// Combined eval (full pipeline: assay + scry together)
+        #[arg(long)]
+        combined: bool,
     },
 
     /// Benchmark retrieval quality with ground truth
@@ -1045,11 +1057,20 @@ fn main() -> Result<()> {
             dimension,
             feedback,
             nl,
+            assay,
+            scry,
+            combined,
         }) => {
             if feedback {
                 commands::eval::execute_feedback()?;
             } else if nl {
                 commands::eval::execute_nl()?;
+            } else if assay {
+                commands::eval::execute_assay()?;
+            } else if scry {
+                commands::eval::execute_scry()?;
+            } else if combined {
+                commands::eval::execute_combined()?;
             } else {
                 commands::eval::execute(dimension.map(|d| d.as_str().to_string()))?;
             }
