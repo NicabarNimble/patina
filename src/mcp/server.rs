@@ -979,6 +979,12 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
                 &db_path,
             )
         }
+        QueryType::Belief { ref id } => {
+            crate::commands::assay::internal::belief::execute_belief_grounding_json(
+                id,
+                options.limit,
+            )
+        }
     }
 }
 
