@@ -47,8 +47,10 @@ pub fn oxidize() -> Result<()> {
     use patina::embeddings::create_embedder;
     let mut embedder = create_embedder()?;
 
-    // Train each projection
-    for (name, config) in &recipe.projections {
+    // Train each projection (sorted for deterministic order)
+    let mut sorted_projections: Vec<_> = recipe.projections.iter().collect();
+    sorted_projections.sort_by(|a, b| a.0.cmp(b.0));
+    for (name, config) in sorted_projections {
         println!("\n{}", "=".repeat(60));
         println!("📊 Training {} projection...", name);
         println!("{}", "=".repeat(60));

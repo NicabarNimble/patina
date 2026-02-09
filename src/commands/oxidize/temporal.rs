@@ -55,18 +55,20 @@ pub fn generate_temporal_pairs(db_path: &str) -> Result<Vec<TrainingPair>> {
             .insert(file_a.clone());
     }
 
-    // Filter to files with at least one co-change partner
-    let files_with_cochanges: Vec<_> = cochanges
+    // Filter to files with at least one co-change partner (sorted for determinism)
+    let mut files_with_cochanges: Vec<_> = cochanges
         .iter()
         .filter(|(_, partners)| !partners.is_empty())
         .collect();
+    files_with_cochanges.sort_by(|a, b| a.0.cmp(b.0));
 
     if files_with_cochanges.is_empty() {
         anyhow::bail!("No files with co-change relationships found");
     }
 
-    // Convert to vec for random access
-    let all_files_vec: Vec<_> = all_files.iter().collect();
+    // Convert to sorted vec for deterministic random access
+    let mut all_files_vec: Vec<_> = all_files.iter().collect();
+    all_files_vec.sort();
 
     println!(
         "  Found {} files with {} co-change relationships",
@@ -79,8 +81,9 @@ pub fn generate_temporal_pairs(db_path: &str) -> Result<Vec<TrainingPair>> {
     let mut rng = fastrand::Rng::with_seed(42);
 
     for (anchor_file, anchor_partners) in files_with_cochanges {
-        // Pick positive from co-change partners
-        let partners_vec: Vec<_> = anchor_partners.iter().collect();
+        // Pick positive from co-change partners (sorted for determinism)
+        let mut partners_vec: Vec<_> = anchor_partners.iter().collect();
+        partners_vec.sort();
         let positive_idx = rng.usize(..partners_vec.len());
         let positive_file = partners_vec[positive_idx];
 

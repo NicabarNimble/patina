@@ -5,7 +5,6 @@
 use anyhow::{Context, Result};
 use fastrand::Rng;
 use safetensors::SafeTensors;
-use std::collections::HashMap;
 use std::path::Path;
 
 /// Cache of intermediate values from forward pass (for backprop)
@@ -261,20 +260,10 @@ impl Projection {
             ),
         ];
 
-        // Metadata
-        let metadata: HashMap<String, String> = [
-            ("architecture", "mlp-2layer"),
-            ("input_dim", &input_dim.to_string()),
-            ("hidden_dim", &hidden_dim.to_string()),
-            ("output_dim", &output_dim.to_string()),
-            ("created_by", "patina-oxidize"),
-        ]
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect();
-
-        // Serialize and write
-        let serialized = safetensors::tensor::serialize(tensors, Some(metadata))
+        // Serialize and write (no metadata — HashMap serialization is non-deterministic,
+        // which breaks safetensors checksum reproducibility. Dimensions are already
+        // encoded in the tensor shapes.)
+        let serialized = safetensors::tensor::serialize(tensors, None)
             .context("Failed to serialize tensors")?;
 
         std::fs::write(path, serialized)

@@ -55,7 +55,8 @@ pub fn generate_commit_pairs(db_path: &str) -> Result<Vec<TrainingPair>> {
             .push(desc.clone());
     }
 
-    let all_files: Vec<&String> = file_to_functions.keys().collect();
+    let mut all_files: Vec<&String> = file_to_functions.keys().collect();
+    all_files.sort();
 
     // Generate pairs from ALL viable commits (Phase 5c: no sampling limit)
     let mut pairs = Vec::new();
@@ -159,7 +160,7 @@ fn query_filtered_commits(conn: &Connection) -> Result<Vec<(String, String, Opti
 
 /// Query files touched by a commit
 fn query_commit_files(conn: &Connection, sha: &str) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT file_path FROM commit_files WHERE sha = ?")?;
+    let mut stmt = conn.prepare("SELECT file_path FROM commit_files WHERE sha = ? ORDER BY file_path")?;
     let mut files = Vec::new();
     let mut rows = stmt.query([sha])?;
 
@@ -176,7 +177,8 @@ fn query_all_functions(conn: &Connection) -> Result<Vec<(String, String)>> {
     let mut stmt = conn.prepare(
         "SELECT file, name, parameters, return_type, is_public, is_async
          FROM function_facts
-         WHERE name != ''",
+         WHERE name != ''
+         ORDER BY file, name",
     )?;
 
     let mut functions = Vec::new();

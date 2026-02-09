@@ -56,18 +56,20 @@ pub fn generate_dependency_pairs(db_path: &str) -> Result<Vec<TrainingPair>> {
             .insert(caller.clone());
     }
 
-    // Filter to functions with at least one call relationship
-    let functions_with_calls: Vec<_> = call_relations
+    // Filter to functions with at least one call relationship (sorted for determinism)
+    let mut functions_with_calls: Vec<_> = call_relations
         .iter()
         .filter(|(_, partners)| !partners.is_empty())
         .collect();
+    functions_with_calls.sort_by(|a, b| a.0.cmp(b.0));
 
     if functions_with_calls.is_empty() {
         anyhow::bail!("No functions with call relationships found");
     }
 
-    // Convert to vec for random access
-    let all_functions_vec: Vec<_> = all_functions.iter().collect();
+    // Convert to sorted vec for deterministic random access
+    let mut all_functions_vec: Vec<_> = all_functions.iter().collect();
+    all_functions_vec.sort();
 
     println!(
         "  Found {} functions with {} call relationships",
@@ -80,8 +82,9 @@ pub fn generate_dependency_pairs(db_path: &str) -> Result<Vec<TrainingPair>> {
     let mut rng = fastrand::Rng::with_seed(42);
 
     for (anchor_func, anchor_partners) in functions_with_calls {
-        // Pick positive from call partners (functions it calls or that call it)
-        let partners_vec: Vec<_> = anchor_partners.iter().collect();
+        // Pick positive from call partners (sorted for determinism)
+        let mut partners_vec: Vec<_> = anchor_partners.iter().collect();
+        partners_vec.sort();
         let positive_idx = rng.usize(..partners_vec.len());
         let positive_func = partners_vec[positive_idx];
 
