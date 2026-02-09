@@ -7,6 +7,7 @@ sessions:
   origin: 20260208-070221
 related:
 - layer/surface/build/feat/mother-v2/SPEC.md
+- layer/surface/build/fix/eval-phase4-divergences/SPEC.md
 beliefs:
 - dependable-rust
 - unix-philosophy
@@ -244,24 +245,30 @@ combine their answers. Two consumers matter:
 
 ### Phase 4: Eval Redesign
 
-With the split, eval becomes independently testable:
+With the split, eval becomes independently testable. Three divergences from
+the original plan below were authorized by [[eval-phase4-divergences]].
 
 **Assay eval:**
-- "Given this query, does assay find the right files?" (FTS5 + temporal)
-- Uses existing 52 NL queries (these are mostly factual queries)
-- BM25 normalization tested within assay, no cross-type confusion
+- "Given this query, does assay find the right files?" (FTS5 ranked search)
+- New 25-query set (`resources/eval/assay-queries.json`) designed for
+  post-split architecture. Original 52-query set had 8 stale paths from
+  deleted oracle files; fresh queries per [[never-tune-on-eval]].
+- Co-change temporal analysis NOT tested here — different query type
+  (file-path input, not NL). Separate eval if needed per [[unix-philosophy]].
 
 **Scry eval:**
 - "Given this concept, does scry find related items?" (vector similarity)
-- Needs new queries designed for semantic matching:
-  - "error handling philosophy" should find [[safety-boundaries]] belief
-  - "module design" should find [[dependable-rust]] pattern
-- Small, focused query set (~20) testing meaning, not fact retrieval
+- New 20-query set (`resources/eval/scry-queries.json`) with intentional
+  vocabulary gaps testing semantic bridging:
+  - "ripple effects from changes" should find [[dependable-rust]]
+  - "baselines before optimization" should find [[andrew-ng-over-shoulder]]
+- Includes scry-vs-assay comparison (exit criterion: ≥5/20 scry-only hits)
 
 **Combined eval:**
-- "Given a development context, does the system surface the right context?"
-- This is the product metric (Phase 5 from retrieval-tuning)
-- Tested after Phases 1-3 validate the components independently
+- Runs both query sets through both systems with facts-first interleaving
+- Measures cross-system contribution: what each system adds to the other
+- Pipeline-level P@K, hit rate, and per-query-type delta from single-system
+- Richer "development context → right context" product metric is Phase 5
 
 ### Phase 5: Actively Discover Semantic Domains
 
