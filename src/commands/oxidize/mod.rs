@@ -2,6 +2,7 @@
 //!
 //! Phase 2: Training + safetensors export + USearch index building
 
+pub mod beliefs;
 pub mod commits;
 pub mod dependency;
 pub mod pairs;
@@ -10,6 +11,7 @@ pub mod temporal;
 pub mod trainer;
 
 use anyhow::{Context, Result};
+use beliefs::generate_belief_pairs;
 use commits::generate_commit_pairs;
 use dependency::generate_dependency_pairs;
 use pairs::TrainingPair;
@@ -172,13 +174,26 @@ fn train_projection(
 ) -> Result<Projection> {
     // Generate pairs based on projection type
     // Phase 5c: use ALL available pairs, not a random subset.
-    // Sampling 100 from 551+ viable pairs caused ±15pp P@10 variance.
+    // Phase 5d: knowledge domain combines commit + belief co-reference pairs.
     let pairs: Vec<TrainingPair> = match name {
         "knowledge" | "semantic" => {
-            // Knowledge domain: commit-based pairs as baseline training signal
-            // Both names map to the same corpus — "semantic" kept for ref repo compat
-            println!("   Strategy: commit messages capture project knowledge");
-            generate_commit_pairs(db_path)?
+            // Knowledge domain: commit pairs + belief-pattern co-reference pairs
+            // Phase 5d: belief pairs teach vocabulary gap bridging between
+            // conceptual queries and belief/pattern documents.
+            println!("   Strategy: commit pairs + belief-pattern co-references");
+            let mut all_pairs = generate_commit_pairs(db_path)?;
+            match generate_belief_pairs(db_path) {
+                Ok(belief_pairs) => {
+                    println!("   Adding {} belief co-reference pairs", belief_pairs.len());
+                    all_pairs.extend(belief_pairs);
+                }
+                Err(e) => {
+                    println!("   ⚠️  Belief pairs skipped: {}", e);
+                }
+            }
+            // Sort for determinism (pairs from different sources)
+            all_pairs.sort_by(|a, b| a.anchor.cmp(&b.anchor));
+            all_pairs
         }
         "sessions" => {
             // Session domain (Phase 5b): reuse commit-based training signal
