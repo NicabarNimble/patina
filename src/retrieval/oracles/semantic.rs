@@ -136,7 +136,7 @@ impl SemanticOracle {
 
         // Dynamic dimensions: projection output_dim when projected, raw E5 dim when not
         let dimensions = match &projection {
-            Some(proj) => proj.w2.len(), // output_dim = number of rows in W2
+            Some(proj) => proj.w2.len(),  // output_dim = number of rows in W2
             None => embedder.dimension(), // raw E5 dim (768 for e5-base-v2)
         };
 
@@ -196,11 +196,22 @@ impl Oracle for SemanticOracle {
             None => query_embedding,
         };
 
-        // Search index
-        let matches = cache
-            .index
-            .search(&projected, limit)
-            .with_context(|| "Vector search failed")?;
+        // Search index — use exact search for small corpora to close ANN gap.
+        // USearch HNSW at 768-dim with ~615 vectors leaves 9.2pp P@10 gap vs
+        // brute-force (43.3% vs 52.5%). Exact search eliminates this gap for
+        // corpora below 10K vectors with negligible latency cost.
+        const EXACT_SEARCH_THRESHOLD: usize = 10_000;
+        let matches = if cache.index.size() < EXACT_SEARCH_THRESHOLD {
+            cache
+                .index
+                .exact_search(&projected, limit)
+                .with_context(|| "Exact vector search failed")?
+        } else {
+            cache
+                .index
+                .search(&projected, limit)
+                .with_context(|| "Vector search failed")?
+        };
 
         // Convert to SearchResults for enrichment
         let results = SearchResults {
