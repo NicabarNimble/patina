@@ -25,13 +25,23 @@ pub struct SemanticOracle {
     db_path: PathBuf,
     index_path: PathBuf,
     projection_path: PathBuf,
+    /// Domain name for enrichment routing (e.g., "knowledge", "sessions")
+    domain: String,
     /// Lazy-initialized cache - loads on first query
     cache: OnceLock<Result<SemanticCache, String>>,
 }
 
 impl SemanticOracle {
     pub fn new() -> Self {
-        // Read model from project config
+        // Default: knowledge domain (Phase 2+)
+        Self::for_domain("knowledge")
+    }
+
+    /// Create an oracle for a specific semantic domain (Phase 5b multi-domain)
+    ///
+    /// Each domain has its own index and projection in the embeddings directory.
+    /// Falls back to legacy "semantic" name for the knowledge domain.
+    pub fn for_domain(domain: &str) -> Self {
         let model = patina::project::load(Path::new("."))
             .ok()
             .map(|c| c.embeddings.model)
@@ -39,24 +49,76 @@ impl SemanticOracle {
 
         let embeddings_dir = format!(".patina/local/data/embeddings/{}/projections", model);
 
-        // Prefer knowledge domain (Phase 2), fall back to legacy semantic
-        let (index_name, proj_name) = if PathBuf::from(format!(
-            "{}/knowledge.usearch",
-            embeddings_dir
-        ))
-        .exists()
-        {
-            ("knowledge", "knowledge")
+        // For knowledge domain, fall back to legacy "semantic" name
+        let (index_name, proj_name) = if domain == "knowledge" {
+            if PathBuf::from(format!("{}/knowledge.usearch", embeddings_dir)).exists() {
+                ("knowledge", "knowledge")
+            } else {
+                ("semantic", "semantic")
+            }
         } else {
-            ("semantic", "semantic")
+            (domain, domain)
         };
 
         Self {
             db_path: PathBuf::from(".patina/local/data/patina.db"),
             index_path: PathBuf::from(format!("{}/{}.usearch", embeddings_dir, index_name)),
             projection_path: PathBuf::from(format!("{}/{}.safetensors", embeddings_dir, proj_name)),
+            domain: domain.to_string(),
             cache: OnceLock::new(),
         }
+    }
+
+    /// Discover all available semantic domains in the embeddings directory
+    ///
+    /// Returns domain names that have both .usearch and .safetensors files,
+    /// excluding non-semantic projections (temporal, dependency).
+    pub fn available_domains() -> Vec<String> {
+        let model = patina::project::load(Path::new("."))
+            .ok()
+            .map(|c| c.embeddings.model)
+            .unwrap_or_else(|| "e5-base-v2".to_string());
+
+        let embeddings_dir = format!(".patina/local/data/embeddings/{}/projections", model);
+        let dir = Path::new(&embeddings_dir);
+
+        if !dir.exists() {
+            return vec![];
+        }
+
+        // Non-semantic projections that shouldn't be queried as semantic domains
+        let excluded = ["temporal", "dependency"];
+
+        let mut domains = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) == Some("usearch") {
+                    if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        // Skip non-semantic projections
+                        if excluded.contains(&stem) {
+                            continue;
+                        }
+                        // Check matching safetensors exists
+                        let proj_path = dir.join(format!("{}.safetensors", stem));
+                        if proj_path.exists() {
+                            // Normalize "semantic" → "knowledge"
+                            let domain = if stem == "semantic" {
+                                "knowledge".to_string()
+                            } else {
+                                stem.to_string()
+                            };
+                            if !domains.contains(&domain) {
+                                domains.push(domain);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        domains.sort();
+        domains
     }
 
     /// Initialize cache (embedder, projection, index) - called once
@@ -147,7 +209,7 @@ impl Oracle for SemanticOracle {
         let conn = Connection::open(&self.db_path)
             .with_context(|| format!("Failed to open database: {:?}", self.db_path))?;
 
-        let enriched = enrich_results(&conn, &results, "semantic", 0.0)?;
+        let enriched = enrich_results(&conn, &results, &self.domain, 0.0)?;
 
         // Convert to OracleResult
         let source = self.name();

@@ -47,23 +47,43 @@ pub struct QueryOptions {
 }
 
 /// Query engine — semantic vector search with multi-repo federation
+///
+/// Phase 5b: supports multiple semantic domains (knowledge, sessions, etc.).
+/// Each domain is an independent SemanticOracle. Results are merged by score.
 pub struct QueryEngine {
-    oracle: SemanticOracle,
+    oracles: Vec<SemanticOracle>,
     config: RetrievalConfig,
 }
 
 impl QueryEngine {
-    /// Create engine with default config
+    /// Create engine with default config — auto-discovers available domains
     pub fn new() -> Self {
         Self::with_config(RetrievalConfig::default())
     }
 
-    /// Create engine with custom config
+    /// Create engine with custom config — auto-discovers available domains
     pub fn with_config(config: RetrievalConfig) -> Self {
-        Self {
-            oracle: SemanticOracle::new(),
-            config,
+        let domains = SemanticOracle::available_domains();
+        let oracles: Vec<SemanticOracle> = if domains.is_empty() {
+            // Fallback: try default knowledge oracle
+            vec![SemanticOracle::new()]
+        } else {
+            domains
+                .iter()
+                .map(|d| SemanticOracle::for_domain(d))
+                .collect()
+        };
+
+        if std::env::var("PATINA_LOG").is_ok() {
+            let names: Vec<&str> = domains.iter().map(|s| s.as_str()).collect();
+            eprintln!(
+                "[DEBUG retrieval::engine] loaded {} semantic domains: {:?}",
+                oracles.len(),
+                names
+            );
         }
+
+        Self { oracles, config }
     }
 
     /// Query the semantic oracle, returning ranked results
@@ -89,17 +109,9 @@ impl QueryEngine {
         self.query_local(query, limit)
     }
 
-    /// Query local project's semantic index
+    /// Query local project's semantic index across all available domains
     fn query_local(&self, query: &str, limit: usize) -> Result<Vec<FusedResult>> {
         let start = Instant::now();
-
-        if !self.oracle.is_available() {
-            // Graceful fallback: no semantic index available
-            if std::env::var("PATINA_LOG").is_ok() {
-                eprintln!("[DEBUG retrieval::engine] semantic oracle not available, returning empty");
-            }
-            return Ok(Vec::new());
-        }
 
         // Check oracle filter (backward compat with eval --oracle)
         if let Some(ref filter) = self.config.oracle_filter {
@@ -109,47 +121,77 @@ impl QueryEngine {
         }
 
         let fetch_limit = limit * self.config.fetch_multiplier;
-        let oracle_results = self.oracle.query(query, fetch_limit)?;
+        let mut all_results: Vec<FusedResult> = Vec::new();
 
-        // Convert OracleResult -> FusedResult (no fusion needed, single oracle)
-        let mut results: Vec<FusedResult> = oracle_results
-            .into_iter()
-            .map(|r| {
-                let mut contributions = std::collections::HashMap::new();
-                contributions.insert(
-                    r.source,
-                    super::fusion::OracleContribution {
-                        rank: 1,
-                        raw_score: r.score,
-                        score_type: r.score_type,
-                        matches: r.metadata.matches.clone(),
-                    },
+        // Query each available domain and collect results
+        for oracle in &self.oracles {
+            if !oracle.is_available() {
+                continue;
+            }
+
+            if let Ok(oracle_results) = oracle.query(query, fetch_limit) {
+                let domain_results: Vec<FusedResult> = oracle_results
+                    .into_iter()
+                    .map(|r| {
+                        let mut contributions = std::collections::HashMap::new();
+                        contributions.insert(
+                            r.source,
+                            super::fusion::OracleContribution {
+                                rank: 1,
+                                raw_score: r.score,
+                                score_type: r.score_type,
+                                matches: r.metadata.matches.clone(),
+                            },
+                        );
+
+                        FusedResult {
+                            doc_id: r.doc_id,
+                            content: r.content,
+                            fused_score: r.score,
+                            sources: vec![r.source],
+                            contributions,
+                            metadata: r.metadata,
+                            annotations: StructuralAnnotations::default(),
+                        }
+                    })
+                    .collect();
+
+                all_results.extend(domain_results);
+            }
+        }
+
+        if all_results.is_empty() {
+            if std::env::var("PATINA_LOG").is_ok() {
+                eprintln!(
+                    "[DEBUG retrieval::engine] no semantic oracles available, returning empty"
                 );
+            }
+            return Ok(Vec::new());
+        }
 
-                FusedResult {
-                    doc_id: r.doc_id,
-                    content: r.content,
-                    fused_score: r.score,
-                    sources: vec![r.source],
-                    contributions,
-                    metadata: r.metadata,
-                    annotations: StructuralAnnotations::default(),
-                }
-            })
-            .collect();
+        // Sort by score descending, deduplicate by doc_id (keep highest score)
+        all_results.sort_by(|a, b| {
+            b.fused_score
+                .partial_cmp(&a.fused_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
-        results.truncate(limit);
-        populate_annotations(&mut results);
+        let mut seen = std::collections::HashSet::new();
+        all_results.retain(|r| seen.insert(r.doc_id.clone()));
+
+        all_results.truncate(limit);
+        populate_annotations(&mut all_results);
 
         if std::env::var("PATINA_LOG").is_ok() {
             eprintln!(
-                "[DEBUG retrieval::engine] semantic query: {} results in {:?}",
-                results.len(),
+                "[DEBUG retrieval::engine] semantic query: {} results from {} domains in {:?}",
+                all_results.len(),
+                self.oracles.iter().filter(|o| o.is_available()).count(),
                 start.elapsed()
             );
         }
 
-        Ok(results)
+        Ok(all_results)
     }
 
     /// Query a specific registered repo's semantic index
@@ -226,20 +268,31 @@ impl QueryEngine {
         let original_dir = std::env::current_dir()?;
         std::env::set_current_dir(context_path)?;
 
-        // Create a fresh semantic oracle for this context
-        let oracle = SemanticOracle::new();
-        let fetch_limit = limit * self.config.fetch_multiplier;
-
-        let result = if oracle.is_available() {
-            oracle.query(query, fetch_limit).ok()
+        // Discover available domains in repo context
+        let domains = SemanticOracle::available_domains();
+        let repo_oracles: Vec<SemanticOracle> = if domains.is_empty() {
+            vec![SemanticOracle::new()]
         } else {
-            None
+            domains
+                .iter()
+                .map(|d| SemanticOracle::for_domain(d))
+                .collect()
         };
+
+        let fetch_limit = limit * self.config.fetch_multiplier;
+        let mut all_oracle_results = Vec::new();
+
+        for oracle in &repo_oracles {
+            if oracle.is_available() {
+                if let Ok(results) = oracle.query(query, fetch_limit) {
+                    all_oracle_results.extend(results);
+                }
+            }
+        }
 
         std::env::set_current_dir(original_dir)?;
 
-        let results: Vec<FusedResult> = result
-            .unwrap_or_default()
+        let mut results: Vec<FusedResult> = all_oracle_results
             .into_iter()
             .map(|mut r| {
                 // Tag with repo name for provenance
@@ -268,15 +321,22 @@ impl QueryEngine {
                     annotations: StructuralAnnotations::default(),
                 }
             })
-            .take(limit)
             .collect();
+
+        // Sort by score and truncate
+        results.sort_by(|a, b| {
+            b.fused_score
+                .partial_cmp(&a.fused_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        results.truncate(limit);
 
         Ok(results)
     }
 
     /// List available oracles (backward compat)
     pub fn available_oracles(&self) -> Vec<&'static str> {
-        if self.oracle.is_available() {
+        if self.oracles.iter().any(|o| o.is_available()) {
             vec!["semantic"]
         } else {
             vec![]

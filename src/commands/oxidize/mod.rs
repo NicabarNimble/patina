@@ -178,6 +178,12 @@ fn train_projection(
             println!("   Strategy: commit messages capture project knowledge");
             generate_commit_pairs(db_path, num_pairs)?
         }
+        "sessions" => {
+            // Session domain (Phase 5b): reuse commit-based training signal
+            // Session content is natural language, same embedding space works
+            println!("   Strategy: commit-based pairs (shared training signal)");
+            generate_commit_pairs(db_path, num_pairs)?
+        }
         "temporal" => {
             println!("   Strategy: files that co-change are related");
             generate_temporal_pairs(db_path, num_pairs)?
@@ -188,7 +194,7 @@ fn train_projection(
         }
         _ => {
             anyhow::bail!(
-                "Unknown projection type: {}. Supported: knowledge, semantic, temporal, dependency",
+                "Unknown projection type: {}. Supported: knowledge, sessions, semantic, temporal, dependency",
                 name
             );
         }
@@ -254,6 +260,7 @@ fn build_projection_index(
     // Get content to index based on projection type
     let events: Vec<(i64, String)> = match projection_name {
         "knowledge" | "semantic" => query_knowledge_corpus(&conn)?,
+        "sessions" => query_session_corpus(&conn)?,
         "temporal" => query_file_events(&conn)?,
         "dependency" => dependency::query_function_events(&conn)?,
         _ => {
@@ -531,6 +538,62 @@ fn strip_frontmatter(content: &str) -> &str {
     } else {
         content
     }
+}
+
+/// Query session corpus for session-semantic index (Phase 5b)
+///
+/// Extracts unique session events (decisions, patterns, work, context) from the
+/// eventlog. Deduplicates by (source_id, content) since each scrape re-inserts.
+/// Uses eventlog seq as ID key (matches enrichment module's eventlog lookup).
+///
+/// Content filtering: only events with >50 chars, only high-value session types.
+fn query_session_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)>> {
+    // Session events use their raw eventlog seq as the index key.
+    // The enrichment module's eventlog branch (key < CODE_ID_OFFSET) handles these.
+    let mut stmt = conn.prepare(
+        "SELECT MIN(seq) as seq, source_id, event_type,
+                json_extract(data, '$.content') as content
+         FROM eventlog
+         WHERE event_type IN ('session.decision', 'session.pattern',
+                              'session.work', 'session.context')
+         AND length(json_extract(data, '$.content')) > 50
+         GROUP BY source_id, event_type, json_extract(data, '$.content')
+         ORDER BY seq",
+    )?;
+
+    let mut events = Vec::new();
+    let mut rows = stmt.query([])?;
+    let mut type_counts = std::collections::HashMap::new();
+
+    while let Some(row) = rows.next()? {
+        let seq: i64 = row.get(0)?;
+        let source_id: String = row.get(1)?;
+        let event_type: String = row.get(2)?;
+        let content: String = row.get(3)?;
+
+        // Build descriptive text for embedding
+        let type_label = event_type.strip_prefix("session.").unwrap_or(&event_type);
+        let desc = format!(
+            "Session {} ({}): {}",
+            source_id, type_label, content
+        );
+
+        events.push((seq, desc));
+        *type_counts.entry(type_label.to_string()).or_insert(0) += 1;
+    }
+
+    let type_summary: Vec<String> = type_counts
+        .iter()
+        .map(|(k, v)| format!("{} {}", v, k))
+        .collect();
+
+    println!(
+        "   Session corpus: {} items ({})",
+        events.len(),
+        type_summary.join(" + ")
+    );
+
+    Ok(events)
 }
 
 /// Query file events for temporal index
