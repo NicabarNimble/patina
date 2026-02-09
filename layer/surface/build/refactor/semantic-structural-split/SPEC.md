@@ -712,11 +712,78 @@ was met with the Phase 5a projection; the new projection achieves 4/20.
 This is a training stability issue for future work (fixed seeds, more pairs,
 or projection checkpointing), not a Phase 5b concern.
 
-**Phase 5c+: Future Semantic Domains**
+**Phase 5c: Training Stability — Use All Available Pairs**
+
+The projection variance problem (knowledge P@10 swinging 29.2%–44.2% across
+oxidize runs) has a root cause: `num_pairs = 100` in `train_projection()`
+samples 18% of available commit data, introducing high variance for zero
+benefit. Per [[andrew-ng-over-shoulder]]: more data, not better luck.
+
+**Diagnostic evidence (session 20260209-061005):**
+- 1,365 filtered commits (conventional format, >30 chars)
+- 551 viable commits (touch files with functions in function_facts)
+- 1,209 commit-file pairs (each = 1 potential training triplet)
+- 1,931 functions across 191 files (avg 10.1 per file)
+- Current sampling: 100 pairs from 200 fetched commits = 18% of viable data
+- `query_filtered_commits()` applies `LIMIT num_pairs*2` in SQL — double
+  filtering that discards data before the generator even sees it
+
+**Root cause:** Cargo-culted sampling from large-scale ML. In large-scale
+training, you sample because datasets are too large to fit in memory and
+SGD benefits from stochastic mini-batches. Neither applies here — 551
+triplets through E5 takes seconds, training a 2-layer MLP for 10 epochs
+on 551 pairs is trivial on CPU. The sampling saves ~2 seconds of wall
+time while costing ±15pp of P@10 stability.
+
+**Observation:** The corpus builders (what gets indexed) use all available
+data: `query_knowledge_corpus()` indexes ALL beliefs + patterns + filtered
+commits, `query_session_corpus()` indexes ALL deduped events. But the
+training signal (what shapes the projection) throws away 80%+ of available
+data through random sampling. The projection learns from 100 random pairs,
+then gets applied to the full corpus. This mismatch is the source of
+instability.
+
+**Fix (all three pair generators):**
+
+1. **`generate_commit_pairs()`**: Remove `num_pairs` limit from
+   `query_filtered_commits()` SQL. Iterate all viable commits, generate
+   one triplet per commit-file pair. Expected: ~551-1,209 pairs (up from 100).
+
+2. **`generate_temporal_pairs()`**: Generate one triplet per file with
+   co-change partners (currently samples `num_pairs` random files).
+   Expected: all files with co-changes.
+
+3. **`generate_dependency_pairs()`**: Generate one triplet per function
+   with call relationships (currently samples `num_pairs` random functions).
+   Expected: all functions with call edges.
+
+4. **`train_projection()` in `mod.rs`**: Remove `num_pairs = 100`. Each
+   generator returns all viable pairs. `num_pairs` parameter removed from
+   generator signatures.
+
+5. **Fixed seed**: Add deterministic seed to `fastrand::Rng` in all
+   generators and in `Projection::new()` (weight initialization). Seed
+   value: `42` (conventional). This ensures negative selection and Xavier
+   init are reproducible. With all pairs used, the seed only affects
+   negative sampling and init — low-variance effects.
+
+**Process:** Fix generators → re-oxidize → run `patina eval --scry` →
+compare to Phase 5a baseline (P@10 44.2%). Run oxidize twice to confirm
+identical output (determinism check). Target: P@10 within ±2pp of best
+previous result, and identical across runs.
+
+**Exit criteria:**
+- [ ] All three generators use full available pair sets (no `num_pairs` limit)
+- [ ] Fixed seed in all random sources (generators + weight init)
+- [ ] Two consecutive `patina oxidize` runs produce identical projections
+- [ ] Scry eval P@10 measured and documented
+- [ ] `cargo clippy --workspace` clean
+- [ ] `cargo test --workspace` passes
+
+**Phase 5d+: Future Semantic Domains**
 - [ ] Code-semantic hypothesis stated and eval queries built
 - [ ] Code-semantic tested: proves value → ship, or investigate why not
 - [ ] Multi-model oxidize config validated (if domains need different models)
-- [ ] Training stability: fixed seeds or increased pairs to reduce variance
 - [ ] Domain discovery pipeline established: user feedback → hypothesis →
   eval → ship cycle is fast and repeatable
 - [ ] At least 2 domains shipping beyond knowledge (patina's value scales
