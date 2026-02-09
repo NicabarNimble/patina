@@ -773,12 +773,61 @@ identical output (determinism check). Target: P@10 within ±2pp of best
 previous result, and identical across runs.
 
 **Exit criteria:**
-- [ ] All three generators use full available pair sets (no `num_pairs` limit)
-- [ ] Fixed seed in all random sources (generators + weight init)
-- [ ] Two consecutive `patina oxidize` runs produce identical projections
-- [ ] Scry eval P@10 measured and documented
-- [ ] `cargo clippy --workspace` clean
-- [ ] `cargo test --workspace` passes
+- [x] All three generators use full available pair sets (no `num_pairs` limit)
+- [x] Fixed seed in all random sources (generators + weight init)
+- [x] Two consecutive `patina oxidize` runs produce identical projections
+- [x] Scry eval P@10 measured and documented (see results below)
+- [x] `cargo clippy --workspace` clean
+- [x] `cargo test --workspace` passes — 322 tests
+
+**Phase 5c validation results (session 20260209-075426):**
+
+Determinism required fixing 5 additional non-determinism sources beyond
+the original seed fix ([[fdf21ab1]]): HashMap/HashSet iteration ordering
+in 3 generators (sorted vecs), SQL ORDER BY on 2 queries, recipe projection
+iteration order (sorted alphabetically), safetensors metadata HashMap
+serialization (removed — dimensions in tensor shapes), and ONNX Runtime
+threading (intra=1, inter=1, deterministic_compute=true). Commit [[6c8c790a]].
+
+```
+Determinism check: ✅ PASS
+  dependency.safetensors = ecbfd6f735f41e011b00766c95a64779
+  knowledge.safetensors  = 3df97ba2bcecde808e8f6463e9e77a20
+  sessions.safetensors   = 3df97ba2bcecde808e8f6463e9e77a20
+  temporal.safetensors   = d84dc7cc03affbd1234e5b3f6ead6cc7
+  (knowledge = sessions: identical training signal, expected)
+```
+
+```
+Scry eval (deterministic projection, all 551 pairs):
+  P@5:        6.7%
+  P@10:       9.2%
+  MRR:        0.106
+  Hit rate:   15.0%
+  Scry-only:  3/20 (corpus-composition, llm-readable-code, andrew-ng)
+```
+
+**P@10 regression from Phase 5a baseline (44.2% → 9.2%):**
+
+The 44.2% result was from Phase 5a's lucky 100-pair random sample. With
+all 551 pairs and deterministic training, P@10 dropped to 9.2%. This
+reveals that the Phase 5a "success" was a high-variance outlier — the
+true underlying capability of the 2-layer MLP on this task is ~9%.
+
+Root cause analysis: the MLP's training loss barely decreases (0.1677
+across 10 epochs), indicating the model isn't learning meaningful
+distinctions from commit-function triplets. With 100 random pairs, some
+lucky subsets happened to capture informative negative pairs that
+taught the model better distinctions. With all 551 pairs, the signal
+dilutes — many commits touch files with similar functions, making
+positives and negatives indistinguishable to the embedder.
+
+**Implication:** Training stability is achieved (goal met). But the
+projection quality problem is not a stability issue — it's a
+**training signal quality issue**. The commit-function triplet strategy
+produces weak contrastive signal regardless of how many pairs are used.
+Improving P@10 requires a fundamentally better training strategy, not
+more data from the same source. This is future work for Phase 5d+.
 
 **Phase 5d+: Future Semantic Domains**
 - [ ] Code-semantic hypothesis stated and eval queries built
