@@ -57,10 +57,14 @@ pub fn generate_belief_pairs(db_path: &str) -> Result<Vec<TrainingPair>> {
     all_target_ids.sort();
 
     // Generate pairs
+    // Sort belief_refs keys for deterministic iteration per [[hashmap-determinism-landmine]]
     let mut pairs = Vec::new();
     let mut rng = fastrand::Rng::with_seed(42);
+    let mut sorted_belief_ids: Vec<&String> = belief_refs.keys().collect();
+    sorted_belief_ids.sort();
 
-    for (belief_id, referenced_ids) in &belief_refs {
+    for belief_id in sorted_belief_ids {
+        let referenced_ids = &belief_refs[belief_id];
         let anchor_text = match belief_texts.get(belief_id) {
             Some(t) => t,
             None => continue,
