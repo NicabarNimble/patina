@@ -1052,14 +1052,35 @@ session events about code organization.
 
 The HNSW→exact change is architecturally correct (eliminates approximation error)
 and closes the within-domain ANN gap to zero. The cross-domain dilution is a
-fusion policy issue for future work: per-domain quotas, domain weighting, or
-eval methodology that tests knowledge-only retrieval.
+fusion policy issue — fixed with quota-based merge (see below).
+
+**Quota-based fusion fix (per [[score-merge-needs-quotas]]):**
+
+`quota_merge()` in `engine.rs` guarantees each domain `floor(limit / num_domains)`
+slots before filling remaining slots by score. For 2 domains with limit=10: each
+domain gets at least 5 guaranteed slots. This prevents sessions (2,749 items) from
+drowning knowledge (615 items).
+
+```
+                     Method      P@5     P@10      MRR     Hits
+   Raw E5 brute-force (ref)    48.3%    52.5%    0.427    75.0%
+ Exact + quotas (final)        31.7%    48.3%    0.326    70.0%
+ Exact, no quotas              31.7%    41.7%    0.307    55.0%
+   Previous HNSW (Phase 5d)    31.7%    43.3%    0.314    60.0%
+```
+
+Quota merge recovered +6.6pp P@10 and +15pp hit rate over the no-quota version.
+P@10 now 48.3% vs 52.5% reference — remaining 4.2pp gap is from embedding
+non-determinism between oxidize-time and query-time (different ONNX sessions).
+
+Scry-vs-assay: 8/20 scry-only hits (best ever). Combined eval: no regression
+on factual queries, overall hit rate 62.2%.
 
 Exit criteria:
 - [x] SemanticOracle uses exact_search for small corpora (<10K vectors)
 - [x] Within-domain ANN gap closed (0 queries where HNSW beats exact)
-- [x] Multi-domain dilution identified as separate issue (not ANN gap)
-- [x] No regression in other domains (temporal/dependency still use HNSW via >10K threshold)
+- [x] Multi-domain dilution fixed with quota-based merge
+- [x] No regression in combined eval or factual queries
 - [x] `cargo clippy --workspace` clean
 - [x] `cargo test --workspace` passes
 
