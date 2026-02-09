@@ -829,7 +829,89 @@ produces weak contrastive signal regardless of how many pairs are used.
 Improving P@10 requires a fundamentally better training strategy, not
 more data from the same source. This is future work for Phase 5d+.
 
-**Phase 5d+: Future Semantic Domains**
+**Phase 5d: Training Signal Quality — ACTIVE**
+
+The Phase 5c conclusion ("weak training signal") was only half the story.
+Error analysis reveals TWO root causes: the training algorithm itself is
+broken, AND the training pairs don't cover the retrieval task.
+
+**Error analysis (session 20260209-120229):**
+
+Per [[andrew-ng-over-shoulder]]: study the 3 hits vs 17 misses.
+
+The 3 hits are keyword overlap, not semantic bridging:
+- Q13 "index matters more than model" → corpus-composition-over-model
+  (direct keyword match: "index", "model", "matters more")
+- Q15 "AI assistants understand code" → llm-readable-code
+  (keyword overlap: "code", "AI", "understand")
+- Q19 "validating measurements" → measure-the-measurement
+  (partial overlap, rank 9 — barely a hit)
+
+Score compression proves the projection is near-random:
+- Q1 (miss): 0.852–0.859 range (0.007 spread across top 5)
+- Q2 (miss): 0.857–0.861 range (0.004 spread)
+- Q13 (hit): 0.828–0.842 range (0.014 spread — only slightly better)
+
+Everything scores ~0.85. The projection maps all content to the same
+region of the output space. There is no learned differentiation.
+
+**Root cause 1: Broken gradient computation in trainer.rs**
+
+The `update_weights()` method has two fundamental bugs:
+
+1. Layer 1 update is constant decay, not a gradient:
+   ```rust
+   self.w1[i][j] -= lr * 0.001; // subtracts 0.000001 from every active weight
+   ```
+   This doesn't push the hidden representation toward anything meaningful.
+   It slowly decays all weights where ReLU is active. Layer 1 never adapts.
+
+2. Layer 2 gradient is wrong:
+   - Missing backprop through L2 normalization (normalization Jacobian)
+   - Mixes positive.h1 and negative.h1 instead of using anchor.h1 for
+     the anchor's contribution
+   - `* 0.01` damping makes effective learning rate 0.00001
+   - Without layer 1 learning, layer 2 can only linearly recombine
+     random hidden features — it can't learn new representations
+
+Net effect: the projection is approximately a random linear compression
+from 768→256 dimensions. Training loss (0.1677) doesn't decrease because
+the weights barely change AND the direction of change is wrong.
+
+**Root cause 2: Training pair mismatch**
+
+Even with correct gradients, commit-function triplets don't teach the
+retrieval task we measure:
+- Training: "feat: add user auth" → `authenticate()` in auth.rs
+- Evaluation: "ripple effects from changes" → dependable-rust pattern
+- The training doesn't cover belief/pattern content at all
+
+The projection needs pairs that teach vocabulary gap bridging:
+belief statements ↔ pattern content, conceptual queries ↔ target documents.
+
+**Fix plan:**
+
+1. **Fix gradient computation** — proper backpropagation through L2
+   normalization with correct chain rule for both layers.
+
+2. **Add belief-pattern co-reference pairs** — beliefs reference patterns
+   via supports/attacks/applied-in. These are natural (concept, document)
+   pairs that directly teach the vocabulary bridging eval measures.
+
+3. **Combine with commit pairs** — commit-function pairs still teach
+   code-knowledge bridging. Mix both pair types for broader signal.
+
+**Exit criteria:**
+- [x] Error analysis completed and documented
+- [ ] Trainer gradient computation fixed (proper backprop through L2 norm)
+- [ ] Training loss decreases meaningfully across epochs (< 0.10 by epoch 10)
+- [ ] Score spread in results increases (> 0.05 within top-5, vs current 0.004-0.014)
+- [ ] Scry eval P@10 measured and compared to 9.2% baseline
+- [ ] Two consecutive `patina oxidize` runs produce identical projections (determinism preserved)
+- [ ] `cargo clippy --workspace` clean
+- [ ] `cargo test --workspace` passes
+
+**Phase 5e+: Future Semantic Domains**
 - [ ] Code-semantic hypothesis stated and eval queries built
 - [ ] Code-semantic tested: proves value → ship, or investigate why not
 - [ ] Multi-model oxidize config validated (if domains need different models)
