@@ -311,6 +311,10 @@ fn build_projection_index(
 /// Phase 2 of the semantic-structural split: build a clean knowledge domain
 /// instead of the polluted 27K-item session-dominated index. Knowledge items
 /// are natural language content where semantic matching adds value over FTS5.
+///
+/// Phase 5a: Corpus optimization — enriched belief/pattern text, filtered commits.
+/// Root cause of 4/20 scry-vs-assay gap was commit dominance (92% of index).
+/// See [[semantic-structural-split]] Phase 5a for diagnostic evidence.
 fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)>> {
     let mut events = Vec::new();
 
@@ -319,7 +323,11 @@ fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, Strin
     const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
     const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
 
-    // 1. Layer patterns from patterns + pattern_fts tables
+    // E5-base-v2 has a 512 token window (~2000 chars). Use up to 1500 chars
+    // of content for beliefs/patterns to maximize semantic signal per item.
+    const MAX_CONTENT_CHARS: usize = 1500;
+
+    // 1. Layer patterns from patterns + pattern_fts tables (enriched text)
     let has_patterns: bool = conn
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='patterns'",
@@ -355,8 +363,9 @@ fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, Strin
                     desc.push_str(&format!(". Tags: {}", t));
                 }
             }
+            // Phase 5a: use up to 1500 chars of content (was 500)
             if let Some(c) = content {
-                let content_preview: String = c.chars().take(500).collect();
+                let content_preview: String = c.chars().take(MAX_CONTENT_CHARS).collect();
                 desc.push_str(&format!(". Content: {}", content_preview));
             }
             desc.push_str(&format!(". File: {}", file_path));
@@ -367,12 +376,44 @@ fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, Strin
 
     let pattern_count = events.len();
 
-    // 2. Git commits (the "why" behind code changes)
-    let mut stmt = conn.prepare(
+    // 2. Git commits — filtered to significant subset (Phase 5a)
+    //
+    // Original: all 1,824 commits with msg>30 chars (92% of index).
+    // Now: only commits with rich messages (>75 chars), belief references,
+    // release tags, or structural significance (>5 files changed).
+    // This reduces commits to ~400 and shifts ratio from 92%/4%/4% to ~70%/15%/15%.
+    let has_commit_files: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='commit_files'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    let commit_query = if has_commit_files {
+        "SELECT c.rowid, c.sha, c.message FROM commits c
+         WHERE c.message IS NOT NULL AND length(c.message) > 30
+         AND (
+           length(c.message) > 75
+           OR c.message LIKE '%belief%'
+           OR c.message LIKE 'release%'
+           OR (SELECT COUNT(*) FROM commit_files cf WHERE cf.sha = c.sha) > 5
+         )
+         ORDER BY c.rowid"
+    } else {
+        // Fallback if commit_files table doesn't exist: filter by message only
         "SELECT rowid, sha, message FROM commits
          WHERE message IS NOT NULL AND length(message) > 30
-         ORDER BY rowid",
-    )?;
+         AND (
+           length(message) > 75
+           OR message LIKE '%belief%'
+           OR message LIKE 'release%'
+         )
+         ORDER BY rowid"
+    };
+
+    let mut stmt = conn.prepare(commit_query)?;
 
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
@@ -386,7 +427,11 @@ fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, Strin
 
     let commit_count = events.len() - pattern_count;
 
-    // 3. Epistemic beliefs (project decisions with confidence)
+    // 3. Epistemic beliefs — enriched with content from belief_fts (Phase 5a)
+    //
+    // Original: ~100 chars per belief (id + statement + persona + facets).
+    // Now: includes body content from belief_fts (evidence, references, context)
+    // for richer embeddings that bridge wider vocabulary gaps.
     let has_beliefs: bool = conn
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='beliefs'",
@@ -396,12 +441,30 @@ fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, Strin
         .map(|c| c > 0)
         .unwrap_or(false);
 
+    let has_belief_fts: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='belief_fts'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
     if has_beliefs {
-        let mut stmt = conn.prepare(
-            "SELECT rowid, id, statement, persona, facets, confidence, entrenchment
+        let belief_query = if has_belief_fts {
+            "SELECT b.rowid, b.id, b.statement, b.persona, b.facets,
+                    b.confidence, b.entrenchment, bf.content
+             FROM beliefs b
+             LEFT JOIN belief_fts bf ON b.id = bf.id
+             WHERE b.status = 'active'"
+        } else {
+            "SELECT rowid, id, statement, persona, facets,
+                    confidence, entrenchment, NULL as content
              FROM beliefs
-             WHERE status = 'active'",
-        )?;
+             WHERE status = 'active'"
+        };
+
+        let mut stmt = conn.prepare(belief_query)?;
 
         let mut rows = stmt.query([])?;
         while let Some(row) = rows.next()? {
@@ -412,10 +475,11 @@ fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, Strin
             let facets: Option<String> = row.get(4)?;
             let confidence: f64 = row.get(5)?;
             let entrenchment: String = row.get(6)?;
+            let fts_content: Option<String> = row.get(7)?;
 
             let mut desc = format!("Belief: {} - {}", id, statement);
             desc.push_str(&format!(". Persona: {}", persona));
-            if let Some(f) = facets {
+            if let Some(f) = &facets {
                 if !f.is_empty() {
                     desc.push_str(&format!(". Facets: {}", f));
                 }
@@ -424,6 +488,19 @@ fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, Strin
                 ". Confidence: {:.2}, Entrenchment: {}",
                 confidence, entrenchment
             ));
+
+            // Phase 5a: append body content from belief_fts for richer embeddings
+            if let Some(content) = fts_content {
+                // Strip YAML frontmatter (everything before first blank line after ---)
+                let body = strip_frontmatter(&content);
+                if !body.is_empty() {
+                    let remaining = MAX_CONTENT_CHARS.saturating_sub(desc.len());
+                    if remaining > 50 {
+                        let preview: String = body.chars().take(remaining).collect();
+                        desc.push_str(&format!(". {}", preview));
+                    }
+                }
+            }
 
             events.push((BELIEF_ID_OFFSET + rowid, desc));
         }
@@ -440,6 +517,20 @@ fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, Strin
     );
 
     Ok(events)
+}
+
+/// Strip YAML frontmatter from markdown content
+fn strip_frontmatter(content: &str) -> &str {
+    if !content.starts_with("---") {
+        return content;
+    }
+    // Find the closing --- after the opening one
+    if let Some(end) = content[3..].find("\n---") {
+        let after_frontmatter = &content[3 + end + 4..];
+        after_frontmatter.trim_start()
+    } else {
+        content
+    }
 }
 
 /// Query file events for temporal index
