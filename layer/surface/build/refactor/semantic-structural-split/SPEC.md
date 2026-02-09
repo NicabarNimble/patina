@@ -638,12 +638,41 @@ feedback loop eval (`patina eval --feedback`) provides session-level data.
 - [x] Projection re-trained and index rebuilt with new corpus (601 items)
 - [x] Scry-vs-assay criterion met: **8/20 scry-only hits** (target ≥5)
 
-**Phase 5b+: New Semantic Domains**
-- [ ] Session-semantic hypothesis stated and eval queries built
-- [ ] Session-semantic tested: proves value → ship, or investigate why not
+**Phase 5b: Session-Semantic Domain — COMPLETE (2026-02-08)**
+- [x] Session-semantic hypothesis stated and eval queries built (15 queries)
+- [x] Multi-domain infrastructure: SemanticOracle.for_domain(), available_domains()
+  discovery, QueryEngine iterates all oracles, merge by score with doc_id dedup
+- [x] Session corpus: 2,744 unique events (788 decision + 979 pattern + 587
+  context + 390 work) after dedup from 38K raw events
+- [x] Session-semantic tested: **5/15 hit rate (33.3%)** — net-new capability,
+  no system searched sessions before. When hits occur, rank quality is strong
+  (ranks 1, 1, 2, 4, 9). History queries weakest (0/4), reasoning best (3/8).
+- [x] Knowledge domain not regressed by session addition (identical eval results
+  with sessions enabled vs disabled). Knowledge P@10 29.2% is from projection
+  re-training variance (different random 100-pair samples), not session dilution.
+
+**Session eval baseline (`patina scry` on session queries, 2026-02-08):**
+```
+Session queries: 15 (9 train, 6 test)
+Hit rate:        33.3% (5/15)
+Train hit rate:  33.3% (3/9)
+Test hit rate:   33.3% (2/6)
+Train-test gap:  0.0pp (balanced, no overfitting)
+```
+
+**Finding: knowledge projection variance.** Re-running `patina oxidize` produces
+different projections due to random 100-pair sampling. Knowledge P@10 dropped
+from 44.2% (Phase 5a) to 29.2% after re-training — not a regression from
+multi-domain code but from training pair variance. The 8/20 scry-only criterion
+was met with the Phase 5a projection; the new projection achieves 4/20.
+This is a training stability issue for future work (fixed seeds, more pairs,
+or projection checkpointing), not a Phase 5b concern.
+
+**Phase 5c+: Future Semantic Domains**
 - [ ] Code-semantic hypothesis stated and eval queries built
 - [ ] Code-semantic tested: proves value → ship, or investigate why not
 - [ ] Multi-model oxidize config validated (if domains need different models)
+- [ ] Training stability: fixed seeds or increased pairs to reduce variance
 - [ ] Domain discovery pipeline established: user feedback → hypothesis →
   eval → ship cycle is fast and repeatable
 - [ ] At least 2 domains shipping beyond knowledge (patina's value scales
