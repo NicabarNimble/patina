@@ -99,9 +99,9 @@
   },
   {
     "query": "making code easy for AI assistants to understand and modify",
-    "expected": ["layer/core/unix-philosophy.md", "layer/core/dependable-rust.md"],
+    "expected": ["layer/core/unix-philosophy.md", "layer/core/dependable-rust.md", "llm-readable-code"],
     "category": "conceptual",
-    "note": "Tests semantic gap: 'AI assistants understand' ≠ module design principles",
+    "note": "Tests semantic gap: 'AI assistants understand' ≠ module design principles. llm-readable-code belief is a direct hit.",
     "split": "train"
   },
   {
