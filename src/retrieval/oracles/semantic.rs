@@ -71,8 +71,9 @@ impl SemanticOracle {
 
     /// Discover all available semantic domains in the embeddings directory
     ///
-    /// Returns domain names that have both .usearch and .safetensors files,
-    /// excluding non-semantic projections (temporal, dependency).
+    /// Returns domain names that have .usearch index files, excluding
+    /// non-semantic projections (temporal, dependency). Projection (.safetensors)
+    /// is optional — Phase 5d: knowledge/sessions use raw E5 embeddings.
     pub fn available_domains() -> Vec<String> {
         let model = patina::project::load(Path::new("."))
             .ok()
@@ -99,18 +100,14 @@ impl SemanticOracle {
                         if excluded.contains(&stem) {
                             continue;
                         }
-                        // Check matching safetensors exists
-                        let proj_path = dir.join(format!("{}.safetensors", stem));
-                        if proj_path.exists() {
-                            // Normalize "semantic" → "knowledge"
-                            let domain = if stem == "semantic" {
-                                "knowledge".to_string()
-                            } else {
-                                stem.to_string()
-                            };
-                            if !domains.contains(&domain) {
-                                domains.push(domain);
-                            }
+                        // Normalize "semantic" → "knowledge"
+                        let domain = if stem == "semantic" {
+                            "knowledge".to_string()
+                        } else {
+                            stem.to_string()
+                        };
+                        if !domains.contains(&domain) {
+                            domains.push(domain);
                         }
                     }
                 }
@@ -127,7 +124,7 @@ impl SemanticOracle {
         let embedder =
             create_embedder().map_err(|e| format!("Failed to create embedder: {}", e))?;
 
-        // Load projection (optional)
+        // Load projection (optional — Phase 5d: knowledge/sessions use raw E5)
         let projection = if self.projection_path.exists() {
             Some(
                 Projection::load_safetensors(&self.projection_path)
@@ -137,9 +134,15 @@ impl SemanticOracle {
             None
         };
 
+        // Dynamic dimensions: projection output_dim when projected, raw E5 dim when not
+        let dimensions = match &projection {
+            Some(proj) => proj.w2.len(), // output_dim = number of rows in W2
+            None => embedder.dimension(), // raw E5 dim (768 for e5-base-v2)
+        };
+
         // Load index
         let index_options = IndexOptions {
-            dimensions: 256,
+            dimensions,
             metric: MetricKind::Cos,
             quantization: ScalarKind::F32,
             ..Default::default()

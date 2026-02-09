@@ -31,14 +31,23 @@ pub fn oxidize() -> Result<()> {
     println!("   Projections: {}", recipe.projections.len());
 
     for (name, config) in &recipe.projections {
-        println!(
-            "   - {}: {}→{}→{} ({} epochs)",
-            name,
-            config.input_dim(&recipe)?,
-            config.hidden_dim(),
-            config.output_dim(),
-            config.epochs
-        );
+        let is_raw = matches!(name.as_str(), "knowledge" | "semantic" | "sessions");
+        if is_raw {
+            println!(
+                "   - {}: {}d raw E5 (no projection)",
+                name,
+                config.input_dim(&recipe)?,
+            );
+        } else {
+            println!(
+                "   - {}: {}→{}→{} ({} epochs)",
+                name,
+                config.input_dim(&recipe)?,
+                config.hidden_dim(),
+                config.output_dim(),
+                config.epochs
+            );
+        }
     }
 
     let db_path = ".patina/local/data/patina.db";
@@ -49,38 +58,67 @@ pub fn oxidize() -> Result<()> {
     use patina::embeddings::create_embedder;
     let mut embedder = create_embedder()?;
 
-    // Train each projection (sorted for deterministic order)
+    // Build each domain (sorted for deterministic order)
     let mut sorted_projections: Vec<_> = recipe.projections.iter().collect();
     sorted_projections.sort_by(|a, b| a.0.cmp(b.0));
     for (name, config) in sorted_projections {
         println!("\n{}", "=".repeat(60));
-        println!("📊 Training {} projection...", name);
-        println!("{}", "=".repeat(60));
 
-        let projection = train_projection(name, config, &recipe, db_path, &mut embedder)?;
+        // Phase 5d: knowledge/sessions use raw E5 embeddings (no projection).
+        // Raw E5 P@10=52.5% vs projected 9.2% — projection destroys E5's structure.
+        let is_raw_domain = matches!(name.as_str(), "knowledge" | "semantic" | "sessions");
 
-        // Save trained weights
-        println!("\n💾 Saving projection weights...");
-        let weights_path = format!("{}/{}.safetensors", output_dir, name);
-        projection.save_safetensors(std::path::Path::new(&weights_path))?;
-        println!("   Saved to: {}", weights_path);
+        if is_raw_domain {
+            println!("🔮 Building {} index (raw E5, no projection)...", name);
+            println!("{}", "=".repeat(60));
 
-        // Build USearch index
-        println!("\n🔍 Building USearch index...");
-        build_projection_index(
-            name,
-            db_path,
-            &mut embedder,
-            &projection,
-            config.output_dim(),
-            &output_dir,
-        )?;
+            // Delete stale projection weights if they exist
+            let weights_path = format!("{}/{}.safetensors", output_dir, name);
+            if std::path::Path::new(&weights_path).exists() {
+                std::fs::remove_file(&weights_path)?;
+                println!("   🗑️  Deleted stale projection: {}", weights_path);
+            }
 
-        println!("\n✅ {} projection complete!", name);
+            // Build USearch index with raw embeddings (768-dim)
+            let input_dim = config.input_dim(&recipe)?;
+            println!("\n🔍 Building USearch index ({}d raw E5)...", input_dim);
+            build_projection_index(
+                name,
+                db_path,
+                &mut embedder,
+                None,
+                input_dim,
+                &output_dir,
+            )?;
+        } else {
+            println!("📊 Training {} projection...", name);
+            println!("{}", "=".repeat(60));
+
+            let projection = train_projection(name, config, &recipe, db_path, &mut embedder)?;
+
+            // Save trained weights
+            println!("\n💾 Saving projection weights...");
+            let weights_path = format!("{}/{}.safetensors", output_dir, name);
+            projection.save_safetensors(std::path::Path::new(&weights_path))?;
+            println!("   Saved to: {}", weights_path);
+
+            // Build USearch index with projected embeddings
+            println!("\n🔍 Building USearch index...");
+            build_projection_index(
+                name,
+                db_path,
+                &mut embedder,
+                Some(&projection),
+                config.output_dim(),
+                &output_dir,
+            )?;
+        }
+
+        println!("\n✅ {} complete!", name);
     }
 
     println!("\n{}", "=".repeat(60));
-    println!("✅ All projections trained!");
+    println!("✅ All domains built!");
     println!("   Output: {}", output_dir);
 
     Ok(())
@@ -258,13 +296,17 @@ fn train_projection(
     Ok(projection)
 }
 
-/// Build USearch index from projected embeddings
+/// Build USearch index from embeddings (projected or raw)
+///
+/// When projection is Some, embeddings are projected through the MLP.
+/// When projection is None (knowledge/sessions domains), raw E5 embeddings
+/// are indexed directly — Phase 5d proved raw E5 outperforms projection.
 fn build_projection_index(
     projection_name: &str,
     db_path: &str,
     embedder: &mut Box<dyn patina::embeddings::EmbeddingEngine>,
-    projection: &Projection,
-    output_dim: usize,
+    projection: Option<&Projection>,
+    index_dim: usize,
     output_dir: &str,
 ) -> Result<()> {
     use rusqlite::Connection;
@@ -295,7 +337,7 @@ fn build_projection_index(
 
     // Create USearch index
     let options = IndexOptions {
-        dimensions: output_dim,
+        dimensions: index_dim,
         metric: MetricKind::Cos,
         quantization: ScalarKind::F32,
         ..Default::default()
@@ -306,15 +348,19 @@ fn build_projection_index(
         .reserve(events.len())
         .context("Failed to reserve index capacity")?;
 
-    // Embed, project, and add to index
-    println!("   Embedding and projecting vectors...");
+    // Embed (and optionally project) and add to index
+    let mode = if projection.is_some() { "projecting" } else { "raw" };
+    println!("   Embedding vectors ({} mode)...", mode);
     for (id, content) in &events {
         let embedding = embedder
             .embed_passage(content)
             .context("Failed to generate embedding")?;
-        let projected = projection.forward(&embedding);
+        let vector = match projection {
+            Some(proj) => proj.forward(&embedding),
+            None => embedding,
+        };
         index
-            .add(*id as u64, &projected)
+            .add(*id as u64, &vector)
             .context("Failed to add vector to index")?;
     }
 
