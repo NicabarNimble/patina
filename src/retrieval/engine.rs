@@ -121,16 +121,20 @@ impl QueryEngine {
         }
 
         let fetch_limit = limit * self.config.fetch_multiplier;
-        let mut all_results: Vec<FusedResult> = Vec::new();
 
-        // Query each available domain and collect results
+        // Collect results per-domain for quota-based fusion.
+        // Without quotas, large domains (sessions: 2,749 items) dominate small
+        // domains (knowledge: 615 items) via score-merge, pushing high-value
+        // knowledge results out of the top-K. Per [[score-merge-needs-quotas]].
+        let mut per_domain: Vec<Vec<FusedResult>> = Vec::new();
+
         for oracle in &self.oracles {
             if !oracle.is_available() {
                 continue;
             }
 
             if let Ok(oracle_results) = oracle.query(query, fetch_limit) {
-                let domain_results: Vec<FusedResult> = oracle_results
+                let mut domain_results: Vec<FusedResult> = oracle_results
                     .into_iter()
                     .map(|r| {
                         let mut contributions = std::collections::HashMap::new();
@@ -156,11 +160,20 @@ impl QueryEngine {
                     })
                     .collect();
 
-                all_results.extend(domain_results);
+                // Pre-sort each domain by score descending
+                domain_results.sort_by(|a, b| {
+                    b.fused_score
+                        .partial_cmp(&a.fused_score)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+
+                if !domain_results.is_empty() {
+                    per_domain.push(domain_results);
+                }
             }
         }
 
-        if all_results.is_empty() {
+        if per_domain.is_empty() {
             if std::env::var("PATINA_LOG").is_ok() {
                 eprintln!(
                     "[DEBUG retrieval::engine] no semantic oracles available, returning empty"
@@ -169,17 +182,15 @@ impl QueryEngine {
             return Ok(Vec::new());
         }
 
-        // Sort by score descending, deduplicate by doc_id (keep highest score)
-        all_results.sort_by(|a, b| {
-            b.fused_score
-                .partial_cmp(&a.fused_score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-
-        let mut seen = std::collections::HashSet::new();
-        all_results.retain(|r| seen.insert(r.doc_id.clone()));
-
-        all_results.truncate(limit);
+        // Quota-based fusion: guarantee each domain a minimum share of results.
+        // Single domain: no quotas needed, just take top results.
+        let mut all_results = if per_domain.len() == 1 {
+            let mut results = per_domain.into_iter().next().unwrap();
+            results.truncate(limit);
+            results
+        } else {
+            quota_merge(per_domain, limit)
+        };
         populate_annotations(&mut all_results);
 
         if std::env::var("PATINA_LOG").is_ok() {
@@ -195,12 +206,7 @@ impl QueryEngine {
     }
 
     /// Query a specific registered repo's semantic index
-    fn query_repo(
-        &self,
-        query: &str,
-        limit: usize,
-        repo_name: &str,
-    ) -> Result<Vec<FusedResult>> {
+    fn query_repo(&self, query: &str, limit: usize, repo_name: &str) -> Result<Vec<FusedResult>> {
         use crate::commands::repo;
 
         let repos = repo::list()?;
@@ -348,6 +354,58 @@ impl Default for QueryEngine {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Merge results from multiple domains with per-domain minimum quotas.
+///
+/// Each domain gets at least `floor(limit / num_domains)` slots. Remaining
+/// slots are filled by highest score across all domains. This prevents large
+/// domains (e.g., sessions with 2,749 items) from drowning small domains
+/// (e.g., knowledge with 615 items). Per [[score-merge-needs-quotas]].
+fn quota_merge(per_domain: Vec<Vec<FusedResult>>, limit: usize) -> Vec<FusedResult> {
+    let num_domains = per_domain.len();
+    let min_per_domain = std::cmp::max(1, limit / num_domains);
+
+    let mut guaranteed: Vec<FusedResult> = Vec::new();
+    let mut overflow: Vec<FusedResult> = Vec::new();
+
+    for domain_results in per_domain {
+        let take = std::cmp::min(min_per_domain, domain_results.len());
+        let mut iter = domain_results.into_iter();
+
+        // Guaranteed slots: top results from this domain
+        for result in iter.by_ref().take(take) {
+            guaranteed.push(result);
+        }
+
+        // Overflow: remaining results compete for open slots
+        overflow.extend(iter);
+    }
+
+    // Fill remaining slots from overflow by score
+    let remaining = limit.saturating_sub(guaranteed.len());
+    if remaining > 0 {
+        overflow.sort_by(|a, b| {
+            b.fused_score
+                .partial_cmp(&a.fused_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        guaranteed.extend(overflow.into_iter().take(remaining));
+    }
+
+    // Deduplicate by doc_id (keep first occurrence = highest priority)
+    let mut seen = std::collections::HashSet::new();
+    guaranteed.retain(|r| seen.insert(r.doc_id.clone()));
+
+    // Final sort by score
+    guaranteed.sort_by(|a, b| {
+        b.fused_score
+            .partial_cmp(&a.fused_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    guaranteed.truncate(limit);
+
+    guaranteed
 }
 
 /// Populate structural annotations from module_signals table
