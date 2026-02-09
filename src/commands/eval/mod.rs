@@ -1528,6 +1528,11 @@ pub fn execute_scry() -> Result<()> {
     internal::scry_eval::execute()
 }
 
+/// Raw E5 diagnostic — brute-force cosine without projection (Phase 5d)
+pub fn execute_scry_raw() -> Result<()> {
+    internal::scry_eval::execute_raw()
+}
+
 /// Combined eval — tests the full retrieval pipeline (assay + scry together)
 pub fn execute_combined() -> Result<()> {
     internal::combined_eval::execute()

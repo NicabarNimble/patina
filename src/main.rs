@@ -263,6 +263,10 @@ enum Commands {
         #[arg(long)]
         scry: bool,
 
+        /// Raw E5 diagnostic: brute-force cosine without projection (Phase 5d)
+        #[arg(long)]
+        scry_raw: bool,
+
         /// Combined eval (full pipeline: assay + scry together)
         #[arg(long)]
         combined: bool,
@@ -1059,6 +1063,7 @@ fn main() -> Result<()> {
             nl,
             assay,
             scry,
+            scry_raw,
             combined,
         }) => {
             if feedback {
@@ -1067,6 +1072,8 @@ fn main() -> Result<()> {
                 commands::eval::execute_nl()?;
             } else if assay {
                 commands::eval::execute_assay()?;
+            } else if scry_raw {
+                commands::eval::execute_scry_raw()?;
             } else if scry {
                 commands::eval::execute_scry()?;
             } else if combined {

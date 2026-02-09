@@ -332,6 +332,8 @@ fn build_projection_index(
 
 /// Query knowledge corpus for semantic index — beliefs + patterns + commits only
 ///
+/// pub(crate) for use by eval raw E5 diagnostic (Phase 5d).
+///
 /// Phase 2 of the semantic-structural split: build a clean knowledge domain
 /// instead of the polluted 27K-item session-dominated index. Knowledge items
 /// are natural language content where semantic matching adds value over FTS5.
@@ -339,7 +341,7 @@ fn build_projection_index(
 /// Phase 5a: Corpus optimization — enriched belief/pattern text, filtered commits.
 /// Root cause of 4/20 scry-vs-assay gap was commit dominance (92% of index).
 /// See [[semantic-structural-split]] Phase 5a for diagnostic evidence.
-fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)>> {
+pub(crate) fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)>> {
     let mut events = Vec::new();
 
     // ID offsets match the enrichment module (enrich_results in scry/internal/enrichment.rs)
