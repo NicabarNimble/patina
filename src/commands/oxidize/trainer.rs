@@ -9,6 +9,8 @@ use std::path::Path;
 
 /// Cache of intermediate values from forward pass (for backprop)
 struct ForwardCache {
+    /// Input to the network (stored for W1 gradient)
+    input: Vec<f32>,
     /// Pre-activation at hidden layer
     z1: Vec<f32>,
     /// Hidden layer activations (post-ReLU)
@@ -114,7 +116,12 @@ impl Projection {
             .map(|(w_row, b)| dot(w_row, &h1) + b)
             .collect();
 
-        ForwardCache { z1, h1, out }
+        ForwardCache {
+            input: input.to_vec(),
+            z1,
+            h1,
+            out,
+        }
     }
 
     /// Train projection with triplet loss using gradient descent
@@ -179,26 +186,77 @@ impl Projection {
         Ok(losses)
     }
 
-    /// Simplified weight update (gradient approximation)
+    /// Weight update with proper backpropagation through L2 normalization
+    ///
+    /// Phase 5d: replaces the broken gradient approximation that had:
+    /// - Layer 1: constant decay (not a gradient)
+    /// - Layer 2: missing normalization Jacobian, wrong hidden state mixing
     fn update_weights(&mut self, cache: &TripletCache, lr: f32) {
-        // Simplified gradient: push anchor closer to positive, away from negative
-        for i in 0..self.w2.len() {
-            for j in 0..self.w2[i].len() {
-                // Gradient approximation for layer 2
-                let grad = (cache.out_a_norm[i] - cache.out_p_norm[i]) * cache.positive.h1[j]
-                    - (cache.out_a_norm[i] - cache.out_n_norm[i]) * cache.negative.h1[j];
-                self.w2[i][j] -= lr * grad * 0.01; // Small step
-            }
+        let dim = cache.out_a_norm.len();
+
+        // Step 1: dL/dy for each branch (gradient of euclidean distance)
+        let pos_dist = euclidean_distance(&cache.out_a_norm, &cache.out_p_norm);
+        let neg_dist = euclidean_distance(&cache.out_a_norm, &cache.out_n_norm);
+
+        let mut dl_dy_a = vec![0.0f32; dim];
+        let mut dl_dy_p = vec![0.0f32; dim];
+        let mut dl_dy_n = vec![0.0f32; dim];
+
+        for i in 0..dim {
+            let pos_grad = if pos_dist > 1e-8 {
+                (cache.out_a_norm[i] - cache.out_p_norm[i]) / pos_dist
+            } else {
+                0.0
+            };
+            let neg_grad = if neg_dist > 1e-8 {
+                (cache.out_a_norm[i] - cache.out_n_norm[i]) / neg_dist
+            } else {
+                0.0
+            };
+            dl_dy_a[i] = pos_grad - neg_grad;
+            dl_dy_p[i] = -pos_grad;
+            dl_dy_n[i] = neg_grad;
         }
 
-        // Update layer 1 (even simpler)
-        for i in 0..self.w1.len() {
-            for j in 0..self.w1[i].len() {
-                if cache.anchor.z1[i] > 0.0 && cache.positive.z1[i] > 0.0 {
-                    // Only update if ReLU is active
-                    self.w1[i][j] -= lr * 0.001; // Very small step
-                }
+        // Step 2: Backprop through L2 normalization
+        // y = out / ||out||, so dL/dout = (dL/dy - y * dot(dL/dy, y)) / ||out||
+        let dl_dout_a = grad_l2_norm(&dl_dy_a, &cache.anchor.out, &cache.out_a_norm);
+        let dl_dout_p = grad_l2_norm(&dl_dy_p, &cache.positive.out, &cache.out_p_norm);
+        let dl_dout_n = grad_l2_norm(&dl_dy_n, &cache.negative.out, &cache.out_n_norm);
+
+        // Step 3: Update W2 and b2
+        // out = W2 * h1 + b2, so dL/dW2[i][j] = dL/dout[i] * h1[j]
+        for i in 0..self.w2.len() {
+            for j in 0..self.w2[i].len() {
+                let grad = dl_dout_a[i] * cache.anchor.h1[j]
+                    + dl_dout_p[i] * cache.positive.h1[j]
+                    + dl_dout_n[i] * cache.negative.h1[j];
+                self.w2[i][j] -= lr * grad;
             }
+            self.b2[i] -= lr * (dl_dout_a[i] + dl_dout_p[i] + dl_dout_n[i]);
+        }
+
+        // Step 4: Backprop through linear layer to get dL/dh1
+        let dl_dh1_a = backprop_linear(&dl_dout_a, &self.w2);
+        let dl_dh1_p = backprop_linear(&dl_dout_p, &self.w2);
+        let dl_dh1_n = backprop_linear(&dl_dout_n, &self.w2);
+
+        // Step 5: Backprop through ReLU
+        let dl_dz1_a = grad_relu(&dl_dh1_a, &cache.anchor.z1);
+        let dl_dz1_p = grad_relu(&dl_dh1_p, &cache.positive.z1);
+        let dl_dz1_n = grad_relu(&dl_dh1_n, &cache.negative.z1);
+
+        // Step 6: Update W1 and b1
+        // z1 = W1 * x + b1, so dL/dW1[i][j] = dL/dz1[i] * x[j]
+        for i in 0..self.w1.len() {
+            let grad_b = dl_dz1_a[i] + dl_dz1_p[i] + dl_dz1_n[i];
+            for j in 0..self.w1[i].len() {
+                let grad = dl_dz1_a[i] * cache.anchor.input[j]
+                    + dl_dz1_p[i] * cache.positive.input[j]
+                    + dl_dz1_n[i] * cache.negative.input[j];
+                self.w1[i][j] -= lr * grad;
+            }
+            self.b1[i] -= lr * grad_b;
         }
     }
 
@@ -330,6 +388,42 @@ impl Projection {
 
         Ok(Self { w1, b1, w2, b2 })
     }
+}
+
+/// Gradient through L2 normalization
+/// Given dL/dy where y = out / ||out||, compute dL/dout
+fn grad_l2_norm(dl_dy: &[f32], out: &[f32], y_norm: &[f32]) -> Vec<f32> {
+    let norm: f32 = out.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm < 1e-8 {
+        return vec![0.0; dl_dy.len()];
+    }
+    let dot_dy_y: f32 = dl_dy.iter().zip(y_norm.iter()).map(|(a, b)| a * b).sum();
+    dl_dy
+        .iter()
+        .zip(y_norm.iter())
+        .map(|(dl_i, y_i)| (dl_i - y_i * dot_dy_y) / norm)
+        .collect()
+}
+
+/// Backpropagate through linear layer: dL/dinput from dL/doutput
+fn backprop_linear(dl_dout: &[f32], weights: &[Vec<f32>]) -> Vec<f32> {
+    let input_dim = weights[0].len();
+    let mut dl_dinput = vec![0.0; input_dim];
+    for (i, w_row) in weights.iter().enumerate() {
+        for (j, &w) in w_row.iter().enumerate() {
+            dl_dinput[j] += dl_dout[i] * w;
+        }
+    }
+    dl_dinput
+}
+
+/// Gradient through ReLU: pass through where z > 0, zero otherwise
+fn grad_relu(dl_dh: &[f32], z: &[f32]) -> Vec<f32> {
+    dl_dh
+        .iter()
+        .zip(z.iter())
+        .map(|(g, &z_val)| if z_val > 0.0 { *g } else { 0.0 })
+        .collect()
 }
 
 /// Dot product of two vectors
