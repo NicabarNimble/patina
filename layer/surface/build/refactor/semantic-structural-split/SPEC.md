@@ -452,13 +452,82 @@ code/sessions), context mentions fusion, assay mentions search/cochange/belief.
 **Recall directive** updated to show all three search paths:
 meaning (scry), facts (assay search), beliefs (scry content_type=beliefs).
 
-### Phase 4: Eval Redesign
-- [ ] Assay eval tests factual retrieval independently
-- [ ] Scry eval tests semantic retrieval independently
+### Phase 4: Eval Redesign — IN PROGRESS (2026-02-08)
+- [x] Assay eval tests factual retrieval independently
+- [x] Scry eval tests semantic retrieval independently
 - [ ] Scry finds answers assay FTS5 misses for ≥5/20 conceptual queries
   (moved from Phase 2 — proves semantic adds value beyond keyword matching)
-- [ ] Combined eval tests the full pipeline
-- [ ] Remaining retrieval-tuning phases (3-5) re-evaluated against new architecture
+  **Current: 4/20 scry-only hits.** Close but not met. Root cause: knowledge
+  index is commit-dominated (~1,851 commits vs ~79 patterns vs ~78 beliefs).
+  E5-base-v2 maps conceptual queries to commit messages, not beliefs/patterns.
+  Beliefs ARE found when query vocabulary is close to belief text (4 successes),
+  but large vocabulary gaps (e.g., "credential leaks" → safety-boundaries)
+  are not bridged. This is a model+corpus limitation, not an eval or
+  infrastructure problem. Improvement paths: better training signal for
+  beliefs/patterns, belief/pattern score boost, or model upgrade.
+- [x] Combined eval tests the full pipeline
+- [x] Remaining retrieval-tuning phases (3-5) re-evaluated against new architecture
+
+**Eval infrastructure (3 new modes, `patina eval --assay/--scry/--combined`):**
+
+New query sets designed for post-split architecture:
+- `resources/eval/scry-queries.json`: 20 conceptual queries (13 train, 7 test)
+- `resources/eval/assay-queries.json`: 25 factual queries (16 train, 9 test)
+
+Independent eval modules per [[dependable-rust]]: `src/commands/eval/internal/`
+with `assay_eval.rs`, `scry_eval.rs`, `combined_eval.rs`, `helpers.rs`.
+
+**Assay eval baseline (`patina eval --assay`):**
+```
+Mean P@5:  25.3%    Mean P@10: 38.0%    MRR: 0.473    Hit rate: 64.0%
+Train P@10: 38.5%   Test P@10: 37.0%    Train-test gap: -1.5pp
+```
+
+**Scry eval baseline (`patina eval --scry`):**
+```
+Mean P@5:  20.0%    Mean P@10: 25.0%    MRR: 0.193    Hit rate: 35.0%
+Train P@10: 30.8%   Test P@10: 14.3%    Train-test gap: -16.5pp
+```
+Train-test gap is large (7 test queries, small sample). Scry finds beliefs
+when query vocabulary overlaps belief text (error-analysis, corpus-composition,
+measure-first) but misses when vocabulary diverges widely.
+
+**Scry-vs-assay comparison:**
+```
+Scry HIT, Assay miss:  4/20 (semantic adds value)
+Both HIT:              3/20 (complementary)
+Assay HIT, Scry miss:  4/20 (FTS5 reaches patterns by keyword)
+Both miss:             9/20 (neither system bridges large vocabulary gaps)
+```
+
+**Combined eval baseline (`patina eval --combined`):**
+```
+Factual queries:    assay-only P@10 38.0%, combined P@10 38.0% (+0.0pp)
+Conceptual queries: scry-only P@10 25.0%, combined P@10 24.2% (-0.8pp)
+Overall:            P@10 31.9%, MRR 0.319, Hit rate 60.0%
+```
+Combined adds hit rate (+20pp on conceptual) but slightly dilutes P@10
+due to facts-first interleaving pushing assay results ahead of scry results.
+
+**Re-evaluation of retrieval-tuning Phases 3-5:**
+
+Phase 3 (Belief Score Multiplier): Now an **assay-internal** problem. Belief
+FTS5 scoring in `assay_search()` uses the same min-max normalization as other
+tables. A belief-specific boost could improve assay's conceptual coverage —
+the 4 queries where assay hit conceptual queries all involved FTS5 finding
+pattern files by keyword. No action needed in scry; belief improvement in
+assay search is independent work.
+
+Phase 4 (Hub File Suppression): Now an **assay-internal** problem. Hub files
+(e.g., `src/commands/mod.rs`) only affect FTS5 results. Scry doesn't return
+code files for the knowledge domain. Can be addressed with assay's derive
+signals (importer_count as suppression weight) without touching scry.
+
+Phase 5 (Product Metric Dashboard): Superseded by the combined eval. The
+`patina eval --combined` mode tests the full pipeline with both factual
+and conceptual queries. Product-level "does the system surface the right
+context?" is measured by combined eval's overall P@10 and hit rate. The
+feedback loop eval (`patina eval --feedback`) provides session-level data.
 
 ### Phase 5: Discover and Ship Semantic Domains (ongoing)
 - [ ] Session-semantic hypothesis stated and eval queries built
