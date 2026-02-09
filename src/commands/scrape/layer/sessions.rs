@@ -488,6 +488,12 @@ pub fn scrape_sessions(
         }
     }
 
+    // Populate eventlog FTS5 index for keyword search over session events
+    let fts_count = database::populate_eventlog_fts5(conn)?;
+    if fts_count > 0 {
+        println!("  {} session events indexed in eventlog_fts", fts_count);
+    }
+
     Ok((processed_count, skipped))
 }
 
