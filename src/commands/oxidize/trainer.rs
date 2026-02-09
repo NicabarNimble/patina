@@ -42,9 +42,10 @@ pub struct Projection {
 }
 
 impl Projection {
-    /// Create new projection with random weights
+    /// Create new projection with deterministic Xavier initialization
+    /// Phase 5c: fixed seed for reproducible projections across runs.
     pub fn new(input_dim: usize, hidden_dim: usize, output_dim: usize) -> Self {
-        let mut rng = Rng::new();
+        let mut rng = Rng::with_seed(42);
 
         // Xavier initialization: scale = sqrt(6 / (fan_in + fan_out))
         let scale1 = (6.0 / (input_dim + hidden_dim) as f32).sqrt();
