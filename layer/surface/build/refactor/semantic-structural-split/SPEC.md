@@ -505,19 +505,15 @@ code/sessions), context mentions fusion, assay mentions search/cochange/belief.
 **Recall directive** updated to show all three search paths:
 meaning (scry), facts (assay search), beliefs (scry content_type=beliefs).
 
-### Phase 4: Eval Redesign — IN PROGRESS (2026-02-08)
+### Phase 4: Eval Redesign — COMPLETE (2026-02-08)
 - [x] Assay eval tests factual retrieval independently
 - [x] Scry eval tests semantic retrieval independently
-- [ ] Scry finds answers assay FTS5 misses for ≥5/20 conceptual queries
+- [x] Scry finds answers assay FTS5 misses for ≥5/20 conceptual queries
   (moved from Phase 2 — proves semantic adds value beyond keyword matching)
-  **Current: 4/20 scry-only hits.** Close but not met. Root cause: knowledge
-  index is commit-dominated (~1,851 commits vs ~79 patterns vs ~78 beliefs).
-  E5-base-v2 maps conceptual queries to commit messages, not beliefs/patterns.
-  Beliefs ARE found when query vocabulary is close to belief text (4 successes),
-  but large vocabulary gaps (e.g., "credential leaks" → safety-boundaries)
-  are not bridged. This is a model+corpus limitation, not an eval or
-  infrastructure problem. Improvement paths: better training signal for
-  beliefs/patterns, belief/pattern score boost, or model upgrade.
+  **Resolved in Phase 5a: 8/20 scry-only hits** (was 4/20). Corpus
+  optimization per [[corpus-composition-over-model]] — enriched belief/pattern
+  text, filtered commits from 1,824 to 443, rebalanced ratio from 92%/4%/4%
+  to 74%/13%/13%. P@10 improved 25.0% → 44.2% (+19.2pp), hit rate 35% → 60%.
 - [x] Combined eval tests the full pipeline
 - [x] Remaining retrieval-tuning phases (3-5) re-evaluated against new architecture
 
@@ -536,7 +532,7 @@ Mean P@5:  25.3%    Mean P@10: 38.0%    MRR: 0.473    Hit rate: 64.0%
 Train P@10: 38.5%   Test P@10: 37.0%    Train-test gap: -1.5pp
 ```
 
-**Scry eval baseline (`patina eval --scry`):**
+**Scry eval baseline (`patina eval --scry`) — Phase 4:**
 ```
 Mean P@5:  20.0%    Mean P@10: 25.0%    MRR: 0.193    Hit rate: 35.0%
 Train P@10: 30.8%   Test P@10: 14.3%    Train-test gap: -16.5pp
@@ -545,7 +541,17 @@ Train-test gap is large (7 test queries, small sample). Scry finds beliefs
 when query vocabulary overlaps belief text (error-analysis, corpus-composition,
 measure-first) but misses when vocabulary diverges widely.
 
-**Scry-vs-assay comparison:**
+**Scry eval after Phase 5a corpus optimization:**
+```
+Mean P@5:  22.5%    Mean P@10: 44.2%    MRR: 0.217    Hit rate: 60.0%
+Train P@10: 44.9%   Test P@10: 42.9%    Train-test gap: -2.0pp
+```
+P@10 nearly doubled (+19.2pp). Train-test gap collapsed from -16.5pp to -2.0pp
+(evidence of genuine improvement, not overfitting). New hits: dependable-rust,
+session-capture, never-tune-on-eval, oxidized-knowledge patterns/beliefs now
+found when they were previously drowned by commits.
+
+**Scry-vs-assay comparison — Phase 4:**
 ```
 Scry HIT, Assay miss:  4/20 (semantic adds value)
 Both HIT:              3/20 (complementary)
@@ -553,14 +559,30 @@ Assay HIT, Scry miss:  4/20 (FTS5 reaches patterns by keyword)
 Both miss:             9/20 (neither system bridges large vocabulary gaps)
 ```
 
-**Combined eval baseline (`patina eval --combined`):**
+**Scry-vs-assay comparison — after Phase 5a:**
+```
+Scry HIT, Assay miss:  8/20 (semantic adds value — doubled)
+Both HIT:              4/20 (complementary)
+Assay HIT, Scry miss:  3/20 (FTS5 still finds some by keyword)
+Both miss:             5/20 (vocabulary gaps still exist but halved)
+```
+
+**Combined eval baseline (`patina eval --combined`) — Phase 4:**
 ```
 Factual queries:    assay-only P@10 38.0%, combined P@10 38.0% (+0.0pp)
 Conceptual queries: scry-only P@10 25.0%, combined P@10 24.2% (-0.8pp)
 Overall:            P@10 31.9%, MRR 0.319, Hit rate 60.0%
 ```
-Combined adds hit rate (+20pp on conceptual) but slightly dilutes P@10
-due to facts-first interleaving pushing assay results ahead of scry results.
+
+**Combined eval after Phase 5a:**
+```
+Factual queries:    assay-only P@10 38.0%, combined P@10 38.0% (+0.0pp)
+Conceptual queries: scry-only P@10 44.2%, combined P@10 24.2% (-20.0pp)
+Overall:            P@10 31.9%, MRR 0.326, Hit rate 68.9%
+```
+Combined hit rate improved 60.0% → 68.9% (+8.9pp). Combined P@10 on conceptual
+queries is lower than scry-only because facts-first interleaving pushes assay
+results ahead of scry results — this is a fusion policy choice, not a regression.
 
 **Re-evaluation of retrieval-tuning Phases 3-5:**
 
@@ -584,12 +606,12 @@ feedback loop eval (`patina eval --feedback`) provides session-level data.
 
 ### Phase 5: Discover and Ship Semantic Domains (ongoing)
 
-**Phase 5a: Knowledge Domain Corpus Optimization**
-- [ ] Eval ground truth fixed (query 6: add `llm-readable-code` to expected)
-- [ ] Belief/pattern embedding text enriched (evidence, references, full content)
-- [ ] Commit corpus filtered to significant subset (~300-400 from 1,824)
-- [ ] Projection re-trained and index rebuilt with new corpus
-- [ ] Scry-vs-assay criterion met: ≥5/20 scry-only hits (Phase 4 exit)
+**Phase 5a: Knowledge Domain Corpus Optimization — COMPLETE (2026-02-08)**
+- [x] Eval ground truth fixed (query 6: add `llm-readable-code` to expected)
+- [x] Belief/pattern embedding text enriched (evidence from belief_fts, 1500 char content)
+- [x] Commit corpus filtered to significant subset (443 from 1,824)
+- [x] Projection re-trained and index rebuilt with new corpus (601 items)
+- [x] Scry-vs-assay criterion met: **8/20 scry-only hits** (target ≥5)
 
 **Phase 5b+: New Semantic Domains**
 - [ ] Session-semantic hypothesis stated and eval queries built
