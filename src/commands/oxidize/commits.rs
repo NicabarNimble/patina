@@ -14,16 +14,17 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::collections::HashSet;
 
-/// Generate training pairs from commits when no sessions exist
+/// Generate training pairs from commits
 ///
 /// Filters to conventional commits with meaningful messages, then creates
 /// triplets using functions from touched vs untouched files.
-pub fn generate_commit_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<TrainingPair>> {
+/// Phase 5c: uses ALL viable commits instead of sampling a subset.
+pub fn generate_commit_pairs(db_path: &str) -> Result<Vec<TrainingPair>> {
     let conn = Connection::open(db_path)
         .with_context(|| format!("Failed to open database: {}", db_path))?;
 
-    // Get filtered commits (conventional format, meaningful length)
-    let commits = query_filtered_commits(&conn, num_pairs * 2)?;
+    // Get all filtered commits (conventional format, meaningful length)
+    let commits = query_filtered_commits(&conn)?;
 
     if commits.is_empty() {
         anyhow::bail!(
@@ -56,14 +57,11 @@ pub fn generate_commit_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<Trai
 
     let all_files: Vec<&String> = file_to_functions.keys().collect();
 
-    // Generate pairs
+    // Generate pairs from ALL viable commits (Phase 5c: no sampling limit)
     let mut pairs = Vec::new();
-    let mut rng = fastrand::Rng::new();
+    let mut rng = fastrand::Rng::with_seed(42);
 
     for (sha, message, moment_type) in &commits {
-        if pairs.len() >= num_pairs {
-            break;
-        }
 
         // Get files touched by this commit (normalized)
         let touched_files: Vec<String> = query_commit_files(&conn, sha)?
@@ -123,12 +121,9 @@ pub fn generate_commit_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<Trai
     Ok(pairs)
 }
 
-/// Query filtered commits (conventional format, meaningful length)
-fn query_filtered_commits(
-    conn: &Connection,
-    limit: usize,
-) -> Result<Vec<(String, String, Option<String>)>> {
-    // Filter: conventional commits with meaningful messages
+/// Query all filtered commits (conventional format, meaningful length)
+/// Phase 5c: no LIMIT — returns all viable commits for full pair generation.
+fn query_filtered_commits(conn: &Connection) -> Result<Vec<(String, String, Option<String>)>> {
     let mut stmt = conn.prepare(
         r#"
         SELECT c.sha, c.message, m.moment_type
@@ -146,12 +141,11 @@ fn query_filtered_commits(
         AND c.message NOT LIKE '%wip%'
         AND c.message NOT LIKE 'Merge %'
         ORDER BY c.timestamp DESC
-        LIMIT ?
         "#,
     )?;
 
     let mut commits = Vec::new();
-    let mut rows = stmt.query([limit])?;
+    let mut rows = stmt.query([])?;
 
     while let Some(row) = rows.next()? {
         let sha: String = row.get(0)?;
@@ -303,7 +297,7 @@ mod tests {
     #[test]
     fn test_generate_commit_pairs() {
         let temp_db = create_test_db();
-        let pairs = generate_commit_pairs(temp_db.path().to_str().unwrap(), 2).unwrap();
+        let pairs = generate_commit_pairs(temp_db.path().to_str().unwrap()).unwrap();
 
         assert!(!pairs.is_empty());
 

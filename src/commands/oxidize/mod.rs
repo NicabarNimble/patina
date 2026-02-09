@@ -168,29 +168,29 @@ fn train_projection(
     db_path: &str,
     embedder: &mut Box<dyn patina::embeddings::EmbeddingEngine>,
 ) -> Result<Projection> {
-    let num_pairs = 100; // Start with 100 pairs for MVP
-
     // Generate pairs based on projection type
+    // Phase 5c: use ALL available pairs, not a random subset.
+    // Sampling 100 from 551+ viable pairs caused ±15pp P@10 variance.
     let pairs: Vec<TrainingPair> = match name {
         "knowledge" | "semantic" => {
             // Knowledge domain: commit-based pairs as baseline training signal
             // Both names map to the same corpus — "semantic" kept for ref repo compat
             println!("   Strategy: commit messages capture project knowledge");
-            generate_commit_pairs(db_path, num_pairs)?
+            generate_commit_pairs(db_path)?
         }
         "sessions" => {
             // Session domain (Phase 5b): reuse commit-based training signal
             // Session content is natural language, same embedding space works
             println!("   Strategy: commit-based pairs (shared training signal)");
-            generate_commit_pairs(db_path, num_pairs)?
+            generate_commit_pairs(db_path)?
         }
         "temporal" => {
             println!("   Strategy: files that co-change are related");
-            generate_temporal_pairs(db_path, num_pairs)?
+            generate_temporal_pairs(db_path)?
         }
         "dependency" => {
             println!("   Strategy: functions that call each other are related");
-            generate_dependency_pairs(db_path, num_pairs)?
+            generate_dependency_pairs(db_path)?
         }
         _ => {
             anyhow::bail!(

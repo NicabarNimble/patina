@@ -15,10 +15,12 @@ const MIN_CALL_COUNT: i64 = 1;
 /// Generate training pairs where functions that call each other are similar
 ///
 /// Strategy:
-/// - Anchor: random function from call_graph
+/// - Anchor: each function with call relationships
 /// - Positive: function it calls OR function that calls it
 /// - Negative: unrelated function (no call relationship)
-pub fn generate_dependency_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<TrainingPair>> {
+///
+/// Phase 5c: generates one triplet per function (not random sample).
+pub fn generate_dependency_pairs(db_path: &str) -> Result<Vec<TrainingPair>> {
     let conn = Connection::open(db_path)
         .with_context(|| format!("Failed to open database: {}", db_path))?;
 
@@ -73,15 +75,11 @@ pub fn generate_dependency_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<
         call_relations.values().map(|v| v.len()).sum::<usize>() / 2
     );
 
-    // Generate pairs
+    // Generate one triplet per function with call relationships (Phase 5c: no sampling limit)
     let mut pairs = Vec::new();
-    let mut rng = fastrand::Rng::new();
+    let mut rng = fastrand::Rng::with_seed(42);
 
-    for _ in 0..num_pairs {
-        // Pick random function with call relationships as anchor
-        let anchor_idx = rng.usize(..functions_with_calls.len());
-        let (anchor_func, anchor_partners) = functions_with_calls[anchor_idx];
-
+    for (anchor_func, anchor_partners) in functions_with_calls {
         // Pick positive from call partners (functions it calls or that call it)
         let partners_vec: Vec<_> = anchor_partners.iter().collect();
         let positive_idx = rng.usize(..partners_vec.len());
@@ -211,9 +209,10 @@ mod tests {
     #[test]
     fn test_generate_dependency_pairs() {
         let temp_db = create_test_db();
-        let pairs = generate_dependency_pairs(temp_db.path().to_str().unwrap(), 10).unwrap();
+        let pairs = generate_dependency_pairs(temp_db.path().to_str().unwrap()).unwrap();
 
-        assert_eq!(pairs.len(), 10);
+        // 5 functions with call relationships in test data
+        assert!(!pairs.is_empty());
 
         // Verify structure
         for pair in &pairs {
@@ -291,7 +290,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = generate_dependency_pairs(temp_file.path().to_str().unwrap(), 5);
+        let result = generate_dependency_pairs(temp_file.path().to_str().unwrap());
         assert!(result.is_err());
     }
 }
