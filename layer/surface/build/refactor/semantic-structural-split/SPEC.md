@@ -278,6 +278,52 @@ context. Phase 5 is an ongoing effort to discover, test, and ship
 domains that add retrieval value. Each domain must prove it helps through
 measurement — but the posture is exploration, not gatekeeping.
 
+#### Phase 5a: Knowledge Domain Corpus Optimization
+
+Before adding new domains, fix the existing knowledge domain's corpus
+composition. Phase 4 diagnostics reveal the root cause of the 4/20
+scry-vs-assay gap: commit dominance (1,824 commits = 92% of index vs
+77 beliefs + 79 patterns = 8%). Conceptual queries hit the dense commit
+cluster instead of the sparse high-value beliefs/patterns.
+
+**Diagnostic evidence (Phase 4 session 20260208-171005):**
+- All 4 scry-only hits are beliefs where query vocabulary overlaps belief text
+- 7 of 9 both-miss queries expect core pattern docs — commits crowd them out
+- 1 both-miss is a ground-truth issue: query about "AI assistants understanding
+  code" returns `llm-readable-code` belief (rank 1, score 0.850) — genuinely
+  correct answer, but not in the expected set
+- Score compression: all results in 0.79-0.87 range, no differentiation
+
+**Three-part fix (per [[corpus-composition-over-model]]):**
+
+1. **Fix eval ground truth** — add `llm-readable-code` to query 6's expected
+   set ("making code easy for AI assistants to understand and modify"). This
+   belief literally says "Code should be self-documenting for AI readers."
+   Honest measurement per [[andrew-ng-over-shoulder]], not metric gaming.
+
+2. **Enrich belief/pattern embedding text** — give the embedder more semantic
+   signal per item. Beliefs currently embed ~100 chars ("Belief: {id} -
+   {statement}. Persona: ..."). Add evidence text, related belief references,
+   and contextual vocabulary. For patterns, remove 500-char content truncation.
+   Richer embeddings create more differentiated vectors that bridge wider
+   vocabulary gaps.
+
+3. **Filter commit corpus to significant subset** — reduce from 1,824 to
+   ~300-400 commits. The 31-50 char bucket (572 commits) contains low-signal
+   messages like "fix: typo" and "docs: update". Keep commits that:
+   - Reference belief/pattern IDs in the message
+   - Have messages above median length (>56 chars)
+   - Mark releases, sessions, or significant features
+   - Touch >3 files (structural significance)
+
+   This shifts the ratio from 92% commits to ~50-60%, letting beliefs/patterns
+   occupy proportional vector space.
+
+**Process:** Fix ground truth → enrich text → filter commits → re-train
+projection → rebuild index → measure (`patina eval --scry`). Target: ≥5/20
+scry-only hits (Phase 4 exit criterion). If met → move to Phase 5b domain
+discovery. If not → investigate training signal or model before adding domains.
+
 **Candidate: session-semantic**
 - Content: session decisions, patterns, goals, context events
 - Training signal: within-session co-occurrence (what user thinks together)
@@ -537,6 +583,15 @@ context?" is measured by combined eval's overall P@10 and hit rate. The
 feedback loop eval (`patina eval --feedback`) provides session-level data.
 
 ### Phase 5: Discover and Ship Semantic Domains (ongoing)
+
+**Phase 5a: Knowledge Domain Corpus Optimization**
+- [ ] Eval ground truth fixed (query 6: add `llm-readable-code` to expected)
+- [ ] Belief/pattern embedding text enriched (evidence, references, full content)
+- [ ] Commit corpus filtered to significant subset (~300-400 from 1,824)
+- [ ] Projection re-trained and index rebuilt with new corpus
+- [ ] Scry-vs-assay criterion met: ≥5/20 scry-only hits (Phase 4 exit)
+
+**Phase 5b+: New Semantic Domains**
 - [ ] Session-semantic hypothesis stated and eval queries built
 - [ ] Session-semantic tested: proves value → ship, or investigate why not
 - [ ] Code-semantic hypothesis stated and eval queries built
