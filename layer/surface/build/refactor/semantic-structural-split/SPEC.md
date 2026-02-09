@@ -324,15 +324,40 @@ projection → rebuild index → measure (`patina eval --scry`). Target: ≥5/20
 scry-only hits (Phase 4 exit criterion). If met → move to Phase 5b domain
 discovery. If not → investigate training signal or model before adding domains.
 
-**Candidate: session-semantic**
-- Content: session decisions, patterns, goals, context events
-- Training signal: within-session co-occurrence (what user thinks together)
-- Value hypothesis: "what was the reasoning behind X?" finds session
-  discussions that keywords miss — intent and rationale live in sessions
-- Validation: compare session-semantic results vs assay FTS5 on session
-  content. If semantic finds answers FTS5 misses → domain earned.
-- Model: could use same model as knowledge, or could benefit from a
-  dialogue-tuned model — test, don't assume
+#### Phase 5b: Session-Semantic Domain
+
+**Hypothesis:** Semantic search over session events (decisions, patterns,
+context, work) finds development reasoning and rationale that no current
+system can surface. Sessions are invisible today — no eventlog_fts table
+exists, so assay can't keyword-search session content, and scry's knowledge
+domain doesn't include sessions. This is a net-new retrieval capability.
+
+**Corpus analysis:**
+- 38,181 total session events, but ~8x duplicated (each scrape re-inserts)
+- ~2,744 unique events with >50 char content after dedup
+- High-value types: decision (896), pattern (1,072), work (593), context (587)
+- Content is natural language about WHY decisions were made — different
+  vocabulary than WHAT was decided
+
+**Validation note:** Standard scry-vs-assay comparison is not meaningful here
+because assay has 0% coverage of session content (no eventlog_fts). Instead:
+1. Measure scry hit rate on session queries (any hit = value, since nothing
+   searches sessions today)
+2. Additionally simulate what FTS5 WOULD find on the same content to assess
+   whether semantic adds value over hypothetical keyword search
+3. If scry-only hit rate is high AND semantic finds things keywords miss →
+   strong evidence for the domain
+
+**Infrastructure requirements:**
+- Corpus builder: `query_session_corpus()` in oxidize/mod.rs (deduped)
+- New `sessions` projection in oxidize.yaml
+- Multi-domain SemanticOracle: load knowledge + sessions indices
+- Semantic RRF fusion across domains in QueryEngine
+- Session event enrichment in enrichment.rs (already partially exists)
+
+**Model:** E5-base-v2 (same as knowledge domain, test first before trying
+dialogue-tuned models — per [[corpus-composition-over-model]], corpus
+matters more than model choice)
 
 **Candidate: code-semantic**
 - Content: function signatures, code documentation, module descriptions

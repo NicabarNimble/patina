@@ -1,0 +1,107 @@
+[
+  {
+    "query": "why doesn't patina overwrite existing AI configuration files",
+    "expected": ["20251210-065208"],
+    "category": "reasoning",
+    "note": "Tests: 'overwrite config files' → 'orchestrator not generator, don't clobber CLAUDE.md'",
+    "split": "train"
+  },
+  {
+    "query": "how was the large adapter module broken into smaller pieces",
+    "expected": ["20250811-214239"],
+    "category": "history",
+    "note": "Tests: 'broken into smaller pieces' → 'Reduced claude.rs from 800+ lines to 130-line public interface by splitting into internal/ submodules'",
+    "split": "train"
+  },
+  {
+    "query": "approach for secure credential access inside development containers",
+    "expected": ["20251008-061520", "20251006-181316"],
+    "category": "reasoning",
+    "note": "Tests: 'secure credential access containers' → 'Host-based credential fetch, Touch ID, inject into container tmpfs'",
+    "split": "test"
+  },
+  {
+    "query": "why use append-only event storage instead of mutable databases",
+    "expected": ["20251103-063514", "20251121-063228", "20251114-064710"],
+    "category": "reasoning",
+    "note": "Tests: 'append-only event storage' → 'event sourcing philosophy, prevents index corruption'",
+    "split": "train"
+  },
+  {
+    "query": "what problems arise when old and new systems coexist with opt-in flags",
+    "expected": ["20260205-153114", "20260121-071314"],
+    "category": "reasoning",
+    "note": "Tests: 'old and new systems coexist' → 'temporal layering causes drift, compose-over-build'",
+    "split": "train"
+  },
+  {
+    "query": "how to ensure embedding models are bundled into the binary at compile time",
+    "expected": ["20251116-194408"],
+    "category": "technical",
+    "note": "Tests: 'bundled into binary compile time' → 'asymmetric embedding support across 4 production models, dynamic dimension'",
+    "split": "test"
+  },
+  {
+    "query": "why make small focused git commits instead of large combined changes",
+    "expected": ["20251103-063514", "20251230-045456", "20251228-190031"],
+    "category": "reasoning",
+    "note": "Tests: 'small focused commits' → 'scalpel commits, one commit per module extraction for clean history'",
+    "split": "train"
+  },
+  {
+    "query": "what design pivot changed how patina generates context for LLM frontends",
+    "expected": ["20251210-065208"],
+    "category": "history",
+    "note": "Tests: 'design pivot context generation' → 'Pivoted from source/presentation model to orchestrator model'",
+    "split": "test"
+  },
+  {
+    "query": "how were archived and deprecated patterns kept separate from active ones",
+    "expected": ["20250811-214239"],
+    "category": "reasoning",
+    "note": "Tests: 'archived deprecated patterns separate' → 'Dust directory created but patterns there excluded from context'",
+    "split": "train"
+  },
+  {
+    "query": "what threshold determines if a code change causes unacceptable quality regression",
+    "expected": ["20260204-135033"],
+    "category": "technical",
+    "note": "Tests: 'unacceptable quality regression' → 'Structural regression budget: 5pp per test'",
+    "split": "train"
+  },
+  {
+    "query": "how the retrieval system evolved from five oracles to a cleaner architecture",
+    "expected": ["20251212-091705", "20251205-062457"],
+    "category": "history",
+    "note": "Tests: 'five oracles cleaner architecture' → 'Phase 2: Built agentic RAG with parallel retrieval + RRF fusion, Oracle abstraction'",
+    "split": "test"
+  },
+  {
+    "query": "why was minimal context with pattern references preferred over comprehensive dumps",
+    "expected": ["20250811-214239"],
+    "category": "reasoning",
+    "note": "Tests: 'minimal context pattern references' → 'minimal context generation with pattern references is more valuable than comprehensive dumps'",
+    "split": "train"
+  },
+  {
+    "query": "how tensor dimensions are detected automatically without manual configuration",
+    "expected": ["20251124-174931"],
+    "category": "technical",
+    "note": "Tests: 'tensor dimensions detected automatically' → 'Shape inference over metadata: Extracts dimensions from tensor.shape() instead of metadata.get(dim)'",
+    "split": "test"
+  },
+  {
+    "query": "what happened when token sequences exceeded the embedding model limit",
+    "expected": ["20260107-204850"],
+    "category": "history",
+    "note": "Tests: 'token sequences exceeded limit' → 'fixed ONNX token length error >512 tokens by implementing tokenizer truncation'",
+    "split": "train"
+  },
+  {
+    "query": "why choose automatic repository creation over interactive prompts during setup",
+    "expected": ["20251021-090119"],
+    "category": "reasoning",
+    "note": "Tests: 'automatic creation vs interactive prompts' → 'Opinionated defaults: Auto-create private GitHub repo instead of prompting'",
+    "split": "test"
+  }
+]
