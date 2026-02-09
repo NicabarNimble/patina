@@ -661,6 +661,9 @@ feedback loop eval (`patina eval --feedback`) provides session-level data.
 - [x] Knowledge domain not regressed by session addition (identical eval results
   with sessions enabled vs disabled). Knowledge P@10 29.2% is from projection
   re-training variance (different random 100-pair samples), not session dilution.
+- [x] FTS5 simulation completed: keyword search hits 9/15 (60%) vs scry 5/15
+  (33%). Semantic adds unique value for 2/15 queries (vocabulary gap bridging).
+  Session content has strong keyword signal — eventlog_fts is higher ROI.
 
 **Session eval baseline (`patina scry` on session queries, 2026-02-08):**
 ```
@@ -670,6 +673,36 @@ Train hit rate:  33.3% (3/9)
 Test hit rate:   33.3% (2/6)
 Train-test gap:  0.0pp (balanced, no overfitting)
 ```
+
+**FTS5 simulation (SPEC validation step 2, 2026-02-09):**
+Built FTS5 index from same 2,744 deduped session events. Ran same 15 queries
+with content-word OR matching (stopwords removed). Reproducible:
+`sqlite3 .patina/local/data/patina.db < resources/eval/session-fts5-simulation.sql`
+
+```
+FTS5 hit rate: 9/15 (60.0%)
+Scry hit rate: 5/15 (33.3%)
+
+Scry HIT, FTS5 miss:  2 (Q3, Q15) — semantic bridges vocabulary gaps
+Both HIT:             3 (Q1, Q5, Q13) — complementary
+FTS5 HIT, Scry miss:  6 (Q4, Q7, Q8, Q9, Q10, Q12) — keywords dominate
+Both miss:            4 (Q2, Q6, Q11, Q14) — neither finds
+```
+
+**Interpretation:** Session content has strong keyword signal — FTS5 outperforms
+semantic 60% vs 33%. Semantic uniquely finds 2 queries where vocabulary gaps
+exist: Q3 ("credential access containers" → "Host-based credential fetch, Touch
+ID, inject into container tmpfs") and Q15 ("automatic repository creation" →
+"opinionated defaults: auto-create private GitHub repo"). For most session
+queries, direct keyword matching is more effective because session events use
+descriptive natural language with consistent vocabulary.
+
+**Implication per [[corpus-composition-over-model]]:** An `eventlog_fts` table
+in assay would provide higher session coverage (60%) than the semantic domain
+(33%). The session semantic domain is justified as net-new capability (nothing
+searched sessions before) but its marginal value OVER keyword search is modest
+(2 scry-only hits = 13.3%). Building eventlog_fts is higher ROI for session
+retrieval than investing further in session-semantic tuning.
 
 **Finding: knowledge projection variance.** Re-running `patina oxidize` produces
 different projections due to random 100-pair sampling. Knowledge P@10 dropped
