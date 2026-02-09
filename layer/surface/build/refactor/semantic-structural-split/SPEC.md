@@ -966,6 +966,43 @@ before embedding).
 - [x] `cargo clippy --workspace` clean
 - [x] `cargo test --workspace` passes
 
+**Phase 5d continuation: Raw E5 Diagnostic and Projection Removal**
+
+The raw E5 diagnostic ([[e603121b]]) proved the projection is catastrophic for
+knowledge/sessions domains:
+
+```
+                     Method      P@5     P@10      MRR     Hits
+           Raw E5 (768-dim)    48.3%    52.5%    0.427    75.0%
+        Projected (256-dim)     6.7%     9.2%    0.072    15.0%
+```
+
+12/20 raw-only hits. 0/20 projection-only. Raw E5-base-v2 already bridges
+vocabulary gaps the projection destroys: "ripple effects" → dependable-rust,
+"baselines before optimization" → andrew-ng-over-shoulder, "test contamination"
+→ never-tune-on-eval. The trained 2-layer MLP compresses 768→256 and scrambles
+E5's pre-trained structure.
+
+**Decision: Remove projection for knowledge/sessions, use raw 768-dim E5.**
+
+Implementation:
+1. `oxidize/mod.rs`: For knowledge/sessions, skip training. Build USearch index
+   with raw 768-dim embeddings. Delete stale .safetensors.
+   `build_projection_index()` accepts `Option<&Projection>` — None = raw.
+2. `semantic.rs`: Dynamic index dimensions. When projection exists → use
+   projection output_dim. When absent → use embedder.dimension() (768).
+   Domain discovery doesn't require .safetensors.
+3. Temporal/dependency projections unchanged (different domain, not measured here).
+4. Index size: 768 vs 256 floats/vector = 3x larger. For 615 items: ~1.8MB vs
+   ~0.6MB. Negligible.
+
+Exit criteria:
+- [ ] oxidize skips training for knowledge/sessions, deletes stale .safetensors
+- [ ] SemanticOracle uses dynamic dimensions (768 raw, 256 projected)
+- [ ] `patina eval --scry` matches `--scry-raw` results (~52.5% P@10)
+- [ ] `cargo clippy --workspace` clean
+- [ ] `cargo test --workspace` passes
+
 **Phase 5e+: Future Semantic Domains**
 - [ ] Code-semantic hypothesis stated and eval queries built
 - [ ] Code-semantic tested: proves value → ship, or investigate why not
