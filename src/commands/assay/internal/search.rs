@@ -63,17 +63,20 @@ pub fn assay_search(query: &str, options: &SearchOptions) -> Result<Vec<SearchRe
     let mut code_results = search_code_fts(&conn, &fts_query, options)?;
     let mut commit_results = search_commits_fts(&conn, &fts_query, options)?;
     let mut pattern_results = search_pattern_fts(&conn, &fts_query, options)?;
+    let mut eventlog_results = search_eventlog_fts(&conn, &fts_query, options)?;
 
     // Min-max normalization per table: log1p transform + scale to [0,1]
     normalize_table(&mut code_results);
     normalize_table(&mut commit_results);
     normalize_table(&mut pattern_results);
+    normalize_table(&mut eventlog_results);
 
     // Merge all tables, sort by normalized score desc
     let mut collected: Vec<SearchResult> = Vec::new();
     collected.extend(code_results);
     collected.extend(commit_results);
     collected.extend(pattern_results);
+    collected.extend(eventlog_results);
 
     collected.sort_by(|a, b| {
         b.score
@@ -282,6 +285,45 @@ fn search_pattern_fts(
             score: -bm25_score as f32,
             event_type: format!("pattern.{}", layer),
             source_id: file_path,
+            timestamp: String::new(),
+        })
+    })?;
+
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Search eventlog_fts table (session decisions, patterns, work, context)
+fn search_eventlog_fts(
+    conn: &Connection,
+    fts_query: &str,
+    options: &SearchOptions,
+) -> Result<Vec<SearchResult>> {
+    let sql = "SELECT
+            source_id,
+            event_type,
+            snippet(eventlog_fts, 2, '>>>', '<<<', '...', 64) as snippet,
+            bm25(eventlog_fts) as score
+         FROM eventlog_fts
+         WHERE eventlog_fts MATCH ?
+         ORDER BY score
+         LIMIT ?";
+
+    let mut stmt = match conn.prepare(sql) {
+        Ok(s) => s,
+        Err(_) => return Ok(Vec::new()),
+    };
+
+    let rows = stmt.query_map(rusqlite::params![fts_query, options.limit as i64], |row| {
+        let source_id: String = row.get(0)?;
+        let event_type: String = row.get(1)?;
+        let snippet: String = row.get(2)?;
+        let bm25_score: f64 = row.get(3)?;
+
+        Ok(SearchResult {
+            content: snippet,
+            score: -bm25_score as f32,
+            event_type,
+            source_id,
             timestamp: String::new(),
         })
     })?;
