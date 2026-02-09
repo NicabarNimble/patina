@@ -16,7 +16,7 @@ use super::oracles::SemanticOracle;
 /// Retrieval configuration for QueryEngine
 #[derive(Debug, Clone)]
 pub struct RetrievalConfig {
-    /// RRF smoothing constant (kept for backward compat, unused in semantic-only mode)
+    /// RRF smoothing constant (unused — score-merge used for same-model domains)
     pub rrf_k: usize,
     /// Over-fetch multiplier (default: 2)
     pub fetch_multiplier: usize,

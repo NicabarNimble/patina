@@ -352,7 +352,8 @@ because assay has 0% coverage of session content (no eventlog_fts). Instead:
 - Corpus builder: `query_session_corpus()` in oxidize/mod.rs (deduped)
 - New `sessions` projection in oxidize.yaml
 - Multi-domain SemanticOracle: load knowledge + sessions indices
-- Semantic RRF fusion across domains in QueryEngine
+- Score-merge fusion across domains in QueryEngine (see "Scry with multiple
+  earned domains" below for rationale)
 - Session event enrichment in enrichment.rs (already partially exists)
 
 **Model:** E5-base-v2 (same as knowledge domain, test first before trying
@@ -411,11 +412,21 @@ matters more than model choice)
 - Infrastructure supports multiple models; domains activate only when earned
 
 **Scry with multiple earned domains:**
-When scry has multiple validated domains, fusion within scry is semantic
-RRF — combining different views of meaning. This is fundamentally different
-from today's mixed fusion (meaning + facts). RRF across semantic domains
-makes sense: each domain answers "what's conceptually related?" from a
-different perspective. The question being fused is the same type.
+When scry has multiple validated domains, fusion within scry uses **score-merge**
+(sort by cosine score, deduplicate by doc_id keeping highest score). This was
+chosen over RRF because all domains use the same model (E5-base-v2) and same
+metric (cosine similarity), making scores directly comparable across domains.
+RRF would discard score magnitude and reduce to rank-only ordering — a loss
+of information when the scores ARE comparable. If future domains use different
+models or metrics, RRF becomes appropriate for cross-model fusion (scores from
+different models are NOT directly comparable). The design principle: same model
+→ score-merge; different models → RRF.
+
+**Amendment (Phase 5b):** Originally specified as "semantic RRF." Changed to
+score-merge after implementation showed both domains share the same embedding
+space. A/B test confirmed: identical knowledge eval results with sessions
+enabled vs disabled — fusion method preserves domain independence. Per
+[[spec-driven-design]] Rule 2: divergence amended, not hidden.
 
 ### Future: Mother's Semantic Layer
 
