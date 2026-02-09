@@ -34,7 +34,7 @@ Corpus composition matters more than model choice or training signal — removin
 
 ## Attacked-By
 
-<!-- Add beliefs that challenge this -->
+- [[ablate-before-optimizing]] (status: active, scope: "belief is correct about corpus, but was misapplied to justify not questioning the projection component itself. Phase 5d: raw E5 P@10 52.5% vs projected 9.2% — the model (raw E5) was always good, the projection was the problem. Corpus optimization from Phase 5a still valid, but this belief created a blind spot: 'fix the corpus, not the model' delayed testing 'what if we remove the projection entirely?'")
 
 ## Applied-In
 
