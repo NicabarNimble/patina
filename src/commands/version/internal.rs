@@ -531,6 +531,10 @@ pub fn bump_patch(description: &str, no_tag: bool, dry_run: bool) -> Result<()> 
     if !no_tag {
         println!("  Tagged: v{}", new_version);
     }
+
+    // Check for complete specs that should be archived
+    remind_unarchived_specs();
+
     println!("\n  Rebuild to use new version:");
     println!("    cargo build --release && cargo install --path .");
 
@@ -1120,6 +1124,43 @@ fn get_current_spec_milestone() -> Option<SpecMilestone> {
         MilestoneQueryResult::Single(m) => Some(m),
         MilestoneQueryResult::Multiple(mut v) => v.pop(), // return last (highest version)
         _ => None,
+    }
+}
+
+/// Remind about specs with status=complete that haven't been archived yet.
+///
+/// Called after version bumps to close the lifecycle gap where
+/// `version patch` has no spec awareness. Silently no-ops if
+/// the database doesn't exist or the query fails.
+fn remind_unarchived_specs() {
+    let db_path = Path::new(".patina/local/data/patina.db");
+    if !db_path.exists() {
+        return;
+    }
+
+    let conn = match Connection::open(db_path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let mut stmt = match conn.prepare(
+        "SELECT id FROM patterns WHERE status = 'complete' AND file_path LIKE '%/build/%' ORDER BY id",
+    ) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+
+    let specs: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .ok()
+        .map(|rows| rows.filter_map(|r| r.ok()).collect())
+        .unwrap_or_default();
+
+    if !specs.is_empty() {
+        println!("\n  Complete specs ready to archive:");
+        for id in &specs {
+            println!("    patina spec archive {}", id);
+        }
     }
 }
 
