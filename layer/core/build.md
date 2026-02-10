@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Version:** 0.15.0 — Three pillars: epistemic (complete), mother, distribution.
+**Version:** 0.15.3 — Three pillars: epistemic (complete), mother, distribution.
 
 ---
 
@@ -58,7 +58,7 @@ A local-first RAG network: portable project knowledge + personal mother.
 | assay | Query (factual) | Structural signals, FTS5 search, temporal, belief grounding |
 | scry | Query (semantic) | Multi-domain vector similarity — meaning, not keywords |
 
-**Active refactor:** [[semantic-structural-split]] — separating scry (meaning) from assay (facts). Scry currently mixes both; the split restores the intended boundary. START HERE for next development work.
+**Next:** [[mother-v2]] — the nervous system. Cross-project belief federation, centralized model ownership, persona-as-beliefs. The semantic-structural split (v0.15.2) cleaned up the query layers; mother v2 builds the fourth layer (convergence) on that foundation.
 
 **Values alignment:**
 - [unix-philosophy](unix-philosophy.md): One tool, one job
@@ -75,7 +75,7 @@ A local-first RAG network: portable project knowledge + personal mother.
 
 | Pillar | Current | Target |
 |--------|---------|--------|
-| **Epistemic** | **COMPLETE** (v0.10.0) — 69 beliefs, verification, grounding, forge | E5/E6 deferred to mother scope |
+| **Epistemic** | **COMPLETE** (v0.10.0) — 87 beliefs, verification, grounding, forge | E5/E6 deferred to mother scope |
 | **Mother** | Registry + serve daemon | Federated query, persona fusion |
 | **Distribution** | 52MB fat binary | Slim binary, `patina setup`, Homebrew |
 
@@ -96,6 +96,8 @@ A local-first RAG network: portable project knowledge + personal mother.
 0.14.1 ✓ Fix: belief retrieval quality (co-retrieval 50%, D1 PASS)
 0.14.2 ✓ Fix: database identity (UIDs for federation)
 0.15.0 ✓ Feat: ref repo semantic training (13/13 repos indexed)
+0.15.2 ✓ Refactor: semantic-structural split (scry=meaning, assay=facts, P@10 48.3%)
+0.15.3 ✓ Refactor: spec closure for semantic-structural-split
 1.0.0  - All pillars complete
 ```
 
