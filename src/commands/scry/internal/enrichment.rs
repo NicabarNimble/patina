@@ -33,7 +33,7 @@ pub fn enrich_results(
     const FORGE_ID_OFFSET: i64 = 5_000_000_000;
 
     match dimension {
-        "semantic" => {
+        "knowledge" | "semantic" | "sessions" => {
             // Semantic index contains eventlog entries, code facts, and patterns
             for i in 0..results.keys.len() {
                 let key = results.keys[i] as i64;
@@ -198,7 +198,7 @@ pub fn enrich_results(
                          WHERE rowid = ?",
                         [rowid],
                         |row| {
-                            let id: String = row.get(1)?;
+                            let _id: String = row.get(1)?;
                             let title: String = row.get(2)?;
                             let purpose: Option<String> = row.get(3)?;
                             let layer: String = row.get(4)?;
@@ -214,7 +214,7 @@ pub fn enrich_results(
                             Ok(ScryResult {
                                 id: key,
                                 event_type: format!("pattern.{}", layer),
-                                source_id: id,
+                                source_id: file_path.clone(),
                                 timestamp: String::new(),
                                 content: format!("{} ({})", desc, file_path),
                                 score,

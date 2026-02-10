@@ -1,24 +1,29 @@
-//! Assay command - Query codebase structure
+//! Assay command - Query codebase structure and factual knowledge
 //!
-//! Complement to scry (semantic search) for exact structural queries:
+//! Assay is the factual layer: exact structural queries + ranked text search.
 //! - Module inventory with line counts, function counts
 //! - Import/importer relationships
 //! - Caller/callee relationships from call graph
+//! - Ranked FTS5 search across code, commits, and patterns
 
-mod internal;
+pub(crate) mod internal;
 
 use anyhow::{Context, Result};
 use internal::{
     collect_inventory_json, execute_callees, execute_callers, execute_derive,
     execute_derive_moments, execute_functions, execute_importers, execute_imports,
-    execute_inventory,
+    execute_inventory, execute_search,
 };
 use rusqlite::Connection;
+
+// Re-export search types for MCP and external consumers
+#[allow(unused_imports)]
+pub use internal::search::{assay_search, assay_search_json, SearchOptions, SearchResult};
 
 const DB_PATH: &str = ".patina/local/data/patina.db";
 
 /// Query type for assay command
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub enum QueryType {
     #[default]
     Inventory,
@@ -29,6 +34,18 @@ pub enum QueryType {
     Callees,
     Derive,
     DeriveMoments,
+    /// Ranked factual search using FTS5
+    Search {
+        query: String,
+    },
+    /// Co-change analysis for a specific file
+    Cochange {
+        file: String,
+    },
+    /// Belief grounding — evidence for/against a belief
+    Belief {
+        id: String,
+    },
 }
 
 /// Options for assay command
@@ -42,10 +59,46 @@ pub struct AssayOptions {
     pub repo: Option<String>,
     /// Query all registered repos
     pub all_repos: bool,
+    /// Include GitHub issues in search results
+    pub include_issues: bool,
 }
 
 /// Execute assay command
 pub fn execute(options: AssayOptions) -> Result<()> {
+    // Handle search separately (doesn't need structural DB connection)
+    if let QueryType::Search { ref query } = options.query_type {
+        let search_opts = SearchOptions {
+            limit: options.limit,
+            include_issues: options.include_issues,
+            repo: options.repo.clone(),
+        };
+        if options.json {
+            let json = internal::search::assay_search_json(query, &search_opts)?;
+            println!("{}", json);
+            return Ok(());
+        }
+        return execute_search(query, &search_opts);
+    }
+
+    // Handle cochange separately
+    if let QueryType::Cochange { ref file } = options.query_type {
+        let db_path = match &options.repo {
+            Some(name) => crate::commands::repo::get_db_path(name)?,
+            None => DB_PATH.to_string(),
+        };
+        if options.json {
+            let json = internal::temporal::execute_cochange_json(file, options.limit, &db_path)?;
+            println!("{}", json);
+            return Ok(());
+        }
+        return internal::temporal::execute_cochange(file, options.limit, &db_path);
+    }
+
+    // Handle belief grounding separately
+    if let QueryType::Belief { ref id } = options.query_type {
+        return internal::belief::execute_belief_grounding(id, options.limit, options.json);
+    }
+
     // Handle all_repos mode: iterate over all registered repos
     if options.all_repos {
         return execute_all_repos(&options);
@@ -74,6 +127,9 @@ pub fn execute(options: AssayOptions) -> Result<()> {
         QueryType::Callees => execute_callees(&conn, &options),
         QueryType::Derive => execute_derive(&conn, &options),
         QueryType::DeriveMoments => execute_derive_moments(&conn, &options),
+        QueryType::Search { .. } | QueryType::Cochange { .. } | QueryType::Belief { .. } => {
+            unreachable!("handled above")
+        }
     }
 }
 

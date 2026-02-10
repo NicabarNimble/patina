@@ -92,6 +92,42 @@ pub fn populate_commits_fts5(conn: &Connection) -> Result<usize> {
     Ok(count)
 }
 
+/// Populate FTS5 index for session events (keyword search over decisions, patterns, work, context)
+pub fn populate_eventlog_fts5(conn: &Connection) -> Result<usize> {
+    // Create FTS5 table if it doesn't exist (migration for existing databases)
+    conn.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS eventlog_fts USING fts5(
+            source_id UNINDEXED,
+            event_type UNINDEXED,
+            content,
+            tokenize='porter unicode61'
+        )",
+        [],
+    )?;
+
+    // Clear existing FTS5 data
+    conn.execute("DELETE FROM eventlog_fts", [])?;
+
+    // Populate from session observation events in eventlog.
+    // GROUP BY dedupes across multiple scrape runs (eventlog is append-only).
+    // Same dedup strategy and filters as query_session_corpus() in oxidize.
+    let count = conn.execute(
+        r#"
+        INSERT INTO eventlog_fts (source_id, event_type, content)
+        SELECT source_id, event_type,
+               json_extract(data, '$.content') as content
+        FROM eventlog
+        WHERE event_type IN ('session.decision', 'session.pattern',
+                             'session.work', 'session.context')
+          AND length(json_extract(data, '$.content')) > 50
+        GROUP BY source_id, event_type, json_extract(data, '$.content')
+        "#,
+        [],
+    )?;
+
+    Ok(count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

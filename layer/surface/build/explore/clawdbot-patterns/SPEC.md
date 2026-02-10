@@ -10,7 +10,7 @@ sessions:
 related:
   - ./research.md
   - layer/surface/epistemic/beliefs/phased-development-with-measurement.md
-  - layer/surface/build/deferred/spec-skills-universal.md
+  - layer/surface/build/feat/skills-focused-adapter/SPEC.md
 ---
 
 # explore: Clawdbot Pattern Validation

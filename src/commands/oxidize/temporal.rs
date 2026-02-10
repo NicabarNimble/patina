@@ -15,10 +15,12 @@ const MIN_COCHANGE_COUNT: i64 = 2;
 /// Generate training pairs where files that co-change are similar
 ///
 /// Strategy:
-/// - Anchor: random file from co_changes
+/// - Anchor: each file with co-change partners
 /// - Positive: file that frequently changes with anchor
 /// - Negative: file that rarely/never changes with anchor
-pub fn generate_temporal_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<TrainingPair>> {
+///
+/// Phase 5c: generates one triplet per file (not random sample).
+pub fn generate_temporal_pairs(db_path: &str) -> Result<Vec<TrainingPair>> {
     let conn = Connection::open(db_path)
         .with_context(|| format!("Failed to open database: {}", db_path))?;
 
@@ -53,18 +55,20 @@ pub fn generate_temporal_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<Tr
             .insert(file_a.clone());
     }
 
-    // Filter to files with at least one co-change partner
-    let files_with_cochanges: Vec<_> = cochanges
+    // Filter to files with at least one co-change partner (sorted for determinism)
+    let mut files_with_cochanges: Vec<_> = cochanges
         .iter()
         .filter(|(_, partners)| !partners.is_empty())
         .collect();
+    files_with_cochanges.sort_by(|a, b| a.0.cmp(b.0));
 
     if files_with_cochanges.is_empty() {
         anyhow::bail!("No files with co-change relationships found");
     }
 
-    // Convert to vec for random access
-    let all_files_vec: Vec<_> = all_files.iter().collect();
+    // Convert to sorted vec for deterministic random access
+    let mut all_files_vec: Vec<_> = all_files.iter().collect();
+    all_files_vec.sort();
 
     println!(
         "  Found {} files with {} co-change relationships",
@@ -72,24 +76,21 @@ pub fn generate_temporal_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<Tr
         cochanges.values().map(|v| v.len()).sum::<usize>() / 2
     );
 
-    // Generate pairs
+    // Generate one triplet per file with co-changes (Phase 5c: no sampling limit)
     let mut pairs = Vec::new();
-    let mut rng = fastrand::Rng::new();
+    let mut rng = fastrand::Rng::with_seed(42);
 
-    for _ in 0..num_pairs {
-        // Pick random file with co-changes as anchor
-        let anchor_idx = rng.usize(..files_with_cochanges.len());
-        let (anchor_file, anchor_partners) = files_with_cochanges[anchor_idx];
-
-        // Pick positive from co-change partners
-        let partners_vec: Vec<_> = anchor_partners.iter().collect();
+    for (anchor_file, anchor_partners) in files_with_cochanges {
+        // Pick positive from co-change partners (sorted for determinism)
+        let mut partners_vec: Vec<_> = anchor_partners.iter().collect();
+        partners_vec.sort();
         let positive_idx = rng.usize(..partners_vec.len());
         let positive_file = partners_vec[positive_idx];
 
         // Pick negative from files that don't co-change with anchor
         let mut negative_file = all_files_vec[rng.usize(..all_files_vec.len())];
         let mut attempts = 0;
-        while (anchor_partners.contains(negative_file) || *negative_file == *anchor_file)
+        while (anchor_partners.contains(negative_file) || negative_file == anchor_file)
             && attempts < 100
         {
             negative_file = all_files_vec[rng.usize(..all_files_vec.len())];
@@ -173,9 +174,10 @@ mod tests {
     #[test]
     fn test_generate_temporal_pairs() {
         let temp_db = create_test_db();
-        let pairs = generate_temporal_pairs(temp_db.path().to_str().unwrap(), 10).unwrap();
+        let pairs = generate_temporal_pairs(temp_db.path().to_str().unwrap()).unwrap();
 
-        assert_eq!(pairs.len(), 10);
+        // 5 files with co-change partners in test data
+        assert!(!pairs.is_empty());
 
         // Verify structure
         for pair in &pairs {
@@ -218,7 +220,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = generate_temporal_pairs(temp_file.path().to_str().unwrap(), 5);
+        let result = generate_temporal_pairs(temp_file.path().to_str().unwrap());
         assert!(result.is_err());
     }
 }

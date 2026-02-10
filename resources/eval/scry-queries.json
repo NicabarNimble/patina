@@ -1,0 +1,142 @@
+[
+  {
+    "query": "how should I organize code to minimize ripple effects from changes",
+    "expected": ["dependable-rust", "layer/core/dependable-rust.md"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'ripple effects' ≠ 'black-box module pattern'",
+    "split": "train"
+  },
+  {
+    "query": "keeping public API surfaces small and stable",
+    "expected": ["dependable-rust", "layer/core/dependable-rust.md"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'API surfaces' ≠ 'external interface'",
+    "split": "test"
+  },
+  {
+    "query": "what principles guide breaking systems into independent components",
+    "expected": ["unix-philosophy", "layer/core/unix-philosophy.md"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'independent components' ≠ 'one tool, one job'",
+    "split": "train"
+  },
+  {
+    "query": "single responsibility for CLI commands",
+    "expected": ["unix-philosophy", "layer/core/unix-philosophy.md"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'single responsibility' ≠ 'decompose complex systems'",
+    "split": "train"
+  },
+  {
+    "query": "integrating with third-party services through abstraction layers",
+    "expected": ["layer/core/adapter-pattern.md"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'abstraction layers' ≠ 'trait-based external system integration'",
+    "split": "test"
+  },
+  {
+    "query": "preventing accidental credential leaks in the codebase",
+    "expected": ["layer/core/safety-boundaries.md"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'credential leaks' ≠ 'safety boundaries'",
+    "split": "train"
+  },
+  {
+    "query": "recording what happened during a development session for future reference",
+    "expected": ["layer/core/session-capture.md"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'recording development sessions' ≠ 'session capture pattern'",
+    "split": "train"
+  },
+  {
+    "query": "when do I need formal authorization before making changes",
+    "expected": ["spec-driven-design", "layer/core/spec-driven-design.md"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'formal authorization' ≠ 'SPECs are mandatory authority'",
+    "split": "test"
+  },
+  {
+    "query": "building up project wisdom that persists over time",
+    "expected": ["layer/core/oxidized-knowledge.md"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'project wisdom persists' ≠ 'oxidized knowledge'",
+    "split": "train"
+  },
+  {
+    "query": "importance of establishing baselines before optimization attempts",
+    "expected": ["andrew-ng-over-shoulder", "measure-first"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'baselines before optimization' ≠ 'is the measurement truthful'",
+    "split": "train"
+  },
+  {
+    "query": "avoiding test contamination when evaluating retrieval quality",
+    "expected": ["never-tune-on-eval"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'test contamination' ≠ 'never tune parameters against eval data'",
+    "split": "test"
+  },
+  {
+    "query": "diagnosing retrieval failures systematically before adding complexity",
+    "expected": ["error-analysis-over-architecture"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'diagnosing failures' ≠ 'analyze failure cases before adding complexity'",
+    "split": "train"
+  },
+  {
+    "query": "what you put in the index matters more than which model you choose",
+    "expected": ["corpus-composition-over-model"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'what you put in the index' ≠ 'corpus composition over model'",
+    "split": "train"
+  },
+  {
+    "query": "treating project decisions as first-class trackable entities",
+    "expected": ["beliefs-are-entities-not-documents"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'trackable entities' ≠ 'beliefs are entities not documents'",
+    "split": "test"
+  },
+  {
+    "query": "making code easy for AI assistants to understand and modify",
+    "expected": ["layer/core/unix-philosophy.md", "layer/core/dependable-rust.md", "llm-readable-code"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'AI assistants understand' ≠ module design principles. llm-readable-code belief is a direct hit.",
+    "split": "train"
+  },
+  {
+    "query": "connecting different AI providers through a common interface",
+    "expected": ["layer/core/adapter-pattern.md"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'AI providers common interface' ≠ 'LLM-agnostic trait-based'",
+    "split": "train"
+  },
+  {
+    "query": "knowledge that accumulates across development sessions like patina on metal",
+    "expected": ["layer/core/oxidized-knowledge.md", "layer/core/session-capture.md"],
+    "category": "conceptual",
+    "note": "Tests metaphorical reasoning: 'patina on metal' → oxidized knowledge",
+    "split": "test"
+  },
+  {
+    "query": "ensuring evaluation queries remain independent from training data",
+    "expected": ["never-tune-on-eval", "measure-the-measurement"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'evaluation queries independent' ≠ 'never tune on eval'",
+    "split": "train"
+  },
+  {
+    "query": "why validating measurements matters more than adding features",
+    "expected": ["measure-the-measurement", "measure-first"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'validating measurements' ≠ 'fix the instrument not the observation'",
+    "split": "test"
+  },
+  {
+    "query": "formal governance chain from discussion to implementation",
+    "expected": ["spec-driven-design", "layer/core/spec-driven-design.md", "specs-push-discoveries-outbound"],
+    "category": "conceptual",
+    "note": "Tests semantic gap: 'governance chain' ≠ 'sessions discuss, SPECs decide, code executes'",
+    "split": "train"
+  }
+]

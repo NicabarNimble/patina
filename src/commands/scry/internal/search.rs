@@ -1,6 +1,7 @@
 //! Core search functions for scry command
 //!
-//! Implements semantic vector search, lexical FTS5 search, and file-based queries.
+//! Implements semantic vector search, belief grounding, and file-based queries.
+//! Lexical FTS5 search lives in assay (see src/commands/assay/internal/search.rs).
 
 use std::path::Path;
 
@@ -12,7 +13,6 @@ use patina::embeddings::create_embedder;
 
 use super::super::{ScryOptions, ScryResult};
 use super::enrichment::{enrich_results, SearchResults};
-use super::query_prep::prepare_fts_query;
 
 /// Get database and embeddings paths (handles --repo flag)
 pub fn get_paths(options: &ScryOptions) -> Result<(String, String)> {
@@ -45,7 +45,7 @@ pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> 
     let (db_path, embeddings_dir) = get_paths(options)?;
 
     // Determine which dimension to search
-    // For reference repos, only dependency is available; for projects, prefer semantic
+    // For projects, prefer knowledge domain; reference repos may only have dependency
     let dimension = if let Some(ref dim) = options.dimension {
         dim.as_str()
     } else {
@@ -54,14 +54,12 @@ pub fn scry_text(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> 
     let index_path = format!("{}/{}.usearch", embeddings_dir, dimension);
 
     if !Path::new(&index_path).exists() {
-        // Graceful fallback: index missing, use FTS5 instead
-        eprintln!(
-            "⚠️  {} index not found, falling back to lexical search (FTS5)",
-            dimension
+        anyhow::bail!(
+            "Semantic index not found: {}\n\
+             Run 'patina oxidize' to build the knowledge domain index.\n\
+             For keyword search, use 'patina assay search <query>' instead.",
+            index_path
         );
-        eprintln!("   Run 'patina oxidize' for vector search\n");
-        println!("Mode: Lexical (FTS5) [fallback]\n");
-        return scry_lexical(query, options);
     }
 
     // Create embedder and embed query
@@ -246,8 +244,9 @@ pub fn scry_belief(belief_id: &str, options: &ScryOptions) -> Result<Vec<ScryRes
     const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
     let belief_index = (BELIEF_ID_OFFSET + rowid) as u64;
 
-    // Load semantic index (beliefs live in semantic space)
-    let index_path = format!("{}/semantic.usearch", embeddings_dir);
+    // Load knowledge/semantic index (beliefs live in vector space)
+    let dimension = detect_best_dimension(&embeddings_dir);
+    let index_path = format!("{}/{}.usearch", embeddings_dir, dimension);
     if !Path::new(&index_path).exists() {
         anyhow::bail!(
             "Semantic index not found: {}. Run 'patina oxidize' first.",
@@ -299,12 +298,19 @@ pub fn scry_belief(belief_id: &str, options: &ScryOptions) -> Result<Vec<ScryRes
     };
 
     // Enrich with metadata from SQLite
-    let mut enriched = enrich_results(&conn, &results, "semantic", options.min_score)?;
+    let mut enriched = enrich_results(&conn, &results, dimension, options.min_score)?;
 
     // Filter out self — belief appears as both belief.surface and pattern.surface
+    // Pattern source_id is now file_path (e.g., "layer/surface/epistemic/beliefs/foo.md")
+    // so match on either exact id or file_path containing the belief_id
     enriched.retain(|r| {
-        !(r.source_id == belief_id
-            && (r.event_type == "belief.surface" || r.event_type.starts_with("pattern.")))
+        if r.event_type == "belief.surface" && r.source_id == belief_id {
+            return false; // Exact belief match
+        }
+        if r.event_type.starts_with("pattern.") && r.source_id.contains(belief_id) {
+            return false; // Pattern entry for this belief (file_path contains id)
+        }
+        true
     });
 
     // Apply content type filter if specified
@@ -328,200 +334,23 @@ pub fn scry(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
     scry_text(query, options)
 }
 
-/// Check if query looks like a lexical/exact-match query
-///
-/// This function gates the routing decision: lexical queries go to FTS5,
-/// everything else to semantic vector search. It must be at least as
-/// permissive as `is_code_like()` in query_prep.rs — otherwise code
-/// patterns get routed to semantic mode where they produce noise.
-pub fn is_lexical_query(query: &str) -> bool {
-    let lower = query.to_lowercase();
-
-    // Explicit lexical patterns (natural language triggers)
-    lower.starts_with("find ")
-        || lower.starts_with("where is ")
-        || lower.starts_with("show me the ")
-        || lower.starts_with("show me ")
-        || lower.contains(" defined")
-        // Code symbol patterns (original)
-        || query.contains("::")
-        || query.contains("()")
-        || query.contains("fn ")
-        || query.contains("struct ")
-        || query.contains("const ")
-        || query.contains("impl ")
-        // Aligned with is_code_like() — these were missing and caused
-        // insert_event, create_uid_if_missing, allow(dead_code) etc.
-        // to fall through to semantic mode
-        || (query.contains('_') && !query.contains(' '))  // snake_case without spaces
-        || query.chars().all(|c| c.is_alphanumeric() || c == '_')  // single identifier
-        || (query.contains('(') && query.contains(')'))  // parens (not just "()" pair)
-        // Keyword at end of query (e.g., "async fn" has no trailing space)
-        || lower.ends_with(" fn")
-        || lower.ends_with(" struct")
-}
-
-/// Lexical search using FTS5 for exact matches
-pub fn scry_lexical(query: &str, options: &ScryOptions) -> Result<Vec<ScryResult>> {
-    let (db_path, _) = get_paths(options)?;
-
-    let conn = Connection::open(&db_path)
-        .with_context(|| format!("Failed to open database: {}", db_path))?;
-
-    // Prepare the FTS5 query
-    let fts_query = prepare_fts_query(query);
-
-    println!("FTS5 query: {}", fts_query);
-
-    let mut collected: Vec<ScryResult> = Vec::new();
-
-    // 1. Search code_fts
-    let event_type_filter = if options.include_issues {
-        "event_type LIKE 'code.%' OR event_type = 'github.issue'"
-    } else {
-        "event_type LIKE 'code.%'"
-    };
-
-    let code_sql = format!(
-        "SELECT
-            symbol_name,
-            file_path,
-            snippet(code_fts, 2, '>>>', '<<<', '...', 64) as snippet,
-            event_type,
-            bm25(code_fts) as score
-         FROM code_fts
-         WHERE code_fts MATCH ?
-           AND ({})
-         ORDER BY score
-         LIMIT ?",
-        event_type_filter
-    );
-
-    let mut stmt = conn.prepare(&code_sql)?;
-    let code_results =
-        stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
-            let symbol: String = row.get(0)?;
-            let file_path: String = row.get(1)?;
-            let snippet: String = row.get(2)?;
-            let event_type: String = row.get(3)?;
-            let bm25_score: f64 = row.get(4)?;
-
-            // Use file_path directly - it's already source_id format (path::name)
-            // Don't append symbol again (was causing path::name:name doubling)
-            let source_id = if event_type == "github.issue" {
-                format!("[ISSUE] {}", symbol)
-            } else {
-                file_path.clone()
-            };
-
-            Ok(ScryResult {
-                id: 0,
-                content: snippet,
-                // BM25 is negative, convert to positive (don't cap - preserve ranking)
-                score: -bm25_score as f32,
-                event_type,
-                source_id,
-                timestamp: String::new(),
-            })
-        })?;
-    collected.extend(code_results.filter_map(|r| r.ok()));
-
-    // 2. Search commits_fts (git narrative)
-    let commits_sql = "SELECT
-            sha,
-            snippet(commits_fts, 1, '>>>', '<<<', '...', 64) as snippet,
-            author_name,
-            bm25(commits_fts) as score
-         FROM commits_fts
-         WHERE commits_fts MATCH ?
-         ORDER BY score
-         LIMIT ?";
-
-    if let Ok(mut stmt) = conn.prepare(commits_sql) {
-        let commit_results =
-            stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
-                let sha: String = row.get(0)?;
-                let snippet: String = row.get(1)?;
-                let author: String = row.get(2)?;
-                let bm25_score: f64 = row.get(3)?;
-
-                Ok(ScryResult {
-                    id: 0,
-                    content: format!("{} ({})", snippet, author),
-                    score: -bm25_score as f32,
-                    event_type: "git.commit".to_string(),
-                    source_id: sha,
-                    timestamp: String::new(),
-                })
-            })?;
-        collected.extend(commit_results.filter_map(|r| r.ok()));
-    }
-
-    // 3. Search pattern_fts (layer docs)
-    let pattern_sql = "SELECT
-            id,
-            title,
-            snippet(pattern_fts, 2, '>>>', '<<<', '...', 64) as snippet,
-            file_path,
-            bm25(pattern_fts) as score
-         FROM pattern_fts
-         WHERE pattern_fts MATCH ?
-         ORDER BY score
-         LIMIT ?";
-
-    if let Ok(mut stmt) = conn.prepare(pattern_sql) {
-        let pattern_results =
-            stmt.query_map(rusqlite::params![&fts_query, options.limit as i64], |row| {
-                let id: String = row.get(0)?;
-                let title: String = row.get(1)?;
-                let snippet: String = row.get(2)?;
-                let file_path: String = row.get(3)?;
-                let bm25_score: f64 = row.get(4)?;
-
-                // Determine layer from file path
-                let layer = if file_path.contains("layer/core") {
-                    "core"
-                } else {
-                    "surface"
-                };
-
-                Ok(ScryResult {
-                    id: 0,
-                    content: format!("{}: {}", title, snippet),
-                    // BM25 is negative, convert to positive (don't cap - preserve ranking)
-                    score: -bm25_score as f32,
-                    event_type: format!("pattern.{}", layer),
-                    source_id: id,
-                    timestamp: String::new(),
-                })
-            })?;
-        collected.extend(pattern_results.filter_map(|r| r.ok()));
-    }
-
-    // Sort by score (higher is better) and limit
-    collected.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    collected.truncate(options.limit);
-
-    // Filter by min_score
-    collected.retain(|r| r.score >= options.min_score);
-
-    Ok(collected)
-}
-
 /// Detect the best available dimension for vector search
-/// Priority: semantic > dependency > temporal
-/// Reference repos typically only have dependency
+/// Priority: knowledge > semantic > dependency > temporal
+/// Matches SemanticOracle's preference (knowledge domain first, legacy semantic fallback)
 pub fn detect_best_dimension(embeddings_dir: &str) -> &'static str {
-    // Check for available indices in priority order
+    // Knowledge domain (Phase 2+) — beliefs + patterns + commits
+    let knowledge_path = format!("{}/knowledge.usearch", embeddings_dir);
+    if Path::new(&knowledge_path).exists() {
+        return "knowledge";
+    }
+
+    // Legacy semantic index (pre-split, session-polluted)
     let semantic_path = format!("{}/semantic.usearch", embeddings_dir);
     if Path::new(&semantic_path).exists() {
         return "semantic";
     }
 
+    // Reference repos typically only have dependency
     let dependency_path = format!("{}/dependency.usearch", embeddings_dir);
     if Path::new(&dependency_path).exists() {
         return "dependency";
@@ -532,6 +361,6 @@ pub fn detect_best_dimension(embeddings_dir: &str) -> &'static str {
         return "temporal";
     }
 
-    // Default to semantic (will trigger fallback to FTS5)
-    "semantic"
+    // Default to knowledge (will trigger error with guidance)
+    "knowledge"
 }

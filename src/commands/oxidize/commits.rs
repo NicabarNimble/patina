@@ -14,16 +14,17 @@ use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::collections::HashSet;
 
-/// Generate training pairs from commits when no sessions exist
+/// Generate training pairs from commits
 ///
 /// Filters to conventional commits with meaningful messages, then creates
 /// triplets using functions from touched vs untouched files.
-pub fn generate_commit_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<TrainingPair>> {
+/// Phase 5c: uses ALL viable commits instead of sampling a subset.
+pub fn generate_commit_pairs(db_path: &str) -> Result<Vec<TrainingPair>> {
     let conn = Connection::open(db_path)
         .with_context(|| format!("Failed to open database: {}", db_path))?;
 
-    // Get filtered commits (conventional format, meaningful length)
-    let commits = query_filtered_commits(&conn, num_pairs * 2)?;
+    // Get all filtered commits (conventional format, meaningful length)
+    let commits = query_filtered_commits(&conn)?;
 
     if commits.is_empty() {
         anyhow::bail!(
@@ -54,17 +55,14 @@ pub fn generate_commit_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<Trai
             .push(desc.clone());
     }
 
-    let all_files: Vec<&String> = file_to_functions.keys().collect();
+    let mut all_files: Vec<&String> = file_to_functions.keys().collect();
+    all_files.sort();
 
-    // Generate pairs
+    // Generate pairs from ALL viable commits (Phase 5c: no sampling limit)
     let mut pairs = Vec::new();
-    let mut rng = fastrand::Rng::new();
+    let mut rng = fastrand::Rng::with_seed(42);
 
     for (sha, message, moment_type) in &commits {
-        if pairs.len() >= num_pairs {
-            break;
-        }
-
         // Get files touched by this commit (normalized)
         let touched_files: Vec<String> = query_commit_files(&conn, sha)?
             .into_iter()
@@ -123,12 +121,9 @@ pub fn generate_commit_pairs(db_path: &str, num_pairs: usize) -> Result<Vec<Trai
     Ok(pairs)
 }
 
-/// Query filtered commits (conventional format, meaningful length)
-fn query_filtered_commits(
-    conn: &Connection,
-    limit: usize,
-) -> Result<Vec<(String, String, Option<String>)>> {
-    // Filter: conventional commits with meaningful messages
+/// Query all filtered commits (conventional format, meaningful length)
+/// Phase 5c: no LIMIT — returns all viable commits for full pair generation.
+fn query_filtered_commits(conn: &Connection) -> Result<Vec<(String, String, Option<String>)>> {
     let mut stmt = conn.prepare(
         r#"
         SELECT c.sha, c.message, m.moment_type
@@ -146,12 +141,11 @@ fn query_filtered_commits(
         AND c.message NOT LIKE '%wip%'
         AND c.message NOT LIKE 'Merge %'
         ORDER BY c.timestamp DESC
-        LIMIT ?
         "#,
     )?;
 
     let mut commits = Vec::new();
-    let mut rows = stmt.query([limit])?;
+    let mut rows = stmt.query([])?;
 
     while let Some(row) = rows.next()? {
         let sha: String = row.get(0)?;
@@ -165,7 +159,8 @@ fn query_filtered_commits(
 
 /// Query files touched by a commit
 fn query_commit_files(conn: &Connection, sha: &str) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT file_path FROM commit_files WHERE sha = ?")?;
+    let mut stmt =
+        conn.prepare("SELECT file_path FROM commit_files WHERE sha = ? ORDER BY file_path")?;
     let mut files = Vec::new();
     let mut rows = stmt.query([sha])?;
 
@@ -182,7 +177,8 @@ fn query_all_functions(conn: &Connection) -> Result<Vec<(String, String)>> {
     let mut stmt = conn.prepare(
         "SELECT file, name, parameters, return_type, is_public, is_async
          FROM function_facts
-         WHERE name != ''",
+         WHERE name != ''
+         ORDER BY file, name",
     )?;
 
     let mut functions = Vec::new();
@@ -237,22 +233,6 @@ fn moment_to_weight(moment_type: Option<&str>) -> f32 {
     }
 }
 
-/// Check if database has session events (user intent signal)
-pub fn has_sessions(conn: &Connection) -> Result<bool> {
-    let count: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM eventlog WHERE event_type LIKE 'session.%'",
-        [],
-        |row| row.get(0),
-    )?;
-    Ok(count > 0)
-}
-
-/// Check if database has commits (code cohesion signal)
-pub fn has_commits(conn: &Connection) -> Result<bool> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM commits", [], |row| row.get(0))?;
-    Ok(count > 0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,14 +276,6 @@ mod tests {
                 PRIMARY KEY (file, name)
             );
 
-            CREATE TABLE eventlog (
-                seq INTEGER PRIMARY KEY,
-                event_type TEXT,
-                timestamp TEXT,
-                source_id TEXT,
-                data JSON
-            );
-
             -- Insert test data
             INSERT INTO commits VALUES
                 ('abc123', 'feat: add user authentication flow', 'dev', 'dev@test.com', '2025-01-01', 'main'),
@@ -327,7 +299,7 @@ mod tests {
     #[test]
     fn test_generate_commit_pairs() {
         let temp_db = create_test_db();
-        let pairs = generate_commit_pairs(temp_db.path().to_str().unwrap(), 2).unwrap();
+        let pairs = generate_commit_pairs(temp_db.path().to_str().unwrap()).unwrap();
 
         assert!(!pairs.is_empty());
 
@@ -341,31 +313,5 @@ mod tests {
             assert!(pair.positive.contains("Function"));
             assert!(pair.negative.contains("Function"));
         }
-    }
-
-    #[test]
-    fn test_has_sessions() {
-        let temp_db = create_test_db();
-        let conn = Connection::open(temp_db.path()).unwrap();
-
-        // No sessions initially
-        assert!(!has_sessions(&conn).unwrap());
-
-        // Add a session event
-        conn.execute(
-            "INSERT INTO eventlog (event_type, timestamp, source_id, data) VALUES ('session.start', '2025-01-01', 'test', '{}')",
-            [],
-        )
-        .unwrap();
-
-        assert!(has_sessions(&conn).unwrap());
-    }
-
-    #[test]
-    fn test_has_commits() {
-        let temp_db = create_test_db();
-        let conn = Connection::open(temp_db.path()).unwrap();
-
-        assert!(has_commits(&conn).unwrap());
     }
 }

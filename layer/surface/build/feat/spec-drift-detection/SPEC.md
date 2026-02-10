@@ -1,15 +1,14 @@
 ---
 type: feat
 id: spec-drift-detection
-status: building
+status: design
 created: 2026-02-02
 updated: 2026-02-02
 sessions:
   origin: 20260202-104403
 related:
-  - layer/surface/build/feat/epistemic-layer/SPEC.md
+  - layer/surface/build/feat/doctor-dev/SPEC.md
   - layer/surface/build/feat/v1-release/SPEC.md
-  - layer/surface/build/refactor/spec-system/SPEC.md
 beliefs:
   - stale-context-is-hostile-context
 ---

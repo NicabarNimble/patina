@@ -180,7 +180,7 @@ pub fn create_feedback_views(conn: &Connection) -> Result<()> {
           AND json_extract(data, '$.session_id') IS NOT NULL;
 
         -- View: Files committed during each session (from latest scrape only)
-        -- Uses window function to get only the most recent event per commit SHA
+        -- Uses window function to deduplicate by (sha, file_path) keeping latest scrape
         CREATE VIEW IF NOT EXISTS feedback_commit_files AS
         SELECT
             session_id,
@@ -195,7 +195,10 @@ pub fn create_feedback_views(conn: &Connection) -> Result<()> {
                 json_extract(f.value, '$.path') as file_path,
                 json_extract(f.value, '$.change_type') as change_type,
                 timestamp,
-                ROW_NUMBER() OVER (PARTITION BY json_extract(data, '$.sha') ORDER BY seq DESC) as rn
+                ROW_NUMBER() OVER (
+                    PARTITION BY json_extract(data, '$.sha'), json_extract(f.value, '$.path')
+                    ORDER BY seq DESC
+                ) as rn
             FROM eventlog, json_each(json_extract(data, '$.files')) as f
             WHERE event_type = 'git.commit'
               AND json_extract(data, '$.session_id') IS NOT NULL
@@ -203,7 +206,9 @@ pub fn create_feedback_views(conn: &Connection) -> Result<()> {
         WHERE rn = 1;
 
         -- View: Query results matched to committed files
-        -- A "hit" is when a retrieved doc_id matches a file that was committed
+        -- A "hit" is when a retrieved doc_id matches a file that was committed.
+        -- doc_id may contain '::' suffixes (e.g. "src/main.rs::fn:main" from
+        -- SemanticOracle) — strip those before matching. Also strip leading "./".
         CREATE VIEW IF NOT EXISTS feedback_query_hits AS
         SELECT
             q.session_id,
@@ -217,7 +222,26 @@ pub fn create_feedback_views(conn: &Connection) -> Result<()> {
                 WHEN EXISTS (
                     SELECT 1 FROM feedback_commit_files cf
                     WHERE cf.session_id = q.session_id
-                      AND cf.file_path LIKE '%' || json_extract(r.value, '$.doc_id') || '%'
+                      AND (
+                        -- Normalize: strip '::...' suffix and './' prefix from doc_id,
+                        -- then check if the file path matches
+                        cf.file_path = REPLACE(
+                            CASE
+                                WHEN INSTR(json_extract(r.value, '$.doc_id'), '::') > 0
+                                THEN SUBSTR(json_extract(r.value, '$.doc_id'), 1,
+                                     INSTR(json_extract(r.value, '$.doc_id'), '::') - 1)
+                                ELSE json_extract(r.value, '$.doc_id')
+                            END,
+                            './', '')
+                        OR cf.file_path LIKE '%/' || REPLACE(
+                            CASE
+                                WHEN INSTR(json_extract(r.value, '$.doc_id'), '::') > 0
+                                THEN SUBSTR(json_extract(r.value, '$.doc_id'), 1,
+                                     INSTR(json_extract(r.value, '$.doc_id'), '::') - 1)
+                                ELSE json_extract(r.value, '$.doc_id')
+                            END,
+                            './', '')
+                      )
                 ) THEN 1
                 ELSE 0
             END as is_hit

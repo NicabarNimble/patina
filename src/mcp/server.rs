@@ -145,7 +145,7 @@ fn handle_list_tools(req: &Request) -> Response {
             "tools": [
                 {
                     "name": "scry",
-                    "description": "Search codebase knowledge - USE THIS FIRST for any question about the code. Fast hybrid search over indexed symbols, functions, types, git history, and session learnings. Prefer this over manual file exploration. TIP: For temporal queries ('when did we add X') or when user terms differ from code terms, use expanded_terms to add code-specific synonyms (e.g., 'commits_fts', 'LexicalOracle' for 'commit search').",
+                    "description": "Search codebase knowledge - semantic vector search over indexed commits, beliefs, and patterns. Finds conceptually related results even when exact keywords differ. For factual/keyword search (FTS5, temporal co-change, belief grounding), use assay instead. Use expanded_terms to bridge vocabulary gaps between your query and code terminology.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -224,7 +224,7 @@ fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "context",
-                    "description": "Get project patterns and conventions - USE THIS to understand design rules before making architectural changes. Returns core patterns (eternal principles) and surface patterns (active architecture). When a topic is provided, includes project beliefs ranked by semantic relevance.",
+                    "description": "Get project patterns and conventions - USE THIS to understand design rules before making architectural changes. Returns core patterns (eternal principles) and surface patterns (active architecture). When a topic is provided, includes project beliefs ranked by semantic relevance, plus factual matches (assay keyword search) and semantic matches (scry vector search) fused with facts-first priority.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
@@ -246,15 +246,19 @@ fn handle_list_tools(req: &Request) -> Response {
                 },
                 {
                     "name": "assay",
-                    "description": "Query codebase structure - modules, imports, functions, call graph. Use for exact structural questions like 'list all modules', 'what imports X', 'show largest files'. For semantic similarity, use scry instead. Use 'derive' to compute/view structural signals (usage, activity, centrality).",
+                    "description": "Query codebase structure - modules, imports, functions, call graph. Use for exact structural questions like 'list all modules', 'what imports X', 'show largest files'. For semantic similarity, use scry instead. Use 'derive' to compute/view structural signals (usage, activity, centrality). Use 'search' for ranked FTS5 text search, 'cochange' for temporal co-change analysis, 'belief' for belief grounding.",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "query_type": {
                                 "type": "string",
-                                "enum": ["inventory", "imports", "importers", "functions", "callers", "callees", "derive"],
+                                "enum": ["inventory", "imports", "importers", "functions", "callers", "callees", "derive", "search", "cochange", "belief"],
                                 "default": "inventory",
-                                "description": "Type of structural query"
+                                "description": "Type of structural query. Use 'search' for ranked FTS5 text search, 'cochange' for temporal co-change analysis, 'belief' for belief grounding."
+                            },
+                            "query": {
+                                "type": "string",
+                                "description": "Search query text (used with 'search' query_type for ranked FTS5 search across code, commits, and patterns)"
                             },
                             "pattern": {
                                 "type": "string",
@@ -603,6 +607,8 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
 
+            let query = args.get("query").and_then(|v| v.as_str()).map(String::from);
+
             let query_type = match query_type_str {
                 "imports" => QueryType::Imports,
                 "importers" => QueryType::Importers,
@@ -610,6 +616,39 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                 "callers" => QueryType::Callers,
                 "callees" => QueryType::Callees,
                 "derive" => QueryType::Derive,
+                "search" => {
+                    let q = query.or_else(|| pattern.clone()).unwrap_or_default();
+                    if q.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "search query_type requires 'query' or 'pattern' parameter",
+                        );
+                    }
+                    QueryType::Search { query: q }
+                }
+                "cochange" => {
+                    let file = pattern.clone().unwrap_or_default();
+                    if file.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "cochange query_type requires 'pattern' parameter (file path)",
+                        );
+                    }
+                    QueryType::Cochange { file }
+                }
+                "belief" => {
+                    let id = pattern.clone().unwrap_or_default();
+                    if id.is_empty() {
+                        return Response::error(
+                            req.id.clone(),
+                            -32602,
+                            "belief query_type requires 'pattern' parameter (belief ID)",
+                        );
+                    }
+                    QueryType::Belief { id }
+                }
                 _ => QueryType::Inventory,
             };
 
@@ -636,6 +675,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                 json: true, // Always use JSON for MCP
                 repo,
                 all_repos,
+                ..Default::default()
             };
 
             match execute_assay(&options) {
@@ -962,6 +1002,27 @@ fn execute_assay(options: &AssayOptions) -> Result<String> {
             Ok(serde_json::to_string_pretty(&serde_json::json!({
                 "error": "derive-moments not yet supported in MCP, use 'patina assay derive-moments' CLI"
             }))?)
+        }
+        QueryType::Search { ref query } => {
+            let search_opts = crate::commands::assay::internal::search::SearchOptions {
+                limit: options.limit,
+                include_issues: options.include_issues,
+                repo: options.repo.clone(),
+            };
+            crate::commands::assay::internal::search::assay_search_json(query, &search_opts)
+        }
+        QueryType::Cochange { ref file } => {
+            crate::commands::assay::internal::temporal::execute_cochange_json(
+                file,
+                options.limit,
+                &db_path,
+            )
+        }
+        QueryType::Belief { ref id } => {
+            crate::commands::assay::internal::belief::execute_belief_grounding_json(
+                id,
+                options.limit,
+            )
         }
     }
 }

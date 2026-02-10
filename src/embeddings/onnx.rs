@@ -83,6 +83,12 @@ impl OnnxEmbedder {
 
         let session = Session::builder()
             .context("Failed to create ONNX session builder")?
+            .with_intra_threads(1)
+            .context("Failed to set intra-op threads")?
+            .with_inter_threads(1)
+            .context("Failed to set inter-op threads")?
+            .with_deterministic_compute(true)
+            .context("Failed to enable deterministic compute")?
             .commit_from_file(model_path)
             .context("Failed to load ONNX model")?;
 

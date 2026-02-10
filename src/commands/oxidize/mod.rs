@@ -2,6 +2,7 @@
 //!
 //! Phase 2: Training + safetensors export + USearch index building
 
+pub mod beliefs;
 pub mod commits;
 pub mod dependency;
 pub mod pairs;
@@ -10,9 +11,10 @@ pub mod temporal;
 pub mod trainer;
 
 use anyhow::{Context, Result};
-use commits::{generate_commit_pairs, has_commits, has_sessions};
+use beliefs::generate_belief_pairs;
+use commits::generate_commit_pairs;
 use dependency::generate_dependency_pairs;
-use pairs::{generate_same_session_pairs, TrainingPair};
+use pairs::TrainingPair;
 use recipe::{OxidizeRecipe, ProjectionConfig};
 use temporal::generate_temporal_pairs;
 use trainer::Projection;
@@ -29,14 +31,23 @@ pub fn oxidize() -> Result<()> {
     println!("   Projections: {}", recipe.projections.len());
 
     for (name, config) in &recipe.projections {
-        println!(
-            "   - {}: {}→{}→{} ({} epochs)",
-            name,
-            config.input_dim(&recipe)?,
-            config.hidden_dim(),
-            config.output_dim(),
-            config.epochs
-        );
+        let is_raw = matches!(name.as_str(), "knowledge" | "semantic" | "sessions");
+        if is_raw {
+            println!(
+                "   - {}: {}d raw E5 (no projection)",
+                name,
+                config.input_dim(&recipe)?,
+            );
+        } else {
+            println!(
+                "   - {}: {}→{}→{} ({} epochs)",
+                name,
+                config.input_dim(&recipe)?,
+                config.hidden_dim(),
+                config.output_dim(),
+                config.epochs
+            );
+        }
     }
 
     let db_path = ".patina/local/data/patina.db";
@@ -47,36 +58,60 @@ pub fn oxidize() -> Result<()> {
     use patina::embeddings::create_embedder;
     let mut embedder = create_embedder()?;
 
-    // Train each projection
-    for (name, config) in &recipe.projections {
+    // Build each domain (sorted for deterministic order)
+    let mut sorted_projections: Vec<_> = recipe.projections.iter().collect();
+    sorted_projections.sort_by(|a, b| a.0.cmp(b.0));
+    for (name, config) in sorted_projections {
         println!("\n{}", "=".repeat(60));
-        println!("📊 Training {} projection...", name);
-        println!("{}", "=".repeat(60));
 
-        let projection = train_projection(name, config, &recipe, db_path, &mut embedder)?;
+        // Phase 5d: knowledge/sessions use raw E5 embeddings (no projection).
+        // Raw E5 P@10=52.5% vs projected 9.2% — projection destroys E5's structure.
+        let is_raw_domain = matches!(name.as_str(), "knowledge" | "semantic" | "sessions");
 
-        // Save trained weights
-        println!("\n💾 Saving projection weights...");
-        let weights_path = format!("{}/{}.safetensors", output_dir, name);
-        projection.save_safetensors(std::path::Path::new(&weights_path))?;
-        println!("   Saved to: {}", weights_path);
+        if is_raw_domain {
+            println!("🔮 Building {} index (raw E5, no projection)...", name);
+            println!("{}", "=".repeat(60));
 
-        // Build USearch index
-        println!("\n🔍 Building USearch index...");
-        build_projection_index(
-            name,
-            db_path,
-            &mut embedder,
-            &projection,
-            config.output_dim(),
-            &output_dir,
-        )?;
+            // Delete stale projection weights if they exist
+            let weights_path = format!("{}/{}.safetensors", output_dir, name);
+            if std::path::Path::new(&weights_path).exists() {
+                std::fs::remove_file(&weights_path)?;
+                println!("   🗑️  Deleted stale projection: {}", weights_path);
+            }
 
-        println!("\n✅ {} projection complete!", name);
+            // Build USearch index with raw embeddings (768-dim)
+            let input_dim = config.input_dim(&recipe)?;
+            println!("\n🔍 Building USearch index ({}d raw E5)...", input_dim);
+            build_projection_index(name, db_path, &mut embedder, None, input_dim, &output_dir)?;
+        } else {
+            println!("📊 Training {} projection...", name);
+            println!("{}", "=".repeat(60));
+
+            let projection = train_projection(name, config, &recipe, db_path, &mut embedder)?;
+
+            // Save trained weights
+            println!("\n💾 Saving projection weights...");
+            let weights_path = format!("{}/{}.safetensors", output_dir, name);
+            projection.save_safetensors(std::path::Path::new(&weights_path))?;
+            println!("   Saved to: {}", weights_path);
+
+            // Build USearch index with projected embeddings
+            println!("\n🔍 Building USearch index...");
+            build_projection_index(
+                name,
+                db_path,
+                &mut embedder,
+                Some(&projection),
+                config.output_dim(),
+                &output_dir,
+            )?;
+        }
+
+        println!("\n✅ {} complete!", name);
     }
 
     println!("\n{}", "=".repeat(60));
-    println!("✅ All projections trained!");
+    println!("✅ All domains built!");
     println!("   Output: {}", output_dir);
 
     Ok(())
@@ -131,7 +166,7 @@ projections:
     epochs: 10
     batch_size: 32
 
-  semantic:
+  knowledge:
     layers: [768, 1024, 256]
     epochs: 10
     batch_size: 32
@@ -168,40 +203,46 @@ fn train_projection(
     db_path: &str,
     embedder: &mut Box<dyn patina::embeddings::EmbeddingEngine>,
 ) -> Result<Projection> {
-    let num_pairs = 100; // Start with 100 pairs for MVP
-
     // Generate pairs based on projection type
+    // Phase 5c: use ALL available pairs, not a random subset.
+    // Phase 5d: knowledge domain combines commit + belief co-reference pairs.
     let pairs: Vec<TrainingPair> = match name {
-        "semantic" => {
-            // Check which training signal is available
-            let conn = rusqlite::Connection::open(db_path)
-                .with_context(|| format!("Failed to open database: {}", db_path))?;
-
-            if has_sessions(&conn)? {
-                // Sessions capture user intent (what user thinks about together)
-                println!("   Strategy: session observations capture user intent");
-                drop(conn);
-                generate_same_session_pairs(db_path, num_pairs)?
-            } else if has_commits(&conn)? {
-                // Commits capture code cohesion (what changes together)
-                println!("   Strategy: commit messages capture code cohesion");
-                drop(conn);
-                generate_commit_pairs(db_path, num_pairs)?
-            } else {
-                anyhow::bail!("No training signal: neither sessions nor commits found")
+        "knowledge" | "semantic" => {
+            // Knowledge domain: commit pairs + belief-pattern co-reference pairs
+            // Phase 5d: belief pairs teach vocabulary gap bridging between
+            // conceptual queries and belief/pattern documents.
+            println!("   Strategy: commit pairs + belief-pattern co-references");
+            let mut all_pairs = generate_commit_pairs(db_path)?;
+            match generate_belief_pairs(db_path) {
+                Ok(belief_pairs) => {
+                    println!("   Adding {} belief co-reference pairs", belief_pairs.len());
+                    all_pairs.extend(belief_pairs);
+                }
+                Err(e) => {
+                    println!("   ⚠️  Belief pairs skipped: {}", e);
+                }
             }
+            // Sort for determinism (pairs from different sources)
+            all_pairs.sort_by(|a, b| a.anchor.cmp(&b.anchor));
+            all_pairs
+        }
+        "sessions" => {
+            // Session domain (Phase 5b): reuse commit-based training signal
+            // Session content is natural language, same embedding space works
+            println!("   Strategy: commit-based pairs (shared training signal)");
+            generate_commit_pairs(db_path)?
         }
         "temporal" => {
             println!("   Strategy: files that co-change are related");
-            generate_temporal_pairs(db_path, num_pairs)?
+            generate_temporal_pairs(db_path)?
         }
         "dependency" => {
             println!("   Strategy: functions that call each other are related");
-            generate_dependency_pairs(db_path, num_pairs)?
+            generate_dependency_pairs(db_path)?
         }
         _ => {
             anyhow::bail!(
-                "Unknown projection type: {}. Supported: semantic, temporal, dependency",
+                "Unknown projection type: {}. Supported: knowledge, sessions, semantic, temporal, dependency",
                 name
             );
         }
@@ -248,13 +289,17 @@ fn train_projection(
     Ok(projection)
 }
 
-/// Build USearch index from projected embeddings
+/// Build USearch index from embeddings (projected or raw)
+///
+/// When projection is Some, embeddings are projected through the MLP.
+/// When projection is None (knowledge/sessions domains), raw E5 embeddings
+/// are indexed directly — Phase 5d proved raw E5 outperforms projection.
 fn build_projection_index(
     projection_name: &str,
     db_path: &str,
     embedder: &mut Box<dyn patina::embeddings::EmbeddingEngine>,
-    projection: &Projection,
-    output_dim: usize,
+    projection: Option<&Projection>,
+    index_dim: usize,
     output_dir: &str,
 ) -> Result<()> {
     use rusqlite::Connection;
@@ -266,7 +311,8 @@ fn build_projection_index(
 
     // Get content to index based on projection type
     let events: Vec<(i64, String)> = match projection_name {
-        "semantic" => query_session_events(&conn)?,
+        "knowledge" | "semantic" => query_knowledge_corpus(&conn)?,
+        "sessions" => query_session_corpus(&conn)?,
         "temporal" => query_file_events(&conn)?,
         "dependency" => dependency::query_function_events(&conn)?,
         _ => {
@@ -284,7 +330,7 @@ fn build_projection_index(
 
     // Create USearch index
     let options = IndexOptions {
-        dimensions: output_dim,
+        dimensions: index_dim,
         metric: MetricKind::Cos,
         quantization: ScalarKind::F32,
         ..Default::default()
@@ -295,15 +341,23 @@ fn build_projection_index(
         .reserve(events.len())
         .context("Failed to reserve index capacity")?;
 
-    // Embed, project, and add to index
-    println!("   Embedding and projecting vectors...");
+    // Embed (and optionally project) and add to index
+    let mode = if projection.is_some() {
+        "projecting"
+    } else {
+        "raw"
+    };
+    println!("   Embedding vectors ({} mode)...", mode);
     for (id, content) in &events {
         let embedding = embedder
             .embed_passage(content)
             .context("Failed to generate embedding")?;
-        let projected = projection.forward(&embedding);
+        let vector = match projection {
+            Some(proj) => proj.forward(&embedding),
+            None => embedding,
+        };
         index
-            .add(*id as u64, &projected)
+            .add(*id as u64, &vector)
             .context("Failed to add vector to index")?;
     }
 
@@ -319,74 +373,30 @@ fn build_projection_index(
     Ok(())
 }
 
-/// Query session events for semantic index
-fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)>> {
+/// Query knowledge corpus for semantic index — beliefs + patterns + commits only
+///
+/// pub(crate) for use by eval raw E5 diagnostic (Phase 5d).
+///
+/// Phase 2 of the semantic-structural split: build a clean knowledge domain
+/// instead of the polluted 27K-item session-dominated index. Knowledge items
+/// are natural language content where semantic matching adds value over FTS5.
+///
+/// Phase 5a: Corpus optimization — enriched belief/pattern text, filtered commits.
+/// Root cause of 4/20 scry-vs-assay gap was commit dominance (92% of index).
+/// See [[semantic-structural-split]] Phase 5a for diagnostic evidence.
+pub(crate) fn query_knowledge_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)>> {
     let mut events = Vec::new();
 
-    // 1. Session events from eventlog
-    let mut stmt = conn.prepare(
-        "SELECT seq, json_extract(data, '$.content') as content
-         FROM eventlog
-         WHERE event_type IN ('session.decision', 'session.pattern', 'session.goal', 'session.work', 'session.context')
-           AND content IS NOT NULL
-           AND length(content) > 20
-         ORDER BY seq",
-    )?;
-
-    let mut rows = stmt.query([])?;
-    while let Some(row) = rows.next()? {
-        let seq: i64 = row.get(0)?;
-        let content: String = row.get(1)?;
-        events.push((seq, content));
-    }
-
-    let session_count = events.len();
-
-    // 2. Code facts from function_facts (use offset to avoid ID collision)
-    const CODE_ID_OFFSET: i64 = 1_000_000_000;
-    let mut stmt = conn.prepare(
-        "SELECT rowid, file, name, parameters, return_type, is_public, is_async
-         FROM function_facts
-         WHERE name != ''",
-    )?;
-
-    let mut rows = stmt.query([])?;
-    while let Some(row) = rows.next()? {
-        let rowid: i64 = row.get(0)?;
-        let file: String = row.get(1)?;
-        let name: String = row.get(2)?;
-        let params: Option<String> = row.get(3)?;
-        let return_type: Option<String> = row.get(4)?;
-        let is_public: bool = row.get(5)?;
-        let is_async: bool = row.get(6)?;
-
-        // Create embeddable text for the function
-        let mut desc = format!("Function `{}` in file `{}`", name, file);
-        if is_public {
-            desc.push_str(", public");
-        }
-        if is_async {
-            desc.push_str(", async");
-        }
-        if let Some(p) = params {
-            if !p.is_empty() {
-                desc.push_str(&format!(", parameters: {}", p));
-            }
-        }
-        if let Some(rt) = return_type {
-            if !rt.is_empty() {
-                desc.push_str(&format!(", returns: {}", rt));
-            }
-        }
-
-        events.push((CODE_ID_OFFSET + rowid, desc));
-    }
-
-    let code_count = events.len() - session_count;
-
-    // 3. Layer patterns from patterns + pattern_fts tables (use offset to avoid ID collision)
-    // Note: patterns table may not exist in ref repos - skip gracefully
+    // ID offsets match the enrichment module (enrich_results in scry/internal/enrichment.rs)
     const PATTERN_ID_OFFSET: i64 = 2_000_000_000;
+    const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
+    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+
+    // E5-base-v2 has a 512 token window (~2000 chars). Use up to 1500 chars
+    // of content for beliefs/patterns to maximize semantic signal per item.
+    const MAX_CONTENT_CHARS: usize = 1500;
+
+    // 1. Layer patterns from patterns + pattern_fts tables (enriched text)
     let has_patterns: bool = conn
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='patterns'",
@@ -413,8 +423,6 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
             let tags: Option<String> = row.get(5)?;
             let file_path: String = row.get(6)?;
 
-            // Create embeddable text for the pattern
-            // Include title, purpose, tags, and content for rich semantic matching
             let mut desc = format!("Pattern: {} - {}", title, id);
             if let Some(p) = purpose {
                 desc.push_str(&format!(". Purpose: {}", p));
@@ -424,9 +432,9 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
                     desc.push_str(&format!(". Tags: {}", t));
                 }
             }
-            // Include first ~500 chars of content for context
+            // Phase 5a: use up to 1500 chars of content (was 500)
             if let Some(c) = content {
-                let content_preview: String = c.chars().take(500).collect();
+                let content_preview: String = c.chars().take(MAX_CONTENT_CHARS).collect();
                 desc.push_str(&format!(". Content: {}", content_preview));
             }
             desc.push_str(&format!(". File: {}", file_path));
@@ -435,15 +443,46 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
         }
     }
 
-    let pattern_count = events.len() - session_count - code_count;
+    let pattern_count = events.len();
 
-    // 4. Git commits (the "why" behind code changes)
-    const COMMIT_ID_OFFSET: i64 = 3_000_000_000;
-    let mut stmt = conn.prepare(
+    // 2. Git commits — filtered to significant subset (Phase 5a)
+    //
+    // Original: all 1,824 commits with msg>30 chars (92% of index).
+    // Now: only commits with rich messages (>75 chars), belief references,
+    // release tags, or structural significance (>5 files changed).
+    // This reduces commits to ~400 and shifts ratio from 92%/4%/4% to ~70%/15%/15%.
+    let has_commit_files: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='commit_files'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
+    let commit_query = if has_commit_files {
+        "SELECT c.rowid, c.sha, c.message FROM commits c
+         WHERE c.message IS NOT NULL AND length(c.message) > 30
+         AND (
+           length(c.message) > 75
+           OR c.message LIKE '%belief%'
+           OR c.message LIKE 'release%'
+           OR (SELECT COUNT(*) FROM commit_files cf WHERE cf.sha = c.sha) > 5
+         )
+         ORDER BY c.rowid"
+    } else {
+        // Fallback if commit_files table doesn't exist: filter by message only
         "SELECT rowid, sha, message FROM commits
          WHERE message IS NOT NULL AND length(message) > 30
-         ORDER BY rowid",
-    )?;
+         AND (
+           length(message) > 75
+           OR message LIKE '%belief%'
+           OR message LIKE 'release%'
+         )
+         ORDER BY rowid"
+    };
+
+    let mut stmt = conn.prepare(commit_query)?;
 
     let mut rows = stmt.query([])?;
     while let Some(row) = rows.next()? {
@@ -451,15 +490,17 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
         let sha: String = row.get(1)?;
         let message: String = row.get(2)?;
 
-        // Use the full commit message for semantic search
         let desc = format!("Commit {}: {}", &sha[..7.min(sha.len())], message);
         events.push((COMMIT_ID_OFFSET + rowid, desc));
     }
 
-    let commit_count = events.len() - session_count - code_count - pattern_count;
+    let commit_count = events.len() - pattern_count;
 
-    // 5. Epistemic beliefs (project decisions with confidence)
-    const BELIEF_ID_OFFSET: i64 = 4_000_000_000;
+    // 3. Epistemic beliefs — enriched with content from belief_fts (Phase 5a)
+    //
+    // Original: ~100 chars per belief (id + statement + persona + facets).
+    // Now: includes body content from belief_fts (evidence, references, context)
+    // for richer embeddings that bridge wider vocabulary gaps.
     let has_beliefs: bool = conn
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='beliefs'",
@@ -469,12 +510,30 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
         .map(|c| c > 0)
         .unwrap_or(false);
 
+    let has_belief_fts: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='belief_fts'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map(|c| c > 0)
+        .unwrap_or(false);
+
     if has_beliefs {
-        let mut stmt = conn.prepare(
-            "SELECT rowid, id, statement, persona, facets, confidence, entrenchment
+        let belief_query = if has_belief_fts {
+            "SELECT b.rowid, b.id, b.statement, b.persona, b.facets,
+                    b.confidence, b.entrenchment, bf.content
+             FROM beliefs b
+             LEFT JOIN belief_fts bf ON b.id = bf.id
+             WHERE b.status = 'active'"
+        } else {
+            "SELECT rowid, id, statement, persona, facets,
+                    confidence, entrenchment, NULL as content
              FROM beliefs
-             WHERE status = 'active'",
-        )?;
+             WHERE status = 'active'"
+        };
+
+        let mut stmt = conn.prepare(belief_query)?;
 
         let mut rows = stmt.query([])?;
         while let Some(row) = rows.next()? {
@@ -485,12 +544,11 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
             let facets: Option<String> = row.get(4)?;
             let confidence: f64 = row.get(5)?;
             let entrenchment: String = row.get(6)?;
+            let fts_content: Option<String> = row.get(7)?;
 
-            // Create embeddable text for the belief
-            // Rich context: statement, persona, facets, confidence for semantic matching
             let mut desc = format!("Belief: {} - {}", id, statement);
             desc.push_str(&format!(". Persona: {}", persona));
-            if let Some(f) = facets {
+            if let Some(f) = &facets {
                 if !f.is_empty() {
                     desc.push_str(&format!(". Facets: {}", f));
                 }
@@ -500,53 +558,98 @@ fn query_session_events(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
                 confidence, entrenchment
             ));
 
+            // Phase 5a: append body content from belief_fts for richer embeddings
+            if let Some(content) = fts_content {
+                // Strip YAML frontmatter (everything before first blank line after ---)
+                let body = strip_frontmatter(&content);
+                if !body.is_empty() {
+                    let remaining = MAX_CONTENT_CHARS.saturating_sub(desc.len());
+                    if remaining > 50 {
+                        let preview: String = body.chars().take(remaining).collect();
+                        desc.push_str(&format!(". {}", preview));
+                    }
+                }
+            }
+
             events.push((BELIEF_ID_OFFSET + rowid, desc));
         }
     }
 
-    let belief_count = events.len() - session_count - code_count - pattern_count - commit_count;
-
-    // 6. Forge events (issues + PRs) — embed title+body for semantic search
-    // Query eventlog directly (forge_issues/forge_prs views have broken event_seq)
-    const FORGE_ID_OFFSET: i64 = 5_000_000_000;
-    {
-        let mut stmt = conn.prepare(
-            "SELECT seq, event_type, source_id,
-                    json_extract(data, '$.title') as title,
-                    json_extract(data, '$.body') as body
-             FROM eventlog
-             WHERE event_type IN ('forge.issue', 'forge.pr')
-               AND title IS NOT NULL",
-        )?;
-
-        let mut rows = stmt.query([])?;
-        while let Some(row) = rows.next()? {
-            let seq: i64 = row.get(0)?;
-            let event_type: String = row.get(1)?;
-            let number: String = row.get(2)?;
-            let title: String = row.get(3)?;
-            let body: Option<String> = row.get(4)?;
-
-            let kind = if event_type == "forge.pr" {
-                "PR"
-            } else {
-                "Issue"
-            };
-            let desc = match body {
-                Some(b) if !b.is_empty() => format!("{} #{}: {}\n{}", kind, number, title, b),
-                _ => format!("{} #{}: {}", kind, number, title),
-            };
-
-            events.push((FORGE_ID_OFFSET + seq, desc));
-        }
-    }
-
-    let forge_count =
-        events.len() - session_count - code_count - pattern_count - commit_count - belief_count;
+    let belief_count = events.len() - pattern_count - commit_count;
 
     println!(
-        "   Indexed {} session events + {} code facts + {} patterns + {} commits + {} beliefs + {} forge",
-        session_count, code_count, pattern_count, commit_count, belief_count, forge_count
+        "   Knowledge corpus: {} patterns + {} commits + {} beliefs = {} items",
+        pattern_count,
+        commit_count,
+        belief_count,
+        events.len()
+    );
+
+    Ok(events)
+}
+
+/// Strip YAML frontmatter from markdown content
+fn strip_frontmatter(content: &str) -> &str {
+    if !content.starts_with("---") {
+        return content;
+    }
+    // Find the closing --- after the opening one
+    if let Some(end) = content[3..].find("\n---") {
+        let after_frontmatter = &content[3 + end + 4..];
+        after_frontmatter.trim_start()
+    } else {
+        content
+    }
+}
+
+/// Query session corpus for session-semantic index (Phase 5b)
+///
+/// Extracts unique session events (decisions, patterns, work, context) from the
+/// eventlog. Deduplicates by (source_id, content) since each scrape re-inserts.
+/// Uses eventlog seq as ID key (matches enrichment module's eventlog lookup).
+///
+/// Content filtering: only events with >50 chars, only high-value session types.
+fn query_session_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)>> {
+    // Session events use their raw eventlog seq as the index key.
+    // The enrichment module's eventlog branch (key < CODE_ID_OFFSET) handles these.
+    let mut stmt = conn.prepare(
+        "SELECT MIN(seq) as seq, source_id, event_type,
+                json_extract(data, '$.content') as content
+         FROM eventlog
+         WHERE event_type IN ('session.decision', 'session.pattern',
+                              'session.work', 'session.context')
+         AND length(json_extract(data, '$.content')) > 50
+         GROUP BY source_id, event_type, json_extract(data, '$.content')
+         ORDER BY seq",
+    )?;
+
+    let mut events = Vec::new();
+    let mut rows = stmt.query([])?;
+    let mut type_counts = std::collections::HashMap::new();
+
+    while let Some(row) = rows.next()? {
+        let seq: i64 = row.get(0)?;
+        let source_id: String = row.get(1)?;
+        let event_type: String = row.get(2)?;
+        let content: String = row.get(3)?;
+
+        // Build descriptive text for embedding
+        let type_label = event_type.strip_prefix("session.").unwrap_or(&event_type);
+        let desc = format!("Session {} ({}): {}", source_id, type_label, content);
+
+        events.push((seq, desc));
+        *type_counts.entry(type_label.to_string()).or_insert(0) += 1;
+    }
+
+    let type_summary: Vec<String> = type_counts
+        .iter()
+        .map(|(k, v)| format!("{} {}", v, k))
+        .collect();
+
+    println!(
+        "   Session corpus: {} items ({})",
+        events.len(),
+        type_summary.join(" + ")
     );
 
     Ok(events)
