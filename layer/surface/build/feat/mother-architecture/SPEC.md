@@ -236,6 +236,142 @@ children with more complex needs (repos with toys, beliefs with federation).
 6. [ ] Mother can spawn and monitor a toy (shell command)
 7. [ ] `patina mother status` shows all children and their health
 
+## Open Design Questions (Session 20260210-061323)
+
+These emerged during brainstorming and need resolution before implementation.
+
+### 1. Three Levels: Project, User, Machine
+
+The entry point into patina is always from within a project. Projects are
+sovereign — they own their `layer/`, their adapter choice, their sessions,
+their beliefs. Mother doesn't touch project state.
+
+Mother lives at the user + machine level. But user and machine are different:
+
+```
+Project   = this codebase, right here, right now
+            layer/, adapter choice, sessions, project beliefs
+            Sovereign. Mother doesn't touch this.
+
+User      = me, across all machines (user = persona, interchangeable)
+            My beliefs, my persona knowledge, my preferences, my repo list
+            Portable. Should survive a machine wipe.
+
+Machine   = this Mac, right here
+            Downloaded model files, cloned repos, daemon PID, secrets cache
+            Rebuilt from user data on a new machine. Not portable.
+```
+
+What lives where today at `~/.patina/`:
+
+```
+User-portable (small, sync-able):
+  layer/surface/beliefs/    ← user/persona beliefs
+  personas/default/events/  ← persona event log (source of truth)
+  personas/default/persona.db ← persona SQLite
+  registry.yaml             ← which repos I track (names + URLs)
+  models.lock               ← which models I've chosen (provenance)
+  mother/graph.db           ← how my projects relate
+  adapters/                 ← my adapter preferences/templates
+
+Machine-local (large, rebuildable from user data):
+  cache/models/             ← ONNX files (re-download from models.lock)
+  cache/repos/              ← 20 repo clones, 3.9GB (re-clone from registry.yaml)
+  cache/personas/           ← materialized index (re-materialize from events)
+  run/                      ← daemon PID, socket (ephemeral)
+```
+
+**Open question:** Should the spec formally separate user-portable from
+machine-local? This would enable carrying user data to a new machine and
+rebuilding. All machine-local state is derived from user-portable state.
+
+### 2. Who Are the Children?
+
+The 4 existing child specs (environment, repos, beliefs, dashboard) were
+written before this architecture. They may not map cleanly to children.
+
+What actually exists as user-level state today (each could be a child):
+
+| CLI command | State it owns | Notes |
+|-------------|--------------|-------|
+| `patina model *` | `cache/models/`, `models.lock` | Model files + provenance |
+| `patina repo *` | `cache/repos/`, `registry.yaml` | Repo clones + registry |
+| `patina persona *` | `personas/`, `cache/personas/` | Events + materialized index |
+| `patina belief audit` | `layer/surface/beliefs/` | User-level beliefs |
+| `patina mother graph *` | `mother/graph.db` | Cross-project relationships |
+| `patina secrets *` | RAM (daemon) | Decrypted secret cache |
+| `patina adapter *` | `adapters/` | Templates per adapter |
+
+**Open question:** Do we need 7 children, or do some of these naturally merge?
+User/persona beliefs and persona knowledge seem related. Graph might be derived
+from what other children know rather than its own child. Adapters might be
+project-level, not Mother-level. Don't split or merge prematurely — let
+implementation reveal the natural boundaries.
+
+### 3. Belief Ownership and Access
+
+Beliefs are the shareable layer of knowledge. Clear ownership:
+- **Mother holds user/persona beliefs** — things the user believes across all projects
+- **Projects hold project beliefs** — sovereign, supersede Mother's when they conflict
+- **Projects can ask Mother** about her beliefs and choose to adopt them
+
+**Open question:** How does Mother relate to project beliefs?
+
+**Option A: Mother indexes all beliefs.** She has a `beliefs.db` with copies
+from all projects. Pro: fast cross-project search, detect patterns. Con: sync
+problem — when does she re-scrape? How does she know a project belief changed?
+
+**Option B: Mother only holds hers, queries projects on demand.** Someone asks
+"what do projects think about X?" — Mother reads each project's beliefs live.
+Pro: no sync, projects stay sovereign, single source of truth. Con: slow,
+projects must be accessible on disk.
+
+**Option C: Mother holds a catalog, not copies.** She knows WHERE beliefs are
+(which project, which file) but doesn't copy content. Like a librarian — knows
+what exists, points you to it. Pro: lightweight, no content sync. Con: still
+needs to detect when beliefs are added/removed.
+
+This is a critical design decision. It affects whether Mother is a cache, an
+index, or a query router for beliefs. The answer likely influences how other
+children work too (repos knowledge, graph edges from shared beliefs, etc.).
+
+### 4. The Embedding Backend Abstraction
+
+Session research uncovered a prior design for making model swaps painless:
+
+- `EmbeddingSpec` struct: `id`, `dim`, `normalize`, `query_prefix`, `passage_prefix`
+- `EmbeddingBackend` trait: `spec()`, `embed_query()`, `embed_passage()`
+- Every `.usearch` index tagged with `meta.json` containing `embedding_id` + `dim`
+- `scry` validates `meta.embedding_id == backend.spec.id` before querying
+
+Today's `EmbeddingEngine` trait already has most of these fields scattered
+across `OnnxEmbedder` struct members. The gap is grouping them into
+`EmbeddingSpec` and writing/reading `meta.json` alongside indexes.
+
+This matters at scale: `patina scry --all-repos` already merges scores across
+20 repos with zero validation that vectors came from the same embedding space.
+The `EmbeddingSpec` + `meta.json` is the safety net for that existing feature.
+
+The models child spec ([[mother-environment]]) should incorporate this. The
+current mother-environment spec partially covers it (AC 4, 5) but doesn't
+reference the full `EmbeddingBackend` abstraction or the `include_str!()`
+compile-time registry that needs to become runtime.
+
+### 5. Existing Child Specs Need Revision
+
+The 4 child specs were written before this architecture. Known issues:
+
+**mother-environment (models child):**
+- Claims "553MB in git tree" — actually gitignored, only registry.toml tracked
+- Registry is `include_str!()` compiled into binary — spec doesn't address this
+- AC 3 ("init ensures model") contradicts non-goal ("no auto-download")
+- AC 6 overlaps with mother-repos (both claim `oxidize_for_repo()`)
+- Daemon warm cache (Solution §5) has no acceptance criterion
+- Missing: `models.lock` integration, migration story for existing users
+
+**mother-repos, mother-beliefs, mother-dashboard:** Not yet reviewed against
+this architecture. Need same treatment — read spec, trace code, validate ACs.
+
 ## Non-Goals
 
 - WASM plugin runtime (that's [[patina-platform]], later)
