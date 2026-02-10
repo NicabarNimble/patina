@@ -482,10 +482,13 @@ fn run_grounding_report(conn: &Connection, rows: &[BeliefRow]) -> Result<()> {
         let mut session_results = Vec::new();
 
         for r in &enriched {
-            if r.source_id == row.id
-                && (r.event_type == "belief.surface" || r.event_type.starts_with("pattern."))
-            {
-                continue; // Skip self
+            // Skip self — belief appears as both belief.surface and pattern.surface
+            // Pattern source_id is now file_path, so check contains for pattern match
+            if r.event_type == "belief.surface" && r.source_id == row.id {
+                continue;
+            }
+            if r.event_type.starts_with("pattern.") && r.source_id.contains(&row.id) {
+                continue;
             }
 
             let key = r.id;

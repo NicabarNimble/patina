@@ -1,27 +1,25 @@
-//! Retrieval module - multi-oracle knowledge retrieval with RRF fusion
+//! Retrieval module - semantic vector search
+//!
+//! After the semantic-structural split, this module handles semantic queries only.
+//! Factual search (FTS5, temporal, belief, persona) lives in `commands::assay`.
 //!
 //! Public interface:
-//! - `QueryEngine` for parallel multi-oracle queries
-//! - `RetrievalConfig` for tuning RRF parameters
-//! - `FusedResult` for query results (includes per-oracle contributions)
-//! - `OracleContribution` for per-oracle rank and score details
-//! - `QueryIntent` for intent-aware retrieval
+//! - `QueryEngine` for semantic vector search with multi-repo federation
+//! - `RetrievalConfig` for tuning search parameters
+//! - `FusedResult` for query results (single-oracle, no fusion)
 //!
-//! Internal (not exported):
-//! - `Oracle` trait and implementations (semantic, lexical, persona)
-//! - RRF fusion algorithm
+//! Internal:
+//! - `Oracle` trait and SemanticOracle implementation
+//! - Fusion types kept for backward compatibility (MCP, eval, bench)
 
 mod engine;
 mod fusion;
-mod intent;
 mod oracle;
 mod oracles;
 pub mod snippet;
 
 pub use engine::{QueryEngine, QueryOptions, RetrievalConfig};
 pub use fusion::FusedResult;
-pub use oracle::Oracle;
-pub use oracles::BeliefOracle;
 pub use snippet::snippet;
 
 // Re-export types for MCP JSON serialization and annotations

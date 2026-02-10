@@ -161,8 +161,8 @@ enum Commands {
         dry_run: bool,
     },
 
-    /// Search codebase knowledge — fast hybrid search over symbols, functions,
-    /// types, git history, session learnings, and project beliefs
+    /// Search codebase knowledge — semantic vector search over beliefs,
+    /// patterns, and commit messages (knowledge domain)
     Scry {
         #[command(subcommand)]
         command: Option<ScryCommands>,
@@ -250,6 +250,26 @@ enum Commands {
         /// Show real-world precision from session feedback loop (Phase 3)
         #[arg(long)]
         feedback: bool,
+
+        /// Run natural-language query eval from curated test set
+        #[arg(long)]
+        nl: bool,
+
+        /// Independent assay eval (factual/FTS5 retrieval)
+        #[arg(long)]
+        assay: bool,
+
+        /// Independent scry eval (semantic/vector retrieval) + scry-vs-assay comparison
+        #[arg(long)]
+        scry: bool,
+
+        /// Raw E5 diagnostic: brute-force cosine without projection (Phase 5d)
+        #[arg(long)]
+        scry_raw: bool,
+
+        /// Combined eval (full pipeline: assay + scry together)
+        #[arg(long)]
+        combined: bool,
     },
 
     /// Benchmark retrieval quality with ground truth
@@ -503,6 +523,49 @@ enum AssayCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Ranked factual search across code, commits, and patterns (FTS5)
+    Search {
+        /// Search query text
+        query: String,
+
+        /// Maximum number of results
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Include GitHub issues in results
+        #[arg(long)]
+        include_issues: bool,
+    },
+    /// Co-change analysis — find files that frequently change together
+    Cochange {
+        /// File path to analyze
+        file: String,
+
+        /// Maximum number of results
+        #[arg(long, default_value = "20")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Belief grounding — find evidence and reached code for a belief
+    Belief {
+        /// Belief ID to ground
+        id: String,
+
+        /// Maximum results per section
+        #[arg(long, default_value = "10")]
+        limit: usize,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Common arguments for all scrape subcommands
@@ -530,13 +593,13 @@ enum ScrapeCommands {
         #[arg(long)]
         full: bool,
     },
-    /// Extract sessions, goals, and observations from session files
+    /// Extract sessions (deprecated — use `scrape layer` instead)
     Sessions {
         /// Full rebuild (ignore incremental)
         #[arg(long)]
         full: bool,
     },
-    /// Extract patterns from layer/core and layer/surface markdown files
+    /// Scrape all layer content: patterns, sessions, specs
     Layer {
         /// Full rebuild (ignore incremental)
         #[arg(long)]
@@ -997,9 +1060,24 @@ fn main() -> Result<()> {
         Some(Commands::Eval {
             dimension,
             feedback,
+            nl,
+            assay,
+            scry,
+            scry_raw,
+            combined,
         }) => {
             if feedback {
                 commands::eval::execute_feedback()?;
+            } else if nl {
+                commands::eval::execute_nl()?;
+            } else if assay {
+                commands::eval::execute_assay()?;
+            } else if scry_raw {
+                commands::eval::execute_scry_raw()?;
+            } else if scry {
+                commands::eval::execute_scry()?;
+            } else if combined {
+                commands::eval::execute_combined()?;
             } else {
                 commands::eval::execute(dimension.map(|d| d.as_str().to_string()))?;
             }
@@ -1117,6 +1195,22 @@ fn main() -> Result<()> {
             commands::spec::SpecCommands::Archive { id, dry_run } => {
                 commands::spec::archive(&id, dry_run)?;
             }
+            commands::spec::SpecCommands::Ready { json } => {
+                commands::spec::ready(json)?;
+            }
+            commands::spec::SpecCommands::Blocked { json } => {
+                commands::spec::blocked(json)?;
+            }
+            commands::spec::SpecCommands::Status { id, status } => {
+                commands::spec::status(&id, &status)?;
+            }
+            commands::spec::SpecCommands::List {
+                status,
+                target,
+                json,
+            } => {
+                commands::spec::list(status, target, json)?;
+            }
         },
         Some(Commands::Serve { host, port, mcp }) => {
             // Deprecated: delegate to mother start with warning
@@ -1149,6 +1243,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Inventory {
                     pattern,
@@ -1161,6 +1256,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Imports {
                     module,
@@ -1173,6 +1269,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Importers {
                     module,
@@ -1185,6 +1282,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Functions {
                     pattern,
@@ -1197,6 +1295,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Callers {
                     function,
@@ -1209,6 +1308,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Callees {
                     function,
@@ -1221,6 +1321,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::Derive { json }) => commands::assay::AssayOptions {
                     query_type: commands::assay::QueryType::Derive,
@@ -1229,6 +1330,7 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
                 },
                 Some(AssayCommands::DeriveMoments { json }) => commands::assay::AssayOptions {
                     query_type: commands::assay::QueryType::DeriveMoments,
@@ -1237,6 +1339,49 @@ fn main() -> Result<()> {
                     json,
                     repo,
                     all_repos,
+                    ..Default::default()
+                },
+                Some(AssayCommands::Search {
+                    query: search_query,
+                    limit: search_limit,
+                    json: search_json,
+                    include_issues,
+                }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Search {
+                        query: search_query,
+                    },
+                    pattern: None,
+                    limit: search_limit,
+                    json: search_json,
+                    repo,
+                    all_repos,
+                    include_issues,
+                },
+                Some(AssayCommands::Cochange {
+                    file,
+                    limit: cochange_limit,
+                    json: cochange_json,
+                }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Cochange { file },
+                    pattern: None,
+                    limit: cochange_limit,
+                    json: cochange_json,
+                    repo,
+                    all_repos,
+                    ..Default::default()
+                },
+                Some(AssayCommands::Belief {
+                    id,
+                    limit: belief_limit,
+                    json: belief_json,
+                }) => commands::assay::AssayOptions {
+                    query_type: commands::assay::QueryType::Belief { id },
+                    pattern: None,
+                    limit: belief_limit,
+                    json: belief_json,
+                    repo,
+                    all_repos,
+                    ..Default::default()
                 },
             };
             commands::assay::execute(options)?;

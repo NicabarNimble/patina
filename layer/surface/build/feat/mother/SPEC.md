@@ -6,7 +6,7 @@ created: 2026-01-01
 updated: 2026-02-02
 related:
   - layer/surface/build/feat/v1-release/SPEC.md
-  - layer/surface/build/feat/ref-repo-semantic/SPEC.md
+  - layer/surface/build/feat/mother-v2/SPEC.md
 ---
 
 # feat: Mother Architecture

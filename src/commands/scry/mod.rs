@@ -15,10 +15,10 @@ use patina::mother;
 use crate::commands::persona;
 
 use internal::enrichment::{find_belief_impact, truncate_content};
-use internal::hybrid::execute_hybrid;
 use internal::logging::log_scry_query;
 use internal::routing::{execute_graph_routing, execute_via_mother};
-use internal::search::{is_lexical_query, scry_belief, scry_file};
+use internal::search::{scry_belief, scry_file};
+use internal::semantic::execute_semantic;
 
 // Re-export subcommands for CLI
 pub use internal::subcommands::{
@@ -27,7 +27,7 @@ pub use internal::subcommands::{
 
 // Re-export search functions for external use
 pub use internal::search::scry_belief as scry_belief_fn;
-pub use internal::search::{scry, scry_lexical, scry_text};
+pub use internal::search::{scry, scry_text};
 
 /// Result from a scry query
 #[derive(Debug, Clone)]
@@ -128,8 +128,8 @@ pub fn execute(query: Option<&str>, options: ScryOptions) -> Result<()> {
         return execute_legacy_search(query, &options);
     }
 
-    // Default: QueryEngine with all oracles + RRF fusion
-    execute_hybrid(query, &options)
+    // Default: semantic search via QueryEngine
+    execute_semantic(query, &options)
 }
 
 /// D3: Fetch full content for a single result from a previous query
@@ -271,14 +271,9 @@ fn execute_legacy_file(file: &str, options: &ScryOptions) -> Result<()> {
 fn execute_legacy_search(query: Option<&str>, options: &ScryOptions) -> Result<()> {
     let q = query.ok_or_else(|| anyhow::anyhow!("Query required"))?;
     println!("Query: \"{}\"\n", q);
+    println!("Mode: Semantic (vector)\n");
 
-    let mut results = if is_lexical_query(q) {
-        println!("Mode: Lexical (FTS5)\n");
-        internal::search::scry_lexical(q, options)?
-    } else {
-        println!("Mode: Semantic (vector)\n");
-        scry_text(q, options)?
-    };
+    let mut results = scry_text(q, options)?;
 
     // Bolt on persona results
     if options.include_persona {

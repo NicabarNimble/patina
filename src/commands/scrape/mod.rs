@@ -54,31 +54,28 @@ mod tests {
     }
 }
 
-/// Run all scrapers in sequence (code, git, sessions, layer, beliefs)
+/// Run all scrapers in sequence (code, git, layer, beliefs)
 ///
 /// This is the default when running `patina scrape` with no subcommand.
+/// Layer scraper handles both patterns and sessions (unified in v0.12.0).
 pub fn execute_all() -> Result<()> {
     // Ensure UID exists (migration for projects without one)
     patina::project::create_uid_if_missing(&std::env::current_dir()?)?;
 
     println!("🔄 Running all scrapers...\n");
 
-    println!("📊 [1/5] Scraping code...");
+    println!("📊 [1/4] Scraping code...");
     execute_code(false, false)?;
 
-    println!("\n📊 [2/5] Scraping git...");
+    println!("\n📊 [2/4] Scraping git...");
     let git_stats = git::run(false)?;
     println!("  • {} commits", git_stats.items_processed);
 
-    println!("\n📚 [3/5] Scraping sessions...");
-    let session_stats = sessions::run(false)?;
-    println!("  • {} sessions", session_stats.items_processed);
-
-    println!("\n📜 [4/5] Scraping layer patterns...");
+    println!("\n📜 [3/4] Scraping layer (patterns + sessions)...");
     let layer_stats = layer::run(false)?;
-    println!("  • {} patterns", layer_stats.items_processed);
+    println!("  • {} items", layer_stats.items_processed);
 
-    println!("\n🧠 [5/5] Scraping beliefs...");
+    println!("\n🧠 [4/4] Scraping beliefs...");
     let belief_stats = beliefs::run(false)?;
     println!("  • {} beliefs", belief_stats.items_processed);
 
@@ -120,32 +117,28 @@ pub fn execute_rebuild() -> Result<()> {
     // Run all scrapers fresh (they will use lean storage for ref repos)
     println!("\n🔄 Running all scrapers...\n");
 
-    println!("📊 [1/6] Scraping code...");
+    println!("📊 [1/5] Scraping code...");
     execute_code(false, false)?;
 
-    println!("\n📊 [2/6] Scraping git...");
+    println!("\n📊 [2/5] Scraping git...");
     let git_stats = git::run(false)?;
     println!("  • {} commits", git_stats.items_processed);
 
-    println!("\n📚 [3/6] Scraping sessions...");
-    let session_stats = sessions::run(false)?;
-    println!("  • {} sessions", session_stats.items_processed);
-
-    println!("\n📜 [4/6] Scraping layer patterns...");
+    println!("\n📜 [3/5] Scraping layer (patterns + sessions)...");
     let layer_stats = layer::run(false)?;
-    println!("  • {} patterns", layer_stats.items_processed);
+    println!("  • {} items", layer_stats.items_processed);
 
-    println!("\n🧠 [5/6] Scraping beliefs...");
+    println!("\n🧠 [4/5] Scraping beliefs...");
     let belief_stats = beliefs::run(false)?;
     println!("  • {} beliefs", belief_stats.items_processed);
 
     // For ref repos, also rebuild forge data (this is the expensive cached data we preserve)
     if is_ref {
-        println!("\n🔗 [6/6] Scraping forge (issues/PRs)...");
+        println!("\n🔗 [5/5] Scraping forge (issues/PRs)...");
         // Use full=true to force complete re-fetch since we deleted the database
         execute_forge(true, false, false, false, None, None)?;
     } else {
-        println!("\n📝 [6/6] Skipping forge (run 'patina scrape forge' separately)");
+        println!("\n📝 [5/5] Skipping forge (run 'patina scrape forge' separately)");
     }
 
     // Report new size
@@ -201,8 +194,10 @@ pub fn execute_git(full: bool) -> Result<()> {
     Ok(())
 }
 
-/// Execute sessions scraper with summary output
+/// Execute sessions scraper with summary output (deprecated)
 pub fn execute_sessions(full: bool) -> Result<()> {
+    eprintln!("WARNING: `scrape sessions` is deprecated. Use `scrape layer` instead.");
+    eprintln!("         Sessions are part of layer/ and scraped automatically.\n");
     let stats = sessions::run(full)?;
     println!("\n📊 Sessions Scrape Summary:");
     println!("  • Sessions processed: {}", stats.items_processed);
@@ -211,11 +206,14 @@ pub fn execute_sessions(full: bool) -> Result<()> {
     Ok(())
 }
 
-/// Execute layer pattern scraper with summary output
+/// Execute unified layer scraper (patterns + sessions)
 pub fn execute_layer(full: bool) -> Result<()> {
     let stats = layer::run(full)?;
     println!("\n📊 Layer Scrape Summary:");
-    println!("  • Patterns processed: {}", stats.items_processed);
+    println!(
+        "  • Items processed: {} (patterns + sessions)",
+        stats.items_processed
+    );
     println!("  • Time elapsed: {:?}", stats.time_elapsed);
     println!("  • Database size: {} KB", stats.database_size_kb);
     Ok(())

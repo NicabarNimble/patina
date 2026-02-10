@@ -10,9 +10,7 @@ sessions:
   - 20260129-074742
   - 20260129-093857
 related:
-- spec/go-public
-- spec-epistemic-layer
-- spec-mother
+  - layer/surface/build/feat/mother/SPEC.md
 milestones:
 - version: 0.9.1
   name: Version & spec system alignment

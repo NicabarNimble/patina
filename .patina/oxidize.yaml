@@ -1,12 +1,22 @@
-# Oxidize Recipe - Phase 2 MVP
-# Build embeddings and projections from unified eventlog
+# Oxidize Recipe - Multi-Domain (Phase 5b)
+# Build embeddings for knowledge + session domains
 
 version: 1
 embedding_model: e5-base-v2
 
 projections:
-  # Semantic projection - observations from same session are similar
-  semantic:
+  # Knowledge projection - beliefs, patterns, and commit messages
+  # Training signal: commit-based pairs (baseline)
+  # Phase 5a: corpus optimized (enriched text, filtered commits)
+  knowledge:
+    layers: [768, 1024, 256]
+    epochs: 10
+    batch_size: 32
+
+  # Session projection - decisions, patterns, work, context from sessions
+  # Phase 5b: new domain proving session reasoning is retrievable
+  # Training signal: commit-based pairs (reuses knowledge training)
+  sessions:
     layers: [768, 1024, 256]
     epochs: 10
     batch_size: 32

@@ -1,13 +1,18 @@
 //! Evaluation framework for validating retrieval quality
 //!
-//! Tests the unified QueryEngine pipeline + per-oracle ablation.
-//! Ground truth: function_facts (semantic), co_changes (temporal), beliefs (knowledge).
+//! Post-split eval modes:
+//! - `--assay`: independent factual retrieval eval (FTS5)
+//! - `--scry`: independent semantic retrieval eval (vectors) + scry-vs-assay comparison
+//! - `--combined`: full pipeline eval (assay + scry together)
 //!
-//! Key questions:
-//! - "Does the unified pipeline improve over individual oracles?"
-//! - "Do beliefs help knowledge queries without hurting structural queries?"
+//! Legacy eval modes (pre-split, kept for historical comparison):
+//! - `--nl`: NL query eval against QueryEngine (52 queries from mixed-oracle era)
+//! - `--feedback`: feedback loop eval from session data
+//! - `--dimension`: structural/temporal/belief co-retrieval tests
 
-use anyhow::Result;
+mod internal;
+
+use anyhow::{Context, Result};
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
 
@@ -368,9 +373,9 @@ fn eval_semantic_co_retrieval(
     let mut total_precision_10 = 0.0;
     let mut num_queries = 0;
 
-    // Sample up to 20 files
+    // Sample up to 20 files, seeded for deterministic eval
     let sample_size = valid_files.len().min(20);
-    let mut rng = fastrand::Rng::new();
+    let mut rng = fastrand::Rng::with_seed(42);
 
     for i in 0..sample_size {
         let idx = if sample_size < valid_files.len() {
@@ -530,12 +535,13 @@ fn eval_temporal_file(
         cochanges.entry(file_b).or_default().insert(file_a);
     }
 
-    // Files with 2+ co-change partners
-    let test_files: Vec<_> = cochanges
+    // Files with 2+ co-change partners, sorted for deterministic eval
+    let mut test_files: Vec<_> = cochanges
         .iter()
         .filter(|(_, partners)| partners.len() >= 2)
-        .take(20)
         .collect();
+    test_files.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then(a.0.cmp(b.0)));
+    test_files.truncate(20);
 
     println!(
         "Testing {} files with known co-change partners",
@@ -934,19 +940,82 @@ use patina::eventlog;
 
 /// Execute feedback loop evaluation - measure real-world precision
 ///
-/// Uses feedback views to correlate scry queries with subsequent commits.
+/// Materializes intermediate results into temp tables for performance,
+/// then reports precision metrics from session query→commit correlation.
 pub fn execute_feedback() -> Result<()> {
     println!("📊 Feedback Loop Evaluation\n");
     println!("Measuring real-world retrieval precision from session data...\n");
 
     let conn = Connection::open(eventlog::PATINA_DB)?;
 
-    // Ensure feedback views exist
-    eventlog::create_feedback_views(&conn)?;
+    // Materialize commit files per session into a temp table (avoids repeated JSON parsing)
+    conn.execute_batch(
+        r#"
+        DROP TABLE IF EXISTS _fb_commit_files;
+        CREATE TEMP TABLE _fb_commit_files AS
+        SELECT session_id, file_path FROM (
+            SELECT
+                json_extract(data, '$.session_id') as session_id,
+                json_extract(f.value, '$.path') as file_path,
+                ROW_NUMBER() OVER (
+                    PARTITION BY json_extract(data, '$.sha'), json_extract(f.value, '$.path')
+                    ORDER BY seq DESC
+                ) as rn
+            FROM eventlog, json_each(json_extract(data, '$.files')) as f
+            WHERE event_type = 'git.commit'
+              AND json_extract(data, '$.session_id') IS NOT NULL
+        ) WHERE rn = 1;
+        CREATE INDEX _fb_cf_session ON _fb_commit_files(session_id);
+        CREATE INDEX _fb_cf_path ON _fb_commit_files(file_path);
+        "#,
+    )?;
+
+    // Materialize query results with hits into a temp table.
+    // Normalize doc_id: strip '::...' suffix and './' prefix before matching.
+    conn.execute_batch(
+        r#"
+        DROP TABLE IF EXISTS _fb_query_hits;
+        CREATE TEMP TABLE _fb_query_hits AS
+        SELECT
+            q_session_id as session_id,
+            query,
+            mode,
+            query_time,
+            doc_id as retrieved_doc_id,
+            rank,
+            score,
+            CASE WHEN cf.file_path IS NOT NULL THEN 1 ELSE 0 END as is_hit
+        FROM (
+            SELECT
+                json_extract(data, '$.session_id') as q_session_id,
+                json_extract(data, '$.query') as query,
+                json_extract(data, '$.mode') as mode,
+                timestamp as query_time,
+                json_extract(r.value, '$.doc_id') as doc_id,
+                -- Normalize: strip '::...' suffix and './' prefix
+                REPLACE(
+                    CASE
+                        WHEN INSTR(json_extract(r.value, '$.doc_id'), '::') > 0
+                        THEN SUBSTR(json_extract(r.value, '$.doc_id'), 1,
+                             INSTR(json_extract(r.value, '$.doc_id'), '::') - 1)
+                        ELSE json_extract(r.value, '$.doc_id')
+                    END,
+                    './', '') as norm_doc_id,
+                json_extract(r.value, '$.rank') as rank,
+                json_extract(r.value, '$.score') as score
+            FROM eventlog, json_each(json_extract(data, '$.results')) as r
+            WHERE event_type = 'scry.query'
+              AND json_extract(data, '$.session_id') IS NOT NULL
+        ) q
+        LEFT JOIN _fb_commit_files cf
+            ON cf.session_id = q.q_session_id
+            AND cf.file_path = q.norm_doc_id;
+        "#,
+    )?;
 
     // Get overall statistics
     let (total_queries, total_retrievals): (i64, i64) = conn.query_row(
-        "SELECT COUNT(DISTINCT query), COUNT(*) FROM feedback_query_hits",
+        "SELECT COUNT(DISTINCT query), COUNT(*) FROM _fb_query_hits",
         [],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
@@ -963,7 +1032,7 @@ pub fn execute_feedback() -> Result<()> {
     }
 
     let total_hits: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM feedback_query_hits WHERE is_hit = 1",
+        "SELECT COUNT(*) FROM _fb_query_hits WHERE is_hit = 1",
         [],
         |row| row.get(0),
     )?;
@@ -985,7 +1054,7 @@ pub fn execute_feedback() -> Result<()> {
     println!("\n━━━ Precision by Rank ━━━\n");
     let mut stmt = conn.prepare(
         "SELECT rank, COUNT(*) as total, SUM(is_hit) as hits
-         FROM feedback_query_hits
+         FROM _fb_query_hits
          GROUP BY rank
          ORDER BY rank",
     )?;
@@ -1017,7 +1086,7 @@ pub fn execute_feedback() -> Result<()> {
     let mut stmt = conn.prepare(
         "SELECT session_id, COUNT(DISTINCT query) as queries,
                 SUM(is_hit) as hits, COUNT(*) as retrievals
-         FROM feedback_query_hits
+         FROM _fb_query_hits
          GROUP BY session_id
          ORDER BY queries DESC
          LIMIT 5",
@@ -1050,7 +1119,7 @@ pub fn execute_feedback() -> Result<()> {
     println!("\n━━━ High-Value Retrievals ━━━\n");
     let mut stmt = conn.prepare(
         "SELECT retrieved_doc_id, COUNT(*) as times_retrieved, SUM(is_hit) as times_committed
-         FROM feedback_query_hits
+         FROM _fb_query_hits
          WHERE is_hit = 1
          GROUP BY retrieved_doc_id
          ORDER BY times_committed DESC
@@ -1086,4 +1155,387 @@ pub fn execute_feedback() -> Result<()> {
     println!("\n{}", "─".repeat(60));
 
     Ok(())
+}
+
+// ============================================================================
+// Natural-Language Query Evaluation (Phase 2)
+// ============================================================================
+
+/// NL query test case loaded from JSON
+#[derive(serde::Deserialize, Debug)]
+struct NlQueryCase {
+    query: String,
+    expected: Vec<String>,
+    category: String,
+    #[allow(dead_code)]
+    source: String,
+    split: String,
+}
+
+/// Aggregated NL eval metrics for one engine configuration
+#[derive(Debug, Clone)]
+struct NlMetrics {
+    name: String,
+    p5: f32,
+    p10: f32,
+    mrr: f32,
+}
+
+/// Score one engine against the NL test set, return aggregate metrics
+fn score_nl_engine(engine: &QueryEngine, name: &str, cases: &[NlQueryCase]) -> Result<NlMetrics> {
+    let mut total_p5 = 0.0f32;
+    let mut total_p10 = 0.0f32;
+    let mut total_rr = 0.0f32;
+
+    for case in cases {
+        let results = engine.query(&case.query, 10)?;
+        let expected: HashSet<String> = case.expected.iter().map(|p| normalize_path(p)).collect();
+
+        // Deduplicate by file — multiple doc_ids from the same file count once
+        let unique_files_5: HashSet<String> = results
+            .iter()
+            .take(5)
+            .map(|r| extract_file_from_doc_id(&r.doc_id))
+            .filter(|f| expected.contains(f))
+            .collect();
+        let unique_files_10: HashSet<String> = results
+            .iter()
+            .take(10)
+            .map(|r| extract_file_from_doc_id(&r.doc_id))
+            .filter(|f| expected.contains(f))
+            .collect();
+
+        let denom_5 = expected.len().clamp(1, 5) as f32;
+        let denom_10 = expected.len().clamp(1, 10) as f32;
+        total_p5 += unique_files_5.len() as f32 / denom_5;
+        total_p10 += unique_files_10.len() as f32 / denom_10;
+
+        // MRR: rank of first hit (by file, not by doc_id — same result)
+        total_rr += results
+            .iter()
+            .enumerate()
+            .find(|(_, r)| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
+            .map(|(i, _)| 1.0 / (i as f32 + 1.0))
+            .unwrap_or(0.0);
+    }
+
+    let n = cases.len();
+    Ok(NlMetrics {
+        name: name.to_string(),
+        p5: total_p5 / n as f32,
+        p10: total_p10 / n as f32,
+        mrr: total_rr / n as f32,
+    })
+}
+
+/// Score one engine against a subset of NL test cases (by reference)
+fn score_nl_engine_refs(
+    engine: &QueryEngine,
+    name: &str,
+    cases: &[&NlQueryCase],
+) -> Result<NlMetrics> {
+    let mut total_p5 = 0.0f32;
+    let mut total_p10 = 0.0f32;
+    let mut total_rr = 0.0f32;
+
+    for case in cases {
+        let results = engine.query(&case.query, 10)?;
+        let expected: HashSet<String> = case.expected.iter().map(|p| normalize_path(p)).collect();
+
+        let unique_files_5: HashSet<String> = results
+            .iter()
+            .take(5)
+            .map(|r| extract_file_from_doc_id(&r.doc_id))
+            .filter(|f| expected.contains(f))
+            .collect();
+        let unique_files_10: HashSet<String> = results
+            .iter()
+            .take(10)
+            .map(|r| extract_file_from_doc_id(&r.doc_id))
+            .filter(|f| expected.contains(f))
+            .collect();
+
+        let denom_5 = expected.len().clamp(1, 5) as f32;
+        let denom_10 = expected.len().clamp(1, 10) as f32;
+        total_p5 += unique_files_5.len() as f32 / denom_5;
+        total_p10 += unique_files_10.len() as f32 / denom_10;
+
+        total_rr += results
+            .iter()
+            .enumerate()
+            .find(|(_, r)| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
+            .map(|(i, _)| 1.0 / (i as f32 + 1.0))
+            .unwrap_or(0.0);
+    }
+
+    let n = cases.len();
+    Ok(NlMetrics {
+        name: name.to_string(),
+        p5: total_p5 / n as f32,
+        p10: total_p10 / n as f32,
+        mrr: total_rr / n as f32,
+    })
+}
+
+/// Execute NL query eval from curated test set
+///
+/// Loads queries from resources/eval/nl-queries.json, runs each through the
+/// unified QueryEngine, and measures P@5, P@10, MRR against expected results.
+/// Includes per-oracle ablation to measure each oracle's contribution.
+pub fn execute_nl() -> Result<()> {
+    println!("📊 Natural-Language Query Evaluation\n");
+    println!("Testing retrieval quality with curated real-world queries...\n");
+
+    // Load test set
+    let test_path = "resources/eval/nl-queries.json";
+    let content = std::fs::read_to_string(test_path).context(format!("Cannot read {test_path}"))?;
+    let cases: Vec<NlQueryCase> =
+        serde_json::from_str(&content).context("Failed to parse nl-queries.json")?;
+
+    // --- Per-query detail for unified engine ---
+    let unified = QueryEngine::new();
+
+    let mut category_stats: HashMap<String, (f32, f32, f32, usize)> = HashMap::new();
+    let mut split_stats: HashMap<String, (f32, f32, f32, usize)> = HashMap::new();
+
+    let train_count = cases.iter().filter(|c| c.split == "train").count();
+    let test_count = cases.iter().filter(|c| c.split == "test").count();
+    println!(
+        "Loaded {} test queries ({} train, {} test)\n",
+        cases.len(),
+        train_count,
+        test_count
+    );
+
+    println!("{:<55} {:>6} {:>6} {:>6}", "Query", "P@5", "P@10", "RR");
+    println!("{}", "─".repeat(77));
+
+    for case in &cases {
+        let results = unified.query(&case.query, 10)?;
+        let expected: HashSet<String> = case.expected.iter().map(|p| normalize_path(p)).collect();
+
+        // Deduplicate by file — multiple doc_ids from the same file count once
+        let unique_files_5: HashSet<String> = results
+            .iter()
+            .take(5)
+            .map(|r| extract_file_from_doc_id(&r.doc_id))
+            .filter(|f| expected.contains(f))
+            .collect();
+        let unique_files_10: HashSet<String> = results
+            .iter()
+            .take(10)
+            .map(|r| extract_file_from_doc_id(&r.doc_id))
+            .filter(|f| expected.contains(f))
+            .collect();
+
+        let denom_5 = expected.len().clamp(1, 5) as f32;
+        let denom_10 = expected.len().clamp(1, 10) as f32;
+        let p5 = unique_files_5.len() as f32 / denom_5;
+        let p10 = unique_files_10.len() as f32 / denom_10;
+
+        let rr = results
+            .iter()
+            .enumerate()
+            .find(|(_, r)| expected.contains(&extract_file_from_doc_id(&r.doc_id)))
+            .map(|(i, _)| 1.0 / (i as f32 + 1.0))
+            .unwrap_or(0.0);
+
+        let entry = category_stats
+            .entry(case.category.clone())
+            .or_insert((0.0, 0.0, 0.0, 0));
+        entry.0 += p5;
+        entry.1 += p10;
+        entry.2 += rr;
+        entry.3 += 1;
+
+        let split_entry = split_stats
+            .entry(case.split.clone())
+            .or_insert((0.0, 0.0, 0.0, 0));
+        split_entry.0 += p5;
+        split_entry.1 += p10;
+        split_entry.2 += rr;
+        split_entry.3 += 1;
+
+        let display_q = if case.query.len() > 53 {
+            format!("{}...", &case.query[..50])
+        } else {
+            case.query.clone()
+        };
+        println!(
+            "{:<55} {:>5.0}% {:>5.0}% {:>.3}",
+            display_q,
+            p5 * 100.0,
+            p10 * 100.0,
+            rr
+        );
+    }
+
+    // Category breakdown
+    println!("\n━━━ By Category ━━━\n");
+    println!(
+        "{:<20} {:>6} {:>8} {:>8} {:>8}",
+        "Category", "N", "P@5", "P@10", "MRR"
+    );
+    println!("{}", "─".repeat(54));
+
+    let mut cats: Vec<_> = category_stats.iter().collect();
+    cats.sort_by_key(|(k, _)| (*k).clone());
+    for (cat, (p5, p10, rr, count)) in &cats {
+        let n = *count as f32;
+        println!(
+            "{:<20} {:>6} {:>7.1}% {:>7.1}% {:>8.3}",
+            cat,
+            count,
+            p5 / n * 100.0,
+            p10 / n * 100.0,
+            rr / n
+        );
+    }
+
+    // Split breakdown (train vs test)
+    println!("\n━━━ By Split (unified) ━━━\n");
+    println!(
+        "{:<20} {:>6} {:>8} {:>8} {:>8}",
+        "Split", "N", "P@5", "P@10", "MRR"
+    );
+    println!("{}", "─".repeat(54));
+
+    for split_name in &["train", "test"] {
+        if let Some((p5, p10, rr, count)) = split_stats.get(*split_name) {
+            let n = *count as f32;
+            println!(
+                "{:<20} {:>6} {:>7.1}% {:>7.1}% {:>8.3}",
+                split_name,
+                count,
+                p5 / n * 100.0,
+                p10 / n * 100.0,
+                rr / n
+            );
+        }
+    }
+
+    // --- Ablation: per-oracle contribution ---
+    println!("\n━━━ Ablation: Per-Oracle Contribution ━━━\n");
+
+    let oracles = ["semantic", "lexical", "temporal", "persona", "belief"];
+    let mut ablation_results: Vec<NlMetrics> = Vec::new();
+
+    // Unified baseline
+    let unified_metrics = score_nl_engine(&unified, "unified (all)", &cases)?;
+    ablation_results.push(unified_metrics.clone());
+
+    // Each oracle in isolation
+    for oracle_name in &oracles {
+        let engine = QueryEngine::with_config(RetrievalConfig {
+            oracle_filter: Some(vec![oracle_name.to_string()]),
+            ..Default::default()
+        });
+        let metrics = score_nl_engine(&engine, &format!("{}-only", oracle_name), &cases)?;
+        ablation_results.push(metrics);
+    }
+
+    // No-belief (all except belief)
+    let no_belief = QueryEngine::with_config(RetrievalConfig {
+        oracle_filter: Some(vec![
+            "semantic".to_string(),
+            "lexical".to_string(),
+            "temporal".to_string(),
+            "persona".to_string(),
+        ]),
+        ..Default::default()
+    });
+    let no_belief_metrics = score_nl_engine(&no_belief, "no-belief", &cases)?;
+    ablation_results.push(no_belief_metrics);
+
+    // Print ablation table
+    println!(
+        "{:<25} {:>8} {:>8} {:>8} {:>10}",
+        "Pipeline", "P@5", "P@10", "MRR", "vs Unified"
+    );
+    println!("{}", "─".repeat(63));
+
+    let baseline_p10 = unified_metrics.p10;
+    for m in &ablation_results {
+        let delta = if m.name == "unified (all)" {
+            "—".to_string()
+        } else {
+            let d = (m.p10 - baseline_p10) * 100.0;
+            format!("{:+.1}pp", d)
+        };
+        println!(
+            "{:<25} {:>7.1}% {:>7.1}% {:>8.3} {:>10}",
+            m.name,
+            m.p5 * 100.0,
+            m.p10 * 100.0,
+            m.mrr,
+            delta
+        );
+    }
+
+    // Per-split ablation (unified only — quick view for tuning validation)
+    let train_cases: Vec<&NlQueryCase> = cases.iter().filter(|c| c.split == "train").collect();
+    let test_cases: Vec<&NlQueryCase> = cases.iter().filter(|c| c.split == "test").collect();
+
+    if !train_cases.is_empty() && !test_cases.is_empty() {
+        println!("\n━━━ Train vs Test (unified engine) ━━━\n");
+        println!("{:<25} {:>8} {:>8} {:>8}", "Pipeline", "P@5", "P@10", "MRR");
+        println!("{}", "─".repeat(53));
+
+        let train_m = score_nl_engine_refs(&unified, "unified (train)", &train_cases)?;
+        let test_m = score_nl_engine_refs(&unified, "unified (test)", &test_cases)?;
+
+        for m in &[&train_m, &test_m] {
+            println!(
+                "{:<25} {:>7.1}% {:>7.1}% {:>8.3}",
+                m.name,
+                m.p5 * 100.0,
+                m.p10 * 100.0,
+                m.mrr,
+            );
+        }
+
+        let delta_p10 = (test_m.p10 - train_m.p10) * 100.0;
+        println!(
+            "\n  Train-test gap: {:+.1}pp P@10 (negative = potential overfit)",
+            delta_p10
+        );
+    }
+
+    // Summary
+    println!("\n━━━ Summary ━━━\n");
+    println!(
+        "  Queries:     {} ({} train, {} test)",
+        cases.len(),
+        train_count,
+        test_count
+    );
+    println!("  Mean P@5:    {:.1}%", unified_metrics.p5 * 100.0);
+    println!("  Mean P@10:   {:.1}%", unified_metrics.p10 * 100.0);
+    println!("  MRR:         {:.3}", unified_metrics.mrr);
+
+    Ok(())
+}
+
+// ============================================================================
+// Post-split eval modes (Phase 4: Eval Redesign)
+// ============================================================================
+
+/// Independent assay eval — tests factual retrieval (FTS5) in isolation
+pub fn execute_assay() -> Result<()> {
+    internal::assay_eval::execute()
+}
+
+/// Independent scry eval — tests semantic retrieval (vectors) + scry-vs-assay comparison
+pub fn execute_scry() -> Result<()> {
+    internal::scry_eval::execute()
+}
+
+/// Raw E5 diagnostic — brute-force cosine without projection (Phase 5d)
+pub fn execute_scry_raw() -> Result<()> {
+    internal::scry_eval::execute_raw()
+}
+
+/// Combined eval — tests the full retrieval pipeline (assay + scry together)
+pub fn execute_combined() -> Result<()> {
+    internal::combined_eval::execute()
 }

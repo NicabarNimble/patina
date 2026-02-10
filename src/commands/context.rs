@@ -8,7 +8,10 @@ use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
-use crate::retrieval::{BeliefOracle, Oracle};
+use crate::commands::assay::internal::belief::search_beliefs_fts;
+use crate::commands::assay::internal::search::{assay_search, SearchOptions};
+use crate::retrieval::QueryEngine;
+use rusqlite::Connection;
 
 /// Get project context from the knowledge layer
 ///
@@ -48,9 +51,15 @@ pub fn get_project_context(topic: Option<&str>) -> Result<String> {
         }
     }
 
+    // Topic-specific search: factual (assay) + semantic (scry) fusion
+    // Two signals, simple merge: facts first, meaning for gaps
+    if let Some(t) = topic {
+        output.push_str(&get_topic_search_results(t));
+    }
+
     // Beliefs are always eligible — topic changes the query, not whether beliefs exist
     if let Some(t) = topic {
-        // Topic provided: semantic ranking via BeliefOracle
+        // Topic provided: FTS5 ranking via assay belief search
         output.push_str(&get_topic_beliefs(t));
     } else {
         // No topic: aggregate stats + top beliefs by use count
@@ -67,13 +76,18 @@ pub fn get_project_context(topic: Option<&str>) -> Result<String> {
         }
     }
 
-    // Recall directive — always appended so the LLM knows how to search beliefs
+    // Recall directive — always appended so the LLM knows how to search
     output.push_str("## Recall Directive\n\n");
     output.push_str(
         "Project knowledge accumulates in beliefs — check them before assuming defaults.\n",
     );
-    output.push_str("  CLI:  patina scry --content-type beliefs \"your question\"\n");
-    output.push_str("  MCP:  scry(content_type=\"beliefs\", query=\"your question\")\n");
+    output.push_str("  Meaning:  scry(query=\"your question\") — semantic/conceptual search\n");
+    output.push_str(
+        "  Facts:    assay(query_type=\"search\", query=\"your question\") — keyword/factual search\n",
+    );
+    output.push_str(
+        "  Beliefs:  scry(content_type=\"beliefs\", query=\"your question\") — belief grounding\n",
+    );
 
     Ok(output)
 }
@@ -184,39 +198,106 @@ pub fn get_belief_metrics() -> Result<String> {
     Ok(output)
 }
 
-/// Query beliefs ranked by semantic relevance to a topic
+/// Two-signal fusion: assay (factual/keyword) + scry (semantic) search results
 ///
-/// Uses BeliefOracle's hybrid search (vector 0.7 + FTS5 0.3) to find
-/// beliefs relevant to the given topic. Falls back to aggregate metrics
-/// if the oracle is unavailable.
-fn get_topic_beliefs(topic: &str) -> String {
-    let oracle = BeliefOracle::new();
-    if !oracle.is_available() {
-        // Fall back to aggregate metrics if no index
-        return get_belief_metrics().unwrap_or_default();
+/// Called when a topic is provided. Returns factual matches first (what files,
+/// commits, patterns match by keyword), then semantic matches for gaps (what's
+/// conceptually related but not keyword-matched). Simple merge — no tuning.
+fn get_topic_search_results(topic: &str) -> String {
+    use std::collections::HashSet;
+
+    let mut output = String::new();
+    let mut seen_ids = HashSet::new();
+
+    // 1. Factual: assay keyword search (FTS5 across code, commits, patterns)
+    let search_opts = SearchOptions {
+        limit: 5,
+        include_issues: false,
+        repo: None,
+    };
+
+    if let Ok(assay_results) = assay_search(topic, &search_opts) {
+        if !assay_results.is_empty() {
+            output.push_str("# Factual Matches (keyword search)\n\n");
+            for r in &assay_results {
+                seen_ids.insert(r.source_id.clone());
+                let content = r.content.replace('\n', " ");
+                let truncated: String = content.trim().chars().take(150).collect();
+                let ellipsis = if content.trim().chars().count() > 150 {
+                    "..."
+                } else {
+                    ""
+                };
+                output.push_str(&format!(
+                    "- **{}** ({}): {}{}\n",
+                    r.source_id, r.event_type, truncated, ellipsis
+                ));
+            }
+            output.push('\n');
+        }
     }
 
-    match oracle.query(topic, 5) {
+    // 2. Semantic: scry vector search (conceptually related items)
+    let engine = QueryEngine::new();
+    if let Ok(scry_results) = engine.query(topic, 5) {
+        let novel: Vec<_> = scry_results
+            .iter()
+            .filter(|r| !seen_ids.contains(&r.doc_id))
+            .take(5)
+            .collect();
+
+        if !novel.is_empty() {
+            output.push_str("# Semantic Matches (conceptually related)\n\n");
+            for r in &novel {
+                let event_type = r.metadata.event_type.as_deref().unwrap_or("unknown");
+                let content = r.content.replace('\n', " ");
+                let truncated: String = content.trim().chars().take(150).collect();
+                let ellipsis = if content.trim().chars().count() > 150 {
+                    "..."
+                } else {
+                    ""
+                };
+                output.push_str(&format!(
+                    "- **{}** ({}, {:.3}): {}{}\n",
+                    r.doc_id, event_type, r.fused_score, truncated, ellipsis
+                ));
+            }
+            output.push('\n');
+        }
+    }
+
+    output
+}
+
+/// Query beliefs ranked by relevance to a topic
+///
+/// Uses FTS5 keyword search via assay's belief module to find beliefs
+/// relevant to the given topic. Falls back to aggregate metrics if
+/// the database is unavailable.
+fn get_topic_beliefs(topic: &str) -> String {
+    const DB_PATH: &str = ".patina/local/data/patina.db";
+
+    let conn = match Connection::open(DB_PATH) {
+        Ok(c) => c,
+        Err(_) => return get_belief_metrics().unwrap_or_default(),
+    };
+
+    match search_beliefs_fts(&conn, topic, 5) {
         Ok(results) if !results.is_empty() => {
             let mut output = format!(
                 "# Active Beliefs (ranked by relevance to \"{}\")\n\n",
                 topic
             );
             for r in &results {
-                // doc_id is "belief:{id}" — strip prefix for display
-                let id = r.doc_id.strip_prefix("belief:").unwrap_or(&r.doc_id);
                 output.push_str(&format!(
                     "- **{}** (score: {:.2}): {}\n",
-                    id, r.score, r.content
+                    r.source_id, r.score, r.content
                 ));
             }
             output.push('\n');
             output
         }
-        _ => {
-            // No results or error — fall back to aggregate metrics
-            get_belief_metrics().unwrap_or_default()
-        }
+        _ => get_belief_metrics().unwrap_or_default(),
     }
 }
 

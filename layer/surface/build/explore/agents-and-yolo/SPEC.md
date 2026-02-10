@@ -1,9 +1,12 @@
 ---
 type: explore
 id: agents-and-yolo
-status: open
+status: design
 created: 2026-01-21
 session-origin: 20260121-170710
+related:
+  - layer/surface/build/explore/three-layers/SPEC.md
+  - layer/surface/build/feat/patina-platform/SPEC.md
 ---
 
 # explore: Agents and Autonomous Workspaces
