@@ -129,10 +129,7 @@ pub fn execute() -> Result<()> {
     let mut both_hit = 0usize;
     let mut both_miss = 0usize;
 
-    println!(
-        "{:<55} {:>10} {:>10}",
-        "Query", "Scry", "Assay"
-    );
+    println!("{:<55} {:>10} {:>10}", "Query", "Scry", "Assay");
     println!("{}", "─".repeat(77));
 
     for case in &cases {
@@ -171,9 +168,15 @@ pub fn execute() -> Result<()> {
 
     let total = cases.len();
     println!("\n━━━ Comparison Summary ━━━\n");
-    println!("  Scry HIT, Assay miss:  {} / {} queries", scry_only_hits, total);
+    println!(
+        "  Scry HIT, Assay miss:  {} / {} queries",
+        scry_only_hits, total
+    );
     println!("  Both HIT:              {} / {} queries", both_hit, total);
-    println!("  Assay HIT, Scry miss:  {} / {} queries", assay_only_hits, total);
+    println!(
+        "  Assay HIT, Scry miss:  {} / {} queries",
+        assay_only_hits, total
+    );
     println!("  Both miss:             {} / {} queries", both_miss, total);
 
     // Phase 4 exit criterion
@@ -302,10 +305,7 @@ pub fn execute_raw() -> Result<()> {
     // Side-by-side comparison
     println!("\n━━━ Raw vs Projected Comparison ━━━\n");
 
-    println!(
-        "{:<55} {:>10} {:>10}",
-        "Query", "Raw E5", "Projected"
-    );
+    println!("{:<55} {:>10} {:>10}", "Query", "Raw E5", "Projected");
     println!("{}", "─".repeat(77));
 
     let mut raw_only = 0usize;
@@ -354,7 +354,10 @@ pub fn execute_raw() -> Result<()> {
     println!("  Proj HIT, Raw miss:     {} / {}", proj_only, total);
     println!("  Both miss:              {} / {}", both_miss, total);
 
-    println!("\n  {:>25} {:>8} {:>8} {:>8} {:>8}", "Method", "P@5", "P@10", "MRR", "Hits");
+    println!(
+        "\n  {:>25} {:>8} {:>8} {:>8} {:>8}",
+        "Method", "P@5", "P@10", "MRR", "Hits"
+    );
     println!("  {}", "─".repeat(58));
     println!(
         "  {:>25} {:>7.1}% {:>7.1}% {:>8.3} {:>7.1}%",
@@ -378,16 +381,28 @@ pub fn execute_raw() -> Result<()> {
 
     println!("\n  Verdict:");
     if delta_p10 > 2.0 {
-        println!("  Projection HURTS — raw E5 is {:.1}pp better at P@10", delta_p10);
+        println!(
+            "  Projection HURTS — raw E5 is {:.1}pp better at P@10",
+            delta_p10
+        );
         println!("  The trained projection adds noise to E5's embedding space.");
     } else if delta_p10 < -2.0 {
-        println!("  Projection HELPS — projected is {:.1}pp better at P@10", -delta_p10);
+        println!(
+            "  Projection HELPS — projected is {:.1}pp better at P@10",
+            -delta_p10
+        );
         println!("  The trained projection improves over raw E5 embeddings.");
     } else {
-        println!("  Projection NEUTRAL — delta is only {:.1}pp P@10", delta_p10.abs());
+        println!(
+            "  Projection NEUTRAL — delta is only {:.1}pp P@10",
+            delta_p10.abs()
+        );
         println!("  The projection neither helps nor hurts meaningfully.");
         if delta_hits.abs() > 5.0 {
-            println!("  (But hit rate differs by {:.1}pp — worth investigating)", delta_hits.abs());
+            println!(
+                "  (But hit rate differs by {:.1}pp — worth investigating)",
+                delta_hits.abs()
+            );
         }
     }
 
@@ -411,20 +426,20 @@ fn build_key_to_doc_id(
         let key = *key;
         if key >= BELIEF_ID_OFFSET {
             let rowid = key - BELIEF_ID_OFFSET;
-            if let Ok(id) = conn.query_row(
-                "SELECT id FROM beliefs WHERE rowid = ?",
-                [rowid],
-                |row| row.get::<_, String>(0),
-            ) {
+            if let Ok(id) =
+                conn.query_row("SELECT id FROM beliefs WHERE rowid = ?", [rowid], |row| {
+                    row.get::<_, String>(0)
+                })
+            {
                 map.insert(key, id);
             }
         } else if key >= COMMIT_ID_OFFSET {
             let rowid = key - COMMIT_ID_OFFSET;
-            if let Ok(sha) = conn.query_row(
-                "SELECT sha FROM commits WHERE rowid = ?",
-                [rowid],
-                |row| row.get::<_, String>(0),
-            ) {
+            if let Ok(sha) =
+                conn.query_row("SELECT sha FROM commits WHERE rowid = ?", [rowid], |row| {
+                    row.get::<_, String>(0)
+                })
+            {
                 map.insert(key, sha);
             }
         } else if key >= PATTERN_ID_OFFSET {

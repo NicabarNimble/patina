@@ -96,10 +96,7 @@ pub fn execute() -> Result<()> {
         }
 
         let delta_p10 = (test_m.p10 - train_m.p10) * 100.0;
-        println!(
-            "\n  Train-test gap: {:+.1}pp P@10",
-            delta_p10
-        );
+        println!("\n  Train-test gap: {:+.1}pp P@10", delta_p10);
     }
 
     // Summary

@@ -246,7 +246,11 @@ pub fn execute_belief_grounding_json(belief_id: &str, limit: usize) -> Result<St
 }
 
 /// Fetch beliefs related to the given belief via shared evidence
-fn fetch_related_beliefs(conn: &Connection, belief_id: &str, limit: usize) -> Vec<serde_json::Value> {
+fn fetch_related_beliefs(
+    conn: &Connection,
+    belief_id: &str,
+    limit: usize,
+) -> Vec<serde_json::Value> {
     // Try to find beliefs that share evidence sources
     let sql = "SELECT DISTINCT b.id, b.statement, b.entrenchment
                FROM beliefs b

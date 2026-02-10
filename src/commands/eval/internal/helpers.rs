@@ -99,11 +99,7 @@ pub fn compute_metrics(
         p5: if n > 0 { total_p5 / n as f32 } else { 0.0 },
         p10: if n > 0 { total_p10 / n as f32 } else { 0.0 },
         mrr: if n > 0 { total_rr / n as f32 } else { 0.0 },
-        hit_rate: if n > 0 {
-            hits as f32 / n as f32
-        } else {
-            0.0
-        },
+        hit_rate: if n > 0 { hits as f32 / n as f32 } else { 0.0 },
     }
 }
 
@@ -117,14 +113,8 @@ pub fn print_metrics(metrics: &EvalMetrics) {
 }
 
 /// Print a per-query detail table
-pub fn print_per_query_detail(
-    cases: &[QueryCase],
-    results_fn: &dyn Fn(&str) -> Vec<String>,
-) {
-    println!(
-        "{:<55} {:>6} {:>6} {:>6}",
-        "Query", "P@5", "P@10", "RR"
-    );
+pub fn print_per_query_detail(cases: &[QueryCase], results_fn: &dyn Fn(&str) -> Vec<String>) {
+    println!("{:<55} {:>6} {:>6} {:>6}", "Query", "P@5", "P@10", "RR");
     println!("{}", "─".repeat(77));
 
     for case in cases {

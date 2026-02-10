@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: semantic-structural-split
-status: active
+status: complete
 created: 2026-02-08
 sessions:
   origin: 20260208-070221

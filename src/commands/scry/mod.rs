@@ -15,10 +15,10 @@ use patina::mother;
 use crate::commands::persona;
 
 use internal::enrichment::{find_belief_impact, truncate_content};
-use internal::semantic::execute_semantic;
 use internal::logging::log_scry_query;
 use internal::routing::{execute_graph_routing, execute_via_mother};
 use internal::search::{scry_belief, scry_file};
+use internal::semantic::execute_semantic;
 
 // Re-export subcommands for CLI
 pub use internal::subcommands::{

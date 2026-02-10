@@ -321,8 +321,8 @@ impl Projection {
         // Serialize and write (no metadata — HashMap serialization is non-deterministic,
         // which breaks safetensors checksum reproducibility. Dimensions are already
         // encoded in the tensor shapes.)
-        let serialized = safetensors::tensor::serialize(tensors, None)
-            .context("Failed to serialize tensors")?;
+        let serialized =
+            safetensors::tensor::serialize(tensors, None).context("Failed to serialize tensors")?;
 
         std::fs::write(path, serialized)
             .context(format!("Failed to write file: {}", path.display()))?;

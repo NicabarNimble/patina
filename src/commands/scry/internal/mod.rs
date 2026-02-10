@@ -4,8 +4,8 @@
 //! The external interface in `mod.rs` re-exports only what's needed.
 
 pub mod enrichment;
-pub mod semantic;
 pub mod logging;
 pub mod routing;
 pub mod search;
+pub mod semantic;
 pub mod subcommands;
