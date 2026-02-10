@@ -607,10 +607,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
 
-            let query = args
-                .get("query")
-                .and_then(|v| v.as_str())
-                .map(String::from);
+            let query = args.get("query").and_then(|v| v.as_str()).map(String::from);
 
             let query_type = match query_type_str {
                 "imports" => QueryType::Imports,

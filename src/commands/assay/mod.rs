@@ -35,11 +35,17 @@ pub enum QueryType {
     Derive,
     DeriveMoments,
     /// Ranked factual search using FTS5
-    Search { query: String },
+    Search {
+        query: String,
+    },
     /// Co-change analysis for a specific file
-    Cochange { file: String },
+    Cochange {
+        file: String,
+    },
     /// Belief grounding — evidence for/against a belief
-    Belief { id: String },
+    Belief {
+        id: String,
+    },
 }
 
 /// Options for assay command

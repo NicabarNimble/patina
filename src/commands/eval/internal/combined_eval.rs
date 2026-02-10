@@ -183,10 +183,7 @@ pub fn execute() -> Result<()> {
     );
 
     // --- Overall summary ---
-    let all_cases: Vec<QueryCase> = assay_cases
-        .into_iter()
-        .chain(scry_cases)
-        .collect();
+    let all_cases: Vec<QueryCase> = assay_cases.into_iter().chain(scry_cases).collect();
     let combined_all = compute_metrics(&all_cases, &combined_fn, "combined (all)");
 
     println!("\n━━━ Summary ━━━\n");

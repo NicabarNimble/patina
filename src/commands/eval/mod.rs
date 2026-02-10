@@ -1478,10 +1478,7 @@ pub fn execute_nl() -> Result<()> {
 
     if !train_cases.is_empty() && !test_cases.is_empty() {
         println!("\n━━━ Train vs Test (unified engine) ━━━\n");
-        println!(
-            "{:<25} {:>8} {:>8} {:>8}",
-            "Pipeline", "P@5", "P@10", "MRR"
-        );
+        println!("{:<25} {:>8} {:>8} {:>8}", "Pipeline", "P@5", "P@10", "MRR");
         println!("{}", "─".repeat(53));
 
         let train_m = score_nl_engine_refs(&unified, "unified (train)", &train_cases)?;
@@ -1506,7 +1503,12 @@ pub fn execute_nl() -> Result<()> {
 
     // Summary
     println!("\n━━━ Summary ━━━\n");
-    println!("  Queries:     {} ({} train, {} test)", cases.len(), train_count, test_count);
+    println!(
+        "  Queries:     {} ({} train, {} test)",
+        cases.len(),
+        train_count,
+        test_count
+    );
     println!("  Mean P@5:    {:.1}%", unified_metrics.p5 * 100.0);
     println!("  Mean P@10:   {:.1}%", unified_metrics.p10 * 100.0);
     println!("  MRR:         {:.3}", unified_metrics.mrr);

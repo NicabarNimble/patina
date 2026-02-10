@@ -82,14 +82,7 @@ pub fn oxidize() -> Result<()> {
             // Build USearch index with raw embeddings (768-dim)
             let input_dim = config.input_dim(&recipe)?;
             println!("\n🔍 Building USearch index ({}d raw E5)...", input_dim);
-            build_projection_index(
-                name,
-                db_path,
-                &mut embedder,
-                None,
-                input_dim,
-                &output_dir,
-            )?;
+            build_projection_index(name, db_path, &mut embedder, None, input_dim, &output_dir)?;
         } else {
             println!("📊 Training {} projection...", name);
             println!("{}", "=".repeat(60));
@@ -349,7 +342,11 @@ fn build_projection_index(
         .context("Failed to reserve index capacity")?;
 
     // Embed (and optionally project) and add to index
-    let mode = if projection.is_some() { "projecting" } else { "raw" };
+    let mode = if projection.is_some() {
+        "projecting"
+    } else {
+        "raw"
+    };
     println!("   Embedding vectors ({} mode)...", mode);
     for (id, content) in &events {
         let embedding = embedder
@@ -638,10 +635,7 @@ fn query_session_corpus(conn: &rusqlite::Connection) -> Result<Vec<(i64, String)
 
         // Build descriptive text for embedding
         let type_label = event_type.strip_prefix("session.").unwrap_or(&event_type);
-        let desc = format!(
-            "Session {} ({}): {}",
-            source_id, type_label, content
-        );
+        let desc = format!("Session {} ({}): {}", source_id, type_label, content);
 
         events.push((seq, desc));
         *type_counts.entry(type_label.to_string()).or_insert(0) += 1;

@@ -63,7 +63,6 @@ pub fn generate_commit_pairs(db_path: &str) -> Result<Vec<TrainingPair>> {
     let mut rng = fastrand::Rng::with_seed(42);
 
     for (sha, message, moment_type) in &commits {
-
         // Get files touched by this commit (normalized)
         let touched_files: Vec<String> = query_commit_files(&conn, sha)?
             .into_iter()
@@ -160,7 +159,8 @@ fn query_filtered_commits(conn: &Connection) -> Result<Vec<(String, String, Opti
 
 /// Query files touched by a commit
 fn query_commit_files(conn: &Connection, sha: &str) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT file_path FROM commit_files WHERE sha = ? ORDER BY file_path")?;
+    let mut stmt =
+        conn.prepare("SELECT file_path FROM commit_files WHERE sha = ? ORDER BY file_path")?;
     let mut files = Vec::new();
     let mut rows = stmt.query([sha])?;
 

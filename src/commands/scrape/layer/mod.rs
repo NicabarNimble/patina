@@ -446,12 +446,7 @@ fn collect_md_files(dir: &Path, recursive: bool) -> Vec<std::path::PathBuf> {
             .filter_map(|e| e.ok())
         {
             let path = entry.path();
-            if path.is_file()
-                && path
-                    .extension()
-                    .map(|ext| ext == "md")
-                    .unwrap_or(false)
-            {
+            if path.is_file() && path.extension().map(|ext| ext == "md").unwrap_or(false) {
                 files.push(path.to_path_buf());
             }
         }

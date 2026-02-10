@@ -15,11 +15,7 @@ use super::search::SearchResult;
 
 /// Query co-change neighbors for files matching the query pattern
 #[allow(dead_code)] // Used in Phase 1 completion when temporal oracle removed from scry
-pub fn query_co_changes(
-    conn: &Connection,
-    query: &str,
-    limit: usize,
-) -> Result<Vec<SearchResult>> {
+pub fn query_co_changes(conn: &Connection, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
     // Check if co_changes table exists and has data
     let has_data: bool = conn
         .query_row(
