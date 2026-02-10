@@ -41,9 +41,8 @@ to each other or to Mother herself.
 
 ## The Mental Model
 
-From Anton Logvinov's "Large Arrays of Things" (LOATs): don't build deep
-hierarchies of ownership. Keep things flat, same shape, simple relationships.
-Mother is the array. Children are the things.
+Flat, same shape, simple relationships. Don't build deep hierarchies of
+ownership. Mother is the array. Children are the things.
 
 Like a real mother:
 - She has **self** — her own state, her heartbeat, her presence
@@ -91,6 +90,23 @@ Mother (self)
     Toys: none (reads, doesn't write)
 ```
 
+## Current State
+
+Today `src/mother/` has three files:
+- `mod.rs` — public interface, daemon start
+- `internal.rs` — UDS client for daemon communication
+- `graph.rs` — cross-project graph (31 nodes, 3 edges)
+
+The daemon runs as a background process (`patina mother start`), listens on a
+UDS socket, and today does two things: proxies scry requests (dead path — MCP
+bypasses it) and caches decrypted secrets (sole real consumer). The graph
+exists but is manually maintained.
+
+This architecture refactors the daemon from a monolithic handler into a
+child-iterating loop. Existing functionality (secrets cache, graph) becomes
+children behind the trait. New functionality (models, repos, beliefs) plugs
+in as additional children.
+
 ## The Child Trait
 
 All children implement the same trait. [[dependable-rust]] pattern: small stable
@@ -106,10 +122,13 @@ pub trait MotherChild: Send + Sync {
     fn health(&self) -> ChildHealth;
 
     /// Handle a request routed by Mother
-    fn handle(&self, request: &Request) -> Result<Response>;
+    /// Request/Response shapes are child-specific — defined by each child's
+    /// spec. Mother routes by child name, doesn't inspect the payload.
+    fn handle(&self, request: &ChildRequest) -> Result<ChildResponse>;
 
-    /// Heartbeat tick — child checks its own state, may launch toys
-    fn tick(&mut self) -> Vec<Toy>;
+    /// Heartbeat tick — child checks its own state, may launch toys.
+    /// Default: return empty (passive children don't need to override).
+    fn tick(&mut self) -> Vec<Toy> { vec![] }
 }
 
 pub enum ChildHealth {
@@ -117,12 +136,23 @@ pub enum ChildHealth {
     Degraded(String),  // working but something's off
     Unavailable(String), // can't serve requests
 }
+```
 
-/// A toy is a process a child wants Mother to launch
+**Request/Response:** Each child defines what requests it accepts. Mother routes
+by child name without inspecting payloads. The exact serialization (enum
+dispatch, serde, etc.) is an implementation decision for when we build the
+first child.
+
+## Toys
+
+A toy is a process a child wants Mother to launch. The child decides *what*
+needs doing. Mother handles *how* to launch it.
+
+```rust
+/// A toy is work a child wants Mother to run
 pub struct Toy {
     pub name: String,
     pub command: ToyCommand,
-    pub on_complete: Box<dyn FnOnce(ToyResult) + Send>,
 }
 
 pub enum ToyCommand {
@@ -132,6 +162,10 @@ pub enum ToyCommand {
     Agent { adapter: String, context: String, task: String },
 }
 ```
+
+How Mother returns results to the child (callback, polling, channel) is an
+implementation detail to resolve when a child first needs toys. The concept:
+child requests, Mother runs, child gets result.
 
 ## Mother's Self
 
@@ -146,19 +180,13 @@ Mother's own responsibilities (not delegated to children):
 Mother does NOT know about models, repos, beliefs, or secrets directly.
 She just knows she has children and she iterates them.
 
-## Toys
-
-A toy is a process that a child asks Mother to launch. The child decides
-*what* needs doing. Mother handles *how* to launch it.
-
 Examples:
 - Repos child detects gastown is 30 days stale → requests a toy:
   `Shell(["patina", "oxidize", "--repo", "gastown"])`
 - Beliefs child detects drift between projects → requests a toy:
   `Agent { adapter: "codex", context: "layer/sessions/...", task: "investigate belief X" }`
 
-Mother spawns the toy, monitors it, and calls `on_complete` when done.
-Children never spawn processes directly.
+Children never spawn processes directly. Mother manages all toys.
 
 ## Evolution Path
 
@@ -186,6 +214,17 @@ Each child's internals are specified separately:
 
 This spec defines the **frame** — how Mother and children relate. The child
 specs define the **content** — what each child actually does.
+
+## Implementation Order
+
+The **models child** is the most concrete and should be built first. It has:
+- Real code to refactor (`resolve_model_path()`, `create_embedder()`)
+- A clear EmbeddingSpec/EmbeddingBackend abstraction already designed
+- Zero dependencies on other children
+- An existing consumer (every `patina scry` and `patina oxidize` call)
+
+Building models first proves the `MotherChild` trait works before adding
+children with more complex needs (repos with toys, beliefs with federation).
 
 ## Acceptance Criteria
 
