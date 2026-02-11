@@ -13,11 +13,12 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use patina::mother::ChildRequest;
 
 use super::microserver;
 use super::registry::ChildRegistry;
@@ -76,18 +77,11 @@ impl HttpResponse {
 
 // === Server state ===
 
-/// Cached secrets entry with expiry
-struct SecretsCacheEntry {
-    secrets: HashMap<String, String>,
-    expires_at: Instant,
-}
-
 /// Server state shared across request handlers
 pub struct ServerState {
     start_time: Instant,
     version: String,
     token: String,
-    secrets_cache: Mutex<Option<SecretsCacheEntry>>,
     pub(super) registry: ChildRegistry,
 }
 
@@ -97,7 +91,6 @@ impl ServerState {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
-            secrets_cache: Mutex::new(None),
             registry,
         }
     }
@@ -302,18 +295,7 @@ fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -
     }
 }
 
-// === Secrets cache handlers ===
-
-#[derive(Deserialize)]
-struct SecretsCacheRequest {
-    secrets: HashMap<String, String>,
-    #[serde(default = "default_ttl_secs")]
-    ttl_secs: u64,
-}
-
-fn default_ttl_secs() -> u64 {
-    600
-}
+// === Secrets cache handlers (delegate to secrets child) ===
 
 fn handle_secrets_get(
     request: &HttpRequest,
@@ -324,13 +306,14 @@ fn handle_secrets_get(
         return json_error(401, "Unauthorized");
     }
 
-    let cache = state
-        .secrets_cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    match cache.as_ref() {
-        Some(entry) if entry.expires_at > Instant::now() => HttpResponse::json(200, &entry.secrets),
-        _ => json_error(404, "No cached secrets"),
+    let child_req = ChildRequest {
+        action: "get".into(),
+        payload: serde_json::Value::Null,
+    };
+
+    match state.registry.handle("secrets", &child_req) {
+        Ok(resp) => HttpResponse::json(200, &resp.payload),
+        Err(_) => json_error(404, "No cached secrets"),
     }
 }
 
@@ -347,22 +330,20 @@ fn handle_secrets_cache(
         return json_error(400, "Missing request body");
     }
 
-    let body: SecretsCacheRequest = match serde_json::from_slice(&request.body) {
-        Ok(req) => req,
+    let payload: serde_json::Value = match serde_json::from_slice(&request.body) {
+        Ok(v) => v,
         Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
     };
 
-    let ttl = std::time::Duration::from_secs(body.ttl_secs);
-    let mut cache = state
-        .secrets_cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    *cache = Some(SecretsCacheEntry {
-        secrets: body.secrets,
-        expires_at: Instant::now() + ttl,
-    });
+    let child_req = ChildRequest {
+        action: "cache".into(),
+        payload,
+    };
 
-    HttpResponse::json(200, &serde_json::json!({"status": "cached"}))
+    match state.registry.handle("secrets", &child_req) {
+        Ok(resp) => HttpResponse::json(200, &resp.payload),
+        Err(e) => json_error(500, &format!("Cache failed: {}", e)),
+    }
 }
 
 fn handle_secrets_lock(
@@ -374,13 +355,15 @@ fn handle_secrets_lock(
         return json_error(401, "Unauthorized");
     }
 
-    let mut cache = state
-        .secrets_cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    *cache = None;
+    let child_req = ChildRequest {
+        action: "lock".into(),
+        payload: serde_json::Value::Null,
+    };
 
-    HttpResponse::json(200, &serde_json::json!({"status": "locked"}))
+    match state.registry.handle("secrets", &child_req) {
+        Ok(resp) => HttpResponse::json(200, &resp.payload),
+        Err(e) => json_error(500, &format!("Lock failed: {}", e)),
+    }
 }
 
 // === Transport: microserver accept loop ===
@@ -440,8 +423,8 @@ impl Default for DaemonOptions {
 /// Run the mother daemon server
 pub fn run_server(options: DaemonOptions) -> Result<()> {
     // Build and load child registry
-    let registry = ChildRegistry::new();
-    // Children are registered here (see AC 3+)
+    let mut registry = ChildRegistry::new();
+    registry.register(Box::new(super::secrets::SecretsCacheChild::new()));
 
     let daemon_host = DaemonHost;
     registry.load_all(&daemon_host)?;

@@ -41,6 +41,7 @@ pub(crate) mod daemon;
 pub(crate) mod graph;
 pub(crate) mod microserver;
 pub(crate) mod registry;
+pub(crate) mod secrets;
 
 use anyhow::{bail, Context, Result};
 use std::os::unix::fs::{FileTypeExt, PermissionsExt};
