@@ -1,20 +1,20 @@
 ---
 type: feat
 id: mother-beliefs
-status: design
+status: abandoned
 created: 2026-02-09
 sessions:
   origin: 20260209-215657
 related:
-  - layer/surface/build/feat/mother/SPEC.md
-  - layer/surface/build/feat/mother-v2/SPEC.md
-  - layer/surface/build/feat/mother-repos/SPEC.md
-  - layer/surface/build/feat/surface-layer/SPEC.md
+- layer/surface/build/feat/mother/SPEC.md
+- layer/surface/build/feat/mother-v2/SPEC.md
+- layer/surface/build/feat/mother-repos/SPEC.md
+- layer/surface/build/feat/surface-layer/SPEC.md
 beliefs:
-  - mother-is-the-daemon
-  - four-layer-architecture
-  - patina-is-knowledge-layer
-  - corpus-composition-over-model
+- mother-is-the-daemon
+- four-layer-architecture
+- patina-is-knowledge-layer
+- corpus-composition-over-model
 ---
 
 # feat: Mother Beliefs — Cross-Project Belief Layer
