@@ -1,13 +1,12 @@
 ---
 type: explore
 id: three-layers
-status: design
+status: abandoned
 created: 2026-01-13
 updated: 2026-02-06
-tags: [architecture, authority, convergence]
 related:
-  - layer/surface/build/feat/mother-architecture/SPEC.md
-  - layer/surface/build/feat/doctor-dev/SPEC.md
+- layer/surface/build/feat/mother-architecture/SPEC.md
+- layer/surface/build/feat/doctor-dev/SPEC.md
 ---
 
 # Explore: Three-Layer Authority Model

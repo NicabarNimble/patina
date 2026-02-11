@@ -1,14 +1,18 @@
 ---
 type: feat
 id: surface-layer
-status: design
+status: abandoned
 created: 2026-01-08
 updated: 2026-01-22
-session-origin: 20260108-124107
-sessions: [20260108-200725, 20260109-063849, 20260115-053944, 20260115-121358, 20260122-061519]
+sessions:
+- 20260108-200725
+- 20260109-063849
+- 20260115-053944
+- 20260115-121358
+- 20260122-061519
 related:
-  - layer/surface/build/feat/mother-architecture/SPEC.md
-  - layer/surface/build/explore/belief-validation-system/SPEC.md
+- layer/surface/build/feat/mother-architecture/SPEC.md
+- layer/surface/build/explore/belief-validation-system/SPEC.md
 ---
 
 # feat: Surface Layer

@@ -1,24 +1,23 @@
 ---
 type: feat
 id: system-introspection
-status: design
+status: abandoned
 created: 2026-02-05
 updated: 2026-02-05
+blocks:
+- cli-reorganization
 sessions:
   origin: 20260205-064001
   updated: 20260205-084522
-blocked_by: []
-blocks:
-  - cli-reorganization
 related:
-  - layer/surface/reports/data-flow-cheatsheet.md
-  - layer/surface/build/feat/mother-v2/SPEC.md
+- layer/surface/reports/data-flow-cheatsheet.md
+- layer/surface/build/feat/mother-v2/SPEC.md
 beliefs:
-  - measure-first
-  - measure-the-measurement
-  - simplicity-is-architecture
+- measure-first
+- measure-the-measurement
+- simplicity-is-architecture
 references:
-  - "Jerry Nixon - Modern Architecture 101 (NDC Copenhagen 2025)"
+- Jerry Nixon - Modern Architecture 101 (NDC Copenhagen 2025)
 ---
 
 # feat: System Introspection

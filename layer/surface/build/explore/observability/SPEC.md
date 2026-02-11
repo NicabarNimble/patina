@@ -1,12 +1,11 @@
 ---
 type: explore
 id: observability
-status: design
+status: abandoned
 created: 2026-01-13
 updated: 2026-02-06
-tags: [observability, metrics, events, doctor]
 related:
-  - layer/surface/build/feat/doctor-dev/SPEC.md
+- layer/surface/build/feat/doctor-dev/SPEC.md
 ---
 
 # Explore: Command Observability

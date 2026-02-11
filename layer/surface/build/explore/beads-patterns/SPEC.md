@@ -1,15 +1,14 @@
 ---
 type: explore
 id: beads-patterns
-status: design
+status: abandoned
 created: 2026-02-05
 updated: 2026-02-05
 sessions:
   origin: 20260204-233452
-  work: []
 related:
-  - https://github.com/steveyegge/beads
-  - layer/surface/epistemic/beliefs/mother-is-the-daemon.md
+- https://github.com/steveyegge/beads
+- layer/surface/epistemic/beliefs/mother-is-the-daemon.md
 ---
 
 # explore: Beads Pattern Evaluation

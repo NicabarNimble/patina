@@ -1,21 +1,19 @@
 ---
 type: feat
 id: doctor-dev
-status: design
+status: abandoned
 created: 2026-02-06
 sessions:
   origin: 20260206-060219
-blocked_by: []
-blocks: []
 related:
-  - layer/surface/build/feat/spec-drift-detection/SPEC.md
-  - layer/surface/build/explore/observability/SPEC.md
-  - layer/surface/build/fix/spec-tree-and-cycles/SPEC.md
-  - layer/surface/build/fix/eval-repair/SPEC.md
+- layer/surface/build/feat/spec-drift-detection/SPEC.md
+- layer/surface/build/explore/observability/SPEC.md
+- layer/surface/build/fix/spec-tree-and-cycles/SPEC.md
+- layer/surface/build/fix/eval-repair/SPEC.md
 beliefs:
-  - stale-context-is-hostile-context
-  - process-checkpoints-catch-what-tooling-misses
-  - measure-the-measurement
+- stale-context-is-hostile-context
+- process-checkpoints-catch-what-tooling-misses
+- measure-the-measurement
 ---
 
 # feat: Doctor Dev — Full State Review at Session End

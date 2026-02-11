@@ -1,15 +1,17 @@
 ---
 type: explore
 id: lab-automation
-status: design
+status: abandoned
 created: 2026-01-13
 updated: 2026-02-07
-tags: [eval, benchmarking, quality, measurement]
 blocked_by:
-  - eval-repair
-references: [measure-first, measure-the-measurement, error-analysis-over-architecture]
+- eval-repair
 related:
-  - layer/surface/build/fix/eval-repair/SPEC.md
+- layer/surface/build/fix/eval-repair/SPEC.md
+references:
+- measure-first
+- measure-the-measurement
+- error-analysis-over-architecture
 ---
 
 # Explore: Lab Automation — Make Quality Measurement a Habit

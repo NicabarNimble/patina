@@ -1,18 +1,18 @@
 ---
 type: explore
 id: anti-tunneling
-status: design
+status: abandoned
 created: 2026-02-09
 updated: 2026-02-09
 sessions:
   origin: 20260209-061005
 related:
-  - layer/surface/build/explore/belief-validation-system/SPEC.md
-  - layer/surface/build/explore/anti-slop/SPEC.md
+- layer/surface/build/explore/belief-validation-system/SPEC.md
+- layer/surface/build/explore/anti-slop/SPEC.md
 beliefs:
-  - anti-tunneling-as-belief-challenge
-  - measure-the-measurement
-  - practical-memory-over-epistemic-formalism
+- anti-tunneling-as-belief-challenge
+- measure-the-measurement
+- practical-memory-over-epistemic-formalism
 ---
 
 # explore: Anti-Tunneling as Belief Challenge Lens
