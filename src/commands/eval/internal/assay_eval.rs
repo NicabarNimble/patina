@@ -58,7 +58,7 @@ pub fn execute() -> Result<()> {
             query: c.query.clone(),
             expected: c.expected.clone(),
             category: c.category.clone(),
-            note: c.note.clone(),
+
             split: c.split.clone(),
         })
         .collect();
@@ -69,7 +69,7 @@ pub fn execute() -> Result<()> {
             query: c.query.clone(),
             expected: c.expected.clone(),
             category: c.category.clone(),
-            note: c.note.clone(),
+
             split: c.split.clone(),
         })
         .collect();

@@ -23,8 +23,6 @@ pub struct QueryCase {
     pub query: String,
     pub expected: Vec<String>,
     pub category: String,
-    #[allow(dead_code)]
-    pub note: Option<String>,
     pub split: String,
 }
 
