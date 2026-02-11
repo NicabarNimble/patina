@@ -54,10 +54,7 @@ fn read_config_strategy(project_path: &Path) -> Option<ReleaseStrategy> {
 
     // Parse as toml::Value to check for [versioning] section
     let table: toml::Value = toml::from_str(&content).ok()?;
-    let strategy_str = table
-        .get("versioning")?
-        .get("strategy")?
-        .as_str()?;
+    let strategy_str = table.get("versioning")?.get("strategy")?.as_str()?;
 
     match strategy_str {
         "cargo" => Some(ReleaseStrategy::Cargo),
@@ -276,7 +273,11 @@ fn execute_cargo(prepared: PreparedRelease, title: &str, spec_path: &str) -> Res
     let tag_name = format!("v{}", new_version);
     crate::git::create_tag(&tag_name, title)?;
 
-    println!("\n  Spec type '{}' → {} bump", prepared.bump.label(), prepared.bump.label());
+    println!(
+        "\n  Spec type '{}' → {} bump",
+        prepared.bump.label(),
+        prepared.bump.label()
+    );
     println!("  Version: {} → {}", old_version, new_version);
     println!("  Tagged: v{}", new_version);
 
@@ -295,7 +296,10 @@ fn execute_external(prepared: PreparedRelease, title: &str) -> Result<()> {
             println!("  Action needed: bump to next major version and tag manually");
         }
         _ => {
-            println!("  Action needed: bump your {} version and tag manually", bump_label);
+            println!(
+                "  Action needed: bump your {} version and tag manually",
+                bump_label
+            );
         }
     }
 

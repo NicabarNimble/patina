@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: version-consolidation
-status: draft
+status: active
 created: 2026-02-11
 sessions:
   origin: 20260211-100430
