@@ -1,7 +1,7 @@
 ---
 type: fix
 id: spec-tree-and-cycles
-status: ready
+status: design
 created: 2026-02-06
 sessions:
   origin: 20260206-060219

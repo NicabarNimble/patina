@@ -1,7 +1,7 @@
 ---
 type: feat
 id: skills-focused-adapter
-status: ready
+status: design
 created: 2026-01-19
 updated: 2026-02-06
 blocked_by: []
