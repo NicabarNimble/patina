@@ -1,24 +1,23 @@
 ---
 type: feat
 id: mother-v2
-status: design
+status: abandoned
 created: 2026-02-05
 updated: 2026-02-05
 sessions:
   origin: 20260205-064001
-  work: []
 related:
-  - layer/surface/build/feat/mother/SPEC.md
-  - layer/surface/build/feat/surface-layer/SPEC.md
-  - layer/surface/build/explore/beads-patterns/SPEC.md
-  - layer/surface/build/refactor/semantic-structural-split/SPEC.md
-  - layer/surface/epistemic/beliefs/mother-is-the-daemon.md
-  - layer/surface/epistemic/beliefs/patina-is-knowledge-layer.md
+- layer/surface/build/feat/mother/SPEC.md
+- layer/surface/build/feat/surface-layer/SPEC.md
+- layer/surface/build/explore/beads-patterns/SPEC.md
+- layer/surface/build/refactor/semantic-structural-split/SPEC.md
+- layer/surface/epistemic/beliefs/mother-is-the-daemon.md
+- layer/surface/epistemic/beliefs/patina-is-knowledge-layer.md
 beliefs:
-  - mother-is-the-daemon
-  - patina-is-knowledge-layer
-  - mother-owns-ref-repo-indexing
-  - corpus-composition-over-model
+- mother-is-the-daemon
+- patina-is-knowledge-layer
+- mother-owns-ref-repo-indexing
+- corpus-composition-over-model
 ---
 
 # feat: Mother v2 — The Nervous System
