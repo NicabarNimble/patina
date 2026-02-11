@@ -147,12 +147,16 @@ fn preflight_external(bump: BumpType) -> Result<PreparedRelease> {
 fn run_safeguard_checks(new_version: &str, spec_path: &str) -> Result<()> {
     use crate::git;
 
-    // 1. Dirty tree check (excluding the spec file we're about to release)
+    // 1. Dirty tree check (excluding untracked files and the spec file we're releasing)
     let dirty = git::status_porcelain()?;
     let unexpected: Vec<&str> = dirty
         .lines()
         .filter(|line| {
             // status_porcelain format: "XY path" or "XY path -> path"
+            // Skip untracked files (??) — they won't be in the release commit
+            if line.starts_with("??") {
+                return false;
+            }
             let path = line.get(3..).unwrap_or("").split(" -> ").next().unwrap_or("");
             !path.is_empty() && path != spec_path
         })
