@@ -1,20 +1,20 @@
 ---
 type: refactor
 id: security-hardening
-status: ready
+status: complete
 created: 2026-02-03
 sessions:
   origin: 20260203-134222
   work:
-    - 20260203-192041
+  - 20260203-192041
 related:
-  - layer/core/build.md
-  - layer/surface/build/feat/mother-architecture/SPEC.md
-  - src/commands/serve/internal.rs
-  - src/secrets/vault.rs
-  - src/secrets/mod.rs
-  - src/embeddings/onnx.rs
-  - src/mcp/server.rs
+- layer/core/build.md
+- layer/surface/build/feat/mother-architecture/SPEC.md
+- src/commands/serve/internal.rs
+- src/secrets/vault.rs
+- src/secrets/mod.rs
+- src/embeddings/onnx.rs
+- src/mcp/server.rs
 ---
 
 # refactor: Security Hardening
