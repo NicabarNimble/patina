@@ -171,6 +171,14 @@ struct HealthResponse {
     status: String,
     version: String,
     uptime_secs: u64,
+    children: Vec<ChildHealthJson>,
+}
+
+/// Child health in JSON form (uses Display impl of ChildHealth)
+#[derive(Serialize)]
+struct ChildHealthJson {
+    name: String,
+    status: String,
 }
 
 /// Scry API request
@@ -259,12 +267,23 @@ fn route_request(request: &HttpRequest, state: &ServerState, require_auth: bool)
 
 /// Handle GET /health
 fn handle_health(state: &ServerState) -> HttpResponse {
+    let children: Vec<ChildHealthJson> = state
+        .registry
+        .health_all()
+        .into_iter()
+        .map(|(name, health)| ChildHealthJson {
+            name,
+            status: health.to_string(),
+        })
+        .collect();
+
     HttpResponse::json(
         200,
         &HealthResponse {
             status: "ok".to_string(),
             version: state.version.clone(),
             uptime_secs: state.uptime_secs(),
+            children,
         },
     )
 }
