@@ -11,32 +11,23 @@ sessions:
   - 20260129-093857
 related:
   - layer/surface/build/feat/mother-architecture/SPEC.md
-milestones:
-- version: 0.9.1
-  name: Version & spec system alignment
+checklist:
+- name: Version & spec system alignment
   status: complete
-- version: 0.9.2
-  name: Session system & adapter parity
+- name: Session system & adapter parity
   status: complete
-- version: 0.10.0
-  name: Epistemic layer complete (E4-E4.6c)
+- name: Epistemic layer complete (E4-E4.6c)
   status: complete
-- version: 0.11.0
-  name: Mother delivery + federation
+- name: Mother delivery + federation
   status: complete
-- version: 0.12.0
-  name: Dynamic ONNX loading
+- name: Dynamic ONNX loading
   status: in_progress
-- version: 0.13.0
-  name: WASM grammars
+- name: WASM grammars
   status: pending
-- version: 0.14.0
-  name: GitHub releases + Homebrew
+- name: GitHub releases + Homebrew
   status: pending
-- version: 1.0.0
-  name: All pillars complete
+- name: All pillars complete
   status: pending
-current_milestone: 0.12.0
 ---
 
 # feat: v1.0 Release
@@ -61,23 +52,16 @@ All three must be complete for v1.0.
 
 ## Versioning Strategy
 
-**Model:** Semver — MINOR for milestones, PATCH for fixes
+**Model:** Spec-driven semver via [[version-consolidation]]
 
-```
-0.9.0  ✓ Public release (fat binary)
-0.9.1  ✓ Version system fixed, spec-system aligned
-0.9.2  ✓ Session system & adapter parity
-0.9.3  ✓ Fix: session 0.9.2 hardening
-0.9.4  ✓ Fix: spec archive command, belief verification
-0.10.0 - Epistemic layer complete (E4-E4.6c)
-0.11.0 - Mother delivery + federation
-0.12.0 - Dynamic ONNX loading
-0.13.0 - WASM grammars
-0.14.0 - GitHub releases + Homebrew
-1.0.0  - All pillars complete
-```
+Versions are no longer planned as absolute targets. Each spec completion
+bumps the version based on spec type (feat → minor, fix → patch) through
+`ReleaseStrategy`. The checklist above tracks work items, not version numbers.
 
-Each MINOR = one milestone toward a pillar. PATCH reserved for fixes.
+**Major release (1.0.0) requires explicit human decision** — use
+`patina spec status <id> complete --major` only when all three pillars are
+complete and the human operator confirms readiness. This is not an automated
+gate; it's a deliberate milestone.
 
 **Principle:** All three adapter LLMs must have the same level of excellence.
 
