@@ -539,17 +539,17 @@ pub fn update_spec_status(id: &str, new_status: &str) -> Result<()> {
     Ok(())
 }
 
-/// Archive a completed spec: create spec/<id> tag, remove file, commit
+/// Archive a completed or abandoned spec: create spec/<id> tag, remove file, commit
 pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
     // 1. Find spec in patterns table by id
     let (file_path, status, title) = find_spec(id)?;
     let status_str = status.as_deref().unwrap_or("");
 
-    // 2. Validate status is complete
-    if status_str != "complete" {
+    // 2. Validate status allows archiving
+    if status_str != "complete" && status_str != "abandoned" {
         anyhow::bail!(
-            "Spec '{}' has status '{}', expected 'complete'\n\
-             Only completed specs can be archived.",
+            "Spec '{}' has status '{}', expected 'complete' or 'abandoned'\n\
+             Only completed or abandoned specs can be archived.",
             id,
             status_str
         );
@@ -583,7 +583,7 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
         } else {
             println!("  Remove: {}", file_path);
         }
-        println!("  Commit: docs: archive {} (complete)", tag_name);
+        println!("  Commit: docs: archive {} ({})", tag_name, status_str);
         println!("\nRecover with: git show {}:{}", tag_name, file_path);
         return Ok(());
     }
@@ -633,8 +633,8 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
 
     // 7. Commit
     let commit_msg = format!(
-        "docs: archive {} (complete)\n\nSpec preserved via git tag: {}\nRecover with: git show {}:{}",
-        tag_name, tag_name, tag_name, file_path
+        "docs: archive {} ({})\n\nSpec preserved via git tag: {}\nRecover with: git show {}:{}",
+        tag_name, status_str, tag_name, tag_name, file_path
     );
     println!("Committing archive");
 
