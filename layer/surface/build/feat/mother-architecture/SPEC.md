@@ -1,7 +1,7 @@
 ---
 type: feat
 id: mother-architecture
-status: ready
+status: complete
 created: 2026-02-10
 sessions:
   origin: 20260210-061323
