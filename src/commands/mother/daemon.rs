@@ -188,8 +188,6 @@ struct ScryRequest {
     repo: Option<String>,
     #[serde(default)]
     all_repos: bool,
-    #[serde(default)]
-    include_issues: bool,
     #[serde(default = "default_limit")]
     limit: usize,
 }
@@ -320,7 +318,6 @@ fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -
     let query_opts = QueryOptions {
         repo: body.repo,
         all_repos: body.all_repos,
-        include_issues: body.include_issues,
     };
 
     match engine.query_with_options(&body.query, body.limit, &query_opts) {
