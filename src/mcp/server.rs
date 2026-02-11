@@ -461,10 +461,6 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         .get("all_repos")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false);
-                    let include_issues = args
-                        .get("include_issues")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
                     let impact = args.get("impact").and_then(|v| v.as_bool()).unwrap_or(true);
 
                     let expanded_terms: Vec<&str> = args
@@ -487,11 +483,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         format!("{} {}", query, expanded_terms.join(" "))
                     };
 
-                    let options = QueryOptions {
-                        repo,
-                        all_repos,
-                        include_issues,
-                    };
+                    let options = QueryOptions { repo, all_repos };
 
                     match engine.query_with_options(&full_query, limit, &options) {
                         Ok(results) => {
@@ -521,10 +513,6 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         .get("all_repos")
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false);
-                    let include_issues = args
-                        .get("include_issues")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
                     let impact = args.get("impact").and_then(|v| v.as_bool()).unwrap_or(true);
 
                     // Extract expanded_terms for vocabulary gap bridging
@@ -549,11 +537,7 @@ fn handle_tool_call(req: &Request, engine: &QueryEngine) -> Response {
                         format!("{} {}", query, expanded_terms.join(" "))
                     };
 
-                    let options = QueryOptions {
-                        repo,
-                        all_repos,
-                        include_issues,
-                    };
+                    let options = QueryOptions { repo, all_repos };
 
                     match engine.query_with_options(&full_query, limit, &options) {
                         Ok(results) => {

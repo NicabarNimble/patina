@@ -1167,8 +1167,6 @@ struct NlQueryCase {
     query: String,
     expected: Vec<String>,
     category: String,
-    #[allow(dead_code)]
-    source: String,
     split: String,
 }
 

@@ -13,13 +13,15 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener};
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use patina::mother::ChildRequest;
 
 use super::microserver;
+use super::registry::ChildRegistry;
 use crate::retrieval::{QueryEngine, QueryOptions};
 
 /// Maximum request body size (1 MB)
@@ -75,33 +77,90 @@ impl HttpResponse {
 
 // === Server state ===
 
-/// Cached secrets entry with expiry
-struct SecretsCacheEntry {
-    secrets: HashMap<String, String>,
-    expires_at: Instant,
-}
-
 /// Server state shared across request handlers
 pub struct ServerState {
     start_time: Instant,
     version: String,
     token: String,
-    secrets_cache: Mutex<Option<SecretsCacheEntry>>,
+    pub(super) registry: ChildRegistry,
 }
 
 impl ServerState {
-    fn new(token: String) -> Self {
+    fn new(token: String, registry: ChildRegistry) -> Self {
         Self {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
-            secrets_cache: Mutex::new(None),
+            registry,
         }
     }
 
     fn uptime_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
     }
+}
+
+// === Host capabilities ===
+
+/// MotherHost implementation for the daemon process.
+struct DaemonHost;
+
+impl patina::mother::MotherHost for DaemonHost {
+    fn log(&self, child: &str, message: &str) {
+        eprintln!("[mother:{}] {}", child, message);
+    }
+}
+
+// === Heartbeat ===
+
+/// Heartbeat interval in seconds
+const HEARTBEAT_INTERVAL_SECS: u64 = 60;
+
+/// Spawn the heartbeat thread — ticks all children periodically.
+/// Toys returned by children are spawned as child processes.
+fn spawn_heartbeat(state: Arc<ServerState>) {
+    std::thread::Builder::new()
+        .name("mother-heartbeat".to_string())
+        .spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
+            let toys = state.registry.tick_all();
+            for toy in toys {
+                spawn_toy(toy);
+            }
+        })
+        .expect("failed to spawn heartbeat thread");
+}
+
+/// Spawn a toy as a child process in a background thread.
+///
+/// The child decides *what* to run. Mother handles *how*.
+/// Each toy runs in its own thread so the heartbeat loop isn't blocked.
+fn spawn_toy(toy: patina::mother::Toy) {
+    std::thread::Builder::new()
+        .name(format!("toy-{}", toy.name))
+        .spawn(move || {
+            eprintln!(
+                "[mother:toy] spawning '{}': {} {:?}",
+                toy.name, toy.command, toy.args
+            );
+            match std::process::Command::new(&toy.command)
+                .args(&toy.args)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
+                .status()
+            {
+                Ok(status) if status.success() => {
+                    eprintln!("[mother:toy] '{}' completed successfully", toy.name);
+                }
+                Ok(status) => {
+                    eprintln!("[mother:toy] '{}' failed with {}", toy.name, status);
+                }
+                Err(e) => {
+                    eprintln!("[mother:toy] '{}' failed to spawn: {}", toy.name, e);
+                }
+            }
+        })
+        .expect("failed to spawn toy thread");
 }
 
 // === API types ===
@@ -112,6 +171,14 @@ struct HealthResponse {
     status: String,
     version: String,
     uptime_secs: u64,
+    children: Vec<ChildHealthJson>,
+}
+
+/// Child health in JSON form (uses Display impl of ChildHealth)
+#[derive(Serialize)]
+struct ChildHealthJson {
+    name: String,
+    status: String,
 }
 
 /// Scry API request
@@ -121,8 +188,6 @@ struct ScryRequest {
     repo: Option<String>,
     #[serde(default)]
     all_repos: bool,
-    #[serde(default)]
-    include_issues: bool,
     #[serde(default = "default_limit")]
     limit: usize,
 }
@@ -189,6 +254,10 @@ fn route_request(request: &HttpRequest, state: &ServerState, require_auth: bool)
         ("GET", "/secrets/cache") => handle_secrets_get(request, state, require_auth),
         ("POST", "/secrets/cache") => handle_secrets_cache(request, state, require_auth),
         ("POST", "/secrets/lock") => handle_secrets_lock(request, state, require_auth),
+        // Generic child routing: /child/{name}/{action}
+        _ if request.path.starts_with("/child/") => {
+            handle_child_request(request, state, require_auth)
+        }
         _ => json_error(404, "Not found"),
     };
     with_security_headers(response)
@@ -196,12 +265,23 @@ fn route_request(request: &HttpRequest, state: &ServerState, require_auth: bool)
 
 /// Handle GET /health
 fn handle_health(state: &ServerState) -> HttpResponse {
+    let children: Vec<ChildHealthJson> = state
+        .registry
+        .health_all()
+        .into_iter()
+        .map(|(name, health)| ChildHealthJson {
+            name,
+            status: health.to_string(),
+        })
+        .collect();
+
     HttpResponse::json(
         200,
         &HealthResponse {
             status: "ok".to_string(),
             version: state.version.clone(),
             uptime_secs: state.uptime_secs(),
+            children,
         },
     )
 }
@@ -238,7 +318,6 @@ fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -
     let query_opts = QueryOptions {
         repo: body.repo,
         all_repos: body.all_repos,
-        include_issues: body.include_issues,
     };
 
     match engine.query_with_options(&body.query, body.limit, &query_opts) {
@@ -266,18 +345,7 @@ fn handle_scry(request: &HttpRequest, state: &ServerState, require_auth: bool) -
     }
 }
 
-// === Secrets cache handlers ===
-
-#[derive(Deserialize)]
-struct SecretsCacheRequest {
-    secrets: HashMap<String, String>,
-    #[serde(default = "default_ttl_secs")]
-    ttl_secs: u64,
-}
-
-fn default_ttl_secs() -> u64 {
-    600
-}
+// === Secrets cache handlers (delegate to secrets child) ===
 
 fn handle_secrets_get(
     request: &HttpRequest,
@@ -288,13 +356,14 @@ fn handle_secrets_get(
         return json_error(401, "Unauthorized");
     }
 
-    let cache = state
-        .secrets_cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    match cache.as_ref() {
-        Some(entry) if entry.expires_at > Instant::now() => HttpResponse::json(200, &entry.secrets),
-        _ => json_error(404, "No cached secrets"),
+    let child_req = ChildRequest {
+        action: "get".into(),
+        payload: serde_json::Value::Null,
+    };
+
+    match state.registry.handle("secrets", &child_req) {
+        Ok(resp) => HttpResponse::json(200, &resp.payload),
+        Err(_) => json_error(404, "No cached secrets"),
     }
 }
 
@@ -311,22 +380,20 @@ fn handle_secrets_cache(
         return json_error(400, "Missing request body");
     }
 
-    let body: SecretsCacheRequest = match serde_json::from_slice(&request.body) {
-        Ok(req) => req,
+    let payload: serde_json::Value = match serde_json::from_slice(&request.body) {
+        Ok(v) => v,
         Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
     };
 
-    let ttl = std::time::Duration::from_secs(body.ttl_secs);
-    let mut cache = state
-        .secrets_cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    *cache = Some(SecretsCacheEntry {
-        secrets: body.secrets,
-        expires_at: Instant::now() + ttl,
-    });
+    let child_req = ChildRequest {
+        action: "cache".into(),
+        payload,
+    };
 
-    HttpResponse::json(200, &serde_json::json!({"status": "cached"}))
+    match state.registry.handle("secrets", &child_req) {
+        Ok(resp) => HttpResponse::json(200, &resp.payload),
+        Err(e) => json_error(500, &format!("Cache failed: {}", e)),
+    }
 }
 
 fn handle_secrets_lock(
@@ -338,13 +405,58 @@ fn handle_secrets_lock(
         return json_error(401, "Unauthorized");
     }
 
-    let mut cache = state
-        .secrets_cache
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    *cache = None;
+    let child_req = ChildRequest {
+        action: "lock".into(),
+        payload: serde_json::Value::Null,
+    };
 
-    HttpResponse::json(200, &serde_json::json!({"status": "locked"}))
+    match state.registry.handle("secrets", &child_req) {
+        Ok(resp) => HttpResponse::json(200, &resp.payload),
+        Err(e) => json_error(500, &format!("Lock failed: {}", e)),
+    }
+}
+
+// === Generic child routing ===
+
+/// Handle /child/{name}/{action} — generic routing to any child.
+///
+/// GET requests pass null payload; POST requests parse body as JSON.
+/// Existing /secrets/* routes are legacy aliases for this mechanism.
+fn handle_child_request(
+    request: &HttpRequest,
+    state: &ServerState,
+    require_auth: bool,
+) -> HttpResponse {
+    if require_auth && !check_auth(request, &state.token) {
+        return json_error(401, "Unauthorized");
+    }
+
+    // Parse /child/{name}/{action}
+    let parts: Vec<&str> = request.path[1..].split('/').collect();
+    if parts.len() != 3 {
+        return json_error(400, "Expected /child/{name}/{action}");
+    }
+    let child_name = parts[1];
+    let action = parts[2];
+
+    let payload = if request.body.is_empty() {
+        serde_json::Value::Null
+    } else {
+        match serde_json::from_slice(&request.body) {
+            Ok(v) => v,
+            Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
+        }
+    };
+
+    let child_req = ChildRequest {
+        action: action.to_string(),
+        payload,
+    };
+
+    match state.registry.handle(child_name, &child_req) {
+        Ok(resp) => HttpResponse::json(200, &resp.payload),
+        Err(e) => json_error(404, &format!("{}", e)),
+    }
 }
 
 // === Transport: microserver accept loop ===
@@ -403,10 +515,18 @@ impl Default for DaemonOptions {
 
 /// Run the mother daemon server
 pub fn run_server(options: DaemonOptions) -> Result<()> {
+    // Build and load child registry
+    let mut registry = ChildRegistry::new();
+    registry.register(Box::new(super::secrets::SecretsCacheChild::new()));
+
+    let daemon_host = DaemonHost;
+    registry.load_all(&daemon_host)?;
+    let child_count = registry.len();
+
     // TCP opt-in path (--host flag) — requires bearer token
     if let Some(ref host) = options.host {
         let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
-        let state = Arc::new(ServerState::new(token));
+        let state = Arc::new(ServerState::new(token, registry));
         let addr = format!("{}:{}", host, options.port);
 
         if host != "127.0.0.1" && host != "localhost" {
@@ -430,14 +550,16 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 
         let listener = TcpListener::bind(&addr)?;
         println!("🚀 Mother daemon starting...");
+        println!("   Children: {} loaded", child_count);
         println!("   Listening on http://{}", addr);
         println!("   Press Ctrl+C to stop\n");
 
+        spawn_heartbeat(Arc::clone(&state));
         accept_loop_tcp(listener, state);
     }
 
     // Default: UDS path (no TCP, no token needed — file permissions are auth)
-    let state = Arc::new(ServerState::new(String::new()));
+    let state = Arc::new(ServerState::new(String::new(), registry));
     let listener = super::setup_unix_listener()?;
     let socket_path = patina::paths::serve::socket_path();
 
@@ -449,6 +571,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 
     println!("🚀 Mother daemon starting...");
     println!("   PID: {}", std::process::id());
+    println!("   Children: {} loaded", child_count);
     println!("   Listening on {}", socket_path.display());
     println!(
         "   Test: curl -s --unix-socket {} http://localhost/health",
@@ -457,6 +580,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     println!("   No TCP listener (use --host/--port for network access)");
     println!("   Press Ctrl+C to stop\n");
 
+    spawn_heartbeat(Arc::clone(&state));
     accept_loop_uds(listener, state);
 }
 

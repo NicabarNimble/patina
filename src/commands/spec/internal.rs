@@ -1,130 +1,13 @@
 use anyhow::{Context, Result};
 use rusqlite::Connection;
 use serde::Serialize;
-use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use patina::git;
+use patina::release::{BumpType, ReleaseStrategy};
 use patina::spec::{parse_spec_file, serialize_spec_file};
 
 const DB_PATH: &str = ".patina/local/data/patina.db";
-
-// ============================================================================
-// Version Rules (spec type → version impact)
-// ============================================================================
-
-/// Determine version bump type from spec type
-/// Returns: "patch", "minor", or "none"
-fn version_bump_for_spec_type(spec_type: &str) -> &'static str {
-    match spec_type {
-        "fix" | "refactor" => "patch",
-        "feat" => "minor",
-        "explore" => "none",
-        _ => "none", // unknown types don't bump
-    }
-}
-
-/// Read current version from Cargo.toml
-fn read_cargo_version() -> Result<String> {
-    let content = fs::read_to_string("Cargo.toml")?;
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("version") && trimmed.contains('=') {
-            if let Some(version) = trimmed.split('=').nth(1) {
-                let version = version.trim().trim_matches('"').trim_matches('\'');
-                return Ok(version.to_string());
-            }
-        }
-    }
-    anyhow::bail!("Could not find version in Cargo.toml")
-}
-
-/// Compute next version based on bump type
-fn next_version(current: &str, bump: &str) -> Result<String> {
-    let parts: Vec<u32> = current
-        .split('.')
-        .map(|s| s.parse::<u32>().context("Invalid version component"))
-        .collect::<Result<Vec<_>>>()?;
-
-    if parts.len() != 3 {
-        anyhow::bail!("Expected semver format (x.y.z), got '{}'", current);
-    }
-
-    Ok(match bump {
-        "patch" => format!("{}.{}.{}", parts[0], parts[1], parts[2] + 1),
-        "minor" => format!("{}.{}.0", parts[0], parts[1] + 1),
-        "major" => format!("{}.0.0", parts[0] + 1),
-        _ => current.to_string(),
-    })
-}
-
-/// Update version in Cargo.toml
-fn update_cargo_version(new_version: &str) -> Result<()> {
-    let path = Path::new("Cargo.toml");
-    let content = fs::read_to_string(path)?;
-
-    let mut in_package_section = false;
-    let mut version_updated = false;
-    let mut new_content = String::new();
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('[') {
-            in_package_section = trimmed == "[package]";
-        }
-        if in_package_section && !version_updated && trimmed.starts_with("version") {
-            new_content.push_str(&format!("version = \"{}\"\n", new_version));
-            version_updated = true;
-        } else {
-            new_content.push_str(line);
-            new_content.push('\n');
-        }
-    }
-
-    if !version_updated {
-        anyhow::bail!("Could not find version field in [package] section");
-    }
-
-    fs::write(path, new_content)?;
-    Ok(())
-}
-
-/// Perform release: update Cargo.toml, commit, tag
-fn do_release(version: &str, spec_title: &str, spec_path: &str) -> Result<()> {
-    // 1. Update Cargo.toml
-    update_cargo_version(version)?;
-
-    // 2. Stage and commit
-    let commit_msg = format!("release: v{} — {}", version, spec_title);
-    let output = Command::new("git")
-        .args(["add", "Cargo.toml", spec_path])
-        .output()
-        .context("Failed to stage files")?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "git add failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-
-    let output = Command::new("git")
-        .args(["commit", "-m", &commit_msg])
-        .output()
-        .context("Failed to commit")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.contains("nothing to commit") {
-            anyhow::bail!("git commit failed: {}", stderr);
-        }
-    }
-
-    // 3. Create tag
-    let tag_name = format!("v{}", version);
-    git::create_tag(&tag_name, spec_title)?;
-
-    Ok(())
-}
 
 // ============================================================================
 // Ready Queue (spec-as-work-item Phase 2)
@@ -467,7 +350,11 @@ pub fn show_spec_list(filters: &ListFilters, json: bool) -> Result<()> {
 const VALID_STATUSES: &[&str] = &["draft", "ready", "active", "complete", "abandoned"];
 
 /// Update a spec's status in both file and database
-pub fn update_spec_status(id: &str, new_status: &str) -> Result<()> {
+///
+/// When status is "complete", delegates to `ReleaseStrategy` for version
+/// management. The `major` flag overrides type-based bump detection for
+/// 1.0.0 moments (`patina spec status <id> complete --major`).
+pub fn update_spec_status(id: &str, new_status: &str, major: bool) -> Result<()> {
     // 1. Validate new status
     if !VALID_STATUSES.contains(&new_status) {
         anyhow::bail!(
@@ -516,40 +403,39 @@ pub fn update_spec_status(id: &str, new_status: &str) -> Result<()> {
     println!("Updated: {} → {}", title_str, new_status);
     println!("  File: {}", file_path);
 
-    // 7. If completing, trigger version bump based on spec type
+    // 7. If completing, delegate to release strategy
     if new_status == "complete" {
-        let spec_type = &frontmatter.r#type;
-        let bump_type = version_bump_for_spec_type(spec_type);
+        let strategy = ReleaseStrategy::from_project(Path::new("."));
 
-        if bump_type != "none" {
-            let current_version = read_cargo_version()?;
-            let new_version = next_version(&current_version, bump_type)?;
-
-            println!("\n  Spec type '{}' → {} bump", spec_type, bump_type);
-            println!("  Version: {} → {}", current_version, new_version);
-
-            do_release(&new_version, title_str, &file_path)?;
-
-            println!("  Tagged: v{}", new_version);
+        // --major overrides type-based bump detection
+        let bump = if major {
+            Some(BumpType::Major)
         } else {
-            println!("\n  Spec type '{}' → no version bump", spec_type);
+            BumpType::from_spec_type(&frontmatter.r#type)
+        };
+
+        if let Some(bump) = bump {
+            let prepared = strategy.preflight(bump, &file_path)?;
+            prepared.execute(title_str, &file_path)?;
+        } else {
+            println!("\n  Spec type '{}' → no version bump", frontmatter.r#type);
         }
     }
 
     Ok(())
 }
 
-/// Archive a completed spec: create spec/<id> tag, remove file, commit
+/// Archive a completed or abandoned spec: create spec/<id> tag, remove file, commit
 pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
     // 1. Find spec in patterns table by id
     let (file_path, status, title) = find_spec(id)?;
     let status_str = status.as_deref().unwrap_or("");
 
-    // 2. Validate status is complete
-    if status_str != "complete" {
+    // 2. Validate status allows archiving
+    if status_str != "complete" && status_str != "abandoned" {
         anyhow::bail!(
-            "Spec '{}' has status '{}', expected 'complete'\n\
-             Only completed specs can be archived.",
+            "Spec '{}' has status '{}', expected 'complete' or 'abandoned'\n\
+             Only completed or abandoned specs can be archived.",
             id,
             status_str
         );
@@ -583,7 +469,7 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
         } else {
             println!("  Remove: {}", file_path);
         }
-        println!("  Commit: docs: archive {} (complete)", tag_name);
+        println!("  Commit: docs: archive {} ({})", tag_name, status_str);
         println!("\nRecover with: git show {}:{}", tag_name, file_path);
         return Ok(());
     }
@@ -633,8 +519,8 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
 
     // 7. Commit
     let commit_msg = format!(
-        "docs: archive {} (complete)\n\nSpec preserved via git tag: {}\nRecover with: git show {}:{}",
-        tag_name, tag_name, tag_name, file_path
+        "docs: archive {} ({})\n\nSpec preserved via git tag: {}\nRecover with: git show {}:{}",
+        tag_name, status_str, tag_name, tag_name, file_path
     );
     println!("Committing archive");
 
