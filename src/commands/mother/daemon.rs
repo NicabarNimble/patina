@@ -17,9 +17,10 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::microserver;
+use super::registry::ChildRegistry;
 use crate::retrieval::{QueryEngine, QueryOptions};
 
 /// Maximum request body size (1 MB)
@@ -87,21 +88,56 @@ pub struct ServerState {
     version: String,
     token: String,
     secrets_cache: Mutex<Option<SecretsCacheEntry>>,
+    pub(super) registry: ChildRegistry,
 }
 
 impl ServerState {
-    fn new(token: String) -> Self {
+    fn new(token: String, registry: ChildRegistry) -> Self {
         Self {
             start_time: Instant::now(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             token,
             secrets_cache: Mutex::new(None),
+            registry,
         }
     }
 
     fn uptime_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
     }
+}
+
+// === Host capabilities ===
+
+/// MotherHost implementation for the daemon process.
+struct DaemonHost;
+
+impl patina::mother::MotherHost for DaemonHost {
+    fn log(&self, child: &str, message: &str) {
+        eprintln!("[mother:{}] {}", child, message);
+    }
+}
+
+// === Heartbeat ===
+
+/// Heartbeat interval in seconds
+const HEARTBEAT_INTERVAL_SECS: u64 = 60;
+
+/// Spawn the heartbeat thread — ticks all children periodically.
+fn spawn_heartbeat(state: Arc<ServerState>) {
+    std::thread::Builder::new()
+        .name("mother-heartbeat".to_string())
+        .spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
+            let toys = state.registry.tick_all();
+            if !toys.is_empty() {
+                eprintln!(
+                    "[mother] heartbeat: {} toy(s) requested (not yet handled)",
+                    toys.len()
+                );
+            }
+        })
+        .expect("failed to spawn heartbeat thread");
 }
 
 // === API types ===
@@ -403,10 +439,18 @@ impl Default for DaemonOptions {
 
 /// Run the mother daemon server
 pub fn run_server(options: DaemonOptions) -> Result<()> {
+    // Build and load child registry
+    let registry = ChildRegistry::new();
+    // Children are registered here (see AC 3+)
+
+    let daemon_host = DaemonHost;
+    registry.load_all(&daemon_host)?;
+    let child_count = registry.len();
+
     // TCP opt-in path (--host flag) — requires bearer token
     if let Some(ref host) = options.host {
         let token = std::env::var("PATINA_SERVE_TOKEN").unwrap_or_else(|_| generate_token());
-        let state = Arc::new(ServerState::new(token));
+        let state = Arc::new(ServerState::new(token, registry));
         let addr = format!("{}:{}", host, options.port);
 
         if host != "127.0.0.1" && host != "localhost" {
@@ -430,14 +474,16 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 
         let listener = TcpListener::bind(&addr)?;
         println!("🚀 Mother daemon starting...");
+        println!("   Children: {} loaded", child_count);
         println!("   Listening on http://{}", addr);
         println!("   Press Ctrl+C to stop\n");
 
+        spawn_heartbeat(Arc::clone(&state));
         accept_loop_tcp(listener, state);
     }
 
     // Default: UDS path (no TCP, no token needed — file permissions are auth)
-    let state = Arc::new(ServerState::new(String::new()));
+    let state = Arc::new(ServerState::new(String::new(), registry));
     let listener = super::setup_unix_listener()?;
     let socket_path = patina::paths::serve::socket_path();
 
@@ -449,6 +495,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
 
     println!("🚀 Mother daemon starting...");
     println!("   PID: {}", std::process::id());
+    println!("   Children: {} loaded", child_count);
     println!("   Listening on {}", socket_path.display());
     println!(
         "   Test: curl -s --unix-socket {} http://localhost/health",
@@ -457,6 +504,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     println!("   No TCP listener (use --host/--port for network access)");
     println!("   Press Ctrl+C to stop\n");
 
+    spawn_heartbeat(Arc::clone(&state));
     accept_loop_uds(listener, state);
 }
 
