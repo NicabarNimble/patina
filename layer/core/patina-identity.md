@@ -21,7 +21,7 @@ Patina is a **knowledge substrate for AI-assisted development**. It captures, in
 
 ## What Patina IS
 
-Patina does four things. Everything in the binary serves one of these:
+Patina does six things. Everything in the binary serves one of these:
 
 ### 1. Capture — Extract knowledge from development artifacts
 
@@ -47,17 +47,26 @@ Specs authorize work. Sessions capture discussion. Beliefs capture principles. V
 
 **Modules:** `spec`, `session`, `belief`, `release`, `version`
 
-### Supporting infrastructure
+### 5. Connect — cross-project awareness and plugin orchestration
 
-These serve the four pillars but aren't a fifth pillar:
+Mother is the daemon that connects everything. Cross-project routing, model caching, relationship graph, and future plugin management. Mother IS how Patina scales beyond a single project.
+
+**Modules:** `mother` (daemon, graph, children), `adapters` (LLM entry points), `workspace`
+
+### 6. Protect — security infrastructure
+
+Secrets management, scanner, encryption. Security is core infrastructure that grows with the system, not an optional add-on.
+
+**Modules:** `secrets`, `scanner`
+
+### Foundation
+
+These serve all six functions:
 
 - **`layer`** — filesystem structure for knowledge storage (core/surface/dust/sessions)
 - **`paths`** — single source of truth for all path construction (no I/O)
 - **`project`** — unified config management (.patina/config.toml)
-- **`adapters`** — trait-based LLM integration (Claude, Gemini, OpenCode)
-- **`mother`** — cross-project daemon (routing, caching, graph)
-- **`workspace`** — global ~/.patina/ setup and first-run
-- **`secrets`** — local-first age encryption + macOS Keychain
+- **`models`** — embedding models exist so Patina can work. No models, no scry.
 - **`migration`** — path migration between versions (idempotent)
 
 ## What Patina IS NOT
@@ -84,15 +93,15 @@ SQLite is an implementation detail. Patina doesn't expose SQL, manage schemas fo
 
 ## The Core/Plugin Boundary
 
-The boundary follows a simple test: **does it serve the four pillars (capture, index, serve, govern)?** If yes, it's core. If it extends a pillar with domain-specific capability, it's a plugin.
+The boundary follows a simple test: **does it serve a core function (capture, index, serve, govern, connect, protect)?** If yes, it's core. If it's an optional enhancement that Patina can function without, it's a plugin.
 
 ### Definitely Core — stays in the binary
 
 | Module | Pillar | Why core |
 |--------|--------|----------|
-| `scrape` (engine) | Capture | The pipeline orchestrator. Grammars become plugins; the engine stays. |
-| `oxidize` | Index | Embedding pipeline. Models could be plugins; the pipeline stays. |
-| `scry` + `retrieval` | Serve | Query engine + oracle fusion. Individual oracles become plugins; fusion stays. |
+| `scrape` (all) | Capture | The entire pipeline — engine + scrapers (code, git, layer, forge, beliefs). Scrape is how Patina gets data. |
+| `oxidize` | Index | Embedding pipeline. Transforms raw scrape data into queryable form. |
+| `scry` + `retrieval` | Serve | Query engine + oracle fusion. The serve surface for AI agents. |
 | `assay` | Serve | Structural/factual queries (FTS5, imports, call graph). |
 | `context` | Serve | Pattern + belief delivery to agents. |
 | `session` | Govern | Session lifecycle. |
@@ -105,42 +114,34 @@ The boundary follows a simple test: **does it serve the four pillars (capture, i
 | `eventlog` | Foundation | Append-only truth store. |
 | `db` | Foundation | SQLite abstraction. |
 | `embeddings` | Foundation | Embedding engine trait + ONNX runtime. |
+| `models` | Foundation | Embedding models exist so Patina can work. No models, no embeddings, no scry. |
 | `mcp` | Serve | Protocol bridge (JSON-RPC over stdio). Thin shim — CLI is the product. |
 | `init` | Foundation | Project skeleton setup. |
+| `mother` | Connective | The daemon that connects everything — cross-project routing, plugin management, caching, graph. Mother IS how Patina scales beyond a single project. Future: runs adapters, manages plugins. |
+| `adapters` | Entry | How users and agents enter Patina. Today: config generators. Future: Mother-managed runtime integration. |
+| `secrets` | Security | Local-first encryption (age + Keychain). Security is core infrastructure that will grow, not optional. |
 
 ### Definitely Plugin — extract when plugin system ships
 
 | Module | Lines | Why plugin |
 |--------|-------|------------|
-| `forge` | 1,701 | Not everyone uses GitHub. ForgeReader trait is the plugin interface. |
 | `yolo` | 1,613 | Devcontainer generation isn't knowledge. Strongest extraction candidate. |
 | `eval` + `bench` | 3,229 | Quality measurement for power users. Not core to knowledge serving. |
-| `persona` | 609 | Cross-project user memory. Optional enhancement, not core pipeline. |
 | `report` | ~400 | Report generation. Composed from core tools — classic plugin. |
 | `doctor` | 278 | Health checks. Useful but not knowledge infrastructure. |
 | `upgrade` | 162 | Version check. Utility, not pillar. |
-
-### Gray Area — decide during plugin build
-
-| Module | Consideration |
-|--------|---------------|
-| `mother` (daemon) | Core concept (cross-project routing), but daemon lifecycle is infrastructure. The graph and routing are core; the HTTP server and process management could extract. |
-| `secrets` | Security is infrastructure, not knowledge. But adapter launch needs secrets. Keep minimal vault in core, extract management UI to plugin. |
-| `adapters` | Need at least one adapter in core for `patina` (no args) to launch something. Bundle Claude adapter, make others plugins. |
-| `models` | Model download/cache management is infrastructure. But embeddings need models. Keep `resolve_model_path()` in core, extract download/verify to plugin. |
-| `scrape` submodules | The engine is core, but individual scrapers (code, git, layer, forge, beliefs) could each be a plugin. Start with bundled scrapers, extract when grammar plugins ship. |
 
 ## The Plugin Test
 
 Before adding ANY new module to the binary, apply this test:
 
-### 1. Does it serve capture, index, serve, or govern?
+### 1. Does it serve a core function?
 
-If no → it's a plugin. Full stop.
+Capture, index, serve, govern, connect, or protect. If no → it's a plugin. Full stop.
 
 ### 2. Can Patina function without it?
 
-If yes → it's a plugin. `patina scrape && patina scry "how does auth work?"` must work without forge, eval, persona, yolo, or doctor installed.
+If yes → it's a plugin. `patina scrape && patina scry "how does auth work?"` must work without eval, yolo, or doctor installed.
 
 ### 3. Does it introduce a new external dependency?
 
