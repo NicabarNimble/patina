@@ -1,21 +1,20 @@
 ---
 type: feat
 id: mother-architecture
-status: design
+status: ready
 created: 2026-02-10
 sessions:
   origin: 20260210-061323
-  resolved: 20260210-104448
 related:
-  - layer/surface/build/feat/patina-platform/SPEC.md
-  - layer/surface/build/feat/mother-environment/SPEC.md
-  - layer/surface/build/feat/mother-repos/SPEC.md
+- layer/surface/build/feat/patina-platform/SPEC.md
+- layer/surface/build/feat/mother-environment/SPEC.md
+- layer/surface/build/feat/mother-repos/SPEC.md
 beliefs:
-  - mother-is-the-daemon
-  - four-layer-architecture
-  - unix-philosophy
-  - simplicity-is-architecture
-  - separate-worlds-for-isolation
+- mother-is-the-daemon
+- four-layer-architecture
+- unix-philosophy
+- simplicity-is-architecture
+- separate-worlds-for-isolation
 ---
 
 # feat: Mother Architecture
