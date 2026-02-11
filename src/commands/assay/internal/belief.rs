@@ -17,7 +17,6 @@ use super::search::SearchResult;
 const DB_PATH: &str = ".patina/local/data/patina.db";
 
 /// Search beliefs using FTS5 keyword matching
-#[allow(dead_code)] // Used when belief oracle removed from scry QueryEngine
 pub fn search_beliefs_fts(
     conn: &Connection,
     query: &str,
@@ -85,7 +84,6 @@ pub fn search_beliefs_fts(
 }
 
 /// Fetch top-N reached code files for a belief, ordered by reach_score
-#[allow(dead_code)] // Used in future search integration
 pub fn fetch_reached_files(conn: &Connection, belief_id: &str, limit: usize) -> Vec<(String, f32)> {
     let mut stmt = match conn.prepare(
         "SELECT file_path, reach_score FROM belief_code_reach
@@ -281,7 +279,6 @@ fn fetch_related_beliefs(
     .unwrap_or_default()
 }
 
-#[allow(dead_code)] // Used by search_beliefs_fts
 fn format_belief_content(
     statement: &str,
     entrenchment: &str,

@@ -36,14 +36,11 @@ impl Default for RetrievalConfig {
 
 /// Options for multi-repo queries
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 pub struct QueryOptions {
     /// Query a specific registered repo by name
     pub repo: Option<String>,
     /// Query all registered repos (current project + reference repos)
     pub all_repos: bool,
-    /// Include GitHub issues in search results (forwarded to assay, ignored by scry)
-    pub include_issues: bool,
 }
 
 /// Query engine — semantic vector search with multi-repo federation

@@ -7,7 +7,7 @@ updated: 2026-01-22
 session-origin: 20260108-124107
 sessions: [20260108-200725, 20260109-063849, 20260115-053944, 20260115-121358, 20260122-061519]
 related:
-  - layer/surface/build/feat/mother-v2/SPEC.md
+  - layer/surface/build/feat/mother-architecture/SPEC.md
   - layer/surface/build/explore/belief-validation-system/SPEC.md
 ---
 

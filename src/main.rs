@@ -1201,8 +1201,8 @@ fn main() -> Result<()> {
             commands::spec::SpecCommands::Blocked { json } => {
                 commands::spec::blocked(json)?;
             }
-            commands::spec::SpecCommands::Status { id, status } => {
-                commands::spec::status(&id, &status)?;
+            commands::spec::SpecCommands::Status { id, status, major } => {
+                commands::spec::status(&id, &status, major)?;
             }
             commands::spec::SpecCommands::List {
                 status,

@@ -25,10 +25,14 @@
 //! let related = graph.get_related("patina", &[EdgeType::Uses, EdgeType::TestsWith])?;
 //! ```
 
+mod child;
 mod graph;
 mod internal;
 
 use anyhow::Result;
+
+// Child trait exports
+pub use child::{ChildHealth, ChildRequest, ChildResponse, MotherChild, MotherHost, Toy};
 
 // Graph exports
 pub use graph::{

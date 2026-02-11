@@ -29,7 +29,6 @@ pub fn execute_semantic(query: Option<&str>, options: &ScryOptions) -> Result<()
     let query_opts = QueryOptions {
         repo: options.repo.clone(),
         all_repos: options.all_repos,
-        include_issues: options.include_issues,
     };
 
     let results = engine.query_with_options(query, options.limit, &query_opts)?;

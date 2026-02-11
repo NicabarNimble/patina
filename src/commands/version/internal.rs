@@ -1,66 +1,18 @@
 //! Internal implementation for version command
 //!
-//! All version management logic lives here. The public interface
-//! in mod.rs exposes only what's needed.
+//! After version-consolidation: show + hotfix only.
+//! All version bump logic lives in patina::release.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use rusqlite::Connection;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-// Canonical spec types from patina::spec (see fix/spec-status-serde)
-use patina::spec::{parse_spec_file, serialize_spec_file};
+use patina::release::{BumpType, ReleaseStrategy};
 
 const CORE_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-// ============================================================================
-// Data Structures
-// ============================================================================
-
-/// Version state stored in .patina/version.toml
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VersionState {
-    pub version: VersionInfo,
-    #[serde(default)]
-    pub metadata: VersionMetadata,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VersionInfo {
-    pub current: String,
-    pub phase: u32,
-    pub phase_name: String,
-    pub milestone: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct VersionMetadata {
-    #[serde(default = "default_history_file")]
-    pub history_file: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_bump: Option<String>,
-}
-
-fn default_history_file() -> String {
-    "layer/surface/build/feat/go-public/version-history.md".to_string()
-}
-
-impl Default for VersionState {
-    fn default() -> Self {
-        Self {
-            version: VersionInfo {
-                current: CORE_VERSION.to_string(),
-                phase: 1,
-                phase_name: "Initial".to_string(),
-                milestone: 0,
-            },
-            metadata: VersionMetadata::default(),
-        }
-    }
-}
 
 // ============================================================================
 // Public Functions (called from mod.rs)
@@ -76,564 +28,30 @@ pub fn show_version(json_output: bool, components: bool) -> Result<()> {
     Ok(())
 }
 
-/// Run safeguard checks before version bump
+/// Emergency patch bump without spec ceremony.
 ///
-/// Blocking checks (will error):
-/// - Dirty working tree (uncommitted tracked files)
-/// - Behind remote (need to pull)
-/// - Diverged from remote (need to resolve)
-/// - Tag already exists (can't re-release)
-/// - Index stale (spec newer than last scrape)
-///
-/// Warnings (non-blocking):
-/// - Not on patina branch
-/// - Untracked files present
-fn run_safeguard_checks(new_version: &str) -> Result<()> {
-    use patina::git;
+/// Uses ReleaseStrategy::preflight/execute with BumpType::Patch.
+/// Same safeguards as spec-driven releases. Cargo strategy only.
+pub fn hotfix(description: &str) -> Result<()> {
+    let strategy = ReleaseStrategy::from_project(Path::new("."));
 
-    // === BLOCKING CHECKS ===
-
-    // 1. Dirty tree check (tracked files only)
-    if !git::is_clean()? {
-        let count = git::status_count()?;
+    if strategy != ReleaseStrategy::Cargo {
         anyhow::bail!(
-            "❌ Working tree has uncommitted changes ({} files)\n\n\
-             Commit your changes first:\n\
-               git add -A && git commit -m \"your message\"\n\n\
-             Or stash them:\n\
-               git stash",
-            count
+            "Hotfix is only available for Cargo strategy projects.\n\
+             Your project uses {:?} strategy.\n\
+             Manage your emergency patches manually.",
+            strategy
         );
     }
 
-    // 2. Behind remote check
-    if git::has_upstream()? {
-        let behind = git::commits_behind_upstream()?;
-        if behind > 0 {
-            anyhow::bail!(
-                "❌ Branch is {} commits behind remote\n\n\
-                 Pull changes first:\n\
-                   git pull --rebase",
-                behind
-            );
-        }
-    }
+    let prepared = strategy.preflight(BumpType::Patch, "Cargo.toml")?;
+    prepared.execute(description, "Cargo.toml")?;
 
-    // 3. Diverged check
-    if git::is_diverged()? {
-        anyhow::bail!(
-            "❌ Branch has diverged from remote (both ahead and behind)\n\n\
-             Resolve the divergence first:\n\
-               git pull --rebase\n\n\
-             Or reset to remote:\n\
-               git fetch && git reset --hard @{{upstream}}"
-        );
-    }
+    println!("\n  Consider creating a spec for traceability:");
+    println!("    patina spec status <id> complete");
 
-    // 4. Tag exists check
-    let tag_name = format!("v{}", new_version);
-    if git::tag_exists(&tag_name)? {
-        anyhow::bail!(
-            "❌ Tag '{}' already exists\n\n\
-             This version has already been released.\n\
-             Check your milestone status or use a different version.",
-            tag_name
-        );
-    }
-
-    // 5. Index stale check
-    check_index_freshness()?;
-
-    // === WARNINGS (non-blocking) ===
-
-    // Warn if not on patina branch
-    let branch = git::current_branch()?;
-    if branch != "patina" {
-        eprintln!(
-            "⚠️  Warning: Not on 'patina' branch (currently on '{}')",
-            branch
-        );
-    }
-
-    Ok(())
-}
-
-/// Check if the spec index is fresh (spec file not newer than last scrape)
-fn check_index_freshness() -> Result<()> {
-    let db_path = Path::new(".patina/local/data/patina.db");
-    if !db_path.exists() {
-        anyhow::bail!(
-            "❌ No index found\n\n\
-             Run 'patina scrape layer' first to build the index."
-        );
-    }
-
-    // Get database modification time
-    let db_mtime = fs::metadata(db_path)?
-        .modified()
-        .context("Failed to get database modification time")?;
-
-    // Check if any spec file is newer than the database
-    // For now, just check the spec that has the current milestone
-    if let Some((_, spec_path)) = get_current_milestone_with_path() {
-        if let Ok(spec_meta) = fs::metadata(&spec_path) {
-            if let Ok(spec_mtime) = spec_meta.modified() {
-                if spec_mtime > db_mtime {
-                    anyhow::bail!(
-                        "❌ Index is stale (spec '{}' was modified after last scrape)\n\n\
-                         Re-scrape to sync:\n\
-                           patina scrape layer --full",
-                        spec_path
-                    );
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-/// Complete current spec milestone and bump version (spec-aware)
-pub fn bump_milestone(
-    description_override: Option<&str>,
-    no_tag: bool,
-    dry_run: bool,
-) -> Result<()> {
-    let project_path = Path::new(".");
-
-    // 1. Get current milestone from spec index
-    let (milestone, spec_path) = get_current_milestone_with_path().ok_or_else(|| {
-        anyhow::anyhow!(
-            "No current milestone found. Ensure spec has milestones and run 'patina scrape layer'."
-        )
-    })?;
-
-    let description = description_override.unwrap_or(&milestone.name);
-    let new_version = &milestone.version;
-
-    // 2. Run safeguard checks (skip in dry-run, we'll show what would be checked)
-    if !dry_run {
-        run_safeguard_checks(new_version)?;
-    }
-
-    // 3. Check if versioning is enabled (owned vs fork)
-    let versioning_enabled = patina::project::is_versioning_enabled(project_path);
-
-    // 3. Get next pending milestone
-    let next_milestone = get_next_pending_milestone(&milestone.spec_id, new_version);
-
-    // 4. Get current Cargo.toml version for comparison
-    let old_version = read_cargo_version().unwrap_or_else(|_| "unknown".to_string());
-
-    if dry_run {
-        println!("Dry run - would perform these changes:\n");
-        println!(
-            "Completing: {} v{} - {}",
-            milestone.spec_id, new_version, description
-        );
-        if versioning_enabled {
-            println!("Cargo.toml: {} -> {}", old_version, new_version);
-        } else {
-            println!("Cargo.toml: unchanged (fork repo)");
-        }
-        println!(
-            "Spec: mark {} complete, advance to {:?}",
-            new_version, next_milestone
-        );
-        println!("\nFiles that would be updated:");
-        println!("  - {}", spec_path);
-        if versioning_enabled {
-            println!("  - Cargo.toml");
-            println!(
-                "  - git commit: release: v{} - {}",
-                new_version, description
-            );
-        }
-        if !no_tag && versioning_enabled {
-            println!("  - git tag: v{}", new_version);
-        }
-        return Ok(());
-    }
-
-    // 5. Update spec YAML (mark complete, advance current_milestone)
-    update_spec_milestone(&spec_path, new_version, next_milestone.as_deref())?;
-
-    // 6. Update Cargo.toml (only for owned repos)
-    if versioning_enabled {
-        update_cargo_version(new_version)?;
-    }
-
-    // 7. Re-scrape layer to sync index
-    println!("Syncing index...");
-    if let Err(e) = rescrape_layer() {
-        eprintln!("Warning: failed to re-scrape layer: {}", e);
-    }
-
-    // 8. Commit the release (so tag points to the right commit)
-    if versioning_enabled {
-        commit_release(new_version, &spec_path, description)?;
-    }
-
-    // 9. Create git tag (only for owned repos)
-    if !no_tag && versioning_enabled {
-        create_git_tag(new_version, description)?;
-    }
-
-    // Output
-    println!(
-        "\n✓ Milestone complete: {} v{}",
-        milestone.spec_id, new_version
-    );
-    println!("  {}", description);
-    if versioning_enabled {
-        println!("  Cargo.toml: {} -> {}", old_version, new_version);
-        if !no_tag {
-            println!("  Tagged: v{}", new_version);
-        }
-    }
-    if let Some(next) = &next_milestone {
-        println!("  Next: v{}", next);
-    } else {
-        println!("  Spec fully complete!");
-        println!("  Archive with: patina spec archive {}", milestone.spec_id);
-    }
     println!("\n  Rebuild to use new version:");
     println!("    cargo build --release && cargo install --path .");
-
-    Ok(())
-}
-
-/// Get current milestone with spec file path
-fn get_current_milestone_with_path() -> Option<(SpecMilestone, String)> {
-    let db_path = Path::new(".patina/local/data/patina.db");
-    if !db_path.exists() {
-        return None;
-    }
-
-    let conn = Connection::open(db_path).ok()?;
-
-    let mut stmt = conn
-        .prepare(
-            r#"
-            SELECT m.spec_id, m.version, m.name, m.status, p.file_path
-            FROM patterns p
-            JOIN milestones m ON p.id = m.spec_id AND p.current_milestone = m.version
-            WHERE p.current_milestone IS NOT NULL
-            LIMIT 1
-            "#,
-        )
-        .ok()?;
-
-    stmt.query_row([], |row| {
-        Ok((
-            SpecMilestone {
-                spec_id: row.get(0)?,
-                version: row.get(1)?,
-                name: row.get(2)?,
-                status: row.get(3)?,
-            },
-            row.get::<_, String>(4)?,
-        ))
-    })
-    .ok()
-}
-
-/// Get next pending milestone after completing current one
-fn get_next_pending_milestone(spec_id: &str, current_version: &str) -> Option<String> {
-    let db_path = Path::new(".patina/local/data/patina.db");
-    if !db_path.exists() {
-        return None;
-    }
-
-    let conn = Connection::open(db_path).ok()?;
-
-    let mut stmt = conn
-        .prepare(
-            r#"
-            SELECT version FROM milestones
-            WHERE spec_id = ?1 AND status = 'pending' AND version > ?2
-            ORDER BY version
-            LIMIT 1
-            "#,
-        )
-        .ok()?;
-
-    stmt.query_row(rusqlite::params![spec_id, current_version], |row| {
-        row.get::<_, String>(0)
-    })
-    .ok()
-}
-
-/// Update spec YAML to mark milestone complete and advance to next
-///
-/// Uses serde_yaml for type-safe parsing and modification.
-/// Note: This normalizes YAML formatting (quotes, array style).
-fn update_spec_milestone(
-    spec_path: &str,
-    current_version: &str,
-    next_version: Option<&str>,
-) -> Result<()> {
-    let content = fs::read_to_string(spec_path)?;
-    let (mut frontmatter, body) = parse_spec_file(&content)?;
-
-    // Find and update current milestone status
-    let mut found_current = false;
-    for milestone in &mut frontmatter.milestones {
-        if milestone.version == current_version {
-            if milestone.status != "in_progress" {
-                anyhow::bail!(
-                    "Milestone {} has status '{}', expected 'in_progress'",
-                    current_version,
-                    milestone.status
-                );
-            }
-            milestone.status = "complete".to_string();
-            found_current = true;
-        }
-    }
-
-    if !found_current {
-        anyhow::bail!(
-            "Milestone {} not found in spec frontmatter",
-            current_version
-        );
-    }
-
-    // If there's a next version, mark it in_progress and update current_milestone
-    if let Some(next) = next_version {
-        let mut found_next = false;
-        for milestone in &mut frontmatter.milestones {
-            if milestone.version == next {
-                if milestone.status != "pending" {
-                    anyhow::bail!(
-                        "Next milestone {} has status '{}', expected 'pending'",
-                        next,
-                        milestone.status
-                    );
-                }
-                milestone.status = "in_progress".to_string();
-                found_next = true;
-            }
-        }
-
-        if !found_next {
-            anyhow::bail!("Next milestone {} not found in spec frontmatter", next);
-        }
-
-        frontmatter.current_milestone = Some(next.to_string());
-    } else {
-        // No next milestone - clear current_milestone
-        frontmatter.current_milestone = None;
-    }
-
-    // Write back
-    let new_content = serialize_spec_file(&frontmatter, &body)?;
-    fs::write(spec_path, new_content)?;
-
-    Ok(())
-}
-
-/// Re-run layer scrape to sync index after spec update
-fn rescrape_layer() -> Result<()> {
-    use std::process::Command as ProcessCommand;
-
-    let output = ProcessCommand::new("patina")
-        .args(["scrape", "layer", "--full"])
-        .output()
-        .context("Failed to run patina scrape layer")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("patina scrape layer failed: {}", stderr);
-    }
-
-    Ok(())
-}
-
-/// Bump PATCH version for a fix release
-///
-/// Increments the patch component: 0.9.2 → 0.9.3
-/// Simpler than milestone — no spec milestone table to update.
-pub fn bump_patch(description: &str, no_tag: bool, dry_run: bool) -> Result<()> {
-    let old_version = read_cargo_version()?;
-
-    // Parse and increment patch
-    let parts: Vec<u32> = old_version
-        .split('.')
-        .map(|s| {
-            s.parse::<u32>()
-                .with_context(|| format!("Invalid version component: {}", s))
-        })
-        .collect::<Result<Vec<_>>>()?;
-
-    if parts.len() != 3 {
-        anyhow::bail!("Expected semver format (x.y.z), got '{}'", old_version);
-    }
-
-    let new_version = format!("{}.{}.{}", parts[0], parts[1], parts[2] + 1);
-
-    // Check if versioning is enabled (owned vs fork)
-    let versioning_enabled = patina::project::is_versioning_enabled(Path::new("."));
-
-    if !versioning_enabled {
-        anyhow::bail!("Version bumping is disabled for fork repos. Set upstream.owned = true in .patina/config.toml.");
-    }
-
-    if dry_run {
-        println!("Dry run - would perform these changes:\n");
-        println!("Patch release: v{} - {}", new_version, description);
-        println!("Cargo.toml: {} -> {}", old_version, new_version);
-        if !no_tag {
-            println!("git tag: v{}", new_version);
-        }
-        return Ok(());
-    }
-
-    // Run safeguard checks
-    run_safeguard_checks(&new_version)?;
-
-    // Update Cargo.toml
-    update_cargo_version(&new_version)?;
-
-    // Commit the patch release
-    let commit_msg = format!("release: v{} - {}", new_version, description);
-    let output = Command::new("git")
-        .args(["add", "Cargo.toml"])
-        .output()
-        .context("Failed to stage Cargo.toml")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("git add failed: {}", stderr);
-    }
-
-    let output = Command::new("git")
-        .args(["commit", "-m", &commit_msg])
-        .output()
-        .context("Failed to commit patch release")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.contains("nothing to commit") {
-            anyhow::bail!("git commit failed: {}", stderr);
-        }
-    }
-
-    // Create git tag
-    if !no_tag {
-        create_git_tag(&new_version, description)?;
-    }
-
-    // Output
-    println!("\n✓ Patch release: v{}", new_version);
-    println!("  {}", description);
-    println!("  Cargo.toml: {} -> {}", old_version, new_version);
-    if !no_tag {
-        println!("  Tagged: v{}", new_version);
-    }
-    println!("\n  Rebuild to use new version:");
-    println!("    cargo build --release && cargo install --path .");
-
-    Ok(())
-}
-
-/// Start a new development phase
-///
-/// DEPRECATED: This command uses the Phase.Milestone model which has been
-/// superseded by semver patches (0.9.x → 1.0.0). Use spec milestones instead.
-pub fn bump_phase(name: &str, no_tag: bool, dry_run: bool) -> Result<()> {
-    eprintln!("⚠️  DEPRECATED: 'patina version phase' uses the old Phase.Milestone model.");
-    eprintln!("   Use spec milestones with 'patina version milestone' instead.");
-    eprintln!("   See: layer/surface/build/feat/v1-release/SPEC.md\n");
-
-    let mut state = load_or_create_state()?;
-    let old_version = state.version.current.clone();
-
-    // Calculate new version: increment phase, reset milestone to 0
-    state.version.phase += 1;
-    state.version.milestone = 0;
-    state.version.phase_name = name.to_string();
-    state.version.current = format!("0.{}.0", state.version.phase);
-
-    let new_version = &state.version.current;
-
-    if dry_run {
-        println!("Dry run - would perform these changes:\n");
-        println!("Version: {} -> {}", old_version, new_version);
-        println!("New Phase: {} - {}", state.version.phase, name);
-        println!("\nFiles that would be updated:");
-        println!("  - .patina/version.toml");
-        println!("  - Cargo.toml");
-        if !no_tag {
-            println!("  - git tag: v{}", new_version);
-        }
-        return Ok(());
-    }
-
-    // Update timestamp
-    state.metadata.last_bump = Some(chrono::Utc::now().to_rfc3339());
-
-    // Perform updates
-    save_version_state(&state)?;
-    update_cargo_version(new_version)?;
-
-    if !no_tag {
-        let tag_message = format!("Phase {}: {}", state.version.phase, name);
-        create_git_tag(new_version, &tag_message)?;
-    }
-
-    // Output
-    println!("Phase started: {} -> {}", old_version, new_version);
-    println!("Phase {}: {}", state.version.phase, name);
-    if !no_tag {
-        println!("Tagged: v{}", new_version);
-    }
-
-    Ok(())
-}
-
-/// Initialize version tracking
-///
-/// DEPRECATED: Creates .patina/version.toml which is no longer used.
-/// Version now comes from Cargo.toml, milestones from specs.
-pub fn init_version(phase: u32, phase_name: &str, milestone: u32) -> Result<()> {
-    eprintln!("⚠️  DEPRECATED: 'patina version init' creates .patina/version.toml which is no longer used.");
-    eprintln!("   Version is now read from Cargo.toml, milestones from specs.");
-    eprintln!("   See: layer/surface/build/feat/v1-release/SPEC.md\n");
-
-    let version_path = Path::new(".patina/version.toml");
-
-    if version_path.exists() {
-        println!("Version tracking already initialized.");
-        println!("Use 'patina version show' to see current state.");
-        return Ok(());
-    }
-
-    // Read current version from Cargo.toml if present
-    let current = read_cargo_version().unwrap_or_else(|_| "0.1.0".to_string());
-
-    let state = VersionState {
-        version: VersionInfo {
-            current,
-            phase,
-            phase_name: phase_name.to_string(),
-            milestone,
-        },
-        metadata: VersionMetadata {
-            history_file: default_history_file(),
-            last_bump: Some(chrono::Utc::now().to_rfc3339()),
-        },
-    };
-
-    save_version_state(&state)?;
-
-    println!("Version tracking initialized:");
-    println!("  Version: {}", state.version.current);
-    println!(
-        "  Phase: {} ({})",
-        state.version.phase, state.version.phase_name
-    );
-    println!("  Milestone: {}", state.version.milestone);
 
     Ok(())
 }
@@ -642,60 +60,17 @@ pub fn init_version(phase: u32, phase_name: &str, milestone: u32) -> Result<()> 
 // Output Helpers
 // ============================================================================
 
-/// Print a milestone in human-readable format
-fn print_milestone(milestone: &SpecMilestone) {
-    let status_icon = match milestone.status.as_str() {
-        "complete" => "✓",
-        "in_progress" => "→",
-        _ => "○",
-    };
-    println!(
-        "Next: v{} {} {} ({})",
-        milestone.version, status_icon, milestone.name, milestone.spec_id
-    );
-}
-
-/// Warn if milestone version doesn't make sense relative to Cargo.toml version
-fn check_version_coherence(milestone: &SpecMilestone) {
-    // Parse versions for comparison (simple semver check)
-    let cargo_parts: Vec<u32> = CORE_VERSION
-        .split('.')
-        .filter_map(|s| s.parse().ok())
-        .collect();
-    let milestone_parts: Vec<u32> = milestone
-        .version
-        .split('.')
-        .filter_map(|s| s.parse().ok())
-        .collect();
-
-    if cargo_parts.len() >= 3 && milestone_parts.len() >= 3 {
-        // Milestone should be > current version (it's "next")
-        let cargo_tuple = (cargo_parts[0], cargo_parts[1], cargo_parts[2]);
-        let milestone_tuple = (milestone_parts[0], milestone_parts[1], milestone_parts[2]);
-
-        if milestone_tuple <= cargo_tuple {
-            eprintln!(
-                "⚠️  Milestone v{} <= Cargo.toml v{} (stale spec or already released?)",
-                milestone.version, CORE_VERSION
-            );
-        }
-    }
-}
-
 fn output_json(components: bool) -> Result<()> {
-    // Cargo.toml is the sole source of truth for version
     let mut version_info = json!({
         "version": CORE_VERSION,
+        "strategy": format!("{:?}", ReleaseStrategy::from_project(Path::new("."))),
     });
 
-    // Add current spec milestone from index (what we're working toward)
-    if let Some(milestone) = get_current_spec_milestone() {
-        version_info["next"] = json!({
-            "version": milestone.version,
-            "name": milestone.name,
-            "status": milestone.status,
-            "spec": milestone.spec_id,
-        });
+    // Show ready specs instead of milestones
+    if let Ok(ready) = get_ready_spec_ids() {
+        if !ready.is_empty() {
+            version_info["ready"] = json!(ready);
+        }
     }
 
     if components {
@@ -708,37 +83,24 @@ fn output_json(components: bool) -> Result<()> {
 }
 
 fn output_human(components: bool) -> Result<()> {
-    // Cargo.toml is the sole source of truth for version
     println!("patina {CORE_VERSION}");
 
-    // Show current spec milestone from index (what we're working toward)
-    match get_active_milestones() {
-        MilestoneQueryResult::NoDatabase => {
+    // Show strategy
+    let strategy = ReleaseStrategy::from_project(Path::new("."));
+    match strategy {
+        ReleaseStrategy::Cargo => {} // Default, no noise
+        ReleaseStrategy::External => println!("  Strategy: external (advisory)"),
+        ReleaseStrategy::None => println!("  Strategy: none (spec-only)"),
+    }
+
+    // Show ready specs instead of milestones
+    match get_ready_spec_ids() {
+        Ok(ready) if !ready.is_empty() => {
+            println!("Ready: {}", ready.join(", "));
+        }
+        Ok(_) => {} // No ready specs, no noise
+        Err(_) => {
             eprintln!("  (no index - run 'patina scrape layer')");
-        }
-        MilestoneQueryResult::QueryFailed(e) => {
-            eprintln!("  (index error: {} - try 'patina scrape layer --full')", e);
-        }
-        MilestoneQueryResult::NoActiveMilestones => {
-            // No warning needed - just no active work tracked
-        }
-        MilestoneQueryResult::Single(milestone) => {
-            print_milestone(&milestone);
-            check_version_coherence(&milestone);
-        }
-        MilestoneQueryResult::Multiple(milestones) => {
-            eprintln!(
-                "⚠️  Multiple specs have active milestones ({} specs) - clean up stale entries",
-                milestones.len()
-            );
-            for m in &milestones {
-                eprintln!("    - {} @ {}", m.spec_id, m.version);
-            }
-            // Show the highest version one as "current"
-            if let Some(milestone) = milestones.last() {
-                print_milestone(milestone);
-                check_version_coherence(milestone);
-            }
         }
     }
 
@@ -746,7 +108,6 @@ fn output_human(components: bool) -> Result<()> {
         println!("\nComponents:");
         let components_info = get_component_versions()?;
 
-        // Display installed components from version manifest
         if let Some(installed) = components_info.get("installed").and_then(|v| v.as_object()) {
             for (name, info) in installed {
                 if let Some(version) = info.get("version").and_then(|v| v.as_str()) {
@@ -755,7 +116,6 @@ fn output_human(components: bool) -> Result<()> {
             }
         }
 
-        // Display git info if available
         if let Some(git) = components_info.get("git").and_then(|v| v.as_object()) {
             if let Some(version) = git.get("version").and_then(|v| v.as_str()) {
                 println!("  git: {version}");
@@ -768,7 +128,6 @@ fn output_human(components: bool) -> Result<()> {
             }
         }
 
-        // Display external tools if detected
         if let Some(external) = components_info.get("external").and_then(|v| v.as_object()) {
             for (tool, version) in external {
                 if let Some(v) = version.as_str() {
@@ -782,170 +141,43 @@ fn output_human(components: bool) -> Result<()> {
 }
 
 // ============================================================================
-// State Management
+// Ready Spec Query
 // ============================================================================
 
-fn load_version_state() -> Result<VersionState> {
-    let path = Path::new(".patina/version.toml");
-    let content = fs::read_to_string(path)
-        .with_context(|| "Version tracking not initialized. Run 'patina version init' first.")?;
-    let state: VersionState = toml::from_str(&content)?;
-    Ok(state)
-}
-
-fn load_or_create_state() -> Result<VersionState> {
-    match load_version_state() {
-        Ok(state) => Ok(state),
-        Err(_) => {
-            // Create default state from Cargo.toml
-            let current = read_cargo_version().unwrap_or_else(|_| CORE_VERSION.to_string());
-
-            // Parse version to extract phase and milestone
-            let parts: Vec<&str> = current.split('.').collect();
-            let (phase, milestone) = if parts.len() >= 3 {
-                let p = parts[1].parse().unwrap_or(1);
-                let m = parts[2].parse().unwrap_or(0);
-                (p, m)
-            } else {
-                (1, 0)
-            };
-
-            Ok(VersionState {
-                version: VersionInfo {
-                    current,
-                    phase,
-                    phase_name: "Unknown".to_string(),
-                    milestone,
-                },
-                metadata: VersionMetadata::default(),
-            })
-        }
-    }
-}
-
-fn save_version_state(state: &VersionState) -> Result<()> {
-    let path = Path::new(".patina/version.toml");
-
-    // Ensure directory exists
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+/// Get IDs of specs ready to work on (simple query for version show)
+fn get_ready_spec_ids() -> Result<Vec<String>> {
+    let db_path = Path::new(".patina/local/data/patina.db");
+    if !db_path.exists() {
+        anyhow::bail!("No index");
     }
 
-    let content = toml::to_string_pretty(state)?;
-    fs::write(path, content)?;
-    Ok(())
+    let conn = Connection::open(db_path)?;
+
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT p.id
+        FROM patterns p
+        WHERE p.file_path LIKE 'layer/surface/build/%'
+          AND p.status IN ('ready', 'active')
+          AND NOT EXISTS (
+            SELECT 1 FROM spec_deps d
+            JOIN patterns blocker ON d.depends_on = blocker.id
+            WHERE d.spec_id = p.id
+              AND blocker.status NOT IN ('complete', 'done')
+          )
+        ORDER BY p.id
+        "#,
+    )?;
+
+    let ids: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(ids)
 }
 
 // ============================================================================
-// Cargo.toml Management
-// ============================================================================
-
-fn read_cargo_version() -> Result<String> {
-    let content = fs::read_to_string("Cargo.toml")?;
-
-    // Simple parsing - find version = "x.y.z" line
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("version") && trimmed.contains('=') {
-            if let Some(version) = trimmed.split('=').nth(1) {
-                let version = version.trim().trim_matches('"').trim_matches('\'');
-                return Ok(version.to_string());
-            }
-        }
-    }
-
-    anyhow::bail!("Could not find version in Cargo.toml")
-}
-
-fn update_cargo_version(new_version: &str) -> Result<()> {
-    let path = Path::new("Cargo.toml");
-    let content = fs::read_to_string(path)?;
-
-    // Find and replace version line
-    // Be careful to only replace the first version line (package version, not dependency versions)
-    let mut in_package_section = false;
-    let mut version_updated = false;
-    let mut new_content = String::new();
-
-    for line in content.lines() {
-        let trimmed = line.trim();
-
-        // Track if we're in [package] section
-        if trimmed.starts_with('[') {
-            in_package_section = trimmed == "[package]";
-        }
-
-        // Update version only in [package] section
-        if in_package_section && !version_updated && trimmed.starts_with("version") {
-            new_content.push_str(&format!("version = \"{}\"\n", new_version));
-            version_updated = true;
-        } else {
-            new_content.push_str(line);
-            new_content.push('\n');
-        }
-    }
-
-    if !version_updated {
-        anyhow::bail!("Could not find version field in [package] section of Cargo.toml");
-    }
-
-    fs::write(path, new_content)?;
-    Ok(())
-}
-
-// ============================================================================
-// Git Operations
-// ============================================================================
-
-/// Commit the release changes (spec + Cargo.toml) before tagging
-fn commit_release(version: &str, spec_path: &str, description: &str) -> Result<()> {
-    // Stage the changed files
-    let output = Command::new("git")
-        .args(["add", spec_path, "Cargo.toml"])
-        .output()
-        .context("Failed to stage release files")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("git add failed: {}", stderr);
-    }
-
-    // Commit with release message
-    let commit_msg = format!("release: v{} - {}", version, description);
-    let output = Command::new("git")
-        .args(["commit", "-m", &commit_msg])
-        .output()
-        .context("Failed to commit release")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        // If nothing to commit, that's ok (files might already be committed)
-        if !stderr.contains("nothing to commit") {
-            anyhow::bail!("git commit failed: {}", stderr);
-        }
-    }
-
-    Ok(())
-}
-
-fn create_git_tag(version: &str, message: &str) -> Result<()> {
-    let tag_name = format!("v{}", version);
-
-    let output = Command::new("git")
-        .args(["tag", "-a", &tag_name, "-m", message])
-        .output()
-        .context("Failed to run git tag")?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("git tag failed: {}", stderr);
-    }
-
-    Ok(())
-}
-
-// ============================================================================
-// Component Versions (migrated from old version.rs)
+// Component Versions
 // ============================================================================
 
 fn get_git_info() -> Result<serde_json::Value> {
@@ -959,7 +191,6 @@ fn get_git_info() -> Result<serde_json::Value> {
 
     let mut info = json!({ "version": version });
 
-    // Try to get current commit and branch if we're in a git repo
     if let Ok(commit) = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()
@@ -1007,7 +238,6 @@ fn get_component_versions() -> Result<serde_json::Value> {
         "external": {}
     });
 
-    // Try to load version manifest
     let manifest_path = Path::new(".patina/versions.json");
     if manifest_path.exists() {
         let content = fs::read_to_string(manifest_path)?;
@@ -1018,12 +248,10 @@ fn get_component_versions() -> Result<serde_json::Value> {
         }
     }
 
-    // Add git info
     if let Ok(git_info) = get_git_info() {
         components["git"] = git_info;
     }
 
-    // Check for external tools
     let mut external = json!({});
     if let Ok(dagger_version) = get_dagger_version() {
         external["dagger"] = json!(dagger_version);
@@ -1034,99 +262,9 @@ fn get_component_versions() -> Result<serde_json::Value> {
     Ok(components)
 }
 
-// ============================================================================
-// Milestone Queries (from scraped index)
-// ============================================================================
-
-/// Milestone info from the scraped spec index
-#[derive(Debug, Clone)]
-pub struct SpecMilestone {
-    pub spec_id: String,
-    pub version: String,
-    pub name: String,
-    pub status: String,
-}
-
-/// Result of querying active milestones
-#[derive(Debug)]
-pub enum MilestoneQueryResult {
-    /// No database found
-    NoDatabase,
-    /// Database exists but query failed (schema issue?)
-    QueryFailed(String),
-    /// No specs have current_milestone set
-    NoActiveMilestones,
-    /// Single active milestone (ideal state)
-    Single(SpecMilestone),
-    /// Multiple specs have current_milestone (needs cleanup)
-    Multiple(Vec<SpecMilestone>),
-}
-
-/// Get all active milestones from scraped spec index
-///
-/// Returns structured result distinguishing between:
-/// - No database (not scraped yet)
-/// - Query failure (schema issues)
-/// - No active milestones
-/// - Single milestone (normal)
-/// - Multiple milestones (needs attention)
-fn get_active_milestones() -> MilestoneQueryResult {
-    let db_path = Path::new(".patina/local/data/patina.db");
-    if !db_path.exists() {
-        return MilestoneQueryResult::NoDatabase;
-    }
-
-    let conn = match Connection::open(db_path) {
-        Ok(c) => c,
-        Err(e) => return MilestoneQueryResult::QueryFailed(e.to_string()),
-    };
-
-    // Find ALL patterns with current_milestone set
-    let mut stmt = match conn.prepare(
-        r#"
-        SELECT m.spec_id, m.version, m.name, m.status
-        FROM patterns p
-        JOIN milestones m ON p.id = m.spec_id AND p.current_milestone = m.version
-        WHERE p.current_milestone IS NOT NULL
-        ORDER BY m.version
-        "#,
-    ) {
-        Ok(s) => s,
-        Err(e) => return MilestoneQueryResult::QueryFailed(e.to_string()),
-    };
-
-    let milestones: Vec<SpecMilestone> = match stmt.query_map([], |row| {
-        Ok(SpecMilestone {
-            spec_id: row.get(0)?,
-            version: row.get(1)?,
-            name: row.get(2)?,
-            status: row.get(3)?,
-        })
-    }) {
-        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
-        Err(e) => return MilestoneQueryResult::QueryFailed(e.to_string()),
-    };
-
-    match milestones.len() {
-        0 => MilestoneQueryResult::NoActiveMilestones,
-        1 => MilestoneQueryResult::Single(milestones.into_iter().next().unwrap()),
-        _ => MilestoneQueryResult::Multiple(milestones),
-    }
-}
-
-/// Get current milestone from scraped spec index (simple wrapper for backward compat)
-fn get_current_spec_milestone() -> Option<SpecMilestone> {
-    match get_active_milestones() {
-        MilestoneQueryResult::Single(m) => Some(m),
-        MilestoneQueryResult::Multiple(mut v) => v.pop(), // return last (highest version)
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use patina::spec::Sessions;
+    use patina::spec::{parse_spec_file, serialize_spec_file, Sessions};
 
     #[test]
     fn test_spec_frontmatter_parse_roundtrip() {
@@ -1157,7 +295,6 @@ current_milestone: "0.9.1"
 Body content here.
 "#;
 
-        // Parse
         let (frontmatter, body) = parse_spec_file(yaml).expect("should parse");
 
         assert_eq!(frontmatter.id, "v1-release");
@@ -1168,10 +305,8 @@ Body content here.
         assert_eq!(frontmatter.current_milestone, Some("0.9.1".to_string()));
         assert!(body.contains("# feat: v1.0 Release"));
 
-        // Serialize back
         let output = serialize_spec_file(&frontmatter, &body).expect("should serialize");
 
-        // Parse again to verify round-trip
         let (fm2, body2) = parse_spec_file(&output).expect("should parse again");
         assert_eq!(fm2.id, frontmatter.id);
         assert_eq!(fm2.milestones.len(), frontmatter.milestones.len());
