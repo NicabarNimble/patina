@@ -7,14 +7,13 @@
 use anyhow::Result;
 use std::sync::{Arc, RwLock};
 
-use patina::mother::{ChildHealth, MotherChild, MotherHost, Toy};
+use patina::mother::{ChildHealth, ChildRequest, ChildResponse, MotherChild, MotherHost, Toy};
 
 /// Registry of Mother's children.
 pub struct ChildRegistry {
     children: Vec<Arc<RwLock<Box<dyn MotherChild>>>>,
 }
 
-#[allow(dead_code)] // Methods used incrementally as children are added (AC 3+)
 impl ChildRegistry {
     pub fn new() -> Self {
         Self { children: vec![] }
@@ -68,6 +67,18 @@ impl ChildRegistry {
                 Some((child.name().to_string(), child.health()))
             })
             .collect()
+    }
+
+    /// Route a request to a child by name.
+    pub fn handle(&self, child_name: &str, request: &ChildRequest) -> Result<ChildResponse> {
+        let entry = self
+            .children
+            .iter()
+            .find(|c| c.read().unwrap().name() == child_name)
+            .ok_or_else(|| anyhow::anyhow!("unknown child: {}", child_name))?;
+
+        let child = entry.read().unwrap();
+        child.handle(request)
     }
 
     /// Number of registered children.
