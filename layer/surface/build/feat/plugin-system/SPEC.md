@@ -1,12 +1,13 @@
 ---
 type: feat
 id: plugin-system
-status: draft
+status: ready
 created: 2026-02-11
 revised: 2026-02-11
 sessions:
   origin: 20260211-125648
-  amended: 20260211-133159
+  amended: [20260211-133159, 20260211-143337]
+  research: [20260205-102402, 20260205-115835, 20260205-130049]
 blocked_by: []
 blocks: []
 related:
@@ -23,23 +24,29 @@ beliefs:
   - separate-worlds-for-isolation
   - two-layer-capability-grants
   - wasi-sandboxed-filesystem
+  - version-in-binary
   - sync-first
   - use-whats-in-the-tree
   - work-triages-specs
   - de-risk-runtime-with-simplest-payload
+  - coupling-is-complexity
   - mother-is-the-daemon
+  - dependable-rust
 references:
-  - "wasmtime (Bytecode Alliance)"
-  - "zed-industries/zed extension system"
+  - "wasmtime v43 (Bytecode Alliance)"
+  - "zed-industries/zed extension system (wasmtime 33, 77 WIT files)"
   - "WIT Component Model"
   - "tree-sitter WASM grammars"
+  - "Zed Decoded: Extensions video (Marshall + Max)"
+  - "No Boilerplate: Async Rust Is A Bad Language"
 ---
 
 # feat: Plugin System
 
-> wasmtime + WIT. MotherChild becomes the first WASM plugin.
-> PluginEngine is the shared runtime. Mother uses it for daemon children.
-> CLI uses it for one-shot commands. Grammars come last.
+> wasmtime v43 + WIT Component Model. Synchronous. Separate worlds.
+> MotherChild becomes the first WASM plugin. PluginEngine is the shared
+> runtime. Mother uses it for daemon children. CLI uses it for one-shot
+> commands. Grammars come last.
 
 ## Problem
 
@@ -50,12 +57,15 @@ tree-sitter grammars — ships in one binary. The consequences:
 2. **No community** — others can't extend patina without forking
 3. **Binary bloat** — tree-sitter grammars alone are significant
 4. **Slow iteration** — changing eval means releasing all of patina
-5. **Mother has zero children** — the MotherChild trait exists but nothing implements it
+5. **Mother has zero children** — the MotherChild trait exists but only
+   SecretsCacheChild implements it (compiled-in)
 
 The MotherChild trait (`src/mother/child.rs`) already defines the plugin shape:
-`name()`, `on_load()`, `handle()`, `health()`, `tick()`. The WIT interfaces
-are sketched in the frozen [[wit-interfaces]] exploration. The runtime decision
-(wasmtime) is made. What's missing is the concrete build.
+`name()`, `on_load()`, `handle()`, `health()`, `tick()`. The ChildRegistry
+(`src/commands/mother/registry.rs`) already loads, routes, and health-checks
+children. The MotherHost trait already defines the capability surface. The WIT
+interfaces are sketched in [[wit-interfaces]]. The runtime decision (wasmtime)
+is made. What's missing is the concrete build.
 
 ## Consumes From Frozen Specs
 
@@ -64,23 +74,58 @@ This spec selectively consumes from frozen specs per [[work-triages-specs]]:
 | Frozen Spec | What we consume | What we leave |
 |-------------|----------------|---------------|
 | [[patina-platform]] | wasmtime decision, two-layer capability grants, core/plugin boundary table, plugin manifest format, plugin lifecycle | Work plugin (patina-work), plugin registry, distribution/marketplace |
-| [[wit-interfaces]] | oracle.wit, embedding.wit, forge.wit, scraper.wit, host.wit interfaces, sync/async transparency pattern, WASI sandboxing pattern | adapter.wit (adapters stay compiled for now), work.wit (deferred) |
+| [[wit-interfaces]] | host.wit (eventlog, layer, database), oracle.wit, scraper.wit, sync/async transparency pattern, WASI sandboxing pattern, parallelism options table | adapter.wit (adapters stay compiled for now), work.wit (deferred) |
 | [[agents-and-yolo]] | Yolo extraction decision (extract to plugin) | Agent concept (defer indefinitely) |
 | [[mother-environment]] | Models child design (MotherChild for embedding models) | Cold-start optimization (separate concern) |
 | [[mother-repos]] | Repos child design (MotherChild for ref repo lifecycle) | Belief extraction from ref repos (future) |
 
 Specs not consumed after this build completes are candidates for archival.
 
+---
+
 ## Solution
 
-### Runtime: wasmtime + WIT Component Model
+### Runtime: wasmtime v43 + WIT Component Model
 
-**Not** Extism. wasmtime is production-proven (Zed, Fastly, Fermyon), supports
-WIT Component Model for typed interfaces, and the Bytecode Alliance maintains it.
+**Version:** Pin `wasmtime = "=43"` and `wasmtime-wasi = "=43"`. wasmtime
+releases major versions every ~3 months. Pin exact major, update deliberately.
+Zed uses v33 — we go latest since we have no legacy to support.
 
-Already in the ecosystem:
-- tree-sitter uses wasmtime for WASM grammars
-- Zed uses wasmtime for extensions (77 WIT files, studied in [[wit-interfaces]])
+**Minimum Rust:** 1.91.0 (wasmtime v43 requirement). Our current toolchain
+supports this.
+
+**Not Extism.** wasmtime is production-proven (Zed, Fastly, Fermyon), supports
+WIT Component Model for typed interfaces, and the Bytecode Alliance maintains
+it. Decision made in session [[20260205-115835]] after Zed deep dive.
+
+**Cargo.toml features:**
+
+```toml
+wasmtime = { version = "=43", default-features = false, features = [
+    "runtime",          # Execution engine (required)
+    "cranelift",        # JIT compiler backend
+    "component-model",  # WIT Component Model support
+] }
+wasmtime-wasi = { version = "=43", default-features = false, features = [
+    "preview2",         # WASIp2 for component model
+] }
+```
+
+**Features we do NOT enable:**
+- `async` — per [[sync-first]], no async infection. See Threading Model below.
+- `cache` — incremental compilation cache. Add later if cold start is too slow.
+- `demangle` — nice for debugging stack traces, add if needed.
+
+### Target: `wasm32-wasip2`
+
+Plugins compile to `wasm32-wasip2` (WASI Preview 2 = Component Model).
+Not `wasm32-wasi` (Preview 1, core modules only).
+Not `wasm32-unknown-unknown` (no WASI, too limited).
+
+```bash
+rustup target add wasm32-wasip2
+cargo build --target wasm32-wasip2 --release
+```
 
 ### Architecture: PluginEngine (Option C)
 
@@ -94,16 +139,19 @@ lifecycles.
 │                     patina (core binary)                   │
 │                                                            │
 │  PluginEngine (shared wasmtime guts)                       │
-│  ├── wasmtime::Engine (shared, one per process)            │
-│  ├── load_wasm(path) → instance                           │
-│  ├── capability_check(manifest, grants)                    │
-│  └── call(instance, function, args) → result              │
+│  ├── wasmtime::Engine (singleton via OnceLock)             │
+│  ├── wasmtime::component::Linker<HostState>                │
+│  ├── load_component(path) → Component                     │
+│  ├── instantiate(component, manifest) → instance           │
+│  └── capability_check(manifest, grants) → Result           │
 │                                                            │
 │  Mother daemon                    CLI direct               │
-│  ├── PluginEngine                 ├── PluginEngine         │
+│  ├── PluginEngine ref             ├── PluginEngine ref     │
 │  ├── ChildRegistry                └── load on demand       │
-│  │   └── MotherChild (WASM)           doctor, eval, yolo   │
-│  │       resident, heartbeat          run and exit          │
+│  │   ├── SecretsCacheChild          doctor, eval, yolo     │
+│  │   │   (compiled-in)              run and exit           │
+│  │   └── WasmChild (WASM)                                  │
+│  │       resident, heartbeat                               │
 │  └── daemon-specific:                                      │
 │      graph, cross-project,                                 │
 │      model caching                                         │
@@ -123,58 +171,250 @@ lifecycles.
    (MotherChild)   plugins/      grammars/
 ```
 
-Mother's role is clear: **Mother is the daemon that runs long-lived plugins
-and provides cross-project awareness.** She uses the same PluginEngine
-everyone else does, but adds the resident lifecycle (load, tick, health,
-toys). She's not the gatekeeper for all plugins — she's the home for
-plugins that need to stay alive.
+Mother's role is clear per [[mother-is-the-daemon]]: **Mother is the daemon
+that runs long-lived plugins and provides cross-project awareness.** She uses
+the same PluginEngine everyone else does, but adds the resident lifecycle
+(load, tick, health, toys). She's not the gatekeeper for all plugins — she's
+the home for plugins that need to stay alive.
 
 CLI plugins don't need Mother running. `patina doctor` works offline and
 daemonless, same as today.
 
+### Threading Model: Sync-First with Scoped Threads
+
+Per [[sync-first]] and session [[20260205-115835]] (Zed deep dive + No
+Boilerplate video analysis):
+
+**Plugins see synchronous APIs. Always.**
+
+**Host execution model:** `std::thread::scope` for plugin calls. No async
+feature in wasmtime. No tokio. Preserves borrowing, zero async infection.
+
+```rust
+// Host calls into WASM — synchronous, scoped
+fn call_plugin_handle(
+    store: &mut Store<HostState>,
+    instance: &MotherChildInstance,
+    request: &ChildRequest,
+) -> Result<ChildResponse> {
+    // wasmtime component call is synchronous
+    instance.call_handle(store, &request.action, &request.payload)
+}
+```
+
+**Host functions (host → WASM imports) are also synchronous:**
+
+```rust
+// wasmtime::component::bindgen! WITHOUT async: true
+wasmtime::component::bindgen!({
+    path: "wit/",
+    // NO async: true — everything is sync
+    // NO trappable_imports: true — use Result instead
+});
+```
+
+**If we ever need async I/O in host functions** (e.g., HTTP for forge plugins
+in Phase 4), the escalation path is:
+
+1. **First try:** Blocking I/O in the host function (reqwest blocking client
+   is already in tree). WASM call blocks until I/O completes. Fine for CLI.
+2. **If blocking isn't enough:** Contained tokio runtime (2 threads max) in
+   ONE module (`src/plugin/runtime.rs`). Never export async types. Same
+   pattern as Zed's `gpui_tokio` bridge.
+3. **Never:** `async` feature on wasmtime, tokio in public API, `'static`
+   lifetime infection.
+
+Reference: [[wit-interfaces]] parallelism options table.
+
 ### Separate Worlds Per Plugin Type
 
 Per [[separate-worlds-for-isolation]], each plugin type gets its own WIT world
-with only the imports it needs. Oracle plugins can't see HTTP imports.
-Grammar plugins can't see the eventlog.
+with only the imports it needs. This **diverges from Zed** which uses a single
+`world extension` for everything. We trade flexibility for security: oracle
+plugins can't see HTTP imports, grammar plugins can't see the eventlog.
 
 | World | Exports | Imports | Capabilities |
 |-------|---------|---------|-------------|
-| `mother-child` | `handle()`, `health()`, `tick()` | `patina:host/*` | Eventlog, layer, database |
+| `mother-child` | `handle()`, `health()`, `tick()` | `patina:host/log` | Log only (Phase 1). Add more per child. |
 | `command` | `run(args)` → exit code | `patina:host/*` | Full host access |
 | `oracle` | `query()`, `name()`, `is-available()` | none | Pure computation |
 | `scraper` | `scrape-file()`, `patterns()` | `wasi:filesystem` (read-only) | Filesystem read |
 | `forge-reader` | `list-issues()`, `get-issue()`, etc. | `wasi:http` | Network access |
 | `grammar` | tree-sitter parse API | none | Pure computation, fully sandboxed |
 
+### WIT Package Definitions
+
+Top-level `wit/` directory in the repo root. Package versioning (not directory
+versioning like Zed's `since_v0.x.0/`). Add directory versioning later when
+we need backward compatibility.
+
+```
+wit/
+├── host.wit           # patina:host@0.1.0 — log, layer, database, eventlog
+├── mother-child.wit   # patina:mother-child@0.1.0 — world definition
+├── command.wit        # patina:command@0.1.0 — world definition (Phase 2)
+├── oracle.wit         # patina:oracle@0.1.0 — world definition (Phase 4)
+└── scraper.wit        # patina:scraper@0.1.0 — world definition (Phase 4)
+```
+
+**host.wit** (from [[wit-interfaces]], refined for Phase 1):
+
+```wit
+package patina:host@0.1.0;
+
+/// Structured logging for plugins
+interface log {
+    /// Log a message at the given level
+    log: func(level: log-level, message: string);
+
+    enum log-level {
+        debug,
+        info,
+        warn,
+        error,
+    }
+}
+
+/// Layer file access for plugins
+interface layer {
+    /// Read a layer file
+    read: func(path: string) -> result<option<string>, string>;
+
+    /// Write a layer file (git-tracked)
+    write: func(path: string, content: string) -> result<_, string>;
+
+    /// List files matching glob in layer
+    glob: func(pattern: string) -> result<list<string>, string>;
+}
+
+/// Database access for plugins (plugin-scoped)
+interface database {
+    /// Execute SQL (CREATE, INSERT, UPDATE, DELETE)
+    execute: func(sql: string, params: list<string>) -> result<u64, string>;
+
+    /// Query SQL (SELECT), returns JSON rows
+    query: func(sql: string, params: list<string>) -> result<string, string>;
+}
+
+/// Eventlog access for plugins
+interface eventlog {
+    /// Emit an event to the eventlog
+    emit: func(event-type: string, data: string) -> result<s64, string>;
+
+    /// Query events by type prefix
+    query: func(type-prefix: string, limit: u32) -> result<list<string>, string>;
+}
+```
+
+**mother-child.wit** (Phase 1):
+
+```wit
+package patina:mother-child@0.1.0;
+
+/// World for Mother daemon children — long-lived, heartbeat, toys
+world mother-child {
+    /// Import host logging
+    import patina:host/log;
+
+    /// Plugin identity
+    export name: func() -> string;
+
+    /// Called when Mother loads this child
+    export on-load: func() -> result<_, string>;
+
+    /// Called when Mother shuts down
+    export on-unload: func();
+
+    /// Health check — Mother calls on heartbeat
+    export health: func() -> child-health;
+
+    /// Handle a routed request
+    export handle: func(action: string, payload: string) -> result<string, string>;
+
+    /// Heartbeat tick — return toy requests as JSON list
+    export tick: func() -> list<toy>;
+}
+
+/// Child health status
+enum child-health {
+    healthy,
+    degraded,
+    unhealthy,
+}
+
+/// Work request from child to Mother
+record toy {
+    name: string,
+    command: string,
+    args: list<string>,
+}
+```
+
+### Bindgen Strategy
+
+**Host side (patina binary):** `wasmtime::component::bindgen!` macro. Built
+into wasmtime, generates traits we implement. No external `wit-bindgen` crate
+needed on the host.
+
+```rust
+// src/plugin/internal.rs
+wasmtime::component::bindgen!({
+    path: "wit/",
+    world: "mother-child",
+    // Sync — no async: true
+});
+```
+
+This generates:
+- `MotherChild` struct with `instantiate()` and `call_*()` methods
+- `Host` trait for `patina:host/log` that we implement on `HostState`
+- Type mappings for `child-health`, `toy`, etc.
+
+**Guest side (plugin crates):** `wit-bindgen` crate (v0.41). Generates
+guest-side bindings that match the WIT signatures.
+
+```toml
+# patina-plugin-api/Cargo.toml
+[dependencies]
+wit-bindgen = "0.41"
+
+[package.metadata.component]
+target = { path = "../wit" }
+```
+
+This is exactly Zed's pattern: `wasmtime::component::bindgen!` on host,
+`wit-bindgen` on guest.
+
 ### Plugin Manifest (plugin.toml)
 
 ```toml
 [plugin]
-name = "patina-eval"
+name = "patina-models"
 version = "0.1.0"
-description = "Retrieval quality evaluation and benchmarking"
-world = "command"                    # Which WIT world
-patina_min = "0.17.0"               # Minimum core version
+description = "Embedding model path resolution for Mother daemon"
+world = "mother-child"          # Which WIT world
+patina_min = "0.17.0"          # Minimum core version
 
 [capabilities]
 # Only what this plugin needs — host checks against granted set
-host_database = true                 # SQLite read access
-host_layer = true                    # Layer file read access
+host_log = true                # Structured logging (always granted)
 
 [provides]
-commands = ["eval", "bench"]         # Adds `patina eval`, `patina bench`
+child = "models"               # Registers as MotherChild with this name
 ```
 
 ### Two-Layer Capability Grants
 
-Per [[two-layer-capability-grants]]:
+Per [[two-layer-capability-grants]] (learned from Zed's `CapabilityGranter`):
 
-1. **Manifest declares** — plugin.toml says what capabilities it wants
+1. **Manifest declares** — plugin.toml `[capabilities]` says what it wants
 2. **Host decides** — PluginEngine checks manifest against user's grant config
 
 ```toml
 # ~/.patina/plugin-config/grants.toml
+[patina-models]
+host_log = true
+
 [patina-eval]
 host_database = true
 host_layer = true
@@ -186,77 +426,330 @@ wasi_http = true          # Network access for GitLab API
 Plugins that request capabilities not in the grant config are loaded in
 degraded mode (capabilities denied, plugin notified via on_load error).
 
-## Phased Build
+Default plugins (shipped with patina) are auto-granted. Third-party plugins
+require explicit grants.
 
-### Phase 1: PluginEngine + First MotherChild (v0.17.0)
+### Version In Binary
 
-**Goal:** Add wasmtime, build PluginEngine, implement the first MotherChild
-(models) as a WASM plugin. This proves the full host↔plugin communication
-pattern — WIT interfaces, host functions, capability grants — where the
-trait already exists.
+Per [[version-in-binary]] (learned from Zed): embed the plugin API version
+in the WASM binary at build time. The host reads it to dispatch to the correct
+interface version at load time. `patina-plugin-api` handles this automatically.
 
-**Why first:** The MotherChild trait (`src/mother/child.rs`) already defines
-the plugin shape. The ChildRegistry already loads, routes, and health-checks
-children. The MotherHost trait already defines the capability surface. Building
-the first child as WASM lets the PluginEngine API emerge from a real use case,
-not a spec diagram. The `models` child from [[mother-environment]] is the
-simplest — it owns embedding model paths and serves embed requests. No
-network, no filesystem writes, minimal capabilities.
+```rust
+// patina-plugin-api/src/lib.rs
+#[link_section = ".patina_api_version"]
+static API_VERSION: [u8; 3] = [0, 1, 0]; // major.minor.patch
+```
 
-**Why NOT grammars first:** The original spec assumed "no host imports =
-simplest." Session [[20260211-133159]] discovered this was wrong. Grammars are
-entangled with tree-sitter ABI versioning (the reason we vendor and compile C
-sources directly in patina-metal), the hot scrape pipeline, and 8 language
-processors. Grammar WASM is the highest regression risk, not the lowest. The
-ABI version constraint (tree-sitter 0.24 expects ABI 13-14, C/C++ grammars
-generate ABI 15) applies equally to WASM grammars — moving to WASM doesn't
-fix the underlying version problem, just changes where it manifests.
+Host reads this section before instantiation. Version mismatch = fail fast
+with clear error, not runtime crash.
 
-**Build steps:**
+### WASI Sandboxing
 
-1. Add `wasmtime` to Cargo.toml
-2. Create `src/plugin/mod.rs` — PluginEngine struct with `wasmtime::Engine`
-3. Create `src/plugin/internal.rs` — WASM loading, capability checking
-4. Define `patina:host@0.1.0` WIT package — `log`, `layer`, `database` interfaces
-5. Define `patina:mother-child@0.1.0` WIT world — exports `handle()`, `health()`, `tick()`; imports `patina:host/*`
-6. Create `patina-plugin-api` crate — ergonomic Rust wrapper over WIT bindings (like Zed's `zed_extension_api`)
-7. Implement models child as WASM plugin using `patina-plugin-api`
-8. Mother's ChildRegistry loads WASM children via PluginEngine
-9. Implement plugin.toml manifest parsing
-10. Implement two-layer capability grant checking
+Per [[wasi-sandboxed-filesystem]] (learned from Zed's `path_from_extension()`
+pattern):
 
-**Acceptance criteria:**
+Each plugin gets an isolated work directory:
+```
+~/.patina/plugins/{plugin-name}/work/
+```
 
-- [ ] `wasmtime` compiles and links
-- [ ] PluginEngine initializes wasmtime::Engine in <100ms
+The WASI context maps `/work/` in the plugin's virtual filesystem to this
+real path. Plugins cannot escape their sandbox.
+
+```rust
+// Host sets up WASI context per plugin
+let wasi = WasiCtxBuilder::new()
+    .preopened_dir(&plugin_work_dir, "/work", DirPerms::all(), FilePerms::all())?
+    .build();
+```
+
+Plugins that don't declare filesystem capabilities get no preopened directories.
+
+---
+
+## Phase 1: PluginEngine + First MotherChild (v0.17.0)
+
+### Goal
+
+Add wasmtime, build PluginEngine, implement the first MotherChild (models)
+as a WASM plugin. This proves the full host↔plugin communication pattern —
+WIT interfaces, host functions, capability grants — where the trait already
+exists.
+
+### Why MotherChild First
+
+The MotherChild trait (`src/mother/child.rs`) already defines the plugin
+shape. The ChildRegistry already loads, routes, and health-checks children.
+Building the first child as WASM lets the PluginEngine API emerge from a real
+use case, not a spec diagram.
+
+### Why NOT Grammars First
+
+Session [[20260211-133159]] discovered grammars are the most coupled existing
+subsystem (ABI versioning, patina-metal build, 8 language processors), not
+the least. The original ordering assumed "no host imports = simplest" but
+ignored infrastructure coupling. Per [[coupling-is-complexity]]: simplest
+payload means lowest coupling, not fewest interface requirements.
+
+### Models Child Scope (Phase 1)
+
+The `models` child owns **model path resolution only**.
+
+- `handle("resolve_model", {"name": "e5-base-v2"})` → returns model directory path
+- `handle("model_status", {"name": "e5-base-v2"})` → returns cache/local/provenance info
+- `health()` → checks if default model is available
+
+The models child does **NOT** own:
+- Embed requests (ONNX runtime stays in core — it's Foundation per [[patina-identity]])
+- Model downloads (stays in `src/models/download.rs` — needs HTTP, not appropriate for Phase 1 child)
+- Model registry (stays in `src/embeddings/models.rs`)
+
+This is the lowest-coupling starting point. The child imports `patina:host/log`
+only. Future children (repos) will test more capabilities.
+
+### Files Created
+
+```
+wit/
+├── host.wit                           # patina:host@0.1.0
+└── mother-child.wit                   # patina:mother-child@0.1.0
+
+src/plugin/
+├── mod.rs                             # PluginEngine pub interface
+└── internal.rs                        # wasmtime guts, bindgen, loading
+
+patina-plugin-api/                     # Workspace member — guest bindings
+├── Cargo.toml                         # wit-bindgen, crate-type = ["cdylib"]
+├── src/lib.rs                         # MotherChild trait, register! macro
+└── wit -> ../wit                      # Symlink to shared WIT
+
+patina-plugin-models/                  # Workspace member — first child
+├── Cargo.toml                         # depends on patina-plugin-api
+├── plugin.toml                        # Manifest
+└── src/lib.rs                         # Models child implementation
+```
+
+### Files Modified
+
+```
+Cargo.toml                             # Add wasmtime deps, workspace members
+src/lib.rs                             # pub mod plugin
+src/commands/mother/daemon.rs          # Init PluginEngine, discover WASM children
+src/commands/mother/registry.rs        # WasmChild adapter (Box<dyn MotherChild>)
+src/paths.rs                           # plugin module (plugin dirs, children dir)
+```
+
+### PluginEngine Struct
+
+```rust
+// src/plugin/mod.rs — public interface
+mod internal;
+pub use internal::{PluginEngine, PluginManifest};
+
+// src/plugin/internal.rs — implementation
+use std::path::Path;
+use std::sync::OnceLock;
+use anyhow::Result;
+use wasmtime::{Config, Engine, Store};
+use wasmtime::component::{Component, Linker};
+
+// Generated by wasmtime::component::bindgen!
+// (trait impls for patina:host/log, etc.)
+
+/// Host state passed to WASM via Store<HostState>
+pub(crate) struct HostState {
+    // WASI context (if plugin needs filesystem)
+    // Capability grants
+    // Plugin name (for logging)
+}
+
+/// Shared wasmtime engine — singleton per process.
+/// OnceLock pattern from Zed's wasm_engine().
+fn engine() -> &'static Engine {
+    static ENGINE: OnceLock<Engine> = OnceLock::new();
+    ENGINE.get_or_init(|| {
+        let mut config = Config::new();
+        config.wasm_component_model(true);
+        // NO config.async_support(true) — sync-first
+        Engine::new(&config).expect("failed to create wasmtime engine")
+    })
+}
+
+pub struct PluginEngine {
+    linker: Linker<HostState>,
+}
+
+impl PluginEngine {
+    pub fn new() -> Result<Self>;
+
+    /// Load and parse a plugin manifest
+    pub fn load_manifest(path: &Path) -> Result<PluginManifest>;
+
+    /// Load a WASM component from bytes
+    pub fn load_component(&self, wasm: &[u8]) -> Result<Component>;
+
+    /// Instantiate a MotherChild from WASM component + manifest.
+    /// Returns Box<dyn MotherChild> for ChildRegistry compatibility.
+    pub fn instantiate_child(
+        &self,
+        component: &Component,
+        manifest: &PluginManifest,
+    ) -> Result<Box<dyn patina::mother::MotherChild>>;
+}
+
+#[derive(Debug)]
+pub struct PluginManifest {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub world: String,
+    pub patina_min: String,
+    pub capabilities: Vec<String>,
+    pub provides: PluginProvides,
+}
+
+#[derive(Debug)]
+pub struct PluginProvides {
+    pub child: Option<String>,       // MotherChild name
+    pub commands: Vec<String>,       // CLI commands (Phase 2+)
+}
+```
+
+### ChildRegistry Integration
+
+The registry stays unchanged. WASM children are wrapped in a `WasmChild`
+adapter that implements `MotherChild`:
+
+```rust
+// src/plugin/internal.rs
+
+/// Adapter: wraps a WASM component instance as a MotherChild
+struct WasmChild {
+    name: String,
+    store: Store<HostState>,
+    instance: MotherChildInstance, // Generated by bindgen
+}
+
+impl MotherChild for WasmChild {
+    fn name(&self) -> &str { &self.name }
+
+    fn on_load(&mut self, host: &dyn MotherHost) -> Result<()> {
+        self.instance.call_on_load(&mut self.store)
+            .map_err(|e| anyhow::anyhow!("WASM on_load failed: {}", e))
+    }
+
+    fn health(&self) -> ChildHealth {
+        // call_health requires &mut store — use RefCell or similar
+        // This is an implementation detail
+    }
+
+    fn handle(&self, request: &ChildRequest) -> Result<ChildResponse> {
+        let payload_json = serde_json::to_string(&request.payload)?;
+        let result = self.instance.call_handle(
+            &mut self.store, &request.action, &payload_json
+        )?;
+        Ok(ChildResponse {
+            payload: serde_json::from_str(&result)?,
+        })
+    }
+
+    fn tick(&mut self) -> Vec<Toy> {
+        // call_tick, deserialize toys
+    }
+}
+```
+
+**Daemon startup** (`src/commands/mother/daemon.rs`):
+
+```rust
+let mut registry = ChildRegistry::new();
+
+// Compiled-in children (always available)
+registry.register(Box::new(SecretsCacheChild::new()));
+
+// WASM children (discovered from ~/.patina/children/)
+match PluginEngine::new() {
+    Ok(plugin_engine) => {
+        let children_dir = paths::plugin::children_dir();
+        if children_dir.exists() {
+            for entry in std::fs::read_dir(&children_dir)?.flatten() {
+                let path = entry.path();
+                if path.extension() == Some("wasm".as_ref()) {
+                    let manifest_path = path.with_extension("toml");
+                    match load_wasm_child(&plugin_engine, &path, &manifest_path) {
+                        Ok(child) => {
+                            eprintln!("[mother] loaded WASM child: {}", child.name());
+                            registry.register(child);
+                        }
+                        Err(e) => eprintln!("[mother] failed to load {}: {}", path.display(), e),
+                    }
+                }
+            }
+        }
+    }
+    Err(e) => eprintln!("[mother] plugin engine init failed: {} (WASM children disabled)", e),
+}
+```
+
+**No fallback for Phase 1.** The models child is new — it doesn't exist as
+compiled-in code today. If WASM loading fails, Mother starts without it
+(exactly like today — Mother has zero model children). Fallback becomes
+relevant in Phase 2+ when extracting existing commands.
+
+### Build Steps
+
+1. Add `wasmtime`, `wasmtime-wasi` to `Cargo.toml` with exact features
+2. Create `wit/host.wit` — `patina:host@0.1.0` with `log` interface
+3. Create `wit/mother-child.wit` — `patina:mother-child@0.1.0` world
+4. Create `src/plugin/mod.rs` — PluginEngine public interface
+5. Create `src/plugin/internal.rs` — wasmtime bindgen, Engine singleton, WasmChild adapter
+6. Add `plugin` paths to `src/paths.rs` — children_dir, plugin work dirs
+7. Create `patina-plugin-api/` crate — guest-side wit-bindgen, MotherChild trait, register macro
+8. Create `patina-plugin-models/` crate — models child using patina-plugin-api
+9. Compile models child to `wasm32-wasip2`
+10. Update `src/commands/mother/daemon.rs` — PluginEngine init, WASM child discovery
+11. Implement `plugin.toml` manifest parsing (toml — already in tree per [[use-whats-in-the-tree]])
+12. Implement capability grant checking
+
+### Acceptance Criteria
+
+- [ ] `wasmtime` compiles and links (binary size delta measured)
+- [ ] PluginEngine initializes wasmtime::Engine in <100ms (measured)
 - [ ] `patina-plugin-api` crate compiles to `wasm32-wasip2` target
+- [ ] `patina-plugin-models` crate compiles to `.wasm` file
 - [ ] Models child loads as WASM plugin in Mother daemon
 - [ ] `handle("resolve_model", ...)` returns model path through WASM boundary
+- [ ] `handle("model_status", ...)` returns status through WASM boundary
 - [ ] `health()` returns correct status through WASM boundary
-- [ ] Capability check: plugin without `host_database` grant cannot call `database.query()`
-- [ ] Plugin sees sync APIs; host handles any async internally ([[sync-first]])
-- [ ] WASI sandbox: plugin filesystem access scoped to its work directory
+- [ ] Plugin sees sync APIs only — no async anywhere
 - [ ] Plugin crash doesn't crash the host (WASM isolation)
 - [ ] `patina mother status` shows WASM-loaded child with health
+- [ ] `patina mother start` with WASM child works end-to-end
 
-**Exit criteria:**
+### Exit Criteria
 
 - [ ] Round-trip latency through WASM boundary <1ms for `handle()` calls
-- [ ] At least one MotherChild loaded from WASM in CI test
+- [ ] At least one MotherChild loaded from WASM in CI test (`cargo test`)
+- [ ] `wasmtime::Engine::new()` time measured and documented
 
-### Repos Child (Phase 1+)
+---
+
+## Repos Child (Phase 1+)
 
 The repos child from [[mother-repos]] is the second MotherChild after models.
 It owns ref repo lifecycle: git pull, scrape, index, freshness monitoring.
 
 **Build after Phase 1 proves the pattern.** Repos child needs more capabilities
-than models (shell commands for git, scrape pipeline access) and is a good
-test of the toy system (child requests work, Mother runs it).
+than models (shell commands for git via toys, scrape pipeline access) and is a
+good test of the toy system (child requests work, Mother runs it).
 
 Not a separate phase — it's the natural second child once the MotherChild WASM
 pattern works.
 
-### Phase 2: Command Plugins — First Extraction (v0.17.0)
+---
+
+## Phase 2: Command Plugins — First Extraction (v0.17.0)
 
 **Goal:** Extract `doctor` (278 lines) from the binary into a WASM command
 plugin. This proves the `command` world — a plugin that adds CLI subcommands
@@ -268,11 +761,15 @@ loading (no daemon required).
 
 **Build steps:**
 
-1. Define `patina:command@0.1.0` WIT world — exports `run(args: list<string>) -> s32`; imports `patina:host/layer` (read-only)
+1. Define `wit/command.wit` — `patina:command@0.1.0` world; exports `run(args: list<string>) -> s32`; imports `patina:host/layer` (read-only)
 2. Create `patina-doctor` crate (workspace member, compiles to WASM)
 3. Move doctor logic from `src/commands/doctor/` to `patina-doctor` crate
 4. CLI loads command plugin via PluginEngine when `patina doctor` is invoked
-5. Feature-gate compiled-in doctor during transition
+5. Feature-gate compiled-in doctor during transition (`--features bundled-doctor`)
+
+**CLI plugin discovery:** Manifest cache file at `~/.patina/plugin-cache.toml`
+listing installed plugin commands. Updated on `patina plugin install/remove`.
+Avoids scanning `~/.patina/plugins/` on every CLI invocation.
 
 **Acceptance criteria:**
 
@@ -281,14 +778,12 @@ loading (no daemon required).
 - [ ] `patina plugin list` shows patina-doctor with version and status
 - [ ] Main binary smaller with doctor extracted (measurable delta)
 
-### Phase 3: Remaining Command Extractions (v0.18.0)
+---
+
+## Phase 3: Remaining Command Extractions (v0.18.0)
 
 **Goal:** Extract yolo, eval+bench, report, upgrade into WASM command plugins.
 These are the remaining "Definitely Plugin" modules from [[patina-identity]].
-
-**Why yolo next:** Per [[patina-identity]], yolo is "the strongest extraction
-candidate." 1,613 lines of devcontainer generation that isn't knowledge
-infrastructure. After doctor proves the pattern, yolo proves it at scale.
 
 | Plugin | Lines | World | Capabilities |
 |--------|-------|-------|-------------|
@@ -298,14 +793,6 @@ infrastructure. After doctor proves the pattern, yolo proves it at scale.
 | `patina-report` | ~400 | command | host_layer (read), host_database (read) |
 | `patina-upgrade` | 162 | command | wasi:http (check GitHub releases) |
 
-**Build steps:**
-
-1. Extract each module into its own crate (workspace member)
-2. Compile to `wasm32-wasip2`
-3. Ship as default plugins (bundled with `patina init` or first run)
-4. Feature-gate compiled-in versions during transition
-5. Remove compiled-in versions once WASM versions are stable
-
 **Acceptance criteria:**
 
 - [ ] All 5 plugins work identically as WASM
@@ -313,19 +800,21 @@ infrastructure. After doctor proves the pattern, yolo proves it at scale.
 - [ ] `patina plugin list` shows all default plugins
 - [ ] Removing a plugin.wasm file gracefully degrades (command not found, not crash)
 
-### Phase 4: Oracle & Scraper Plugins (v0.19.0)
+---
+
+## Phase 4: Oracle & Scraper Plugins (v0.19.0)
 
 **Goal:** Make the serve and capture pipelines extensible. Third-party oracles
 and scrapers can be loaded as WASM plugins.
 
 **Build steps:**
 
-1. Define `patina:oracle@0.1.0` WIT world (from [[wit-interfaces]] — already sketched)
-2. Define `patina:scraper@0.1.0` WIT world (from [[wit-interfaces]])
+1. Define `wit/oracle.wit` — `patina:oracle@0.1.0` world (from [[wit-interfaces]] — already sketched)
+2. Define `wit/scraper.wit` — `patina:scraper@0.1.0` world (from [[wit-interfaces]])
 3. Refactor `retrieval/oracle.rs` — oracle fusion queries both compiled-in and WASM oracles
 4. Refactor `scrape code` — scraper pipeline checks for WASM scrapers matching file extension
-5. Create example oracle plugin (e.g., regex-based search as proof of concept)
-6. Create example scraper plugin (e.g., Markdown heading extractor)
+5. Create example oracle plugin
+6. Create example scraper plugin
 
 **Acceptance criteria:**
 
@@ -333,48 +822,113 @@ and scrapers can be loaded as WASM plugins.
 - [ ] WASM scraper runs during `patina scrape code` for matching file patterns
 - [ ] Oracle plugin: pure computation, no capabilities required
 - [ ] Scraper plugin: `wasi:filesystem` read-only, sandboxed to project directory
-- [ ] Plugin oracle results appear in `patina scry --explain` with plugin source attribution
 
-### Phase 5: Grammar Plugins (v0.20.0)
+---
+
+## Phase 5: Grammar Plugins (v0.20.0)
 
 **Goal:** Load tree-sitter grammars from WASM instead of compiling them in.
-This is the most complex WASM integration due to tree-sitter ABI versioning
-and the hot scrape pipeline.
+Most complex integration due to tree-sitter ABI versioning and scrape hot path.
 
-**Why last:** Grammars are entangled with:
-- **tree-sitter ABI versioning** — our tree-sitter 0.24 expects ABI 13-14;
-  this constraint caused us to vendor and compile C sources directly in
-  patina-metal. WASM grammars have the same ABI constraint.
-- **The scrape hot path** — 8 language processors in
-  `src/commands/scrape/code/languages/*.rs` all call
-  `Metal.tree_sitter_language_for_ext()`. Changes here risk regression.
-- **patina-metal build system** — the `cc::Build` + vendored grammar
-  architecture was built specifically to work around version hell.
+**Why last:** Grammars are entangled with tree-sitter ABI versioning (0.24
+expects ABI 13-14), patina-metal `cc::Build` + vendored C sources, and 8
+language processors on the scrape hot path. By Phase 5, PluginEngine is proven.
 
-By Phase 5, PluginEngine is proven. The only new complexity is the
-tree-sitter-specific WASM loading, which can be isolated to `patina-metal`.
-
-**Build steps:**
-
-1. Enable tree-sitter `wasm` feature in patina-metal (uses wasmtime internally — already in tree from Phase 1)
-2. Create grammar loading path in `patina-metal/src/metal.rs` — try `~/.patina/grammars/*.wasm` first
-3. Fall back to compiled-in grammar when WASM not found (zero regression)
-4. `patina grammar list` — show loaded grammars with source (wasm/compiled)
-5. `patina grammar install <path>` — copy WASM file to `~/.patina/grammars/`
-6. Ship pre-built grammar WASM files matching tree-sitter 0.24 ABI
+**Grammar fallback:** If WASM grammar not found in `~/.patina/grammars/`,
+fall back to compiled-in. Zero regression for existing users.
 
 **Acceptance criteria:**
 
-- [ ] `patina scrape code` uses WASM grammar when present in `~/.patina/grammars/`
+- [ ] `patina scrape code` uses WASM grammar when present
 - [ ] Falls back to compiled-in grammar when WASM not present
 - [ ] Adding a new language is: drop a `.wasm` file, no recompile
-- [ ] `patina grammar list` shows available grammars with source (wasm/compiled)
-- [ ] WASM grammar parse speed within 2x of compiled-in (acceptable for scrape)
+- [ ] WASM grammar parse speed within 2x of compiled-in
 
-**Exit criteria:**
+---
 
-- [ ] At least one grammar loaded from WASM in CI test
-- [ ] Binary size does not grow (grammars stay compiled-in as fallback until Phase 5 is stable)
+## Resolved Decisions
+
+### 1. MotherChild first, grammars last
+
+Per [[coupling-is-complexity]] and [[de-risk-runtime-with-simplest-payload]]:
+de-risk means de-risk the *plugin system*, not the *tree-sitter integration*.
+The trait exists, the registry works, the host capability surface exists.
+Grammars have the highest coupling and regression risk.
+
+**Amendment:** Session [[20260211-133159]].
+
+### 2. PluginEngine shared, Mother is daemon face (Option C)
+
+PluginEngine holds wasmtime::Engine, both Mother and CLI use it. Difference
+is lifecycle: resident vs one-shot. `patina doctor` works without daemon.
+
+**Origin:** Session [[20260211-133159]].
+
+### 3. Sync-first, no async feature
+
+wasmtime without `async` feature. `std::thread::scope` for plugin calls.
+Plugins see sync APIs. Host uses blocking I/O (reqwest blocking already in
+tree). Escalation path to contained tokio only if needed.
+
+**Origin:** Session [[20260205-115835]], [[sync-first]] belief, No Boilerplate video.
+
+### 4. Separate worlds, not Zed's single world
+
+Each plugin type gets its own WIT world. Stricter capability isolation.
+Oracle plugins can't see HTTP. Grammar plugins can't see eventlog.
+
+**Origin:** Session [[20260205-115835]], [[separate-worlds-for-isolation]] belief.
+
+### 5. wasmtime v43, pinned exact
+
+Latest stable. Pin `=43`. Update deliberately. Zed is on 33 but we have no
+legacy. Minimum Rust 1.91.0.
+
+**Origin:** Session [[20260211-143337]] research.
+
+### 6. `wasmtime::component::bindgen!` host, `wit-bindgen` guest
+
+Exactly Zed's pattern. Host uses wasmtime's built-in macro. Guest uses
+wit-bindgen crate. No external bindgen tool needed.
+
+**Origin:** Session [[20260205-115835]] Zed analysis.
+
+### 7. Version embedded in WASM binary
+
+Per [[version-in-binary]]. `patina-plugin-api` embeds version in link section.
+Host reads before instantiation. Fail fast on mismatch.
+
+**Origin:** Session [[20260205-115835]], Zed Decoded video.
+
+### 8. WASI sandboxed filesystem
+
+Per [[wasi-sandboxed-filesystem]]. Each plugin gets isolated work directory.
+Virtual `/work/` path mapped to `~/.patina/plugins/{name}/work/`. Plugins
+can't escape sandbox.
+
+**Origin:** Session [[20260205-115835]], Zed's `path_from_extension()`.
+
+### 9. Separate crates, not separate repos
+
+Plugins are workspace members in monorepo. Community plugins use separate repos.
+
+### 10. Feature flags during transition
+
+Compiled-in versions behind `--features bundled-*` during transition.
+Remove once WASM versions are stable.
+
+### 11. Models child scope: path resolution only
+
+`resolve_model` and `model_status` only. ONNX runtime stays in core (Foundation
+per [[patina-identity]]). Model downloads stay in `src/models/`. This is the
+lowest-coupling starting point for proving the WASM boundary.
+
+### 12. Plugin discovery: manifest cache
+
+`~/.patina/plugin-cache.toml` lists installed plugin commands. Updated on
+install/remove. Avoids scanning plugin directory on every CLI invocation.
+
+---
 
 ## What We Don't Build
 
@@ -386,98 +940,24 @@ Per [[patina-identity]] "What Patina IS NOT":
 - **adapter.wit** — adapters stay compiled-in for now. Mother may manage them later.
 - **patina-work plugin** — beads-like work tracking is a future plugin, not this spec.
 - **Agent system** — per [[agents-and-yolo]], defer indefinitely.
-
-## Key Design Decisions
-
-### 1. MotherChild first, grammars last
-
-The trait already exists. The registry already works. The host capability
-surface already exists. Building the first MotherChild as WASM lets the
-PluginEngine API emerge from a real use case. Grammars are entangled with
-tree-sitter ABI versioning and the scrape hot path — highest regression risk,
-not lowest. Per [[de-risk-runtime-with-simplest-payload]]: de-risk means
-de-risk the *plugin system*, not the *tree-sitter integration*.
-
-**Amendment rationale:** Session [[20260211-133159]] discovered that grammars
-are the most coupled existing subsystem (ABI versioning, patina-metal build,
-8 language processors), not the least. The original ordering assumed "no host
-imports = simplest" but ignored infrastructure coupling.
-
-### 2. PluginEngine is shared, Mother is the daemon face (Option C)
-
-PluginEngine holds the wasmtime::Engine, loads WASM modules, checks
-capabilities, calls functions. Both Mother and CLI use the same engine.
-The difference is lifecycle:
-- Mother: load on startup, tick on heartbeat, unload on shutdown (resident)
-- CLI: load on demand, run, exit (one-shot)
-
-This avoids requiring Mother for basic commands (`patina doctor` works
-standalone) while giving Mother the same plugin infrastructure.
-
-### 3. Separate crates, not separate repos
-
-Plugins are workspace members in the patina monorepo. `Cargo.toml` workspace
-includes `patina-doctor`, `patina-yolo`, `patina-eval`, etc. They compile to
-WASM but live next to the code they came from. Separate repos are for
-community plugins.
-
-### 4. Feature flags during transition
-
-Compiled-in versions stay behind `--features bundled-yolo` etc. during
-transition. This means we can ship WASM plugins while keeping the compiled-in
-fallback. Remove feature flags once WASM versions are stable.
-
-### 5. Sync APIs for plugins, always
-
-Per [[sync-first]] and the Zed pattern: plugins see synchronous APIs.
-When the host needs async (e.g., HTTP for forge plugins), the WASM runtime
-suspends transparently. No async rust in plugins ever.
-
-```rust
-// Plugin sees:
-fn query(q: &str, limit: u32) -> Result<Vec<OracleResult>>;
-
-// Host implements (if async needed):
-// wasmtime suspends WASM when host yields for I/O
-```
-
-### 6. Grammar fallback to compiled-in
-
-During Phase 5, if a WASM grammar isn't found in `~/.patina/grammars/`,
-fall back to the compiled-in grammar. This means zero regression for existing
-users. Grammars are opt-in WASM, not forced migration.
-
-## Open Questions
-
-1. **Plugin discovery for CLI commands** — When user types `patina yolo`,
-   how does the CLI know to dispatch to a plugin? Options:
-   - Scan `~/.patina/plugins/` at startup (slow if many plugins)
-   - Manifest cache file listing installed plugin commands (fast)
-   - Clap's external subcommand mechanism
-
-2. **Plugin size budget** — Is there a maximum acceptable .wasm file size?
-   ONNX model is 90MB. A grammar is ~500KB. Where's the line?
-
-3. **Cross-platform WASM** — Do plugins compiled on macOS run on Linux?
-   (Yes for pure WASM, but WASI capabilities may differ)
-
-4. **Grammar build pipeline** — How do we build tree-sitter WASM grammars?
-   tree-sitter has `tree-sitter build --wasm` but needs emscripten or
-   wasi-sdk. Deferred to Phase 5.
-
-5. **wasmtime version pinning** — wasmtime moves fast (major releases
-   every ~3 months). Pin to a specific major version and update deliberately.
+- **Async wasmtime** — per [[sync-first]], no async feature. Ever.
+- **Directory-versioned WIT** — start with package versions. Add Zed-style
+  `since_v*` directories when backward compatibility requires it.
 
 ## Non-Goals
 
 - Plugin monetization
 - Plugin sandboxing beyond WASI (no seccomp, no namespace isolation)
-- Multi-version plugin support (one version at a time, uninstall old, install new)
+- Multi-version plugin support (one version at a time)
 - Plugin auto-update (manual for now)
+- Cross-platform WASM testing (compile on macOS, test on Linux — future)
+
+---
 
 ## Status Log
 
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-11 | draft | Created from bible session. Consumes from 5 frozen specs. Concrete 5-phase build with grammars first. |
-| 2026-02-11 | amended | Session [[20260211-133159]]: Reordered phases — MotherChild first, grammars last. Architecture changed to Option C (shared PluginEngine). Rationale: grammars have highest coupling/regression risk (ABI versioning, patina-metal, scrape hot path), MotherChild has lowest (trait exists, registry exists, host capability surface exists). |
+| 2026-02-11 | amended | Session [[20260211-133159]]: Reordered phases — MotherChild first, grammars last. Architecture changed to Option C (shared PluginEngine). Rationale: grammars have highest coupling/regression risk. |
+| 2026-02-11 | ready | Session [[20260211-143337]]: Full spec lockdown. Resolved all open questions. Pinned wasmtime v43 (sync, no async feature). Locked threading model (scoped threads). Locked WIT definitions (host.wit, mother-child.wit). Locked models child scope (path resolution only). Locked file paths, struct shapes, bindgen strategy. Incorporated all research from sessions [[20260205-102402]], [[20260205-115835]], [[20260205-130049]]. All 14 beliefs linked. |
