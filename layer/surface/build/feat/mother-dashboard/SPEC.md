@@ -1,18 +1,18 @@
 ---
 type: feat
 id: mother-dashboard
-status: design
+status: abandoned
 created: 2026-02-09
 sessions:
   origin: 20260209-215657
 related:
-  - layer/surface/build/feat/mother/SPEC.md
-  - layer/surface/build/feat/mother-environment/SPEC.md
-  - layer/surface/build/feat/mother-repos/SPEC.md
-  - layer/surface/build/feat/mother-beliefs/SPEC.md
+- layer/surface/build/feat/mother/SPEC.md
+- layer/surface/build/feat/mother-environment/SPEC.md
+- layer/surface/build/feat/mother-repos/SPEC.md
+- layer/surface/build/feat/mother-beliefs/SPEC.md
 beliefs:
-  - mother-is-the-daemon
-  - four-layer-architecture
+- mother-is-the-daemon
+- four-layer-architecture
 ---
 
 # feat: Mother Dashboard — Observability & Patrol
