@@ -5,6 +5,9 @@ status: active
 created: 2026-02-11
 sessions:
   origin: 20260211-100430
+  work:
+  - 20260211-114126
+  - 20260211-121154
 related:
 - layer/surface/build/feat/v1-release/SPEC.md
 - layer/surface/build/feat/mother-architecture/SPEC.md
@@ -252,27 +255,27 @@ non-trivial implementation arrives, WIT when plugin infra lands.
 
 ## Acceptance Criteria
 
-1. [ ] `BumpType` enum defined: `Patch`, `Minor`, `Major`
-2. [ ] `ReleaseStrategy` enum defined: `Cargo`, `External`, `None`
-3. [ ] `PreparedRelease` typestate: `preflight()` returns it, `execute()` consumes it
-4. [ ] `Cargo` variant runs safeguard checks:
+1. [x] `BumpType` enum defined: `Patch`, `Minor`, `Major`
+2. [x] `ReleaseStrategy` enum defined: `Cargo`, `External`, `None`
+3. [x] `PreparedRelease` typestate: `preflight()` returns it, `execute()` consumes it
+4. [x] `Cargo` variant runs safeguard checks:
    - Clean working tree (no uncommitted tracked files)
    - Not behind remote
    - Not diverged from remote
    - Target tag doesn't already exist
    - Index not stale
-5. [ ] `External` variant prints bump recommendation without touching files
-6. [ ] `None` variant is silent no-op — spec completes without version noise
-7. [ ] Strategy auto-detected from project files (Cargo.toml, package.json, etc.)
-8. [ ] Strategy overridable via `.patina/config.toml` `[versioning]` section
-9. [ ] `spec status complete` delegates to release strategy (no direct Cargo.toml manipulation)
-10. [ ] `spec status` supports `--major` flag for 1.0.0 moments (overrides type-based bump)
-11. [ ] `version hotfix` replaces `version patch` — same safeguards, patch bump, Cargo-only
-12. [ ] `version milestone` removed (command, functions, milestone queries in version)
-13. [ ] `version phase` and `version init` removed (already deprecated)
-14. [ ] `version show` displays next ready spec instead of milestone
-15. [ ] v1-release milestones converted to checklist (names + status, no version numbers)
-16. [ ] `patina scrape layer` still indexes milestones for specs that have them (backward compat)
+5. [x] `External` variant prints bump recommendation without touching files
+6. [x] `None` variant is silent no-op — spec completes without version noise
+7. [x] Strategy auto-detected from project files (Cargo.toml, package.json, etc.)
+8. [x] Strategy overridable via `.patina/config.toml` `[versioning]` section
+9. [x] `spec status complete` delegates to release strategy (no direct Cargo.toml manipulation)
+10. [x] `spec status` supports `--major` flag for 1.0.0 moments (overrides type-based bump)
+11. [x] `version hotfix` replaces `version patch` — same safeguards, patch bump, Cargo-only
+12. [x] `version milestone` removed (command, functions, milestone queries in version)
+13. [x] `version phase` and `version init` removed (already deprecated)
+14. [x] `version show` displays next ready spec instead of milestone
+15. [x] v1-release milestones converted to checklist (names + status, no version numbers)
+16. [x] `patina scrape layer` still indexes milestones for specs that have them (backward compat)
 
 ## Non-Goals
 
@@ -384,13 +387,13 @@ patina version hotfix <description>        # emergency patch bump (Cargo only)
 
 ## Exit Criteria
 
-- [ ] `spec status complete` is the only path for spec-driven version bumps
-- [ ] `version hotfix` is the only escape hatch for emergency patches (Cargo only)
-- [ ] Both paths use the same `ReleaseStrategy` with the same safeguards
-- [ ] No command can move version backward
-- [ ] Three strategies work: Cargo (automated), External (advisory), None (silent)
-- [ ] Strategy auto-detected from project, overridable via config
-- [ ] Safeguard checks prevent dirty-state failures
-- [ ] `patina version show` reports accurate, non-stale information
-- [ ] Release strategy follows [[dependable-rust]] pattern with [[compiler-enforced-safety]] typestate
-- [ ] Non-Rust projects use patina specs without version system interference
+- [x] `spec status complete` is the only path for spec-driven version bumps
+- [x] `version hotfix` is the only escape hatch for emergency patches (Cargo only)
+- [x] Both paths use the same `ReleaseStrategy` with the same safeguards
+- [x] No command can move version backward
+- [x] Three strategies work: Cargo (automated), External (advisory), None (silent)
+- [x] Strategy auto-detected from project, overridable via config
+- [x] Safeguard checks prevent dirty-state failures
+- [x] `patina version show` reports accurate, non-stale information
+- [x] Release strategy follows [[dependable-rust]] pattern with [[compiler-enforced-safety]] typestate
+- [x] Non-Rust projects use patina specs without version system interference
