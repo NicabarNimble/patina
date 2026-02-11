@@ -1,7 +1,7 @@
 ---
 type: feat
 id: report
-status: ready
+status: design
 created: 2026-01-13
 updated: 2026-02-06
 blocked_by:

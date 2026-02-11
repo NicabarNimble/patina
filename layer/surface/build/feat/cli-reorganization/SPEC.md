@@ -1,7 +1,7 @@
 ---
 type: feat
 id: cli-reorganization
-status: draft
+status: design
 created: 2026-02-05
 updated: 2026-02-05
 sessions:
