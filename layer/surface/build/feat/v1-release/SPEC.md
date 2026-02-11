@@ -10,7 +10,7 @@ sessions:
   - 20260129-074742
   - 20260129-093857
 related:
-  - layer/surface/build/feat/mother/SPEC.md
+  - layer/surface/build/feat/mother-architecture/SPEC.md
 milestones:
 - version: 0.9.1
   name: Version & spec system alignment
