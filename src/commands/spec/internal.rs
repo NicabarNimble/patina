@@ -415,7 +415,7 @@ pub fn update_spec_status(id: &str, new_status: &str, major: bool) -> Result<()>
         };
 
         if let Some(bump) = bump {
-            let prepared = strategy.preflight(bump)?;
+            let prepared = strategy.preflight(bump, &file_path)?;
             prepared.execute(title_str, &file_path)?;
         } else {
             println!("\n  Spec type '{}' → no version bump", frontmatter.r#type);

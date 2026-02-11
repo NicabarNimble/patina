@@ -69,9 +69,16 @@ fn read_config_strategy(project_path: &Path) -> Option<ReleaseStrategy> {
 // ============================================================================
 
 /// Run preflight checks and produce a PreparedRelease token.
-pub(crate) fn preflight(strategy: ReleaseStrategy, bump: BumpType) -> Result<PreparedRelease> {
+///
+/// `spec_path` is the file being released — expected to be dirty (just had
+/// its status updated). Excluded from the clean-tree check.
+pub(crate) fn preflight(
+    strategy: ReleaseStrategy,
+    bump: BumpType,
+    spec_path: &str,
+) -> Result<PreparedRelease> {
     match strategy {
-        ReleaseStrategy::Cargo => preflight_cargo(bump),
+        ReleaseStrategy::Cargo => preflight_cargo(bump, spec_path),
         ReleaseStrategy::External => preflight_external(bump),
         ReleaseStrategy::None => Ok(PreparedRelease {
             strategy,
@@ -83,12 +90,12 @@ pub(crate) fn preflight(strategy: ReleaseStrategy, bump: BumpType) -> Result<Pre
 }
 
 /// Cargo preflight: read version, compute next, run safeguards.
-fn preflight_cargo(bump: BumpType) -> Result<PreparedRelease> {
+fn preflight_cargo(bump: BumpType, spec_path: &str) -> Result<PreparedRelease> {
     let old_version = read_cargo_version()?;
     let new_version = compute_next_version(&old_version, bump)?;
 
-    // Run safeguard checks
-    run_safeguard_checks(&new_version)?;
+    // Run safeguard checks (spec_path excluded from dirty-tree check)
+    run_safeguard_checks(&new_version, spec_path)?;
 
     Ok(PreparedRelease {
         strategy: ReleaseStrategy::Cargo,
@@ -128,25 +135,37 @@ fn preflight_external(bump: BumpType) -> Result<PreparedRelease> {
 
 /// Blocking safeguard checks before any Cargo release.
 ///
+/// `spec_path` is excluded from the dirty-tree check — we just updated
+/// its status and will include it in the release commit.
+///
 /// Checks (all blocking):
-/// 1. Clean working tree (no uncommitted tracked files)
+/// 1. Clean working tree (excluding spec_path)
 /// 2. Not behind remote
 /// 3. Not diverged from remote
 /// 4. Target tag doesn't already exist
-/// 5. Index not stale
-fn run_safeguard_checks(new_version: &str) -> Result<()> {
+/// 5. Index exists
+fn run_safeguard_checks(new_version: &str, spec_path: &str) -> Result<()> {
     use crate::git;
 
-    // 1. Dirty tree check
-    if !git::is_clean()? {
-        let count = git::status_count()?;
+    // 1. Dirty tree check (excluding the spec file we're about to release)
+    let dirty = git::status_porcelain()?;
+    let unexpected: Vec<&str> = dirty
+        .lines()
+        .filter(|line| {
+            // status_porcelain format: "XY path" or "XY path -> path"
+            let path = line.get(3..).unwrap_or("").split(" -> ").next().unwrap_or("");
+            !path.is_empty() && path != spec_path
+        })
+        .collect();
+
+    if !unexpected.is_empty() {
         anyhow::bail!(
             "Working tree has uncommitted changes ({} files)\n\n\
              Commit your changes first:\n\
                git add -A && git commit -m \"your message\"\n\n\
              Or stash them:\n\
                git stash",
-            count
+            unexpected.len()
         );
     }
 
