@@ -14,13 +14,14 @@ beliefs:
 - dependable-rust
 - unix-philosophy
 - compiler-enforced-safety
+- transparent-complexity
 ---
 
 # refactor: Version Consolidation
 
-> Three paths bump versions today. Only one works correctly. Make it the only
-> path — and make versioning optional via a release hook so specs don't assume
-> every project needs version bumps.
+> Specs are universal — every patina project has them. Versioning is a plugin.
+> Spec drives the lifecycle. The release strategy is optional. Make this true
+> in the code, not just in the docs.
 
 ## Problem
 
@@ -55,11 +56,11 @@ Walkthrough during session 20260211-100430 traced all three code paths and found
 
 ## Solution
 
-### 1. Release Hook: Decouple Spec from Version
+### 1. Release Strategy: Decouple Spec from Version
 
-Spec completion triggers a **release hook** — an enum today, a trait/WIT
-interface when [[patina-platform]] lands. Projects without versioning get the
-no-op variant. Spec doesn't know *how* versions work. It just asks the hook.
+Spec completion triggers a **release strategy** — an enum that dispatches
+based on project configuration. Spec doesn't know *how* versions work. It
+asks the strategy. The strategy is optional and language-aware.
 
 Per [[compiler-enforced-safety]]: use enums over strings, typestate over
 documentation, exhaustive match over convention.
@@ -74,8 +75,9 @@ enum BumpType {
 
 /// Release strategy — enum today, trait/WIT when plugin infra lands
 enum ReleaseStrategy {
-    Cargo,  // Owned Rust project: safeguards → Cargo.toml → commit → tag
-    None,   // Fork/unversioned: no-op, spec completes without version change
+    Cargo,     // Rust: safeguards → Cargo.toml → commit → tag
+    External,  // BYO versioning: print reminder, don't touch files
+    None,      // No versioning: silent no-op
 }
 ```
 
@@ -108,10 +110,84 @@ if new_status == "complete" {
 
 Spec owns lifecycle. Strategy owns versioning. Clean boundary.
 
-### 2. Spec-First Design: One Path for Releases
+### 2. Three User Profiles
 
-**`patina spec`** — drives lifecycle, delegates to release hook on complete:
-- `spec status` — lifecycle transitions, release hook on complete
+Patina manages knowledge for any project — Rust, Node, Python, Go, whatever.
+The spec system is language-agnostic (markdown files). Versioning is optional
+and language-specific.
+
+| User | Has specs? | Has versions? | Who manages versions? | Strategy |
+|------|-----------|--------------|----------------------|----------|
+| **Patina-native** | Yes | Yes | Patina | `Cargo` |
+| **BYO-version** | Yes | Yes | Their own system | `External` |
+| **Spec-only** | Yes | No | Nobody | `None` |
+
+**`Cargo`** — Patina owns the version file. Runs safeguards, bumps
+`Cargo.toml`, commits, tags. Full automation.
+
+**`External`** — User manages versions with their own tools (`npm version`,
+`poetry version`, manual edits). On spec completion, patina prints what bump
+is warranted but doesn't touch files:
+
+```
+patina spec status my-feature complete
+
+  Updated: my-feature → complete
+  File: layer/surface/build/feat/my-feature/SPEC.md
+
+  Spec type 'feat' → minor bump
+  Version management: external (not managed by patina)
+  Action needed: bump your version and tag manually
+```
+
+**`None`** — No versioning at all. Spec completes silently. For projects
+that use specs to track work but don't release versioned artifacts.
+
+### 3. Strategy Resolution
+
+Auto-detect from project, overridable via config:
+
+```
+Resolution chain:
+  1. Explicit config wins: .patina/config.toml [versioning] strategy
+  2. Auto-detect:
+     Cargo.toml exists + upstream.owned = true  → Cargo
+     Cargo.toml exists + upstream.owned = false → None (fork)
+     package.json exists                        → External
+     pyproject.toml / setup.py exists           → External
+     go.mod exists                              → External
+     nothing detected                           → None
+```
+
+Config override:
+
+```toml
+# .patina/config.toml
+[versioning]
+strategy = "external"   # "cargo", "external", or "none"
+```
+
+### 4. Language-Specific Strategies (Future Variants)
+
+The enum is extensible. Each language that gets native support becomes a
+variant with its own version-file manipulation:
+
+| Language | Version file | Variant | Status |
+|----------|-------------|---------|--------|
+| Rust | `Cargo.toml` | `Cargo` | Build now |
+| Node | `package.json` | `Npm` | Future variant |
+| Python | `pyproject.toml` | `PyProject` | Future variant |
+| Go | tags only | `GitTagOnly` | Future variant |
+| Other | varies | `External` | Build now (remind) |
+| None | - | `None` | Build now (silent) |
+
+Adding a language: one enum variant + one `preflight`/`execute` match arm.
+When WIT lands: each variant becomes a plugin.
+
+### 5. Spec-First Design: One Path for Releases
+
+**`patina spec`** — drives lifecycle, delegates to release strategy on complete:
+- `spec status` — lifecycle transitions, release strategy on complete
 - `spec list` / `spec ready` / `spec blocked` — queries
 - `spec archive` — git-tag + remove completed specs
 
@@ -125,7 +201,7 @@ Spec owns lifecycle. Strategy owns versioning. Clean boundary.
 - `version phase` — already deprecated
 - `version init` — already deprecated
 
-### 3. The Emergency Path: `version hotfix`
+### 6. The Emergency Path: `version hotfix`
 
 `version patch` is renamed to `version hotfix` to avoid confusion with the
 `BumpType::Patch` enum variant, and to signal its intent: this is an escape
@@ -144,7 +220,7 @@ patina version hotfix "fix critical auth bypass"
 
 1. Runs the same `ReleaseStrategy::preflight()` safeguards (clean tree, tag
    availability, etc.)
-2. Bumps `BumpType::Patch` through the same release hook
+2. Bumps `BumpType::Patch` through the same release strategy
 3. Prints a reminder: "Consider creating a spec for traceability"
 
 Same release path, same safeguards, same typestate — just without the spec
@@ -157,45 +233,54 @@ still gets the same safety guarantees.
 - "patch" sounds routine; "hotfix" sounds intentional
 - Signals this is an escape hatch, not the normal workflow
 
-### 4. Evolution Path
+**Only available for `Cargo` strategy.** `External` and `None` projects
+manage their own hotfixes.
+
+### 7. Evolution Path
 
 ```
-Phase 1 (now):   ReleaseStrategy enum + typestate (PreparedRelease)
-Phase 2 (later): Extract enum to trait when second strategy arrives
-Phase 3 (WIT):   Trait maps to WIT interface, WASM plugins via wasmtime
+Phase 1 (now):   ReleaseStrategy enum: Cargo, External, None
+                 Typestate: PreparedRelease
+                 Config: auto-detect + [versioning] override
+Phase 2 (adopt): Add language variants as users need them (Npm, PyProject)
+Phase 3 (WIT):   Extract enum to trait, trait maps to WIT interface
                  See [[patina-platform]] for plugin infrastructure
 ```
 
-Same pattern as Mother's children — the shape is designed for WIT from day
-one. The enum-to-trait refactor is mechanical when the time comes.
+Same pattern as Mother's children — enum today, trait when a second
+non-trivial implementation arrives, WIT when plugin infra lands.
 
 ## Acceptance Criteria
 
 1. [ ] `BumpType` enum defined: `Patch`, `Minor`, `Major`
-2. [ ] `ReleaseStrategy` enum defined: `Cargo`, `None`
+2. [ ] `ReleaseStrategy` enum defined: `Cargo`, `External`, `None`
 3. [ ] `PreparedRelease` typestate: `preflight()` returns it, `execute()` consumes it
-4. [ ] `CargoRelease` path runs safeguard checks:
+4. [ ] `Cargo` variant runs safeguard checks:
    - Clean working tree (no uncommitted tracked files)
    - Not behind remote
    - Not diverged from remote
    - Target tag doesn't already exist
    - Index not stale
-5. [ ] `None` strategy is a no-op — spec completes without version errors
-6. [ ] `spec status complete` delegates to release strategy (no direct Cargo.toml manipulation)
-7. [ ] `spec status` supports `--major` flag for 1.0.0 moments (overrides type-based bump)
-8. [ ] `version hotfix` replaces `version patch` — same safeguards, patch bump, escape hatch
-9. [ ] `version milestone` removed (command, functions, milestone queries in version)
-10. [ ] `version phase` and `version init` removed (already deprecated)
-11. [ ] `version show` displays next ready spec instead of milestone
-12. [ ] v1-release milestones converted to checklist (names + status, no version numbers)
-13. [ ] `patina scrape layer` still indexes milestones for specs that have them (backward compat)
+5. [ ] `External` variant prints bump recommendation without touching files
+6. [ ] `None` variant is silent no-op — spec completes without version noise
+7. [ ] Strategy auto-detected from project files (Cargo.toml, package.json, etc.)
+8. [ ] Strategy overridable via `.patina/config.toml` `[versioning]` section
+9. [ ] `spec status complete` delegates to release strategy (no direct Cargo.toml manipulation)
+10. [ ] `spec status` supports `--major` flag for 1.0.0 moments (overrides type-based bump)
+11. [ ] `version hotfix` replaces `version patch` — same safeguards, patch bump, Cargo-only
+12. [ ] `version milestone` removed (command, functions, milestone queries in version)
+13. [ ] `version phase` and `version init` removed (already deprecated)
+14. [ ] `version show` displays next ready spec instead of milestone
+15. [ ] v1-release milestones converted to checklist (names + status, no version numbers)
+16. [ ] `patina scrape layer` still indexes milestones for specs that have them (backward compat)
 
 ## Non-Goals
 
+- Implementing language-specific strategies beyond Cargo (future variants)
 - Changing spec lifecycle transitions other than `complete`
-- Adding new spec commands
-- Implementing non-Cargo release strategies (that's future WIT work)
+- Adding new spec commands (quick-create, CLI blocking are separate specs)
 - Milestone version planning (removing the need for it)
+- CI/pre-push enforcement of spec-driven workflow (separate concern)
 
 ## Implementation Notes
 
@@ -203,19 +288,25 @@ one. The enum-to-trait refactor is mechanical when the time comes.
 
 `src/release/` — new module following [[dependable-rust]]:
 - `mod.rs`: `BumpType` enum, `ReleaseStrategy` enum, `PreparedRelease` type,
-  `bump_for_spec_type()` function
-- `internal.rs`: `CargoRelease` implementation (safeguards, Cargo.toml
-  manipulation, git commit, git tag)
+  `bump_for_spec_type()` function, `ReleaseStrategy::from_project()` factory
+- `internal.rs`: `Cargo` implementation (safeguards, Cargo.toml manipulation,
+  git commit, git tag), `External` implementation (print recommendation),
+  `None` implementation (no-op)
 
-`ReleaseStrategy::from_project()` checks `is_versioning_enabled()` and returns
-the appropriate variant. Spec commands call this factory — they never construct
+`ReleaseStrategy::from_project()` checks config first, then auto-detects from
+project files. Spec commands call this factory — they never construct
 strategies directly.
 
 ### Safeguard Migration
 
 Move `run_safeguard_checks()` from `src/commands/version/internal.rs:91-159`
-into `CargoRelease` preflight. Both `spec status complete` and `version hotfix`
-use the same `ReleaseStrategy::preflight()` path — one set of safeguards.
+into `Cargo` preflight. Both `spec status complete` and `version hotfix` use
+the same `ReleaseStrategy::preflight()` path — one set of safeguards.
+
+`External` preflight: check that the version file exists (package.json, etc.)
+so the reminder is actionable.
+
+`None` preflight: no-op, returns `PreparedRelease` immediately.
 
 ### Commit/Tag Ordering
 
@@ -237,21 +328,25 @@ Produces `BumpType::Major` instead of `BumpType::Minor`. The strategy
 interprets this: `0.N.0 → 1.0.0`. This is a release concern, not a spec
 concern — the flag is passed through to the strategy.
 
+For `External` strategy, `--major` changes the printed recommendation:
+"Action needed: bump to next major version."
+
 ### version show After
 
 ```
-patina 0.16.0                              # from Cargo.toml
+patina 0.16.0                              # from Cargo.toml (Cargo strategy)
 Ready: mother-architecture, report, ...    # from spec ready query
 ```
 
-Or minimal: just the version line if no ready specs exist.
+For `External`/`None` projects, `version show` reports what it can detect
+from the project's version file, or just shows patina's own version.
 
 ### Spec Command Surface After
 
 ```
 patina spec status <id> <status>           # lifecycle transition
-patina spec status <id> complete           # + release hook (feat→minor, fix→patch)
-patina spec status <id> complete --major   # + release hook (→ major bump)
+patina spec status <id> complete           # + release strategy (feat→minor, fix→patch)
+patina spec status <id> complete --major   # + release strategy (→ major bump)
 patina spec list [--status X] [--target X] # query
 patina spec ready                          # unblocked specs
 patina spec blocked                        # blocked specs
@@ -263,32 +358,39 @@ patina spec archive <id>                   # git-tag + remove
 ```
 patina version                             # show (default)
 patina version show [--json] [--components]# current version + ready specs
-patina version hotfix <description>        # emergency patch bump
+patina version hotfix <description>        # emergency patch bump (Cargo only)
 ```
 
 ## Build Steps
 
 1. Create `src/release/` with `BumpType`, `ReleaseStrategy`, `PreparedRelease`
 2. Implement `Cargo` variant (migrate safeguards + `do_release` logic)
-3. Implement `None` variant (no-op)
-4. Rewire `spec status complete` to use `ReleaseStrategy`
-5. Add `--major` flag to `spec status`
-6. Rename `version patch` to `version hotfix`, wire through `ReleaseStrategy`
-7. Update `version show` to drop milestone display, show ready specs
-8. Remove `version milestone`, `version phase`, `version init`
-9. Clean up v1-release milestone versions (names-only checklist)
-10. Test: owned project complete → bump + tag
-11. Test: fork project complete → no bump
-12. Test: safeguard failure → no dirty state
-13. Test: hotfix → same safeguards, patch bump
+3. Implement `External` variant (print bump recommendation)
+4. Implement `None` variant (no-op)
+5. Add `from_project()` factory with auto-detection + config override
+6. Rewire `spec status complete` to use `ReleaseStrategy`
+7. Add `--major` flag to `spec status`
+8. Rename `version patch` to `version hotfix`, wire through `ReleaseStrategy`
+9. Update `version show` to drop milestone display, show ready specs
+10. Remove `version milestone`, `version phase`, `version init`
+11. Clean up v1-release milestone versions (names-only checklist)
+12. Test: Cargo project complete → bump + tag
+13. Test: External project complete → prints recommendation, no file changes
+14. Test: None project complete → silent, no version noise
+15. Test: fork project → resolves to None
+16. Test: config override → respects explicit strategy
+17. Test: safeguard failure → no dirty state
+18. Test: hotfix → same safeguards, patch bump
 
 ## Exit Criteria
 
 - [ ] `spec status complete` is the only path for spec-driven version bumps
-- [ ] `version hotfix` is the only escape hatch for emergency patches
+- [ ] `version hotfix` is the only escape hatch for emergency patches (Cargo only)
 - [ ] Both paths use the same `ReleaseStrategy` with the same safeguards
 - [ ] No command can move version backward
-- [ ] Unversioned projects complete specs without version errors
+- [ ] Three strategies work: Cargo (automated), External (advisory), None (silent)
+- [ ] Strategy auto-detected from project, overridable via config
 - [ ] Safeguard checks prevent dirty-state failures
 - [ ] `patina version show` reports accurate, non-stale information
 - [ ] Release strategy follows [[dependable-rust]] pattern with [[compiler-enforced-safety]] typestate
+- [ ] Non-Rust projects use patina specs without version system interference
