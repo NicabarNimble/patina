@@ -117,20 +117,50 @@ impl patina::mother::MotherHost for DaemonHost {
 const HEARTBEAT_INTERVAL_SECS: u64 = 60;
 
 /// Spawn the heartbeat thread — ticks all children periodically.
+/// Toys returned by children are spawned as child processes.
 fn spawn_heartbeat(state: Arc<ServerState>) {
     std::thread::Builder::new()
         .name("mother-heartbeat".to_string())
         .spawn(move || loop {
             std::thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
             let toys = state.registry.tick_all();
-            if !toys.is_empty() {
-                eprintln!(
-                    "[mother] heartbeat: {} toy(s) requested (not yet handled)",
-                    toys.len()
-                );
+            for toy in toys {
+                spawn_toy(toy);
             }
         })
         .expect("failed to spawn heartbeat thread");
+}
+
+/// Spawn a toy as a child process in a background thread.
+///
+/// The child decides *what* to run. Mother handles *how*.
+/// Each toy runs in its own thread so the heartbeat loop isn't blocked.
+fn spawn_toy(toy: patina::mother::Toy) {
+    std::thread::Builder::new()
+        .name(format!("toy-{}", toy.name))
+        .spawn(move || {
+            eprintln!(
+                "[mother:toy] spawning '{}': {} {:?}",
+                toy.name, toy.command, toy.args
+            );
+            match std::process::Command::new(&toy.command)
+                .args(&toy.args)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::piped())
+                .status()
+            {
+                Ok(status) if status.success() => {
+                    eprintln!("[mother:toy] '{}' completed successfully", toy.name);
+                }
+                Ok(status) => {
+                    eprintln!("[mother:toy] '{}' failed with {}", toy.name, status);
+                }
+                Err(e) => {
+                    eprintln!("[mother:toy] '{}' failed to spawn: {}", toy.name, e);
+                }
+            }
+        })
+        .expect("failed to spawn toy thread");
 }
 
 // === API types ===
