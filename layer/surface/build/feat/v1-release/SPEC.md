@@ -9,8 +9,9 @@ sessions:
   work:
   - 20260129-074742
   - 20260129-093857
+  - 20260211-121154
 related:
-  - layer/surface/build/feat/mother-architecture/SPEC.md
+  - spec/mother-architecture  # archived, recoverable via git tag
 checklist:
 - name: Version & spec system alignment
   status: complete
