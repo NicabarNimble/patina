@@ -3,8 +3,10 @@ type: feat
 id: plugin-system
 status: draft
 created: 2026-02-11
+revised: 2026-02-11
 sessions:
   origin: 20260211-125648
+  amended: 20260211-133159
 blocked_by: []
 blocks: []
 related:
@@ -24,6 +26,8 @@ beliefs:
   - sync-first
   - use-whats-in-the-tree
   - work-triages-specs
+  - de-risk-runtime-with-simplest-payload
+  - mother-is-the-daemon
 references:
   - "wasmtime (Bytecode Alliance)"
   - "zed-industries/zed extension system"
@@ -33,12 +37,13 @@ references:
 
 # feat: Plugin System
 
-> wasmtime + WIT. MotherChild becomes the first plugin interface.
-> Grammars become the first WASM payloads. Small core, extensible surface.
+> wasmtime + WIT. MotherChild becomes the first WASM plugin.
+> PluginEngine is the shared runtime. Mother uses it for daemon children.
+> CLI uses it for one-shot commands. Grammars come last.
 
 ## Problem
 
-Patina is a 52MB monolith. Every feature — forge, eval, yolo, 6 compiled-in
+Patina is a 52MB monolith. Every feature — forge, eval, yolo, 9 compiled-in
 tree-sitter grammars — ships in one binary. The consequences:
 
 1. **No extensibility** — adding a language means recompiling patina
@@ -77,39 +82,55 @@ Already in the ecosystem:
 - tree-sitter uses wasmtime for WASM grammars
 - Zed uses wasmtime for extensions (77 WIT files, studied in [[wit-interfaces]])
 
-### Architecture
+### Architecture: PluginEngine (Option C)
+
+PluginEngine is the shared wasmtime infrastructure. Mother uses it for
+resident daemon children. CLI uses it directly for one-shot command plugins.
+Same WASM loading, same capability grants, same manifest format — different
+lifecycles.
 
 ```
 ┌───────────────────────────────────────────────────────────┐
 │                     patina (core binary)                   │
 │                                                            │
-│  PluginHost                                                │
+│  PluginEngine (shared wasmtime guts)                       │
 │  ├── wasmtime::Engine (shared, one per process)            │
-│  ├── plugins: Vec<LoadedPlugin>                            │
-│  │   ├── manifest (plugin.toml)                            │
-│  │   ├── instance (wasmtime::Instance)                     │
-│  │   └── capabilities (granted set)                        │
-│  └── grammars: Vec<LoadedGrammar>                          │
-│      ├── tree-sitter WASM modules                          │
-│      └── language → grammar mapping                        │
+│  ├── load_wasm(path) → instance                           │
+│  ├── capability_check(manifest, grants)                    │
+│  └── call(instance, function, args) → result              │
 │                                                            │
-│  Mother daemon loads PluginHost on startup.                │
-│  CLI commands load PluginHost on demand.                   │
+│  Mother daemon                    CLI direct               │
+│  ├── PluginEngine                 ├── PluginEngine         │
+│  ├── ChildRegistry                └── load on demand       │
+│  │   └── MotherChild (WASM)           doctor, eval, yolo   │
+│  │       resident, heartbeat          run and exit          │
+│  └── daemon-specific:                                      │
+│      graph, cross-project,                                 │
+│      model caching                                         │
 └───────────────────────────────────────────────────────────┘
         │              │              │
         ▼              ▼              ▼
    ┌─────────┐   ┌─────────┐   ┌─────────┐
-   │ grammars│   │ children│   │ plugins │
+   │ children│   │ commands│   │ grammars│
    │ (.wasm) │   │ (.wasm) │   │ (.wasm) │
    │         │   │         │   │         │
-   │ rust.wasm   │ models  │   │ yolo    │
-   │ python.wasm │ repos   │   │ eval    │
-   │ go.wasm │   │         │   │ report  │
-   │ ...     │   │         │   │ doctor  │
+   │ models  │   │ doctor  │   │ rust    │
+   │ repos   │   │ yolo    │   │ python  │
+   │         │   │ eval    │   │ go      │
+   │         │   │ report  │   │ ...     │
    └─────────┘   └─────────┘   └─────────┘
-   ~/.patina/    Mother-managed   ~/.patina/
-   grammars/     (MotherChild)    plugins/
+   Mother-managed  ~/.patina/    ~/.patina/
+   (MotherChild)   plugins/      grammars/
 ```
+
+Mother's role is clear: **Mother is the daemon that runs long-lived plugins
+and provides cross-project awareness.** She uses the same PluginEngine
+everyone else does, but adds the resident lifecycle (load, tick, health,
+toys). She's not the gatekeeper for all plugins — she's the home for
+plugins that need to stay alive.
+
+CLI plugins don't need Mother running. `patina doctor` works offline and
+daemonless, same as today.
 
 ### Separate Worlds Per Plugin Type
 
@@ -119,12 +140,12 @@ Grammar plugins can't see the eventlog.
 
 | World | Exports | Imports | Capabilities |
 |-------|---------|---------|-------------|
-| `grammar` | tree-sitter parse API | none | Pure computation, fully sandboxed |
+| `mother-child` | `handle()`, `health()`, `tick()` | `patina:host/*` | Eventlog, layer, database |
+| `command` | `run(args)` → exit code | `patina:host/*` | Full host access |
 | `oracle` | `query()`, `name()`, `is-available()` | none | Pure computation |
 | `scraper` | `scrape-file()`, `patterns()` | `wasi:filesystem` (read-only) | Filesystem read |
 | `forge-reader` | `list-issues()`, `get-issue()`, etc. | `wasi:http` | Network access |
-| `mother-child` | `handle()`, `health()`, `tick()` | `patina:host/*` | Eventlog, layer, database |
-| `command` | `run(args)` → exit code | `patina:host/*` | Full host access |
+| `grammar` | tree-sitter parse API | none | Pure computation, fully sandboxed |
 
 ### Plugin Manifest (plugin.toml)
 
@@ -150,7 +171,7 @@ commands = ["eval", "bench"]         # Adds `patina eval`, `patina bench`
 Per [[two-layer-capability-grants]]:
 
 1. **Manifest declares** — plugin.toml says what capabilities it wants
-2. **Host decides** — PluginHost checks manifest against user's grant config
+2. **Host decides** — PluginEngine checks manifest against user's grant config
 
 ```toml
 # ~/.patina/plugin-config/grants.toml
@@ -167,66 +188,47 @@ degraded mode (capabilities denied, plugin notified via on_load error).
 
 ## Phased Build
 
-### Phase 1: Grammar Plugins (v0.17.0)
+### Phase 1: PluginEngine + First MotherChild (v0.17.0)
 
-**Goal:** Load tree-sitter grammars from WASM instead of compiling them in.
-This is the simplest WASM integration — grammars are pure computation with
-no host imports, no capabilities, no plugin manifest.
+**Goal:** Add wasmtime, build PluginEngine, implement the first MotherChild
+(models) as a WASM plugin. This proves the full host↔plugin communication
+pattern — WIT interfaces, host functions, capability grants — where the
+trait already exists.
 
-**Why first:** Grammars are already designed for WASM. tree-sitter has
-`tree_sitter::wasmtime` support. This exercises the wasmtime integration
-without the complexity of host↔plugin communication.
+**Why first:** The MotherChild trait (`src/mother/child.rs`) already defines
+the plugin shape. The ChildRegistry already loads, routes, and health-checks
+children. The MotherHost trait already defines the capability surface. Building
+the first child as WASM lets the PluginEngine API emerge from a real use case,
+not a spec diagram. The `models` child from [[mother-environment]] is the
+simplest — it owns embedding model paths and serves embed requests. No
+network, no filesystem writes, minimal capabilities.
+
+**Why NOT grammars first:** The original spec assumed "no host imports =
+simplest." Session [[20260211-133159]] discovered this was wrong. Grammars are
+entangled with tree-sitter ABI versioning (the reason we vendor and compile C
+sources directly in patina-metal), the hot scrape pipeline, and 8 language
+processors. Grammar WASM is the highest regression risk, not the lowest. The
+ABI version constraint (tree-sitter 0.24 expects ABI 13-14, C/C++ grammars
+generate ABI 15) applies equally to WASM grammars — moving to WASM doesn't
+fix the underlying version problem, just changes where it manifests.
 
 **Build steps:**
 
-1. Add `wasmtime` to Cargo.toml (the one new dependency that pays for itself)
-2. Create `src/plugin/mod.rs` — PluginHost struct with `wasmtime::Engine`
-3. Create `src/plugin/grammar.rs` — grammar loading from `~/.patina/grammars/*.wasm`
-4. Refactor `scrape code` to load grammars dynamically instead of compiled-in
-5. Ship pre-built grammar WASM files for current 6 languages (Rust, Python, Go, TypeScript, Java, C)
-6. `patina grammar list` — show loaded grammars
-7. `patina grammar install <path>` — copy WASM file to `~/.patina/grammars/`
-8. Keep compiled-in grammars as fallback if WASM grammar not found
+1. Add `wasmtime` to Cargo.toml
+2. Create `src/plugin/mod.rs` — PluginEngine struct with `wasmtime::Engine`
+3. Create `src/plugin/internal.rs` — WASM loading, capability checking
+4. Define `patina:host@0.1.0` WIT package — `log`, `layer`, `database` interfaces
+5. Define `patina:mother-child@0.1.0` WIT world — exports `handle()`, `health()`, `tick()`; imports `patina:host/*`
+6. Create `patina-plugin-api` crate — ergonomic Rust wrapper over WIT bindings (like Zed's `zed_extension_api`)
+7. Implement models child as WASM plugin using `patina-plugin-api`
+8. Mother's ChildRegistry loads WASM children via PluginEngine
+9. Implement plugin.toml manifest parsing
+10. Implement two-layer capability grant checking
 
 **Acceptance criteria:**
 
 - [ ] `wasmtime` compiles and links
-- [ ] `patina scrape code` uses WASM grammar for Rust when `~/.patina/grammars/tree-sitter-rust.wasm` exists
-- [ ] Falls back to compiled-in grammar when WASM not present
-- [ ] Adding a new language is: drop a `.wasm` file, no recompile
-- [ ] `patina grammar list` shows available grammars with source (wasm/compiled)
-- [ ] Binary size does not grow (grammars no longer compiled in once WASM versions ship)
-
-**Exit criteria:**
-
-- [ ] wasmtime::Engine initializes in <100ms
-- [ ] WASM grammar parse speed within 2x of compiled-in (acceptable for scrape)
-- [ ] At least one grammar loaded from WASM in CI test
-
-### Phase 2: MotherChild as WASM Plugin (v0.18.0)
-
-**Goal:** Implement the first MotherChild (models) as a WASM plugin, proving
-the host↔plugin communication pattern. This is the hard part — WIT interfaces,
-host functions, capability grants.
-
-**Why second:** Mother children are the designed plugin boundary. The trait
-already exists. The `models` child from [[mother-environment]] is the simplest —
-it owns embedding model paths and serves embed requests. No network, no
-filesystem writes, minimal capabilities.
-
-**Build steps:**
-
-1. Define `patina:host@0.1.0` WIT package — `eventlog`, `layer`, `database` interfaces
-2. Define `patina:mother-child@0.1.0` WIT world — exports `handle()`, `health()`, `tick()`; imports `patina:host/*`
-3. Create `patina-plugin-api` crate — ergonomic Rust wrapper over WIT bindings (like Zed's `zed_extension_api`)
-4. Implement models child as WASM plugin using `patina-plugin-api`
-5. PluginHost loads models child from `~/.patina/plugins/patina-models.wasm`
-6. Mother daemon delegates to WASM child instead of compiled-in child
-7. Implement plugin.toml manifest parsing
-8. Implement two-layer capability grant checking
-
-**Acceptance criteria:**
-
+- [ ] PluginEngine initializes wasmtime::Engine in <100ms
 - [ ] `patina-plugin-api` crate compiles to `wasm32-wasip2` target
 - [ ] Models child loads as WASM plugin in Mother daemon
 - [ ] `handle("resolve_model", ...)` returns model path through WASM boundary
@@ -234,37 +236,82 @@ filesystem writes, minimal capabilities.
 - [ ] Capability check: plugin without `host_database` grant cannot call `database.query()`
 - [ ] Plugin sees sync APIs; host handles any async internally ([[sync-first]])
 - [ ] WASI sandbox: plugin filesystem access scoped to its work directory
+- [ ] Plugin crash doesn't crash the host (WASM isolation)
+- [ ] `patina mother status` shows WASM-loaded child with health
 
 **Exit criteria:**
 
 - [ ] Round-trip latency through WASM boundary <1ms for `handle()` calls
-- [ ] Plugin crash doesn't crash the host (WASM isolation)
-- [ ] `patina mother status` shows WASM-loaded child with health
+- [ ] At least one MotherChild loaded from WASM in CI test
 
-### Phase 3: First Extraction — Yolo (v0.18.0)
+### Repos Child (Phase 1+)
 
-**Goal:** Extract `yolo` (1,613 lines) from the binary into a WASM command
-plugin. This proves the `command` world — a plugin that adds CLI subcommands.
+The repos child from [[mother-repos]] is the second MotherChild after models.
+It owns ref repo lifecycle: git pull, scrape, index, freshness monitoring.
 
-**Why yolo:** Per [[patina-identity]], yolo is "the strongest extraction
-candidate." Devcontainer generation isn't knowledge infrastructure. It has
-no dependencies on core internals beyond environment detection.
+**Build after Phase 1 proves the pattern.** Repos child needs more capabilities
+than models (shell commands for git, scrape pipeline access) and is a good
+test of the toy system (child requests work, Mother runs it).
+
+Not a separate phase — it's the natural second child once the MotherChild WASM
+pattern works.
+
+### Phase 2: Command Plugins — First Extraction (v0.17.0)
+
+**Goal:** Extract `doctor` (278 lines) from the binary into a WASM command
+plugin. This proves the `command` world — a plugin that adds CLI subcommands
+and runs without Mother.
+
+**Why doctor:** Smallest extractable command. Reads files, checks state,
+prints output. No hot-path risk. Proves PluginEngine works for CLI-direct
+loading (no daemon required).
 
 **Build steps:**
 
 1. Define `patina:command@0.1.0` WIT world — exports `run(args: list<string>) -> s32`; imports `patina:host/layer` (read-only)
-2. Create `patina-yolo` crate (workspace member, compiles to WASM)
-3. Move yolo logic from `src/commands/yolo/` to `patina-yolo` crate
-4. PluginHost registers command plugins, dispatches `patina yolo` to WASM
-5. Remove yolo from main binary (behind feature flag first, then fully)
-6. Ship `patina-yolo.wasm` in `~/.patina/plugins/` via `patina plugin install`
+2. Create `patina-doctor` crate (workspace member, compiles to WASM)
+3. Move doctor logic from `src/commands/doctor/` to `patina-doctor` crate
+4. CLI loads command plugin via PluginEngine when `patina doctor` is invoked
+5. Feature-gate compiled-in doctor during transition
 
 **Acceptance criteria:**
 
-- [ ] `patina yolo --defaults` works identically from WASM plugin
-- [ ] `patina yolo` output unchanged from user perspective
-- [ ] Main binary smaller with yolo extracted
-- [ ] `patina plugin list` shows patina-yolo with version and status
+- [ ] `patina doctor` works identically from WASM plugin
+- [ ] Works without Mother daemon running
+- [ ] `patina plugin list` shows patina-doctor with version and status
+- [ ] Main binary smaller with doctor extracted (measurable delta)
+
+### Phase 3: Remaining Command Extractions (v0.18.0)
+
+**Goal:** Extract yolo, eval+bench, report, upgrade into WASM command plugins.
+These are the remaining "Definitely Plugin" modules from [[patina-identity]].
+
+**Why yolo next:** Per [[patina-identity]], yolo is "the strongest extraction
+candidate." 1,613 lines of devcontainer generation that isn't knowledge
+infrastructure. After doctor proves the pattern, yolo proves it at scale.
+
+| Plugin | Lines | World | Capabilities |
+|--------|-------|-------|-------------|
+| `patina-yolo` | 1,613 | command | host_layer (read), environment detection |
+| `patina-eval` | 2,476 | command | host_database (read), host_layer (read) |
+| `patina-bench` | 753 | command | host_database (read) |
+| `patina-report` | ~400 | command | host_layer (read), host_database (read) |
+| `patina-upgrade` | 162 | command | wasi:http (check GitHub releases) |
+
+**Build steps:**
+
+1. Extract each module into its own crate (workspace member)
+2. Compile to `wasm32-wasip2`
+3. Ship as default plugins (bundled with `patina init` or first run)
+4. Feature-gate compiled-in versions during transition
+5. Remove compiled-in versions once WASM versions are stable
+
+**Acceptance criteria:**
+
+- [ ] All 5 plugins work identically as WASM
+- [ ] Binary size reduced measurably (target: <40MB from 52MB)
+- [ ] `patina plugin list` shows all default plugins
+- [ ] Removing a plugin.wasm file gracefully degrades (command not found, not crash)
 
 ### Phase 4: Oracle & Scraper Plugins (v0.19.0)
 
@@ -288,45 +335,46 @@ and scrapers can be loaded as WASM plugins.
 - [ ] Scraper plugin: `wasi:filesystem` read-only, sandboxed to project directory
 - [ ] Plugin oracle results appear in `patina scry --explain` with plugin source attribution
 
-### Phase 5: Remaining Extractions (v0.20.0)
+### Phase 5: Grammar Plugins (v0.20.0)
 
-**Goal:** Extract eval+bench, report, doctor, upgrade into WASM command plugins.
-These are the remaining "Definitely Plugin" modules from [[patina-identity]].
+**Goal:** Load tree-sitter grammars from WASM instead of compiling them in.
+This is the most complex WASM integration due to tree-sitter ABI versioning
+and the hot scrape pipeline.
 
-| Plugin | Lines | World | Capabilities |
-|--------|-------|-------|-------------|
-| `patina-eval` | 2,476 | command | host_database (read), host_layer (read) |
-| `patina-bench` | 753 | command | host_database (read) |
-| `patina-report` | ~400 | command | host_layer (read), host_database (read) |
-| `patina-doctor` | 278 | command | host_layer (read) |
-| `patina-upgrade` | 162 | command | wasi:http (check GitHub releases) |
+**Why last:** Grammars are entangled with:
+- **tree-sitter ABI versioning** — our tree-sitter 0.24 expects ABI 13-14;
+  this constraint caused us to vendor and compile C sources directly in
+  patina-metal. WASM grammars have the same ABI constraint.
+- **The scrape hot path** — 8 language processors in
+  `src/commands/scrape/code/languages/*.rs` all call
+  `Metal.tree_sitter_language_for_ext()`. Changes here risk regression.
+- **patina-metal build system** — the `cc::Build` + vendored grammar
+  architecture was built specifically to work around version hell.
+
+By Phase 5, PluginEngine is proven. The only new complexity is the
+tree-sitter-specific WASM loading, which can be isolated to `patina-metal`.
 
 **Build steps:**
 
-1. Extract each module into its own crate (workspace member)
-2. Compile to `wasm32-wasip2`
-3. Ship as default plugins (bundled with `patina init` or first run)
-4. Feature-gate compiled-in versions during transition
-5. Remove compiled-in versions once WASM versions are stable
+1. Enable tree-sitter `wasm` feature in patina-metal (uses wasmtime internally — already in tree from Phase 1)
+2. Create grammar loading path in `patina-metal/src/metal.rs` — try `~/.patina/grammars/*.wasm` first
+3. Fall back to compiled-in grammar when WASM not found (zero regression)
+4. `patina grammar list` — show loaded grammars with source (wasm/compiled)
+5. `patina grammar install <path>` — copy WASM file to `~/.patina/grammars/`
+6. Ship pre-built grammar WASM files matching tree-sitter 0.24 ABI
 
 **Acceptance criteria:**
 
-- [ ] All 5 plugins work identically as WASM
-- [ ] Binary size reduced measurably (target: <40MB from 52MB)
-- [ ] `patina plugin list` shows all default plugins
-- [ ] Removing a plugin.wasm file gracefully degrades (command not found, not crash)
+- [ ] `patina scrape code` uses WASM grammar when present in `~/.patina/grammars/`
+- [ ] Falls back to compiled-in grammar when WASM not present
+- [ ] Adding a new language is: drop a `.wasm` file, no recompile
+- [ ] `patina grammar list` shows available grammars with source (wasm/compiled)
+- [ ] WASM grammar parse speed within 2x of compiled-in (acceptable for scrape)
 
-## Repos Child (Phase 2+)
+**Exit criteria:**
 
-The repos child from [[mother-repos]] is the second MotherChild after models.
-It owns ref repo lifecycle: git pull, scrape, index, freshness monitoring.
-
-**Build after Phase 2 proves the pattern.** Repos child needs more capabilities
-than models (shell commands for git, scrape pipeline access) and is a good
-test of the toy system (child requests work, Mother runs it).
-
-Not a separate phase — it's the natural second child once the MotherChild WASM
-pattern works.
+- [ ] At least one grammar loaded from WASM in CI test
+- [ ] Binary size does not grow (grammars stay compiled-in as fallback until Phase 5 is stable)
 
 ## What We Don't Build
 
@@ -341,31 +389,43 @@ Per [[patina-identity]] "What Patina IS NOT":
 
 ## Key Design Decisions
 
-### 1. Grammars first, not children first
+### 1. MotherChild first, grammars last
 
-Grammars are pure computation — no host imports, no capabilities, no plugin
-manifest needed. This de-risks the wasmtime integration before tackling the
-hard problem (host↔plugin communication). If grammar WASM doesn't work,
-we know before investing in WIT interfaces.
+The trait already exists. The registry already works. The host capability
+surface already exists. Building the first MotherChild as WASM lets the
+PluginEngine API emerge from a real use case. Grammars are entangled with
+tree-sitter ABI versioning and the scrape hot path — highest regression risk,
+not lowest. Per [[de-risk-runtime-with-simplest-payload]]: de-risk means
+de-risk the *plugin system*, not the *tree-sitter integration*.
 
-### 2. Separate crates, not separate repos
+**Amendment rationale:** Session [[20260211-133159]] discovered that grammars
+are the most coupled existing subsystem (ABI versioning, patina-metal build,
+8 language processors), not the least. The original ordering assumed "no host
+imports = simplest" but ignored infrastructure coupling.
+
+### 2. PluginEngine is shared, Mother is the daemon face (Option C)
+
+PluginEngine holds the wasmtime::Engine, loads WASM modules, checks
+capabilities, calls functions. Both Mother and CLI use the same engine.
+The difference is lifecycle:
+- Mother: load on startup, tick on heartbeat, unload on shutdown (resident)
+- CLI: load on demand, run, exit (one-shot)
+
+This avoids requiring Mother for basic commands (`patina doctor` works
+standalone) while giving Mother the same plugin infrastructure.
+
+### 3. Separate crates, not separate repos
 
 Plugins are workspace members in the patina monorepo. `Cargo.toml` workspace
-includes `patina-yolo`, `patina-eval`, etc. They compile to WASM but live
-next to the code they came from. Separate repos are for community plugins.
+includes `patina-doctor`, `patina-yolo`, `patina-eval`, etc. They compile to
+WASM but live next to the code they came from. Separate repos are for
+community plugins.
 
-### 3. Feature flags during transition
+### 4. Feature flags during transition
 
 Compiled-in versions stay behind `--features bundled-yolo` etc. during
 transition. This means we can ship WASM plugins while keeping the compiled-in
 fallback. Remove feature flags once WASM versions are stable.
-
-### 4. Mother manages plugin lifecycle for daemon plugins
-
-CLI-invoked plugins (yolo, eval, doctor) are loaded on demand by PluginHost.
-Daemon plugins (MotherChild) are loaded by Mother on startup and stay resident.
-This matches the existing Mother lifecycle: `on_load()` at start, `tick()` on
-heartbeat, `on_unload()` at shutdown.
 
 ### 5. Sync APIs for plugins, always
 
@@ -383,27 +443,30 @@ fn query(q: &str, limit: u32) -> Result<Vec<OracleResult>>;
 
 ### 6. Grammar fallback to compiled-in
 
-During Phase 1, if a WASM grammar isn't found in `~/.patina/grammars/`,
+During Phase 5, if a WASM grammar isn't found in `~/.patina/grammars/`,
 fall back to the compiled-in grammar. This means zero regression for existing
 users. Grammars are opt-in WASM, not forced migration.
 
 ## Open Questions
 
-1. **Grammar build pipeline** — How do we build tree-sitter WASM grammars?
-   tree-sitter has `tree-sitter build --wasm` but needs emscripten or
-   wasi-sdk. Document the build process or provide pre-built WASMs.
-
-2. **Plugin discovery for CLI commands** — When user types `patina yolo`,
+1. **Plugin discovery for CLI commands** — When user types `patina yolo`,
    how does the CLI know to dispatch to a plugin? Options:
    - Scan `~/.patina/plugins/` at startup (slow if many plugins)
    - Manifest cache file listing installed plugin commands (fast)
    - Clap's external subcommand mechanism
 
-3. **Plugin size budget** — Is there a maximum acceptable .wasm file size?
+2. **Plugin size budget** — Is there a maximum acceptable .wasm file size?
    ONNX model is 90MB. A grammar is ~500KB. Where's the line?
 
-4. **Cross-platform WASM** — Do plugins compiled on macOS run on Linux?
+3. **Cross-platform WASM** — Do plugins compiled on macOS run on Linux?
    (Yes for pure WASM, but WASI capabilities may differ)
+
+4. **Grammar build pipeline** — How do we build tree-sitter WASM grammars?
+   tree-sitter has `tree-sitter build --wasm` but needs emscripten or
+   wasi-sdk. Deferred to Phase 5.
+
+5. **wasmtime version pinning** — wasmtime moves fast (major releases
+   every ~3 months). Pin to a specific major version and update deliberately.
 
 ## Non-Goals
 
@@ -417,3 +480,4 @@ users. Grammars are opt-in WASM, not forced migration.
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-11 | draft | Created from bible session. Consumes from 5 frozen specs. Concrete 5-phase build with grammars first. |
+| 2026-02-11 | amended | Session [[20260211-133159]]: Reordered phases — MotherChild first, grammars last. Architecture changed to Option C (shared PluginEngine). Rationale: grammars have highest coupling/regression risk (ABI versioning, patina-metal, scrape hot path), MotherChild has lowest (trait exists, registry exists, host capability surface exists). |
