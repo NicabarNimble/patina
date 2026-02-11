@@ -1,7 +1,7 @@
 ---
 type: feat
 id: v1-release
-status: in_progress
+status: abandoned
 created: 2026-01-27
 updated: 2026-01-29
 sessions:
@@ -11,24 +11,7 @@ sessions:
   - 20260129-093857
   - 20260211-121154
 related:
-  - spec/mother-architecture  # archived, recoverable via git tag
-checklist:
-- name: Version & spec system alignment
-  status: complete
-- name: Session system & adapter parity
-  status: complete
-- name: Epistemic layer complete (E4-E4.6c)
-  status: complete
-- name: Mother delivery + federation
-  status: complete
-- name: Dynamic ONNX loading
-  status: in_progress
-- name: WASM grammars
-  status: pending
-- name: GitHub releases + Homebrew
-  status: pending
-- name: All pillars complete
-  status: pending
+- spec/mother-architecture
 ---
 
 # feat: v1.0 Release
