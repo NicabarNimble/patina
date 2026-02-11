@@ -58,7 +58,7 @@ A local-first RAG network: portable project knowledge + personal mother.
 | assay | Query (factual) | Structural signals, FTS5 search, temporal, belief grounding |
 | scry | Query (semantic) | Multi-domain vector similarity — meaning, not keywords |
 
-**Next:** [[mother-v2]] — the nervous system. Cross-project belief federation, centralized model ownership, persona-as-beliefs. The semantic-structural split (v0.15.2) cleaned up the query layers; mother v2 builds the fourth layer (convergence) on that foundation.
+**Next:** [[mother-architecture]] — children as plugins. Mother is the plugin host (daemon lifecycle, child registry, heartbeat, request routing, toy management). Children are `MotherChild` trait implementors: [[mother-environment]] (models), [[mother-repos]] (ref repos). Native Rust traits now, WIT plugins later via [[patina-platform]].
 
 **Values alignment:**
 - [unix-philosophy](unix-philosophy.md): One tool, one job

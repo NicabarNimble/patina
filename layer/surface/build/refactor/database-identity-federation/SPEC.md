@@ -4,10 +4,10 @@ id: database-identity-federation
 status: ready
 created: 2026-02-06
 blocked_by:
-  - mother
+  - mother-architecture
 blocks: []
 related:
-  - layer/surface/build/feat/mother/SPEC.md
+  - layer/surface/build/feat/mother-architecture/SPEC.md
 beliefs:
   - project-config-in-git
 ---

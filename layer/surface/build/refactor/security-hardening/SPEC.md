@@ -9,7 +9,7 @@ sessions:
     - 20260203-192041
 related:
   - layer/core/build.md
-  - layer/surface/build/feat/mother/SPEC.md
+  - layer/surface/build/feat/mother-architecture/SPEC.md
   - src/commands/serve/internal.rs
   - src/secrets/vault.rs
   - src/secrets/mod.rs
