@@ -1,16 +1,18 @@
 ---
 type: feat
 id: skills-focused-adapter
-status: design
+status: abandoned
 created: 2026-01-19
 updated: 2026-02-06
-blocked_by: []
 related:
-  - layer/surface/build/explore/adapter-polish/SPEC.md
-  - layer/surface/build/explore/llm-adapter-refactor/SPEC.md
-  - layer/surface/build/explore/skill-derive/SPEC.md
-  - layer/surface/build/refactor/skill-enforcement/SPEC.md
-references: [unix-philosophy, dependable-rust, adapter-pattern]
+- layer/surface/build/explore/adapter-polish/SPEC.md
+- layer/surface/build/explore/llm-adapter-refactor/SPEC.md
+- layer/surface/build/explore/skill-derive/SPEC.md
+- layer/surface/build/refactor/skill-enforcement/SPEC.md
+references:
+- unix-philosophy
+- dependable-rust
+- adapter-pattern
 ---
 
 # feat: Skills-Focused Adapter

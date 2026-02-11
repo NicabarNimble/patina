@@ -1,15 +1,15 @@
 ---
 type: explore
 id: agent-protocol
-status: design
+status: abandoned
 created: 2026-02-05
 sessions:
   origin: 20260205-102402
 related:
-  - layer/surface/build/feat/patina-platform/SPEC.md
+- layer/surface/build/feat/patina-platform/SPEC.md
 references:
-  - "Zed ACP (Agent Client Protocol)"
-  - "MCP (Model Context Protocol)"
+- Zed ACP (Agent Client Protocol)
+- MCP (Model Context Protocol)
 ---
 
 # explore: Agent Protocol — Patina as Host

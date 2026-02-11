@@ -1,15 +1,14 @@
 ---
 type: explore
 id: anti-slop
-status: design
+status: abandoned
 created: 2026-01-23
 updated: 2026-01-23
 sessions:
   origin: 20260123-050814
-  work: []
 related:
-  - layer/surface/build/feat/spec-drift-detection/SPEC.md
-  - layer/surface/epistemic/beliefs/
+- layer/surface/build/feat/spec-drift-detection/SPEC.md
+- layer/surface/epistemic/beliefs/
 ---
 
 # explore: Signal Over Noise

@@ -1,13 +1,13 @@
 ---
 type: explore
 id: cli-commands
-status: design
+status: abandoned
 created: 2026-02-05
 sessions:
   origin: 20260205-084522
 related:
-  - layer/surface/build/feat/cli-reorganization/SPEC.md
-  - layer/surface/build/feat/system-introspection/SPEC.md
+- layer/surface/build/feat/cli-reorganization/SPEC.md
+- layer/surface/build/feat/system-introspection/SPEC.md
 ---
 
 # explore: CLI Commands

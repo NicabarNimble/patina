@@ -1,18 +1,17 @@
 ---
 type: refactor
 id: skill-enforcement
-status: design
+status: abandoned
 created: 2026-01-22
+blocked_by:
+- skills-focused-adapter
 sessions:
   origin: 20260122-102703
-  work: []
-blocked_by:
-  - skills-focused-adapter
 related:
-  - layer/surface/build/feat/skills-focused-adapter/SPEC.md
-  - layer/surface/build/explore/skill-derive/SPEC.md
-  - .claude/skills/epistemic-beliefs/SKILL.md
-  - .claude/bin/session-update.sh
+- layer/surface/build/feat/skills-focused-adapter/SPEC.md
+- layer/surface/build/explore/skill-derive/SPEC.md
+- .claude/skills/epistemic-beliefs/SKILL.md
+- .claude/bin/session-update.sh
 ---
 
 # refactor: Skill Enforcement

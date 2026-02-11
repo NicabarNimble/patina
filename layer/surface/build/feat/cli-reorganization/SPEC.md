@@ -1,19 +1,18 @@
 ---
 type: feat
 id: cli-reorganization
-status: design
+status: abandoned
 created: 2026-02-05
 updated: 2026-02-05
+blocked_by:
+- system-introspection
 sessions:
   origin: 20260205-084522
-blocked_by:
-  - system-introspection
-blocks: []
 related:
-  - layer/surface/build/explore/cli-commands/SPEC.md
+- layer/surface/build/explore/cli-commands/SPEC.md
 beliefs:
-  - simplicity-is-architecture
-  - unix-philosophy
+- simplicity-is-architecture
+- unix-philosophy
 ---
 
 # feat: CLI Reorganization

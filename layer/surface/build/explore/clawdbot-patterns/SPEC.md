@@ -1,16 +1,15 @@
 ---
 type: explore
 id: clawdbot-patterns
-status: design
+status: abandoned
 created: 2026-01-25
 updated: 2026-01-25
 sessions:
   origin: 20260125-172601
-  work: []
 related:
-  - ./research.md
-  - layer/surface/epistemic/beliefs/phased-development-with-measurement.md
-  - layer/surface/build/feat/skills-focused-adapter/SPEC.md
+- ./research.md
+- layer/surface/epistemic/beliefs/phased-development-with-measurement.md
+- layer/surface/build/feat/skills-focused-adapter/SPEC.md
 ---
 
 # explore: Clawdbot Pattern Validation
