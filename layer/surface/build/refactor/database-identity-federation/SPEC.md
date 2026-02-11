@@ -1,7 +1,7 @@
 ---
 type: refactor
 id: database-identity-federation
-status: ready
+status: design
 created: 2026-02-06
 blocked_by:
   - mother-architecture
