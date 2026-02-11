@@ -129,14 +129,16 @@ pub fn read_request(stream: &mut impl Read) -> Option<Result<HttpRequest, String
     let body = if method == "POST" || method == "PUT" || method == "PATCH" {
         match content_length {
             Some(len) => {
-                // Read with cap — do not trust Content-Length for size enforcement
-                let read_limit = (MAX_BODY_SIZE + 1).min(len + 1);
-                let mut body = Vec::with_capacity(len.min(MAX_BODY_SIZE));
-                let bytes_read = stream
+                // Read exactly Content-Length bytes, capped at MAX_BODY_SIZE.
+                // Do NOT use len+1 — on sockets, read_to_end blocks waiting
+                // for the extra byte that never arrives (deadlock).
+                let read_limit = len.min(MAX_BODY_SIZE);
+                let mut body = Vec::with_capacity(read_limit);
+                stream
                     .take(read_limit as u64)
                     .read_to_end(&mut body)
                     .unwrap_or(0);
-                if bytes_read > MAX_BODY_SIZE {
+                if len > MAX_BODY_SIZE {
                     return Some(Err("Request body too large".to_string()));
                 }
                 body
