@@ -6,9 +6,8 @@ created: 2026-02-09
 sessions:
   origin: 20260209-215657
 related:
-  - layer/surface/build/feat/mother/SPEC.md
+  - layer/surface/build/feat/mother-architecture/SPEC.md
   - layer/surface/build/feat/mother-environment/SPEC.md
-  - layer/surface/build/feat/mother-beliefs/SPEC.md
 beliefs:
   - mother-is-the-daemon
   - mother-owns-ref-repo-indexing
@@ -16,12 +15,12 @@ beliefs:
   - corpus-composition-over-model
 ---
 
-# feat: Mother Repos — Reference Repository Ownership
+# feat: Repos Child — Reference Repository Ownership
 
-> Mother owns the full lifecycle of reference repositories: git pull, scrape,
-> index, and serve. Projects declare a dependency on ref repo knowledge;
-> Mother handles everything else. Eliminates `oxidize_for_repo()` and makes
-> ref repo maintenance a daemon responsibility, not a manual project command.
+> A `MotherChild` that owns the full lifecycle of reference repositories:
+> git pull, scrape, index, and serve. Projects declare a dependency on ref
+> repo knowledge; Mother handles everything else. Eliminates `oxidize_for_repo()`
+> and makes ref repo maintenance a daemon responsibility.
 
 ## Problem
 
@@ -52,31 +51,11 @@ $ patina repo show steveyegge/gastown
 ```
 
 470 commits behind with zero events indexed. No alert, no automatic action.
-The daemon runs 24/7 but doesn't notice. Gastown's deacon patrol pattern
-solves exactly this: heartbeat → check freshness → act.
+The daemon runs 24/7 but doesn't notice.
 
-### No Knowledge Flow From Ref Repos
+### Current vs Desired Flow
 
-Ref repos are indexed for code search (scry), but no beliefs are extracted.
-A ref repo like `anthropics/claude-code` contains architectural patterns,
-but those patterns don't flow into the belief layer. Ref repos are treated
-as code dumps, not knowledge sources.
-
-## Current State
-
-```
-~/.patina/
-├── cache/repos/              # 25 repos, 3.9GB
-│   ├── anthropics/claude-code/
-│   ├── dojoengine/dojo/
-│   ├── steveyegge/gastown/
-│   └── ... (22 more)
-├── registry.yaml             # repo metadata (name, path, domains, contrib)
-└── mother/
-    └── graph.db              # 31 nodes, 3 edges
-```
-
-**Current flow (project-initiated):**
+**Today (project-initiated):**
 ```
 User runs `patina oxidize --repo dojo` from patina project
   → oxidize_for_repo() changes to dojo directory
@@ -86,7 +65,7 @@ User runs `patina oxidize --repo dojo` from patina project
   → restores directory
 ```
 
-**Desired flow (Mother-owned):**
+**Target (Mother-owned):**
 ```
 Mother daemon heartbeat detects dojo has new commits
   → Mother pulls latest
@@ -95,79 +74,42 @@ Mother daemon heartbeat detects dojo has new commits
   → Projects querying dojo get fresh results
 ```
 
-## Solution
-
-### 1. Mother Owns Repo Update + Index
-
-Move the scrape/oxidize pipeline for ref repos into the daemon. On heartbeat
-(configurable interval, default 1h):
-
-1. Check each registered repo for new commits (`git rev-parse HEAD` vs stored)
-2. If stale: `git pull`
-3. If pulled new commits: re-scrape, re-index
-4. Log results to Mother's own eventlog
-
-### 2. Eliminate `oxidize_for_repo()`
-
-Replace the project-initiated path with a Mother command:
-
-```bash
-# Instead of (from project context):
-patina oxidize --repo dojo
-
-# Mother manages it:
-patina mother index dojo        # manual trigger
-patina mother index --all       # re-index everything
-patina mother index --stale     # only repos with new commits
-```
-
-Or it happens automatically via daemon heartbeat.
-
-### 3. Repo Freshness in `patina mother status`
+## As a MotherChild
 
 ```
-$ patina mother status
-
-Mother daemon: running (PID 22096)
-  Uptime: 3.7h
-  Model: e5-base-v2@onnx (768d)
-
-Repos: 25 registered
-  ✓ 18 up to date
-  ⚠  5 stale (new commits available)
-  ✗  2 not indexed
-
-  Stale:
-    steveyegge/gastown     470 commits behind (last indexed: never)
-    openai/codex           12 commits behind (last indexed: 3d ago)
-    ...
+name()   → "repos"
+state    → ~/.patina/cache/repos/ (cache — rebuildable from git)
+           ~/.patina/registry.yaml (portable)
 ```
 
-### 4. Projects Declare Repo Dependencies
+**`on_load()`**: Read registry, check repo freshness against stored HEADs.
 
-Projects declare which ref repos they care about in `.patina/config.toml`:
+**`handle()`**:
+- `index(repo)` — scrape + oxidize a specific repo using models child
+- `index_stale()` — index only repos with new commits
+- `freshness()` — return per-repo commit delta and last-indexed timestamp
 
-```toml
-[repos]
-depends = ["dojoengine/dojo", "unum-cloud/USearch", "sst/opencode"]
-```
+**`health()`**: How many repos are stale? Any repos unindexed? Registry readable?
 
-This feeds the graph (auto-creates USES edges) and tells Mother which repos
-to prioritize for this project's queries.
+**`tick()`**: Check each registered repo for new commits (`git rev-parse HEAD`
+vs stored). If stale beyond threshold, request toys to pull + re-index.
+This is the heartbeat-driven freshness check.
+
+**Toys requested**: `git pull` (shell), scrape pipeline (shell), oxidize
+pipeline (shell). Repos child decides *what* to update, Mother runs the work.
 
 ## Acceptance Criteria
 
-1. [ ] `patina mother index <repo>` indexes a ref repo using central models (no symlink hack)
-2. [ ] `patina mother index --stale` indexes only repos with new commits
-3. [ ] Daemon heartbeat checks repo freshness (configurable interval)
-4. [ ] `patina mother status` shows repo freshness summary
-5. [ ] `oxidize_for_repo()` removed or deprecated in favor of Mother path
-6. [ ] Graph edges auto-created from project `[repos] depends` config
-7. [ ] Ref repo scrape/index uses Mother-owned models (depends on [[mother-environment]])
+1. [ ] Repos child implements `MotherChild` trait
+2. [ ] `handle()` can index a ref repo using models child (no symlink hack)
+3. [ ] `tick()` detects stale repos and requests re-index toys
+4. [ ] `oxidize_for_repo()` removed or deprecated in favor of repos child path
+5. [ ] `patina mother status` shows repo freshness (via `health()`)
+6. [ ] Ref repo indexing uses Mother-owned models (depends on [[mother-environment]])
 
 ## Non-Goals
 
-- Automatic belief extraction from ref repos (that's [[mother-beliefs]])
+- Belief extraction from ref repos (future extension, not this spec)
 - Contributing back to ref repos (contrib mode is separate)
-- Cloning repos (patina repo add already handles this)
+- Cloning repos (`patina repo add` already handles this)
 - Real-time watching (inotify/fsevents) — heartbeat polling is sufficient
