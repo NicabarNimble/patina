@@ -37,15 +37,6 @@ impl ChildRegistry {
         Ok(())
     }
 
-    /// Unload all children — calls on_unload() for each.
-    pub fn unload_all(&self) {
-        for entry in &self.children {
-            if let Ok(mut child) = entry.write() {
-                child.on_unload();
-            }
-        }
-    }
-
     /// Tick all children — heartbeat iteration.
     /// Returns toys requested by children.
     pub fn tick_all(&self) -> Vec<Toy> {

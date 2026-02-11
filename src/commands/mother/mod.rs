@@ -309,6 +309,12 @@ fn show_status() -> Result<()> {
         Ok(health) => {
             println!("   Version: {}", health.version);
             println!("   Uptime: {}s", health.uptime_secs);
+            if !health.children.is_empty() {
+                println!("   Children:");
+                for child in &health.children {
+                    println!("     {}: {}", child.name, child.status);
+                }
+            }
         }
         Err(e) => {
             println!("   Health check failed: {}", e);
@@ -323,6 +329,15 @@ fn show_status() -> Result<()> {
 struct HealthInfo {
     version: String,
     uptime_secs: u64,
+    #[serde(default)]
+    children: Vec<ChildHealthInfo>,
+}
+
+/// Child health from daemon response
+#[derive(serde::Deserialize)]
+struct ChildHealthInfo {
+    name: String,
+    status: String,
 }
 
 /// Query daemon health via UDS
