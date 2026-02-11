@@ -218,6 +218,10 @@ fn route_request(request: &HttpRequest, state: &ServerState, require_auth: bool)
         ("GET", "/secrets/cache") => handle_secrets_get(request, state, require_auth),
         ("POST", "/secrets/cache") => handle_secrets_cache(request, state, require_auth),
         ("POST", "/secrets/lock") => handle_secrets_lock(request, state, require_auth),
+        // Generic child routing: /child/{name}/{action}
+        _ if request.path.starts_with("/child/") => {
+            handle_child_request(request, state, require_auth)
+        }
         _ => json_error(404, "Not found"),
     };
     with_security_headers(response)
@@ -363,6 +367,49 @@ fn handle_secrets_lock(
     match state.registry.handle("secrets", &child_req) {
         Ok(resp) => HttpResponse::json(200, &resp.payload),
         Err(e) => json_error(500, &format!("Lock failed: {}", e)),
+    }
+}
+
+// === Generic child routing ===
+
+/// Handle /child/{name}/{action} — generic routing to any child.
+///
+/// GET requests pass null payload; POST requests parse body as JSON.
+/// Existing /secrets/* routes are legacy aliases for this mechanism.
+fn handle_child_request(
+    request: &HttpRequest,
+    state: &ServerState,
+    require_auth: bool,
+) -> HttpResponse {
+    if require_auth && !check_auth(request, &state.token) {
+        return json_error(401, "Unauthorized");
+    }
+
+    // Parse /child/{name}/{action}
+    let parts: Vec<&str> = request.path[1..].split('/').collect();
+    if parts.len() != 3 {
+        return json_error(400, "Expected /child/{name}/{action}");
+    }
+    let child_name = parts[1];
+    let action = parts[2];
+
+    let payload = if request.body.is_empty() {
+        serde_json::Value::Null
+    } else {
+        match serde_json::from_slice(&request.body) {
+            Ok(v) => v,
+            Err(e) => return json_error(400, &format!("Invalid JSON: {}", e)),
+        }
+    };
+
+    let child_req = ChildRequest {
+        action: action.to_string(),
+        payload,
+    };
+
+    match state.registry.handle(child_name, &child_req) {
+        Ok(resp) => HttpResponse::json(200, &resp.payload),
+        Err(e) => json_error(404, &format!("{}", e)),
     }
 }
 
