@@ -7,8 +7,9 @@ sessions:
   origin: 20260210-061323
   resolved: 20260210-104448
 related:
-  - layer/surface/build/feat/mother/SPEC.md
   - layer/surface/build/feat/patina-platform/SPEC.md
+  - layer/surface/build/feat/mother-environment/SPEC.md
+  - layer/surface/build/feat/mother-repos/SPEC.md
 beliefs:
   - mother-is-the-daemon
   - four-layer-architecture
@@ -106,31 +107,6 @@ Mother is the plugin host. Her responsibilities:
 3. **Heartbeat loop** — tick each child, run any toys
 4. **Request routing** — receive requests via UDS/MCP, route to children
 5. **Toy management** — spawn processes children request, monitor results
-
-## Belief Mobility
-
-Beliefs are born in projects — the user and LLM discuss, learn, conclude,
-grounded by scry (semantic) and assay (structural). Some beliefs travel up
-to Mother when the user decides "this is true about me, not just this project."
-Mother holds promoted beliefs at `~/.patina/layer/surface/beliefs/`. Projects
-are sovereign — they can always disagree.
-
-Mother queries project beliefs **on demand** — read-only, at query time, no
-copies, no sync. Projects stay the single source of truth for their own beliefs.
-
-## Starting Children
-
-These are the first children. They are not special — future children are added
-the same way.
-
-| Child | "Do X" | State |
-|-------|--------|-------|
-| models | Resolve embedding models | `cache/models/`, `models.lock` |
-| repos | Maintain ref repo knowledge | `cache/repos/`, `registry.yaml` |
-| secrets | Cache decrypted secrets | RAM (daemon) |
-| persona | Hold user knowledge across projects | `layer/surface/beliefs/`, persona events |
-
-Each child gets its own spec for internals. This spec only defines the frame.
 
 ## Current State
 
