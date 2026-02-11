@@ -157,7 +157,12 @@ fn run_safeguard_checks(new_version: &str, spec_path: &str) -> Result<()> {
             if line.starts_with("??") {
                 return false;
             }
-            let path = line.get(3..).unwrap_or("").split(" -> ").next().unwrap_or("");
+            let path = line
+                .get(3..)
+                .unwrap_or("")
+                .split(" -> ")
+                .next()
+                .unwrap_or("");
             !path.is_empty() && path != spec_path
         })
         .collect();
