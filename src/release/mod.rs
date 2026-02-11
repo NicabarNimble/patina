@@ -15,7 +15,7 @@
 //! let strategy = ReleaseStrategy::from_project(project_path);
 //! let bump = BumpType::from_spec_type("feat");
 //! if let Some(bump) = bump {
-//!     let prepared = strategy.preflight(bump)?;
+//!     let prepared = strategy.preflight(bump, "layer/surface/build/feat/my-feature/SPEC.md")?;
 //!     prepared.execute("my feature", "layer/surface/build/feat/my-feature/SPEC.md")?;
 //! }
 //! ```
@@ -110,12 +110,15 @@ impl ReleaseStrategy {
 
     /// Run preflight checks and return a prepared release token.
     ///
+    /// `spec_path` is the file being released — it's expected to be dirty
+    /// (we just updated its status) and will be included in the release commit.
+    ///
     /// For `Cargo`: runs safeguard checks (clean tree, not behind remote,
     /// tag available, index fresh).
     /// For `External`: verifies version file exists.
     /// For `None`: no-op, returns token immediately.
-    pub fn preflight(&self, bump: BumpType) -> Result<PreparedRelease> {
-        internal::preflight(*self, bump)
+    pub fn preflight(&self, bump: BumpType, spec_path: &str) -> Result<PreparedRelease> {
+        internal::preflight(*self, bump, spec_path)
     }
 }
 

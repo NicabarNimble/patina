@@ -44,7 +44,7 @@ pub fn hotfix(description: &str) -> Result<()> {
         );
     }
 
-    let prepared = strategy.preflight(BumpType::Patch)?;
+    let prepared = strategy.preflight(BumpType::Patch, "Cargo.toml")?;
     prepared.execute(description, "Cargo.toml")?;
 
     println!("\n  Consider creating a spec for traceability:");
