@@ -5,9 +5,9 @@ status: design
 created: 2026-02-09
 sessions:
   origin: 20260209-215657
+  reviewed: 20260210-061323
 related:
-  - layer/surface/build/feat/mother/SPEC.md
-  - layer/surface/build/feat/mother-v2/SPEC.md
+  - layer/surface/build/feat/mother-architecture/SPEC.md
   - layer/surface/build/feat/model-runtime/SPEC.md
   - layer/surface/build/feat/mother-repos/SPEC.md
 beliefs:
@@ -16,99 +16,69 @@ beliefs:
   - four-layer-architecture
 ---
 
-# feat: Mother Environment — Model & Runtime Ownership
+# feat: Models Child — Embedding Model Ownership
 
-> Mother owns embedding models centrally at `~/.patina/cache/models/`. Projects
-> resolve models through Mother, not local `resources/`. Eliminates the 553MB
-> duplication in the project tree and fixes the `oxidize_for_repo()` boundary
-> violation where projects reach past Mother to configure shared infrastructure.
+> A `MotherChild` that owns embedding models centrally at `~/.patina/cache/models/`.
+> Projects resolve models through Mother, not local `resources/`. Fixes the
+> ownership boundary where projects manage user-level infrastructure.
 
 ## Problem
 
-### Models Are Duplicated and Project-Owned
+### Models Are User-Level, Managed Project-Level
 
-Today embedding models exist in TWO places:
+Embedding models are shared across all projects but managed per-project:
 
-| Location | Size | Models | Who manages |
-|----------|------|--------|-------------|
-| `resources/models/` (project) | 553MB | 5 models | Project git tree |
-| `~/.patina/cache/models/` (user) | 139MB | 2 models | `resolve_model_path()` fallback |
+| Location | Size | Who manages |
+|----------|------|-------------|
+| `~/.patina/cache/models/` | 139MB (2 models) | `resolve_model_path()` fallback |
+| `resources/models/` | gitignored, 5 models | Project tree (not tracked) |
 
-`resolve_model_path()` in `src/models/mod.rs:101` already checks the Mother
-cache first, falling back to project-local. But the project still ships 553MB
-of models in its git tree because nothing ensures the central cache is populated.
+`resolve_model_path()` at `src/models/mod.rs:101` already checks the Mother
+cache first, falling back to project-local. The precedence is right but the
+fallback shouldn't exist — models belong to Mother.
 
-### `oxidize_for_repo()` Violates Ownership Boundaries
+### Registry Is Compile-Time Embedded
 
-`src/commands/oxidize/mod.rs:124-196` — when oxidizing a reference repo:
-1. Looks up repo path from registry
-2. **Changes working directory** to that repo
-3. **Symlinks the current project's `resources/`** into the target repo (for model access)
-4. Runs the full oxidize pipeline
-5. Cleans up and restores
+`src/embeddings/models.rs:53` uses `include_str!()` to embed
+`resources/models/registry.toml` at compile time. Moving the registry to
+Mother's cache means changing from compile-time to runtime loading.
 
-Per [[mother-owns-ref-repo-indexing]], this is a boundary violation. The project
-reaches into another repo's filesystem and injects its own model directory via
-symlink. This works but couples ref repo indexing to whichever project happens
-to run the command.
+### 6 Cold-Start Sites
+
+`create_embedder()` is called from 6 locations across the codebase. Each one
+cold-starts an ONNX session (~500ms). The MCP server already works around
+this with `OnceLock` in `SemanticOracle`, but CLI commands pay the cost
+every invocation.
 
 ### No Vector Space Safety
 
-When embedding models change (e.g., E5-base-v2 → Qwen3), existing indexes
-become silently incompatible. Nothing tags vectors with the model that produced
-them. Nothing prevents querying an index built with a different model.
+Nothing tags `.usearch` indexes with the model that produced them. When
+models change (E5-base-v2 → Qwen3), indexes become silently incompatible.
+Today everyone uses E5-base-v2 so this hasn't broken. The first model swap
+will produce silent retrieval failures across `patina scry --all-repos`
+(which merges scores from 20+ repos with zero embedding validation).
 
-Today this hasn't caused bugs because everyone uses E5-base-v2. But
-[[model-runtime]] proposes model upgrades, and without space tagging, the first
-model swap will produce silent retrieval failures.
-
-## Current State (What Exists)
+## As a MotherChild
 
 ```
-# Already exists:
-~/.patina/cache/models/
-├── e5-base-v2/           # 67MB — used by patina project
-└── bge-small-en-v1-5/    # 72MB — from earlier experiments
-
-# Also exists (project-local, should go away):
-resources/models/
-├── e5-base-v2/           # duplicate
-├── bge-base-en-v1.5/
-├── bge-small-en-v1.5/
-├── all-minilm-l6-v2/
-├── nomic-embed-text-v1.5/
-├── registry.toml         # model definitions
-└── tokenizer.json
+name()   → "models"
+state    → ~/.patina/cache/models/ (cache — rebuildable)
+           ~/.patina/cache/models/registry.toml (portable)
 ```
 
-```rust
-// src/models/mod.rs:101 — already checks Mother cache first
-pub fn resolve_model_path(name: &str) -> Result<PathBuf> {
-    if let Some(path) = cached_model_path(name) { return Ok(path); }
-    let local_path = PathBuf::from(format!("resources/models/{}", name));
-    // ... fallback to local
-}
-```
+**`on_load()`**: Load registry, warm default `EmbeddingEngine` in RAM.
 
-```rust
-// src/embeddings/mod.rs:21 — trait already has the right shape
-pub trait EmbeddingEngine: Send {
-    fn embed_query(&mut self, text: &str) -> Result<Vec<f32>>;
-    fn embed_passage(&mut self, text: &str) -> Result<Vec<f32>>;
-    fn dimension(&self) -> usize;
-    fn model_name(&self) -> &str;
-}
-```
+**`handle()`**:
+- `embed_query(text)` → Vec<f32> (from warm engine)
+- `embed_passage(text)` → Vec<f32>
+- `resolve_model(name)` → path to model directory
+- `spec(name)` → EmbeddingSpec (id, dim, normalize, prefixes)
 
-## Solution
+**`health()`**: Default model present? Engine loaded? Registry readable?
 
-### 1. Move `registry.toml` to Mother
+**`tick()`**: No-op. Models don't change between heartbeats.
 
-Move the model registry from `resources/models/registry.toml` (project-local)
-to `~/.patina/cache/models/registry.toml` (user-level). This is the source of
-truth for which models exist and their specifications.
-
-### 2. Add `EmbeddingSpec` to Model Identity
+## Key Design: EmbeddingSpec + meta.json
 
 ```rust
 pub struct EmbeddingSpec {
@@ -120,55 +90,30 @@ pub struct EmbeddingSpec {
 }
 ```
 
-Tag all index files with the spec that produced them. `meta.json` alongside
-each `.usearch` index:
-
+Every `.usearch` index gets a sibling `meta.json`:
 ```json
 {
   "embedding_id": "e5-base-v2@onnx",
   "dim": 768,
-  "created_at": "2026-02-09T23:00:00Z",
-  "corpus_fingerprint": "abc123"
+  "created_at": "2026-02-09T23:00:00Z"
 }
 ```
 
-### 3. Scry Validates Compatibility at Query Time
-
-Before querying any index, check `meta.embedding_id == backend.spec.id`.
-If mismatch, crisp error:
-
-```
-Index built with e5-base-v2@onnx (768), but backend is e5-large-v2@onnx (1024).
-Run: patina oxidize
-```
-
-### 4. Eliminate Project-Local Models
-
-Once the central cache is the authority:
-- `patina init` ensures `~/.patina/cache/models/` has the configured model
-- Remove `resources/models/` from the project git tree
-- `oxidize_for_repo()` no longer needs the symlink hack
-
-### 5. Daemon Warm Model Cache
-
-Mother daemon loads the `EmbeddingEngine` once on startup. MCP and scry can
-request embeddings through the daemon instead of cold-starting the ONNX runtime
-per invocation. This was one of the original 4 motivations for the daemon
-(500ms cold start → instant).
+Scry validates `meta.embedding_id == backend.spec.id` before querying.
+Mismatch → crisp error: `"Index built with X, backend is Y. Run: patina oxidize"`.
 
 ## Acceptance Criteria
 
-1. [ ] `registry.toml` lives at `~/.patina/cache/models/registry.toml`
-2. [ ] `resolve_model_path()` resolves exclusively from Mother cache (no project-local fallback)
-3. [ ] `patina init` ensures model exists in Mother cache (downloads if needed)
-4. [ ] Every `.usearch` index has a sibling `meta.json` with `embedding_id` and `dim`
-5. [ ] `scry` validates `meta.embedding_id` matches current backend before querying
-6. [ ] `oxidize_for_repo()` no longer symlinks `resources/` — models resolve through Mother
-7. [ ] `resources/models/` removed from project git tree (existing projects: migration path)
+1. [ ] Registry loaded at runtime from `~/.patina/cache/models/registry.toml` (not `include_str!()`)
+2. [ ] `resolve_model_path()` resolves exclusively from Mother cache
+3. [ ] Every `.usearch` index has sibling `meta.json` with `embedding_id` and `dim`
+4. [ ] `scry` validates `meta.embedding_id` matches current backend before querying
+5. [ ] `MotherChild` trait implemented: `handle()` serves embed requests to warm engine
+6. [ ] `patina model` commands manage Mother cache (existing CLI, verify works)
 
 ## Non-Goals
 
 - Model download from HuggingFace (manual for now, automate later)
 - MLX runtime (separate spec: [[model-runtime]])
 - Hot-swapping models in the daemon (restart is fine)
-- Multiple simultaneous models per project (one model per project config)
+- `oxidize_for_repo()` fix (that's [[mother-repos]] — repos child owns ref repo indexing)
