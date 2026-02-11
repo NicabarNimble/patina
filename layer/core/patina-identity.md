@@ -229,7 +229,7 @@ The traits already exist. The WIT interfaces are sketched (see [[wit-interfaces]
 
 ## Common Mistakes
 
-### 1. Adding features that don't serve the four pillars
+### 1. Adding features that don't serve the six core functions
 
 ```
 Bad:  "Let's add a code formatter to patina"
