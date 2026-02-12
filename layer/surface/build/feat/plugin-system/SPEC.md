@@ -750,23 +750,29 @@ relevant in Phase 2+ when extracting existing commands.
 
 ### Exit Criteria
 
-- [ ] Round-trip latency through WASM boundary <1ms for `handle()` calls
-- [ ] At least one MotherChild loaded from WASM in CI test (`cargo test`)
-- [ ] `wasmtime::Engine::new()` time measured and documented
+- [x] Round-trip latency through WASM boundary <1ms for `handle()` calls — 0.002ms
+- [x] At least one MotherChild loaded from WASM in CI test (`cargo test`)
+- [x] `wasmtime::Engine::new()` time measured and documented — 1.36ms
 
----
-
-## Repos Child (Phase 1+)
+### Repos Child (Phase 1 — second MotherChild)
 
 The repos child from [[mother-repos]] is the second MotherChild after models.
 It owns ref repo lifecycle: git pull, scrape, index, freshness monitoring.
 
-**Build after Phase 1 proves the pattern.** Repos child needs more capabilities
-than models (shell commands for git via toys, scrape pipeline access) and is a
-good test of the toy system (child requests work, Mother runs it).
+Repos child needs more capabilities than models (shell commands for git via
+toys, scrape pipeline access) and is a good test of the toy system (child
+requests work, Mother runs it).
 
-Not a separate phase — it's the natural second child once the MotherChild WASM
-pattern works.
+**Note:** [[mother-repos]] spec is in `design` status. Acceptance criterion 6
+depends on [[mother-environment]]. Repos child scope for Phase 1 should be
+determined by promoting [[mother-repos]] to `ready` with clear Phase 1 boundaries.
+
+#### Repos Child Exit Criteria
+
+- [ ] Repos child implements MotherChild as WASM plugin
+- [ ] `tick()` detects stale repos and requests re-index toys
+- [ ] Toy system proven end-to-end (child requests work, Mother runs it)
+- [ ] At least one repos child test in `cargo test`
 
 ---
 
@@ -1054,3 +1060,4 @@ with `UnsafeCell<Option<Box<dyn MotherChildPlugin>>>` or equivalent.
 | 2026-02-11 | amended | Session [[20260211-185411]]: Version corrected v43→v41 (v43 doesn't exist on crates.io, latest is 41.0.3). wasmtime-wasi deferred to Phase 2+ — Phase 1 mother-child world only imports patina:host/log (self-implemented, no WASI needed). Feature name corrected preview2→p2. Clarified async Cargo feature vs async_support(true) runtime distinction. Minimum Rust corrected 1.91→1.90. |
 | 2026-02-12 | discoveries | Session [[20260212-075642]]: Full WASM audit completed. 4 Phase 2+ discoveries pushed inbound from [[plugin-system-audit-remediation]]: WIT types inside world block (Phase 2), re-entrancy invariant (Phase 2+), ChildHealth reason string (Phase 2), static mut edition migration (future). See audit report: `layer/surface/reports/audit/2026-02-12-plugin-system-phase1.md`. |
 | 2026-02-12 | amended | Session [[20260212-083400]]: Audit remediation (I1). 5 spec text inaccuracies documented — spec body preserved as historical record, corrections here: **(1)** Phase 1 Cargo.toml section says "no wasmtime-wasi" — wasmtime-wasi IS required in Phase 1 because wasm32-wasip2 components always import basic WASI interfaces even for pure computation (see belief [[wasm32-wasip2-always-imports-wasi]]). **(2)** Files Created lists `patina-plugin-api/Cargo.toml` with `crate-type = ["cdylib"]` — cdylib belongs on `patina-plugin-models`, not the API crate. The API crate is a library dependency. **(3)** Files Modified lists `src/commands/mother/registry.rs` for "WasmChild adapter" — WasmChild lives entirely in `src/plugin/internal.rs`. The registry needed no modification (already accepts `Box<dyn MotherChild>`). **(4)** Files Created shows `[package.metadata.component]` for patina-plugin-api — not present or needed; `wit_bindgen::generate!` uses explicit `path:` parameter, not cargo-component metadata. **(5)** WIT layout shows `wit/host.wit` at top level — actual location is `wit/deps/patina-host/host.wit` per WIT dependency resolution convention (imported packages live in `deps/`). Benchmark results: PluginEngine::new() 1.36ms (<100ms PASS), handle() 0.002ms (<1ms PASS), Component::new() 73.47ms, instantiate_child() 0.44ms. All exit criteria met. |
+| 2026-02-12 | amended | Session [[20260212-083400]]: Folded repos child into Phase 1 proper. The spec labeled it "Phase 1+" and said "not a separate phase" but placed it outside Phase 1's exit criteria — an internal contradiction. The audit remediation closed Phase 1 without repos child because the exit criteria didn't include it. Correcting this: repos child IS Phase 1 scope, Phase 1 exit criteria now include it, and Phase 1 is not complete until repos child ships. The original exit criteria (PluginEngine, models child, benchmarks) are met; repos child exit criteria are added. [[mother-repos]] spec needs promotion from `design` to `ready` before building. |

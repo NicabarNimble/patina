@@ -344,4 +344,4 @@ Dependencies flow downward — complete top items before bottom:
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-12 | ready | Created from audit session 20260212-075642. 14 Phase 1 findings as exit criteria. 4 Phase 2+ findings pushed outbound to [[plugin-system]] spec. |
-| 2026-02-12 | complete | Session [[20260212-083400]]. All 14 exit criteria met. 8 build steps completed in order. 14 tests added (11 unit + 2 integration + 1 benchmark). All spec thresholds met with wide margins. I2 required versioned import syntax discovery (patina:host/log@0.1.0). 7 commits. |
+| 2026-02-12 | complete | Session [[20260212-083400]]. All 14 exit criteria met. 8 build steps completed in order. 14 tests added (11 unit + 2 integration + 1 benchmark). All spec thresholds met with wide margins. I2 required versioned import syntax discovery (patina:host/log@0.1.0). 7 commits. Note: this fix spec is complete (all 14 audit findings addressed), but Phase 1 of [[plugin-system]] is not fully closed — repos child was mislabeled "Phase 1+" outside exit criteria. Corrected in [[plugin-system]] spec same session. |
