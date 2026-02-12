@@ -519,7 +519,9 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
     let mut registry = ChildRegistry::new();
 
     // Compiled-in children (always available)
-    registry.register(Box::new(super::secrets::SecretsCacheChild::new()));
+    registry
+        .register(Box::new(super::secrets::SecretsCacheChild::new()))
+        .expect("failed to register secrets child");
 
     // WASM children (discovered from ~/.patina/children/)
     match patina::plugin::PluginEngine::new() {
@@ -533,8 +535,19 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
                             let manifest_path = path.with_extension("toml");
                             match load_wasm_child(&plugin_engine, &path, &manifest_path) {
                                 Ok(child) => {
-                                    eprintln!("[mother] loaded WASM child: {}", child.name());
-                                    registry.register(child);
+                                    let name = child.name().to_string();
+                                    match registry.register(child) {
+                                        Ok(()) => {
+                                            eprintln!("[mother] loaded WASM child: {}", name);
+                                        }
+                                        Err(e) => {
+                                            eprintln!(
+                                                "[mother] skipping {}: {}",
+                                                path.display(),
+                                                e
+                                            );
+                                        }
+                                    }
                                 }
                                 Err(e) => {
                                     eprintln!("[mother] failed to load {}: {}", path.display(), e);
