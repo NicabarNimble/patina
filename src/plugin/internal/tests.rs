@@ -722,6 +722,22 @@ fn command_doctor_description() {
     );
 }
 
+fn load_doctor_manifest() -> PluginManifest {
+    PluginManifest {
+        name: "patina-doctor".into(),
+        version: "0.1.0".into(),
+        description: "test".into(),
+        world: "command".into(),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into(), "host_layer".into()],
+        allowed_toy_commands: vec![],
+        provides: PluginProvides {
+            child: None,
+            commands: vec!["doctor".into()],
+        },
+    }
+}
+
 #[test]
 fn command_doctor_run() {
     let (engine, component) = match load_doctor_component() {
@@ -731,9 +747,10 @@ fn command_doctor_run() {
 
     // Run with --json to avoid terminal output dependencies.
     // Exit code depends on project state — just verify it doesn't panic.
+    let manifest = load_doctor_manifest();
     let args = vec!["--json".to_string()];
     let exit_code = engine
-        .run_command(&component, "doctor", &args)
+        .run_command(&component, &manifest, &args)
         .expect("run_command failed");
     // doctor returns 0 (healthy), 1 (error), 2 (warning), or 3 (critical)
     assert!(
