@@ -275,8 +275,7 @@ impl PluginEngine {
 
         Ok(Box::new(WasmChild {
             name,
-            store: Mutex::new(store),
-            instance,
+            inner: Mutex::new(WasmChildInner { store, instance }),
         }))
     }
 }
@@ -287,20 +286,21 @@ impl PluginEngine {
 
 /// Adapter: wraps a WASM component instance as a MotherChild.
 ///
-/// The store is behind a Mutex because MotherChild::handle() and health()
-/// take &self (for concurrent reads via RwLock in ChildRegistry) but
-/// wasmtime calls always need &mut Store.
+/// Both store and instance live behind a single Mutex. This is the WASM
+/// isolation boundary — no `unsafe` needed. Mutex<T> is Sync when T is Send,
+/// and WasmChildInner is Send because both Store<HostState> and
+/// bindings::MotherChild are Send. We already acquire the lock on every
+/// call, so there's zero performance cost vs the previous layout.
 struct WasmChild {
     name: String,
-    store: Mutex<Store<HostState>>,
-    instance: bindings::MotherChild,
+    inner: Mutex<WasmChildInner>,
 }
 
-// Safety: bindings::MotherChild is Send + !Sync. Its call_*() methods
-// take &self (immutable) and require &mut Store (mutable). The Mutex
-// on store serializes all WASM calls, preventing concurrent access.
-// The instance is effectively immutable between calls.
-unsafe impl Sync for WasmChild {}
+/// Interior state behind the Mutex — store and instance together.
+struct WasmChildInner {
+    store: Store<HostState>,
+    instance: bindings::MotherChild,
+}
 
 impl crate::mother::MotherChild for WasmChild {
     fn name(&self) -> &str {
@@ -310,21 +310,24 @@ impl crate::mother::MotherChild for WasmChild {
     fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
         // Host capabilities come through WASM imports (patina:host/log),
         // not the Rust MotherHost reference.
-        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        match self.instance.call_on_load(&mut *store)? {
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let WasmChildInner { store, instance } = &mut *inner;
+        match instance.call_on_load(store)? {
             Ok(()) => Ok(()),
             Err(e) => Err(anyhow::anyhow!("WASM on_load failed: {}", e)),
         }
     }
 
     fn on_unload(&mut self) {
-        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        let _ = self.instance.call_on_unload(&mut *store);
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let WasmChildInner { store, instance } = &mut *inner;
+        let _ = instance.call_on_unload(store);
     }
 
     fn health(&self) -> ChildHealth {
-        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        match self.instance.call_health(&mut *store) {
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let WasmChildInner { store, instance } = &mut *inner;
+        match instance.call_health(store) {
             Ok(h) => match h {
                 bindings::ChildHealth::Healthy => ChildHealth::Healthy,
                 bindings::ChildHealth::Degraded => ChildHealth::Degraded("degraded".into()),
@@ -335,11 +338,10 @@ impl crate::mother::MotherChild for WasmChild {
     }
 
     fn handle(&self, request: &ChildRequest) -> Result<ChildResponse> {
-        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let WasmChildInner { store, instance } = &mut *inner;
         let payload_json = serde_json::to_string(&request.payload)?;
-        let result = self
-            .instance
-            .call_handle(&mut *store, &request.action, &payload_json)?;
+        let result = instance.call_handle(store, &request.action, &payload_json)?;
         match result {
             Ok(json) => Ok(ChildResponse {
                 payload: serde_json::from_str(&json)?,
@@ -349,8 +351,9 @@ impl crate::mother::MotherChild for WasmChild {
     }
 
     fn tick(&mut self) -> Vec<Toy> {
-        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
-        match self.instance.call_tick(&mut *store) {
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let WasmChildInner { store, instance } = &mut *inner;
+        match instance.call_tick(store) {
             Ok(wasm_toys) => wasm_toys
                 .into_iter()
                 .map(|t| Toy {
