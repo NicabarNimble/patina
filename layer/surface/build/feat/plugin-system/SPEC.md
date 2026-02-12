@@ -308,16 +308,16 @@ Repos child needs more capabilities than models (shell commands for git via
 toys, scrape pipeline access) and is a good test of the toy system (child
 requests work, Mother runs it).
 
-**Note:** [[mother-repos]] spec is in `design` status. Acceptance criterion 6
-depends on [[mother-environment]]. Repos child scope for Phase 1 should be
-determined by promoting [[mother-repos]] to `ready` with clear Phase 1 boundaries.
+[[mother-repos]] promoted from `design` to `ready` with Phase 1 boundaries
+in session [[20260212-091430]]. Host-fed state pattern: host pushes repo info
+via handle(), tick() returns toys. No filesystem/database access needed.
 
 #### Repos Child Exit Criteria
 
-- [ ] Repos child implements MotherChild as WASM plugin
-- [ ] `tick()` detects stale repos and requests re-index toys
-- [ ] Toy system proven end-to-end (child requests work, Mother runs it)
-- [ ] At least one repos child test in `cargo test`
+- [x] Repos child implements MotherChild as WASM plugin — `patina-plugin-repos/` (178KB)
+- [x] `tick()` detects stale repos and requests re-index toys — pull + scrape toys
+- [x] Toy system proven end-to-end (child requests work, Mother runs it) — 4 tests
+- [x] At least one repos child test in `cargo test` — 4 tests in `plugin::internal::tests`
 
 ---
 
@@ -555,3 +555,4 @@ with `UnsafeCell<Option<Box<dyn MotherChildPlugin>>>` or equivalent.
 | 2026-02-12 | amended | Session [[20260212-083400]]: Audit remediation (I1). 5 spec text inaccuracies documented — spec body preserved as historical record, corrections here: **(1)** Phase 1 Cargo.toml section says "no wasmtime-wasi" — wasmtime-wasi IS required in Phase 1 because wasm32-wasip2 components always import basic WASI interfaces even for pure computation (see belief [[wasm32-wasip2-always-imports-wasi]]). **(2)** Files Created lists `patina-plugin-api/Cargo.toml` with `crate-type = ["cdylib"]` — cdylib belongs on `patina-plugin-models`, not the API crate. The API crate is a library dependency. **(3)** Files Modified lists `src/commands/mother/registry.rs` for "WasmChild adapter" — WasmChild lives entirely in `src/plugin/internal.rs`. The registry needed no modification (already accepts `Box<dyn MotherChild>`). **(4)** Files Created shows `[package.metadata.component]` for patina-plugin-api — not present or needed; `wit_bindgen::generate!` uses explicit `path:` parameter, not cargo-component metadata. **(5)** WIT layout shows `wit/host.wit` at top level — actual location is `wit/deps/patina-host/host.wit` per WIT dependency resolution convention (imported packages live in `deps/`). Benchmark results: PluginEngine::new() 1.36ms (<100ms PASS), handle() 0.002ms (<1ms PASS), Component::new() 73.47ms, instantiate_child() 0.44ms. All exit criteria met. |
 | 2026-02-12 | amended | Session [[20260212-083400]]: Folded repos child into Phase 1 proper. The spec labeled it "Phase 1+" and said "not a separate phase" but placed it outside Phase 1's exit criteria — an internal contradiction. The audit remediation closed Phase 1 without repos child because the exit criteria didn't include it. Correcting this: repos child IS Phase 1 scope, Phase 1 exit criteria now include it, and Phase 1 is not complete until repos child ships. The original exit criteria (PluginEngine, models child, benchmarks) are met; repos child exit criteria are added. [[mother-repos]] spec needs promotion from `design` to `ready` before building. |
 | 2026-02-12 | extracted | Session [[20260212-083400]]: Extracted Phases 3-5 into own specs — spec was too large for a single document. Phase 3 → [[plugin-command-extractions]] (v0.18.0), Phase 4 → [[plugin-oracle-scraper]] (v0.19.0), Phase 5 → [[plugin-grammars]] (v0.20.0). Build order preserved via blocked_by chains. This spec now owns Phases 1-2 only (runtime + first extractions). Resolved Decisions and Discoveries sections remain here as they are runtime-level concerns. |
+| 2026-02-12 | phase-1-complete | Session [[20260212-091430]]: Repos child built and tested. [[mother-repos]] promoted to `ready` with Phase 1 scope (host-fed state, no filesystem). `patina-plugin-repos/` crate: 178KB WASM, handle() for report_repo + check_freshness, tick() returns pull + scrape toys for stale repos. 4 integration tests prove toy system end-to-end. All Phase 1 exit criteria (original + repos child) now met. Phase 1 complete. |

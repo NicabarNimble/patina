@@ -697,11 +697,12 @@ commands = ["cmd1", "cmd2"]
             payload: serde_json::json!({}),
         };
         let response = child.handle(&request).expect("check_freshness failed");
-        let stale_count = response
-            .payload
-            .get("stale_count")
-            .and_then(|v| v.as_u64());
-        assert_eq!(stale_count, Some(1), "repo with last_indexed=0 should be stale");
+        let stale_count = response.payload.get("stale_count").and_then(|v| v.as_u64());
+        assert_eq!(
+            stale_count,
+            Some(1),
+            "repo with last_indexed=0 should be stale"
+        );
     }
 
     /// Repos child: tick() returns toys for stale repos — end-to-end toy system proof.
