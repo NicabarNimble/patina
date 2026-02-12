@@ -1,7 +1,7 @@
 ---
 type: fix
 id: plugin-system-final-audit-fixes
-status: ready
+status: complete
 created: 2026-02-12
 sessions:
   origin: 20260212-093831
@@ -316,8 +316,9 @@ fn spawn_toy_tracked(toy: patina::mother::Toy, in_flight: Arc<Mutex<HashSet<Stri
 **Audit ref:** 5.3 (minor)
 **Location:** `patina-plugin-api/wit/`, `patina-plugin-models/wit/`, `patina-plugin-repos/wit/`
 
-**Current state:** Four independent copies of `mother-child.wit` and
-`deps/patina-host/host.wit`. Currently byte-identical.
+**Current state:** Guest crate `wit/` directories are symlinks to the
+canonical `../wit/` (not independent copies as the audit assumed).
+Always in sync by construction, but symlinks can be replaced with copies.
 
 **Fix:** Add a CI check to `resources/git/pre-push-checks.sh` that fails
 if any guest crate's WIT diverges from the canonical `wit/` directory.
@@ -542,33 +543,33 @@ Replace the existing doc comment on `PluginEngine::new()` in
 ## Exit Criteria
 
 ### Fixes
-- [ ] F0: `unsafe impl Sync` eliminated — instance behind Mutex with store
-- [ ] F0: No `unsafe` in `src/plugin/internal.rs`
-- [ ] F0: All 16 plugin tests pass (same behavior, safe implementation)
-- [ ] F1: Registry RwLock — all 4 bare `.unwrap()` replaced with poison recovery
-- [ ] F1: Existing registry tests still pass
-- [ ] F2: Toy deduplication — in-flight tracking in heartbeat loop
-- [ ] F2: Duplicate toy is logged and skipped
-- [ ] F2: Completed toy is removed from in-flight (eligible for retry)
-- [ ] F2: Thread spawn failure removes name from in-flight (self-healing)
-- [ ] F3: WIT consistency check added to `pre-push-checks.sh`
-- [ ] F3: Check passes (all copies currently identical)
-- [ ] F4: `PluginManifest` parses `[capabilities.toys].commands`
-- [ ] F4: `WasmChild` stores allowed toy commands from manifest
-- [ ] F4: `tick()` filters toys — unauthorized commands logged and dropped
-- [ ] F4: `patina-plugin-repos/plugin.toml` declares `commands = ["git", "patina"]`
-- [ ] F4: Test: unauthorized toy command is filtered
-- [ ] F5a: String dispatch comment in `wit/mother-child.wit` (+ 3 copies)
-- [ ] F5b: tick(&mut self) comment in `src/mother/child.rs`
-- [ ] F5c: PluginEngine::new() doc comment in `src/plugin/internal.rs`
+- [x] F0: `unsafe impl Sync` eliminated — instance behind Mutex with store
+- [x] F0: No `unsafe` in `src/plugin/internal.rs`
+- [x] F0: All 16 plugin tests pass (same behavior, safe implementation)
+- [x] F1: Registry RwLock — all 4 bare `.unwrap()` replaced with poison recovery
+- [x] F1: Existing registry tests still pass
+- [x] F2: Toy deduplication — in-flight tracking in heartbeat loop
+- [x] F2: Duplicate toy is logged and skipped
+- [x] F2: Completed toy is removed from in-flight (eligible for retry)
+- [x] F2: Thread spawn failure removes name from in-flight (self-healing)
+- [x] F3: WIT consistency check added to `pre-push-checks.sh`
+- [x] F3: Check passes (all copies currently identical — symlinks to canonical wit/)
+- [x] F4: `PluginManifest` parses `[capabilities.toys].commands`
+- [x] F4: `WasmChild` stores allowed toy commands from manifest
+- [x] F4: `tick()` filters toys — unauthorized commands logged and dropped
+- [x] F4: `patina-plugin-repos/plugin.toml` declares `commands = ["git", "patina"]`
+- [x] F4: Test: unauthorized toy command is filtered
+- [x] F5a: String dispatch comment in `wit/mother-child.wit` (+ 3 symlinked copies)
+- [x] F5b: tick(&mut self) comment in `src/mother/child.rs`
+- [x] F5c: PluginEngine::new() doc comment in `src/plugin/internal.rs`
 
 ### Pre-push
-- [ ] `cargo fmt --all`
-- [ ] `cargo clippy --workspace`
-- [ ] `cargo test --workspace`
-- [ ] `./resources/git/pre-push-checks.sh`
-- [ ] All plugin tests pass (16 existing + new F4 test)
-- [ ] No regressions
+- [x] `cargo fmt --all`
+- [x] `cargo clippy --workspace`
+- [x] `cargo test --workspace`
+- [x] `./resources/git/pre-push-checks.sh`
+- [x] All plugin tests pass (16 existing + 3 new F4 tests = 19 total)
+- [x] No regressions
 
 ## Build Order
 
@@ -620,3 +621,4 @@ src/commands/mother/daemon.rs           # spawn_heartbeat + spawn_toy → tracke
 | 2026-02-12 | ready | Created from final audit session [[20260212-093831]]. 3 findings from audit, all concrete code fixes. Linked to both audits and both prior specs. |
 | 2026-02-12 | amended | Post-audit review added F0 (eliminate unsafe Sync). Amended F2 (handle spawn failure — daemon self-healing). Changed F3 from symlinks to CI check (portability). Reordered build: F0 first (soundness), F3 second (build system), F1 third, F2 last (largest). |
 | 2026-02-12 | amended | No deferrals. Added F4 (toy capability gating — extend manifest + filter in tick), F5 (3 design decision doc comments). Reordered build: F5 first (docs), F0 (soundness), F3 (CI), F1 (poison), F4 (toy gating), F2 (dedup). 6 fixes total, all unblocked. |
+| 2026-02-12 | complete | All 6 fixes built in prescribed order (F5→F0→F3→F1→F4→F2), 6 commits, 19 plugin tests (16 original + 3 new), all pre-push checks pass. Discovery: guest crate wit/ dirs are symlinks to canonical wit/, not copies as audit assumed — F3 CI check still added as defense in depth. F0 required struct destructuring (`let WasmChildInner { store, instance } = &mut *inner`) to split borrows across the Mutex guard. Session [[20260212-102737]]. |
