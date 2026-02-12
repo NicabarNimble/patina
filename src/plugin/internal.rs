@@ -359,3 +359,265 @@ impl crate::mother::MotherChild for WasmChild {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn write_temp_manifest(content: &str) -> tempfile::NamedTempFile {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+        f.flush().unwrap();
+        f
+    }
+
+    // =====================================================================
+    // PluginManifest::from_path
+    // =====================================================================
+
+    #[test]
+    fn manifest_valid_minimal() {
+        let f = write_temp_manifest(
+            r#"
+[plugin]
+name = "test-plugin"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "test"
+"#,
+        );
+        let m = PluginManifest::from_path(f.path()).unwrap();
+        assert_eq!(m.name, "test-plugin");
+        assert_eq!(m.world, "mother-child");
+        assert_eq!(m.version, "0.0.0"); // default
+        assert_eq!(m.capabilities, vec!["host_log"]);
+        assert_eq!(m.provides.child.as_deref(), Some("test"));
+    }
+
+    #[test]
+    fn manifest_valid_full() {
+        let f = write_temp_manifest(
+            r#"
+[plugin]
+name = "full-plugin"
+version = "1.2.3"
+description = "A full manifest"
+world = "mother-child"
+patina_min = "0.17.0"
+
+[capabilities]
+host_log = true
+filesystem = false
+
+[provides]
+child = "full"
+commands = ["cmd1", "cmd2"]
+"#,
+        );
+        let m = PluginManifest::from_path(f.path()).unwrap();
+        assert_eq!(m.name, "full-plugin");
+        assert_eq!(m.version, "1.2.3");
+        assert_eq!(m.description, "A full manifest");
+        assert_eq!(m.patina_min, "0.17.0");
+        // filesystem = false should NOT be in capabilities
+        assert_eq!(m.capabilities, vec!["host_log"]);
+        assert_eq!(m.provides.commands, vec!["cmd1", "cmd2"]);
+    }
+
+    #[test]
+    fn manifest_missing_plugin_section() {
+        let f = write_temp_manifest("[other]\nfoo = 1\n");
+        let err = PluginManifest::from_path(f.path()).unwrap_err();
+        assert!(
+            err.to_string().contains("missing [plugin] section"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn manifest_missing_name() {
+        let f = write_temp_manifest("[plugin]\nworld = \"mother-child\"\n");
+        let err = PluginManifest::from_path(f.path()).unwrap_err();
+        assert!(
+            err.to_string().contains("missing plugin.name"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn manifest_missing_world() {
+        let f = write_temp_manifest("[plugin]\nname = \"test\"\n");
+        let err = PluginManifest::from_path(f.path()).unwrap_err();
+        assert!(
+            err.to_string().contains("missing plugin.world"),
+            "got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn manifest_invalid_toml() {
+        let f = write_temp_manifest("this is not valid toml {{{}}}");
+        assert!(PluginManifest::from_path(f.path()).is_err());
+    }
+
+    // =====================================================================
+    // check_capabilities
+    // =====================================================================
+
+    #[test]
+    fn capabilities_all_granted() {
+        let m = PluginManifest {
+            name: "test".into(),
+            version: "0.1.0".into(),
+            description: String::new(),
+            world: "mother-child".into(),
+            patina_min: "0.0.0".into(),
+            capabilities: vec!["host_log".into()],
+            provides: PluginProvides {
+                child: None,
+                commands: vec![],
+            },
+        };
+        assert!(PluginEngine::check_capabilities(&m).is_ok());
+    }
+
+    #[test]
+    fn capabilities_empty() {
+        let m = PluginManifest {
+            name: "test".into(),
+            version: "0.1.0".into(),
+            description: String::new(),
+            world: "mother-child".into(),
+            patina_min: "0.0.0".into(),
+            capabilities: vec![],
+            provides: PluginProvides {
+                child: None,
+                commands: vec![],
+            },
+        };
+        assert!(PluginEngine::check_capabilities(&m).is_ok());
+    }
+
+    #[test]
+    fn capabilities_denied() {
+        let m = PluginManifest {
+            name: "test".into(),
+            version: "0.1.0".into(),
+            description: String::new(),
+            world: "mother-child".into(),
+            patina_min: "0.0.0".into(),
+            capabilities: vec!["host_log".into(), "filesystem".into(), "network".into()],
+            provides: PluginProvides {
+                child: None,
+                commands: vec![],
+            },
+        };
+        let err = PluginEngine::check_capabilities(&m).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("filesystem"), "got: {}", msg);
+        assert!(msg.contains("network"), "got: {}", msg);
+        assert!(!msg.contains("host_log"), "host_log should be granted: {}", msg);
+    }
+
+    // =====================================================================
+    // WASM integration — load models.wasm, call handle()
+    // =====================================================================
+
+    /// Load the pre-compiled models.wasm fixture, instantiate it,
+    /// and verify the full handle() round-trip works.
+    #[test]
+    fn wasm_models_child_handle_roundtrip() {
+        let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/patina_plugin_models.wasm");
+        if !wasm_path.exists() {
+            panic!(
+                "test fixture missing: {}\n\
+                 Build it with: cargo build --release -p patina-plugin-models --target wasm32-wasip2\n\
+                 Then: cp target/wasm32-wasip2/release/patina_plugin_models.wasm tests/fixtures/",
+                wasm_path.display()
+            );
+        }
+
+        let engine = PluginEngine::new().expect("PluginEngine::new() failed");
+        let wasm_bytes = std::fs::read(&wasm_path).expect("failed to read .wasm fixture");
+        let component = engine
+            .load_component(&wasm_bytes)
+            .expect("load_component failed");
+
+        // Use a manifest matching models plugin
+        let manifest = PluginManifest {
+            name: "patina-models".into(),
+            version: "0.1.0".into(),
+            description: "test".into(),
+            world: "mother-child".into(),
+            patina_min: "0.0.0".into(),
+            capabilities: vec!["host_log".into()],
+            provides: PluginProvides {
+                child: Some("models".into()),
+                commands: vec![],
+            },
+        };
+
+        let child = engine
+            .instantiate_child(&component, &manifest)
+            .expect("instantiate_child failed");
+
+        // Verify identity
+        assert_eq!(child.name(), "models");
+
+        // Test handle() round-trip: resolve_model action
+        let request = crate::mother::ChildRequest {
+            action: "resolve_model".into(),
+            payload: serde_json::json!({"name": "e5-small"}),
+        };
+        let response = child.handle(&request).expect("handle() failed");
+
+        // Verify response contains expected path
+        let path = response.payload.get("path").and_then(|v| v.as_str());
+        assert!(
+            path.is_some_and(|p| p.contains("e5-small")),
+            "expected path containing 'e5-small', got: {:?}",
+            response.payload
+        );
+    }
+
+    /// Verify that health() works on a WASM child.
+    #[test]
+    fn wasm_models_child_health() {
+        let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/patina_plugin_models.wasm");
+        if !wasm_path.exists() {
+            return; // Skip if fixture not available
+        }
+
+        let engine = PluginEngine::new().unwrap();
+        let wasm_bytes = std::fs::read(&wasm_path).unwrap();
+        let component = engine.load_component(&wasm_bytes).unwrap();
+        let manifest = PluginManifest {
+            name: "patina-models".into(),
+            version: "0.1.0".into(),
+            description: "test".into(),
+            world: "mother-child".into(),
+            patina_min: "0.0.0".into(),
+            capabilities: vec!["host_log".into()],
+            provides: PluginProvides {
+                child: Some("models".into()),
+                commands: vec![],
+            },
+        };
+
+        let child = engine.instantiate_child(&component, &manifest).unwrap();
+        match child.health() {
+            crate::mother::ChildHealth::Healthy => {} // expected
+            other => panic!("expected Healthy, got: {:?}", other),
+        }
+    }
+}
