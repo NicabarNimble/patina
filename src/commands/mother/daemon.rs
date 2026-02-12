@@ -13,9 +13,10 @@
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use patina::mother::ChildRequest;
@@ -118,25 +119,41 @@ const HEARTBEAT_INTERVAL_SECS: u64 = 60;
 
 /// Spawn the heartbeat thread — ticks all children periodically.
 /// Toys returned by children are spawned as child processes.
+/// Tracks in-flight toys to prevent duplicate spawning.
 fn spawn_heartbeat(state: Arc<ServerState>) {
+    let in_flight: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+
     std::thread::Builder::new()
         .name("mother-heartbeat".to_string())
         .spawn(move || loop {
             std::thread::sleep(Duration::from_secs(HEARTBEAT_INTERVAL_SECS));
             let toys = state.registry.tick_all();
             for toy in toys {
-                spawn_toy(toy);
+                let mut flight = in_flight.lock().unwrap_or_else(|e| e.into_inner());
+                if flight.contains(&toy.name) {
+                    eprintln!("[mother:toy] skipping '{}' (already in flight)", toy.name);
+                    continue;
+                }
+                flight.insert(toy.name.clone());
+                drop(flight); // release lock before spawning thread
+
+                spawn_toy_tracked(toy, Arc::clone(&in_flight));
             }
         })
         .expect("failed to spawn heartbeat thread");
 }
 
-/// Spawn a toy as a child process in a background thread.
+/// Spawn a toy as a child process in a background thread with in-flight tracking.
 ///
 /// The child decides *what* to run. Mother handles *how*.
 /// Each toy runs in its own thread so the heartbeat loop isn't blocked.
-fn spawn_toy(toy: patina::mother::Toy) {
-    std::thread::Builder::new()
+/// On completion (success or failure), the toy name is removed from the
+/// in-flight set so it's eligible for retry on the next heartbeat.
+fn spawn_toy_tracked(toy: patina::mother::Toy, in_flight: Arc<Mutex<HashSet<String>>>) {
+    let toy_name = toy.name.clone();
+    let in_flight_thread = Arc::clone(&in_flight);
+
+    match std::thread::Builder::new()
         .name(format!("toy-{}", toy.name))
         .spawn(move || {
             eprintln!(
@@ -159,8 +176,19 @@ fn spawn_toy(toy: patina::mother::Toy) {
                     eprintln!("[mother:toy] '{}' failed to spawn: {}", toy.name, e);
                 }
             }
-        })
-        .expect("failed to spawn toy thread");
+            // Remove from in-flight set when done (success or failure)
+            let mut flight = in_flight_thread.lock().unwrap_or_else(|e| e.into_inner());
+            flight.remove(&toy.name);
+        }) {
+        Ok(_) => {} // thread owns cleanup via in_flight
+        Err(e) => {
+            // Thread failed to spawn — remove from in-flight so it's
+            // eligible for retry on next heartbeat. Don't leave stuck.
+            eprintln!("[mother:toy] thread spawn failed for '{}': {}", toy_name, e);
+            let mut flight = in_flight.lock().unwrap_or_else(|e| e.into_inner());
+            flight.remove(&toy_name);
+        }
+    }
 }
 
 // === API types ===
