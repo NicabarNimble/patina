@@ -89,20 +89,32 @@ pub trait MotherChildPlugin {
 // Plugin singleton (WASM is single-threaded)
 // =========================================================================
 
-static mut PLUGIN: Option<Box<dyn MotherChildPlugin>> = None;
+use std::cell::UnsafeCell;
+
+/// Single-threaded mutable global for WASM plugin singleton.
+///
+/// Safety: WASM is single-threaded (wasm32-wasip2 has no threads).
+/// No concurrent access is possible. This replaces `static mut` which
+/// is deprecated in edition 2024. The `unsafe impl Sync` is required
+/// because `static` items must be `Sync`, but WASM's single-threaded
+/// execution model makes this sound.
+struct WasmCell<T>(UnsafeCell<T>);
+unsafe impl<T> Sync for WasmCell<T> {}
+
+static PLUGIN: WasmCell<Option<Box<dyn MotherChildPlugin>>> = WasmCell(UnsafeCell::new(None));
 
 #[doc(hidden)]
 pub fn __register_plugin(plugin: Box<dyn MotherChildPlugin>) {
+    // Safety: called once from init export, WASM is single-threaded
     unsafe {
-        PLUGIN = Some(plugin);
+        *PLUGIN.0.get() = Some(plugin);
     }
 }
 
 fn plugin() -> &'static mut dyn MotherChildPlugin {
-    // Safety: WASM is single-threaded. Only one reference exists at a time.
-    #[allow(static_mut_refs)]
+    // Safety: WASM is single-threaded, no concurrent access
     unsafe {
-        PLUGIN
+        (*PLUGIN.0.get())
             .as_deref_mut()
             .expect("plugin not initialized — host must call init first")
     }
