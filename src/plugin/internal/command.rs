@@ -4,7 +4,8 @@ use anyhow::Result;
 use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
 
-use super::wasm_engine;
+use super::{wasm_engine, PluginManifest};
+use super::mother_child::PluginEngine;
 
 // =========================================================================
 // Command world — bindgen + host functions + CommandEngine
@@ -159,14 +160,25 @@ impl CommandEngine {
     }
 
     /// Run a command plugin. Returns exit code.
-    pub fn run_command(&self, component: &Component, name: &str, args: &[String]) -> Result<i32> {
+    ///
+    /// Checks capabilities from the manifest before execution — matches
+    /// PluginEngine::instantiate_child() pattern.
+    pub fn run_command(
+        &self,
+        component: &Component,
+        manifest: &PluginManifest,
+        args: &[String],
+    ) -> Result<i32> {
+        // Check capabilities before execution — matches PluginEngine pattern
+        PluginEngine::check_capabilities(manifest)?;
+
         let wasi = wasmtime_wasi::WasiCtxBuilder::new()
             .inherit_stdout()
             .inherit_stderr()
             .build();
         let project_root = crate::session::SessionManager::find_project_root().ok();
         let host_state = command_bindings::CommandHostState {
-            plugin_name: name.to_string(),
+            plugin_name: manifest.name.clone(),
             wasi,
             wasi_table: wasmtime::component::ResourceTable::new(),
             project_root,

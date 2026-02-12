@@ -1168,15 +1168,28 @@ fn main() -> Result<()> {
             let plugin_toml = patina::paths::plugin::plugins_dir().join("patina-doctor.toml");
 
             let exit_code = if plugin_wasm.exists() {
-                // Load manifest if present, check capabilities
-                if plugin_toml.exists() {
-                    let manifest = patina::plugin::PluginEngine::load_manifest(&plugin_toml)?;
-                    patina::plugin::PluginEngine::check_capabilities(&manifest)?;
-                }
+                let manifest = if plugin_toml.exists() {
+                    patina::plugin::PluginEngine::load_manifest(&plugin_toml)?
+                } else {
+                    // Default manifest for plugins without .toml
+                    patina::plugin::PluginManifest {
+                        name: "patina-doctor".into(),
+                        version: "0.0.0".into(),
+                        description: String::new(),
+                        world: "command".into(),
+                        patina_min: "0.0.0".into(),
+                        capabilities: vec!["host_log".into(), "host_layer".into()],
+                        allowed_toy_commands: vec![],
+                        provides: patina::plugin::PluginProvides {
+                            child: None,
+                            commands: vec!["doctor".into()],
+                        },
+                    }
+                };
                 let engine = patina::plugin::CommandEngine::new()?;
                 let wasm_bytes = std::fs::read(&plugin_wasm)?;
                 let component = engine.load_component(&wasm_bytes)?;
-                engine.run_command(&component, "doctor", &args)?
+                engine.run_command(&component, &manifest, &args)?
             } else {
                 // Fall back to compiled-in doctor
                 #[cfg(feature = "bundled-doctor")]
