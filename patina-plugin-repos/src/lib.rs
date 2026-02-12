@@ -7,7 +7,7 @@
 //! - "report_repo"     → host tells child about a repo (name, path, last_indexed)
 //! - "check_freshness" → return staleness state for all known repos
 
-use patina_plugin_api::{host_log, register_plugin, ChildHealth, MotherChildPlugin, Toy};
+use patina_plugin_api::{host_log, register_plugin, ChildHealth, HealthStatus, MotherChildPlugin, Toy};
 
 /// Staleness threshold in seconds (24 hours).
 const STALE_THRESHOLD_SECS: u64 = 86400;
@@ -40,7 +40,10 @@ impl MotherChildPlugin for ReposChild {
 
     fn health(&self) -> ChildHealth {
         if self.repos.is_empty() {
-            return ChildHealth::Healthy;
+            return ChildHealth {
+                status: HealthStatus::Healthy,
+                reason: None,
+            };
         }
         let now = current_time_secs();
         let stale_count = self
@@ -49,9 +52,15 @@ impl MotherChildPlugin for ReposChild {
             .filter(|r| now.saturating_sub(r.last_indexed) > STALE_THRESHOLD_SECS)
             .count();
         if stale_count == 0 {
-            ChildHealth::Healthy
+            ChildHealth {
+                status: HealthStatus::Healthy,
+                reason: None,
+            }
         } else {
-            ChildHealth::Degraded
+            ChildHealth {
+                status: HealthStatus::Degraded,
+                reason: Some(format!("{} repo(s) stale", stale_count)),
+            }
         }
     }
 
