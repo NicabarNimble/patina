@@ -3,6 +3,8 @@ type: audit
 id: plugin-system-phase1-audit
 scope: src/plugin/, patina-plugin-api/, patina-plugin-models/, wit/
 spec: layer/surface/build/feat/plugin-system/SPEC.md
+remediation: layer/surface/build/fix/plugin-system-audit-remediation/SPEC.md
+next_audit: layer/surface/reports/audit/2026-02-12-plugin-system-phase1-final.md
 session: 20260212-075642
 created: 2026-02-12
 status: complete
