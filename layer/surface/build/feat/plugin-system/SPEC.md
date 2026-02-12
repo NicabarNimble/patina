@@ -1,47 +1,42 @@
 ---
 type: feat
 id: plugin-system
-status: ready
+status: complete
 created: 2026-02-11
-revised: 2026-02-11
 sessions:
   origin: 20260211-125648
-  amended: [20260211-133159, 20260211-143337, 20260211-185411]
-  research: [20260205-102402, 20260205-115835, 20260205-130049]
-blocked_by: []
-blocks: []
 related:
-  - layer/surface/build/feat/patina-platform/SPEC.md
-  - layer/surface/build/explore/wit-interfaces/SPEC.md
-  - layer/surface/build/explore/agents-and-yolo/SPEC.md
-  - layer/surface/build/feat/mother-environment/SPEC.md
-  - layer/surface/build/feat/mother-repos/SPEC.md
-  - layer/surface/build/feat/plugin-command-extractions/SPEC.md
-  - layer/surface/build/feat/plugin-oracle-scraper/SPEC.md
-  - layer/surface/build/feat/plugin-grammars/SPEC.md
+- layer/surface/build/feat/patina-platform/SPEC.md
+- layer/surface/build/explore/wit-interfaces/SPEC.md
+- layer/surface/build/explore/agents-and-yolo/SPEC.md
+- layer/surface/build/feat/mother-environment/SPEC.md
+- layer/surface/build/feat/mother-repos/SPEC.md
+- layer/surface/build/feat/plugin-command-extractions/SPEC.md
+- layer/surface/build/feat/plugin-oracle-scraper/SPEC.md
+- layer/surface/build/feat/plugin-grammars/SPEC.md
 beliefs:
-  - patina-is-knowledge-layer
-  - unix-philosophy
-  - compiler-enforced-safety
-  - transparent-complexity
-  - separate-worlds-for-isolation
-  - two-layer-capability-grants
-  - wasi-sandboxed-filesystem
-  - version-in-binary
-  - sync-first
-  - use-whats-in-the-tree
-  - work-triages-specs
-  - de-risk-runtime-with-simplest-payload
-  - coupling-is-complexity
-  - mother-is-the-daemon
-  - dependable-rust
+- patina-is-knowledge-layer
+- unix-philosophy
+- compiler-enforced-safety
+- transparent-complexity
+- separate-worlds-for-isolation
+- two-layer-capability-grants
+- wasi-sandboxed-filesystem
+- version-in-binary
+- sync-first
+- use-whats-in-the-tree
+- work-triages-specs
+- de-risk-runtime-with-simplest-payload
+- coupling-is-complexity
+- mother-is-the-daemon
+- dependable-rust
 references:
-  - "wasmtime v41 (Bytecode Alliance)"
-  - "zed-industries/zed extension system (wasmtime 33, 77 WIT files)"
-  - "WIT Component Model"
-  - "tree-sitter WASM grammars"
-  - "Zed Decoded: Extensions video (Marshall + Max)"
-  - "No Boilerplate: Async Rust Is A Bad Language"
+- wasmtime v41 (Bytecode Alliance)
+- zed-industries/zed extension system (wasmtime 33, 77 WIT files)
+- WIT Component Model
+- tree-sitter WASM grammars
+- 'Zed Decoded: Extensions video (Marshall + Max)'
+- 'No Boilerplate: Async Rust Is A Bad Language'
 ---
 
 # feat: Plugin System
