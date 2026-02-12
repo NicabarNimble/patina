@@ -537,11 +537,7 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
                                     registry.register(child);
                                 }
                                 Err(e) => {
-                                    eprintln!(
-                                        "[mother] failed to load {}: {}",
-                                        path.display(),
-                                        e
-                                    );
+                                    eprintln!("[mother] failed to load {}: {}", path.display(), e);
                                 }
                             }
                         }

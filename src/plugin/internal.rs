@@ -213,6 +213,31 @@ impl PluginEngine {
         Component::new(wasm_engine(), wasm)
     }
 
+    /// Check that a plugin's requested capabilities are granted.
+    ///
+    /// Phase 1: host_log is always granted. All others are denied.
+    /// Future: reads from ~/.patina/plugin-config/grants.toml.
+    pub fn check_capabilities(manifest: &PluginManifest) -> Result<()> {
+        // Capabilities that are always granted (no config needed)
+        let auto_granted = ["host_log"];
+
+        let denied: Vec<&str> = manifest
+            .capabilities
+            .iter()
+            .filter(|cap| !auto_granted.contains(&cap.as_str()))
+            .map(|s| s.as_str())
+            .collect();
+
+        if !denied.is_empty() {
+            anyhow::bail!(
+                "plugin '{}' requests capabilities not granted: {}",
+                manifest.name,
+                denied.join(", ")
+            );
+        }
+        Ok(())
+    }
+
     /// Instantiate a MotherChild from a WASM component + manifest.
     /// Returns Box<dyn MotherChild> for ChildRegistry compatibility.
     pub fn instantiate_child(
@@ -220,6 +245,9 @@ impl PluginEngine {
         component: &Component,
         manifest: &PluginManifest,
     ) -> Result<Box<dyn crate::mother::MotherChild>> {
+        // Check capabilities before instantiation
+        Self::check_capabilities(manifest)?;
+
         // Minimal WASI context — no filesystem access, no env inheritance.
         // Phase 1: plugins are sandboxed to pure computation + host log.
         let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();

@@ -10,6 +10,8 @@
 //! See: layer/surface/build/feat/plugin-system/SPEC.md
 
 // Version embedded in every plugin binary — host reads before instantiation.
+// Only included in WASM targets (Mach-O/ELF have different section formats).
+#[cfg(target_arch = "wasm32")]
 #[used]
 #[link_section = ".patina_api_version"]
 static API_VERSION: [u8; 3] = [0, 1, 0];
