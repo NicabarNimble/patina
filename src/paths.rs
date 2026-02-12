@@ -175,6 +175,29 @@ pub mod serve {
     }
 }
 
+/// Plugin paths (WASM children, command plugins, work dirs)
+pub mod plugin {
+    use super::*;
+
+    /// WASM children directory: `~/.patina/children/`
+    /// Contains .wasm files + plugin.toml manifests for Mother daemon children.
+    pub fn children_dir() -> PathBuf {
+        patina_home().join("children")
+    }
+
+    /// CLI command plugins directory: `~/.patina/plugins/`
+    /// Contains .wasm files + plugin.toml manifests for CLI command plugins (Phase 2+).
+    pub fn plugins_dir() -> PathBuf {
+        patina_home().join("plugins")
+    }
+
+    /// Plugin work directory (WASI sandbox root): `~/.patina/plugins/{name}/work/`
+    /// Mapped to `/work/` in the plugin's virtual filesystem (Phase 2+ when WASI lands).
+    pub fn work_dir(name: &str) -> PathBuf {
+        plugins_dir().join(name).join("work")
+    }
+}
+
 /// Mother paths (cross-project graph and federation)
 pub mod mother {
     use super::*;
