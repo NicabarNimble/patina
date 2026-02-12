@@ -1273,4 +1273,79 @@ child = "test"
             handle_avg_ms
         );
     }
+
+    // =====================================================================
+    // CommandEngine — doctor.wasm integration tests
+    // =====================================================================
+
+    fn load_doctor_component() -> Option<(CommandEngine, wasmtime::component::Component)> {
+        let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/patina_doctor.wasm");
+        if !wasm_path.exists() {
+            return None;
+        }
+        let engine = CommandEngine::new().expect("CommandEngine::new() failed");
+        let wasm_bytes = std::fs::read(&wasm_path).expect("failed to read doctor wasm");
+        let component = engine
+            .load_component(&wasm_bytes)
+            .expect("load_component failed");
+        Some((engine, component))
+    }
+
+    #[test]
+    fn command_doctor_name() {
+        let (engine, component) = match load_doctor_component() {
+            Some(ec) => ec,
+            None => {
+                panic!(
+                    "test fixture missing: tests/fixtures/patina_doctor.wasm\n\
+                     Build: cargo build --release -p patina-doctor --target wasm32-wasip2\n\
+                     Copy: cp target/wasm32-wasip2/release/patina_doctor.wasm tests/fixtures/"
+                );
+            }
+        };
+
+        let name = engine
+            .get_command_name(&component)
+            .expect("get_command_name failed");
+        assert_eq!(name, "doctor");
+    }
+
+    #[test]
+    fn command_doctor_description() {
+        let (engine, component) = match load_doctor_component() {
+            Some(ec) => ec,
+            None => return,
+        };
+
+        let desc = engine
+            .get_command_description(&component)
+            .expect("get_command_description failed");
+        assert!(
+            desc.contains("health"),
+            "expected description to mention 'health', got: {}",
+            desc
+        );
+    }
+
+    #[test]
+    fn command_doctor_run() {
+        let (engine, component) = match load_doctor_component() {
+            Some(ec) => ec,
+            None => return,
+        };
+
+        // Run with --json to avoid terminal output dependencies.
+        // Exit code depends on project state — just verify it doesn't panic.
+        let args = vec!["--json".to_string()];
+        let exit_code = engine
+            .run_command(&component, "doctor", &args)
+            .expect("run_command failed");
+        // doctor returns 0 (healthy), 1 (error), 2 (warning), or 3 (critical)
+        assert!(
+            [0, 1, 2, 3].contains(&exit_code),
+            "unexpected exit code: {}",
+            exit_code
+        );
+    }
 }
