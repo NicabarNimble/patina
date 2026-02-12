@@ -500,6 +500,85 @@ The 4 Phase 2+ discoveries remain correctly documented and deferred.
 
 ---
 
+## Post-Fix Conclusion (Jon Gjengset perspective)
+
+> Added after [[plugin-system-final-audit-fixes]] spec completed — all 9
+> findings from this audit addressed in 6 fixes. Session [[20260212-102737]].
+
+### What the fixes proved
+
+**F0 (unsafe elimination) is the standout.** The `unsafe impl Sync` was
+signed off as "sound" by this audit (4.1), but post-audit review identified
+it as fragile — soundness depended on an assumption about a generated type
+we don't control. The fix (WasmChildInner behind a single Mutex, struct
+destructuring to split borrows) costs nothing — we were already locking on
+every call. The previous layout was an accident of how the code grew, not
+an optimization. Now the compiler proves what the safety comment used to
+*claim*. Captured as belief [[restructure-over-unsafe]].
+
+Zed has `unsafe` in their WASM host too — but they have a team reviewing
+every wasmtime upgrade. This project doesn't. Eliminating the assumption
+about a generated type was the right call.
+
+**F4 (toy capability gating) closes the real gap.** This audit noted toy
+rate limiting as a minor concern (4.6), but the deeper issue — a sandboxed
+WASM child could request arbitrary commands via toys — was identified in
+post-audit design review using Zed's per-command capability grants as
+reference. The manifest-based allowlist in `tick()` enforces
+[[two-layer-capability-grants]] at the adapter boundary. Compiled-in children
+are trusted and don't go through this path — same boundary Zed draws.
+
+**F2 (toy deduplication) is necessary daemon hygiene.** Zed doesn't have
+this problem because their extensions are event-driven (no heartbeat), but
+for a daemon model with periodic ticks, in-flight tracking prevents the
+thread explosion scenario this audit flagged (4.6, 6.3).
+
+### Comparison to Zed's extension system
+
+| Aspect | Patina (Phase 1) | Zed | Assessment |
+|--------|-----------------|-----|------------|
+| WIT files | 2 (mother-child, host) | 77 | Appropriate for scope |
+| Worlds | 1 (mother-child) | 1 (but massive) | Phase 2 adds `command` world |
+| String dispatch | Within worlds, intentional | Single typed world | Different architecture, both valid |
+| Heartbeat/tick | Daemon heartbeat, 60s | No equivalent (event-driven) | Justified by daemon model |
+| Capability grants | Manifest allowlist | Per-command grants | Equivalent mechanism, simpler scope |
+| unsafe at WASM boundary | **Eliminated** (F0) | Present | Stronger safety posture |
+| Sync vs async | Sync-first | Async throughout | Correct for workload |
+| Plugin discovery | Drop .wasm in ~/.patina/children/ | Extension registry with signed manifests | Phase 2 adds plugin cache |
+
+### Phase 2 readiness assessment
+
+Phase 2 is `command` world + `doctor` extraction — internal work, not
+third-party plugins. The actual Phase 2 risks are concrete:
+
+1. **`wit/command.wit` design** — WIT types (child-health, toy) currently
+   inside the `mother-child` world block need to move outside so `command`
+   world can reuse them. Already documented as Phase 2 discovery.
+
+2. **CLI-direct loading without daemon** — PluginEngine works in daemon
+   context. Phase 2 must prove it works for one-shot CLI invocation where
+   no heartbeat/tick lifecycle exists.
+
+3. **Binary size reduction** — the point of extracting `doctor` is to prove
+   the binary gets smaller. If wasmtime's contribution outweighs the
+   extraction, the cost/benefit changes.
+
+4. **Host state feed** — repos child produces zero toys in production until
+   Mother reads `~/.patina/registry.yaml` and calls `report_repo()`. This
+   plumbing is Phase 2 work (6.2).
+
+### Verdict (post-fix)
+
+**Phase 1 is complete and architecturally sound.** All 9 findings from this
+audit have been addressed — 0 deferred, 0 descoped. The fix spec
+[[plugin-system-final-audit-fixes]] closed with 19 tests (16 original + 3
+new), all pre-push checks passing, and one new belief captured.
+
+The system is in a clean state for Phase 2 work. No technical debt carried
+forward.
+
+---
+
 ## Appendix: Test Run Output
 
 ```
