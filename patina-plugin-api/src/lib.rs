@@ -21,7 +21,7 @@ static API_VERSION: [u8; 3] = [0, 1, 0];
 // =========================================================================
 
 wit_bindgen::generate!({
-    path: "wit",
+    path: "wit/mother-child",
     world: "mother-child",
     skip: ["init"],
     generate_all,
