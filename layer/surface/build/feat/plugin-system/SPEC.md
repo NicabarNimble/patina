@@ -336,19 +336,23 @@ loading (no daemon required).
 1. Define `wit/command.wit` — `patina:command@0.1.0` world; exports `run(args: list<string>) -> s32`; imports `patina:host/layer` (read-only)
 2. Create `patina-doctor` crate (workspace member, compiles to WASM)
 3. Move doctor logic from `src/commands/doctor/` to `patina-doctor` crate
-4. CLI loads command plugin via PluginEngine when `patina doctor` is invoked
+4. CLI loads command plugin via CommandEngine when `patina doctor` is invoked
 5. Feature-gate compiled-in doctor during transition (`--features bundled-doctor`)
 
-**CLI plugin discovery:** Manifest cache file at `~/.patina/plugin-cache.toml`
-listing installed plugin commands. Updated on `patina plugin install/remove`.
-Avoids scanning `~/.patina/plugins/` on every CLI invocation.
+**CLI plugin discovery (deferred to Phase 3):** Manifest cache file at
+`~/.patina/plugin-cache.toml` listing installed plugin commands. Updated on
+`patina plugin install/remove` (Phase 3 — Phase 2 uses manual copy to
+`~/.patina/plugins/`). Avoids scanning `~/.patina/plugins/` on every CLI
+invocation. For Phase 2 (single internal plugin), CLI dispatch uses hardcoded
+filename. Generalized discovery via plugin-cache.toml deferred to Phase 3
+extractions.
 
 **Acceptance criteria:**
 
 - [ ] `patina doctor` works identically from WASM plugin
 - [ ] Works without Mother daemon running
 - [ ] `patina plugin list` shows patina-doctor with version and status
-- [ ] Main binary smaller with doctor extracted (measurable delta)
+- [ ] Main binary smaller with doctor extracted (measurable delta) — NOTE: doctor-specific delta is -31KB (negligible, doctor shares all types with core). Mechanism proven. Real savings come with Phase 3 extractions (yolo 1,613 LOC, eval+bench 3,229 LOC).
 
 ---
 
@@ -715,3 +719,4 @@ All 6 fixes built in prescribed order (F5→F0→F3→F1→F4→F2):
 | 2026-02-12 | phase-1-complete | Session [[20260212-091430]]: Repos child built and tested. [[mother-repos]] promoted to `ready` with Phase 1 scope (host-fed state, no filesystem). `patina-plugin-repos/` crate: 178KB WASM, handle() for report_repo + check_freshness, tick() returns pull + scrape toys for stale repos. 4 integration tests prove toy system end-to-end. All Phase 1 exit criteria (original + repos child) now met. Phase 1 complete. |
 | 2026-02-12 | discoveries | Session [[20260212-093831]]: Final audit (0 critical) + post-audit design review with Zed context. 5 discoveries pushed: **(1)** String dispatch in handle() is intentional — world boundary = type safety, string dispatch within world = low coupling (contrasted with Zed's single-world typed approach). **(2)** tick(&mut self) vs handle(&self) split is intentional — compiled-in children benefit from direct mutation, WASM children pay adapter cost (Zed has no tick/heartbeat equivalent). **(3)** Toy trust model needs capability gating before community plugins — Zed enforces per-command grants, Patina toys bypass capability system. **(4)** PluginEngine is create-once — document like Zed's Arc-shared WasmHost. **(5)** Fix spec [[plugin-system-final-audit-fixes]] created: F0 unsafe Sync elimination, F1 registry poison, F2 toy dedup, F3 WIT CI check. See final audit: `layer/surface/reports/audit/2026-02-12-plugin-system-phase1-final.md`. |
 | 2026-02-12 | fixes-complete | Session [[20260212-102737]]: All 5 post-audit discoveries resolved. Fix spec [[plugin-system-final-audit-fixes]] completed: 6 fixes (F0-F5), 19 tests, zero deferrals. Discoveries marked resolved: string dispatch doc (F5a), tick split doc (F5b), PluginEngine doc (F5c), toy capability gating (F4), fix spec F0-F3 expanded to F0-F5. Discovery: guest crate wit/ dirs are symlinks to canonical wit/, not copies. Phase 2 open items remaining: WIT types outside world block, re-entrancy invariant, ChildHealth reason string, PluginEngine sharing for CLI-direct loading. |
+| 2026-02-12 | amended | Session [[20260212-124849]]: Phase 2 spec amendments per fix spec [[plugin-system-phase2-audit-fixes]] F6. **(1)** Step 4: "PluginEngine" → "CommandEngine" (spec text predated CommandEngine). **(2)** plugin-cache.toml: explicitly deferred to Phase 3 (single plugin uses hardcoded filename). **(3)** plugin install/remove: deferred to Phase 3 (Phase 2 uses manual copy). **(4)** Binary size criterion: documented -31KB delta as mechanism-proven, real savings in Phase 3. |
