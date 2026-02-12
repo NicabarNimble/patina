@@ -187,6 +187,13 @@ pub struct PluginEngine {
 
 impl PluginEngine {
     /// Create a new PluginEngine with host functions registered.
+    ///
+    /// Create once per process and reuse for all plugin loading. The
+    /// underlying wasmtime::Engine is a process-wide singleton (OnceLock),
+    /// but Linker setup (WASI + host functions) runs on each call.
+    /// In daemon mode, daemon.rs creates one PluginEngine and passes it
+    /// to load_wasm_child(). CLI command plugins (Phase 2) will need to
+    /// decide whether to share the daemon's engine or create a fresh one.
     pub fn new() -> Result<Self> {
         let mut linker = Linker::new(wasm_engine());
 
