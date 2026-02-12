@@ -1,7 +1,7 @@
 ---
 type: fix
 id: plugin-system-phase2-audit-fixes
-status: ready
+status: complete
 created: 2026-02-12
 sessions:
   origin: 20260212-121824
@@ -418,29 +418,29 @@ After:  "Main binary smaller with doctor extracted (measurable delta) —
 ## Exit Criteria
 
 ### Fixes
-- [ ] F1: `internal.rs` split into `internal/` directory with 4 files
-- [ ] F1: `src/plugin/mod.rs` unchanged (same 12-line interface)
-- [ ] F1: All 22 plugin tests pass with no logic changes
-- [ ] F2: Benchmark test passes in full `cargo test --workspace`
-- [ ] F2: Engine warm-up before timing, comment explaining why
-- [ ] F3: `CommandHostState` has `project_root: Option<PathBuf>` field
-- [ ] F3: Host functions use cached root instead of calling `find_project_root()`
-- [ ] F4: `run_command()` takes `&PluginManifest`, checks capabilities internally
-- [ ] F4: `get_command_name()` and `get_command_description()` unchanged
-- [ ] F4: `src/main.rs` Doctor dispatch updated (no external cap check)
-- [ ] F4: `command_doctor_run` test updated with manifest
-- [ ] F5: `static mut PLUGIN` → `WasmCell` in `patina-command-api`
-- [ ] F5: `static mut PLUGIN` → `WasmCell` in `patina-plugin-api`
-- [ ] F5: No `#[allow(static_mut_refs)]` in either crate
-- [ ] F5: WASM fixtures rebuilt (both guest crates changed)
-- [ ] F6: SPEC.md Phase 2 section amended (4 text changes + status log)
+- [x] F1: `internal.rs` split into `internal/` directory with 4 files
+- [x] F1: `src/plugin/mod.rs` unchanged (same 12-line interface)
+- [x] F1: All 22 plugin tests pass with no logic changes
+- [x] F2: Benchmark test passes in full `cargo test --workspace`
+- [x] F2: Engine warm-up before timing, comment explaining why
+- [x] F3: `CommandHostState` has `project_root: Option<PathBuf>` field
+- [x] F3: Host functions use cached root instead of calling `find_project_root()`
+- [x] F4: `run_command()` takes `&PluginManifest`, checks capabilities internally
+- [x] F4: `get_command_name()` and `get_command_description()` unchanged
+- [x] F4: `src/main.rs` Doctor dispatch updated (no external cap check)
+- [x] F4: `command_doctor_run` test updated with manifest
+- [x] F5: `static mut PLUGIN` → `WasmCell` in `patina-command-api`
+- [x] F5: `static mut PLUGIN` → `WasmCell` in `patina-plugin-api`
+- [x] F5: No `#[allow(static_mut_refs)]` in either crate
+- [x] F5: WASM fixtures rebuilt (both guest crates changed)
+- [x] F6: SPEC.md Phase 2 section amended (4 text changes + status log)
 
 ### Pre-push
-- [ ] `cargo fmt --all`
-- [ ] `cargo clippy --workspace`
-- [ ] `cargo test --workspace` — all pass, no flakes
-- [ ] `./resources/git/pre-push-checks.sh`
-- [ ] WASM fixtures up to date (rebuild if guest crate source changed)
+- [x] `cargo fmt --all`
+- [x] `cargo clippy --workspace`
+- [x] `cargo test --workspace` — all pass, no flakes
+- [x] `./resources/git/pre-push-checks.sh`
+- [x] WASM fixtures up to date (rebuild if guest crate source changed)
 
 ## Build Order
 
@@ -498,3 +498,4 @@ tests/fixtures/patina_doctor.wasm         # Rebuild
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-12 | ready | Created from Phase 2 audit session [[20260212-121824]]. 6 code fixes + 1 spec amendment. Discussed F4 (option A: manifest param), F5 (WasmCell not OnceCell — RefCell not Sync), F1 (single tests.rs). |
+| 2026-02-12 | complete | Session [[20260212-124849]]: All 6 fixes + spec amendments executed. 7 commits. F6 spec text, F1 internal/ split (4 files), F2 benchmark warm-up, F3 project root cache (9→1 walks), F4 capability check (manifest param on run_command), F5 WasmCell migration + WASM fixture rebuild. All 22 plugin tests pass. pre-push-checks.sh clean. |
