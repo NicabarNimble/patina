@@ -89,12 +89,15 @@ safetensors = "0.7"                                                  # Standard 
 zerocopy = "0.7"                                                     # Efficient vector byte conversion
 regex = "1.12.2"
 
-# WASM plugin runtime (Phase 1 — no wasmtime-wasi, we implement host functions ourselves)
+# WASM plugin runtime
 wasmtime = { version = "=41", default-features = false, features = [
     "runtime",          # Execution engine (required)
     "cranelift",        # JIT compiler backend
     "component-model",  # WIT Component Model support
 ] }
+# WASI support — wasm32-wasip2 components always import basic WASI (stdio, env, clocks)
+# even for pure-computation code. p2 feature = WASIp2 component model.
+wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
 
 # Secrets v2 - age encryption and macOS Keychain
 age = { version = "0.11", features = ["armor"] }

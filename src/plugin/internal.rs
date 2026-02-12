@@ -18,9 +18,22 @@ use crate::mother::{ChildHealth, ChildRequest, ChildResponse, MotherHost, Toy};
 /// stays internal — WasmChild bridges to our crate::mother::MotherChild trait.
 mod bindings {
     /// State passed to WASM plugins via Store<HostState>.
-    /// Phase 1: just plugin name for log prefix.
+    /// Contains WASI context (wasm32-wasip2 components always import basic WASI)
+    /// and plugin name for log prefix.
     pub struct HostState {
         pub plugin_name: String,
+        pub wasi: wasmtime_wasi::WasiCtx,
+        pub wasi_table: wasmtime::component::ResourceTable,
+    }
+
+    // WasiView is required for wasmtime-wasi to satisfy WASI imports
+    impl wasmtime_wasi::WasiView for HostState {
+        fn ctx(&mut self) -> wasmtime_wasi::WasiCtxView<'_> {
+            wasmtime_wasi::WasiCtxView {
+                ctx: &mut self.wasi,
+                table: &mut self.wasi_table,
+            }
+        }
     }
 
     wasmtime::component::bindgen!({
@@ -176,6 +189,13 @@ impl PluginEngine {
     /// Create a new PluginEngine with host functions registered.
     pub fn new() -> Result<Self> {
         let mut linker = Linker::new(wasm_engine());
+
+        // Add WASI to linker — wasm32-wasip2 components always import basic WASI
+        // (stdio, env, clocks) even for pure-computation code.
+        // Using sync linker — no async runtime.
+        wasmtime_wasi::p2::add_to_linker_sync(&mut linker)?;
+
+        // Add our custom host functions (patina:host/log, etc.)
         bindings::MotherChild::add_to_linker::<HostState, wasmtime::component::HasSelf<HostState>>(
             &mut linker,
             |s| s,
@@ -200,8 +220,13 @@ impl PluginEngine {
         component: &Component,
         manifest: &PluginManifest,
     ) -> Result<Box<dyn crate::mother::MotherChild>> {
+        // Minimal WASI context — no filesystem access, no env inheritance.
+        // Phase 1: plugins are sandboxed to pure computation + host log.
+        let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
         let host_state = HostState {
             plugin_name: manifest.name.clone(),
+            wasi,
+            wasi_table: wasmtime::component::ResourceTable::new(),
         };
         let mut store = Store::new(wasm_engine(), host_state);
 
