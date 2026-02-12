@@ -14,7 +14,8 @@ keywords = ["ai", "development", "patterns", "context", "embeddings"]
 categories = ["command-line-utilities", "development-tools"]
 
 [features]
-default = []
+default = ["bundled-doctor"]
+bundled-doctor = []  # Compiled-in doctor fallback — disable for smaller binary (WASM-only doctor)
 dev = []  # Developer commands - not included in user builds
 
 [dependencies]

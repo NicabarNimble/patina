@@ -1146,7 +1146,39 @@ fn main() -> Result<()> {
             }
         },
         Some(Commands::Doctor { json }) => {
-            let exit_code = commands::doctor::execute(json)?;
+            let mut args = Vec::new();
+            if json {
+                args.push("--json".to_string());
+            }
+
+            // Try WASM plugin first
+            let plugin_wasm = patina::paths::plugin::plugins_dir().join("patina-doctor.wasm");
+            let plugin_toml = patina::paths::plugin::plugins_dir().join("patina-doctor.toml");
+
+            let exit_code = if plugin_wasm.exists() {
+                // Load manifest if present, check capabilities
+                if plugin_toml.exists() {
+                    let manifest = patina::plugin::PluginEngine::load_manifest(&plugin_toml)?;
+                    patina::plugin::PluginEngine::check_capabilities(&manifest)?;
+                }
+                let engine = patina::plugin::CommandEngine::new()?;
+                let wasm_bytes = std::fs::read(&plugin_wasm)?;
+                let component = engine.load_component(&wasm_bytes)?;
+                engine.run_command(&component, "doctor", &args)?
+            } else {
+                // Fall back to compiled-in doctor
+                #[cfg(feature = "bundled-doctor")]
+                {
+                    commands::doctor::execute(json)?
+                }
+                #[cfg(not(feature = "bundled-doctor"))]
+                {
+                    eprintln!("Doctor plugin not installed.");
+                    eprintln!("Install: cp patina_doctor.wasm {}", plugin_wasm.display());
+                    1
+                }
+            };
+
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
