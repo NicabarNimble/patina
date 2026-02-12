@@ -111,6 +111,12 @@ enum Commands {
         json: bool,
     },
 
+    /// Manage WASM plugins
+    Plugin {
+        #[command(subcommand)]
+        command: PluginCommands,
+    },
+
     /// Manage project versioning (semver: MAJOR.MINOR.PATCH)
     Version {
         #[command(subcommand)]
@@ -873,6 +879,12 @@ enum BumpType {
     Patch,
 }
 
+#[derive(Subcommand)]
+enum PluginCommands {
+    /// List installed plugins
+    List,
+}
+
 fn main() -> Result<()> {
     // Run migrations early (before any command)
     patina::migration::migrate_if_needed();
@@ -1183,6 +1195,9 @@ fn main() -> Result<()> {
                 std::process::exit(exit_code);
             }
         }
+        Some(Commands::Plugin { command }) => match command {
+            PluginCommands::List => commands::plugin::execute_list()?,
+        },
         Some(Commands::Repo {
             command,
             url,
