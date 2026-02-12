@@ -1,11 +1,12 @@
 //! Plugin engine — shared wasmtime infrastructure for WASM plugins.
 //!
-//! PluginEngine holds the wasmtime Engine singleton and Linker.
-//! Mother uses it for resident daemon children. CLI uses it for
-//! one-shot command plugins. Same WASM loading, same capability
-//! grants, same manifest format — different lifecycles.
+//! Two engines for two worlds:
+//! - `PluginEngine` — mother-child world (daemon resident children)
+//! - `CommandEngine` — command world (one-shot CLI plugins, no daemon)
+//!
+//! Both share the process-wide wasmtime::Engine singleton.
 //!
 //! See: layer/surface/build/feat/plugin-system/SPEC.md
 
 mod internal;
-pub use internal::{PluginEngine, PluginManifest, PluginProvides};
+pub use internal::{CommandEngine, PluginEngine, PluginManifest, PluginProvides};
