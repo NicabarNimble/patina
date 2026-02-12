@@ -6,7 +6,7 @@ created: 2026-02-11
 revised: 2026-02-11
 sessions:
   origin: 20260211-125648
-  amended: [20260211-133159, 20260211-143337]
+  amended: [20260211-133159, 20260211-143337, 20260211-185411]
   research: [20260205-102402, 20260205-115835, 20260205-130049]
 blocked_by: []
 blocks: []
@@ -33,7 +33,7 @@ beliefs:
   - mother-is-the-daemon
   - dependable-rust
 references:
-  - "wasmtime v43 (Bytecode Alliance)"
+  - "wasmtime v41 (Bytecode Alliance)"
   - "zed-industries/zed extension system (wasmtime 33, 77 WIT files)"
   - "WIT Component Model"
   - "tree-sitter WASM grammars"
@@ -43,7 +43,7 @@ references:
 
 # feat: Plugin System
 
-> wasmtime v43 + WIT Component Model. Synchronous. Separate worlds.
+> wasmtime v41 + WIT Component Model. Synchronous. Separate worlds.
 > MotherChild becomes the first WASM plugin. PluginEngine is the shared
 > runtime. Mother uses it for daemon children. CLI uses it for one-shot
 > commands. Grammars come last.
@@ -85,34 +85,55 @@ Specs not consumed after this build completes are candidates for archival.
 
 ## Solution
 
-### Runtime: wasmtime v43 + WIT Component Model
+### Runtime: wasmtime v41 + WIT Component Model
 
-**Version:** Pin `wasmtime = "=43"` and `wasmtime-wasi = "=43"`. wasmtime
-releases major versions every ~3 months. Pin exact major, update deliberately.
-Zed uses v33 — we go latest since we have no legacy to support.
+**Version:** Pin `wasmtime = "=41"`. wasmtime releases major versions every
+~3 months. Pin exact major, update deliberately. Zed uses v33 — we go latest
+since we have no legacy to support. (Originally planned v43 but latest on
+crates.io is v41.0.3 as of 2026-02-11.)
 
-**Minimum Rust:** 1.91.0 (wasmtime v43 requirement). Our current toolchain
+**Minimum Rust:** 1.90.0 (wasmtime v41 requirement). Our current toolchain
 supports this.
 
 **Not Extism.** wasmtime is production-proven (Zed, Fastly, Fermyon), supports
 WIT Component Model for typed interfaces, and the Bytecode Alliance maintains
 it. Decision made in session [[20260205-115835]] after Zed deep dive.
 
-**Cargo.toml features:**
+**Cargo.toml features (Phase 1 — wasmtime only, no wasmtime-wasi):**
 
 ```toml
-wasmtime = { version = "=43", default-features = false, features = [
+wasmtime = { version = "=41", default-features = false, features = [
     "runtime",          # Execution engine (required)
     "cranelift",        # JIT compiler backend
     "component-model",  # WIT Component Model support
 ] }
-wasmtime-wasi = { version = "=43", default-features = false, features = [
-    "preview2",         # WASIp2 for component model
+```
+
+Phase 1's `mother-child` world only imports `patina:host/log`, which we
+implement ourselves on `HostState`. No WASI interfaces needed yet.
+
+**Cargo.toml features (Phase 2+ — add when WASI sandboxing needed):**
+
+```toml
+wasmtime-wasi = { version = "=41", default-features = false, features = [
+    "p2",               # WASIp2 component model (note: enables wasmtime/async
+                        # Cargo feature at compile time, but this does NOT force
+                        # async runtime — use add_to_linker_sync())
 ] }
 ```
 
+**Async Cargo feature vs runtime clarification:** wasmtime-wasi's `p2` feature
+enables `wasmtime/async` as a Cargo feature (compile-time gate). This makes
+async APIs *available* but does NOT force `Config::async_support(true)`. The
+default is `async_support(false)` — sync APIs work fine. Use
+`wasmtime_wasi::p2::add_to_linker_sync()` when WASI is added. The `async`
+Cargo feature adds `wasmtime-fiber` to the dep tree (some compile cost) but
+zero runtime impact.
+
 **Features we do NOT enable:**
-- `async` — per [[sync-first]], no async infection. See Threading Model below.
+- `async` (on wasmtime itself) — per [[sync-first]], we never call
+  `Config::async_support(true)`. The `async` Cargo feature pulled in
+  transitively by wasmtime-wasi `p2` is acceptable — it's compile-time only.
 - `cache` — incremental compilation cache. Add later if cold start is too slow.
 - `demangle` — nice for debugging stack traces, add if needed.
 
@@ -458,7 +479,7 @@ The WASI context maps `/work/` in the plugin's virtual filesystem to this
 real path. Plugins cannot escape their sandbox.
 
 ```rust
-// Host sets up WASI context per plugin
+// Host sets up WASI context per plugin (Phase 2+ — requires wasmtime-wasi)
 let wasi = WasiCtxBuilder::new()
     .preopened_dir(&plugin_work_dir, "/work", DirPerms::all(), FilePerms::all())?
     .build();
@@ -699,7 +720,7 @@ relevant in Phase 2+ when extracting existing commands.
 
 ### Build Steps
 
-1. Add `wasmtime`, `wasmtime-wasi` to `Cargo.toml` with exact features
+1. Add `wasmtime` to `Cargo.toml` with exact features (wasmtime-wasi deferred to Phase 2+)
 2. Create `wit/host.wit` — `patina:host@0.1.0` with `log` interface
 3. Create `wit/mother-child.wit` — `patina:mother-child@0.1.0` world
 4. Create `src/plugin/mod.rs` — PluginEngine public interface
@@ -864,11 +885,18 @@ is lifecycle: resident vs one-shot. `patina doctor` works without daemon.
 
 **Origin:** Session [[20260211-133159]].
 
-### 3. Sync-first, no async feature
+### 3. Sync-first, no async runtime
 
-wasmtime without `async` feature. `std::thread::scope` for plugin calls.
-Plugins see sync APIs. Host uses blocking I/O (reqwest blocking already in
-tree). Escalation path to contained tokio only if needed.
+wasmtime without `Config::async_support(true)`. `std::thread::scope` for
+plugin calls. Plugins see sync APIs. Host uses blocking I/O (reqwest blocking
+already in tree). Escalation path to contained tokio only if needed.
+
+**Clarification (session [[20260211-185411]]):** The `async` **Cargo feature**
+and `Config::async_support(true)` **runtime setting** are distinct.
+wasmtime-wasi `p2` enables the async Cargo feature (compile-time), but we
+never call `async_support(true)` (runtime). Sync APIs work fine with the
+async feature compiled in. Phase 1 avoids this entirely by not using
+wasmtime-wasi — we implement `patina:host/log` ourselves.
 
 **Origin:** Session [[20260205-115835]], [[sync-first]] belief, No Boilerplate video.
 
@@ -879,12 +907,16 @@ Oracle plugins can't see HTTP. Grammar plugins can't see eventlog.
 
 **Origin:** Session [[20260205-115835]], [[separate-worlds-for-isolation]] belief.
 
-### 5. wasmtime v43, pinned exact
+### 5. wasmtime v41, pinned exact
 
-Latest stable. Pin `=43`. Update deliberately. Zed is on 33 but we have no
-legacy. Minimum Rust 1.91.0.
+Latest stable as of 2026-02-11 is v41.0.3. Pin `=41`. Update deliberately.
+Zed is on 33 but we have no legacy. Minimum Rust 1.90.0. Originally planned
+v43 but it doesn't exist on crates.io yet. wasmtime-wasi deferred to Phase 2+
+(feature name is `p2`, not `preview2` — the `preview2` module was promoted to
+crate root in wasmtime-wasi v22+).
 
 **Origin:** Session [[20260211-143337]] research.
+**Amended:** Session [[20260211-185411]] — version corrected, wasmtime-wasi deferred.
 
 ### 6. `wasmtime::component::bindgen!` host, `wit-bindgen` guest
 
@@ -940,7 +972,9 @@ Per [[patina-identity]] "What Patina IS NOT":
 - **adapter.wit** — adapters stay compiled-in for now. Mother may manage them later.
 - **patina-work plugin** — beads-like work tracking is a future plugin, not this spec.
 - **Agent system** — per [[agents-and-yolo]], defer indefinitely.
-- **Async wasmtime** — per [[sync-first]], no async feature. Ever.
+- **Async wasmtime runtime** — per [[sync-first]], never call
+  `Config::async_support(true)`. The `async` Cargo feature may be compiled in
+  transitively (via wasmtime-wasi `p2`) but that's compile-time only.
 - **Directory-versioned WIT** — start with package versions. Add Zed-style
   `since_v*` directories when backward compatibility requires it.
 
@@ -961,3 +995,4 @@ Per [[patina-identity]] "What Patina IS NOT":
 | 2026-02-11 | draft | Created from bible session. Consumes from 5 frozen specs. Concrete 5-phase build with grammars first. |
 | 2026-02-11 | amended | Session [[20260211-133159]]: Reordered phases — MotherChild first, grammars last. Architecture changed to Option C (shared PluginEngine). Rationale: grammars have highest coupling/regression risk. |
 | 2026-02-11 | ready | Session [[20260211-143337]]: Full spec lockdown. Resolved all open questions. Pinned wasmtime v43 (sync, no async feature). Locked threading model (scoped threads). Locked WIT definitions (host.wit, mother-child.wit). Locked models child scope (path resolution only). Locked file paths, struct shapes, bindgen strategy. Incorporated all research from sessions [[20260205-102402]], [[20260205-115835]], [[20260205-130049]]. All 14 beliefs linked. |
+| 2026-02-11 | amended | Session [[20260211-185411]]: Version corrected v43→v41 (v43 doesn't exist on crates.io, latest is 41.0.3). wasmtime-wasi deferred to Phase 2+ — Phase 1 mother-child world only imports patina:host/log (self-implemented, no WASI needed). Feature name corrected preview2→p2. Clarified async Cargo feature vs async_support(true) runtime distinction. Minimum Rust corrected 1.91→1.90. |
