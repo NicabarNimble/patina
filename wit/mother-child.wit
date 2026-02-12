@@ -34,7 +34,14 @@ world mother-child {
     /// Health check — Mother calls on heartbeat
     export health: func() -> child-health;
 
-    /// Handle a routed request
+    /// Handle a routed request.
+    ///
+    /// String dispatch is intentional. The world boundary (mother-child vs
+    /// command vs oracle) provides type safety — capability isolation. Within
+    /// a world, children negotiate payload shapes by JSON convention. This
+    /// avoids coupling the WIT definition to each child's action set and
+    /// keeps the interface stable as children evolve. See [[plugin-system]]
+    /// spec: "Design decision: String dispatch within worlds is intentional."
     export handle: func(action: string, payload: string) -> result<string, string>;
 
     /// Heartbeat tick — return toy requests as JSON list
