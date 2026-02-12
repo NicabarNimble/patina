@@ -207,6 +207,9 @@ impl PluginEngine {
 
         let instance = bindings::MotherChild::instantiate(&mut store, component, &self.linker)?;
 
+        // Initialize the plugin (must be called before any other export)
+        instance.call_init(&mut store)?;
+
         // Get the child name from the WASM module
         let name = instance.call_name(&mut store)?;
 

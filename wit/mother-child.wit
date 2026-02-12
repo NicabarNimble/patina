@@ -19,6 +19,9 @@ world mother-child {
         args: list<string>,
     }
 
+    /// Initialize plugin (host calls first, before any other export)
+    export init: func();
+
     /// Plugin identity
     export name: func() -> string;
 
