@@ -1,0 +1,12 @@
+[plugin]
+name = "patina-repos"
+version = "0.1.0"
+description = "Reference repository freshness monitoring for Mother daemon"
+world = "mother-child"
+patina_min = "0.17.0"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "repos"
