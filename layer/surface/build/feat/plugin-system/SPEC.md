@@ -988,6 +988,62 @@ Per [[patina-identity]] "What Patina IS NOT":
 
 ---
 
+## Discoveries (pushed from audit)
+
+Pushed from [[plugin-system-audit-remediation]] per [[specs-push-discoveries-outbound]].
+Source: `layer/surface/reports/audit/2026-02-12-plugin-system-phase1.md`
+
+### Phase 2: Move WIT types outside world block
+
+**Audit ref:** 1.3 (minor)
+
+`child-health` and `toy` are defined inside `world mother-child {}` in
+`wit/mother-child.wit`. Types inside a world are scoped to that world and
+cannot be imported by other worlds. When Phase 2 defines `wit/command.wit`,
+the `command` world may need `child-health`. Move types outside the world
+block before defining new worlds.
+
+### Phase 2+: Re-entrancy invariant for host functions
+
+**Audit ref:** 2.5 (minor)
+
+The store Mutex is held during WASM calls. If a future host function (beyond
+`patina:host/log`) tries to acquire the store Mutex or call WASM methods on
+the same instance, it will deadlock. When adding `patina:host/layer`,
+`patina:host/database`, or `patina:host/eventlog` host functions, document
+and enforce this invariant:
+
+> Host function implementations MUST NOT acquire the store Mutex or call
+> WASM methods on the same instance.
+
+### Phase 2: ChildHealth WIT type needs reason string
+
+**Audit ref:** 3.3 (important)
+
+The WIT `child-health` enum is `{ healthy, degraded, unhealthy }` — no reason
+string. The Rust `ChildHealth` has `Degraded(String)` and `Unhealthy(String)`.
+The WasmChild adapter hardcodes "degraded"/"unhealthy" as the reason, losing
+diagnostic information. When revising WIT for Phase 2, change to:
+
+```wit
+record child-health {
+    status: health-status,
+    reason: option<string>,
+}
+enum health-status { healthy, degraded, unhealthy }
+```
+
+### Future: static mut deprecated in Rust 2024 edition
+
+**Audit ref:** 2.3 (minor)
+
+`patina-plugin-api/src/lib.rs` uses `static mut PLUGIN` for the guest-side
+singleton. This is correct for WASM (single-threaded) but `static mut` is
+deprecated in Rust 2024 edition. When upgrading from edition 2021, replace
+with `UnsafeCell<Option<Box<dyn MotherChildPlugin>>>` or equivalent.
+
+---
+
 ## Status Log
 
 | Date | Status | Note |
@@ -996,3 +1052,4 @@ Per [[patina-identity]] "What Patina IS NOT":
 | 2026-02-11 | amended | Session [[20260211-133159]]: Reordered phases — MotherChild first, grammars last. Architecture changed to Option C (shared PluginEngine). Rationale: grammars have highest coupling/regression risk. |
 | 2026-02-11 | ready | Session [[20260211-143337]]: Full spec lockdown. Resolved all open questions. Pinned wasmtime v43 (sync, no async feature). Locked threading model (scoped threads). Locked WIT definitions (host.wit, mother-child.wit). Locked models child scope (path resolution only). Locked file paths, struct shapes, bindgen strategy. Incorporated all research from sessions [[20260205-102402]], [[20260205-115835]], [[20260205-130049]]. All 14 beliefs linked. |
 | 2026-02-11 | amended | Session [[20260211-185411]]: Version corrected v43→v41 (v43 doesn't exist on crates.io, latest is 41.0.3). wasmtime-wasi deferred to Phase 2+ — Phase 1 mother-child world only imports patina:host/log (self-implemented, no WASI needed). Feature name corrected preview2→p2. Clarified async Cargo feature vs async_support(true) runtime distinction. Minimum Rust corrected 1.91→1.90. |
+| 2026-02-12 | discoveries | Session [[20260212-075642]]: Full WASM audit completed. 4 Phase 2+ discoveries pushed inbound from [[plugin-system-audit-remediation]]: WIT types inside world block (Phase 2), re-entrancy invariant (Phase 2+), ChildHealth reason string (Phase 2), static mut edition migration (future). See audit report: `layer/surface/reports/audit/2026-02-12-plugin-system-phase1.md`. |
