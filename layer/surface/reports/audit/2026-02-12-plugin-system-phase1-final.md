@@ -6,6 +6,7 @@ spec: layer/surface/build/feat/plugin-system/SPEC.md
 related: layer/surface/build/feat/mother-repos/SPEC.md
 previous_audit: layer/surface/reports/audit/2026-02-12-plugin-system-phase1.md
 remediation: layer/surface/build/fix/plugin-system-audit-remediation/SPEC.md
+remediation_spec: layer/surface/build/fix/plugin-system-final-audit-fixes/SPEC.md
 session: 20260212-093831
 created: 2026-02-12
 status: complete
