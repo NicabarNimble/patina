@@ -143,10 +143,10 @@ The staleness threshold is hardcoded (24 hours) in Phase 1. No config.
 
 ### Phase 1 Acceptance Criteria
 
-- [ ] Repos child implements MotherChild as WASM plugin
-- [ ] `tick()` detects stale repos and requests re-index toys
-- [ ] Toy system proven end-to-end (child requests work, Mother runs it)
-- [ ] At least one repos child test in `cargo test`
+- [x] Repos child implements MotherChild as WASM plugin — `patina-plugin-repos/` (178KB)
+- [x] `tick()` detects stale repos and requests re-index toys — pull + scrape toys
+- [x] Toy system proven end-to-end (child requests work, Mother runs it) — 4 tests
+- [x] At least one repos child test in `cargo test` — 4 tests in `plugin::internal::tests`
 
 ### What Phase 1 Does NOT Do
 
