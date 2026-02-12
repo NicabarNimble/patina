@@ -582,8 +582,8 @@ Per [[coupling-is-complexity]]: typed payloads couple the WIT definition
 to each child's implementation. String dispatch keeps the WIT stable as
 children evolve their action sets.
 
-**Document this in code:** Add a comment to `wit/mother-child.wit` above
-the `handle` export explaining this design choice.
+**Resolved:** Comment added to `wit/mother-child.wit` above `handle` export
+(F5a, session [[20260212-102737]], commit [[4023de3e]]).
 
 ### Design decision: tick(&mut self) vs handle(&self) split is intentional
 
@@ -611,8 +611,8 @@ of the adapter pattern, not a flaw in the trait.
 Making tick() take `&self` would push interior mutability into every child
 implementation. The current split lets compiled-in children stay simple.
 
-**Document this in code:** Add a comment to `src/mother/child.rs` above
-`tick()` explaining why it takes `&mut self` while `handle()` takes `&self`.
+**Resolved:** Comment added to `src/mother/child.rs` above `tick()`
+(F5b, session [[20260212-102737]], commit [[4023de3e]]).
 
 ### Pre-community: Toy trust model needs capability gating
 
@@ -655,8 +655,10 @@ or in a new `check_toy()` function. Unrecognized commands are rejected
 and logged. This preserves [[two-layer-capability-grants]]: manifest
 declares, host decides.
 
-**Not needed for Phase 2** (first-party extraction only). Required before
-any third-party or community plugin mechanism.
+**Resolved:** Built in fix spec [[plugin-system-final-audit-fixes]] F4 —
+`[capabilities.toys].commands` in plugin.toml, enforcement in `WasmChild::tick()`,
+repos plugin declares `["git", "patina"]`. Session [[20260212-102737]],
+commit [[a75df13f]]. Per [[no-deferrals-without-blockers]].
 
 ### Document: PluginEngine is create-once
 
@@ -671,36 +673,30 @@ but the Linker setup runs on each `PluginEngine::new()` call.
 across the application. Patina's usage is de facto singleton — `daemon.rs`
 creates one and passes by reference. But the API allows creating multiple.
 
-**Fix:** Add a doc comment to `PluginEngine::new()`:
+**Resolved:** Doc comment added to `PluginEngine::new()` in
+`src/plugin/internal.rs` (F5c, session [[20260212-102737]], commit
+[[4023de3e]]). Phase 2 (CLI command plugins) will need to decide whether
+to share the daemon's PluginEngine or create a separate one for one-shot
+CLI use — this remains an open Phase 2 question.
 
-```rust
-/// Create a new PluginEngine with host functions registered.
-///
-/// PluginEngine should be created once per process and reused for all
-/// plugin loading. The underlying wasmtime::Engine is a process singleton,
-/// but the Linker setup (WASI + host functions) runs on each call.
-```
-
-Phase 2 (CLI command plugins) will need to decide whether to share the
-daemon's PluginEngine or create a separate one for one-shot CLI use.
-
-### Immediate: Fix spec F0-F3
+### COMPLETE: Fix spec F0-F5
 
 **Source:** Final audit + review, session [[20260212-093831]]
-**Scope:** Immediate — before Phase 2 work begins
+**Resolved:** Session [[20260212-102737]], fix spec marked complete.
 
-Fix spec: `layer/surface/build/fix/plugin-system-final-audit-fixes/SPEC.md`
+All 6 fixes built in prescribed order (F5→F0→F3→F1→F4→F2):
 
-4 concrete code fixes:
+| Fix | What | Commit |
+|-----|------|--------|
+| F5 | Design decision doc comments (3 files) | [[4023de3e]] |
+| F0 | Eliminate `unsafe impl Sync` — WasmChildInner behind Mutex | [[c1ede205]] |
+| F3 | WIT consistency CI check in pre-push | [[0a5adf39]] |
+| F1 | Registry RwLock poison recovery (4 sites) | [[3808fa9a]] |
+| F4 | Toy capability gating via manifest allowlist | [[a75df13f]] |
+| F2 | Toy dedup with spawn failure self-healing | [[95cdc6d1]] |
 
-| Fix | What | Files |
-|-----|------|-------|
-| F0 | Eliminate `unsafe impl Sync` — instance behind Mutex with store | `src/plugin/internal.rs` |
-| F1 | Registry RwLock poison recovery (4 sites) | `src/commands/mother/registry.rs` |
-| F2 | Toy dedup with spawn failure self-healing | `src/commands/mother/daemon.rs` |
-| F3 | WIT consistency CI check in pre-push | `resources/git/pre-push-checks.sh` |
-
-Build order: F0 → F3 → F1 → F2. See fix spec for full details.
+19 plugin tests, all pre-push checks pass. See complete fix spec:
+`layer/surface/build/fix/plugin-system-final-audit-fixes/SPEC.md`
 
 ---
 
@@ -718,3 +714,4 @@ Build order: F0 → F3 → F1 → F2. See fix spec for full details.
 | 2026-02-12 | extracted | Session [[20260212-083400]]: Extracted Phases 3-5 into own specs — spec was too large for a single document. Phase 3 → [[plugin-command-extractions]] (v0.18.0), Phase 4 → [[plugin-oracle-scraper]] (v0.19.0), Phase 5 → [[plugin-grammars]] (v0.20.0). Build order preserved via blocked_by chains. This spec now owns Phases 1-2 only (runtime + first extractions). Resolved Decisions and Discoveries sections remain here as they are runtime-level concerns. |
 | 2026-02-12 | phase-1-complete | Session [[20260212-091430]]: Repos child built and tested. [[mother-repos]] promoted to `ready` with Phase 1 scope (host-fed state, no filesystem). `patina-plugin-repos/` crate: 178KB WASM, handle() for report_repo + check_freshness, tick() returns pull + scrape toys for stale repos. 4 integration tests prove toy system end-to-end. All Phase 1 exit criteria (original + repos child) now met. Phase 1 complete. |
 | 2026-02-12 | discoveries | Session [[20260212-093831]]: Final audit (0 critical) + post-audit design review with Zed context. 5 discoveries pushed: **(1)** String dispatch in handle() is intentional — world boundary = type safety, string dispatch within world = low coupling (contrasted with Zed's single-world typed approach). **(2)** tick(&mut self) vs handle(&self) split is intentional — compiled-in children benefit from direct mutation, WASM children pay adapter cost (Zed has no tick/heartbeat equivalent). **(3)** Toy trust model needs capability gating before community plugins — Zed enforces per-command grants, Patina toys bypass capability system. **(4)** PluginEngine is create-once — document like Zed's Arc-shared WasmHost. **(5)** Fix spec [[plugin-system-final-audit-fixes]] created: F0 unsafe Sync elimination, F1 registry poison, F2 toy dedup, F3 WIT CI check. See final audit: `layer/surface/reports/audit/2026-02-12-plugin-system-phase1-final.md`. |
+| 2026-02-12 | fixes-complete | Session [[20260212-102737]]: All 5 post-audit discoveries resolved. Fix spec [[plugin-system-final-audit-fixes]] completed: 6 fixes (F0-F5), 19 tests, zero deferrals. Discoveries marked resolved: string dispatch doc (F5a), tick split doc (F5b), PluginEngine doc (F5c), toy capability gating (F4), fix spec F0-F3 expanded to F0-F5. Discovery: guest crate wit/ dirs are symlinks to canonical wit/, not copies. Phase 2 open items remaining: WIT types outside world block, re-entrancy invariant, ChildHealth reason string, PluginEngine sharing for CLI-direct loading. |
