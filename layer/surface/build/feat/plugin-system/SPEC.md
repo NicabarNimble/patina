@@ -102,54 +102,20 @@ supports this.
 WIT Component Model for typed interfaces, and the Bytecode Alliance maintains
 it. Decision made in session [[20260205-115835]] after Zed deep dive.
 
-**Cargo.toml features (Phase 1 — wasmtime only, no wasmtime-wasi):**
-
-```toml
-wasmtime = { version = "=41", default-features = false, features = [
-    "runtime",          # Execution engine (required)
-    "cranelift",        # JIT compiler backend
-    "component-model",  # WIT Component Model support
-] }
-```
-
-Phase 1's `mother-child` world only imports `patina:host/log`, which we
-implement ourselves on `HostState`. No WASI interfaces needed yet.
-
-**Cargo.toml features (Phase 2+ — add when WASI sandboxing needed):**
-
-```toml
-wasmtime-wasi = { version = "=41", default-features = false, features = [
-    "p2",               # WASIp2 component model (note: enables wasmtime/async
-                        # Cargo feature at compile time, but this does NOT force
-                        # async runtime — use add_to_linker_sync())
-] }
-```
+See `Cargo.toml` for actual wasmtime feature configuration. Key points:
+wasmtime-wasi IS required in Phase 1 (wasm32-wasip2 always imports WASI —
+see belief [[wasm32-wasip2-always-imports-wasi]] and status log amendment).
 
 **Async Cargo feature vs runtime clarification:** wasmtime-wasi's `p2` feature
-enables `wasmtime/async` as a Cargo feature (compile-time gate). This makes
-async APIs *available* but does NOT force `Config::async_support(true)`. The
-default is `async_support(false)` — sync APIs work fine. Use
-`wasmtime_wasi::p2::add_to_linker_sync()` when WASI is added. The `async`
-Cargo feature adds `wasmtime-fiber` to the dep tree (some compile cost) but
-zero runtime impact.
+enables `wasmtime/async` as a Cargo feature (compile-time only). We never call
+`Config::async_support(true)` at runtime. Use `add_to_linker_sync()`.
 
-**Features we do NOT enable:**
-- `async` (on wasmtime itself) — per [[sync-first]], we never call
-  `Config::async_support(true)`. The `async` Cargo feature pulled in
-  transitively by wasmtime-wasi `p2` is acceptable — it's compile-time only.
-- `cache` — incremental compilation cache. Add later if cold start is too slow.
-- `demangle` — nice for debugging stack traces, add if needed.
+**Features we do NOT enable:** `async` (runtime), `cache`, `demangle`.
 
 ### Target: `wasm32-wasip2`
 
 Plugins compile to `wasm32-wasip2` (WASI Preview 2 = Component Model).
-Not `wasm32-wasi` (Preview 1, core modules only).
-Not `wasm32-unknown-unknown` (no WASI, too limited).
-
-```bash
-rustup target add wasm32-wasip2
-cargo build --target wasm32-wasip2 --release
-```
+Not `wasm32-wasi` (Preview 1) or `wasm32-unknown-unknown` (too limited).
 
 ### Architecture: PluginEngine (Option C)
 
@@ -158,97 +124,20 @@ resident daemon children. CLI uses it directly for one-shot command plugins.
 Same WASM loading, same capability grants, same manifest format — different
 lifecycles.
 
-```
-┌───────────────────────────────────────────────────────────┐
-│                     patina (core binary)                   │
-│                                                            │
-│  PluginEngine (shared wasmtime guts)                       │
-│  ├── wasmtime::Engine (singleton via OnceLock)             │
-│  ├── wasmtime::component::Linker<HostState>                │
-│  ├── load_component(path) → Component                     │
-│  ├── instantiate(component, manifest) → instance           │
-│  └── capability_check(manifest, grants) → Result           │
-│                                                            │
-│  Mother daemon                    CLI direct               │
-│  ├── PluginEngine ref             ├── PluginEngine ref     │
-│  ├── ChildRegistry                └── load on demand       │
-│  │   ├── SecretsCacheChild          doctor, eval, yolo     │
-│  │   │   (compiled-in)              run and exit           │
-│  │   └── WasmChild (WASM)                                  │
-│  │       resident, heartbeat                               │
-│  └── daemon-specific:                                      │
-│      graph, cross-project,                                 │
-│      model caching                                         │
-└───────────────────────────────────────────────────────────┘
-        │              │              │
-        ▼              ▼              ▼
-   ┌─────────┐   ┌─────────┐   ┌─────────┐
-   │ children│   │ commands│   │ grammars│
-   │ (.wasm) │   │ (.wasm) │   │ (.wasm) │
-   │         │   │         │   │         │
-   │ models  │   │ doctor  │   │ rust    │
-   │ repos   │   │ yolo    │   │ python  │
-   │         │   │ eval    │   │ go      │
-   │         │   │ report  │   │ ...     │
-   └─────────┘   └─────────┘   └─────────┘
-   Mother-managed  ~/.patina/    ~/.patina/
-   (MotherChild)   plugins/      grammars/
-```
+See `src/plugin/mod.rs` (interface) and `src/plugin/internal.rs` (implementation).
 
-Mother's role is clear per [[mother-is-the-daemon]]: **Mother is the daemon
-that runs long-lived plugins and provides cross-project awareness.** She uses
-the same PluginEngine everyone else does, but adds the resident lifecycle
-(load, tick, health, toys). She's not the gatekeeper for all plugins — she's
-the home for plugins that need to stay alive.
+Mother's role per [[mother-is-the-daemon]]: daemon for long-lived plugins with
+heartbeat lifecycle. CLI plugins don't need Mother running.
 
-CLI plugins don't need Mother running. `patina doctor` works offline and
-daemonless, same as today.
+### Threading Model: Sync-First
 
-### Threading Model: Sync-First with Scoped Threads
+Per [[sync-first]]: plugins see synchronous APIs, always. No async runtime.
+See `src/plugin/internal.rs` for the actual bindgen call (no `async: true`).
 
-Per [[sync-first]] and session [[20260205-115835]] (Zed deep dive + No
-Boilerplate video analysis):
-
-**Plugins see synchronous APIs. Always.**
-
-**Host execution model:** `std::thread::scope` for plugin calls. No async
-feature in wasmtime. No tokio. Preserves borrowing, zero async infection.
-
-```rust
-// Host calls into WASM — synchronous, scoped
-fn call_plugin_handle(
-    store: &mut Store<HostState>,
-    instance: &MotherChildInstance,
-    request: &ChildRequest,
-) -> Result<ChildResponse> {
-    // wasmtime component call is synchronous
-    instance.call_handle(store, &request.action, &request.payload)
-}
-```
-
-**Host functions (host → WASM imports) are also synchronous:**
-
-```rust
-// wasmtime::component::bindgen! WITHOUT async: true
-wasmtime::component::bindgen!({
-    path: "wit/",
-    // NO async: true — everything is sync
-    // NO trappable_imports: true — use Result instead
-});
-```
-
-**If we ever need async I/O in host functions** (e.g., HTTP for forge plugins
-in Phase 4), the escalation path is:
-
-1. **First try:** Blocking I/O in the host function (reqwest blocking client
-   is already in tree). WASM call blocks until I/O completes. Fine for CLI.
-2. **If blocking isn't enough:** Contained tokio runtime (2 threads max) in
-   ONE module (`src/plugin/runtime.rs`). Never export async types. Same
-   pattern as Zed's `gpui_tokio` bridge.
-3. **Never:** `async` feature on wasmtime, tokio in public API, `'static`
-   lifetime infection.
-
-Reference: [[wit-interfaces]] parallelism options table.
+**Async escalation path** (if ever needed for host functions):
+1. Blocking I/O first (reqwest blocking already in tree)
+2. Contained tokio (2 threads, one module) if blocking isn't enough
+3. Never: async wasmtime, tokio in public API
 
 ### Separate Worlds Per Plugin Type
 
@@ -268,227 +157,48 @@ plugins can't see HTTP imports, grammar plugins can't see the eventlog.
 
 ### WIT Package Definitions
 
-Top-level `wit/` directory in the repo root. Package versioning (not directory
-versioning like Zed's `since_v0.x.0/`). Add directory versioning later when
-we need backward compatibility.
+Package versioning (not directory versioning like Zed's `since_v0.x.0/`).
+All WIT files live in `wit/` with deps in `wit/deps/` per WIT convention.
 
-```
-wit/
-├── host.wit           # patina:host@0.1.0 — log, layer, database, eventlog
-├── mother-child.wit   # patina:mother-child@0.1.0 — world definition
-├── command.wit        # patina:command@0.1.0 — world definition (Phase 2)
-├── oracle.wit         # patina:oracle@0.1.0 — world definition (Phase 4)
-└── scraper.wit        # patina:scraper@0.1.0 — world definition (Phase 4)
-```
+Built files:
+- `wit/deps/patina-host/host.wit` — `patina:host@0.1.0` (log interface)
+- `wit/mother-child.wit` — `patina:mother-child@0.1.0` (mother-child world)
 
-**host.wit** (from [[wit-interfaces]], refined for Phase 1):
+Future WIT files (Phase 2+): `command.wit`, `oracle.wit`, `scraper.wit`.
 
-```wit
-package patina:host@0.1.0;
-
-/// Structured logging for plugins
-interface log {
-    /// Log a message at the given level
-    log: func(level: log-level, message: string);
-
-    enum log-level {
-        debug,
-        info,
-        warn,
-        error,
-    }
-}
-
-/// Layer file access for plugins
-interface layer {
-    /// Read a layer file
-    read: func(path: string) -> result<option<string>, string>;
-
-    /// Write a layer file (git-tracked)
-    write: func(path: string, content: string) -> result<_, string>;
-
-    /// List files matching glob in layer
-    glob: func(pattern: string) -> result<list<string>, string>;
-}
-
-/// Database access for plugins (plugin-scoped)
-interface database {
-    /// Execute SQL (CREATE, INSERT, UPDATE, DELETE)
-    execute: func(sql: string, params: list<string>) -> result<u64, string>;
-
-    /// Query SQL (SELECT), returns JSON rows
-    query: func(sql: string, params: list<string>) -> result<string, string>;
-}
-
-/// Eventlog access for plugins
-interface eventlog {
-    /// Emit an event to the eventlog
-    emit: func(event-type: string, data: string) -> result<s64, string>;
-
-    /// Query events by type prefix
-    query: func(type-prefix: string, limit: u32) -> result<list<string>, string>;
-}
-```
-
-**mother-child.wit** (Phase 1):
-
-```wit
-package patina:mother-child@0.1.0;
-
-/// World for Mother daemon children — long-lived, heartbeat, toys
-world mother-child {
-    /// Import host logging
-    import patina:host/log;
-
-    /// Plugin identity
-    export name: func() -> string;
-
-    /// Called when Mother loads this child
-    export on-load: func() -> result<_, string>;
-
-    /// Called when Mother shuts down
-    export on-unload: func();
-
-    /// Health check — Mother calls on heartbeat
-    export health: func() -> child-health;
-
-    /// Handle a routed request
-    export handle: func(action: string, payload: string) -> result<string, string>;
-
-    /// Heartbeat tick — return toy requests as JSON list
-    export tick: func() -> list<toy>;
-}
-
-/// Child health status
-enum child-health {
-    healthy,
-    degraded,
-    unhealthy,
-}
-
-/// Work request from child to Mother
-record toy {
-    name: string,
-    command: string,
-    args: list<string>,
-}
-```
+**Note:** Versioned import syntax is `patina:host/log@0.1.0` (version on
+interface path). Discovered during audit remediation — see status log.
 
 ### Bindgen Strategy
 
-**Host side (patina binary):** `wasmtime::component::bindgen!` macro. Built
-into wasmtime, generates traits we implement. No external `wit-bindgen` crate
-needed on the host.
-
-```rust
-// src/plugin/internal.rs
-wasmtime::component::bindgen!({
-    path: "wit/",
-    world: "mother-child",
-    // Sync — no async: true
-});
-```
-
-This generates:
-- `MotherChild` struct with `instantiate()` and `call_*()` methods
-- `Host` trait for `patina:host/log` that we implement on `HostState`
-- Type mappings for `child-health`, `toy`, etc.
-
-**Guest side (plugin crates):** `wit-bindgen` crate (v0.41). Generates
-guest-side bindings that match the WIT signatures.
-
-```toml
-# patina-plugin-api/Cargo.toml
-[dependencies]
-wit-bindgen = "0.41"
-
-[package.metadata.component]
-target = { path = "../wit" }
-```
-
-This is exactly Zed's pattern: `wasmtime::component::bindgen!` on host,
-`wit-bindgen` on guest.
+Zed's pattern: `wasmtime::component::bindgen!` on host (`src/plugin/internal.rs`),
+`wit-bindgen::generate!` on guest (`patina-plugin-api/src/lib.rs`). See those
+files for actual bindgen configuration.
 
 ### Plugin Manifest (plugin.toml)
 
-```toml
-[plugin]
-name = "patina-models"
-version = "0.1.0"
-description = "Embedding model path resolution for Mother daemon"
-world = "mother-child"          # Which WIT world
-patina_min = "0.17.0"          # Minimum core version
-
-[capabilities]
-# Only what this plugin needs — host checks against granted set
-host_log = true                # Structured logging (always granted)
-
-[provides]
-child = "models"               # Registers as MotherChild with this name
-```
+See `patina-plugin-models/plugin.toml` for the reference manifest format.
+Parsing: `src/plugin/internal.rs` `PluginManifest::from_path()`.
 
 ### Two-Layer Capability Grants
 
-Per [[two-layer-capability-grants]] (learned from Zed's `CapabilityGranter`):
-
-1. **Manifest declares** — plugin.toml `[capabilities]` says what it wants
-2. **Host decides** — PluginEngine checks manifest against user's grant config
-
-```toml
-# ~/.patina/plugin-config/grants.toml
-[patina-models]
-host_log = true
-
-[patina-eval]
-host_database = true
-host_layer = true
-
-[patina-forge-gitlab]
-wasi_http = true          # Network access for GitLab API
-```
-
-Plugins that request capabilities not in the grant config are loaded in
-degraded mode (capabilities denied, plugin notified via on_load error).
-
-Default plugins (shipped with patina) are auto-granted. Third-party plugins
-require explicit grants.
+Per [[two-layer-capability-grants]]: manifest declares, host decides.
+Phase 1: `host_log` auto-granted, all others denied. Future: reads from
+`~/.patina/plugin-config/grants.toml`. See `PluginEngine::check_capabilities()`
+in `src/plugin/internal.rs`.
 
 ### Version In Binary
 
-Per [[version-in-binary]] (learned from Zed): embed the plugin API version
-in the WASM binary at build time. The host reads it to dispatch to the correct
-interface version at load time. `patina-plugin-api` handles this automatically.
-
-```rust
-// patina-plugin-api/src/lib.rs
-#[link_section = ".patina_api_version"]
-static API_VERSION: [u8; 3] = [0, 1, 0]; // major.minor.patch
-```
-
-Host reads this section before instantiation. Version mismatch = fail fast
-with clear error, not runtime crash.
+Per [[version-in-binary]]: API version embedded in WASM binary via link section.
+See `patina-plugin-api/src/lib.rs:16-17`. Host reads before instantiation.
 
 ### WASI Sandboxing
 
-Per [[wasi-sandboxed-filesystem]] (learned from Zed's `path_from_extension()`
-pattern):
-
-Each plugin gets an isolated work directory:
-```
-~/.patina/plugins/{plugin-name}/work/
-```
-
-The WASI context maps `/work/` in the plugin's virtual filesystem to this
-real path. Plugins cannot escape their sandbox.
-
-```rust
-// Host sets up WASI context per plugin (Phase 2+ — requires wasmtime-wasi)
-let wasi = WasiCtxBuilder::new()
-    .preopened_dir(&plugin_work_dir, "/work", DirPerms::all(), FilePerms::all())?
-    .build();
-```
-
-Plugins that don't declare filesystem capabilities get no preopened directories.
+Per [[wasi-sandboxed-filesystem]]: each plugin gets isolated work directory at
+`~/.patina/plugins/{name}/work/`. Plugins that don't declare filesystem
+capabilities get no preopened directories. Phase 1 uses minimal WasiCtx with
+no filesystem access — see `PluginEngine::instantiate_child()` in
+`src/plugin/internal.rs`.
 
 ---
 
@@ -532,194 +242,26 @@ The models child does **NOT** own:
 This is the lowest-coupling starting point. The child imports `patina:host/log`
 only. Future children (repos) will test more capabilities.
 
-### Files Created
+### Implementation (built)
 
-```
-wit/
-├── host.wit                           # patina:host@0.1.0
-└── mother-child.wit                   # patina:mother-child@0.1.0
+All code is built and tested. Key files:
 
-src/plugin/
-├── mod.rs                             # PluginEngine pub interface
-└── internal.rs                        # wasmtime guts, bindgen, loading
+| File | Role |
+|------|------|
+| `src/plugin/mod.rs` | Public interface (dependable-rust pattern) |
+| `src/plugin/internal.rs` | PluginEngine, WasmChild adapter, bindgen, tests |
+| `src/commands/mother/daemon.rs` | WASM child discovery, orphaned .toml diagnostic |
+| `src/commands/mother/registry.rs` | ChildRegistry with duplicate name check |
+| `src/paths.rs` | Plugin path construction (no I/O) |
+| `patina-plugin-api/src/lib.rs` | Guest API, MotherChildPlugin trait, register_plugin! macro |
+| `patina-plugin-models/src/lib.rs` | Models child (resolve_model, model_status) |
+| `patina-plugin-models/plugin.toml` | Reference manifest format |
+| `wit/deps/patina-host/host.wit` | patina:host@0.1.0 (log interface) |
+| `wit/mother-child.wit` | patina:mother-child@0.1.0 (world definition) |
 
-patina-plugin-api/                     # Workspace member — guest bindings
-├── Cargo.toml                         # wit-bindgen, crate-type = ["cdylib"]
-├── src/lib.rs                         # MotherChild trait, register! macro
-└── wit -> ../wit                      # Symlink to shared WIT
-
-patina-plugin-models/                  # Workspace member — first child
-├── Cargo.toml                         # depends on patina-plugin-api
-├── plugin.toml                        # Manifest
-└── src/lib.rs                         # Models child implementation
-```
-
-### Files Modified
-
-```
-Cargo.toml                             # Add wasmtime deps, workspace members
-src/lib.rs                             # pub mod plugin
-src/commands/mother/daemon.rs          # Init PluginEngine, discover WASM children
-src/commands/mother/registry.rs        # WasmChild adapter (Box<dyn MotherChild>)
-src/paths.rs                           # plugin module (plugin dirs, children dir)
-```
-
-### PluginEngine Struct
-
-```rust
-// src/plugin/mod.rs — public interface
-mod internal;
-pub use internal::{PluginEngine, PluginManifest};
-
-// src/plugin/internal.rs — implementation
-use std::path::Path;
-use std::sync::OnceLock;
-use anyhow::Result;
-use wasmtime::{Config, Engine, Store};
-use wasmtime::component::{Component, Linker};
-
-// Generated by wasmtime::component::bindgen!
-// (trait impls for patina:host/log, etc.)
-
-/// Host state passed to WASM via Store<HostState>
-pub(crate) struct HostState {
-    // WASI context (if plugin needs filesystem)
-    // Capability grants
-    // Plugin name (for logging)
-}
-
-/// Shared wasmtime engine — singleton per process.
-/// OnceLock pattern from Zed's wasm_engine().
-fn engine() -> &'static Engine {
-    static ENGINE: OnceLock<Engine> = OnceLock::new();
-    ENGINE.get_or_init(|| {
-        let mut config = Config::new();
-        config.wasm_component_model(true);
-        // NO config.async_support(true) — sync-first
-        Engine::new(&config).expect("failed to create wasmtime engine")
-    })
-}
-
-pub struct PluginEngine {
-    linker: Linker<HostState>,
-}
-
-impl PluginEngine {
-    pub fn new() -> Result<Self>;
-
-    /// Load and parse a plugin manifest
-    pub fn load_manifest(path: &Path) -> Result<PluginManifest>;
-
-    /// Load a WASM component from bytes
-    pub fn load_component(&self, wasm: &[u8]) -> Result<Component>;
-
-    /// Instantiate a MotherChild from WASM component + manifest.
-    /// Returns Box<dyn MotherChild> for ChildRegistry compatibility.
-    pub fn instantiate_child(
-        &self,
-        component: &Component,
-        manifest: &PluginManifest,
-    ) -> Result<Box<dyn patina::mother::MotherChild>>;
-}
-
-#[derive(Debug)]
-pub struct PluginManifest {
-    pub name: String,
-    pub version: String,
-    pub description: String,
-    pub world: String,
-    pub patina_min: String,
-    pub capabilities: Vec<String>,
-    pub provides: PluginProvides,
-}
-
-#[derive(Debug)]
-pub struct PluginProvides {
-    pub child: Option<String>,       // MotherChild name
-    pub commands: Vec<String>,       // CLI commands (Phase 2+)
-}
-```
-
-### ChildRegistry Integration
-
-The registry stays unchanged. WASM children are wrapped in a `WasmChild`
-adapter that implements `MotherChild`:
-
-```rust
-// src/plugin/internal.rs
-
-/// Adapter: wraps a WASM component instance as a MotherChild
-struct WasmChild {
-    name: String,
-    store: Store<HostState>,
-    instance: MotherChildInstance, // Generated by bindgen
-}
-
-impl MotherChild for WasmChild {
-    fn name(&self) -> &str { &self.name }
-
-    fn on_load(&mut self, host: &dyn MotherHost) -> Result<()> {
-        self.instance.call_on_load(&mut self.store)
-            .map_err(|e| anyhow::anyhow!("WASM on_load failed: {}", e))
-    }
-
-    fn health(&self) -> ChildHealth {
-        // call_health requires &mut store — use RefCell or similar
-        // This is an implementation detail
-    }
-
-    fn handle(&self, request: &ChildRequest) -> Result<ChildResponse> {
-        let payload_json = serde_json::to_string(&request.payload)?;
-        let result = self.instance.call_handle(
-            &mut self.store, &request.action, &payload_json
-        )?;
-        Ok(ChildResponse {
-            payload: serde_json::from_str(&result)?,
-        })
-    }
-
-    fn tick(&mut self) -> Vec<Toy> {
-        // call_tick, deserialize toys
-    }
-}
-```
-
-**Daemon startup** (`src/commands/mother/daemon.rs`):
-
-```rust
-let mut registry = ChildRegistry::new();
-
-// Compiled-in children (always available)
-registry.register(Box::new(SecretsCacheChild::new()));
-
-// WASM children (discovered from ~/.patina/children/)
-match PluginEngine::new() {
-    Ok(plugin_engine) => {
-        let children_dir = paths::plugin::children_dir();
-        if children_dir.exists() {
-            for entry in std::fs::read_dir(&children_dir)?.flatten() {
-                let path = entry.path();
-                if path.extension() == Some("wasm".as_ref()) {
-                    let manifest_path = path.with_extension("toml");
-                    match load_wasm_child(&plugin_engine, &path, &manifest_path) {
-                        Ok(child) => {
-                            eprintln!("[mother] loaded WASM child: {}", child.name());
-                            registry.register(child);
-                        }
-                        Err(e) => eprintln!("[mother] failed to load {}: {}", path.display(), e),
-                    }
-                }
-            }
-        }
-    }
-    Err(e) => eprintln!("[mother] plugin engine init failed: {} (WASM children disabled)", e),
-}
-```
-
-**No fallback for Phase 1.** The models child is new — it doesn't exist as
-compiled-in code today. If WASM loading fails, Mother starts without it
-(exactly like today — Mother has zero model children). Fallback becomes
-relevant in Phase 2+ when extracting existing commands.
+**No fallback for Phase 1.** Models child is new — if WASM loading fails,
+Mother starts without it. Fallback becomes relevant in Phase 2+ when
+extracting existing commands.
 
 ### Build Steps
 
