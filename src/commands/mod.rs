@@ -3,6 +3,7 @@ pub mod assay;
 pub mod belief;
 pub mod bench;
 pub mod context;
+#[cfg(feature = "bundled-doctor")]
 pub mod doctor;
 pub mod eval;
 pub mod init;
@@ -11,6 +12,7 @@ pub mod model;
 pub mod mother;
 pub mod oxidize;
 pub mod persona;
+pub mod plugin;
 pub mod rebuild;
 pub mod repo;
 pub mod report;

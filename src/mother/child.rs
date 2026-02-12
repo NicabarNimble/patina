@@ -47,6 +47,16 @@ pub trait MotherChild: Send + Sync {
     fn handle(&self, request: &ChildRequest) -> Result<ChildResponse>;
 
     /// Heartbeat tick — child checks its own state, may request toys.
+    ///
+    /// Takes &mut self (not &self like handle) because the heartbeat loop
+    /// is single-threaded and compiled-in children benefit from direct
+    /// mutation without interior mutability overhead. WASM children pay an
+    /// adapter cost (Mutex) but that's inherent to wasmtime's &mut Store
+    /// requirement, not a flaw in the trait design.
+    ///
+    /// Zed has no tick/heartbeat equivalent — their extensions are purely
+    /// event-driven. Our daemon heartbeat model justifies this split.
+    ///
     /// Default: no-op (children that don't need periodic checks skip this).
     fn tick(&mut self) -> Vec<Toy> {
         vec![]

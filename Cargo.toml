@@ -1,11 +1,11 @@
 [workspace]
-members = [".", "patina-metal"]
+members = [".", "patina-metal", "patina-plugin-api", "patina-plugin-models", "patina-plugin-repos", "patina-command-api", "patina-doctor"]
 exclude = ["layer/dust"]
 resolver = "2"
 
 [package]
 name = "patina-ai"
-version = "0.16.2"
+version = "0.17.0"
 edition = "2021"
 license = "MIT"
 description = "Context orchestration for AI development - captures and evolves patterns over time"
@@ -14,7 +14,8 @@ keywords = ["ai", "development", "patterns", "context", "embeddings"]
 categories = ["command-line-utilities", "development-tools"]
 
 [features]
-default = []
+default = ["bundled-doctor"]
+bundled-doctor = []  # Compiled-in doctor fallback — disable for smaller binary (WASM-only doctor)
 dev = []  # Developer commands - not included in user builds
 
 [dependencies]
@@ -88,6 +89,16 @@ usearch = "2.21"                                                     # Fast vect
 safetensors = "0.7"                                                  # Standard weight format (MLX-compatible, HuggingFace)
 zerocopy = "0.7"                                                     # Efficient vector byte conversion
 regex = "1.12.2"
+
+# WASM plugin runtime
+wasmtime = { version = "=41", default-features = false, features = [
+    "runtime",          # Execution engine (required)
+    "cranelift",        # JIT compiler backend
+    "component-model",  # WIT Component Model support
+] }
+# WASI support — wasm32-wasip2 components always import basic WASI (stdio, env, clocks)
+# even for pure-computation code. p2 feature = WASIp2 component model.
+wasmtime-wasi = { version = "=41", default-features = false, features = ["p2"] }
 
 # Secrets v2 - age encryption and macOS Keychain
 age = { version = "0.11", features = ["armor"] }
