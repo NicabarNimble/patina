@@ -83,3 +83,59 @@ impl ChildRegistry {
         self.children.len()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Minimal MotherChild for testing registry logic.
+    struct StubChild {
+        child_name: String,
+    }
+
+    impl StubChild {
+        fn new(name: &str) -> Box<dyn MotherChild> {
+            Box::new(Self {
+                child_name: name.to_string(),
+            })
+        }
+    }
+
+    impl MotherChild for StubChild {
+        fn name(&self) -> &str {
+            &self.child_name
+        }
+        fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
+            Ok(())
+        }
+        fn health(&self) -> ChildHealth {
+            ChildHealth::Healthy
+        }
+        fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
+            Ok(ChildResponse {
+                payload: serde_json::json!({"stub": true}),
+            })
+        }
+    }
+
+    #[test]
+    fn register_unique_names() {
+        let mut registry = ChildRegistry::new();
+        assert!(registry.register(StubChild::new("alpha")).is_ok());
+        assert!(registry.register(StubChild::new("beta")).is_ok());
+        assert_eq!(registry.len(), 2);
+    }
+
+    #[test]
+    fn register_duplicate_name_rejected() {
+        let mut registry = ChildRegistry::new();
+        assert!(registry.register(StubChild::new("alpha")).is_ok());
+        let err = registry.register(StubChild::new("alpha")).unwrap_err();
+        assert!(
+            err.to_string().contains("duplicate child name: alpha"),
+            "got: {}",
+            err
+        );
+        assert_eq!(registry.len(), 1);
+    }
+}
