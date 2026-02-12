@@ -245,7 +245,7 @@ impl PluginEngine {
     /// Future: reads from ~/.patina/plugin-config/grants.toml.
     pub fn check_capabilities(manifest: &PluginManifest) -> Result<()> {
         // Capabilities that are always granted (no config needed)
-        let auto_granted = ["host_log"];
+        let auto_granted = ["host_log", "host_layer"];
 
         let denied: Vec<&str> = manifest
             .capabilities

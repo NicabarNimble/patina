@@ -2754,6 +2754,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-command-api"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
+name = "patina-doctor"
+version = "0.1.0"
+dependencies = [
+ "patina-command-api",
+ "serde_json",
+]
+
+[[package]]
 name = "patina-metal"
 version = "0.1.0"
 dependencies = [

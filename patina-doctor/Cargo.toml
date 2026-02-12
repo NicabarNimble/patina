@@ -1,0 +1,12 @@
+[package]
+name = "patina-doctor"
+version = "0.1.0"
+edition = "2021"
+description = "Health check command plugin for Patina"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+patina-command-api = { path = "../patina-command-api" }
+serde_json = "1.0"
