@@ -16,6 +16,9 @@ related:
   - layer/surface/build/explore/agents-and-yolo/SPEC.md
   - layer/surface/build/feat/mother-environment/SPEC.md
   - layer/surface/build/feat/mother-repos/SPEC.md
+  - layer/surface/build/feat/plugin-command-extractions/SPEC.md
+  - layer/surface/build/feat/plugin-oracle-scraper/SPEC.md
+  - layer/surface/build/feat/plugin-grammars/SPEC.md
 beliefs:
   - patina-is-knowledge-layer
   - unix-philosophy
@@ -807,69 +810,17 @@ Avoids scanning `~/.patina/plugins/` on every CLI invocation.
 
 ---
 
-## Phase 3: Remaining Command Extractions (v0.18.0)
+## Later Phases (extracted to own specs)
 
-**Goal:** Extract yolo, eval+bench, report, upgrade into WASM command plugins.
-These are the remaining "Definitely Plugin" modules from [[patina-identity]].
+Phases 3-5 were extracted to their own specs during session [[20260212-083400]]
+because the combined spec was too large. Each links back here and to each other.
+Build order is preserved through `blocked_by` relationships.
 
-| Plugin | Lines | World | Capabilities |
-|--------|-------|-------|-------------|
-| `patina-yolo` | 1,613 | command | host_layer (read), environment detection |
-| `patina-eval` | 2,476 | command | host_database (read), host_layer (read) |
-| `patina-bench` | 753 | command | host_database (read) |
-| `patina-report` | ~400 | command | host_layer (read), host_database (read) |
-| `patina-upgrade` | 162 | command | wasi:http (check GitHub releases) |
-
-**Acceptance criteria:**
-
-- [ ] All 5 plugins work identically as WASM
-- [ ] Binary size reduced measurably (target: <40MB from 52MB)
-- [ ] `patina plugin list` shows all default plugins
-- [ ] Removing a plugin.wasm file gracefully degrades (command not found, not crash)
-
----
-
-## Phase 4: Oracle & Scraper Plugins (v0.19.0)
-
-**Goal:** Make the serve and capture pipelines extensible. Third-party oracles
-and scrapers can be loaded as WASM plugins.
-
-**Build steps:**
-
-1. Define `wit/oracle.wit` — `patina:oracle@0.1.0` world (from [[wit-interfaces]] — already sketched)
-2. Define `wit/scraper.wit` — `patina:scraper@0.1.0` world (from [[wit-interfaces]])
-3. Refactor `retrieval/oracle.rs` — oracle fusion queries both compiled-in and WASM oracles
-4. Refactor `scrape code` — scraper pipeline checks for WASM scrapers matching file extension
-5. Create example oracle plugin
-6. Create example scraper plugin
-
-**Acceptance criteria:**
-
-- [ ] WASM oracle participates in scry fusion alongside compiled-in oracles
-- [ ] WASM scraper runs during `patina scrape code` for matching file patterns
-- [ ] Oracle plugin: pure computation, no capabilities required
-- [ ] Scraper plugin: `wasi:filesystem` read-only, sandboxed to project directory
-
----
-
-## Phase 5: Grammar Plugins (v0.20.0)
-
-**Goal:** Load tree-sitter grammars from WASM instead of compiling them in.
-Most complex integration due to tree-sitter ABI versioning and scrape hot path.
-
-**Why last:** Grammars are entangled with tree-sitter ABI versioning (0.24
-expects ABI 13-14), patina-metal `cc::Build` + vendored C sources, and 8
-language processors on the scrape hot path. By Phase 5, PluginEngine is proven.
-
-**Grammar fallback:** If WASM grammar not found in `~/.patina/grammars/`,
-fall back to compiled-in. Zero regression for existing users.
-
-**Acceptance criteria:**
-
-- [ ] `patina scrape code` uses WASM grammar when present
-- [ ] Falls back to compiled-in grammar when WASM not present
-- [ ] Adding a new language is: drop a `.wasm` file, no recompile
-- [ ] WASM grammar parse speed within 2x of compiled-in
+| Phase | Version | Spec | Summary |
+|-------|---------|------|---------|
+| 3 | v0.18.0 | [[plugin-command-extractions]] | Extract yolo, eval, bench, report, upgrade to WASM |
+| 4 | v0.19.0 | [[plugin-oracle-scraper]] | Extensible oracle + scraper WIT worlds |
+| 5 | v0.20.0 | [[plugin-grammars]] | Tree-sitter grammars from WASM |
 
 ---
 
@@ -1061,3 +1012,4 @@ with `UnsafeCell<Option<Box<dyn MotherChildPlugin>>>` or equivalent.
 | 2026-02-12 | discoveries | Session [[20260212-075642]]: Full WASM audit completed. 4 Phase 2+ discoveries pushed inbound from [[plugin-system-audit-remediation]]: WIT types inside world block (Phase 2), re-entrancy invariant (Phase 2+), ChildHealth reason string (Phase 2), static mut edition migration (future). See audit report: `layer/surface/reports/audit/2026-02-12-plugin-system-phase1.md`. |
 | 2026-02-12 | amended | Session [[20260212-083400]]: Audit remediation (I1). 5 spec text inaccuracies documented — spec body preserved as historical record, corrections here: **(1)** Phase 1 Cargo.toml section says "no wasmtime-wasi" — wasmtime-wasi IS required in Phase 1 because wasm32-wasip2 components always import basic WASI interfaces even for pure computation (see belief [[wasm32-wasip2-always-imports-wasi]]). **(2)** Files Created lists `patina-plugin-api/Cargo.toml` with `crate-type = ["cdylib"]` — cdylib belongs on `patina-plugin-models`, not the API crate. The API crate is a library dependency. **(3)** Files Modified lists `src/commands/mother/registry.rs` for "WasmChild adapter" — WasmChild lives entirely in `src/plugin/internal.rs`. The registry needed no modification (already accepts `Box<dyn MotherChild>`). **(4)** Files Created shows `[package.metadata.component]` for patina-plugin-api — not present or needed; `wit_bindgen::generate!` uses explicit `path:` parameter, not cargo-component metadata. **(5)** WIT layout shows `wit/host.wit` at top level — actual location is `wit/deps/patina-host/host.wit` per WIT dependency resolution convention (imported packages live in `deps/`). Benchmark results: PluginEngine::new() 1.36ms (<100ms PASS), handle() 0.002ms (<1ms PASS), Component::new() 73.47ms, instantiate_child() 0.44ms. All exit criteria met. |
 | 2026-02-12 | amended | Session [[20260212-083400]]: Folded repos child into Phase 1 proper. The spec labeled it "Phase 1+" and said "not a separate phase" but placed it outside Phase 1's exit criteria — an internal contradiction. The audit remediation closed Phase 1 without repos child because the exit criteria didn't include it. Correcting this: repos child IS Phase 1 scope, Phase 1 exit criteria now include it, and Phase 1 is not complete until repos child ships. The original exit criteria (PluginEngine, models child, benchmarks) are met; repos child exit criteria are added. [[mother-repos]] spec needs promotion from `design` to `ready` before building. |
+| 2026-02-12 | extracted | Session [[20260212-083400]]: Extracted Phases 3-5 into own specs — spec was too large for a single document. Phase 3 → [[plugin-command-extractions]] (v0.18.0), Phase 4 → [[plugin-oracle-scraper]] (v0.19.0), Phase 5 → [[plugin-grammars]] (v0.20.0). Build order preserved via blocked_by chains. This spec now owns Phases 1-2 only (runtime + first extractions). Resolved Decisions and Discoveries sections remain here as they are runtime-level concerns. |
