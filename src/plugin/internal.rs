@@ -289,8 +289,10 @@ struct WasmChild {
     instance: bindings::MotherChild,
 }
 
-// Safety: Store<HostState> is Send (HostState is Send).
-// Mutex provides Sync. The instance is only accessed through the Mutex-guarded store.
+// Safety: bindings::MotherChild is Send + !Sync. Its call_*() methods
+// take &self (immutable) and require &mut Store (mutable). The Mutex
+// on store serializes all WASM calls, preventing concurrent access.
+// The instance is effectively immutable between calls.
 unsafe impl Sync for WasmChild {}
 
 impl crate::mother::MotherChild for WasmChild {
@@ -301,7 +303,7 @@ impl crate::mother::MotherChild for WasmChild {
     fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
         // Host capabilities come through WASM imports (patina:host/log),
         // not the Rust MotherHost reference.
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         match self.instance.call_on_load(&mut *store)? {
             Ok(()) => Ok(()),
             Err(e) => Err(anyhow::anyhow!("WASM on_load failed: {}", e)),
@@ -309,12 +311,12 @@ impl crate::mother::MotherChild for WasmChild {
     }
 
     fn on_unload(&mut self) {
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         let _ = self.instance.call_on_unload(&mut *store);
     }
 
     fn health(&self) -> ChildHealth {
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         match self.instance.call_health(&mut *store) {
             Ok(h) => match h {
                 bindings::ChildHealth::Healthy => ChildHealth::Healthy,
@@ -326,7 +328,7 @@ impl crate::mother::MotherChild for WasmChild {
     }
 
     fn handle(&self, request: &ChildRequest) -> Result<ChildResponse> {
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         let payload_json = serde_json::to_string(&request.payload)?;
         let result = self
             .instance
@@ -340,7 +342,7 @@ impl crate::mother::MotherChild for WasmChild {
     }
 
     fn tick(&mut self) -> Vec<Toy> {
-        let mut store = self.store.lock().unwrap();
+        let mut store = self.store.lock().unwrap_or_else(|e| e.into_inner());
         match self.instance.call_tick(&mut *store) {
             Ok(wasm_toys) => wasm_toys
                 .into_iter()
@@ -350,7 +352,10 @@ impl crate::mother::MotherChild for WasmChild {
                     args: t.args,
                 })
                 .collect(),
-            Err(_) => vec![],
+            Err(e) => {
+                eprintln!("[plugin:{}] tick failed: {}", self.name, e);
+                vec![]
+            }
         }
     }
 }
