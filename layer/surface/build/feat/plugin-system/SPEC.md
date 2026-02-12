@@ -543,6 +543,167 @@ with `UnsafeCell<Option<Box<dyn MotherChildPlugin>>>` or equivalent.
 
 ---
 
+## Discoveries (pushed from final audit review)
+
+Pushed from session [[20260212-093831]] (final audit + design review).
+Source: `layer/surface/reports/audit/2026-02-12-plugin-system-phase1-final.md`
+
+### Design decision: String dispatch within worlds is intentional
+
+**Source:** Post-audit design review, session [[20260212-093831]]
+**Scope:** All phases
+
+The `handle()` WIT signature uses `string, string` for action and payload:
+
+```wit
+export handle: func(action: string, payload: string) -> result<string, string>;
+```
+
+This is JSON-RPC over WASM — we have wasmtime's type system but don't use
+typed WIT variants for payloads. This is **intentional**, not accidental.
+
+**The reasoning:** Patina uses separate worlds per plugin *type* (mother-child,
+command, oracle, scraper, grammar), diverging from Zed's single `world
+extension`. The world boundary provides type safety — an oracle plugin
+can't see HTTP imports, a grammar plugin can't see the eventlog. Within a
+world, children negotiate payload shapes by convention (JSON).
+
+The alternative — per-child typed WIT variants — would mean per-child
+*worlds*, requiring different Linker setups per child instance. That's a
+different architecture than "separate worlds per plugin type."
+
+Zed avoids this by putting everything in one world with all capabilities.
+We split by type for isolation. Going further to split by instance would
+add significant complexity for marginal type safety gain — the real
+safety comes from capability isolation at the world level, not payload
+types within handle().
+
+Per [[coupling-is-complexity]]: typed payloads couple the WIT definition
+to each child's implementation. String dispatch keeps the WIT stable as
+children evolve their action sets.
+
+**Document this in code:** Add a comment to `wit/mother-child.wit` above
+the `handle` export explaining this design choice.
+
+### Design decision: tick(&mut self) vs handle(&self) split is intentional
+
+**Source:** Post-audit design review, session [[20260212-093831]]
+**Scope:** All phases
+
+The `MotherChild` trait has two calling conventions:
+
+- `handle(&self)` — concurrent, request-driven (daemon serves requests)
+- `tick(&mut self)` — sequential, time-driven (heartbeat loop)
+
+This forces `ChildRegistry` to use `Arc<RwLock<Box<dyn MotherChild>>>`
+to mediate read (handle) vs write (tick) access.
+
+**Zed context:** Zed is purely event-driven — no tick concept, no heartbeat.
+All extension methods are effectively `&self`. Patina's daemon heartbeat
+is a fundamentally different model.
+
+**Why this split is correct:** Compiled-in children (like `SecretsCacheChild`)
+benefit from `&mut self` in tick — they can mutate state directly without
+interior mutability overhead. WASM children pay an adapter cost (Mutex
+anyway because of wasmtime's `&mut Store` requirement), but that's a cost
+of the adapter pattern, not a flaw in the trait.
+
+Making tick() take `&self` would push interior mutability into every child
+implementation. The current split lets compiled-in children stay simple.
+
+**Document this in code:** Add a comment to `src/mother/child.rs` above
+`tick()` explaining why it takes `&mut self` while `handle()` takes `&self`.
+
+### Pre-community: Toy trust model needs capability gating
+
+**Source:** Post-audit design review, session [[20260212-093831]]
+**Scope:** Must resolve before community/third-party plugins
+
+The toy system bypasses the two-layer capability grant system. A WASM child
+running in a sandbox with only `host_log` capability can return a `Toy`
+with `command: "rm", args: ["-rf", "/"]` and `spawn_toy()` runs it with
+the daemon's full privileges.
+
+**Zed context:** Zed enforces per-command capability grants:
+
+```toml
+[capabilities]
+process = { exec = { command = "ls", args = ["-la"] } }
+```
+
+Extensions declare exactly what commands they want. The host's
+`CapabilityGranter` checks manifest AND host grants before allowing
+execution. Patina's toy system has no equivalent check.
+
+Currently safe because only first-party children exist and their toy
+commands are hardcoded (`git`, `patina`). But this must be addressed
+before any community plugin support.
+
+**Recommended approach:** Extend `plugin.toml` manifest to declare allowed
+toy commands:
+
+```toml
+[capabilities]
+host_log = true
+
+[capabilities.toys]
+commands = ["git", "patina"]
+```
+
+Check each toy's command against the manifest allowlist in `spawn_toy()`
+or in a new `check_toy()` function. Unrecognized commands are rejected
+and logged. This preserves [[two-layer-capability-grants]]: manifest
+declares, host decides.
+
+**Not needed for Phase 2** (first-party extraction only). Required before
+any third-party or community plugin mechanism.
+
+### Document: PluginEngine is create-once
+
+**Source:** Post-audit design review, session [[20260212-093831]]
+**Scope:** Phase 2 (when CLI plugins use PluginEngine directly)
+
+`PluginEngine::new()` creates a fresh `Linker` with WASI and host function
+registration. The `wasmtime::Engine` is a `OnceLock` singleton (process-wide),
+but the Linker setup runs on each `PluginEngine::new()` call.
+
+**Zed context:** Zed's `WasmHost` (equivalent) is explicitly `Arc`-shared
+across the application. Patina's usage is de facto singleton — `daemon.rs`
+creates one and passes by reference. But the API allows creating multiple.
+
+**Fix:** Add a doc comment to `PluginEngine::new()`:
+
+```rust
+/// Create a new PluginEngine with host functions registered.
+///
+/// PluginEngine should be created once per process and reused for all
+/// plugin loading. The underlying wasmtime::Engine is a process singleton,
+/// but the Linker setup (WASI + host functions) runs on each call.
+```
+
+Phase 2 (CLI command plugins) will need to decide whether to share the
+daemon's PluginEngine or create a separate one for one-shot CLI use.
+
+### Immediate: Fix spec F0-F3
+
+**Source:** Final audit + review, session [[20260212-093831]]
+**Scope:** Immediate — before Phase 2 work begins
+
+Fix spec: `layer/surface/build/fix/plugin-system-final-audit-fixes/SPEC.md`
+
+4 concrete code fixes:
+
+| Fix | What | Files |
+|-----|------|-------|
+| F0 | Eliminate `unsafe impl Sync` — instance behind Mutex with store | `src/plugin/internal.rs` |
+| F1 | Registry RwLock poison recovery (4 sites) | `src/commands/mother/registry.rs` |
+| F2 | Toy dedup with spawn failure self-healing | `src/commands/mother/daemon.rs` |
+| F3 | WIT consistency CI check in pre-push | `resources/git/pre-push-checks.sh` |
+
+Build order: F0 → F3 → F1 → F2. See fix spec for full details.
+
+---
+
 ## Status Log
 
 | Date | Status | Note |
@@ -556,3 +717,4 @@ with `UnsafeCell<Option<Box<dyn MotherChildPlugin>>>` or equivalent.
 | 2026-02-12 | amended | Session [[20260212-083400]]: Folded repos child into Phase 1 proper. The spec labeled it "Phase 1+" and said "not a separate phase" but placed it outside Phase 1's exit criteria — an internal contradiction. The audit remediation closed Phase 1 without repos child because the exit criteria didn't include it. Correcting this: repos child IS Phase 1 scope, Phase 1 exit criteria now include it, and Phase 1 is not complete until repos child ships. The original exit criteria (PluginEngine, models child, benchmarks) are met; repos child exit criteria are added. [[mother-repos]] spec needs promotion from `design` to `ready` before building. |
 | 2026-02-12 | extracted | Session [[20260212-083400]]: Extracted Phases 3-5 into own specs — spec was too large for a single document. Phase 3 → [[plugin-command-extractions]] (v0.18.0), Phase 4 → [[plugin-oracle-scraper]] (v0.19.0), Phase 5 → [[plugin-grammars]] (v0.20.0). Build order preserved via blocked_by chains. This spec now owns Phases 1-2 only (runtime + first extractions). Resolved Decisions and Discoveries sections remain here as they are runtime-level concerns. |
 | 2026-02-12 | phase-1-complete | Session [[20260212-091430]]: Repos child built and tested. [[mother-repos]] promoted to `ready` with Phase 1 scope (host-fed state, no filesystem). `patina-plugin-repos/` crate: 178KB WASM, handle() for report_repo + check_freshness, tick() returns pull + scrape toys for stale repos. 4 integration tests prove toy system end-to-end. All Phase 1 exit criteria (original + repos child) now met. Phase 1 complete. |
+| 2026-02-12 | discoveries | Session [[20260212-093831]]: Final audit (0 critical) + post-audit design review with Zed context. 5 discoveries pushed: **(1)** String dispatch in handle() is intentional — world boundary = type safety, string dispatch within world = low coupling (contrasted with Zed's single-world typed approach). **(2)** tick(&mut self) vs handle(&self) split is intentional — compiled-in children benefit from direct mutation, WASM children pay adapter cost (Zed has no tick/heartbeat equivalent). **(3)** Toy trust model needs capability gating before community plugins — Zed enforces per-command grants, Patina toys bypass capability system. **(4)** PluginEngine is create-once — document like Zed's Arc-shared WasmHost. **(5)** Fix spec [[plugin-system-final-audit-fixes]] created: F0 unsafe Sync elimination, F1 registry poison, F2 toy dedup, F3 WIT CI check. See final audit: `layer/surface/reports/audit/2026-02-12-plugin-system-phase1-final.md`. |
