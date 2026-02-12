@@ -27,10 +27,7 @@ pub fn execute_list() -> Result<()> {
     }
 
     println!("Installed plugins ({}):\n", plugins_dir.display());
-    println!(
-        "  {:<20} {:<10} {:<15} {}",
-        "NAME", "VERSION", "WORLD", "STATUS"
-    );
+    println!("  {:<20} {:<10} {:<15} STATUS", "NAME", "VERSION", "WORLD");
     println!("  {}", "-".repeat(60));
 
     for entry in &entries {
@@ -51,14 +48,11 @@ pub fn execute_list() -> Result<()> {
                     );
                 }
                 Err(e) => {
-                    println!("  {:<20} {:<10} {:<15} {}", stem, "?", "?", format!("error: {}", e));
+                    println!("  {:<20} {:<10} {:<15} error: {}", stem, "?", "?", e);
                 }
             }
         } else {
-            println!(
-                "  {:<20} {:<10} {:<15} {}",
-                stem, "?", "?", "no manifest"
-            );
+            println!("  {:<20} {:<10} {:<15} no manifest", stem, "?", "?");
         }
     }
 
