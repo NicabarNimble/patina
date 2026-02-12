@@ -582,6 +582,12 @@ fn benchmark_plugin_performance() {
         return;
     }
 
+    // Warm up the process-wide engine singleton (OnceLock).
+    // Without this, the first PluginEngine::new() absorbs Engine::new()
+    // cold-start cost (~150ms cranelift JIT init), making the benchmark
+    // flaky depending on test execution order.
+    let _ = PluginEngine::new();
+
     // 1. PluginEngine::new() — spec threshold: <100ms
     let t0 = Instant::now();
     let engine = PluginEngine::new().unwrap();
