@@ -673,8 +673,8 @@ fn benchmark_plugin_performance() {
 // =====================================================================
 
 fn load_doctor_component() -> Option<(CommandEngine, wasmtime::component::Component)> {
-    let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/patina_doctor.wasm");
+    let wasm_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/patina_doctor.wasm");
     if !wasm_path.exists() {
         return None;
     }
