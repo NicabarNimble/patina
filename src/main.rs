@@ -111,6 +111,12 @@ enum Commands {
         json: bool,
     },
 
+    /// Manage WASM plugins
+    Plugin {
+        #[command(subcommand)]
+        command: PluginCommands,
+    },
+
     /// Manage project versioning (semver: MAJOR.MINOR.PATCH)
     Version {
         #[command(subcommand)]
@@ -873,6 +879,12 @@ enum BumpType {
     Patch,
 }
 
+#[derive(Subcommand)]
+enum PluginCommands {
+    /// List installed plugins
+    List,
+}
+
 fn main() -> Result<()> {
     // Run migrations early (before any command)
     patina::migration::migrate_if_needed();
@@ -1146,11 +1158,59 @@ fn main() -> Result<()> {
             }
         },
         Some(Commands::Doctor { json }) => {
-            let exit_code = commands::doctor::execute(json)?;
+            let mut args = Vec::new();
+            if json {
+                args.push("--json".to_string());
+            }
+
+            // Try WASM plugin first
+            let plugin_wasm = patina::paths::plugin::plugins_dir().join("patina-doctor.wasm");
+            let plugin_toml = patina::paths::plugin::plugins_dir().join("patina-doctor.toml");
+
+            let exit_code = if plugin_wasm.exists() {
+                let manifest = if plugin_toml.exists() {
+                    patina::plugin::PluginEngine::load_manifest(&plugin_toml)?
+                } else {
+                    // Default manifest for plugins without .toml
+                    patina::plugin::PluginManifest {
+                        name: "patina-doctor".into(),
+                        version: "0.0.0".into(),
+                        description: String::new(),
+                        world: "command".into(),
+                        patina_min: "0.0.0".into(),
+                        capabilities: vec!["host_log".into(), "host_layer".into()],
+                        allowed_toy_commands: vec![],
+                        provides: patina::plugin::PluginProvides {
+                            child: None,
+                            commands: vec!["doctor".into()],
+                        },
+                    }
+                };
+                let engine = patina::plugin::CommandEngine::new()?;
+                let wasm_bytes = std::fs::read(&plugin_wasm)?;
+                let component = engine.load_component(&wasm_bytes)?;
+                engine.run_command(&component, &manifest, &args)?
+            } else {
+                // Fall back to compiled-in doctor
+                #[cfg(feature = "bundled-doctor")]
+                {
+                    commands::doctor::execute(json)?
+                }
+                #[cfg(not(feature = "bundled-doctor"))]
+                {
+                    eprintln!("Doctor plugin not installed.");
+                    eprintln!("Install: cp patina_doctor.wasm {}", plugin_wasm.display());
+                    1
+                }
+            };
+
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
         }
+        Some(Commands::Plugin { command }) => match command {
+            PluginCommands::List => commands::plugin::execute_list()?,
+        },
         Some(Commands::Repo {
             command,
             url,

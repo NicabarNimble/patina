@@ -20,15 +20,25 @@ impl ChildRegistry {
     }
 
     /// Register a child. Call before load_all().
-    pub fn register(&mut self, child: Box<dyn MotherChild>) {
+    /// Returns error if a child with the same name is already registered.
+    pub fn register(&mut self, child: Box<dyn MotherChild>) -> Result<()> {
+        let name = child.name().to_string();
+        if self
+            .children
+            .iter()
+            .any(|c| c.read().unwrap_or_else(|e| e.into_inner()).name() == name)
+        {
+            anyhow::bail!("duplicate child name: {}", name);
+        }
         self.children.push(Arc::new(RwLock::new(child)));
+        Ok(())
     }
 
     /// Load all children — calls on_load() for each in order.
     /// Fails fast if any child fails to load.
     pub fn load_all(&self, host: &dyn MotherHost) -> Result<()> {
         for entry in &self.children {
-            let mut child = entry.write().unwrap();
+            let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
             let name = child.name().to_string();
             host.log(&name, "loading");
             child.on_load(host)?;
@@ -65,15 +75,71 @@ impl ChildRegistry {
         let entry = self
             .children
             .iter()
-            .find(|c| c.read().unwrap().name() == child_name)
+            .find(|c| c.read().unwrap_or_else(|e| e.into_inner()).name() == child_name)
             .ok_or_else(|| anyhow::anyhow!("unknown child: {}", child_name))?;
 
-        let child = entry.read().unwrap();
+        let child = entry.read().unwrap_or_else(|e| e.into_inner());
         child.handle(request)
     }
 
     /// Number of registered children.
     pub fn len(&self) -> usize {
         self.children.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Minimal MotherChild for testing registry logic.
+    struct StubChild {
+        child_name: String,
+    }
+
+    impl StubChild {
+        fn new(name: &str) -> Box<dyn MotherChild> {
+            Box::new(Self {
+                child_name: name.to_string(),
+            })
+        }
+    }
+
+    impl MotherChild for StubChild {
+        fn name(&self) -> &str {
+            &self.child_name
+        }
+        fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
+            Ok(())
+        }
+        fn health(&self) -> ChildHealth {
+            ChildHealth::Healthy
+        }
+        fn handle(&self, _request: &ChildRequest) -> Result<ChildResponse> {
+            Ok(ChildResponse {
+                payload: serde_json::json!({"stub": true}),
+            })
+        }
+    }
+
+    #[test]
+    fn register_unique_names() {
+        let mut registry = ChildRegistry::new();
+        assert!(registry.register(StubChild::new("alpha")).is_ok());
+        assert!(registry.register(StubChild::new("beta")).is_ok());
+        assert_eq!(registry.len(), 2);
+    }
+
+    #[test]
+    fn register_duplicate_name_rejected() {
+        let mut registry = ChildRegistry::new();
+        assert!(registry.register(StubChild::new("alpha")).is_ok());
+        let err = registry.register(StubChild::new("alpha")).unwrap_err();
+        assert!(
+            err.to_string().contains("duplicate child name: alpha"),
+            "got: {}",
+            err
+        );
+        assert_eq!(registry.len(), 1);
     }
 }
