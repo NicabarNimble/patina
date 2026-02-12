@@ -89,6 +89,13 @@ safetensors = "0.7"                                                  # Standard 
 zerocopy = "0.7"                                                     # Efficient vector byte conversion
 regex = "1.12.2"
 
+# WASM plugin runtime (Phase 1 — no wasmtime-wasi, we implement host functions ourselves)
+wasmtime = { version = "=41", default-features = false, features = [
+    "runtime",          # Execution engine (required)
+    "cranelift",        # JIT compiler backend
+    "component-model",  # WIT Component Model support
+] }
+
 # Secrets v2 - age encryption and macOS Keychain
 age = { version = "0.11", features = ["armor"] }
 sha2 = "0.10"  # ONNX model integrity verification (already in tree via age)
