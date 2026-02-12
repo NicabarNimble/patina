@@ -1,6 +1,6 @@
 # Build Recipe
 
-**Version:** 0.15.3 — Three pillars: epistemic (complete), mother, distribution.
+**Version:** 0.17.0 — Three pillars: epistemic (complete), mother (architecture shipped), distribution.
 
 ---
 
@@ -10,9 +10,9 @@ A local-first RAG network: portable project knowledge + personal mother.
 
 - **Patina Projects:** `patina init .` - full RAG (semantic, temporal, dependency)
 - **Reference Repos:** `patina repo add <url>` - lightweight index in `~/.patina/cache/repos/`
-- **Mother:** `~/.patina/` - registry, personas, `patina serve` daemon
+- **Mother:** `~/.patina/` - registry, personas, `patina mother start` daemon
 
-**Completed infrastructure:** Scrape pipeline, oxidize embeddings, query/scry, serve daemon, persona, rebuild command, MCP server, hybrid retrieval (MRR 0.624), model management, feedback loop, assay structural queries, spec work-item system (ready queue, auto-release). All working.
+**Completed infrastructure:** Scrape pipeline, oxidize embeddings, query/scry, Mother daemon, persona, rebuild command, MCP server, hybrid retrieval (MRR 0.624), model management, feedback loop, assay structural queries, spec work-item system (ready queue, auto-release), WASM plugin system (WIT component model, command world, doctor extraction), version consolidation, security hardening. All working.
 
 ---
 
@@ -58,7 +58,7 @@ A local-first RAG network: portable project knowledge + personal mother.
 | assay | Query (factual) | Structural signals, FTS5 search, temporal, belief grounding |
 | scry | Query (semantic) | Multi-domain vector similarity — meaning, not keywords |
 
-**Next:** [[mother-architecture]] — children as plugins. Mother is the plugin host (daemon lifecycle, child registry, heartbeat, request routing, toy management). Children are `MotherChild` trait implementors: [[mother-environment]] (models), [[mother-repos]] (ref repos). Native Rust traits now, WIT plugins later via [[patina-platform]].
+**Next:** Mother v2 — cross-project belief index ([[mother-v2]] Phase 2), plugin extraction of more commands via [[patina-platform]]. Mother daemon shipped (lifecycle, child registry, heartbeat, graph routing). WASM plugin system shipped (WIT component model, command world, doctor/models/repos children). Next: federated belief search, environment ownership, grammar plugins.
 
 **Values alignment:**
 - [unix-philosophy](unix-philosophy.md): One tool, one job
@@ -75,9 +75,9 @@ A local-first RAG network: portable project knowledge + personal mother.
 
 | Pillar | Current | Target |
 |--------|---------|--------|
-| **Epistemic** | **COMPLETE** (v0.10.0) — 87 beliefs, verification, grounding, forge | E5/E6 deferred to mother scope |
-| **Mother** | Registry + serve daemon | Federated query, persona fusion |
-| **Distribution** | 52MB fat binary | Slim binary, `patina setup`, Homebrew |
+| **Epistemic** | **COMPLETE** (v0.10.0) — 105 beliefs, verification, grounding, forge | E5/E6 deferred to mother scope |
+| **Mother** | v0.16.0 daemon + v0.17.0 WASM plugins | Federated query, persona fusion, environment ownership |
+| **Distribution** | 66MB binary (16MB wasmtime) | Slim binary, grammar plugins, `patina setup`, Homebrew |
 
 **Milestones:**
 ```
@@ -98,6 +98,10 @@ A local-first RAG network: portable project knowledge + personal mother.
 0.15.0 ✓ Feat: ref repo semantic training (13/13 repos indexed)
 0.15.2 ✓ Refactor: semantic-structural split (scry=meaning, assay=facts, P@10 48.3%)
 0.15.3 ✓ Refactor: spec closure for semantic-structural-split
+0.16.0 ✓ Feat: Mother Architecture (daemon, graph, children, microserver)
+0.16.1 ✓ Refactor: Version Consolidation (ReleaseStrategy, BumpType, auto-release)
+0.16.2 ✓ Refactor: Security Hardening
+0.17.0 ✓ Feat: Plugin System (WASM component model, command world, doctor extraction)
 1.0.0  - All pillars complete
 ```
 

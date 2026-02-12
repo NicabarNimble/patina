@@ -121,15 +121,17 @@ The boundary follows a simple test: **does it serve a core function (capture, in
 | `adapters` | Entry | How users and agents enter Patina. Today: config generators. Future: Mother-managed runtime integration. |
 | `secrets` | Security | Local-first encryption (age + Keychain). Security is core infrastructure that will grow, not optional. |
 
-### Definitely Plugin — extract when plugin system ships
+### Definitely Plugin — extract as plugin system matures
 
-| Module | Lines | Why plugin |
-|--------|-------|------------|
-| `yolo` | 1,613 | Devcontainer generation isn't knowledge. Strongest extraction candidate. |
-| `eval` + `bench` | 3,229 | Quality measurement for power users. Not core to knowledge serving. |
-| `report` | ~400 | Report generation. Composed from core tools — classic plugin. |
-| `doctor` | 278 | Health checks. Useful but not knowledge infrastructure. |
-| `upgrade` | 162 | Version check. Utility, not pillar. |
+`doctor` was the first extraction (v0.17.0) — it ships as a WASM plugin with compiled fallback, proving the pattern works. Next candidates:
+
+| Module | Lines | Why plugin | Status |
+|--------|-------|------------|--------|
+| `yolo` | 1,613 | Devcontainer generation isn't knowledge. Strongest extraction candidate. | Pending |
+| `eval` + `bench` | 3,229 | Quality measurement for power users. Not core to knowledge serving. | Pending |
+| `report` | ~605 | Report generation. Composed from core tools — classic plugin. | Pending |
+| `doctor` | 278 | Health checks. Useful but not knowledge infrastructure. | **Extracted (v0.17.0)** |
+| `upgrade` | 162 | Version check. Utility, not pillar. | Pending |
 
 ## The Plugin Test
 
@@ -153,7 +155,7 @@ If yes → it's a plugin. Forge behavior differs per platform (GitHub vs Gitea v
 
 ### When in doubt: bundle now, extract later
 
-The plugin system doesn't exist yet. Don't architect for extraction prematurely. Build it in, keep the trait boundary clean, and extract when wasmtime ships. The MotherChild trait and existing traits (LLMAdapter, ForgeReader, Oracle) are already the plugin interfaces — they just dispatch to compiled code instead of WASM today.
+The plugin system is live (v0.17.0) — wasmtime + WIT Component Model with two worlds (child world for daemon children, command world for CLI commands). Doctor was the first extraction, proving the pattern: WASM-first with compiled fallback via feature gate (`bundled-doctor`). The MotherChild trait and existing traits (LLMAdapter, ForgeReader, Oracle) are the plugin interfaces — some dispatch to compiled code, some to WASM, with the boundary moving outward over time.
 
 ## Architectural Invariants
 
@@ -223,7 +225,7 @@ Plugin system:  enum dispatch → WIT interface → WASM module
                 Oracle → oracle.wit → oracle-semantic.wasm
 ```
 
-The traits already exist. The WIT interfaces are sketched (see [[wit-interfaces]]). The refactor from enum to trait to WIT is mechanical — one extension point at a time, never a rewrite.
+The traits exist and WIT interfaces are shipping. v0.17.0 delivered two WIT worlds: `child` (daemon children — models, repos) and `command` (CLI commands — doctor). The refactor from enum to trait to WIT is mechanical — one extension point at a time, never a rewrite.
 
 **Key constraint:** wasmtime + WIT Component Model. Not Extism. Separate WIT worlds per plugin type for capability isolation. Two-layer capability grants (manifest + host). See [[patina-platform]].
 
