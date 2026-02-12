@@ -517,7 +517,45 @@ impl Default for DaemonOptions {
 pub fn run_server(options: DaemonOptions) -> Result<()> {
     // Build and load child registry
     let mut registry = ChildRegistry::new();
+
+    // Compiled-in children (always available)
     registry.register(Box::new(super::secrets::SecretsCacheChild::new()));
+
+    // WASM children (discovered from ~/.patina/children/)
+    match patina::plugin::PluginEngine::new() {
+        Ok(plugin_engine) => {
+            let children_dir = patina::paths::plugin::children_dir();
+            if children_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(&children_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().and_then(|e| e.to_str()) == Some("wasm") {
+                            let manifest_path = path.with_extension("toml");
+                            match load_wasm_child(&plugin_engine, &path, &manifest_path) {
+                                Ok(child) => {
+                                    eprintln!("[mother] loaded WASM child: {}", child.name());
+                                    registry.register(child);
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "[mother] failed to load {}: {}",
+                                        path.display(),
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "[mother] plugin engine init failed: {} (WASM children disabled)",
+                e
+            );
+        }
+    }
 
     let daemon_host = DaemonHost;
     registry.load_all(&daemon_host)?;
@@ -614,6 +652,18 @@ fn accept_loop_uds(listener: std::os::unix::net::UnixListener, state: Arc<Server
         }
     }
     std::process::exit(0);
+}
+
+/// Load a WASM child from a .wasm file + plugin.toml manifest.
+fn load_wasm_child(
+    engine: &patina::plugin::PluginEngine,
+    wasm_path: &std::path::Path,
+    manifest_path: &std::path::Path,
+) -> Result<Box<dyn patina::mother::MotherChild>> {
+    let manifest = patina::plugin::PluginEngine::load_manifest(manifest_path)?;
+    let wasm_bytes = std::fs::read(wasm_path)?;
+    let component = engine.load_component(&wasm_bytes)?;
+    engine.instantiate_child(&component, &manifest)
 }
 
 /// Write PID file for daemon lifecycle management
