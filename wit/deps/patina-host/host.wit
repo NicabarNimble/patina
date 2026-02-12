@@ -1,4 +1,4 @@
-package patina:host;
+package patina:host@0.1.0;
 
 /// Structured logging for plugins
 interface log {

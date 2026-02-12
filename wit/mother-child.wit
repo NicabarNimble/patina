@@ -1,9 +1,9 @@
-package patina:mother-child;
+package patina:mother-child@0.1.0;
 
 /// World for Mother daemon children — long-lived, heartbeat, toys
 world mother-child {
     /// Import host logging
-    import patina:host/log;
+    import patina:host/log@0.1.0;
 
     /// Child health status
     enum child-health {
