@@ -5,19 +5,12 @@ world mother-child {
     /// Import host logging
     import patina:host/log@0.1.0;
 
-    /// Child health status
-    enum child-health {
-        healthy,
-        degraded,
-        unhealthy,
-    }
+    /// Import shared types (child-health, toy) — defined outside world block
+    /// so other worlds (command, oracle, etc.) can reuse them.
+    import patina:host/types@0.1.0;
 
-    /// Work request from child to Mother
-    record toy {
-        name: string,
-        command: string,
-        args: list<string>,
-    }
+    /// Bring shared types into world scope for export signatures
+    use patina:host/types@0.1.0.{child-health, toy};
 
     /// Initialize plugin (host calls first, before any other export)
     export init: func();

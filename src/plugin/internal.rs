@@ -53,6 +53,9 @@ mod bindings {
             eprintln!("[plugin:{}] {}: {}", self.plugin_name, level_str, message);
         }
     }
+
+    // patina:host/types only defines types (no functions) — empty Host trait
+    impl patina::host::types::Host for HostState {}
 }
 
 use bindings::HostState;
@@ -346,11 +349,18 @@ impl crate::mother::MotherChild for WasmChild {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let WasmChildInner { store, instance } = &mut *inner;
         match instance.call_health(store) {
-            Ok(h) => match h {
-                bindings::ChildHealth::Healthy => ChildHealth::Healthy,
-                bindings::ChildHealth::Degraded => ChildHealth::Degraded("degraded".into()),
-                bindings::ChildHealth::Unhealthy => ChildHealth::Unhealthy("unhealthy".into()),
-            },
+            Ok(h) => {
+                let reason = h.reason.unwrap_or_default();
+                match h.status {
+                    bindings::patina::host::types::HealthStatus::Healthy => ChildHealth::Healthy,
+                    bindings::patina::host::types::HealthStatus::Degraded => ChildHealth::Degraded(
+                        if reason.is_empty() { "degraded".into() } else { reason },
+                    ),
+                    bindings::patina::host::types::HealthStatus::Unhealthy => ChildHealth::Unhealthy(
+                        if reason.is_empty() { "unhealthy".into() } else { reason },
+                    ),
+                }
+            }
             Err(e) => ChildHealth::Unhealthy(format!("WASM call failed: {}", e)),
         }
     }

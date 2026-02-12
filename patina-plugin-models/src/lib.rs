@@ -8,7 +8,7 @@
 //! - "resolve_model" → returns expected model directory path
 //! - "model_status"  → returns tri-state status (cached/local/unknown)
 
-use patina_plugin_api::{register_plugin, ChildHealth, MotherChildPlugin};
+use patina_plugin_api::{register_plugin, ChildHealth, HealthStatus, MotherChildPlugin};
 
 #[derive(Default)]
 struct ModelsChild;
@@ -20,7 +20,10 @@ impl MotherChildPlugin for ModelsChild {
 
     fn health(&self) -> ChildHealth {
         // Phase 1: can't verify model files without WASI filesystem
-        ChildHealth::Healthy
+        ChildHealth {
+            status: HealthStatus::Healthy,
+            reason: None,
+        }
     }
 
     fn handle(&mut self, action: &str, payload: &str) -> Result<String, String> {

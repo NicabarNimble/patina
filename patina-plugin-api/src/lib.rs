@@ -31,8 +31,9 @@ wit_bindgen::generate!({
 // Re-exports for plugin authors
 // =========================================================================
 
-// ChildHealth and Toy are generated at crate root by wit_bindgen
-// LogLevel and log are under patina::host::log
+// ChildHealth, Toy are generated at crate root by wit_bindgen (via world's use statement).
+// HealthStatus is generated under patina::host::types — re-export for ergonomic access.
+pub use patina::host::types::HealthStatus;
 
 /// Host logging — call from plugin code to log through the host.
 pub mod host_log {
@@ -69,7 +70,10 @@ pub trait MotherChildPlugin {
 
     /// Health check — Mother calls this on heartbeat.
     fn health(&self) -> ChildHealth {
-        ChildHealth::Healthy
+        ChildHealth {
+            status: HealthStatus::Healthy,
+            reason: None,
+        }
     }
 
     /// Handle a routed request. Action and payload are strings (payload is JSON).
@@ -152,7 +156,7 @@ export!(Component);
 /// # Example
 ///
 /// ```ignore
-/// use patina_plugin_api::{MotherChildPlugin, ChildHealth, register_plugin};
+/// use patina_plugin_api::{MotherChildPlugin, ChildHealth, HealthStatus, register_plugin};
 ///
 /// #[derive(Default)]
 /// struct MyPlugin;
