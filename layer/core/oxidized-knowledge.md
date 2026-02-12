@@ -2,7 +2,7 @@
 id: oxidized-knowledge
 status: active
 created: 2025-08-11
-updated: 2025-11-21
+updated: 2026-02-12
 references: [session-capture, adapter-pattern]
 tags: [architecture, metaphor, core]
 ---
@@ -19,13 +19,13 @@ Patina distinguishes two types of knowledge:
 
 | Type | Location | Shared? | Contains |
 |------|----------|---------|----------|
-| **Project** | `.patina/` | Yes (git) | Facts about this codebase |
-| **Persona** | `~/.patina/persona/` | No (personal) | Cross-project beliefs |
+| **Project** | `layer/` + `.patina/` | Yes (layer/ in git) | Facts, beliefs, and specs about this codebase |
+| **Persona** | `~/.patina/layer/` | No (personal) | Cross-project beliefs and preferences |
 
 **Project knowledge:** "TypeScript prefers Result types here" - observation about livestore
 **Personal belief:** "I prefer Rust Result<T,E> over exceptions" - your opinion across all projects
 
-Different developers working on the same project share observations but keep separate beliefs.
+Different developers working on the same project share project beliefs but keep separate persona beliefs. Project beliefs live in `layer/surface/epistemic/beliefs/` (git-tracked). Persona beliefs live in `~/.patina/layer/surface/beliefs/` (machine-local).
 
 ## Structure
 
@@ -39,8 +39,11 @@ Different developers working on the same project share observations but keep sep
 - **oxidize.yaml** - recipe for building adapters (git-tracked)
 
 ### Personal (`~/.patina/`)
-- **persona/** - beliefs, preferences, opinions (never shared)
-- **projects.registry** - registered projects on this machine
+- **layer/** - user-level beliefs and preferences (mirror of project layer structure)
+  - `layer/surface/beliefs/` - persona beliefs (machine-local, never shared)
+- **personas/** - legacy event log (being migrated to layer/beliefs)
+- **registry.yaml** - registered projects and repos on this machine
+- **cache/repos/** - cloned reference repositories
 
 ## System
 
@@ -65,7 +68,7 @@ src/**/*               ┘              │
                        ┌────────── vectors
                        │
                        ↓
-~/.patina/persona/ ──→ scry ←── .patina/data/
+~/.patina/layer/   ──→ scry ←── .patina/data/
                        │
                        ↓
               [PROJECT] + [PERSONA] results → LLM context
@@ -100,8 +103,9 @@ src/**/*               ┘              │
 - LLM sees unified context with clear provenance
 
 ### Persona (Personal Only)
-- `/session-note` can capture to persona instead of project
-- `patina persona note "belief"` adds personal belief
+- `patina persona note "belief"` writes to `~/.patina/layer/surface/beliefs/` and legacy event log
+- `patina persona query "topic"` searches persona knowledge
+- `patina persona migrate` converts legacy events to belief files (idempotent)
 - Never synced via git - machine-local only
 - Cross-project: same belief applies to all your work
 

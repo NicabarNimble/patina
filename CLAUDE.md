@@ -6,9 +6,10 @@ A tool that captures and evolves development patterns, making AI assistants smar
 Patina accumulates knowledge like the protective layer that forms on metal - your development wisdom builds up over time and transfers between projects.
 
 ## Architecture
-- **Layer**: Pattern evolution system (Core → Surface → Dust)
-- **Adapters**: LLM-agnostic interfaces (Claude, Gemini) 
-- **Environments**: Modular workspace system with container orchestration
+- **Layer**: Pattern evolution system (Core → Surface → Dust) with epistemic beliefs
+- **Adapters**: LLM-agnostic interfaces (Claude, Gemini, OpenCode)
+- **Mother**: Cross-project daemon with graph routing, WASM plugin children
+- **Plugin System**: WebAssembly Component Model (WIT) for extensibility
 - **Philosophy**: Decompose systems into tools that LLMs can build
 
 ## Design Documents
@@ -32,7 +33,6 @@ Patina accumulates knowledge like the protective layer that forms on metal - you
   - Cross-platform: Same vector space on Mac/Linux/Windows
   - Production-proven: Twitter scale (`ort`), Hugging Face (fastembed)
 - Rust for CLI and core logic - let the compiler be your guard rail
-- Docker for containerized builds and tests
 - Patterns evolve from projects → topics → core
 - Always provide escape hatches
 
@@ -69,48 +69,62 @@ The CI will fail if any of these checks don't pass! The pre-push script runs all
 patina init <name>              # Initialize new project skeleton
 patina init .                   # Re-init/update current project
 patina adapter add claude       # Add LLM adapter support
+patina doctor                   # Check project health
 
-# Development
-patina doctor               # Check project health
-patina scrape               # Build semantic knowledge database
-patina yolo                 # Generate devcontainer (if needed)
+# Knowledge pipeline
+patina scrape                   # Build semantic knowledge database
+patina oxidize                  # Build embedding projections
+patina rebuild                  # Rebuild .patina/ from git-tracked sources
+
+# Search & retrieval
+patina scry "query"             # Semantic vector search
+patina assay                    # Structural queries (imports, callers, etc.)
+patina context                  # Get project patterns and beliefs
+
+# Spec-driven development
+patina spec ready               # Show specs ready to work
+patina spec status <name> active  # Update spec status
+patina version                  # Show version + ready specs
 
 # Session Management (Claude adapter)
-/session-git-start <name>       # Begin development session
-/session-git-update             # Track progress
-/session-git-note <insight>     # Capture insights
-/session-git-end                # Distill learnings
-
+/session-start <name>           # Begin development session
+/session-update                 # Track progress
+/session-note <insight>         # Capture insights
+/session-end                    # Distill learnings
 ```
-
-## Build System
-- Uses Docker for containerized builds
-- Never requires specific tools beyond Docker
-- Clear feedback about what's being used
 
 ## Project Structure
 ```
 patina/
-├── src/                    # Rust source (CLI and core logic)
-│   ├── adapters/          # LLM adapters (Claude, Gemini)
-│   ├── commands/          # CLI commands
-│   └── indexer/           # Pattern indexing with Git awareness
-├── layer/                  # Pattern storage (Git as memory)
-│   ├── core/              # Eternal patterns (dependable-rust, etc)
-│   ├── surface/           # Active development & architecture docs
-│   ├── dust/              # Historical/archived patterns
-│   └── sessions/          # Distilled session knowledge
-└── resources/             # Templates and scripts
-    ├── claude/            # Claude adapter resources (session/git scripts)
-    ├── gemini/            # Gemini adapter resources
-    └── templates/         # Docker templates
+├── src/                        # Rust source (~61k lines, 195 files)
+│   ├── commands/               # CLI commands (27 total)
+│   ├── plugin/                 # WASM plugin engine (wasmtime)
+│   ├── mother/                 # Daemon core (graph, children)
+│   ├── retrieval/              # Oracle abstraction, RRF fusion
+│   ├── mcp/                    # MCP protocol, JSON-RPC server
+│   ├── embeddings/             # ONNX E5-base-v2, USearch HNSW
+│   ├── release/                # Release strategy and version bumping
+│   ├── secrets/                # Age encryption, Keychain integration
+│   ├── adapters/               # LLM adapters (Claude, Gemini, OpenCode)
+│   └── ...                     # db, forge, git, models, scanner, workspace
+├── patina-metal/               # Tree-sitter grammars (9 languages)
+├── patina-doctor/              # Doctor as WASM plugin
+├── patina-plugin-api/          # Guest-side WASM bindings
+├── patina-command-api/         # Command world guest API
+├── layer/                      # Pattern storage (Git as memory)
+│   ├── core/                   # Eternal patterns + core beliefs
+│   ├── surface/                # Specs, architecture, epistemic beliefs
+│   ├── dust/                   # Archived patterns
+│   └── sessions/               # Session archives
+└── resources/                  # Templates and adapter scripts
 ```
 
 ## Design Philosophy
-1. **Knowledge First**: Patterns are the core value
-2. **LLM Agnostic**: Work where the AI lives
-3. **Container Native**: Reproducible everywhere
-4. **Escape Hatches**: Never lock users in
+1. **Knowledge First**: Patterns and beliefs are the core value
+2. **LLM Agnostic**: Adapter pattern — work where the AI lives
+3. **Pure Rust, Local-first**: SQLite + ONNX + USearch, no cloud required
+4. **Spec-driven**: Features start as specs, go through lifecycle, trigger releases
+5. **Escape Hatches**: Never lock users in
 
 ## Git Discipline
 
@@ -118,11 +132,11 @@ patina/
 
 - Commit after completing each logical change
 - One commit = one purpose (fix one bug, add one feature, refactor one function)
-- Run `/session-git-update` frequently to monitor uncommitted changes
+- Run `/session-update` frequently to monitor uncommitted changes
 - If warned about old uncommitted changes, commit immediately
 - Prefer `git add -p` for surgical staging when files have multiple changes
 
-### Session-Git Commands
+### Session Commands
 - Integrated Git workflow into session tracking
 - Automatic tagging at session boundaries
 - Work classification based on Git metrics
