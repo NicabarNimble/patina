@@ -4,8 +4,8 @@ use anyhow::Result;
 use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
 
-use super::{wasm_engine, PluginManifest};
 use super::mother_child::PluginEngine;
+use super::{wasm_engine, PluginManifest};
 
 // =========================================================================
 // Command world — bindgen + host functions + CommandEngine
