@@ -26,7 +26,7 @@ impl ChildRegistry {
         if self
             .children
             .iter()
-            .any(|c| c.read().unwrap().name() == name)
+            .any(|c| c.read().unwrap_or_else(|e| e.into_inner()).name() == name)
         {
             anyhow::bail!("duplicate child name: {}", name);
         }
@@ -38,7 +38,7 @@ impl ChildRegistry {
     /// Fails fast if any child fails to load.
     pub fn load_all(&self, host: &dyn MotherHost) -> Result<()> {
         for entry in &self.children {
-            let mut child = entry.write().unwrap();
+            let mut child = entry.write().unwrap_or_else(|e| e.into_inner());
             let name = child.name().to_string();
             host.log(&name, "loading");
             child.on_load(host)?;
@@ -75,10 +75,10 @@ impl ChildRegistry {
         let entry = self
             .children
             .iter()
-            .find(|c| c.read().unwrap().name() == child_name)
+            .find(|c| c.read().unwrap_or_else(|e| e.into_inner()).name() == child_name)
             .ok_or_else(|| anyhow::anyhow!("unknown child: {}", child_name))?;
 
-        let child = entry.read().unwrap();
+        let child = entry.read().unwrap_or_else(|e| e.into_inner());
         child.handle(request)
     }
 
