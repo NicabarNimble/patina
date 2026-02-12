@@ -22,7 +22,7 @@ beliefs:
 # fix: Plugin System — Final Audit Fixes
 
 > Address findings from the Phase 1 final audit (2026-02-12) plus
-> soundness improvement identified during review. 4 fixes. No deferrals.
+> soundness and design gaps identified during review. 6 fixes. No deferrals.
 
 ## Problem
 
@@ -360,6 +360,185 @@ approach.
 
 ---
 
+### F4: Toy Capability Gating
+
+**Source:** Post-audit design review, session [[20260212-093831]]
+**Location:** `src/commands/mother/daemon.rs:138-164`, `src/plugin/internal.rs:220-239`
+
+A WASM child in a sandbox with only `host_log` can return a `Toy` with
+arbitrary `command` and `args`. `spawn_toy()` runs it with the daemon's
+full privileges. This bypasses [[two-layer-capability-grants]].
+
+Zed enforces per-command capability grants in the extension manifest.
+Our infrastructure already exists — `check_capabilities()` parses the
+manifest, we just extend it.
+
+**Fix: Manifest changes.** Add `allowed_toy_commands` to plugin.toml:
+
+```toml
+# patina-plugin-repos/plugin.toml
+[plugin]
+name = "patina-repos"
+version = "0.1.0"
+description = "Reference repository freshness monitoring for Mother daemon"
+world = "mother-child"
+patina_min = "0.17.0"
+
+[capabilities]
+host_log = true
+
+[capabilities.toys]
+commands = ["git", "patina"]
+
+[provides]
+child = "repos"
+```
+
+Models child has no toys, so no `[capabilities.toys]` section (default:
+no toy commands allowed).
+
+**Fix: Manifest parsing.** Extend `PluginManifest` to include allowed
+toy commands:
+
+```rust
+pub struct PluginManifest {
+    // ... existing fields ...
+    pub allowed_toy_commands: Vec<String>,
+}
+```
+
+Parse from `[capabilities.toys].commands` array. Default to empty vec
+(no toys allowed).
+
+**Fix: Enforcement.** The manifest must be available at spawn time. Two
+options:
+
+**Option A:** Store allowed commands in `WasmChild` and check in `tick()`.
+
+```rust
+struct WasmChild {
+    name: String,
+    allowed_toy_commands: Vec<String>,
+    inner: Mutex<WasmChildInner>,
+}
+```
+
+In the `tick()` impl, filter toys after the WASM call:
+
+```rust
+fn tick(&mut self) -> Vec<Toy> {
+    let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+    match inner.instance.call_tick(&mut inner.store) {
+        Ok(wasm_toys) => wasm_toys
+            .into_iter()
+            .filter_map(|t| {
+                let toy = Toy { name: t.name, command: t.command, args: t.args };
+                if self.allowed_toy_commands.contains(&toy.command) {
+                    Some(toy)
+                } else {
+                    eprintln!(
+                        "[plugin:{}] toy '{}' denied: command '{}' not in allowed list {:?}",
+                        self.name, toy.name, toy.command, self.allowed_toy_commands
+                    );
+                    None
+                }
+            })
+            .collect(),
+        Err(e) => {
+            eprintln!("[plugin:{}] tick failed: {}", self.name, e);
+            vec![]
+        }
+    }
+}
+```
+
+**Option B:** Check in `spawn_toy()` using a passed allowlist. This is
+looser — it requires threading the manifest through the heartbeat loop.
+
+**Recommended: Option A.** The check lives inside the WasmChild adapter,
+right at the WASM boundary. Compiled-in children (SecretsCacheChild) are
+trusted and don't go through this path. The enforcement is in the adapter,
+not the daemon.
+
+**Manifest update for both plugins:**
+- `patina-plugin-repos/plugin.toml` — add `[capabilities.toys]` with
+  `commands = ["git", "patina"]`
+- `patina-plugin-models/plugin.toml` — no change (no toys, no section)
+
+**Test:** Add a test that verifies unauthorized toy commands are filtered:
+load repos child with a manifest that only allows `["patina"]`, call
+tick() with a stale repo, verify the `git` pull toy is filtered and the
+`patina` scrape toy passes.
+
+---
+
+### F5: Document Design Decisions in Code
+
+**Source:** Post-audit design review, session [[20260212-093831]]
+
+Three code comments that document intentional design decisions. Not
+documentation for its own sake — each one captures reasoning that
+future developers (human or AI) will need when they encounter these
+patterns and wonder "is this a bug or a feature?"
+
+**F5a: String dispatch in mother-child.wit**
+
+Add above the `handle` export in `wit/mother-child.wit`:
+
+```wit
+    /// Handle a routed request.
+    ///
+    /// String dispatch is intentional. The world boundary (mother-child vs
+    /// command vs oracle) provides type safety — capability isolation. Within
+    /// a world, children negotiate payload shapes by JSON convention. This
+    /// avoids coupling the WIT definition to each child's action set and
+    /// keeps the interface stable as children evolve. See [[plugin-system]]
+    /// spec: "Design decision: String dispatch within worlds is intentional."
+    export handle: func(action: string, payload: string) -> result<string, string>;
+```
+
+Also copy the comment to all 3 guest crate `wit/` copies (required
+until F3's CI check enforces consistency).
+
+**F5b: tick(&mut self) vs handle(&self) in child.rs**
+
+Add above `tick()` in `src/mother/child.rs`:
+
+```rust
+    /// Heartbeat tick — child checks its own state, may request toys.
+    ///
+    /// Takes &mut self (not &self like handle) because the heartbeat loop
+    /// is single-threaded and compiled-in children benefit from direct
+    /// mutation without interior mutability overhead. WASM children pay an
+    /// adapter cost (Mutex) but that's inherent to wasmtime's &mut Store
+    /// requirement, not a flaw in the trait design.
+    ///
+    /// Zed has no tick/heartbeat equivalent — their extensions are purely
+    /// event-driven. Our daemon heartbeat model justifies this split.
+    fn tick(&mut self) -> Vec<Toy> {
+        vec![]
+    }
+```
+
+**F5c: PluginEngine::new() doc comment**
+
+Replace the existing doc comment on `PluginEngine::new()` in
+`src/plugin/internal.rs`:
+
+```rust
+    /// Create a new PluginEngine with host functions registered.
+    ///
+    /// Create once per process and reuse for all plugin loading. The
+    /// underlying wasmtime::Engine is a process-wide singleton (OnceLock),
+    /// but Linker setup (WASI + host functions) runs on each call.
+    /// In daemon mode, daemon.rs creates one PluginEngine and passes it
+    /// to load_wasm_child(). CLI command plugins (Phase 2) will need to
+    /// decide whether to share the daemon's engine or create a fresh one.
+    pub fn new() -> Result<Self> {
+```
+
+---
+
 ## Exit Criteria
 
 ### Fixes
@@ -374,40 +553,62 @@ approach.
 - [ ] F2: Thread spawn failure removes name from in-flight (self-healing)
 - [ ] F3: WIT consistency check added to `pre-push-checks.sh`
 - [ ] F3: Check passes (all copies currently identical)
+- [ ] F4: `PluginManifest` parses `[capabilities.toys].commands`
+- [ ] F4: `WasmChild` stores allowed toy commands from manifest
+- [ ] F4: `tick()` filters toys — unauthorized commands logged and dropped
+- [ ] F4: `patina-plugin-repos/plugin.toml` declares `commands = ["git", "patina"]`
+- [ ] F4: Test: unauthorized toy command is filtered
+- [ ] F5a: String dispatch comment in `wit/mother-child.wit` (+ 3 copies)
+- [ ] F5b: tick(&mut self) comment in `src/mother/child.rs`
+- [ ] F5c: PluginEngine::new() doc comment in `src/plugin/internal.rs`
 
 ### Pre-push
 - [ ] `cargo fmt --all`
 - [ ] `cargo clippy --workspace`
 - [ ] `cargo test --workspace`
 - [ ] `./resources/git/pre-push-checks.sh`
-- [ ] All 16 plugin tests pass
+- [ ] All plugin tests pass (16 existing + new F4 test)
 - [ ] No regressions
 
 ## Build Order
 
-1. **F0** — Eliminate unsafe Sync first. This is a soundness fix at the
-   isolation boundary. If anything breaks, we find out before touching
-   other code.
-2. **F3** — WIT consistency check. Build system concern, verify before
-   making runtime code changes.
-3. **F1** — Registry poison handling (small, self-contained).
-4. **F2** — Toy deduplication (largest change, touches spawn_heartbeat
-   + spawn_toy). Last because it's the most code.
+1. **F5** — Doc comments first. Smallest changes, no behavior change.
+   Commits cleanly as documentation.
+2. **F0** — Eliminate unsafe Sync. Soundness fix at isolation boundary.
+3. **F3** — WIT consistency check in pre-push.
+4. **F1** — Registry poison handling (small, self-contained).
+5. **F4** — Toy capability gating. Manifest + WasmChild + test.
+   Before F2 because F2 changes spawn_toy and F4 changes tick.
+6. **F2** — Toy deduplication (largest change, touches spawn_heartbeat).
 
 ## Files to Change
 
 ```
+# F5 — Design decision doc comments
+wit/mother-child.wit                    # F5a: string dispatch comment
+patina-plugin-api/wit/mother-child.wit  # F5a: copy
+patina-plugin-models/wit/mother-child.wit # F5a: copy
+patina-plugin-repos/wit/mother-child.wit  # F5a: copy
+src/mother/child.rs                     # F5b: tick(&mut self) comment
+src/plugin/internal.rs                  # F5c: PluginEngine::new() doc
+
 # F0 — Eliminate unsafe Sync
 src/plugin/internal.rs                  # WasmChild struct + all trait methods
+
+# F3 — WIT consistency check
+resources/git/pre-push-checks.sh        # Add diff check for WIT dirs
 
 # F1 — Registry poison
 src/commands/mother/registry.rs         # 4 unwrap sites → unwrap_or_else
 
+# F4 — Toy capability gating
+src/plugin/internal.rs                  # PluginManifest + WasmChild + tick()
+src/commands/mother/daemon.rs           # Pass manifest to instantiate_child
+patina-plugin-repos/plugin.toml         # Add [capabilities.toys]
+tests or src/plugin/internal.rs         # New test for toy filtering
+
 # F2 — Toy deduplication
 src/commands/mother/daemon.rs           # spawn_heartbeat + spawn_toy → tracked
-
-# F3 — WIT consistency check
-resources/git/pre-push-checks.sh        # Add diff check for WIT dirs
 ```
 
 ---
@@ -418,3 +619,4 @@ resources/git/pre-push-checks.sh        # Add diff check for WIT dirs
 |------|--------|------|
 | 2026-02-12 | ready | Created from final audit session [[20260212-093831]]. 3 findings from audit, all concrete code fixes. Linked to both audits and both prior specs. |
 | 2026-02-12 | amended | Post-audit review added F0 (eliminate unsafe Sync). Amended F2 (handle spawn failure — daemon self-healing). Changed F3 from symlinks to CI check (portability). Reordered build: F0 first (soundness), F3 second (build system), F1 third, F2 last (largest). |
+| 2026-02-12 | amended | No deferrals. Added F4 (toy capability gating — extend manifest + filter in tick), F5 (3 design decision doc comments). Reordered build: F5 first (docs), F0 (soundness), F3 (CI), F1 (poison), F4 (toy gating), F2 (dedup). 6 fixes total, all unblocked. |
