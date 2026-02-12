@@ -20,6 +20,8 @@ mod command_bindings {
         pub plugin_name: String,
         pub wasi: wasmtime_wasi::WasiCtx,
         pub wasi_table: wasmtime::component::ResourceTable,
+        /// Cached project root — computed once at store creation.
+        pub project_root: Option<std::path::PathBuf>,
     }
 
     impl wasmtime_wasi::WasiView for CommandHostState {
@@ -56,15 +58,17 @@ mod command_bindings {
     // All calls go to the Patina core library, never back into WASM.
     impl patina::host::layer::Host for CommandHostState {
         fn find_project_root(&mut self) -> Option<String> {
-            crate::session::SessionManager::find_project_root()
-                .ok()
+            self.project_root
+                .as_ref()
                 .map(|p| p.to_string_lossy().to_string())
         }
 
         fn read_config(&mut self) -> Result<String, String> {
-            let root = crate::session::SessionManager::find_project_root()
-                .map_err(|e| format!("project root: {}", e))?;
-            let config = crate::project::load_with_migration(&root)
+            let root = self
+                .project_root
+                .as_ref()
+                .ok_or_else(|| "no project root".to_string())?;
+            let config = crate::project::load_with_migration(root)
                 .map_err(|e| format!("load config: {}", e))?;
             serde_json::to_string(&config).map_err(|e| format!("serialize config: {}", e))
         }
@@ -76,11 +80,11 @@ mod command_bindings {
         }
 
         fn get_stored_tools(&mut self) -> Vec<String> {
-            let root = match crate::session::SessionManager::find_project_root() {
-                Ok(r) => r,
-                Err(_) => return vec![],
+            let root = match self.project_root.as_ref() {
+                Some(r) => r,
+                None => return vec![],
             };
-            let config = match crate::project::load_with_migration(&root) {
+            let config = match crate::project::load_with_migration(root) {
                 Ok(c) => c,
                 Err(_) => return vec![],
             };
@@ -91,9 +95,9 @@ mod command_bindings {
         }
 
         fn count_layer_files(&mut self, subdir: String) -> u32 {
-            let root = match crate::session::SessionManager::find_project_root() {
-                Ok(r) => r,
-                Err(_) => return 0,
+            let root = match self.project_root.as_ref() {
+                Some(r) => r,
+                None => return 0,
             };
             let path = root.join("layer").join(&subdir);
             if let Ok(entries) = std::fs::read_dir(path) {
@@ -107,19 +111,21 @@ mod command_bindings {
         }
 
         fn get_project_uid(&mut self) -> Option<String> {
-            let root = crate::session::SessionManager::find_project_root().ok()?;
-            crate::project::get_uid(&root)
+            let root = self.project_root.as_ref()?;
+            crate::project::get_uid(root)
         }
 
         fn check_adapter_version(
             &mut self,
             adapter_name: String,
         ) -> Result<Option<String>, String> {
-            let root = crate::session::SessionManager::find_project_root()
-                .map_err(|e| format!("project root: {}", e))?;
+            let root = self
+                .project_root
+                .as_ref()
+                .ok_or_else(|| "no project root".to_string())?;
             let adapter = crate::adapters::get_adapter(&adapter_name);
             adapter
-                .check_for_updates(&root)
+                .check_for_updates(root)
                 .map(|opt| opt.map(|(current, _)| current))
                 .map_err(|e| format!("adapter check: {}", e))
         }
@@ -158,10 +164,12 @@ impl CommandEngine {
             .inherit_stdout()
             .inherit_stderr()
             .build();
+        let project_root = crate::session::SessionManager::find_project_root().ok();
         let host_state = command_bindings::CommandHostState {
             plugin_name: name.to_string(),
             wasi,
             wasi_table: wasmtime::component::ResourceTable::new(),
+            project_root,
         };
         let mut store = Store::new(wasm_engine(), host_state);
         let instance = command_bindings::Command::instantiate(&mut store, component, &self.linker)?;
@@ -176,10 +184,12 @@ impl CommandEngine {
     /// Get the command name from a WASM plugin.
     pub fn get_command_name(&self, component: &Component) -> Result<String> {
         let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
+        let project_root = crate::session::SessionManager::find_project_root().ok();
         let host_state = command_bindings::CommandHostState {
             plugin_name: "probe".to_string(),
             wasi,
             wasi_table: wasmtime::component::ResourceTable::new(),
+            project_root,
         };
         let mut store = Store::new(wasm_engine(), host_state);
         let instance = command_bindings::Command::instantiate(&mut store, component, &self.linker)?;
@@ -190,10 +200,12 @@ impl CommandEngine {
     /// Get the command description from a WASM plugin.
     pub fn get_command_description(&self, component: &Component) -> Result<String> {
         let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
+        let project_root = crate::session::SessionManager::find_project_root().ok();
         let host_state = command_bindings::CommandHostState {
             plugin_name: "probe".to_string(),
             wasi,
             wasi_table: wasmtime::component::ResourceTable::new(),
+            project_root,
         };
         let mut store = Store::new(wasm_engine(), host_state);
         let instance = command_bindings::Command::instantiate(&mut store, component, &self.linker)?;
