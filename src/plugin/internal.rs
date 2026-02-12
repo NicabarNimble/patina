@@ -353,12 +353,20 @@ impl crate::mother::MotherChild for WasmChild {
                 let reason = h.reason.unwrap_or_default();
                 match h.status {
                     bindings::patina::host::types::HealthStatus::Healthy => ChildHealth::Healthy,
-                    bindings::patina::host::types::HealthStatus::Degraded => ChildHealth::Degraded(
-                        if reason.is_empty() { "degraded".into() } else { reason },
-                    ),
-                    bindings::patina::host::types::HealthStatus::Unhealthy => ChildHealth::Unhealthy(
-                        if reason.is_empty() { "unhealthy".into() } else { reason },
-                    ),
+                    bindings::patina::host::types::HealthStatus::Degraded => {
+                        ChildHealth::Degraded(if reason.is_empty() {
+                            "degraded".into()
+                        } else {
+                            reason
+                        })
+                    }
+                    bindings::patina::host::types::HealthStatus::Unhealthy => {
+                        ChildHealth::Unhealthy(if reason.is_empty() {
+                            "unhealthy".into()
+                        } else {
+                            reason
+                        })
+                    }
                 }
             }
             Err(e) => ChildHealth::Unhealthy(format!("WASM call failed: {}", e)),
@@ -567,14 +575,13 @@ impl CommandEngine {
             wasi_table: wasmtime::component::ResourceTable::new(),
         };
         let mut store = Store::new(wasm_engine(), host_state);
-        let instance =
-            command_bindings::Command::instantiate(&mut store, component, &self.linker)?;
+        let instance = command_bindings::Command::instantiate(&mut store, component, &self.linker)?;
 
         // Initialize plugin
         instance.call_init(&mut store)?;
 
         // Run with args
-        Ok(instance.call_run(&mut store, args)?)
+        instance.call_run(&mut store, args)
     }
 
     /// Get the command name from a WASM plugin.
@@ -586,10 +593,9 @@ impl CommandEngine {
             wasi_table: wasmtime::component::ResourceTable::new(),
         };
         let mut store = Store::new(wasm_engine(), host_state);
-        let instance =
-            command_bindings::Command::instantiate(&mut store, component, &self.linker)?;
+        let instance = command_bindings::Command::instantiate(&mut store, component, &self.linker)?;
         instance.call_init(&mut store)?;
-        Ok(instance.call_name(&mut store)?)
+        instance.call_name(&mut store)
     }
 
     /// Get the command description from a WASM plugin.
@@ -601,10 +607,9 @@ impl CommandEngine {
             wasi_table: wasmtime::component::ResourceTable::new(),
         };
         let mut store = Store::new(wasm_engine(), host_state);
-        let instance =
-            command_bindings::Command::instantiate(&mut store, component, &self.linker)?;
+        let instance = command_bindings::Command::instantiate(&mut store, component, &self.linker)?;
         instance.call_init(&mut store)?;
-        Ok(instance.call_description(&mut store)?)
+        instance.call_description(&mut store)
     }
 }
 

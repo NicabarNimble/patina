@@ -135,9 +135,7 @@ impl CommandPlugin for DoctorPlugin {
             .to_string();
 
         // Check adapter version via host
-        let adapter_version = layer::check_adapter_version(&llm)
-            .ok()
-            .flatten();
+        let adapter_version = layer::check_adapter_version(&llm).ok().flatten();
 
         // Count patterns and sessions via host
         let pattern_count = ["core", "topics", "projects"]
@@ -274,7 +272,11 @@ fn display_health_check(health: &types::HealthCheck) {
     println!("\nEnvironment Changes Since Init:");
 
     for tool in &health.missing_tools {
-        let marker = if tool.required { "\u{26a0}\u{fe0f} " } else { "  " };
+        let marker = if tool.required {
+            "\u{26a0}\u{fe0f} "
+        } else {
+            "  "
+        };
         let old_version = tool.old_version.as_deref().unwrap_or("unknown");
         let required_msg = if tool.required { " (required!)" } else { "" };
         println!(
@@ -294,10 +296,7 @@ fn display_health_check(health: &types::HealthCheck) {
     } else {
         println!("  \u{26a0} UID: missing (will be created on next scrape)");
     }
-    let adapter_version = health
-        .adapter_version
-        .as_deref()
-        .unwrap_or("unknown");
+    let adapter_version = health.adapter_version.as_deref().unwrap_or("unknown");
     println!(
         "  \u{2713} LLM: {} (adapter {})",
         health.llm, adapter_version
