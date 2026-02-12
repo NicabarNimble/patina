@@ -559,3 +559,21 @@ not about what's wrong with the code.
 4. Fix Mutex poison handling (important -- robustness)
 5. Fix unsafe Sync comment (important -- correctness of documentation)
 6. Add WIT version annotations (important -- spec compliance)
+
+---
+
+## Appendix: Benchmark Results (C2)
+
+Measured 2026-02-12 during audit remediation session 20260212-083400.
+Release build, macOS Darwin 25.2.0, Rust 1.90.
+
+| Metric | Release | Debug | Threshold | Status |
+|--------|---------|-------|-----------|--------|
+| `PluginEngine::new()` | 1.36ms | 0.95ms | <100ms | **PASS** |
+| `Component::new()` (156KB WASM) | 73.47ms | 1176ms | document only | measured |
+| `instantiate_child()` | 0.44ms | 0.72ms | document only | measured |
+| `handle()` round-trip (avg 10 calls) | 0.002ms | 0.020ms | <1ms | **PASS** |
+
+All spec thresholds met with wide margins. Component compilation (73ms
+in release) dominates startup — per-component caching via
+`Component::serialize()` is a Phase 2 optimization opportunity.

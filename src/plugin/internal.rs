@@ -620,4 +620,99 @@ commands = ["cmd1", "cmd2"]
             other => panic!("expected Healthy, got: {:?}", other),
         }
     }
+
+    // =====================================================================
+    // Benchmarks (C2) — Instant::now() instrumentation
+    // =====================================================================
+
+    /// Measure PluginEngine::new(), Component::new(), instantiate_child(),
+    /// and handle() round-trip. Run with `cargo test -- --nocapture benchmark`.
+    #[test]
+    fn benchmark_plugin_performance() {
+        use std::time::Instant;
+
+        let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/patina_plugin_models.wasm");
+        if !wasm_path.exists() {
+            return;
+        }
+
+        // 1. PluginEngine::new() — spec threshold: <100ms
+        let t0 = Instant::now();
+        let engine = PluginEngine::new().unwrap();
+        let engine_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+        // 2. Component::new() — document compilation time
+        let wasm_bytes = std::fs::read(&wasm_path).unwrap();
+        let t1 = Instant::now();
+        let component = engine.load_component(&wasm_bytes).unwrap();
+        let component_ms = t1.elapsed().as_secs_f64() * 1000.0;
+
+        // 3. instantiate_child() total — Component + WasiCtx + Store + init + name
+        let manifest = PluginManifest {
+            name: "patina-models".into(),
+            version: "0.1.0".into(),
+            description: "bench".into(),
+            world: "mother-child".into(),
+            patina_min: "0.0.0".into(),
+            capabilities: vec!["host_log".into()],
+            provides: PluginProvides {
+                child: Some("models".into()),
+                commands: vec![],
+            },
+        };
+        let t2 = Instant::now();
+        let child = engine.instantiate_child(&component, &manifest).unwrap();
+        let instantiate_ms = t2.elapsed().as_secs_f64() * 1000.0;
+
+        // 4. handle() round-trip — spec threshold: <1ms
+        let request = crate::mother::ChildRequest {
+            action: "resolve_model".into(),
+            payload: serde_json::json!({"name": "e5-small"}),
+        };
+        // Warm up
+        let _ = child.handle(&request).unwrap();
+        // Measure 10 iterations
+        let t3 = Instant::now();
+        let iterations = 10;
+        for _ in 0..iterations {
+            let _ = child.handle(&request).unwrap();
+        }
+        let handle_avg_ms = t3.elapsed().as_secs_f64() * 1000.0 / iterations as f64;
+
+        eprintln!();
+        eprintln!("=== Plugin System Benchmarks (C2) ===");
+        eprintln!(
+            "  PluginEngine::new():     {:.2}ms (threshold: <100ms) {}",
+            engine_ms,
+            if engine_ms < 100.0 { "PASS" } else { "FAIL" }
+        );
+        eprintln!(
+            "  Component::new():        {:.2}ms (156KB WASM cranelift JIT)",
+            component_ms
+        );
+        eprintln!(
+            "  instantiate_child():     {:.2}ms (WasiCtx + Store + init + name)",
+            instantiate_ms
+        );
+        eprintln!(
+            "  handle() round-trip:     {:.3}ms avg over {} calls (threshold: <1ms) {}",
+            handle_avg_ms,
+            iterations,
+            if handle_avg_ms < 1.0 { "PASS" } else { "FAIL" }
+        );
+        eprintln!("=====================================");
+
+        // Assert thresholds
+        assert!(
+            engine_ms < 100.0,
+            "PluginEngine::new() took {:.2}ms, threshold is 100ms",
+            engine_ms
+        );
+        assert!(
+            handle_avg_ms < 1.0,
+            "handle() avg took {:.3}ms, threshold is 1ms",
+            handle_avg_ms
+        );
+    }
 }
