@@ -626,6 +626,201 @@ commands = ["cmd1", "cmd2"]
     }
 
     // =====================================================================
+    // WASM integration — load repos.wasm, test toy system end-to-end
+    // =====================================================================
+
+    /// Helper: load repos.wasm fixture and instantiate child.
+    fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
+        let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/patina_plugin_repos.wasm");
+        if !wasm_path.exists() {
+            return None;
+        }
+
+        let engine = PluginEngine::new().unwrap();
+        let wasm_bytes = std::fs::read(&wasm_path).unwrap();
+        let component = engine.load_component(&wasm_bytes).unwrap();
+        let manifest = PluginManifest {
+            name: "patina-repos".into(),
+            version: "0.1.0".into(),
+            description: "test".into(),
+            world: "mother-child".into(),
+            patina_min: "0.0.0".into(),
+            capabilities: vec!["host_log".into()],
+            provides: PluginProvides {
+                child: Some("repos".into()),
+                commands: vec![],
+            },
+        };
+
+        Some(engine.instantiate_child(&component, &manifest).unwrap())
+    }
+
+    /// Repos child: report_repo + check_freshness handle() round-trip.
+    #[test]
+    fn wasm_repos_child_handle_roundtrip() {
+        let child = match load_repos_child() {
+            Some(c) => c,
+            None => {
+                panic!(
+                    "test fixture missing: tests/fixtures/patina_plugin_repos.wasm\n\
+                     Build: cargo build --release -p patina-plugin-repos --target wasm32-wasip2\n\
+                     Copy: cp target/wasm32-wasip2/release/patina_plugin_repos.wasm tests/fixtures/"
+                );
+            }
+        };
+
+        assert_eq!(child.name(), "repos");
+
+        // Report a repo
+        let request = crate::mother::ChildRequest {
+            action: "report_repo".into(),
+            payload: serde_json::json!({
+                "name": "test-repo",
+                "path": "/tmp/repos/test-repo",
+                "last_indexed": 0
+            }),
+        };
+        let response = child.handle(&request).expect("report_repo failed");
+        assert_eq!(
+            response.payload.get("status").and_then(|v| v.as_str()),
+            Some("registered")
+        );
+        assert_eq!(
+            response.payload.get("total_repos").and_then(|v| v.as_u64()),
+            Some(1)
+        );
+
+        // Check freshness
+        let request = crate::mother::ChildRequest {
+            action: "check_freshness".into(),
+            payload: serde_json::json!({}),
+        };
+        let response = child.handle(&request).expect("check_freshness failed");
+        let stale_count = response
+            .payload
+            .get("stale_count")
+            .and_then(|v| v.as_u64());
+        assert_eq!(stale_count, Some(1), "repo with last_indexed=0 should be stale");
+    }
+
+    /// Repos child: tick() returns toys for stale repos — end-to-end toy system proof.
+    #[test]
+    fn wasm_repos_child_tick_returns_toys() {
+        let mut child = match load_repos_child() {
+            Some(c) => c,
+            None => return, // Skip if fixture not available
+        };
+
+        // Report a stale repo (last_indexed = 0 means it's ancient)
+        let request = crate::mother::ChildRequest {
+            action: "report_repo".into(),
+            payload: serde_json::json!({
+                "name": "stale-repo",
+                "path": "/home/user/.patina/cache/repos/stale-repo",
+                "last_indexed": 0
+            }),
+        };
+        child.handle(&request).expect("report_repo failed");
+
+        // tick() should return toys for the stale repo
+        let toys = child.tick();
+        assert!(
+            toys.len() >= 2,
+            "expected at least 2 toys (pull + scrape), got {}",
+            toys.len()
+        );
+
+        // Verify pull toy
+        let pull_toy = toys.iter().find(|t| t.name.contains("pull"));
+        assert!(pull_toy.is_some(), "expected a pull toy, got: {:?}", toys);
+        let pull = pull_toy.unwrap();
+        assert_eq!(pull.command, "git");
+        assert!(
+            pull.args.contains(&"-C".to_string()),
+            "pull toy should use -C flag"
+        );
+
+        // Verify scrape toy
+        let scrape_toy = toys.iter().find(|t| t.name.contains("scrape"));
+        assert!(
+            scrape_toy.is_some(),
+            "expected a scrape toy, got: {:?}",
+            toys
+        );
+        let scrape = scrape_toy.unwrap();
+        assert_eq!(scrape.command, "patina");
+        assert!(
+            scrape.args.contains(&"scrape".to_string()),
+            "scrape toy should include 'scrape' arg"
+        );
+    }
+
+    /// Repos child: fresh repo produces no toys.
+    #[test]
+    fn wasm_repos_child_fresh_repo_no_toys() {
+        let mut child = match load_repos_child() {
+            Some(c) => c,
+            None => return,
+        };
+
+        // Report a fresh repo (last_indexed = now)
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let request = crate::mother::ChildRequest {
+            action: "report_repo".into(),
+            payload: serde_json::json!({
+                "name": "fresh-repo",
+                "path": "/tmp/repos/fresh-repo",
+                "last_indexed": now
+            }),
+        };
+        child.handle(&request).expect("report_repo failed");
+
+        // tick() should return no toys — repo is fresh
+        let toys = child.tick();
+        assert!(
+            toys.is_empty(),
+            "expected no toys for fresh repo, got: {:?}",
+            toys
+        );
+    }
+
+    /// Repos child: health is Healthy when no repos, Degraded when stale.
+    #[test]
+    fn wasm_repos_child_health_reflects_staleness() {
+        let child = match load_repos_child() {
+            Some(c) => c,
+            None => return,
+        };
+
+        // No repos → Healthy
+        match child.health() {
+            crate::mother::ChildHealth::Healthy => {}
+            other => panic!("expected Healthy with no repos, got: {:?}", other),
+        }
+
+        // Add stale repo → Degraded
+        let request = crate::mother::ChildRequest {
+            action: "report_repo".into(),
+            payload: serde_json::json!({
+                "name": "old-repo",
+                "path": "/tmp/repos/old-repo",
+                "last_indexed": 0
+            }),
+        };
+        child.handle(&request).expect("report_repo failed");
+
+        match child.health() {
+            crate::mother::ChildHealth::Degraded(_) => {} // expected
+            other => panic!("expected Degraded with stale repo, got: {:?}", other),
+        }
+    }
+
+    // =====================================================================
     // Benchmarks (C2) — Instant::now() instrumentation
     // =====================================================================
 
