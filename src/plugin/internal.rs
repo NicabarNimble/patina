@@ -85,6 +85,9 @@ pub struct PluginManifest {
     pub world: String,
     pub patina_min: String,
     pub capabilities: Vec<String>,
+    /// Toy commands this plugin is allowed to request (from [capabilities.toys].commands).
+    /// Empty means no toys allowed.
+    pub allowed_toy_commands: Vec<String>,
     pub provides: PluginProvides,
 }
 
@@ -137,13 +140,25 @@ impl PluginManifest {
             .to_string();
 
         // Parse capabilities
-        let capabilities = table
-            .get("capabilities")
-            .and_then(|v| v.as_table())
+        let cap_table = table.get("capabilities").and_then(|v| v.as_table());
+        let capabilities = cap_table
             .map(|cap| {
                 cap.iter()
                     .filter(|(_, v)| v.as_bool() == Some(true))
                     .map(|(k, _)| k.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Parse [capabilities.toys].commands — allowed toy commands
+        let allowed_toy_commands = cap_table
+            .and_then(|cap| cap.get("toys"))
+            .and_then(|v| v.as_table())
+            .and_then(|toys| toys.get("commands"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
                     .collect()
             })
             .unwrap_or_default();
@@ -171,6 +186,7 @@ impl PluginManifest {
             world,
             patina_min,
             capabilities,
+            allowed_toy_commands,
             provides: PluginProvides { child, commands },
         })
     }
@@ -275,6 +291,7 @@ impl PluginEngine {
 
         Ok(Box::new(WasmChild {
             name,
+            allowed_toy_commands: manifest.allowed_toy_commands.clone(),
             inner: Mutex::new(WasmChildInner { store, instance }),
         }))
     }
@@ -293,6 +310,7 @@ impl PluginEngine {
 /// call, so there's zero performance cost vs the previous layout.
 struct WasmChild {
     name: String,
+    allowed_toy_commands: Vec<String>,
     inner: Mutex<WasmChildInner>,
 }
 
@@ -356,10 +374,21 @@ impl crate::mother::MotherChild for WasmChild {
         match instance.call_tick(store) {
             Ok(wasm_toys) => wasm_toys
                 .into_iter()
-                .map(|t| Toy {
-                    name: t.name,
-                    command: t.command,
-                    args: t.args,
+                .filter_map(|t| {
+                    let toy = Toy {
+                        name: t.name,
+                        command: t.command,
+                        args: t.args,
+                    };
+                    if self.allowed_toy_commands.contains(&toy.command) {
+                        Some(toy)
+                    } else {
+                        eprintln!(
+                            "[plugin:{}] toy '{}' denied: command '{}' not in allowed list {:?}",
+                            self.name, toy.name, toy.command, self.allowed_toy_commands
+                        );
+                        None
+                    }
                 })
                 .collect(),
             Err(e) => {
@@ -473,6 +502,47 @@ commands = ["cmd1", "cmd2"]
     }
 
     #[test]
+    fn manifest_parses_toy_commands() {
+        let f = write_temp_manifest(
+            r#"
+[plugin]
+name = "test-plugin"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+
+[capabilities.toys]
+commands = ["git", "patina"]
+
+[provides]
+child = "test"
+"#,
+        );
+        let m = PluginManifest::from_path(f.path()).unwrap();
+        assert_eq!(m.allowed_toy_commands, vec!["git", "patina"]);
+    }
+
+    #[test]
+    fn manifest_no_toy_commands_defaults_empty() {
+        let f = write_temp_manifest(
+            r#"
+[plugin]
+name = "test-plugin"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "test"
+"#,
+        );
+        let m = PluginManifest::from_path(f.path()).unwrap();
+        assert!(m.allowed_toy_commands.is_empty());
+    }
+
+    #[test]
     fn manifest_invalid_toml() {
         let f = write_temp_manifest("this is not valid toml {{{}}}");
         assert!(PluginManifest::from_path(f.path()).is_err());
@@ -491,6 +561,7 @@ commands = ["cmd1", "cmd2"]
             world: "mother-child".into(),
             patina_min: "0.0.0".into(),
             capabilities: vec!["host_log".into()],
+            allowed_toy_commands: vec![],
             provides: PluginProvides {
                 child: None,
                 commands: vec![],
@@ -508,6 +579,7 @@ commands = ["cmd1", "cmd2"]
             world: "mother-child".into(),
             patina_min: "0.0.0".into(),
             capabilities: vec![],
+            allowed_toy_commands: vec![],
             provides: PluginProvides {
                 child: None,
                 commands: vec![],
@@ -525,6 +597,7 @@ commands = ["cmd1", "cmd2"]
             world: "mother-child".into(),
             patina_min: "0.0.0".into(),
             capabilities: vec!["host_log".into(), "filesystem".into(), "network".into()],
+            allowed_toy_commands: vec![],
             provides: PluginProvides {
                 child: None,
                 commands: vec![],
@@ -574,6 +647,7 @@ commands = ["cmd1", "cmd2"]
             world: "mother-child".into(),
             patina_min: "0.0.0".into(),
             capabilities: vec!["host_log".into()],
+            allowed_toy_commands: vec![],
             provides: PluginProvides {
                 child: Some("models".into()),
                 commands: vec![],
@@ -622,6 +696,7 @@ commands = ["cmd1", "cmd2"]
             world: "mother-child".into(),
             patina_min: "0.0.0".into(),
             capabilities: vec!["host_log".into()],
+            allowed_toy_commands: vec![],
             provides: PluginProvides {
                 child: Some("models".into()),
                 commands: vec![],
@@ -657,6 +732,7 @@ commands = ["cmd1", "cmd2"]
             world: "mother-child".into(),
             patina_min: "0.0.0".into(),
             capabilities: vec!["host_log".into()],
+            allowed_toy_commands: vec!["git".into(), "patina".into()],
             provides: PluginProvides {
                 child: Some("repos".into()),
                 commands: vec![],
@@ -832,6 +908,68 @@ commands = ["cmd1", "cmd2"]
     }
 
     // =====================================================================
+    // Toy capability gating (F4)
+    // =====================================================================
+
+    /// Repos child with restricted manifest: only "patina" allowed, not "git".
+    /// Verifies that unauthorized toy commands are filtered out by WasmChild.
+    #[test]
+    fn wasm_repos_child_toy_capability_gating() {
+        let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/patina_plugin_repos.wasm");
+        if !wasm_path.exists() {
+            return; // Skip if fixture not available
+        }
+
+        let engine = PluginEngine::new().unwrap();
+        let wasm_bytes = std::fs::read(&wasm_path).unwrap();
+        let component = engine.load_component(&wasm_bytes).unwrap();
+
+        // Manifest only allows "patina", NOT "git"
+        let manifest = PluginManifest {
+            name: "patina-repos".into(),
+            version: "0.1.0".into(),
+            description: "test".into(),
+            world: "mother-child".into(),
+            patina_min: "0.0.0".into(),
+            capabilities: vec!["host_log".into()],
+            allowed_toy_commands: vec!["patina".into()], // git excluded
+            provides: PluginProvides {
+                child: Some("repos".into()),
+                commands: vec![],
+            },
+        };
+
+        let mut child = engine.instantiate_child(&component, &manifest).unwrap();
+
+        // Report a stale repo — tick() will return both git pull and patina scrape toys
+        let request = crate::mother::ChildRequest {
+            action: "report_repo".into(),
+            payload: serde_json::json!({
+                "name": "gated-repo",
+                "path": "/tmp/repos/gated-repo",
+                "last_indexed": 0
+            }),
+        };
+        child.handle(&request).expect("report_repo failed");
+
+        let toys = child.tick();
+
+        // Only "patina" toys should pass — "git" toys should be filtered
+        for toy in &toys {
+            assert_eq!(
+                toy.command, "patina",
+                "expected only 'patina' toys, got command '{}' in toy '{}'",
+                toy.command, toy.name
+            );
+        }
+        assert!(
+            !toys.is_empty(),
+            "expected at least one patina toy to pass the filter"
+        );
+    }
+
+    // =====================================================================
     // Benchmarks (C2) — Instant::now() instrumentation
     // =====================================================================
 
@@ -866,6 +1004,7 @@ commands = ["cmd1", "cmd2"]
             world: "mother-child".into(),
             patina_min: "0.0.0".into(),
             capabilities: vec!["host_log".into()],
+            allowed_toy_commands: vec![],
             provides: PluginProvides {
                 child: Some("models".into()),
                 commands: vec![],
