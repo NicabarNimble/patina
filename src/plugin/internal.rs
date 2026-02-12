@@ -524,7 +524,11 @@ commands = ["cmd1", "cmd2"]
         let msg = err.to_string();
         assert!(msg.contains("filesystem"), "got: {}", msg);
         assert!(msg.contains("network"), "got: {}", msg);
-        assert!(!msg.contains("host_log"), "host_log should be granted: {}", msg);
+        assert!(
+            !msg.contains("host_log"),
+            "host_log should be granted: {}",
+            msg
+        );
     }
 
     // =====================================================================

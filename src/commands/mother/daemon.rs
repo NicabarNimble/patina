@@ -560,13 +560,10 @@ pub fn run_server(options: DaemonOptions) -> Result<()> {
                 if let Ok(entries) = std::fs::read_dir(&children_dir) {
                     for entry in entries.flatten() {
                         let path = entry.path();
-                        if path.extension().and_then(|e| e.to_str()) == Some("toml") {
-                            if !path.with_extension("wasm").exists() {
-                                eprintln!(
-                                    "[mother] orphaned manifest (no .wasm): {}",
-                                    path.display()
-                                );
-                            }
+                        if path.extension().and_then(|e| e.to_str()) == Some("toml")
+                            && !path.with_extension("wasm").exists()
+                        {
+                            eprintln!("[mother] orphaned manifest (no .wasm): {}", path.display());
                         }
                     }
                 }
