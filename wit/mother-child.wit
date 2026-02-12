@@ -1,0 +1,39 @@
+package patina:mother-child@0.1.0;
+
+/// World for Mother daemon children — long-lived, heartbeat, toys
+world mother-child {
+    /// Import host logging
+    import patina:host/log;
+
+    /// Plugin identity
+    export name: func() -> string;
+
+    /// Called when Mother loads this child
+    export on-load: func() -> result<_, string>;
+
+    /// Called when Mother shuts down
+    export on-unload: func();
+
+    /// Health check — Mother calls on heartbeat
+    export health: func() -> child-health;
+
+    /// Handle a routed request
+    export handle: func(action: string, payload: string) -> result<string, string>;
+
+    /// Heartbeat tick — return toy requests as JSON list
+    export tick: func() -> list<toy>;
+}
+
+/// Child health status
+enum child-health {
+    healthy,
+    degraded,
+    unhealthy,
+}
+
+/// Work request from child to Mother
+record toy {
+    name: string,
+    command: string,
+    args: list<string>,
+}

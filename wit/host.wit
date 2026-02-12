@@ -1,0 +1,14 @@
+package patina:host@0.1.0;
+
+/// Structured logging for plugins
+interface log {
+    /// Log a message at the given level
+    log: func(level: log-level, message: string);
+
+    enum log-level {
+        debug,
+        info,
+        warn,
+        error,
+    }
+}
