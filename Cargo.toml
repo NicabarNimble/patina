@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "patina-metal"]
+members = [".", "patina-metal", "patina-plugin-api", "patina-plugin-models"]
 exclude = ["layer/dust"]
 resolver = "2"
 
