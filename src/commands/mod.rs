@@ -11,6 +11,7 @@ pub mod launch;
 pub mod model;
 pub mod mother;
 pub mod oxidize;
+pub mod plugin;
 pub mod persona;
 pub mod rebuild;
 pub mod repo;
