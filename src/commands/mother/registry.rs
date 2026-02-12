@@ -20,8 +20,14 @@ impl ChildRegistry {
     }
 
     /// Register a child. Call before load_all().
-    pub fn register(&mut self, child: Box<dyn MotherChild>) {
+    /// Returns error if a child with the same name is already registered.
+    pub fn register(&mut self, child: Box<dyn MotherChild>) -> Result<()> {
+        let name = child.name().to_string();
+        if self.children.iter().any(|c| c.read().unwrap().name() == name) {
+            anyhow::bail!("duplicate child name: {}", name);
+        }
         self.children.push(Arc::new(RwLock::new(child)));
+        Ok(())
     }
 
     /// Load all children — calls on_load() for each in order.
