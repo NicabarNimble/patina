@@ -448,9 +448,14 @@ struct GrantedCapabilities {
 }
 ```
 
-**Implementation:** Host-side dispatch reuses MCP server's JSON parsing logic.
-`QueryEngine` is held as `OnceCell<QueryEngine>` in host state — lazy-initialized
-on first query call (avoids paying init cost for plugins that don't query).
+**Implementation:** Query dispatch lives behind a `QueryDispatchFn` boundary.
+The plugin subsystem (lib crate) owns all gating: kind validation, scope
+enforcement, and `all_repos` sanitization at the data level before dispatch.
+The binary crate provides the actual dispatcher closure that captures
+`QueryEngine` (lazy-initialized) and command modules. This separation is
+required because retrieval engines are host-owned and live outside the plugin
+crate. The lib-side guard strips `all_repos` from params when scope doesn't
+allow it — the callback cannot bypass scope policy even accidentally.
 Guest API crates re-export `query()` function.
 
 #### Interface: HTTP (`patina:host/http@0.1.0`)

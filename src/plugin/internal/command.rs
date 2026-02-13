@@ -160,31 +160,47 @@ mod command_bindings {
                 ));
             }
 
-            // Scope enforcement: check all_repos before dispatching
-            if let Ok(args) = serde_json::from_str::<serde_json::Value>(&params) {
-                let all_repos = args
-                    .get("all_repos")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                if all_repos && !matches!(self.grants.query_scope, super::QueryScope::AllRepos) {
-                    return Err(
-                        "all_repos not allowed: plugin query_scope is current_project".to_string(),
-                    );
+            // Scope enforcement: parse params, enforce all_repos before dispatch.
+            // The lib owns scope policy — the callback receives sanitized params
+            // with all_repos forced to false if the plugin lacks AllRepos scope.
+            let sanitized_params = match serde_json::from_str::<serde_json::Value>(&params) {
+                Ok(mut args) => {
+                    let all_repos = args
+                        .get("all_repos")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    if all_repos {
+                        if !matches!(self.grants.query_scope, super::QueryScope::AllRepos) {
+                            return Err(
+                                "all_repos not allowed: plugin query_scope is current_project"
+                                    .to_string(),
+                            );
+                        }
+                        eprintln!(
+                            "[plugin:{}] query: all_repos=true (audit)",
+                            self.plugin_name
+                        );
+                    }
+                    // Strip all_repos if scope doesn't allow it — defense in depth.
+                    // Even if the check above passes, enforce at the data level so
+                    // the callback can't accidentally honor a stale value.
+                    if !matches!(self.grants.query_scope, super::QueryScope::AllRepos) {
+                        if let Some(obj) = args.as_object_mut() {
+                            obj.remove("all_repos");
+                        }
+                    }
+                    serde_json::to_string(&args)
+                        .map_err(|e| format!("params re-serialize: {}", e))?
                 }
-                if all_repos {
-                    eprintln!(
-                        "[plugin:{}] query: all_repos=true (audit)",
-                        self.plugin_name
-                    );
-                }
-            }
+                Err(_) => params,
+            };
 
             // Delegate to binary-provided dispatch function
             let query_fn = self
                 .query_fn
                 .as_mut()
                 .ok_or_else(|| "query dispatch not configured".to_string())?;
-            query_fn(&kind, &params)
+            query_fn(&kind, &sanitized_params)
         }
     }
 }
