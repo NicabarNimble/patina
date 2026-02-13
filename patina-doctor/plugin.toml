@@ -8,6 +8,7 @@ patina_min = "0.17.0"
 [capabilities]
 host_log = true
 host_layer = true
+host_query = ["context"]
 
 [provides]
 commands = ["doctor"]
