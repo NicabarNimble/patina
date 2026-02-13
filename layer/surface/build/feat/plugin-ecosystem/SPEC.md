@@ -1,29 +1,29 @@
 ---
 type: feat
 id: plugin-ecosystem
-status: design
+status: active
 created: 2026-02-13
 sessions:
   origin: 20260213-055346
-blocked_by: []
-blocks: []
 related:
-  - layer/surface/build/feat/plugin-system/SPEC.md
-  - layer/surface/build/feat/plugin-command-extractions/SPEC.md
-  - layer/surface/build/feat/plugin-oracle-scraper/SPEC.md
-  - layer/surface/build/feat/plugin-grammars/SPEC.md
+- layer/surface/build/feat/plugin-system/SPEC.md
+- layer/surface/build/feat/plugin-command-extractions/SPEC.md
+- layer/surface/build/feat/plugin-oracle-scraper/SPEC.md
+- layer/surface/build/feat/plugin-grammars/SPEC.md
 beliefs:
-  - patina-is-knowledge-protocol
-  - plugin-is-agent-plus-skill
-  - separate-worlds-for-isolation
-  - two-layer-capability-grants
-  - patina-is-knowledge-layer
-  - skills-for-structured-output
-  - mother-is-the-daemon
+- patina-is-knowledge-protocol
+- plugin-is-agent-plus-skill
+- separate-worlds-for-isolation
+- two-layer-capability-grants
+- patina-is-knowledge-layer
+- skills-for-structured-output
+- mother-is-the-daemon
+- lib-owns-policy-binary-owns-wiring
+- sanitize-at-data-level-not-just-control-flow
 references:
-  - "Obsidian community plugin system (2000+ plugins, TypeScript, unsandboxed)"
-  - "Zed extension system (wasmtime, WIT, wasm32-wasip1, capability-gated)"
-  - "Session 20260213-055346: Zed/Obsidian/Patina comparative analysis"
+- Obsidian community plugin system (2000+ plugins, TypeScript, unsandboxed)
+- Zed extension system (wasmtime, WIT, wasm32-wasip1, capability-gated)
+- 'Session 20260213-055346: Zed/Obsidian/Patina comparative analysis'
 ---
 
 # feat: Plugin Ecosystem
@@ -733,21 +733,25 @@ The seven gaps in this spec are **independent of the extraction specs** — they
 can be built in parallel. The query interface, install command, template, and
 capability UX don't require extracting yolo or grammars first.
 
-**Suggested build order:**
+**Build order (tracked):**
 
 *Host interfaces first (they unlock plugin usefulness):*
-1. `patina:host/query` — unlocks Intelligence and Action zone plugins
-2. `patina:host/http` — unlocks webhook/API action plugins safely
-
-*Worlds next (new execution contracts):*
-3. `task` world — covers on-demand action gap (PR reviewer, one-shot deploy)
-4. `pipeline` world — enables grammar/chunking community plugins
+1. ✅ `patina:host/query` — COMPLETE [[session-20260213-112528]]
+   - Commits: 9ad5f098..1921ef39 (6 commits)
+   - WIT + host dispatch, guest API, doctor conformance, scope sanitization
+   - Divergence: `QueryDispatchFn` callback replaces spec's `QueryEngine` on host state (belief: [[lib-owns-policy-binary-owns-wiring]])
+   - Added: `SCOPE_RESERVED_KEYS` data-level stripping (belief: [[sanitize-at-data-level-not-just-control-flow]])
+2. ⬜ `patina:host/http` — NEXT
+   - Target world: mother-child (exists), then task (after #3)
+   - Spec section: line 461-506
+3. ⬜ `task` world — covers on-demand action gap (PR reviewer, one-shot deploy)
+4. ⬜ `pipeline` world — enables grammar/chunking community plugins
 
 *Ecosystem tooling last (wraps around the above):*
-5. Capability approval UX — required before any community plugin use
-6. Plugin template + `patina plugin new` — enables LLM authoring
-7. `patina plugin install` — enables distribution
-8. Skill registration — closes the agent+skill loop
+5. ⬜ Capability approval UX — required before any community plugin use
+6. ⬜ Plugin template + `patina plugin new` — enables LLM authoring
+7. ⬜ `patina plugin install` — enables distribution
+8. ⬜ Skill registration — closes the agent+skill loop
 
 ### Conformance Tests (one golden-path test per world)
 
@@ -864,4 +868,5 @@ extensions. These are orthogonal.
 | 2026-02-13 | design | Created from Zed/Obsidian comparative analysis session [[20260213-055346]]. Frames three-zone model, bundle concept, four design gaps. Belief [[plugin-is-agent-plus-skill]] captured. |
 | 2026-02-13 | amended | 10-scenario walkthrough validated 4-world model: pipeline (host-invoked pure compute), command (user-invoked intelligence), task (user-invoked action), mother-child (daemon continuous action). Calling convention is the real distinction. Pipeline defined as pure compute — all side effects pushed into host. Task world added to cover on-demand action gap (PR reviewer, one-shot deploy). HTTP host interface added for webhook safety (domain allowlisting replaces raw curl toys). Design gaps expanded from 4 to 7. Zones retained as user-facing taxonomy, not architecture. |
 | 2026-02-13 | amended | External review refinements. **(1)** Action removed from protocol spine — protocol verbs are capture/index/search/believe/evolve only. Task and mother-child act on protocol *outputs*, not as protocol phases. **(2)** Query scope added as first-class capability: `query_scope = current_project \| allowed_repos \| all_repos` + optional `query_budget`. **(3)** Governance principle elevated: "if changing it would break every plugin, it's protocol." **(4)** Adapters explicitly placed outside 4-world system as host-side extension point (auth, APIs, secrets require full host access). **(5)** Worlds reframed as execution contracts, not capability bundles. Belief [[patina-is-knowledge-protocol]] updated. |
+| 2026-02-13 | active | Build order item #1 (`patina:host/query`) complete — 6 commits in [[session-20260213-112528]]. `QueryDispatchFn` callback pattern diverged from spec (stronger). Two beliefs captured. Spec promoted to active for remaining build items. |
 | 2026-02-13 | amended | Spec alignment session [[20260213-104615]]. **(1)** Pipeline world: replaced N-export design with single `handle(json)` dispatch — avoids WIT stub tax, mirrors query and mother-child string dispatch. Added envelope schema (`op`, `version`, `payload`). Guest crate offers typed helpers. **(2)** HTTP interface: added `http-response` record with `status: u16`. Host rejects non-HTTPS and cross-domain redirects. Host injects auth from secrets store — plugins never touch credentials. Future headers field compatible. **(3)** Query interface: added defense-in-depth (load-time + call-time gating). Host state carries resolved `GrantedCapabilities` struct. `QueryEngine` as `OnceCell` for lazy init. `all_repos` scope logged for audit trail. **(4)** Oracle fate resolved: stays host-side, not a plugin world. Internal trait designed as-if-pluggable for future Phase 6+. **(5)** Phase 3-5 alignment: yolo/upgrade → task world, scraper → pipeline, grammars → pipeline `handle`, oracle-scraper spec amended. **(6)** Added conformance test plan: one golden-path test per world. **(7)** Added versioned envelope schemas section: `pipeline_req.v1`, `mother_child_action.v1`, `query_params.v1`. Envelopes are protocol-stable, additive-only. Op payloads evolve independently. **(8)** WASM trap handling: all plugin calls fallible, traps convert to `PluginError::Trap`. Deliberate-panic conformance test required. **(9)** Guest API: resolved as umbrella crate `patina-guest` re-exporting world modules. Typed enums (`QueryKind`, `PipelineOp`) serialize at boundary — plugin authors get compile-time safety, WIT stays compact. Open Question #3 resolved. |
