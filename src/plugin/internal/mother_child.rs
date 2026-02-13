@@ -11,6 +11,48 @@ use super::{wasm_engine, PluginManifest};
 use crate::mother::{ChildHealth, ChildRequest, ChildResponse, MotherHost, Toy};
 
 // =========================================================================
+// URL validation — data-level sanitization per [[sanitize-at-data-level]]
+// =========================================================================
+
+/// Validate and parse an HTTP URL for domain-allowlisted access.
+///
+/// Returns the extracted domain on success. Enforces:
+/// - HTTPS only (no plaintext HTTP)
+/// - No IP addresses (IPv4 or IPv6)
+/// - No localhost
+///
+/// Pure function — testable independently of wasmtime.
+pub(super) fn validate_http_url(url: &str) -> Result<String, String> {
+    let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid URL: {}", e))?;
+
+    // HTTPS only
+    if parsed.scheme() != "https" {
+        return Err(format!("only HTTPS allowed, got '{}'", parsed.scheme()));
+    }
+
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "no host in URL".to_string())?;
+
+    // No localhost
+    if host == "localhost" {
+        return Err("localhost not allowed".to_string());
+    }
+
+    // No IP addresses (IPv4 or IPv6)
+    // host_str() returns brackets for IPv6 (e.g., "[::1]") — strip them
+    let bare_host = host
+        .strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host);
+    if bare_host.parse::<std::net::IpAddr>().is_ok() {
+        return Err("IP addresses not allowed".to_string());
+    }
+
+    Ok(bare_host.to_string())
+}
+
+// =========================================================================
 // Bindgen — generates types from WIT definitions
 // =========================================================================
 
@@ -57,6 +99,23 @@ mod bindings {
 
     // patina:host/types only defines types (no functions) — empty Host trait
     impl patina::host::types::Host for HostState {}
+
+    // patina:host/http — stub impl (commit 1: WIT + capabilities only).
+    // Real implementation with reqwest::blocking::Client in commit 2.
+    impl patina::host::http::Host for HostState {
+        fn http_post(
+            &mut self,
+            _url: String,
+            _body: String,
+            _content_type: String,
+        ) -> Result<patina::host::http::HttpResponse, String> {
+            Err("HTTP not yet configured for this plugin".to_string())
+        }
+
+        fn http_get(&mut self, _url: String) -> Result<patina::host::http::HttpResponse, String> {
+            Err("HTTP not yet configured for this plugin".to_string())
+        }
+    }
 }
 
 use bindings::HostState;
@@ -144,6 +203,30 @@ impl PluginEngine {
                 manifest.name,
                 unknown.join(", ")
             );
+        }
+
+        // Load-time validation: host_http domains must be valid
+        for domain in &manifest.host_http_domains {
+            if domain.is_empty() {
+                anyhow::bail!(
+                    "plugin '{}' has empty HTTP domain in host_http",
+                    manifest.name
+                );
+            }
+            if !domain.is_ascii() {
+                anyhow::bail!(
+                    "plugin '{}' has non-ASCII HTTP domain '{}' in host_http",
+                    manifest.name,
+                    domain
+                );
+            }
+            if domain.contains('/') {
+                anyhow::bail!(
+                    "plugin '{}' has path component in HTTP domain '{}' in host_http",
+                    manifest.name,
+                    domain
+                );
+            }
         }
 
         Ok(())

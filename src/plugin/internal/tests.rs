@@ -160,6 +160,7 @@ fn capabilities_all_granted() {
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -179,6 +180,7 @@ fn capabilities_empty() {
         capabilities: vec![],
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -198,6 +200,7 @@ fn capabilities_denied() {
         capabilities: vec!["host_log".into(), "filesystem".into(), "network".into()],
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -292,6 +295,7 @@ fn check_capabilities_rejects_unknown_query_kinds() {
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
         host_query_kinds: vec!["scry".into(), "magic_oracle".into()],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -316,6 +320,7 @@ fn check_capabilities_accepts_known_query_kinds() {
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
         host_query_kinds: vec!["scry".into(), "context".into(), "assay".into()],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -359,6 +364,7 @@ fn wasm_models_child_handle_roundtrip() {
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
@@ -409,6 +415,7 @@ fn wasm_models_child_health() {
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
@@ -446,6 +453,7 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec!["git".into(), "patina".into()],
         host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: Some("repos".into()),
             commands: vec![],
@@ -648,6 +656,7 @@ fn wasm_repos_child_toy_capability_gating() {
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec!["patina".into()], // git excluded
         host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: Some("repos".into()),
             commands: vec![],
@@ -726,6 +735,7 @@ fn benchmark_plugin_performance() {
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
@@ -850,6 +860,7 @@ fn load_doctor_manifest() -> PluginManifest {
         capabilities: vec!["host_log".into(), "host_layer".into()],
         allowed_toy_commands: vec![],
         host_query_kinds: vec![],
+        host_http_domains: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec!["doctor".into()],
@@ -877,4 +888,196 @@ fn command_doctor_run() {
         "unexpected exit code: {}",
         exit_code
     );
+}
+
+// =====================================================================
+// validate_http_url — data-level URL sanitization
+// =====================================================================
+
+#[test]
+fn validate_http_url_valid_https() {
+    let domain = mother_child::validate_http_url("https://api.github.com/repos").unwrap();
+    assert_eq!(domain, "api.github.com");
+}
+
+#[test]
+fn validate_http_url_valid_https_with_port() {
+    let domain = mother_child::validate_http_url("https://api.github.com:443/repos").unwrap();
+    assert_eq!(domain, "api.github.com");
+}
+
+#[test]
+fn validate_http_url_rejects_http() {
+    let err = mother_child::validate_http_url("http://api.github.com/repos").unwrap_err();
+    assert!(err.contains("HTTPS"), "expected HTTPS error, got: {}", err);
+}
+
+#[test]
+fn validate_http_url_rejects_ipv4() {
+    let err = mother_child::validate_http_url("https://192.168.1.1/api").unwrap_err();
+    assert!(err.contains("IP"), "expected IP error, got: {}", err);
+}
+
+#[test]
+fn validate_http_url_rejects_ipv6() {
+    let err = mother_child::validate_http_url("https://[::1]/api").unwrap_err();
+    assert!(err.contains("IP"), "expected IP error, got: {}", err);
+}
+
+#[test]
+fn validate_http_url_rejects_localhost() {
+    let err = mother_child::validate_http_url("https://localhost/api").unwrap_err();
+    assert!(
+        err.contains("localhost"),
+        "expected localhost error, got: {}",
+        err
+    );
+}
+
+#[test]
+fn validate_http_url_rejects_invalid() {
+    let err = mother_child::validate_http_url("not-a-url").unwrap_err();
+    assert!(
+        err.contains("invalid"),
+        "expected invalid URL error, got: {}",
+        err
+    );
+}
+
+// =====================================================================
+// Manifest parsing — host_http
+// =====================================================================
+
+#[test]
+fn manifest_parses_http_domains() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "http-plugin"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+host_http = ["api.github.com", "hooks.slack.com"]
+
+[provides]
+child = "webhook"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert_eq!(
+        m.host_http_domains,
+        vec!["api.github.com", "hooks.slack.com"]
+    );
+}
+
+#[test]
+fn manifest_no_http_domains_defaults_empty() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "no-http"
+world = "mother-child"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "test"
+"#,
+    );
+    let m = PluginManifest::from_path(f.path()).unwrap();
+    assert!(m.host_http_domains.is_empty());
+}
+
+// =====================================================================
+// check_capabilities — HTTP domain validation
+// =====================================================================
+
+#[test]
+fn check_capabilities_rejects_empty_http_domain() {
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: "mother-child".into(),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec!["".into()],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+        },
+    };
+    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    assert!(err.to_string().contains("empty"), "got: {}", err);
+}
+
+#[test]
+fn check_capabilities_rejects_http_domain_with_path() {
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: "mother-child".into(),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec!["api.github.com/repos".into()],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+        },
+    };
+    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    assert!(err.to_string().contains("path"), "got: {}", err);
+}
+
+#[test]
+fn check_capabilities_accepts_valid_http_domains() {
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: "mother-child".into(),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec!["api.github.com".into(), "hooks.slack.com".into()],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+        },
+    };
+    assert!(PluginEngine::check_capabilities(&m).is_ok());
+}
+
+// =====================================================================
+// granted_capabilities — HTTP domains
+// =====================================================================
+
+#[test]
+fn granted_capabilities_includes_http_domains() {
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: "mother-child".into(),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec!["scry".into()],
+        host_http_domains: vec!["api.github.com".into()],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+        },
+    };
+    let grants = m.granted_capabilities();
+    assert!(grants.http_domains.contains("api.github.com"));
+    assert!(grants.query_kinds.contains("scry"));
 }
