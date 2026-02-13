@@ -14,6 +14,37 @@ use super::{wasm_engine, GrantedCapabilities, PluginManifest, QueryScope};
 /// The host impl handles gating; this function handles dispatch.
 pub type QueryDispatchFn = Box<dyn FnMut(&str, &str) -> Result<String, String> + Send>;
 
+/// Keys in query params that are host-controlled and must not be
+/// set by plugins. The lib strips these before dispatch when the
+/// plugin's scope doesn't grant them. Plugins must not rely on
+/// these being preserved through the boundary.
+const SCOPE_RESERVED_KEYS: &[&str] = &["all_repos", "repo", "project_root", "db_path"];
+
+/// Sanitize query params by stripping scope-reserved keys.
+///
+/// Called by the Host impl before dispatching to the binary callback.
+/// Testable independently of wasmtime infrastructure.
+pub(super) fn sanitize_query_params(params: &str, scope: &QueryScope) -> String {
+    let mut args: serde_json::Value = match serde_json::from_str(params) {
+        Ok(v) => v,
+        Err(_) => return params.to_string(),
+    };
+
+    if matches!(scope, QueryScope::AllRepos) {
+        // AllRepos scope: params pass through unmodified
+        return params.to_string();
+    }
+
+    // CurrentProject: strip all scope-reserved keys
+    if let Some(obj) = args.as_object_mut() {
+        for key in SCOPE_RESERVED_KEYS {
+            obj.remove(*key);
+        }
+    }
+
+    serde_json::to_string(&args).unwrap_or_else(|_| params.to_string())
+}
+
 // =========================================================================
 // Command world — bindgen + host functions + CommandEngine
 // =========================================================================
@@ -160,40 +191,29 @@ mod command_bindings {
                 ));
             }
 
-            // Scope enforcement: parse params, enforce all_repos before dispatch.
-            // The lib owns scope policy — the callback receives sanitized params
-            // with all_repos forced to false if the plugin lacks AllRepos scope.
-            let sanitized_params = match serde_json::from_str::<serde_json::Value>(&params) {
-                Ok(mut args) => {
-                    let all_repos = args
-                        .get("all_repos")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false);
-                    if all_repos {
-                        if !matches!(self.grants.query_scope, super::QueryScope::AllRepos) {
-                            return Err(
-                                "all_repos not allowed: plugin query_scope is current_project"
-                                    .to_string(),
-                            );
-                        }
-                        eprintln!(
-                            "[plugin:{}] query: all_repos=true (audit)",
-                            self.plugin_name
-                        );
-                    }
-                    // Strip all_repos if scope doesn't allow it — defense in depth.
-                    // Even if the check above passes, enforce at the data level so
-                    // the callback can't accidentally honor a stale value.
-                    if !matches!(self.grants.query_scope, super::QueryScope::AllRepos) {
-                        if let Some(obj) = args.as_object_mut() {
-                            obj.remove("all_repos");
-                        }
-                    }
-                    serde_json::to_string(&args)
-                        .map_err(|e| format!("params re-serialize: {}", e))?
+            // Scope enforcement: deny all_repos explicitly, then sanitize.
+            // The lib owns scope policy — callback receives sanitized params
+            // with all scope-reserved keys stripped for CurrentProject scope.
+            if let Ok(args) = serde_json::from_str::<serde_json::Value>(&params) {
+                let all_repos = args
+                    .get("all_repos")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if all_repos && !matches!(self.grants.query_scope, super::QueryScope::AllRepos) {
+                    return Err(
+                        "all_repos not allowed: plugin query_scope is current_project".to_string(),
+                    );
                 }
-                Err(_) => params,
-            };
+                if all_repos {
+                    eprintln!(
+                        "[plugin:{}] query: all_repos=true (audit)",
+                        self.plugin_name
+                    );
+                }
+            }
+
+            // Sanitize: strip scope-reserved keys so callback can't bypass policy
+            let sanitized_params = super::sanitize_query_params(&params, &self.grants.query_scope);
 
             // Delegate to binary-provided dispatch function
             let query_fn = self
