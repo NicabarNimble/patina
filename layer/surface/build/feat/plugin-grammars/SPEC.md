@@ -1,21 +1,20 @@
 ---
 type: feat
 id: plugin-grammars
-status: design
+status: abandoned
 created: 2026-02-12
+blocked_by:
+- plugin-oracle-scraper
 sessions:
   origin: 20260212-083400
-blocked_by:
-  - plugin-oracle-scraper  # Scraper world proves WASM on scrape hot path
-blocks: []
 related:
-  - layer/surface/build/feat/plugin-system/SPEC.md
-  - layer/surface/build/feat/plugin-oracle-scraper/SPEC.md
-  - layer/surface/build/feat/plugin-command-extractions/SPEC.md
+- layer/surface/build/feat/plugin-system/SPEC.md
+- layer/surface/build/feat/plugin-oracle-scraper/SPEC.md
+- layer/surface/build/feat/plugin-command-extractions/SPEC.md
 beliefs:
-  - patina-is-knowledge-layer
-  - coupling-is-complexity
-  - compiler-enforced-safety
+- patina-is-knowledge-layer
+- coupling-is-complexity
+- compiler-enforced-safety
 ---
 
 # feat: Grammar Plugins (v0.20.0)
