@@ -7,9 +7,11 @@ sessions:
   origin: 20260213-055346
 related:
 - layer/surface/build/feat/plugin-system/SPEC.md
-- layer/surface/build/feat/plugin-command-extractions/SPEC.md
-- layer/surface/build/feat/plugin-oracle-scraper/SPEC.md
-- layer/surface/build/feat/plugin-grammars/SPEC.md
+- layer/surface/build/feat/plugin-host-http/SPEC.md
+- layer/surface/build/feat/plugin-task-world/SPEC.md
+- layer/surface/build/feat/plugin-pipeline-world/SPEC.md
+- layer/surface/build/feat/plugin-authoring/SPEC.md
+- layer/surface/build/feat/plugin-distribution/SPEC.md
 beliefs:
 - patina-is-knowledge-protocol
 - plugin-is-agent-plus-skill
@@ -716,42 +718,38 @@ won't edit TOML settings files.
 
 ---
 
-## Relationship to Existing Specs
+## Relationship to Specs
 
-This spec is a **vision document** — it frames the "what and why" of the plugin
-ecosystem. The existing specs are the "how" for specific phases:
+This spec is the **vision and architecture document**. Child specs drive
+delivery. Each child completes independently and triggers a version bump.
 
-| Spec | Role | Status | Impact of 4-world model |
-|------|------|--------|------------------------|
-| [[plugin-system]] | Runtime (wasmtime, WIT, 2 worlds) | complete | Foundation stays. Task + pipeline worlds are additive. |
-| [[plugin-command-extractions]] | Extract yolo, eval, bench, etc. | design | Extractions become command or task world plugins. yolo and upgrade are task-world candidates (they mutate system). |
-| [[plugin-oracle-scraper]] | Extensible oracle + scraper | design | Scraper subsumes into pipeline world (`handle` dispatch). Oracle stays host-side — not a plugin world (resolved). |
-| [[plugin-grammars]] | Tree-sitter from WASM | design | Subsumes into pipeline world (`handle` with `{"op": "parse", ...}`). |
-| **This spec** | Ecosystem (4 worlds, install, template, query, skills) | design | All zones |
+| Spec | Build Order | Status |
+|------|-------------|--------|
+| [[plugin-system]] | Foundation (v0.17.0) | complete |
+| [[plugin-host-http]] | #2 — HTTP interface | ready |
+| [[plugin-task-world]] | #3 — task world | design (blocked by #2) |
+| [[plugin-pipeline-world]] | #4 — pipeline world | design (blocked by #3) |
+| [[plugin-authoring]] | #5-6 — approval + templates | design (blocked by #4) |
+| [[plugin-distribution]] | #7-8 — install + skills | design (blocked by #5-6) |
 
-The seven gaps in this spec are **independent of the extraction specs** — they
-can be built in parallel. The query interface, install command, template, and
-capability UX don't require extracting yolo or grammars first.
+**Archived (superseded by this spec):** [[plugin-command-extractions]],
+[[plugin-oracle-scraper]], [[plugin-grammars]], [[wit-interfaces]].
+Recoverable via git tags (`spec/<id>`).
 
-**Build order (tracked):**
+**Build order (tracked — each item has its own spec):**
 
 *Host interfaces first (they unlock plugin usefulness):*
 1. ✅ `patina:host/query` — COMPLETE [[session-20260213-112528]]
    - Commits: 9ad5f098..1921ef39 (6 commits)
-   - WIT + host dispatch, guest API, doctor conformance, scope sanitization
-   - Divergence: `QueryDispatchFn` callback replaces spec's `QueryEngine` on host state (belief: [[lib-owns-policy-binary-owns-wiring]])
-   - Added: `SCOPE_RESERVED_KEYS` data-level stripping (belief: [[sanitize-at-data-level-not-just-control-flow]])
-2. ⬜ `patina:host/http` — NEXT
-   - Target world: mother-child (exists), then task (after #3)
-   - Spec section: line 461-506
-3. ⬜ `task` world — covers on-demand action gap (PR reviewer, one-shot deploy)
-4. ⬜ `pipeline` world — enables grammar/chunking community plugins
+   - Divergence: `QueryDispatchFn` callback (belief: [[lib-owns-policy-binary-owns-wiring]])
+   - Added: `SCOPE_RESERVED_KEYS` stripping (belief: [[sanitize-at-data-level-not-just-control-flow]])
+2. ⬜ `patina:host/http` — **[[plugin-host-http]]** (ready)
+3. ⬜ `task` world — **[[plugin-task-world]]** (design, blocked by #2)
+4. ⬜ `pipeline` world — **[[plugin-pipeline-world]]** (design, blocked by #3)
 
 *Ecosystem tooling last (wraps around the above):*
-5. ⬜ Capability approval UX — required before any community plugin use
-6. ⬜ Plugin template + `patina plugin new` — enables LLM authoring
-7. ⬜ `patina plugin install` — enables distribution
-8. ⬜ Skill registration — closes the agent+skill loop
+5-6. ⬜ Approval UX + templates — **[[plugin-authoring]]** (design, blocked by #4)
+7-8. ⬜ Install + skill registration — **[[plugin-distribution]]** (design, blocked by #5-6)
 
 ### Conformance Tests (one golden-path test per world)
 
