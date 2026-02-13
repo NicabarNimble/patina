@@ -5,6 +5,7 @@ status: ready
 created: 2026-02-13
 sessions:
   origin: 20260213-120746
+  refined: 20260213-135136
 blocked_by:
 - plugin-system
 related:
@@ -34,6 +35,20 @@ safer and gives the host control over credentials.
 This is build order item #2 from [[plugin-ecosystem]] SPEC.md (lines
 461-506). All design decisions are locked there. This spec owns the
 implementation — scope, commits, acceptance criteria.
+
+## Spec Divergences from Parent
+
+1. **No HttpDispatchFn callback.** The ecosystem spec (lines 453-461)
+   shows the callback pattern used for query. RESOLVED: `reqwest` is a
+   **lib crate dependency** (Cargo.toml line 47), used by 4 lib files
+   (`src/secrets/session.rs`, `src/mother/internal.rs`,
+   `src/commands/upgrade.rs`, `src/models/download.rs`). The lib can call
+   `reqwest::blocking::Client` directly. Per [[lib-owns-policy-binary-owns-wiring]]:
+   callbacks are for when engines live in the binary crate. `reqwest` doesn't.
+   **Simpler is better.**
+
+2. **URL parsing uses `reqwest::Url`** (re-exports `url` v2.5.8, already
+   in the dependency tree via reqwest + wasmtime-wasi). No new dependency.
 
 ## Scope
 
@@ -84,37 +99,53 @@ this list before making any request.
 5. **Status code transparency** — return `http-response { status, body }`
    so plugins can branch on 4xx/5xx
 
-### What NOT to Build
+### What NOT to Touch
 
-- Auth injection from secrets store — design it but defer implementation
-  to follow-up (keeps this spec small, secrets integration is its own scope)
-- Request headers from guest — future-compatible (`headers` field on
-  `http-response`), not built now
+- `src/plugin/internal/command.rs` — command world is read-only, no HTTP
+- `src/main.rs` — no binary-side dispatch needed (reqwest is lib-accessible)
+- `wit/command/` — command world does not import HTTP
+- `src/mcp/` — MCP server is unrelated
+- Auth injection from secrets store — defer to follow-up
+- Request headers from guest — future-compatible, not built now
 - Connection pooling — `reqwest` handles this. No custom pool management.
-- Command world HTTP — commands are read-only by design
 - Task world HTTP — task world doesn't exist yet (build order #3)
 
 ## Architecture
 
-### Pattern: lib-owns-policy, binary-owns-wiring
+### Direct reqwest (no callback)
 
-Same pattern as query (belief: [[lib-owns-policy-binary-owns-wiring]]):
+Unlike query (which needed `QueryDispatchFn` because `QueryEngine` lives
+in the binary crate), HTTP uses `reqwest::blocking::Client` directly from
+the lib crate. The host impl creates a client with a custom redirect
+policy and calls it inline.
 
-- **lib crate** (`src/plugin/`): defines `HttpDispatchFn` type, implements
-  `patina::host::http::Host` trait with domain validation + call-time
-  gating, strips/validates before dispatch
-- **binary crate** (`src/main.rs`): provides `make_http_dispatch()` closure
-  that captures a `reqwest::blocking::Client`
+```rust
+// In mother_child.rs HostState — no callback needed
+pub http_client: reqwest::blocking::Client,
+pub grants: GrantedCapabilities,
+```
 
-But — **check if this boundary is needed**. Unlike query, `reqwest` is a
-library crate dependency (not binary-only). If `reqwest` is accessible from
-lib, the host impl can call it directly without a callback. Read `Cargo.toml`
-to verify. If reqwest is in lib's deps, skip the callback — simpler is better.
+The client is built once at instantiation with redirect policy set to
+reject cross-domain redirects:
+
+```rust
+reqwest::blocking::Client::builder()
+    .redirect(reqwest::redirect::Policy::custom(|attempt| {
+        // Only follow redirects within the same domain
+        if attempt.url().host_str() != attempt.previous().last()
+            .and_then(|u| u.host_str()) {
+            attempt.stop()
+        } else {
+            attempt.follow()
+        }
+    }))
+    .build()
+```
 
 ### GrantedCapabilities Extension
 
 ```rust
-// Already in spec, add to existing struct:
+// src/plugin/internal/mod.rs — extend existing struct:
 pub struct GrantedCapabilities {
     pub query_kinds: HashSet<String>,
     pub query_scope: QueryScope,
@@ -122,73 +153,123 @@ pub struct GrantedCapabilities {
 }
 ```
 
+### PluginManifest Extension
+
+```rust
+// src/plugin/internal/mod.rs — add field to PluginManifest:
+pub host_http_domains: Vec<String>,  // NEW — from [capabilities].host_http
+```
+
+Parse pattern: identical to `host_query_kinds` parsing (lines 152-161
+of current `mod.rs`). `host_http` is an array of domain strings.
+
 ### Defense in Depth (per [[two-layer-capability-grants]])
 
 1. **Load-time**: `check_capabilities()` validates `host_http` domains are
-   non-empty strings. Rejects malformed manifests early.
-2. **Call-time**: Host impl extracts domain from URL, checks against
-   `grants.http_domains`. Deny-by-default.
+   non-empty strings, ASCII-only, no path components. Rejects malformed
+   manifests early.
+2. **Call-time**: Host impl extracts domain from URL via `reqwest::Url::parse()`,
+   checks against `grants.http_domains`. Deny-by-default.
 3. **Data-level** (per [[sanitize-at-data-level-not-just-control-flow]]):
-   URL validation — reject non-HTTPS, reject IPs (no `https://192.168.1.1`),
-   reject localhost. This is the trust boundary sanitization.
+   URL validation function (`validate_http_url`) — reject non-HTTPS, reject
+   IPs (no `https://192.168.1.1`), reject localhost/127.0.0.1/[::1].
+   This is the trust boundary sanitization. Testable independently of wasmtime.
 
-### Mother-Child Integration
+### Mother-Child HostState Expansion
 
-Mother-child `HostState` currently has: `plugin_name`, `wasi`, `wasi_table`.
-It needs to grow to carry `GrantedCapabilities` and the HTTP dispatch/client,
-matching the pattern `CommandHostState` already uses.
+Current `HostState` (mother_child.rs:24-28):
+```rust
+pub struct HostState {
+    pub plugin_name: String,
+    pub wasi: wasmtime_wasi::WasiCtx,
+    pub wasi_table: wasmtime::component::ResourceTable,
+}
+```
 
-Files to touch:
-- `wit/deps/patina-host/host.wit` — add `interface http { ... }`
-- `wit/mother-child/mother-child.wit` — add `import patina:host/http@0.1.0;`
-- `wit/mother-child/deps/patina-host/host.wit` — sync copy
-- `src/plugin/internal/mod.rs` — extend `GrantedCapabilities`, parse
-  `host_http` from manifest, extend `check_capabilities()`
-- `src/plugin/internal/mother_child.rs` — expand `HostState`, implement
-  `patina::host::http::Host` trait, wire through `instantiate_child()`
-- `src/plugin/internal/tests.rs` — domain validation tests
+Expanded to match `CommandHostState` pattern (command.rs:58-69):
+```rust
+pub struct HostState {
+    pub plugin_name: String,
+    pub wasi: wasmtime_wasi::WasiCtx,
+    pub wasi_table: wasmtime::component::ResourceTable,
+    pub grants: GrantedCapabilities,        // NEW
+    pub http_client: reqwest::blocking::Client,  // NEW
+}
+```
 
-### Implementation Plan (3 commits)
+Note: mother-child does NOT need `project_root` (doesn't import `layer`)
+or `query_fn` (doesn't import `query` yet — that's a separate future item).
 
-**Commit 1: WIT + host-side HTTP dispatch**
+### instantiate_child() Changes
+
+`PluginEngine::instantiate_child()` (mother_child.rs:154-186) needs:
+1. Call `manifest.granted_capabilities()` to build grants
+2. Build `reqwest::blocking::Client` with redirect policy
+3. Pass both into `HostState`
+4. `check_capabilities()` already called at line 160 — add HTTP validation
+
+## Exact Files to Change
+
+| File | What changes | Lines affected |
+|------|-------------|----------------|
+| `wit/deps/patina-host/host.wit` | Add `interface http { ... }` after `interface query` (line 98) | +15 lines at end |
+| `wit/mother-child/deps/patina-host/host.wit` | Add `interface http { ... }` (sync copy — this file currently lacks `query` too, only add `http`) | +15 lines at end |
+| `wit/mother-child/mother-child.wit` | Add `import patina:host/http@0.1.0;` after `types` import (line 10) | +1 line |
+| `src/plugin/internal/mod.rs` | (a) Add `http_domains` to `GrantedCapabilities` (line 77), (b) add `host_http_domains` to `PluginManifest` (line 52), (c) parse `host_http` in `from_path()` (after line 161), (d) extend `granted_capabilities()` (line 207), (e) extend `check_capabilities()` (after line 147) | ~25 new lines |
+| `src/plugin/internal/mother_child.rs` | (a) Add `grants` + `http_client` to `HostState` (line 24), (b) implement `patina::host::http::Host` for `HostState` (new ~50-line impl block), (c) expand `instantiate_child()` to build client + grants (line 164) | ~70 new lines |
+| `src/plugin/internal/tests.rs` | Add `validate_http_url` unit tests + manifest parsing tests for `host_http` | ~60 new lines |
+| `patina-plugin-api/src/lib.rs` | Add `pub mod http` wrapper | ~15 new lines |
+| `patina-plugin-api/wit/deps/patina-host/host.wit` | Sync copy with http interface | +15 lines |
+
+**Not changing:** `command.rs`, `main.rs`, `wit/command/`, `src/mcp/`
+
+## Implementation Plan (3 commits)
+
+**Commit 1: WIT + manifest + capabilities**
 - Add `interface http` to `wit/deps/patina-host/host.wit`
-- Add `import patina:host/http@0.1.0` to mother-child world WIT
-- Sync WIT copies across plugin crates
-- Extend `GrantedCapabilities` with `http_domains: HashSet<String>`
-- Parse `host_http` from manifest TOML in `PluginManifest::from_path()`
-- Extend `check_capabilities()` for HTTP domain validation
-- Expand mother-child `HostState` with grants + reqwest client
-- Implement `patina::host::http::Host` for `HostState`:
-  - Extract domain from URL
-  - HTTPS-only check
-  - Domain allowlist check
-  - No cross-domain redirect (reqwest redirect policy)
-  - Execute request, return `http-response`
-- Wire through `instantiate_child()`
+- Add `interface http` to `wit/mother-child/deps/patina-host/host.wit`
+- Add `import patina:host/http@0.1.0` to `wit/mother-child/mother-child.wit`
+- Add `host_http_domains: Vec<String>` to `PluginManifest`
+- Parse `host_http` in `PluginManifest::from_path()` (same pattern as `host_query_kinds`)
+- Add `http_domains: HashSet<String>` to `GrantedCapabilities`
+- Extend `granted_capabilities()` to populate `http_domains`
+- Extend `check_capabilities()`: validate HTTP domains non-empty, ASCII-only
+- Add `validate_http_url()` function (pub(super) for testability):
+  HTTPS-only, no IPs, no localhost, domain extraction
+- Tests: `validate_http_url` unit tests, manifest parsing for `host_http`,
+  `check_capabilities` with HTTP domains
 
-**Commit 2: Guest API**
-- Add `pub mod http` to `patina-plugin-api/src/lib.rs` (mother-child guest API)
-- Follow existing `pub mod layer` wrapper pattern
+**Commit 2: Host impl + HostState expansion**
+- Expand mother-child `HostState` with `grants` + `http_client`
+- Build `reqwest::blocking::Client` with cross-domain redirect policy
+- Implement `patina::host::http::Host` for `HostState`:
+  - `http_get()`: validate URL → check domain → execute → return response
+  - `http_post()`: validate URL → check domain → set content-type → execute → return response
+- Update `instantiate_child()` to build grants + client
 - Sync WIT in `patina-plugin-api/` directory
 
-**Commit 3: Conformance test**
-- Update existing test child or create `http-test-child`:
-  - Manifest with `host_http = ["httpbin.org"]` (or mock)
-  - Call `http-get("https://httpbin.org/get")`
-  - Verify status 200 returned
-- Test: plugin WITHOUT `host_http` is denied at call time
-- Test: plugin requesting non-allowed domain is denied
-- Test: non-HTTPS URL is rejected
+**Commit 3: Guest API + conformance test**
+- Add `pub mod http` to `patina-plugin-api/src/lib.rs`
+- Follow existing `pub mod layer` wrapper pattern
+- Integration test in `src/plugin/internal/tests.rs`:
+  - Test: domain NOT in allowlist → denied at call time
+  - Test: non-HTTPS URL → rejected by `validate_http_url`
+  - Test: IP address URL → rejected
+  - Test: localhost → rejected
+- Live HTTP test (optional, gated by fixture): call httpbin.org or similar
 
 ## Exit Criteria
 
-- [ ] `interface http` in host WIT, imported by mother-child world
-- [ ] `GrantedCapabilities.http_domains` parsed from manifest
+- [ ] `interface http` in `wit/deps/patina-host/host.wit`, imported by mother-child world
+- [ ] `GrantedCapabilities.http_domains` populated from `PluginManifest.host_http_domains`
 - [ ] `check_capabilities()` validates HTTP domains at load time
-- [ ] Host impl enforces: HTTPS-only, domain allowlist, no cross-domain redirect
-- [ ] Mother-child `HostState` carries grants (pattern matches `CommandHostState`)
-- [ ] Guest API module in mother-child guest crate
-- [ ] Conformance test: allowed domain succeeds, denied domain fails
+- [ ] `validate_http_url()` enforces: HTTPS-only, no IPs, no localhost, domain extraction
+- [ ] Host impl enforces: domain allowlist, no cross-domain redirect
+- [ ] Mother-child `HostState` carries `grants` + `http_client`
+- [ ] `instantiate_child()` builds client with redirect policy
+- [ ] Guest API `pub mod http` in `patina-plugin-api`
+- [ ] Unit tests: URL validation (≥5 cases), manifest parsing, capability gating
+- [ ] `cargo test --workspace` passes
 - [ ] `./resources/git/pre-push-checks.sh` passes
 
 ## Status Log
@@ -196,3 +277,4 @@ Files to touch:
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-13 | ready | Extracted from [[plugin-ecosystem]] build order item #2. Design locked in parent spec. Implementation-ready. |
+| 2026-02-13 | ready | Refined in session [[20260213-135136]]. RESOLVED: no HttpDispatchFn — reqwest is lib dep (Cargo.toml line 47). Added exact files list, validate_http_url function, "What NOT to Touch" section, commit plan with scalpel discipline. |
