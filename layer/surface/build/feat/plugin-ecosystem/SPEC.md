@@ -58,15 +58,34 @@ on making the plugin system usable by others — the ecosystem around the runtim
 ## Core Insight: Patina Is a Knowledge Protocol
 
 Per [[patina-is-knowledge-protocol]]: Patina is to development knowledge what
-git is to version control. The core — capture (scrape), index (oxidize), search
-(scry/assay), believe (epistemic layer), evolve (sessions/patterns) — should
-work standalone and LLM-agnostic. Everything else belongs in the plugin
-ecosystem.
+git is to version control. The protocol has five verbs:
+
+```
+CAPTURE → INDEX → SEARCH → BELIEVE → EVOLVE
+```
+
+These produce outputs — artifacts, results, decisions, health signals, deltas.
+The protocol does NOT include "action." Like git doesn't have "deploy" as a
+verb, Patina doesn't have "act." Extensions may act on protocol outputs, but
+action is a side-effect of extensions, not a protocol phase.
+
+The core — capture (scrape), index (oxidize), search (scry/assay), believe
+(epistemic layer), evolve (sessions/patterns) — should work standalone and
+LLM-agnostic. Everything else belongs in the plugin ecosystem.
 
 This reframes the entire extraction roadmap. Phases 3-5 ([[plugin-command-extractions]],
 [[plugin-oracle-scraper]], [[plugin-grammars]]) are not binary size optimization —
 they are **protocol distillation**. Each extraction trims the core toward its
 protocol essence while the ecosystem grows to handle the rest.
+
+### Governance Principle
+
+> **If changing it would break every plugin, it's protocol.
+> If changing it only affects one use case, it's a plugin.**
+
+Corollary: if something can be A/B tested per project without breaking
+artifacts, lean plugin. If it affects artifact semantics (layer format,
+belief schema, session schema), it's core.
 
 ## Core Insight: LLMs Change the Plugin Equation
 
@@ -142,18 +161,26 @@ can interpret.
 
 ---
 
-## Four Worlds by Calling Convention
+## Four Worlds = Four Execution Contracts
 
 The 10-scenario walkthrough (session [[20260213-055346]]) revealed that the
 real distinction between plugin types is **calling convention** — who invokes
-the plugin, what its lifecycle is, and whether it can act on the world.
+the plugin, what its lifecycle is, and what capabilities the contract provides.
 
-| World | Invoked by | Lifecycle | Has toys | Has query | Has http |
-|-------|-----------|-----------|----------|-----------|----------|
-| `pipeline` | Host (during scrape/query) | Per-call | No | No | No |
-| `command` | User (CLI) | One-shot | No | Yes | No |
-| `task` | User (CLI) | One-shot | Yes | Yes | Yes |
-| `mother-child` | Daemon (heartbeat) | Long-lived | Yes | Yes | Yes |
+Worlds are execution contracts, not capability bundles. Each is a different
+runtime lifecycle. Capabilities (query, http, toys) are host interfaces
+gated by the manifest within a world.
+
+| World | Invoked by | Lifecycle | Protocol boundary |
+|-------|-----------|-----------|-------------------|
+| `pipeline` | Host (during scrape/index) | Per-call | Extends Capture + Index |
+| `command` | User (CLI) | One-shot | Extends Search + Believe (read) |
+| `task` | User (CLI) | One-shot | Acts on Search/Believe outputs |
+| `mother-child` | Daemon (heartbeat) | Long-lived | Monitors Evolve, acts on signals |
+
+Note: task and mother-child don't extend the protocol — they extend
+*outward from it*. The protocol produces outputs (results, decisions,
+signals). These worlds act on those outputs. Like CI acts on git commits.
 
 Each world is a genuinely different execution contract. Scenarios that
 break cleanly under one world don't fit in the others:
@@ -362,12 +389,18 @@ interface query {
 }
 ```
 
-**Manifest gating:**
+**Manifest gating — kinds and scope:**
 ```toml
 [capabilities]
-host_query = ["scry", "context"]    # Can search, can read patterns
-# host_query = ["scry", "assay", "context", "beliefs"]  # Full access
+host_query = ["scry", "context"]           # Which query kinds
+query_scope = "current_project"            # current_project | allowed_repos | all_repos
+# query_budget = { max_rows = 100 }       # Optional: prevent runaway queries
 ```
+
+Query scope is a first-class capability. A mother-child plugin searching
+`all_repos` on every heartbeat tick is very different from one searching
+`current_project`. Make this explicit in the manifest so users see it
+at install time.
 
 **Available in worlds:** command, task, mother-child.
 **Not in:** pipeline (pure compute — no host queries by design).
@@ -639,6 +672,27 @@ capability UX don't require extracting yolo or grammars first.
 
 ---
 
+## Extension Points Outside the 4 Worlds
+
+### LLM Adapters (host-side, not WASM)
+
+Adapters (Claude, Gemini, OpenCode) are how LLMs consume the protocol.
+They handle auth, API transport, prompt orchestration, rate limits, and
+secrets. They are NOT candidates for WASM sandboxing — they need full
+host access by nature.
+
+Adapters are a **5th extension point** but live outside the 4-world system:
+- Currently compiled-in (`src/adapters/`)
+- Skills (the prompt half of the bundle) are adapter-augmentation, not a
+  separate world
+- If adapters ever become pluggable, they'd be host-side plugins (dylib or
+  trait objects), not WASM
+
+The 4 worlds handle system-side extensions. Adapters handle LLM-side
+extensions. These are orthogonal.
+
+---
+
 ## What We Don't Build (Yet)
 
 - **Plugin marketplace/registry** — ref repos and local install first
@@ -649,6 +703,7 @@ capability UX don't require extracting yolo or grammars first.
 - **`patina plugin generate`** — the LLM-generation command. Design the
   template and install path first; generation is a layer on top.
 - **Plugin auto-update** — manual for now
+- **WASM-sandboxed adapters** — adapters stay host-side (see above)
 
 ## Open Questions
 
@@ -685,3 +740,4 @@ capability UX don't require extracting yolo or grammars first.
 |------|--------|------|
 | 2026-02-13 | design | Created from Zed/Obsidian comparative analysis session [[20260213-055346]]. Frames three-zone model, bundle concept, four design gaps. Belief [[plugin-is-agent-plus-skill]] captured. |
 | 2026-02-13 | amended | 10-scenario walkthrough validated 4-world model: pipeline (host-invoked pure compute), command (user-invoked intelligence), task (user-invoked action), mother-child (daemon continuous action). Calling convention is the real distinction. Pipeline defined as pure compute — all side effects pushed into host. Task world added to cover on-demand action gap (PR reviewer, one-shot deploy). HTTP host interface added for webhook safety (domain allowlisting replaces raw curl toys). Design gaps expanded from 4 to 7. Zones retained as user-facing taxonomy, not architecture. |
+| 2026-02-13 | amended | External review refinements. **(1)** Action removed from protocol spine — protocol verbs are capture/index/search/believe/evolve only. Task and mother-child act on protocol *outputs*, not as protocol phases. **(2)** Query scope added as first-class capability: `query_scope = current_project \| allowed_repos \| all_repos` + optional `query_budget`. **(3)** Governance principle elevated: "if changing it would break every plugin, it's protocol." **(4)** Adapters explicitly placed outside 4-world system as host-side extension point (auth, APIs, secrets require full host access). **(5)** Worlds reframed as execution contracts, not capability bundles. Belief [[patina-is-knowledge-protocol]] updated. |
