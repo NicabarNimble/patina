@@ -15,6 +15,9 @@ world command {
     /// Import read-only layer access for project data
     import patina:host/layer@0.1.0;
 
+    /// Import capability-gated query access (scry, context, assay)
+    import patina:host/query@0.1.0;
+
     /// Initialize plugin (host calls first, before run)
     export init: func();
 
