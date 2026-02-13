@@ -9,4 +9,7 @@
 //! See: layer/surface/build/feat/plugin-system/SPEC.md
 
 mod internal;
-pub use internal::{CommandEngine, PluginEngine, PluginManifest, PluginProvides};
+pub use internal::{
+    CommandEngine, GrantedCapabilities, PluginEngine, PluginManifest, PluginProvides,
+    QueryDispatchFn, QueryScope,
+};

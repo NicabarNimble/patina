@@ -159,6 +159,7 @@ fn capabilities_all_granted() {
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -177,6 +178,7 @@ fn capabilities_empty() {
         patina_min: "0.0.0".into(),
         capabilities: vec![],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -195,6 +197,7 @@ fn capabilities_denied() {
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "filesystem".into(), "network".into()],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec![],
@@ -245,6 +248,7 @@ fn wasm_models_child_handle_roundtrip() {
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
@@ -294,6 +298,7 @@ fn wasm_models_child_health() {
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
@@ -330,6 +335,7 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec!["git".into(), "patina".into()],
+        host_query_kinds: vec![],
         provides: PluginProvides {
             child: Some("repos".into()),
             commands: vec![],
@@ -531,6 +537,7 @@ fn wasm_repos_child_toy_capability_gating() {
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec!["patina".into()], // git excluded
+        host_query_kinds: vec![],
         provides: PluginProvides {
             child: Some("repos".into()),
             commands: vec![],
@@ -608,6 +615,7 @@ fn benchmark_plugin_performance() {
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into()],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
@@ -731,6 +739,7 @@ fn load_doctor_manifest() -> PluginManifest {
         patina_min: "0.0.0".into(),
         capabilities: vec!["host_log".into(), "host_layer".into()],
         allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
         provides: PluginProvides {
             child: None,
             commands: vec!["doctor".into()],
@@ -750,7 +759,7 @@ fn command_doctor_run() {
     let manifest = load_doctor_manifest();
     let args = vec!["--json".to_string()];
     let exit_code = engine
-        .run_command(&component, &manifest, &args)
+        .run_command(&component, &manifest, &args, None)
         .expect("run_command failed");
     // doctor returns 0 (healthy), 1 (error), 2 (warning), or 3 (critical)
     assert!(
