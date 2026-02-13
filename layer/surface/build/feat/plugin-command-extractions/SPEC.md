@@ -1,22 +1,21 @@
 ---
 type: feat
 id: plugin-command-extractions
-status: design
+status: abandoned
 created: 2026-02-12
+blocked_by:
+- plugin-system
 sessions:
   origin: 20260212-083400
-blocked_by:
-  - plugin-system  # Phase 2 (command world) must ship first
-blocks: []
 related:
-  - layer/surface/build/feat/plugin-system/SPEC.md
-  - layer/surface/build/feat/plugin-grammars/SPEC.md
-  - layer/surface/build/feat/plugin-oracle-scraper/SPEC.md
+- layer/surface/build/feat/plugin-system/SPEC.md
+- layer/surface/build/feat/plugin-grammars/SPEC.md
+- layer/surface/build/feat/plugin-oracle-scraper/SPEC.md
 beliefs:
-  - patina-is-knowledge-layer
-  - patina-identity
-  - dependable-rust
-  - compiler-enforced-safety
+- patina-is-knowledge-layer
+- patina-identity
+- dependable-rust
+- compiler-enforced-safety
 ---
 
 # feat: Plugin Command Extractions (v0.18.0)

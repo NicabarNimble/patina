@@ -1,23 +1,22 @@
 ---
 type: feat
 id: plugin-oracle-scraper
-status: design
+status: abandoned
 created: 2026-02-12
+blocked_by:
+- plugin-command-extractions
 sessions:
   origin: 20260212-083400
-blocked_by:
-  - plugin-command-extractions  # Command extractions prove bulk extraction pattern
-blocks: []
 related:
-  - layer/surface/build/feat/plugin-system/SPEC.md
-  - layer/surface/build/feat/plugin-command-extractions/SPEC.md
-  - layer/surface/build/feat/plugin-grammars/SPEC.md
-  - layer/surface/build/explore/wit-interfaces/SPEC.md
+- layer/surface/build/feat/plugin-system/SPEC.md
+- layer/surface/build/feat/plugin-command-extractions/SPEC.md
+- layer/surface/build/feat/plugin-grammars/SPEC.md
+- layer/surface/build/explore/wit-interfaces/SPEC.md
 beliefs:
-  - patina-is-knowledge-layer
-  - separate-worlds-for-isolation
-  - wasi-sandboxed-filesystem
-  - compiler-enforced-safety
+- patina-is-knowledge-layer
+- separate-worlds-for-isolation
+- wasi-sandboxed-filesystem
+- compiler-enforced-safety
 ---
 
 # feat: Oracle & Scraper Plugins (v0.19.0)

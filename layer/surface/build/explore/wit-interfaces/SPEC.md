@@ -1,13 +1,13 @@
 ---
 type: explore
 id: wit-interfaces
-status: design
+status: abandoned
 created: 2026-02-05
 sessions:
   origin: 20260205-102402
 related:
-  - layer/surface/build/feat/patina-platform/SPEC.md
-  - layer/surface/build/explore/llm-adapter-refactor/SPEC.md
+- layer/surface/build/feat/patina-platform/SPEC.md
+- layer/surface/build/explore/llm-adapter-refactor/SPEC.md
 ---
 
 # explore: WIT Interface Definitions
