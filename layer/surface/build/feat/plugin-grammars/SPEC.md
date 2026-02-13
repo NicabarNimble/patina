@@ -41,6 +41,14 @@ The original spec was too large to contain all 5 phases. This is built
 last because PluginEngine is proven by this point and the coupling risk
 is highest here.
 
+## Pipeline World Alignment (2026-02-13)
+
+Per [[plugin-ecosystem]] spec alignment, grammar plugins use the **pipeline world**
+with `handle()` dispatch: `{"op": "parse", "version": "1", "payload": {"source": "<base64>", "language": "zig"}}`.
+This replaces the previously planned separate "grammar" world. The pipeline world
+is the single pure-compute world for all host-invoked data processing (grammars,
+chunking, tokenization).
+
 ## Why Last
 
 Session [[20260211-133159]] discovered grammars are the most coupled
@@ -50,8 +58,8 @@ host imports = simplest" but ignored infrastructure coupling. Per
 not fewest interface requirements.
 
 By Phase 5/v0.20.0:
-- PluginEngine proven across 3 worlds (mother-child, command, oracle/scraper)
-- WASM on scrape hot path proven by scraper plugins
+- PluginEngine proven across 3+ worlds (mother-child, command, pipeline, task)
+- WASM on scrape hot path proven by scraper pipeline plugins
 - Bulk extraction patterns established
 
 ## Grammar Fallback
@@ -81,3 +89,4 @@ otherwise.
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-12 | design | Extracted from [[plugin-system]] Phase 5. Blocked by oracle/scraper plugins. Built last due to highest coupling risk. |
+| 2026-02-13 | amended | Per [[plugin-ecosystem]] spec alignment: grammar plugins use pipeline world with `handle()` dispatch (`{"op": "parse", ...}`). No separate grammar world needed. |

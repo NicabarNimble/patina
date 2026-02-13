@@ -43,13 +43,13 @@ extractions (Phases 1-2).
 
 ## Plugins to Extract
 
-| Plugin | Lines | World | Capabilities |
-|--------|-------|-------|-------------|
-| `patina-yolo` | 1,613 | command | host_layer (read), environment detection |
-| `patina-eval` | 2,476 | command | host_database (read), host_layer (read) |
-| `patina-bench` | 753 | command | host_database (read) |
-| `patina-report` | ~400 | command | host_layer (read), host_database (read) |
-| `patina-upgrade` | 162 | command | wasi:http (check GitHub releases) |
+| Plugin | Lines | World | Capabilities | Notes |
+|--------|-------|-------|-------------|-------|
+| `patina-yolo` | 1,613 | **task** | host_layer (read), toys (cargo) | Spawns cargo build — needs toys, task world |
+| `patina-eval` | 2,476 | command | host_database (read), host_layer (read) | Read-only analysis |
+| `patina-bench` | 753 | command | host_database (read) | Read-only analysis |
+| `patina-report` | ~400 | command | host_layer (read), host_database (read) | Read-only report generation |
+| `patina-upgrade` | 162 | **task** | host_http (github.com) | Downloads binary, mutates system — needs http + task world |
 
 ## Acceptance Criteria
 
@@ -71,3 +71,4 @@ extractions (Phases 1-2).
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-12 | design | Extracted from [[plugin-system]] Phase 3. Blocked by Phase 2 command world. |
+| 2026-02-13 | amended | Per [[plugin-ecosystem]] spec alignment: yolo and upgrade reclassified as **task** world plugins (they mutate the system via toys/http). Requires task world to exist before extraction. eval, bench, report remain command world. |
