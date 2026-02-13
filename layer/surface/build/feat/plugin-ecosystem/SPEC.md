@@ -645,17 +645,27 @@ my-plugin/
     └── my-skill.md     # optional skill template
 ```
 
-**Four templates, one per world:**
-- `--world pipeline` → `patina-pipeline-api` dep, `parse`/`chunk` exports
-- `--world command` → `patina-command-api` dep, `run(args)` export
-- `--world task` → `patina-task-api` dep, `run(args)` + `toys()` exports
-- `--world mother-child` → `patina-plugin-api` dep, `handle`/`tick`/`health`
+**Four templates, one per world** (all use `patina-guest` umbrella crate):
+- `--world pipeline` → `patina-guest` with `features = ["pipeline"]`, `handle` export
+- `--world command` → `patina-guest` with `features = ["command"]`, `run(args)` export
+- `--world task` → `patina-guest` with `features = ["task"]`, `run(args)` + `toys()` exports
+- `--world mother-child` → `patina-guest` with `features = ["mother-child"]`, `handle`/`tick`/`health`
 
 **Requirements for LLM-friendliness:**
-- Guest API crates must be on crates.io or installable via git dependency
+- Umbrella crate `patina-guest` on crates.io (`cargo add patina-guest --features command`)
 - Each trait is tiny (~30 lines for a complete plugin)
 - `register_*!` macros hide all WIT bindgen boilerplate
 - Template includes comments explaining each capability option
+
+**Typed enums in guest API — type safety without WIT coupling:**
+Guest crates expose typed Rust enums for dispatch values. Serialization to
+strings happens at the WASM boundary, invisible to plugin authors:
+- `QueryKind { Scry, Assay, Beliefs, Context }` → serializes to `"scry"`, `"assay"`, etc.
+- `PipelineOp { Parse, Chunk, Tokenize }` → serializes to `"parse"`, `"chunk"`, etc.
+- `QueryScope { CurrentProject, AllowedRepos, AllRepos }` → serializes in params
+
+Plugin authors write `query(QueryKind::Beliefs, &params)` not `query("beliefs", &params)`.
+WIT stays compact (single string dispatch). Rust's type system catches typos at compile time.
 
 **Future:** `patina plugin generate "description"` — Patina prompts an LLM
 to generate the plugin from a natural language description. Intent → plugin,
@@ -749,6 +759,12 @@ Not a big suite — just one "golden path" to prevent regressions:
 Conformance tests are built alongside each world/interface. They are the
 acceptance criteria made executable.
 
+**Cross-world: WASM trap handling test.** One additional test across all worlds:
+a guest plugin that deliberately panics. The host MUST catch the wasmtime trap
+and return a clean `PluginError::Trap { msg }` — never crash, never `unwrap()`
+across the WASM boundary. All plugin calls are fallible; traps convert to
+stable errors.
+
 ---
 
 ## Versioned Envelope Schemas
@@ -812,10 +828,13 @@ extensions. These are orthogonal.
    belief, add session note) or stay read-only? Initial bet: read-only.
    Writes go through the CLI or a separate `mutate` interface.
 
-3. **Guest API distribution:** Publish `patina-command-api`,
-   `patina-plugin-api`, `patina-task-api`, and `patina-pipeline-api` to
-   crates.io, or use git dependencies? Crates.io is friendlier for LLM
-   generation but requires version management for 4 crates.
+3. **Guest API distribution:** ~~Publish 4 separate crates or use git deps?~~
+   **RESOLVED:** Umbrella crate `patina-guest` re-exports world-specific modules:
+   `patina_guest::command`, `patina_guest::task`, `patina_guest::pipeline`,
+   `patina_guest::mother_child`. One version bump, world clarity preserved.
+   Separate crates still exist internally but users depend on `patina-guest`.
+   Optional `features = ["command"]` for slimmer builds. Publish to crates.io
+   for LLM-friendliness (`cargo add patina-guest`).
 
 4. **Project-scoped plugins:** Should plugins install to project `.patina/plugins/`
    in addition to user `~/.patina/plugins/`? Useful for project-specific
@@ -840,4 +859,4 @@ extensions. These are orthogonal.
 | 2026-02-13 | design | Created from Zed/Obsidian comparative analysis session [[20260213-055346]]. Frames three-zone model, bundle concept, four design gaps. Belief [[plugin-is-agent-plus-skill]] captured. |
 | 2026-02-13 | amended | 10-scenario walkthrough validated 4-world model: pipeline (host-invoked pure compute), command (user-invoked intelligence), task (user-invoked action), mother-child (daemon continuous action). Calling convention is the real distinction. Pipeline defined as pure compute — all side effects pushed into host. Task world added to cover on-demand action gap (PR reviewer, one-shot deploy). HTTP host interface added for webhook safety (domain allowlisting replaces raw curl toys). Design gaps expanded from 4 to 7. Zones retained as user-facing taxonomy, not architecture. |
 | 2026-02-13 | amended | External review refinements. **(1)** Action removed from protocol spine — protocol verbs are capture/index/search/believe/evolve only. Task and mother-child act on protocol *outputs*, not as protocol phases. **(2)** Query scope added as first-class capability: `query_scope = current_project \| allowed_repos \| all_repos` + optional `query_budget`. **(3)** Governance principle elevated: "if changing it would break every plugin, it's protocol." **(4)** Adapters explicitly placed outside 4-world system as host-side extension point (auth, APIs, secrets require full host access). **(5)** Worlds reframed as execution contracts, not capability bundles. Belief [[patina-is-knowledge-protocol]] updated. |
-| 2026-02-13 | amended | Spec alignment session [[20260213-104615]]. **(1)** Pipeline world: replaced N-export design with single `handle(json)` dispatch — avoids WIT stub tax, mirrors query and mother-child string dispatch. Added envelope schema (`op`, `version`, `payload`). Guest crate offers typed helpers. **(2)** HTTP interface: added `http-response` record with `status: u16`. Host rejects non-HTTPS and cross-domain redirects. Host injects auth from secrets store — plugins never touch credentials. Future headers field compatible. **(3)** Query interface: added defense-in-depth (load-time + call-time gating). Host state carries resolved `GrantedCapabilities` struct. `QueryEngine` as `OnceCell` for lazy init. `all_repos` scope logged for audit trail. **(4)** Oracle fate resolved: stays host-side, not a plugin world. Internal trait designed as-if-pluggable for future Phase 6+. **(5)** Phase 3-5 alignment: yolo/upgrade → task world, scraper → pipeline, grammars → pipeline `handle`, oracle-scraper spec amended. **(6)** Added conformance test plan: one golden-path test per world. **(7)** Added versioned envelope schemas section: `pipeline_req.v1`, `mother_child_action.v1`, `query_params.v1`. Envelopes are protocol-stable, additive-only. Op payloads evolve independently. |
+| 2026-02-13 | amended | Spec alignment session [[20260213-104615]]. **(1)** Pipeline world: replaced N-export design with single `handle(json)` dispatch — avoids WIT stub tax, mirrors query and mother-child string dispatch. Added envelope schema (`op`, `version`, `payload`). Guest crate offers typed helpers. **(2)** HTTP interface: added `http-response` record with `status: u16`. Host rejects non-HTTPS and cross-domain redirects. Host injects auth from secrets store — plugins never touch credentials. Future headers field compatible. **(3)** Query interface: added defense-in-depth (load-time + call-time gating). Host state carries resolved `GrantedCapabilities` struct. `QueryEngine` as `OnceCell` for lazy init. `all_repos` scope logged for audit trail. **(4)** Oracle fate resolved: stays host-side, not a plugin world. Internal trait designed as-if-pluggable for future Phase 6+. **(5)** Phase 3-5 alignment: yolo/upgrade → task world, scraper → pipeline, grammars → pipeline `handle`, oracle-scraper spec amended. **(6)** Added conformance test plan: one golden-path test per world. **(7)** Added versioned envelope schemas section: `pipeline_req.v1`, `mother_child_action.v1`, `query_params.v1`. Envelopes are protocol-stable, additive-only. Op payloads evolve independently. **(8)** WASM trap handling: all plugin calls fallible, traps convert to `PluginError::Trap`. Deliberate-panic conformance test required. **(9)** Guest API: resolved as umbrella crate `patina-guest` re-exporting world modules. Typed enums (`QueryKind`, `PipelineOp`) serialize at boundary — plugin authors get compile-time safety, WIT stays compact. Open Question #3 resolved. |
