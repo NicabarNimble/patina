@@ -77,6 +77,25 @@ pub mod layer {
     }
 }
 
+/// Capability-gated access to Patina's query engines.
+///
+/// Requires `host_query = ["scry"]` (or "context", "assay") in plugin.toml.
+/// The host checks grants at both load time and call time (defense in depth).
+/// Params and results are JSON strings — parse on the guest side.
+pub mod query {
+    /// Execute a query against a Patina engine.
+    ///
+    /// `kind` — one of "scry", "context", "assay".
+    /// `params` — JSON object with kind-specific parameters.
+    ///
+    /// Returns the query result as a string, or an error message.
+    /// The host will deny the call if the plugin's manifest doesn't
+    /// grant the requested kind.
+    pub fn query(kind: &str, params: &str) -> Result<String, String> {
+        super::patina::host::query::query(kind, params)
+    }
+}
+
 // =========================================================================
 // Plugin trait
 // =========================================================================
