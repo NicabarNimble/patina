@@ -79,3 +79,20 @@ interface layer {
     /// Check adapter for updates. Returns current version string or error.
     check-adapter-version: func(adapter-name: string) -> result<option<string>, string>;
 }
+
+/// Capability-gated access to Patina's query engines.
+///
+/// Command plugins use this to call scry (semantic search), context
+/// (project patterns/beliefs), or assay (structural queries) from
+/// inside WASM. The host checks the plugin's granted query kinds
+/// at both load time (manifest validation) and call time (defense
+/// in depth). Params and results are JSON strings — typed enums
+/// live in the guest API crate, not at the WIT boundary.
+interface query {
+    /// Execute a query against a Patina engine.
+    ///
+    /// `kind` — one of "scry", "context", "assay".
+    /// `params` — JSON object with kind-specific parameters.
+    /// Returns the query result as a string, or an error message.
+    query: func(kind: string, params: string) -> result<string, string>;
+}

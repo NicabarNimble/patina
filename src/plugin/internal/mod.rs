@@ -13,7 +13,7 @@ mod mother_child;
 #[cfg(test)]
 mod tests;
 
-pub use command::CommandEngine;
+pub use command::{CommandEngine, QueryDispatchFn};
 pub use mother_child::PluginEngine;
 
 // =========================================================================
@@ -47,7 +47,34 @@ pub struct PluginManifest {
     /// Toy commands this plugin is allowed to request (from [capabilities.toys].commands).
     /// Empty means no toys allowed.
     pub allowed_toy_commands: Vec<String>,
+    /// Query kinds this plugin is allowed to call (from [capabilities].host_query).
+    /// E.g., ["scry", "context", "assay"]. Empty means no query access.
+    pub host_query_kinds: Vec<String>,
     pub provides: PluginProvides,
+}
+
+// =========================================================================
+// Granted capabilities — resolved at load time, checked at call time
+// =========================================================================
+
+/// Query scope controls cross-project access.
+#[derive(Debug, Clone, Default)]
+pub enum QueryScope {
+    /// Plugin can only query current project (default).
+    #[default]
+    CurrentProject,
+    /// Plugin can query all registered repos.
+    AllRepos,
+}
+
+/// Resolved capabilities for runtime gating.
+///
+/// Built from PluginManifest at load time. Stored on host state
+/// so call-time checks are a HashSet lookup, not manifest re-parsing.
+#[derive(Debug, Clone, Default)]
+pub struct GrantedCapabilities {
+    pub query_kinds: std::collections::HashSet<String>,
+    pub query_scope: QueryScope,
 }
 
 /// What the plugin provides to the system.
@@ -122,6 +149,17 @@ impl PluginManifest {
             })
             .unwrap_or_default();
 
+        // Parse [capabilities].host_query — allowed query kinds
+        let host_query_kinds = cap_table
+            .and_then(|cap| cap.get("host_query"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
         // Parse provides
         let provides_table = table.get("provides").and_then(|v| v.as_table());
         let child = provides_table
@@ -146,6 +184,7 @@ impl PluginManifest {
             patina_min,
             capabilities,
             allowed_toy_commands,
+            host_query_kinds,
             provides: PluginProvides { child, commands },
         })
     }
@@ -153,5 +192,22 @@ impl PluginManifest {
     /// Load a WASM component from bytes using the shared engine.
     pub(super) fn load_component(wasm: &[u8]) -> Result<Component> {
         Component::new(wasm_engine(), wasm)
+    }
+
+    /// Build resolved capabilities from this manifest.
+    ///
+    /// Called once at load time. The resulting GrantedCapabilities is
+    /// stored on CommandHostState for O(1) call-time checks.
+    pub fn granted_capabilities(&self) -> GrantedCapabilities {
+        let query_kinds = self.host_query_kinds.iter().cloned().collect();
+
+        // Parse query_scope from capabilities table if present.
+        // For now, default to CurrentProject — AllRepos requires explicit opt-in.
+        let query_scope = QueryScope::CurrentProject;
+
+        GrantedCapabilities {
+            query_kinds,
+            query_scope,
+        }
     }
 }

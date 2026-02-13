@@ -133,6 +133,56 @@ pub fn execute(options: AssayOptions) -> Result<()> {
     }
 }
 
+/// Execute assay query and return result as a string.
+///
+/// Used by plugin host functions and MCP server where results need to
+/// be returned rather than printed. Always returns JSON format.
+pub fn execute_query(options: &AssayOptions) -> Result<String> {
+    // Search has its own JSON path
+    if let QueryType::Search { ref query } = options.query_type {
+        let search_opts = SearchOptions {
+            limit: options.limit,
+            include_issues: options.include_issues,
+            repo: options.repo.clone(),
+        };
+        return internal::search::assay_search_json(query, &search_opts);
+    }
+
+    // Cochange has its own JSON path
+    if let QueryType::Cochange { ref file } = options.query_type {
+        let db_path = match &options.repo {
+            Some(name) => crate::commands::repo::get_db_path(name)?,
+            None => DB_PATH.to_string(),
+        };
+        return internal::temporal::execute_cochange_json(file, options.limit, &db_path);
+    }
+
+    // Belief grounding has its own JSON path
+    if let QueryType::Belief { ref id } = options.query_type {
+        return internal::belief::execute_belief_grounding_json(id, options.limit);
+    }
+
+    // Structural queries: open DB and return JSON
+    let db_path = match &options.repo {
+        Some(name) => crate::commands::repo::get_db_path(name)?,
+        None => DB_PATH.to_string(),
+    };
+    let conn = Connection::open(&db_path)
+        .with_context(|| format!("Failed to open database: {}", db_path))?;
+
+    match options.query_type {
+        QueryType::Inventory => {
+            let results = collect_inventory_json(&conn, options, None)?;
+            Ok(serde_json::to_string_pretty(&results)?)
+        }
+        // Structural queries without JSON paths — return error for now
+        _ => anyhow::bail!(
+            "assay query_type '{:?}' not yet supported via query interface; use CLI or MCP",
+            options.query_type
+        ),
+    }
+}
+
 /// Execute assay across all registered repos
 fn execute_all_repos(options: &AssayOptions) -> Result<()> {
     let repos = crate::commands::repo::list()?;

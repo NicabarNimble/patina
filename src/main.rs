@@ -885,6 +885,127 @@ enum PluginCommands {
     List,
 }
 
+/// Build a query dispatch closure for command plugins.
+///
+/// Returns None if the plugin has no host_query grants. Otherwise,
+/// returns a closure that dispatches to context/scry/assay engines.
+fn make_query_dispatch(
+    manifest: &patina::plugin::PluginManifest,
+) -> Option<patina::plugin::QueryDispatchFn> {
+    if manifest.host_query_kinds.is_empty() {
+        return None;
+    }
+
+    // Lazy QueryEngine — created on first scry call
+    let mut query_engine: Option<retrieval::QueryEngine> = None;
+
+    Some(Box::new(move |kind: &str, params: &str| {
+        let args: serde_json::Value =
+            serde_json::from_str(params).map_err(|e| format!("invalid params: {}", e))?;
+
+        match kind {
+            "context" => {
+                let topic = args.get("topic").and_then(|v| v.as_str());
+                commands::context::get_project_context(topic).map_err(|e| format!("context: {}", e))
+            }
+            "scry" => {
+                let query_str = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+                if query_str.is_empty() {
+                    return Err("scry requires 'query' parameter".to_string());
+                }
+                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as usize;
+                let all_repos = args
+                    .get("all_repos")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
+
+                let engine = query_engine.get_or_insert_with(retrieval::QueryEngine::new);
+                let options = retrieval::QueryOptions { repo, all_repos };
+                let results = engine
+                    .query_with_options(query_str, limit, &options)
+                    .map_err(|e| format!("scry: {}", e))?;
+
+                // JSON array for structured guest consumption
+                let json_results: Vec<serde_json::Value> = results
+                    .iter()
+                    .map(|r| {
+                        serde_json::json!({
+                            "score": r.fused_score,
+                            "doc_id": r.doc_id,
+                            "content": r.content,
+                        })
+                    })
+                    .collect();
+                serde_json::to_string(&json_results).map_err(|e| format!("serialize: {}", e))
+            }
+            "assay" => {
+                use commands::assay::{AssayOptions, QueryType};
+
+                let query_type = args
+                    .get("query_type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("inventory");
+                let pattern = args
+                    .get("pattern")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+                let limit = args.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
+                let all_repos = args
+                    .get("all_repos")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let repo = args.get("repo").and_then(|v| v.as_str()).map(String::from);
+                let query = args.get("query").and_then(|v| v.as_str()).map(String::from);
+
+                let qt = match query_type {
+                    "imports" => QueryType::Imports,
+                    "importers" => QueryType::Importers,
+                    "functions" => QueryType::Functions,
+                    "callers" => QueryType::Callers,
+                    "callees" => QueryType::Callees,
+                    "derive" => QueryType::Derive,
+                    "search" => {
+                        let q = query.or_else(|| pattern.clone()).unwrap_or_default();
+                        if q.is_empty() {
+                            return Err("assay search requires 'query' or 'pattern'".into());
+                        }
+                        QueryType::Search { query: q }
+                    }
+                    "cochange" => {
+                        let file = pattern.clone().unwrap_or_default();
+                        if file.is_empty() {
+                            return Err("assay cochange requires 'pattern'".into());
+                        }
+                        QueryType::Cochange { file }
+                    }
+                    "belief" => {
+                        let id = pattern.clone().unwrap_or_default();
+                        if id.is_empty() {
+                            return Err("assay belief requires 'pattern'".into());
+                        }
+                        QueryType::Belief { id }
+                    }
+                    _ => QueryType::Inventory,
+                };
+
+                let options = AssayOptions {
+                    query_type: qt,
+                    pattern,
+                    limit,
+                    json: true,
+                    repo,
+                    all_repos,
+                    ..Default::default()
+                };
+
+                commands::assay::execute_query(&options).map_err(|e| format!("assay: {}", e))
+            }
+            _ => Err(format!("unknown query kind: {}", kind)),
+        }
+    }))
+}
+
 fn main() -> Result<()> {
     // Run migrations early (before any command)
     patina::migration::migrate_if_needed();
@@ -1180,6 +1301,7 @@ fn main() -> Result<()> {
                         patina_min: "0.0.0".into(),
                         capabilities: vec!["host_log".into(), "host_layer".into()],
                         allowed_toy_commands: vec![],
+                        host_query_kinds: vec![],
                         provides: patina::plugin::PluginProvides {
                             child: None,
                             commands: vec!["doctor".into()],
@@ -1189,7 +1311,8 @@ fn main() -> Result<()> {
                 let engine = patina::plugin::CommandEngine::new()?;
                 let wasm_bytes = std::fs::read(&plugin_wasm)?;
                 let component = engine.load_component(&wasm_bytes)?;
-                engine.run_command(&component, &manifest, &args)?
+                let query_fn = make_query_dispatch(&manifest);
+                engine.run_command(&component, &manifest, &args, query_fn)?
             } else {
                 // Fall back to compiled-in doctor
                 #[cfg(feature = "bundled-doctor")]

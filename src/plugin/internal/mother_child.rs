@@ -107,10 +107,11 @@ impl PluginEngine {
 
     /// Check that a plugin's requested capabilities are granted.
     ///
-    /// Phase 1: host_log is always granted. All others are denied.
+    /// Phase 1: host_log, host_layer are always granted. All others denied.
+    /// Phase 2: host_query validated — kinds must be known.
     /// Future: reads from ~/.patina/plugin-config/grants.toml.
     pub fn check_capabilities(manifest: &PluginManifest) -> Result<()> {
-        // Capabilities that are always granted (no config needed)
+        // Boolean capabilities that are always granted (no config needed)
         let auto_granted = ["host_log", "host_layer"];
 
         let denied: Vec<&str> = manifest
@@ -127,6 +128,24 @@ impl PluginEngine {
                 denied.join(", ")
             );
         }
+
+        // Load-time validation: host_query kinds must be known
+        const KNOWN_QUERY_KINDS: &[&str] = &["scry", "context", "assay"];
+        let unknown: Vec<&str> = manifest
+            .host_query_kinds
+            .iter()
+            .filter(|k| !KNOWN_QUERY_KINDS.contains(&k.as_str()))
+            .map(|s| s.as_str())
+            .collect();
+
+        if !unknown.is_empty() {
+            anyhow::bail!(
+                "plugin '{}' requests unknown query kinds: {}",
+                manifest.name,
+                unknown.join(", ")
+            );
+        }
+
         Ok(())
     }
 
