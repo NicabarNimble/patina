@@ -206,18 +206,43 @@ world pipeline {
     export init: func();
     export name: func() -> string;
 
-    // Grammar plugins
-    export parse: func(source: list<u8>, language: string) -> result<string, string>;
-
-    // Chunking plugins
-    export chunk: func(source: list<u8>, language: string) -> result<list<string>, string>;
+    /// Single dispatch entry point. Request is a JSON envelope:
+    ///   { "op": "parse"|"chunk"|"tokenize"|..., "version": "1", "payload": {...} }
+    /// Optional fields: trace_id (debugging), caps_required (introspection).
+    /// Returns JSON result or error string.
+    export handle: func(request: string) -> result<string, string>;
 }
 ```
 
-The host checks `[provides]` in the manifest to know which exports to call.
-Each plugin implements its subset. The world's WIT grows additively as new
-pipeline types are added — this is safe because `log` is the only import,
-so isolation stays tight regardless of which exports exist.
+**String dispatch, not N exports.** WIT Component Model requires components to
+implement ALL declared exports. If pipeline declared `parse()` AND `chunk()`,
+a grammar plugin would need a stub `chunk()`. Instead, a single `handle()`
+with a JSON envelope avoids the "stub tax" and makes adding new pipeline ops
+a manifest/convention change, not a WIT change.
+
+The host checks `[provides]` in the manifest to know which ops to dispatch.
+The guest API crate offers typed helpers (`pipeline::parse(...)`,
+`pipeline::chunk(...)`) that build the JSON envelope and call `handle()` —
+plugin authors get ergonomics without WIT coupling.
+
+**Pipeline request envelope schema:**
+```json
+{
+    "op": "parse",         // required: operation name
+    "version": "1",        // required: envelope version
+    "payload": {           // required: op-specific data
+        "source": "<base64>",
+        "language": "rust"
+    },
+    "trace_id": "abc123"   // optional: debugging
+}
+```
+
+This mirrors the existing string dispatch in query (`query(kind, params)`)
+and mother-child (`handle(action, payload)`). Pipeline and mother-child use
+string dispatch (open-ended extensibility). Command and task use typed
+exports (CLI contract is well-defined). This isn't inconsistency — it's
+matching dispatch style to the domain.
 
 **Why this works:** A grammar plugin literally cannot exfiltrate because it
 has no imports to call. `wit_bindgen` on the guest side only generates
@@ -400,12 +425,32 @@ query_scope = "current_project"            # current_project | allowed_repos | a
 Query scope is a first-class capability. A mother-child plugin searching
 `all_repos` on every heartbeat tick is very different from one searching
 `current_project`. Make this explicit in the manifest so users see it
-at install time.
+at install time. `all_repos` is a separate explicit grant — host logs
+whenever a plugin uses it (audit trail for cross-project access).
 
 **Available in worlds:** command, task, mother-child.
 **Not in:** pipeline (pure compute — no host queries by design).
 
+**Defense in depth — two enforcement points:**
+- **Load-time:** `check_capabilities()` rejects plugins whose manifest requests
+  `host_query` without a matching grant in `plugin-grants.toml`. Fast feedback.
+- **Call-time:** `query::Host` implementation checks that the requested `kind`
+  is in the plugin's `query_kinds` grant set AND that the scope doesn't exceed
+  `query_scope`. Deny-by-default prevents lying manifests or future bugs.
+
+**Host state carries resolved grants** (computed once at load):
+```rust
+struct GrantedCapabilities {
+    query_kinds: HashSet<String>,  // ["scry", "context"]
+    query_scope: QueryScope,       // CurrentProject | AllowedRepos | AllRepos
+    http_domains: HashSet<String>, // ["api.github.com"]
+    toy_commands: HashSet<String>, // ["gh", "cargo"]
+}
+```
+
 **Implementation:** Host-side dispatch reuses MCP server's JSON parsing logic.
+`QueryEngine` is held as `OnceCell<QueryEngine>` in host state — lazy-initialized
+on first query call (avoids paying init cost for plugins that don't query).
 Guest API crates re-export `query()` function.
 
 #### Interface: HTTP (`patina:host/http@0.1.0`)
@@ -418,12 +463,16 @@ interface with domain allowlisting is cleaner and safer.
 
 ```wit
 interface http {
+    record http-response {
+        status: u16,
+        body: string,
+    }
+
     /// POST to an allowed domain. Host enforces domain allowlist.
-    /// Returns response body or error.
-    http-post: func(url: string, body: string, content-type: string) -> result<string, string>;
+    http-post: func(url: string, body: string, content-type: string) -> result<http-response, string>;
 
     /// GET from an allowed domain.
-    http-get: func(url: string) -> result<string, string>;
+    http-get: func(url: string) -> result<http-response, string>;
 }
 ```
 
@@ -440,6 +489,15 @@ they don't reach out).
 The plugin never sees `curl`. The host handles TLS, connection pooling, and
 domain enforcement. The toy system stays for local processes (git, cargo,
 wrangler). HTTP is a separate capability.
+
+**Security properties:**
+- Host rejects non-HTTPS URLs (no plaintext HTTP)
+- Host rejects cross-domain redirects (prevents allowlist bypass)
+- Host MAY inject authentication headers from `~/.patina/secrets/` based
+  on domain — plugin never handles credentials
+- Status code returned so plugins can branch on 4xx/5xx
+- Future-compatible: `headers: list<(string, string)>` can be added to
+  `http-response` without breaking existing plugins
 
 #### Summary: Interface × World Matrix
 
@@ -514,8 +572,14 @@ capabilities the world doesn't import — compile-time isolation, not
 runtime enforcement.
 
 **Subsumes:** [[plugin-oracle-scraper]] scraper world, [[plugin-grammars]]
-grammar world. The oracle world may still be needed for plugins that provide
-alternative search backends (requires further design — see Open Questions).
+grammar world.
+
+**Oracle resolved:** Oracle plugins stay host-side (not a WASM world). Oracles
+affect retrieval correctness, performance, and security — pluggable oracles
+need stronger contracts than we have today. The internal oracle trait should
+be designed as-if-pluggable (clean inputs/outputs, no global state) so that
+a future Phase 6+ can expose them as a plugin world without a rewrite. For
+now, oracle providers are Rust modules in `src/retrieval/`.
 
 ---
 
@@ -645,9 +709,9 @@ ecosystem. The existing specs are the "how" for specific phases:
 | Spec | Role | Status | Impact of 4-world model |
 |------|------|--------|------------------------|
 | [[plugin-system]] | Runtime (wasmtime, WIT, 2 worlds) | complete | Foundation stays. Task + pipeline worlds are additive. |
-| [[plugin-command-extractions]] | Extract yolo, eval, bench, etc. | design | Extractions become command or task world plugins. |
-| [[plugin-oracle-scraper]] | Extensible oracle + scraper | design | Scraper subsumes into pipeline world. Oracle TBD — may need own world if search backends require host imports beyond log. |
-| [[plugin-grammars]] | Tree-sitter from WASM | design | Subsumes into pipeline world (`parse` export). |
+| [[plugin-command-extractions]] | Extract yolo, eval, bench, etc. | design | Extractions become command or task world plugins. yolo and upgrade are task-world candidates (they mutate system). |
+| [[plugin-oracle-scraper]] | Extensible oracle + scraper | design | Scraper subsumes into pipeline world (`handle` dispatch). Oracle stays host-side — not a plugin world (resolved). |
+| [[plugin-grammars]] | Tree-sitter from WASM | design | Subsumes into pipeline world (`handle` with `{"op": "parse", ...}`). |
 | **This spec** | Ecosystem (4 worlds, install, template, query, skills) | design | All zones |
 
 The seven gaps in this spec are **independent of the extraction specs** — they
@@ -669,6 +733,40 @@ capability UX don't require extracting yolo or grammars first.
 6. Plugin template + `patina plugin new` — enables LLM authoring
 7. `patina plugin install` — enables distribution
 8. Skill registration — closes the agent+skill loop
+
+### Conformance Tests (one golden-path test per world)
+
+Each world gets a single conformance test plugin that proves the contract.
+Not a big suite — just one "golden path" to prevent regressions:
+
+| World | Test plugin | Proves |
+|-------|------------|--------|
+| `pipeline` | `echo-pipeline` — handles `{"op":"echo"}`, returns payload | Envelope parsing, manifest `[provides]` gating, host refuses unknown ops |
+| `command` | `patina-doctor` calls `query("context", "{}")` | Query dispatch, JSON round-trip, capability gating |
+| `task` | `hello-task` — runs `echo "hello"` via toy allowlist | Toys gating works, exit code propagation, task lifecycle |
+| `mother-child` | Existing test child — `health()` + one action | Health reporting, handle dispatch, toy filtering |
+
+Conformance tests are built alongside each world/interface. They are the
+acceptance criteria made executable.
+
+---
+
+## Versioned Envelope Schemas
+
+String dispatch worlds (pipeline, mother-child) and the query interface use
+JSON envelopes. These envelopes are **protocol-stable** — changing them
+breaks plugins. Op-specific payloads within the envelope evolve independently.
+
+| Schema | Stable fields | Versioning |
+|--------|--------------|------------|
+| `pipeline_req.v1` | `op`, `version`, `payload` | Envelope version in `version` field. New ops = new `op` value, not new envelope. |
+| `mother_child_action.v1` | `action`, `payload` | Already stable (shipped in v0.17.0). Action strings are conventions, not protocol. |
+| `query_params.v1` | `kind`, `params` (JSON) | Kind is gated by capability. Params schema follows MCP tool input schemas. |
+
+**Rule:** Envelope fields are additive-only. Never remove or rename a field
+in a versioned envelope. New optional fields (like `trace_id`) are safe.
+Op/action payload schemas are independent — a new `parse` payload version
+doesn't require a new envelope version.
 
 ---
 
@@ -723,10 +821,11 @@ extensions. These are orthogonal.
    in addition to user `~/.patina/plugins/`? Useful for project-specific
    tooling but complicates discovery.
 
-5. **Oracle world fate:** Does oracle (search backend swap) subsume into
-   pipeline, or does it need its own world? A search backend may need host
-   imports (database access, index files) that violate pipeline's pure-compute
-   constraint. If so, it stays as a 5th world.
+5. **Oracle world fate:** ~~Does oracle subsume into pipeline or need its own
+   world?~~ **RESOLVED:** Oracle stays host-side, not a plugin world. Oracles
+   affect correctness/perf/security of retrieval and need freedom to iterate
+   without plugin compatibility guarantees. Internal trait designed as-if-pluggable
+   for potential Phase 6+ extraction. See Pipeline World section.
 
 6. **Task vs command boundary:** Should command ever get optional toys (blurring
    the line), or is the hard split between "inform" (command) and "act" (task)
@@ -741,3 +840,4 @@ extensions. These are orthogonal.
 | 2026-02-13 | design | Created from Zed/Obsidian comparative analysis session [[20260213-055346]]. Frames three-zone model, bundle concept, four design gaps. Belief [[plugin-is-agent-plus-skill]] captured. |
 | 2026-02-13 | amended | 10-scenario walkthrough validated 4-world model: pipeline (host-invoked pure compute), command (user-invoked intelligence), task (user-invoked action), mother-child (daemon continuous action). Calling convention is the real distinction. Pipeline defined as pure compute — all side effects pushed into host. Task world added to cover on-demand action gap (PR reviewer, one-shot deploy). HTTP host interface added for webhook safety (domain allowlisting replaces raw curl toys). Design gaps expanded from 4 to 7. Zones retained as user-facing taxonomy, not architecture. |
 | 2026-02-13 | amended | External review refinements. **(1)** Action removed from protocol spine — protocol verbs are capture/index/search/believe/evolve only. Task and mother-child act on protocol *outputs*, not as protocol phases. **(2)** Query scope added as first-class capability: `query_scope = current_project \| allowed_repos \| all_repos` + optional `query_budget`. **(3)** Governance principle elevated: "if changing it would break every plugin, it's protocol." **(4)** Adapters explicitly placed outside 4-world system as host-side extension point (auth, APIs, secrets require full host access). **(5)** Worlds reframed as execution contracts, not capability bundles. Belief [[patina-is-knowledge-protocol]] updated. |
+| 2026-02-13 | amended | Spec alignment session [[20260213-104615]]. **(1)** Pipeline world: replaced N-export design with single `handle(json)` dispatch — avoids WIT stub tax, mirrors query and mother-child string dispatch. Added envelope schema (`op`, `version`, `payload`). Guest crate offers typed helpers. **(2)** HTTP interface: added `http-response` record with `status: u16`. Host rejects non-HTTPS and cross-domain redirects. Host injects auth from secrets store — plugins never touch credentials. Future headers field compatible. **(3)** Query interface: added defense-in-depth (load-time + call-time gating). Host state carries resolved `GrantedCapabilities` struct. `QueryEngine` as `OnceCell` for lazy init. `all_repos` scope logged for audit trail. **(4)** Oracle fate resolved: stays host-side, not a plugin world. Internal trait designed as-if-pluggable for future Phase 6+. **(5)** Phase 3-5 alignment: yolo/upgrade → task world, scraper → pipeline, grammars → pipeline `handle`, oracle-scraper spec amended. **(6)** Added conformance test plan: one golden-path test per world. **(7)** Added versioned envelope schemas section: `pipeline_req.v1`, `mother_child_action.v1`, `query_params.v1`. Envelopes are protocol-stable, additive-only. Op payloads evolve independently. |
