@@ -215,6 +215,116 @@ fn capabilities_denied() {
 }
 
 // =====================================================================
+// Query param sanitization — scope-reserved keys
+// =====================================================================
+
+#[test]
+fn sanitize_strips_all_repos_for_current_project() {
+    let params = r#"{"query":"test","all_repos":true,"limit":5}"#;
+    let result = command::sanitize_query_params(params, &QueryScope::CurrentProject);
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert!(
+        parsed.get("all_repos").is_none(),
+        "all_repos should be stripped, got: {}",
+        result
+    );
+    // Non-reserved keys preserved
+    assert_eq!(parsed.get("query").unwrap(), "test");
+    assert_eq!(parsed.get("limit").unwrap(), 5);
+}
+
+#[test]
+fn sanitize_strips_repo_for_current_project() {
+    let params = r#"{"query":"test","repo":"other-project"}"#;
+    let result = command::sanitize_query_params(params, &QueryScope::CurrentProject);
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert!(
+        parsed.get("repo").is_none(),
+        "repo should be stripped, got: {}",
+        result
+    );
+    assert_eq!(parsed.get("query").unwrap(), "test");
+}
+
+#[test]
+fn sanitize_strips_all_reserved_keys() {
+    let params =
+        r#"{"query":"test","all_repos":true,"repo":"x","project_root":"/tmp","db_path":"/hack"}"#;
+    let result = command::sanitize_query_params(params, &QueryScope::CurrentProject);
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    for key in &["all_repos", "repo", "project_root", "db_path"] {
+        assert!(
+            parsed.get(key).is_none(),
+            "reserved key '{}' should be stripped, got: {}",
+            key,
+            result
+        );
+    }
+}
+
+#[test]
+fn sanitize_preserves_all_for_all_repos_scope() {
+    let params = r#"{"query":"test","all_repos":true,"repo":"other"}"#;
+    let result = command::sanitize_query_params(params, &QueryScope::AllRepos);
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_eq!(parsed.get("all_repos").unwrap(), true);
+    assert_eq!(parsed.get("repo").unwrap(), "other");
+}
+
+#[test]
+fn sanitize_handles_invalid_json() {
+    let params = "not json";
+    let result = command::sanitize_query_params(params, &QueryScope::CurrentProject);
+    assert_eq!(
+        result, "not json",
+        "invalid JSON should pass through unchanged"
+    );
+}
+
+#[test]
+fn check_capabilities_rejects_unknown_query_kinds() {
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: "command".into(),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec!["scry".into(), "magic_oracle".into()],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+        },
+    };
+    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    assert!(
+        err.to_string().contains("magic_oracle"),
+        "should reject unknown kind, got: {}",
+        err
+    );
+}
+
+#[test]
+fn check_capabilities_accepts_known_query_kinds() {
+    let m = PluginManifest {
+        name: "test".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: "command".into(),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec!["scry".into(), "context".into(), "assay".into()],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+        },
+    };
+    assert!(PluginEngine::check_capabilities(&m).is_ok());
+}
+
+// =====================================================================
 // WASM integration — load models.wasm, call handle()
 // =====================================================================
 
