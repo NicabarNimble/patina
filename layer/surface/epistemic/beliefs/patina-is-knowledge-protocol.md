@@ -20,7 +20,8 @@ Patina is a knowledge protocol, not a monolith — like git is to version contro
 
 ## Evidence
 
-- [[session-20260213-055346]]: [[session-20260213-055346]] - Session culmination: after Zed/Obsidian comparative analysis, 10-scenario walkthrough, and 4-world model design, the protocol framing emerged as the unifying principle — Patina should be trimmable to its knowledge core while the plugin system extends it in ways we cannot predict yet (weight: 0.9)
+- [[session-20260213-055346]]: Session culmination: after Zed/Obsidian comparative analysis, 10-scenario walkthrough, and 4-world model design, the protocol framing emerged as the unifying principle — Patina should be trimmable to its knowledge core while the plugin system extends it in ways we cannot predict yet (weight: 0.9)
+- [[session-20260213-055346]]: External review confirmed: action is NOT a protocol verb. The protocol produces outputs (artifacts, results, decisions, signals). Extensions may act on those outputs. Like git doesn't have "deploy", Patina doesn't have "act." Governance principle: "if changing it would break every plugin, it's protocol." (weight: 0.9)
 
 ## Supports
 
@@ -48,3 +49,4 @@ Patina is a knowledge protocol, not a monolith — like git is to version contro
 ## Revision Log
 
 - 2026-02-13: Created — metrics computed by `patina scrape`
+- 2026-02-13: Revised — action removed from protocol spine per external review. Added governance principle evidence. Protocol verbs are capture/index/search/believe/evolve only.
