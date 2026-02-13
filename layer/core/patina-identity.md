@@ -36,15 +36,15 @@ Embeddings from ONNX models, FTS5 indexes, structural graphs, temporal co-change
 
 **Modules:** `oxidize`, `embeddings`, `models`, `db`
 
-### 3. Search — Answer questions about your project
+### 3. Search — Retrieve relevant knowledge about your project
 
-Semantic search (scry), factual search (assay), pattern delivery (context), belief grounding. This is what AI agents consume via MCP or CLI.
+Semantic search (scry), factual search (assay), pattern delivery (context), belief grounding. Search is retrieval, not reasoning — Patina finds and ranks, it doesn't plan or decide. AI agents consume search results via MCP or CLI.
 
 **Modules:** `scry`, `assay`, `context`, `retrieval`, `mcp`
 
 ### 4. Believe — Capture and evolve project principles
 
-Beliefs are normative knowledge — decisions, patterns, principles with evidence and supports/attacks relationships. Beliefs ground the protocol in project reality.
+Beliefs are project-scoped, evidence-backed assertions — not global truth. They capture decisions, patterns, and principles with supports/attacks relationships. Beliefs ground the protocol in project reality.
 
 **Modules:** `belief`, `layer` (epistemic beliefs in layer/surface/epistemic/)
 
@@ -78,7 +78,7 @@ These modules use the protocol but aren't the protocol itself. Today they're com
 | `eval` + `bench` | Retrieval quality measurement | Command plugin (power user tooling) |
 | `doctor` | Health checks | **Extracted (v0.17.0)** — first plugin, proves the pattern |
 | `yolo` | Devcontainer generation | Task plugin (mutates filesystem) |
-| `upgrade` | Version check | Command plugin |
+| `upgrade` | Version check | Command plugin (task if it downloads/replaces binary) |
 
 ### Extraction principle
 
@@ -171,7 +171,7 @@ In agentic contexts, the compiler is the only reliable review gate. Prefer enums
 
 ### 6. Sync-first execution
 
-Synchronous, blocking code by default. No async infection. See [[sync-first]].
+Synchronous, blocking code by default. Parallelism is explicit and bounded (`std::thread::scope`, `rayon`); async only when host integration requires it. See [[sync-first]].
 
 ### 7. MCP is shim, CLI is product
 
@@ -197,7 +197,7 @@ Plugin ecosystem: 4 worlds (pipeline, command, task, mother-child)
                   → Community extends Patina without touching core.
 ```
 
-The plugin system (v0.17.0+) enables this evolution. Each extraction hardens the protocol core by proving it doesn't need the extracted module to function. The binary gets smaller and harder. The ecosystem gets richer.
+The plugin system (v0.17.0+) enables this evolution. Each extraction hardens the protocol core by proving it doesn't need the extracted module to function. The binary gets smaller and more stable. The ecosystem gets richer.
 
 ## Common Mistakes
 
