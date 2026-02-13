@@ -1302,6 +1302,7 @@ fn main() -> Result<()> {
                         capabilities: vec!["host_log".into(), "host_layer".into()],
                         allowed_toy_commands: vec![],
                         host_query_kinds: vec![],
+                        host_http_domains: vec![],
                         provides: patina::plugin::PluginProvides {
                             child: None,
                             commands: vec!["doctor".into()],

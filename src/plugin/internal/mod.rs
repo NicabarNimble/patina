@@ -50,6 +50,9 @@ pub struct PluginManifest {
     /// Query kinds this plugin is allowed to call (from [capabilities].host_query).
     /// E.g., ["scry", "context", "assay"]. Empty means no query access.
     pub host_query_kinds: Vec<String>,
+    /// HTTP domains this plugin is allowed to access (from [capabilities].host_http).
+    /// E.g., ["api.github.com", "hooks.slack.com"]. Empty means no HTTP access.
+    pub host_http_domains: Vec<String>,
     pub provides: PluginProvides,
 }
 
@@ -75,6 +78,7 @@ pub enum QueryScope {
 pub struct GrantedCapabilities {
     pub query_kinds: std::collections::HashSet<String>,
     pub query_scope: QueryScope,
+    pub http_domains: std::collections::HashSet<String>,
 }
 
 /// What the plugin provides to the system.
@@ -160,6 +164,17 @@ impl PluginManifest {
             })
             .unwrap_or_default();
 
+        // Parse [capabilities].host_http — allowed HTTP domains
+        let host_http_domains = cap_table
+            .and_then(|cap| cap.get("host_http"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
         // Parse provides
         let provides_table = table.get("provides").and_then(|v| v.as_table());
         let child = provides_table
@@ -185,6 +200,7 @@ impl PluginManifest {
             capabilities,
             allowed_toy_commands,
             host_query_kinds,
+            host_http_domains,
             provides: PluginProvides { child, commands },
         })
     }
@@ -200,6 +216,7 @@ impl PluginManifest {
     /// stored on CommandHostState for O(1) call-time checks.
     pub fn granted_capabilities(&self) -> GrantedCapabilities {
         let query_kinds = self.host_query_kinds.iter().cloned().collect();
+        let http_domains = self.host_http_domains.iter().cloned().collect();
 
         // Parse query_scope from capabilities table if present.
         // For now, default to CurrentProject — AllRepos requires explicit opt-in.
@@ -208,6 +225,7 @@ impl PluginManifest {
         GrantedCapabilities {
             query_kinds,
             query_scope,
+            http_domains,
         }
     }
 }
