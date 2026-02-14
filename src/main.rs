@@ -891,6 +891,17 @@ enum PluginCommands {
         #[arg(last = true)]
         args: Vec<String>,
     },
+    /// Create a new plugin project from template
+    Init {
+        /// Plugin name (valid Rust crate name, e.g. "review-bot")
+        name: String,
+        /// Plugin world: mother-child, command, task, pipeline
+        #[arg(long)]
+        world: String,
+        /// Build the plugin after scaffolding
+        #[arg(long)]
+        build: bool,
+    },
 }
 
 /// Build a query dispatch closure for command plugins.
@@ -1343,6 +1354,49 @@ fn main() -> Result<()> {
         }
         Some(Commands::Plugin { command }) => match command {
             PluginCommands::List => commands::plugin::execute_list()?,
+            PluginCommands::Init { name, world, build } => {
+                let world: patina::plugin::PluginWorld = world.parse()?;
+                let cwd = std::env::current_dir()?;
+                let project_dir =
+                    patina::plugin::scaffold::scaffold(&cwd, &name, &world)?;
+
+                println!("Created {} plugin: {}", world, project_dir.display());
+                println!();
+                println!("  cd {}", name);
+                println!("  cargo build --target wasm32-wasip2");
+
+                if build {
+                    println!();
+                    println!("Building...");
+                    let status = std::process::Command::new("cargo")
+                        .args(["build", "--target", "wasm32-wasip2"])
+                        .current_dir(&project_dir)
+                        .status();
+
+                    match status {
+                        Ok(s) if s.success() => {
+                            let artifact = project_dir
+                                .join("target/wasm32-wasip2/debug")
+                                .join(format!("{}.wasm", name.replace('-', "_")));
+                            println!("Built: {}", artifact.display());
+                        }
+                        Ok(s) => {
+                            eprintln!("Build failed (exit code {})", s.code().unwrap_or(-1));
+                            eprintln!();
+                            eprintln!("If the wasm32-wasip2 target is missing, install it:");
+                            eprintln!("  rustup target add wasm32-wasip2");
+                            std::process::exit(1);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to run cargo: {}", e);
+                            eprintln!();
+                            eprintln!("If the wasm32-wasip2 target is missing, install it:");
+                            eprintln!("  rustup target add wasm32-wasip2");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+            }
             PluginCommands::Run { name, args } => {
                 let plugins_dir = patina::paths::plugin::plugins_dir();
                 let wasm_path = plugins_dir.join(format!("{}.wasm", name));
