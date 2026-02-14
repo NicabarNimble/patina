@@ -12,3 +12,105 @@ interface log {
         error,
     }
 }
+
+/// Shared types across all plugin worlds.
+///
+/// Types live here (not inside a world) so multiple worlds
+/// (mother-child, command, oracle, etc.) can import and reuse them.
+/// Phase 1 defined these inside world mother-child{} — moved here
+/// in Phase 2 per spec discovery "Move WIT types outside world block."
+interface types {
+    /// Health status enumeration
+    enum health-status {
+        healthy,
+        degraded,
+        unhealthy,
+    }
+
+    /// Plugin health status with optional reason string.
+    ///
+    /// Phase 1 used a bare enum (no reason). Phase 2 adds the reason
+    /// field so diagnostic information passes through the WASM boundary
+    /// instead of being hardcoded in the WasmChild adapter.
+    record child-health {
+        status: health-status,
+        reason: option<string>,
+    }
+
+    /// Work request from child to Mother.
+    ///
+    /// The child decides *what* to run. Mother handles *how*.
+    /// Children never spawn processes directly — they return toys
+    /// from tick() and Mother spawns and monitors them.
+    record toy {
+        name: string,
+        command: string,
+        args: list<string>,
+    }
+}
+
+/// Read-only access to project layer data.
+///
+/// Command plugins (doctor, etc.) use this to read project state
+/// without direct filesystem access. Host implements these by
+/// calling into the Patina core library.
+///
+/// Re-entrancy invariant: implementations MUST NOT acquire the
+/// store Mutex or call WASM methods on the same instance.
+interface layer {
+    /// Find the project root directory (walks up from cwd looking for .patina/).
+    find-project-root: func() -> option<string>;
+
+    /// Read project config as JSON string.
+    read-config: func() -> result<string, string>;
+
+    /// Detect current environment as JSON string.
+    detect-environment: func() -> result<string, string>;
+
+    /// Get stored environment tools from project config.
+    get-stored-tools: func() -> list<string>;
+
+    /// Count markdown files in a layer subdirectory (e.g., "core", "sessions").
+    count-layer-files: func(subdir: string) -> u32;
+
+    /// Get project UID.
+    get-project-uid: func() -> option<string>;
+
+    /// Check adapter for updates. Returns current version string or error.
+    check-adapter-version: func(adapter-name: string) -> result<option<string>, string>;
+}
+
+/// Capability-gated access to Patina's query engines.
+///
+/// Command plugins use this to call scry (semantic search), context
+/// (project patterns/beliefs), or assay (structural queries) from
+/// inside WASM. The host checks the plugin's granted query kinds
+/// at both load time (manifest validation) and call time (defense
+/// in depth). Params and results are JSON strings — typed enums
+/// live in the guest API crate, not at the WIT boundary.
+interface query {
+    /// Execute a query against a Patina engine.
+    ///
+    /// `kind` — one of "scry", "context", "assay".
+    /// `params` — JSON object with kind-specific parameters.
+    /// Returns the query result as a string, or an error message.
+    query: func(kind: string, params: string) -> result<string, string>;
+}
+
+/// Domain-allowlisted HTTP for plugins.
+///
+/// The host controls TLS, domain enforcement, and credential injection.
+/// Plugins never make raw network calls — they call these functions
+/// and the host enforces the allowlist from the plugin manifest.
+interface http {
+    record http-response {
+        status: u16,
+        body: string,
+    }
+
+    /// POST to an allowed domain. Host enforces domain allowlist.
+    http-post: func(url: string, body: string, content-type: string) -> result<http-response, string>;
+
+    /// GET from an allowed domain.
+    http-get: func(url: string) -> result<http-response, string>;
+}

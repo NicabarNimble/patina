@@ -16,7 +16,9 @@ interface log {
 /// Shared types across all plugin worlds.
 ///
 /// Types live here (not inside a world) so multiple worlds
-/// (mother-child, command, task, etc.) can import and reuse them.
+/// (mother-child, command, oracle, etc.) can import and reuse them.
+/// Phase 1 defined these inside world mother-child{} — moved here
+/// in Phase 2 per spec discovery "Move WIT types outside world block."
 interface types {
     /// Health status enumeration
     enum health-status {
@@ -26,16 +28,20 @@ interface types {
     }
 
     /// Plugin health status with optional reason string.
+    ///
+    /// Phase 1 used a bare enum (no reason). Phase 2 adds the reason
+    /// field so diagnostic information passes through the WASM boundary
+    /// instead of being hardcoded in the WasmChild adapter.
     record child-health {
         status: health-status,
         reason: option<string>,
     }
 
-    /// Work request from child to Mother (or task to host).
+    /// Work request from child to Mother.
     ///
-    /// The plugin decides *what* to run. Host handles *how*.
-    /// Plugins never spawn processes directly — they return toys
-    /// and the host spawns and monitors them.
+    /// The child decides *what* to run. Mother handles *how*.
+    /// Children never spawn processes directly — they return toys
+    /// from tick() and Mother spawns and monitors them.
     record toy {
         name: string,
         command: string,
@@ -45,7 +51,7 @@ interface types {
 
 /// Read-only access to project layer data.
 ///
-/// Task and command plugins use this to read project state
+/// Command plugins (doctor, etc.) use this to read project state
 /// without direct filesystem access. Host implements these by
 /// calling into the Patina core library.
 ///
@@ -76,10 +82,12 @@ interface layer {
 
 /// Capability-gated access to Patina's query engines.
 ///
-/// Task and command plugins use this to call scry (semantic search),
-/// context (project patterns/beliefs), or assay (structural queries)
-/// from inside WASM. The host checks the plugin's granted query kinds
-/// at both load time and call time (defense in depth).
+/// Command plugins use this to call scry (semantic search), context
+/// (project patterns/beliefs), or assay (structural queries) from
+/// inside WASM. The host checks the plugin's granted query kinds
+/// at both load time (manifest validation) and call time (defense
+/// in depth). Params and results are JSON strings — typed enums
+/// live in the guest API crate, not at the WIT boundary.
 interface query {
     /// Execute a query against a Patina engine.
     ///
