@@ -7,52 +7,10 @@ use anyhow::Result;
 use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
 
-use super::{wasm_engine, GrantedCapabilities, PluginManifest, QueryScope};
+use super::{wasm_engine, GrantedCapabilities, PluginManifest};
 use crate::mother::{ChildHealth, ChildRequest, ChildResponse, MotherHost, Toy};
 
 use super::command::QueryDispatchFn;
-
-// =========================================================================
-// URL validation — data-level sanitization per [[sanitize-at-data-level]]
-// =========================================================================
-
-/// Validate and parse an HTTP URL for domain-allowlisted access.
-///
-/// Returns the extracted domain on success. Enforces:
-/// - HTTPS only (no plaintext HTTP)
-/// - No IP addresses (IPv4 or IPv6)
-/// - No localhost
-///
-/// Pure function — testable independently of wasmtime.
-pub(super) fn validate_http_url(url: &str) -> Result<String, String> {
-    let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid URL: {}", e))?;
-
-    // HTTPS only
-    if parsed.scheme() != "https" {
-        return Err(format!("only HTTPS allowed, got '{}'", parsed.scheme()));
-    }
-
-    let host = parsed
-        .host_str()
-        .ok_or_else(|| "no host in URL".to_string())?;
-
-    // No localhost
-    if host == "localhost" {
-        return Err("localhost not allowed".to_string());
-    }
-
-    // No IP addresses (IPv4 or IPv6)
-    // host_str() returns brackets for IPv6 (e.g., "[::1]") — strip them
-    let bare_host = host
-        .strip_prefix('[')
-        .and_then(|h| h.strip_suffix(']'))
-        .unwrap_or(host);
-    if bare_host.parse::<std::net::IpAddr>().is_ok() {
-        return Err("IP addresses not allowed".to_string());
-    }
-
-    Ok(bare_host.to_string())
-}
 
 // =========================================================================
 // Bindgen — generates types from WIT definitions
@@ -95,7 +53,7 @@ mod bindings {
         world: "mother-child",
     });
 
-    // Implement the generated Host trait for patina:host/log
+    // patina:host/log — delegates to host_support
     impl patina::host::log::Host for HostState {
         fn log(&mut self, level: patina::host::log::LogLevel, message: String) {
             let level_str = match level {
@@ -104,147 +62,55 @@ mod bindings {
                 patina::host::log::LogLevel::Warn => "WARN",
                 patina::host::log::LogLevel::Error => "ERROR",
             };
-            eprintln!("[plugin:{}] {}: {}", self.plugin_name, level_str, message);
+            super::super::host_support::log(&self.plugin_name, level_str, &message);
         }
     }
 
-    // patina:host/types only defines types (no functions) — empty Host trait
+    // patina:host/types — no functions, empty Host trait
     impl patina::host::types::Host for HostState {}
 
-    // patina:host/layer — read-only project data access.
-    //
-    // Re-entrancy invariant: these implementations MUST NOT acquire the
-    // store Mutex or call WASM methods on the same instance.
-    // All calls go to the Patina core library, never back into WASM.
+    // patina:host/layer — delegates to host_support
     impl patina::host::layer::Host for HostState {
         fn find_project_root(&mut self) -> Option<String> {
-            self.project_root
-                .as_ref()
-                .map(|p| p.to_string_lossy().to_string())
+            super::super::host_support::find_project_root(&self.project_root)
         }
-
         fn read_config(&mut self) -> Result<String, String> {
-            let root = self
-                .project_root
-                .as_ref()
-                .ok_or_else(|| "no project root".to_string())?;
-            let config = crate::project::load_with_migration(root)
-                .map_err(|e| format!("load config: {}", e))?;
-            serde_json::to_string(&config).map_err(|e| format!("serialize config: {}", e))
+            super::super::host_support::read_config(&self.project_root)
         }
-
         fn detect_environment(&mut self) -> Result<String, String> {
-            let env = crate::environment::Environment::detect()
-                .map_err(|e| format!("detect env: {}", e))?;
-            serde_json::to_string(&env).map_err(|e| format!("serialize env: {}", e))
+            super::super::host_support::detect_environment()
         }
-
         fn get_stored_tools(&mut self) -> Vec<String> {
-            let root = match self.project_root.as_ref() {
-                Some(r) => r,
-                None => return vec![],
-            };
-            let config = match crate::project::load_with_migration(root) {
-                Ok(c) => c,
-                Err(_) => return vec![],
-            };
-            config
-                .environment
-                .map(|e| e.detected_tools)
-                .unwrap_or_default()
+            super::super::host_support::get_stored_tools(&self.project_root)
         }
-
         fn count_layer_files(&mut self, subdir: String) -> u32 {
-            let root = match self.project_root.as_ref() {
-                Some(r) => r,
-                None => return 0,
-            };
-            let path = root.join("layer").join(&subdir);
-            if let Ok(entries) = std::fs::read_dir(path) {
-                entries
-                    .filter_map(Result::ok)
-                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-                    .count() as u32
-            } else {
-                0
-            }
+            super::super::host_support::count_layer_files(&self.project_root, &subdir)
         }
-
         fn get_project_uid(&mut self) -> Option<String> {
-            let root = self.project_root.as_ref()?;
-            crate::project::get_uid(root)
+            super::super::host_support::get_project_uid(&self.project_root)
         }
-
         fn check_adapter_version(
             &mut self,
             adapter_name: String,
         ) -> Result<Option<String>, String> {
-            let root = self
-                .project_root
-                .as_ref()
-                .ok_or_else(|| "no project root".to_string())?;
-            let adapter = crate::adapters::get_adapter(&adapter_name);
-            adapter
-                .check_for_updates(root)
-                .map(|opt| opt.map(|(current, _)| current))
-                .map_err(|e| format!("adapter check: {}", e))
+            super::super::host_support::check_adapter_version(&self.project_root, &adapter_name)
         }
     }
 
-    // patina:host/query — capability-gated query dispatch.
-    //
-    // Defense in depth: kinds are validated at load time (check_capabilities)
-    // AND at call time (grants.query_kinds check below). Query scope is
-    // enforced at call time — all_repos requires AllRepos scope.
-    // Actual engine dispatch is handled by query_fn (provided by binary).
+    // patina:host/query — delegates to host_support
     impl patina::host::query::Host for HostState {
         fn query(&mut self, kind: String, params: String) -> Result<String, String> {
-            // Call-time gating: kind must be in granted set
-            if !self.grants.query_kinds.contains(&kind) {
-                return Err(format!(
-                    "query kind '{}' not granted for plugin '{}'",
-                    kind, self.plugin_name
-                ));
-            }
-
-            // Scope enforcement: deny all_repos explicitly, then sanitize.
-            if let Ok(args) = serde_json::from_str::<serde_json::Value>(&params) {
-                let all_repos = args
-                    .get("all_repos")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                if all_repos && !matches!(self.grants.query_scope, super::QueryScope::AllRepos) {
-                    return Err(
-                        "all_repos not allowed: plugin query_scope is current_project".to_string(),
-                    );
-                }
-                if all_repos {
-                    eprintln!(
-                        "[plugin:{}] query: all_repos=true (audit)",
-                        self.plugin_name
-                    );
-                }
-            }
-
-            // Sanitize: strip scope-reserved keys so callback can't bypass policy
-            let sanitized_params =
-                super::super::command::sanitize_query_params(&params, &self.grants.query_scope);
-
-            // Delegate to binary-provided dispatch function
-            let query_fn = self
-                .query_fn
-                .as_mut()
-                .ok_or_else(|| "query dispatch not configured".to_string())?;
-            query_fn(&kind, &sanitized_params)
+            super::super::host_support::query(
+                &self.plugin_name,
+                &self.grants,
+                &mut self.query_fn,
+                &kind,
+                &params,
+            )
         }
     }
 
-    // patina:host/http — domain-allowlisted HTTP access.
-    //
-    // Defense in depth: domains are validated at load time (check_capabilities)
-    // AND at call time (grants.http_domains check below). URLs are sanitized
-    // by validate_http_url (HTTPS-only, no IPs, no localhost). Cross-domain
-    // redirects are rejected by the reqwest client's redirect policy.
+    // patina:host/http — delegates to host_support
     impl patina::host::http::Host for HostState {
         fn http_post(
             &mut self,
@@ -252,46 +118,30 @@ mod bindings {
             body: String,
             content_type: String,
         ) -> Result<patina::host::http::HttpResponse, String> {
-            let domain = super::validate_http_url(&url)?;
-            if !self.grants.http_domains.contains(&domain) {
-                return Err(format!(
-                    "domain '{}' not in allowlist for plugin '{}'",
-                    domain, self.plugin_name
-                ));
-            }
-            let response = self
-                .http_client
-                .post(&url)
-                .header("Content-Type", &content_type)
-                .body(body)
-                .send()
-                .map_err(|e| format!("HTTP POST failed: {}", e))?;
-            let status = response.status().as_u16();
-            let resp_body = response.text().map_err(|e| format!("read body: {}", e))?;
+            let r = super::super::host_support::http_post(
+                &self.http_client,
+                &self.grants,
+                &self.plugin_name,
+                &url,
+                &body,
+                &content_type,
+            )?;
             Ok(patina::host::http::HttpResponse {
-                status,
-                body: resp_body,
+                status: r.status,
+                body: r.body,
             })
         }
 
         fn http_get(&mut self, url: String) -> Result<patina::host::http::HttpResponse, String> {
-            let domain = super::validate_http_url(&url)?;
-            if !self.grants.http_domains.contains(&domain) {
-                return Err(format!(
-                    "domain '{}' not in allowlist for plugin '{}'",
-                    domain, self.plugin_name
-                ));
-            }
-            let response = self
-                .http_client
-                .get(&url)
-                .send()
-                .map_err(|e| format!("HTTP GET failed: {}", e))?;
-            let status = response.status().as_u16();
-            let resp_body = response.text().map_err(|e| format!("read body: {}", e))?;
+            let r = super::super::host_support::http_get(
+                &self.http_client,
+                &self.grants,
+                &self.plugin_name,
+                &url,
+            )?;
             Ok(patina::host::http::HttpResponse {
-                status,
-                body: resp_body,
+                status: r.status,
+                body: r.body,
             })
         }
     }

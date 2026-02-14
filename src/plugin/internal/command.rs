@@ -5,7 +5,7 @@ use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
 
 use super::mother_child::PluginEngine;
-use super::{wasm_engine, GrantedCapabilities, PluginManifest, QueryScope};
+use super::{wasm_engine, GrantedCapabilities, PluginManifest};
 
 /// Query dispatch function type.
 ///
@@ -13,37 +13,6 @@ use super::{wasm_engine, GrantedCapabilities, PluginManifest, QueryScope};
 /// (retrieval, commands) live in the binary, not the library.
 /// The host impl handles gating; this function handles dispatch.
 pub type QueryDispatchFn = Box<dyn FnMut(&str, &str) -> Result<String, String> + Send>;
-
-/// Keys in query params that are host-controlled and must not be
-/// set by plugins. The lib strips these before dispatch when the
-/// plugin's scope doesn't grant them. Plugins must not rely on
-/// these being preserved through the boundary.
-const SCOPE_RESERVED_KEYS: &[&str] = &["all_repos", "repo", "project_root", "db_path"];
-
-/// Sanitize query params by stripping scope-reserved keys.
-///
-/// Called by the Host impl before dispatching to the binary callback.
-/// Testable independently of wasmtime infrastructure.
-pub(super) fn sanitize_query_params(params: &str, scope: &QueryScope) -> String {
-    let mut args: serde_json::Value = match serde_json::from_str(params) {
-        Ok(v) => v,
-        Err(_) => return params.to_string(),
-    };
-
-    if matches!(scope, QueryScope::AllRepos) {
-        // AllRepos scope: params pass through unmodified
-        return params.to_string();
-    }
-
-    // CurrentProject: strip all scope-reserved keys
-    if let Some(obj) = args.as_object_mut() {
-        for key in SCOPE_RESERVED_KEYS {
-            obj.remove(*key);
-        }
-    }
-
-    serde_json::to_string(&args).unwrap_or_else(|_| params.to_string())
-}
 
 // =========================================================================
 // Command world — bindgen + host functions + CommandEngine
@@ -82,7 +51,7 @@ mod command_bindings {
         world: "command",
     });
 
-    // patina:host/log — same implementation as mother-child
+    // patina:host/log — delegates to host_support
     impl patina::host::log::Host for CommandHostState {
         fn log(&mut self, level: patina::host::log::LogLevel, message: String) {
             let level_str = match level {
@@ -91,136 +60,48 @@ mod command_bindings {
                 patina::host::log::LogLevel::Warn => "WARN",
                 patina::host::log::LogLevel::Error => "ERROR",
             };
-            eprintln!("[plugin:{}] {}: {}", self.plugin_name, level_str, message);
+            super::super::host_support::log(&self.plugin_name, level_str, &message);
         }
     }
 
-    // patina:host/layer — read-only project data access.
-    //
-    // Re-entrancy invariant: these implementations MUST NOT acquire the
-    // store Mutex or call WASM methods on the same instance.
-    // All calls go to the Patina core library, never back into WASM.
+    // patina:host/layer — delegates to host_support
     impl patina::host::layer::Host for CommandHostState {
         fn find_project_root(&mut self) -> Option<String> {
-            self.project_root
-                .as_ref()
-                .map(|p| p.to_string_lossy().to_string())
+            super::super::host_support::find_project_root(&self.project_root)
         }
-
         fn read_config(&mut self) -> Result<String, String> {
-            let root = self
-                .project_root
-                .as_ref()
-                .ok_or_else(|| "no project root".to_string())?;
-            let config = crate::project::load_with_migration(root)
-                .map_err(|e| format!("load config: {}", e))?;
-            serde_json::to_string(&config).map_err(|e| format!("serialize config: {}", e))
+            super::super::host_support::read_config(&self.project_root)
         }
-
         fn detect_environment(&mut self) -> Result<String, String> {
-            let env = crate::environment::Environment::detect()
-                .map_err(|e| format!("detect env: {}", e))?;
-            serde_json::to_string(&env).map_err(|e| format!("serialize env: {}", e))
+            super::super::host_support::detect_environment()
         }
-
         fn get_stored_tools(&mut self) -> Vec<String> {
-            let root = match self.project_root.as_ref() {
-                Some(r) => r,
-                None => return vec![],
-            };
-            let config = match crate::project::load_with_migration(root) {
-                Ok(c) => c,
-                Err(_) => return vec![],
-            };
-            config
-                .environment
-                .map(|e| e.detected_tools)
-                .unwrap_or_default()
+            super::super::host_support::get_stored_tools(&self.project_root)
         }
-
         fn count_layer_files(&mut self, subdir: String) -> u32 {
-            let root = match self.project_root.as_ref() {
-                Some(r) => r,
-                None => return 0,
-            };
-            let path = root.join("layer").join(&subdir);
-            if let Ok(entries) = std::fs::read_dir(path) {
-                entries
-                    .filter_map(Result::ok)
-                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
-                    .count() as u32
-            } else {
-                0
-            }
+            super::super::host_support::count_layer_files(&self.project_root, &subdir)
         }
-
         fn get_project_uid(&mut self) -> Option<String> {
-            let root = self.project_root.as_ref()?;
-            crate::project::get_uid(root)
+            super::super::host_support::get_project_uid(&self.project_root)
         }
-
         fn check_adapter_version(
             &mut self,
             adapter_name: String,
         ) -> Result<Option<String>, String> {
-            let root = self
-                .project_root
-                .as_ref()
-                .ok_or_else(|| "no project root".to_string())?;
-            let adapter = crate::adapters::get_adapter(&adapter_name);
-            adapter
-                .check_for_updates(root)
-                .map(|opt| opt.map(|(current, _)| current))
-                .map_err(|e| format!("adapter check: {}", e))
+            super::super::host_support::check_adapter_version(&self.project_root, &adapter_name)
         }
     }
 
-    // patina:host/query — capability-gated query dispatch.
-    //
-    // Defense in depth: kinds are validated at load time (check_capabilities)
-    // AND at call time (grants.query_kinds check below). Query scope is
-    // enforced at call time — all_repos requires AllRepos scope.
-    // Actual engine dispatch is handled by query_fn (provided by binary).
+    // patina:host/query — delegates to host_support
     impl patina::host::query::Host for CommandHostState {
         fn query(&mut self, kind: String, params: String) -> Result<String, String> {
-            // Call-time gating: kind must be in granted set
-            if !self.grants.query_kinds.contains(&kind) {
-                return Err(format!(
-                    "query kind '{}' not granted for plugin '{}'",
-                    kind, self.plugin_name
-                ));
-            }
-
-            // Scope enforcement: deny all_repos explicitly, then sanitize.
-            // The lib owns scope policy — callback receives sanitized params
-            // with all scope-reserved keys stripped for CurrentProject scope.
-            if let Ok(args) = serde_json::from_str::<serde_json::Value>(&params) {
-                let all_repos = args
-                    .get("all_repos")
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(false);
-                if all_repos && !matches!(self.grants.query_scope, super::QueryScope::AllRepos) {
-                    return Err(
-                        "all_repos not allowed: plugin query_scope is current_project".to_string(),
-                    );
-                }
-                if all_repos {
-                    eprintln!(
-                        "[plugin:{}] query: all_repos=true (audit)",
-                        self.plugin_name
-                    );
-                }
-            }
-
-            // Sanitize: strip scope-reserved keys so callback can't bypass policy
-            let sanitized_params = super::sanitize_query_params(&params, &self.grants.query_scope);
-
-            // Delegate to binary-provided dispatch function
-            let query_fn = self
-                .query_fn
-                .as_mut()
-                .ok_or_else(|| "query dispatch not configured".to_string())?;
-            query_fn(&kind, &sanitized_params)
+            super::super::host_support::query(
+                &self.plugin_name,
+                &self.grants,
+                &mut self.query_fn,
+                &kind,
+                &params,
+            )
         }
     }
 }

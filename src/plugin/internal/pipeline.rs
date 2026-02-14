@@ -39,7 +39,7 @@ mod pipeline_bindings {
         world: "pipeline",
     });
 
-    // patina:host/log — same implementation as all other worlds
+    // patina:host/log — delegates to host_support
     impl patina::host::log::Host for PipelineHostState {
         fn log(&mut self, level: patina::host::log::LogLevel, message: String) {
             let level_str = match level {
@@ -48,7 +48,7 @@ mod pipeline_bindings {
                 patina::host::log::LogLevel::Warn => "WARN",
                 patina::host::log::LogLevel::Error => "ERROR",
             };
-            eprintln!("[plugin:{}] {}: {}", self.plugin_name, level_str, message);
+            super::super::host_support::log(&self.plugin_name, level_str, &message);
         }
     }
 }

@@ -227,7 +227,7 @@ fn capabilities_denied() {
 #[test]
 fn sanitize_strips_all_repos_for_current_project() {
     let params = r#"{"query":"test","all_repos":true,"limit":5}"#;
-    let result = command::sanitize_query_params(params, &QueryScope::CurrentProject);
+    let result = host_support::sanitize_query_params(params, &QueryScope::CurrentProject);
     let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
     assert!(
         parsed.get("all_repos").is_none(),
@@ -242,7 +242,7 @@ fn sanitize_strips_all_repos_for_current_project() {
 #[test]
 fn sanitize_strips_repo_for_current_project() {
     let params = r#"{"query":"test","repo":"other-project"}"#;
-    let result = command::sanitize_query_params(params, &QueryScope::CurrentProject);
+    let result = host_support::sanitize_query_params(params, &QueryScope::CurrentProject);
     let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
     assert!(
         parsed.get("repo").is_none(),
@@ -256,7 +256,7 @@ fn sanitize_strips_repo_for_current_project() {
 fn sanitize_strips_all_reserved_keys() {
     let params =
         r#"{"query":"test","all_repos":true,"repo":"x","project_root":"/tmp","db_path":"/hack"}"#;
-    let result = command::sanitize_query_params(params, &QueryScope::CurrentProject);
+    let result = host_support::sanitize_query_params(params, &QueryScope::CurrentProject);
     let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
     for key in &["all_repos", "repo", "project_root", "db_path"] {
         assert!(
@@ -271,7 +271,7 @@ fn sanitize_strips_all_reserved_keys() {
 #[test]
 fn sanitize_preserves_all_for_all_repos_scope() {
     let params = r#"{"query":"test","all_repos":true,"repo":"other"}"#;
-    let result = command::sanitize_query_params(params, &QueryScope::AllRepos);
+    let result = host_support::sanitize_query_params(params, &QueryScope::AllRepos);
     let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
     assert_eq!(parsed.get("all_repos").unwrap(), true);
     assert_eq!(parsed.get("repo").unwrap(), "other");
@@ -280,7 +280,7 @@ fn sanitize_preserves_all_for_all_repos_scope() {
 #[test]
 fn sanitize_handles_invalid_json() {
     let params = "not json";
-    let result = command::sanitize_query_params(params, &QueryScope::CurrentProject);
+    let result = host_support::sanitize_query_params(params, &QueryScope::CurrentProject);
     assert_eq!(
         result, "not json",
         "invalid JSON should pass through unchanged"
@@ -917,37 +917,37 @@ fn command_doctor_run() {
 
 #[test]
 fn validate_http_url_valid_https() {
-    let domain = mother_child::validate_http_url("https://api.github.com/repos").unwrap();
+    let domain = host_support::validate_http_url("https://api.github.com/repos").unwrap();
     assert_eq!(domain, "api.github.com");
 }
 
 #[test]
 fn validate_http_url_valid_https_with_port() {
-    let domain = mother_child::validate_http_url("https://api.github.com:443/repos").unwrap();
+    let domain = host_support::validate_http_url("https://api.github.com:443/repos").unwrap();
     assert_eq!(domain, "api.github.com");
 }
 
 #[test]
 fn validate_http_url_rejects_http() {
-    let err = mother_child::validate_http_url("http://api.github.com/repos").unwrap_err();
+    let err = host_support::validate_http_url("http://api.github.com/repos").unwrap_err();
     assert!(err.contains("HTTPS"), "expected HTTPS error, got: {}", err);
 }
 
 #[test]
 fn validate_http_url_rejects_ipv4() {
-    let err = mother_child::validate_http_url("https://192.168.1.1/api").unwrap_err();
+    let err = host_support::validate_http_url("https://192.168.1.1/api").unwrap_err();
     assert!(err.contains("IP"), "expected IP error, got: {}", err);
 }
 
 #[test]
 fn validate_http_url_rejects_ipv6() {
-    let err = mother_child::validate_http_url("https://[::1]/api").unwrap_err();
+    let err = host_support::validate_http_url("https://[::1]/api").unwrap_err();
     assert!(err.contains("IP"), "expected IP error, got: {}", err);
 }
 
 #[test]
 fn validate_http_url_rejects_localhost() {
-    let err = mother_child::validate_http_url("https://localhost/api").unwrap_err();
+    let err = host_support::validate_http_url("https://localhost/api").unwrap_err();
     assert!(
         err.contains("localhost"),
         "expected localhost error, got: {}",
@@ -957,7 +957,7 @@ fn validate_http_url_rejects_localhost() {
 
 #[test]
 fn validate_http_url_rejects_invalid() {
-    let err = mother_child::validate_http_url("not-a-url").unwrap_err();
+    let err = host_support::validate_http_url("not-a-url").unwrap_err();
     assert!(
         err.contains("invalid"),
         "expected invalid URL error, got: {}",
@@ -1120,7 +1120,7 @@ fn conformance_http_domain_not_in_allowlist_denied() {
         ..Default::default()
     };
     // URL is valid HTTPS with a valid domain
-    let domain = mother_child::validate_http_url("https://evil.com/steal").unwrap();
+    let domain = host_support::validate_http_url("https://evil.com/steal").unwrap();
     // But domain is NOT in the allowlist
     assert!(
         !grants.http_domains.contains(&domain),
@@ -1132,7 +1132,7 @@ fn conformance_http_domain_not_in_allowlist_denied() {
 /// Maps to: validate_http_url scheme check.
 #[test]
 fn conformance_http_rejects_plaintext() {
-    let err = mother_child::validate_http_url("http://api.github.com/repos").unwrap_err();
+    let err = host_support::validate_http_url("http://api.github.com/repos").unwrap_err();
     assert!(
         err.contains("HTTPS"),
         "plaintext HTTP should be rejected: {}",
@@ -1144,7 +1144,7 @@ fn conformance_http_rejects_plaintext() {
 /// Maps to: validate_http_url IP check.
 #[test]
 fn conformance_http_rejects_ip_address() {
-    let err = mother_child::validate_http_url("https://10.0.0.1/internal").unwrap_err();
+    let err = host_support::validate_http_url("https://10.0.0.1/internal").unwrap_err();
     assert!(err.contains("IP"), "IP address should be rejected: {}", err);
 }
 
@@ -1152,7 +1152,7 @@ fn conformance_http_rejects_ip_address() {
 /// Maps to: validate_http_url localhost check.
 #[test]
 fn conformance_http_rejects_localhost() {
-    let err = mother_child::validate_http_url("https://localhost:8080/api").unwrap_err();
+    let err = host_support::validate_http_url("https://localhost:8080/api").unwrap_err();
     assert!(
         err.contains("localhost"),
         "localhost should be rejected: {}",
