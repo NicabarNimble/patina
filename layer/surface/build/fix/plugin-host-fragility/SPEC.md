@@ -1,7 +1,7 @@
 ---
 type: fix
 id: plugin-host-fragility
-status: active
+status: complete
 created: 2026-02-14
 sessions:
   origin: 20260214-061751

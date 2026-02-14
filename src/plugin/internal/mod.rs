@@ -34,8 +34,10 @@ pub enum PluginWorld {
     Pipeline,
 }
 
-impl PluginWorld {
-    pub fn from_str(s: &str) -> Result<Self> {
+impl std::str::FromStr for PluginWorld {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self> {
         match s {
             "mother-child" => Ok(Self::MotherChild),
             "command" => Ok(Self::Command),
@@ -44,7 +46,9 @@ impl PluginWorld {
             other => anyhow::bail!("unknown plugin world: '{}'", other),
         }
     }
+}
 
+impl PluginWorld {
     /// Capabilities this world is allowed to declare.
     pub fn allowed_capabilities(&self) -> &[&str] {
         match self {
@@ -176,7 +180,7 @@ impl PluginManifest {
             .get("world")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("missing plugin.world"))?;
-        let world = PluginWorld::from_str(world_str)?;
+        let world = world_str.parse::<PluginWorld>()?;
 
         let patina_min = plugin
             .get("patina_min")
