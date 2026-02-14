@@ -1,7 +1,7 @@
 ---
 type: feat
 id: plugin-template-gallery
-status: active
+status: complete
 created: 2026-02-14
 sessions:
   origin: 20260214-084147
