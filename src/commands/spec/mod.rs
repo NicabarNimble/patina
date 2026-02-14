@@ -13,12 +13,16 @@ use anyhow::Result;
 pub enum SpecCommands {
     /// Archive a completed spec (git tag + remove from tree)
     Archive {
-        /// Spec ID to archive (e.g., "session-092-hardening")
-        id: String,
+        /// Spec ID to archive (required unless --stale)
+        id: Option<String>,
 
         /// Dry run - show what would happen without executing
         #[arg(long)]
         dry_run: bool,
+
+        /// Archive all completed/abandoned specs still in tree
+        #[arg(long)]
+        stale: bool,
     },
 
     /// Show specs ready to work on (unblocked, status=ready/active)
@@ -46,6 +50,10 @@ pub enum SpecCommands {
         /// Force major version bump on complete (for 1.0.0 moments)
         #[arg(long)]
         major: bool,
+
+        /// Skip auto-archive on complete/abandoned (preserve spec in tree)
+        #[arg(long)]
+        no_archive: bool,
     },
 
     /// List all specs with optional filters
@@ -69,6 +77,11 @@ pub fn archive(id: &str, dry_run: bool) -> Result<()> {
     internal::archive_spec(id, dry_run)
 }
 
+/// Archive all completed/abandoned specs still in tree
+pub fn archive_stale(dry_run: bool) -> Result<()> {
+    internal::archive_stale_specs(dry_run)
+}
+
 /// Show specs ready to work on
 pub fn ready(json: bool) -> Result<()> {
     internal::show_ready_specs(json)
@@ -80,8 +93,8 @@ pub fn blocked(json: bool) -> Result<()> {
 }
 
 /// Update a spec's status
-pub fn status(id: &str, new_status: &str, major: bool) -> Result<()> {
-    internal::update_spec_status(id, new_status, major)
+pub fn status(id: &str, new_status: &str, major: bool, no_archive: bool) -> Result<()> {
+    internal::update_spec_status(id, new_status, major, no_archive)
 }
 
 /// List all specs with optional filters
