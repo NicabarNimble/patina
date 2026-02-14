@@ -179,6 +179,9 @@ pub mod serve {
 pub mod plugin {
     use super::*;
 
+    /// Patina source root, embedded at compile time.
+    const SOURCE_ROOT: &str = env!("CARGO_MANIFEST_DIR");
+
     /// WASM children directory: `~/.patina/children/`
     /// Contains .wasm files + plugin.toml manifests for Mother daemon children.
     pub fn children_dir() -> PathBuf {
@@ -195,6 +198,14 @@ pub mod plugin {
     /// Mapped to `/work/` in the plugin's virtual filesystem (Phase 2+ when WASI lands).
     pub fn work_dir(name: &str) -> PathBuf {
         plugins_dir().join(name).join("work")
+    }
+
+    /// Guest API crate directory: `<source_root>/<crate_name>/`
+    ///
+    /// Returns the absolute path to a guest API crate (e.g., `patina-task-api`)
+    /// within the patina source tree. Used by `plugin init` scaffolding.
+    pub fn guest_api_crate(crate_name: &str) -> PathBuf {
+        PathBuf::from(SOURCE_ROOT).join(crate_name)
     }
 }
 
