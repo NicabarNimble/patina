@@ -1,0 +1,10 @@
+[build]
+target = "wasm32-wasip2"
+
+[target.wasm32-wasip2]
+linker = "/Users/nicabar/.local/share/wasi-sdk/bin/wasm-ld"
+
+[env]
+CC_wasm32_wasip2 = { value = "/Users/nicabar/.local/share/wasi-sdk/bin/clang", force = true }
+AR_wasm32_wasip2 = { value = "/Users/nicabar/.local/share/wasi-sdk/bin/llvm-ar", force = true }
+CFLAGS_wasm32_wasip2 = { value = "--sysroot=/Users/nicabar/.local/share/wasi-sdk/share/wasi-sysroot", force = true }
