@@ -1,12 +1,12 @@
 ---
 type: feat
 id: plugin-dev-watch
-status: design
+status: abandoned
 created: 2026-02-14
-sessions:
-  origin: 20260214-084147
 blocked_by:
 - plugin-template-gallery
+sessions:
+  origin: 20260214-084147
 related:
 - layer/surface/build/feat/plugin-template-gallery/SPEC.md
 beliefs:
