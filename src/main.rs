@@ -1357,8 +1357,7 @@ fn main() -> Result<()> {
             PluginCommands::Init { name, world, build } => {
                 let world: patina::plugin::PluginWorld = world.parse()?;
                 let cwd = std::env::current_dir()?;
-                let project_dir =
-                    patina::plugin::scaffold::scaffold(&cwd, &name, &world)?;
+                let project_dir = patina::plugin::scaffold::scaffold(&cwd, &name, &world)?;
 
                 println!("Created {} plugin: {}", world, project_dir.display());
                 println!();

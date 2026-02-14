@@ -37,8 +37,7 @@ mod templates {
             include_str!("../../resources/templates/plugin/task/Cargo.toml.tmpl");
         pub const PLUGIN_TOML: &str =
             include_str!("../../resources/templates/plugin/task/plugin.toml.tmpl");
-        pub const LIB_RS: &str =
-            include_str!("../../resources/templates/plugin/task/lib.rs.tmpl");
+        pub const LIB_RS: &str = include_str!("../../resources/templates/plugin/task/lib.rs.tmpl");
     }
     pub mod pipeline {
         pub const CARGO_TOML: &str =
