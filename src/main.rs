@@ -1305,7 +1305,7 @@ fn main() -> Result<()> {
                         name: "patina-doctor".into(),
                         version: "0.0.0".into(),
                         description: String::new(),
-                        world: "command".into(),
+                        world: patina::plugin::PluginWorld::Command,
                         patina_min: "0.0.0".into(),
                         capabilities: vec!["host_log".into(), "host_layer".into()],
                         allowed_toy_commands: vec![],
@@ -1370,8 +1370,8 @@ fn main() -> Result<()> {
                 let wasm_bytes = std::fs::read(&wasm_path)?;
 
                 // Auto-detect world from manifest and dispatch
-                match manifest.world.as_str() {
-                    "task" => {
+                match &manifest.world {
+                    patina::plugin::PluginWorld::Task => {
                         let engine = patina::plugin::TaskEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
                         let query_fn = make_query_dispatch(&manifest);
@@ -1415,7 +1415,7 @@ fn main() -> Result<()> {
                             std::process::exit(exit_code);
                         }
                     }
-                    "command" => {
+                    patina::plugin::PluginWorld::Command => {
                         let engine = patina::plugin::CommandEngine::new()?;
                         let component = engine.load_component(&wasm_bytes)?;
                         let query_fn = make_query_dispatch(&manifest);
@@ -1429,6 +1429,7 @@ fn main() -> Result<()> {
                         anyhow::bail!(
                             "plugin '{}' has world '{}' — only 'task' and 'command' are supported by `plugin run`",
                             name, other
+
                         );
                     }
                 }

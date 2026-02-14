@@ -22,6 +22,52 @@ pub use pipeline::PipelineEngine;
 pub use task::TaskEngine;
 
 // =========================================================================
+// Plugin world enum — parsed from manifest, enforced at load time (F4)
+// =========================================================================
+
+/// Known plugin worlds — parsed from manifest, enforced at load time.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PluginWorld {
+    MotherChild,
+    Command,
+    Task,
+    Pipeline,
+}
+
+impl PluginWorld {
+    pub fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "mother-child" => Ok(Self::MotherChild),
+            "command" => Ok(Self::Command),
+            "task" => Ok(Self::Task),
+            "pipeline" => Ok(Self::Pipeline),
+            other => anyhow::bail!("unknown plugin world: '{}'", other),
+        }
+    }
+
+    /// Capabilities this world is allowed to declare.
+    pub fn allowed_capabilities(&self) -> &[&str] {
+        match self {
+            Self::MotherChild => &["host_log", "host_layer", "host_query", "host_http"],
+            Self::Command => &["host_log", "host_layer", "host_query"],
+            Self::Task => &["host_log", "host_layer", "host_query", "host_http"],
+            Self::Pipeline => &["host_log"],
+        }
+    }
+}
+
+impl std::fmt::Display for PluginWorld {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MotherChild => write!(f, "mother-child"),
+            Self::Command => write!(f, "command"),
+            Self::Task => write!(f, "task"),
+            Self::Pipeline => write!(f, "pipeline"),
+        }
+    }
+}
+
+// =========================================================================
 // Engine singleton (OnceLock pattern from Zed)
 // =========================================================================
 
@@ -46,7 +92,7 @@ pub struct PluginManifest {
     pub name: String,
     pub version: String,
     pub description: String,
-    pub world: String,
+    pub world: PluginWorld,
     pub patina_min: String,
     pub capabilities: Vec<String>,
     /// Toy commands this plugin is allowed to request (from [capabilities.toys].commands).
@@ -126,11 +172,11 @@ impl PluginManifest {
             .unwrap_or("")
             .to_string();
 
-        let world = plugin
+        let world_str = plugin
             .get("world")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("missing plugin.world"))?
-            .to_string();
+            .ok_or_else(|| anyhow::anyhow!("missing plugin.world"))?;
+        let world = PluginWorld::from_str(world_str)?;
 
         let patina_min = plugin
             .get("patina_min")
