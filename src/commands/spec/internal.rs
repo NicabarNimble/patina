@@ -438,12 +438,7 @@ pub fn update_spec_status(id: &str, new_status: &str, major: bool, no_archive: b
         if let Some(bump) = bump {
             let prepared = strategy.preflight(bump, &file_path)?;
 
-            if should_archive {
-                // Create spec tag on HEAD (preserves spec content before removal)
-                create_spec_tag(id, title_str)?;
-            }
-
-            // Archive dir tells execute_cargo to git rm -r instead of git add
+            // Archive dir tells execute_cargo to git rm -rf instead of git add
             let archive_dir = if should_archive {
                 spec_dir
                     .as_ref()
@@ -455,6 +450,9 @@ pub fn update_spec_status(id: &str, new_status: &str, major: bool, no_archive: b
             prepared.execute(title_str, &file_path, archive_dir)?;
 
             if should_archive {
+                // Tag HEAD~1 (the parent commit still has the spec file).
+                // Created after the release commit so no orphaned tag on failure.
+                create_spec_tag(id, title_str, "HEAD~1")?;
                 println!("  Archived: spec/{}", id);
             }
         } else {
@@ -473,9 +471,13 @@ pub fn update_spec_status(id: &str, new_status: &str, major: bool, no_archive: b
 }
 
 /// Create an annotated spec tag on HEAD (preserves spec content for recovery)
-fn create_spec_tag(id: &str, description: &str) -> Result<()> {
+/// Create an annotated spec tag on the given git ref.
+///
+/// `git_ref` determines which commit the tag points to (e.g., "HEAD~1"
+/// to tag the parent commit that still contains the spec file).
+fn create_spec_tag(id: &str, description: &str, git_ref: &str) -> Result<()> {
     let tag_name = format!("spec/{}", id);
-    println!("Creating tag: {}", tag_name);
+    println!("Creating tag: {} (on {})", tag_name, git_ref);
     let output = Command::new("git")
         .args([
             "tag",
@@ -483,6 +485,7 @@ fn create_spec_tag(id: &str, description: &str) -> Result<()> {
             &tag_name,
             "-m",
             &format!("Archived spec: {}", description),
+            git_ref,
         ])
         .output()
         .context("Failed to create spec tag")?;
@@ -567,24 +570,7 @@ fn archive_spec_inner(
 ) -> Result<()> {
     let tag_name = format!("spec/{}", id);
 
-    // 1. Create annotated tag on HEAD (preserves spec content at current commit)
-    println!("Creating tag: {}", tag_name);
-    let output = Command::new("git")
-        .args([
-            "tag",
-            "-a",
-            &tag_name,
-            "-m",
-            &format!("Archived spec: {}", description),
-        ])
-        .output()
-        .context("Failed to create git tag")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("git tag failed: {}", stderr);
-    }
-
-    // 2. Remove spec file/directory from tree
+    // 1. Remove spec file/directory from tree
     let remove_target = if let Some(dir) = spec_dir {
         dir.to_str().unwrap_or(file_path).to_string()
     } else {
@@ -601,7 +587,7 @@ fn archive_spec_inner(
         anyhow::bail!("git rm failed: {}", stderr);
     }
 
-    // 3. Commit
+    // 2. Commit
     let commit_msg = format!(
         "docs: archive {} ({})\n\nSpec preserved via git tag: {}\nRecover with: git show {}:{}",
         tag_name, status, tag_name, tag_name, file_path
@@ -615,6 +601,10 @@ fn archive_spec_inner(
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("git commit failed: {}", stderr);
     }
+
+    // 3. Tag HEAD~1 (the parent commit that still has the spec file).
+    // Created after commit so no orphaned tag if git rm or commit fails.
+    create_spec_tag(id, description, "HEAD~1")?;
 
     println!(
         "\n✓ Archived: {}\n  Tag: {}\n  Recover: git show {}:{}",
