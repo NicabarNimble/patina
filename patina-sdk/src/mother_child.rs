@@ -116,48 +116,49 @@ pub fn __register_plugin(plugin: Box<dyn MotherChildPlugin>) {
     }
 }
 
-fn plugin() -> &'static mut dyn MotherChildPlugin {
-    // Safety: WASM is single-threaded, no concurrent access
-    unsafe {
-        (*PLUGIN.0.get())
-            .as_deref_mut()
-            .expect("plugin not initialized — host must call init first")
+#[cfg(target_arch = "wasm32")]
+mod __wasm {
+    use super::*;
+
+    fn plugin() -> &'static mut dyn MotherChildPlugin {
+        // Safety: WASM is single-threaded, no concurrent access
+        unsafe {
+            (*PLUGIN.0.get())
+                .as_deref_mut()
+                .expect("plugin not initialized — host must call init first")
+        }
     }
+
+    struct Component;
+
+    impl Guest for Component {
+        fn name() -> String {
+            plugin().name()
+        }
+
+        fn on_load() -> Result<(), String> {
+            plugin().on_load()
+        }
+
+        fn on_unload() {
+            plugin().on_unload()
+        }
+
+        fn health() -> ChildHealth {
+            plugin().health()
+        }
+
+        fn handle(action: String, payload: String) -> Result<String, String> {
+            plugin().handle(&action, &payload)
+        }
+
+        fn tick() -> Vec<Toy> {
+            plugin().tick()
+        }
+    }
+
+    export!(Component);
 }
-
-// =========================================================================
-// Component — bridges Guest trait to MotherChildPlugin
-// =========================================================================
-
-struct Component;
-
-impl Guest for Component {
-    fn name() -> String {
-        plugin().name()
-    }
-
-    fn on_load() -> Result<(), String> {
-        plugin().on_load()
-    }
-
-    fn on_unload() {
-        plugin().on_unload()
-    }
-
-    fn health() -> ChildHealth {
-        plugin().health()
-    }
-
-    fn handle(action: String, payload: String) -> Result<String, String> {
-        plugin().handle(&action, &payload)
-    }
-
-    fn tick() -> Vec<Toy> {
-        plugin().tick()
-    }
-}
-
-export!(Component);
 
 // =========================================================================
 // Registration macro

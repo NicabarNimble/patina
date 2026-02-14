@@ -156,32 +156,33 @@ pub fn __register_pipeline(plugin: Box<dyn PipelinePlugin>) {
     }
 }
 
-fn plugin() -> &'static mut dyn PipelinePlugin {
-    // Safety: WASM is single-threaded, no concurrent access
-    unsafe {
-        (*PLUGIN.0.get())
-            .as_deref_mut()
-            .expect("pipeline plugin not initialized — host must call init first")
+#[cfg(target_arch = "wasm32")]
+mod __wasm {
+    use super::*;
+
+    fn plugin() -> &'static mut dyn PipelinePlugin {
+        // Safety: WASM is single-threaded, no concurrent access
+        unsafe {
+            (*PLUGIN.0.get())
+                .as_deref_mut()
+                .expect("pipeline plugin not initialized — host must call init first")
+        }
     }
+
+    struct Component;
+
+    impl Guest for Component {
+        fn name() -> String {
+            plugin().name()
+        }
+
+        fn handle(request: String) -> Result<String, String> {
+            plugin().handle(&request)
+        }
+    }
+
+    export!(Component);
 }
-
-// =========================================================================
-// Component — bridges Guest trait to PipelinePlugin
-// =========================================================================
-
-struct Component;
-
-impl Guest for Component {
-    fn name() -> String {
-        plugin().name()
-    }
-
-    fn handle(request: String) -> Result<String, String> {
-        plugin().handle(&request)
-    }
-}
-
-export!(Component);
 
 // =========================================================================
 // Registration macro

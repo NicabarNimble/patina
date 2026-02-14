@@ -6,7 +6,8 @@
 //!
 //! Proves the command world: CLI subcommand that runs without Mother daemon.
 
-use patina_command_api::{layer, query, register_command, CommandPlugin};
+use patina_sdk::command::{layer, query};
+use patina_sdk::{register_command, CommandPlugin};
 
 /// JSON structures for health check output.
 /// Mirrors the original compiled-in doctor types.

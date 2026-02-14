@@ -128,36 +128,37 @@ pub fn __register_command(plugin: Box<dyn CommandPlugin>) {
     }
 }
 
-fn plugin() -> &'static mut dyn CommandPlugin {
-    // Safety: WASM is single-threaded, no concurrent access
-    unsafe {
-        (*PLUGIN.0.get())
-            .as_deref_mut()
-            .expect("command plugin not initialized — host must call init first")
+#[cfg(target_arch = "wasm32")]
+mod __wasm {
+    use super::*;
+
+    fn plugin() -> &'static mut dyn CommandPlugin {
+        // Safety: WASM is single-threaded, no concurrent access
+        unsafe {
+            (*PLUGIN.0.get())
+                .as_deref_mut()
+                .expect("command plugin not initialized — host must call init first")
+        }
     }
+
+    struct Component;
+
+    impl Guest for Component {
+        fn name() -> String {
+            plugin().name()
+        }
+
+        fn description() -> String {
+            plugin().description()
+        }
+
+        fn run(args: Vec<String>) -> i32 {
+            plugin().run(&args)
+        }
+    }
+
+    export!(Component);
 }
-
-// =========================================================================
-// Component — bridges Guest trait to CommandPlugin
-// =========================================================================
-
-struct Component;
-
-impl Guest for Component {
-    fn name() -> String {
-        plugin().name()
-    }
-
-    fn description() -> String {
-        plugin().description()
-    }
-
-    fn run(args: Vec<String>) -> i32 {
-        plugin().run(&args)
-    }
-}
-
-export!(Component);
 
 // =========================================================================
 // Registration macro
