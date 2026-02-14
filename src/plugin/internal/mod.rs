@@ -9,6 +9,7 @@ use wasmtime::{Config, Engine};
 
 mod command;
 mod mother_child;
+mod pipeline;
 mod task;
 
 #[cfg(test)]
@@ -16,6 +17,7 @@ mod tests;
 
 pub use command::{CommandEngine, QueryDispatchFn};
 pub use mother_child::PluginEngine;
+pub use pipeline::PipelineEngine;
 pub use task::TaskEngine;
 
 // =========================================================================

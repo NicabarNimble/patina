@@ -1,9 +1,10 @@
 //! Plugin engine — shared wasmtime infrastructure for WASM plugins.
 //!
-//! Three engines for three worlds:
+//! Four engines for four worlds:
 //! - `PluginEngine` — mother-child world (daemon resident children)
 //! - `CommandEngine` — command world (one-shot CLI plugins, no daemon)
 //! - `TaskEngine` — task world (on-demand action plugins, CLI-invoked)
+//! - `PipelineEngine` — pipeline world (host-invoked pure compute, log-only)
 //!
 //! All share the process-wide wasmtime::Engine singleton.
 //!
@@ -11,6 +12,6 @@
 
 mod internal;
 pub use internal::{
-    CommandEngine, GrantedCapabilities, PluginEngine, PluginManifest, PluginProvides,
-    QueryDispatchFn, QueryScope, TaskEngine,
+    CommandEngine, GrantedCapabilities, PipelineEngine, PluginEngine, PluginManifest,
+    PluginProvides, QueryDispatchFn, QueryScope, TaskEngine,
 };
