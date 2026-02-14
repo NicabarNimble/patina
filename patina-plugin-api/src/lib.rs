@@ -45,6 +45,25 @@ pub mod host_log {
     }
 }
 
+/// Host HTTP — domain-allowlisted HTTP access for plugins.
+///
+/// The host controls domain enforcement, TLS, and credential injection.
+/// Plugin code calls these functions; the host validates URLs against
+/// the domain allowlist from `[capabilities].host_http` in plugin.toml.
+pub mod host_http {
+    pub use super::patina::host::http::HttpResponse;
+
+    /// HTTP GET from an allowed domain.
+    pub fn get(url: &str) -> Result<HttpResponse, String> {
+        super::patina::host::http::http_get(url)
+    }
+
+    /// HTTP POST to an allowed domain.
+    pub fn post(url: &str, body: &str, content_type: &str) -> Result<HttpResponse, String> {
+        super::patina::host::http::http_post(url, body, content_type)
+    }
+}
+
 // =========================================================================
 // Plugin trait
 // =========================================================================

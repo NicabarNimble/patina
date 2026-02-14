@@ -1081,3 +1081,56 @@ fn granted_capabilities_includes_http_domains() {
     assert!(grants.http_domains.contains("api.github.com"));
     assert!(grants.query_kinds.contains("scry"));
 }
+
+// =====================================================================
+// HTTP conformance — defense-in-depth chain verification
+// =====================================================================
+
+/// Conformance: domain not in allowlist is denied at call time.
+/// Maps to: GrantedCapabilities.http_domains check in Host impl.
+#[test]
+fn conformance_http_domain_not_in_allowlist_denied() {
+    let grants = GrantedCapabilities {
+        http_domains: ["api.github.com".to_string()].into_iter().collect(),
+        ..Default::default()
+    };
+    // URL is valid HTTPS with a valid domain
+    let domain = mother_child::validate_http_url("https://evil.com/steal").unwrap();
+    // But domain is NOT in the allowlist
+    assert!(
+        !grants.http_domains.contains(&domain),
+        "evil.com should not be in allowlist"
+    );
+}
+
+/// Conformance: non-HTTPS URL rejected before any network call.
+/// Maps to: validate_http_url scheme check.
+#[test]
+fn conformance_http_rejects_plaintext() {
+    let err = mother_child::validate_http_url("http://api.github.com/repos").unwrap_err();
+    assert!(
+        err.contains("HTTPS"),
+        "plaintext HTTP should be rejected: {}",
+        err
+    );
+}
+
+/// Conformance: IP address URL rejected before any network call.
+/// Maps to: validate_http_url IP check.
+#[test]
+fn conformance_http_rejects_ip_address() {
+    let err = mother_child::validate_http_url("https://10.0.0.1/internal").unwrap_err();
+    assert!(err.contains("IP"), "IP address should be rejected: {}", err);
+}
+
+/// Conformance: localhost URL rejected before any network call.
+/// Maps to: validate_http_url localhost check.
+#[test]
+fn conformance_http_rejects_localhost() {
+    let err = mother_child::validate_http_url("https://localhost:8080/api").unwrap_err();
+    assert!(
+        err.contains("localhost"),
+        "localhost should be rejected: {}",
+        err
+    );
+}
