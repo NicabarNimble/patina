@@ -632,10 +632,77 @@ fn resolve_spec_dir(file_path: &str) -> Option<std::path::PathBuf> {
         .map(|p| p.to_path_buf())
 }
 
-/// Archive all completed/abandoned specs that still have files in the tree
-pub fn archive_stale_specs(_dry_run: bool) -> Result<()> {
-    // Stub — will be implemented in step 5
-    println!("--stale not yet implemented");
+/// Archive all completed/abandoned specs that still have files in the tree.
+///
+/// Finds specs with status 'complete' or 'abandoned' whose files still exist,
+/// then archives each one (tag + git rm + commit) in sequence.
+pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
+    let db_path = Path::new(DB_PATH);
+    if !db_path.exists() {
+        anyhow::bail!("Knowledge database not found. Run 'patina scrape' first.");
+    }
+
+    let conn = Connection::open(db_path).context("Failed to open database")?;
+
+    let mut stmt = conn.prepare(
+        "SELECT p.id, p.file_path, p.status, p.title
+         FROM patterns p
+         WHERE p.file_path LIKE 'layer/surface/build/%'
+           AND p.status IN ('complete', 'abandoned')
+         ORDER BY p.id",
+    )?;
+
+    let rows: Vec<(String, String, String, Option<String>)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Filter to specs whose files still exist in tree
+    let stale: Vec<_> = rows
+        .into_iter()
+        .filter(|(_, file_path, _, _)| Path::new(file_path).exists())
+        .collect();
+
+    if stale.is_empty() {
+        println!("No stale specs to archive.");
+        return Ok(());
+    }
+
+    println!(
+        "Found {} stale spec(s) to archive:\n",
+        stale.len()
+    );
+
+    for (id, file_path, status, title) in &stale {
+        let tag_name = format!("spec/{}", id);
+        let desc = title.as_deref().unwrap_or(id);
+
+        // Skip if tag already exists
+        if tag_exists(&tag_name)? {
+            println!("  Skip: {} (tag already exists)", id);
+            continue;
+        }
+
+        let spec_dir = resolve_spec_dir(file_path);
+
+        if dry_run {
+            println!("  Would archive: {} ({})", id, status);
+            continue;
+        }
+
+        archive_spec_inner(id, file_path, status, desc, &spec_dir)?;
+    }
+
+    if dry_run {
+        println!("\nDry run — no changes made.");
+    }
+
     Ok(())
 }
 
