@@ -199,6 +199,24 @@ pub(super) fn query(
 // HTTP host support
 // =========================================================================
 
+/// Build an HTTP client with cross-domain redirect rejection.
+///
+/// Shared by mother-child (instantiate_child) and task (run_task) engines.
+/// If a response redirects to a different host, the request is stopped
+/// (prevents allowlist bypass via open redirectors).
+pub(super) fn build_http_client() -> anyhow::Result<reqwest::blocking::Client> {
+    reqwest::blocking::Client::builder()
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if attempt.url().host_str() != attempt.previous().last().and_then(|u| u.host_str()) {
+                attempt.stop()
+            } else {
+                attempt.follow()
+            }
+        }))
+        .build()
+        .map_err(|e| anyhow::anyhow!("build HTTP client: {}", e))
+}
+
 /// Validate and parse an HTTP URL for domain-allowlisted access.
 ///
 /// Returns the extracted domain on success. Enforces:
