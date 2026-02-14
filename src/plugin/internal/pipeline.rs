@@ -132,10 +132,7 @@ impl PipelineEngine {
     ///
     /// Scans for plugin.toml manifests, loads WASM components, and builds
     /// a language→(component, manifest) map for dispatch.
-    pub fn discover(
-        &self,
-        pipeline_dir: &Path,
-    ) -> HashMap<String, (Component, PluginManifest)> {
+    pub fn discover(&self, pipeline_dir: &Path) -> HashMap<String, (Component, PluginManifest)> {
         let mut plugins: HashMap<String, (Component, PluginManifest)> = HashMap::new();
 
         if !pipeline_dir.is_dir() {
@@ -179,11 +176,7 @@ impl PipelineEngine {
             let wasm_bytes = match std::fs::read(&wasm_path) {
                 Ok(b) => b,
                 Err(e) => {
-                    eprintln!(
-                        "[pipeline] failed to read {}: {}",
-                        wasm_path.display(),
-                        e
-                    );
+                    eprintln!("[pipeline] failed to read {}: {}", wasm_path.display(), e);
                     continue;
                 }
             };
@@ -209,10 +202,7 @@ impl PipelineEngine {
                     );
                     continue;
                 }
-                eprintln!(
-                    "[pipeline] {} claims language '{}'",
-                    manifest.name, lang
-                );
+                eprintln!("[pipeline] {} claims language '{}'", manifest.name, lang);
                 // Clone component for each language mapping.
                 // Component is cheap to clone (Arc internally).
                 plugins.insert(lang.clone(), (component.clone(), manifest.clone()));
