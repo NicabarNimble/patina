@@ -1,12 +1,11 @@
 ---
 type: feat
 id: grammar-extraction
-status: draft
+status: ready
 created: 2026-02-14
 sessions:
   origin: 20260214-130235
-blocked_by:
-- patina-sdk
+blocked_by: []
 related:
 - layer/surface/build/feat/patina-sdk/SPEC.md
 - layer/surface/architecture-patina-metal.md
