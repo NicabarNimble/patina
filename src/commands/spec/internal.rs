@@ -426,6 +426,9 @@ pub fn update_spec_status(id: &str, new_status: &str, major: bool, _no_archive: 
 }
 
 /// Archive a completed or abandoned spec: create spec/<id> tag, remove file, commit
+///
+/// Public entry point — validates status, checks clean tree, then delegates
+/// to `archive_spec_inner` for the actual git operations.
 pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
     // 1. Find spec in patterns table by id
     let (file_path, status, title) = find_spec(id)?;
@@ -455,11 +458,7 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
     }
 
     // Resolve spec directory (parent of SPEC.md)
-    let spec_file = Path::new(&file_path);
-    let spec_dir = spec_file
-        .parent()
-        .filter(|p| p.file_name().is_some())
-        .map(|p| p.to_path_buf());
+    let spec_dir = resolve_spec_dir(&file_path);
 
     if dry_run {
         println!("Dry run — would perform these changes:\n");
@@ -474,7 +473,7 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
         return Ok(());
     }
 
-    // 4. Check working tree is clean (only for actual execution, not dry-run)
+    // 4. Check working tree is clean (standalone archive requires clean tree)
     if !is_tree_clean()? {
         anyhow::bail!(
             "Working tree has uncommitted changes.\n\
@@ -482,16 +481,33 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
         );
     }
 
-    // 5. Create annotated tag
-    println!("Creating tag: {}", tag_name);
+    // 5. Delegate to inner (tag, rm, commit)
     let desc = title.as_deref().unwrap_or(id);
+    archive_spec_inner(id, &file_path, status_str, desc, &spec_dir)
+}
+
+/// Core archive logic: tag + git rm + commit.
+///
+/// Skips clean-tree check — caller is responsible for ensuring the tree
+/// state is appropriate (either clean, or managed as part of a release flow).
+fn archive_spec_inner(
+    id: &str,
+    file_path: &str,
+    status: &str,
+    description: &str,
+    spec_dir: &Option<std::path::PathBuf>,
+) -> Result<()> {
+    let tag_name = format!("spec/{}", id);
+
+    // 1. Create annotated tag on HEAD (preserves spec content at current commit)
+    println!("Creating tag: {}", tag_name);
     let output = Command::new("git")
         .args([
             "tag",
             "-a",
             &tag_name,
             "-m",
-            &format!("Archived spec: {}", desc),
+            &format!("Archived spec: {}", description),
         ])
         .output()
         .context("Failed to create git tag")?;
@@ -500,12 +516,11 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
         anyhow::bail!("git tag failed: {}", stderr);
     }
 
-    // 6. Remove spec file/directory from tree
-    let remove_target = if let Some(dir) = &spec_dir {
-        // Check if directory contains only SPEC.md (or SPEC.md + nothing else interesting)
-        dir.to_str().unwrap_or(&file_path).to_string()
+    // 2. Remove spec file/directory from tree
+    let remove_target = if let Some(dir) = spec_dir {
+        dir.to_str().unwrap_or(file_path).to_string()
     } else {
-        file_path.clone()
+        file_path.to_string()
     };
     println!("Removing: {}", remove_target);
     let output = Command::new("git")
@@ -517,13 +532,12 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
         anyhow::bail!("git rm failed: {}", stderr);
     }
 
-    // 7. Commit
+    // 3. Commit
     let commit_msg = format!(
         "docs: archive {} ({})\n\nSpec preserved via git tag: {}\nRecover with: git show {}:{}",
-        tag_name, status_str, tag_name, tag_name, file_path
+        tag_name, status, tag_name, tag_name, file_path
     );
     println!("Committing archive");
-
     let output = Command::new("git")
         .args(["commit", "-m", &commit_msg])
         .output()
@@ -539,6 +553,14 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
     );
 
     Ok(())
+}
+
+/// Resolve the spec directory from a SPEC.md file path
+fn resolve_spec_dir(file_path: &str) -> Option<std::path::PathBuf> {
+    Path::new(file_path)
+        .parent()
+        .filter(|p| p.file_name().is_some())
+        .map(|p| p.to_path_buf())
 }
 
 /// Archive all completed/abandoned specs that still have files in the tree
