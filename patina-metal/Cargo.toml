@@ -6,6 +6,8 @@ license = "MIT"
 description = "Tree-sitter based code parsing for patina-ai"
 repository = "https://github.com/NicabarNimble/patina"
 
+include = ["src/**", "grammars/**", "queries/**", "build.rs", "Cargo.toml", "grammar-pack.toml"]
+
 [dependencies]
 tree-sitter = "0.24"
 streaming-iterator = "0.1"
