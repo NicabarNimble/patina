@@ -1134,3 +1134,152 @@ fn conformance_http_rejects_localhost() {
         err
     );
 }
+
+// =====================================================================
+// TaskEngine — hello-task conformance tests
+// =====================================================================
+
+fn load_hello_task_component() -> Option<(task::TaskEngine, wasmtime::component::Component)> {
+    let wasm_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/hello_task.wasm");
+    if !wasm_path.exists() {
+        return None;
+    }
+    let engine = task::TaskEngine::new().expect("TaskEngine::new() failed");
+    let wasm_bytes = std::fs::read(&wasm_path).expect("failed to read hello-task wasm");
+    let component = engine
+        .load_component(&wasm_bytes)
+        .expect("load_component failed");
+    Some((engine, component))
+}
+
+fn hello_task_manifest() -> PluginManifest {
+    PluginManifest {
+        name: "hello-task".into(),
+        version: "0.1.0".into(),
+        description: "test".into(),
+        world: "task".into(),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into(), "host_layer".into()],
+        allowed_toy_commands: vec!["echo".into()],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+        },
+    }
+}
+
+#[test]
+fn task_hello_name() {
+    let (engine, component) = match load_hello_task_component() {
+        Some(ec) => ec,
+        None => {
+            panic!(
+                "test fixture missing: tests/fixtures/hello_task.wasm\n\
+                 Build: cd tests/hello-task && cargo build --release --target wasm32-wasip2\n\
+                 Copy: cp tests/hello-task/target/wasm32-wasip2/release/hello_task.wasm tests/fixtures/"
+            );
+        }
+    };
+
+    let name = engine
+        .get_task_name(&component)
+        .expect("get_task_name failed");
+    assert_eq!(name, "hello-task");
+}
+
+#[test]
+fn task_hello_description() {
+    let (engine, component) = match load_hello_task_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    let desc = engine
+        .get_task_description(&component)
+        .expect("get_task_description failed");
+    assert!(
+        desc.contains("testing"),
+        "expected description to mention 'testing', got: {}",
+        desc
+    );
+}
+
+#[test]
+fn task_hello_run_exit_code() {
+    let (engine, component) = match load_hello_task_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    let manifest = hello_task_manifest();
+    let (exit_code, _toys) = engine
+        .run_task(&component, &manifest, &[], None)
+        .expect("run_task failed");
+    assert_eq!(exit_code, 0, "hello-task should return exit code 0");
+}
+
+#[test]
+fn task_hello_toys_filtered() {
+    let (engine, component) = match load_hello_task_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    let manifest = hello_task_manifest();
+    let (_exit_code, toys) = engine
+        .run_task(&component, &manifest, &[], None)
+        .expect("run_task failed");
+
+    // Should have exactly 1 toy (echo approved, rm filtered out)
+    assert_eq!(
+        toys.len(),
+        1,
+        "expected 1 approved toy (echo), got {}",
+        toys.len()
+    );
+
+    let toy = &toys[0];
+    assert_eq!(toy.name, "greet");
+    assert_eq!(toy.command, "echo");
+    assert_eq!(toy.args, vec!["hello"]);
+}
+
+/// Verify that unapproved toy commands are filtered out.
+#[test]
+fn task_hello_unapproved_toy_denied() {
+    let (engine, component) = match load_hello_task_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    // Manifest with NO allowed toy commands
+    let manifest = PluginManifest {
+        name: "hello-task".into(),
+        version: "0.1.0".into(),
+        description: "test".into(),
+        world: "task".into(),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into(), "host_layer".into()],
+        allowed_toy_commands: vec![], // nothing allowed
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        provides: PluginProvides {
+            child: None,
+            commands: vec![],
+        },
+    };
+
+    let (_exit_code, toys) = engine
+        .run_task(&component, &manifest, &[], None)
+        .expect("run_task failed");
+
+    // All toys should be filtered out
+    assert!(
+        toys.is_empty(),
+        "expected no toys with empty allowed list, got {}",
+        toys.len()
+    );
+}
