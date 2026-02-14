@@ -374,7 +374,13 @@ impl crate::mother::MotherChild for WasmChild {
     fn on_load(&mut self, _host: &dyn MotherHost) -> Result<()> {
         // Host capabilities come through WASM imports (patina:host/log),
         // not the Rust MotherHost reference.
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+            eprintln!(
+                "[plugin:{}] WARN: mutex was poisoned, recovering. Previous call may have panicked.",
+                self.name
+            );
+            e.into_inner()
+        });
         let WasmChildInner { store, instance } = &mut *inner;
         match instance.call_on_load(store)? {
             Ok(()) => Ok(()),
@@ -383,13 +389,25 @@ impl crate::mother::MotherChild for WasmChild {
     }
 
     fn on_unload(&mut self) {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+            eprintln!(
+                "[plugin:{}] WARN: mutex was poisoned, recovering. Previous call may have panicked.",
+                self.name
+            );
+            e.into_inner()
+        });
         let WasmChildInner { store, instance } = &mut *inner;
         let _ = instance.call_on_unload(store);
     }
 
     fn health(&self) -> ChildHealth {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+            eprintln!(
+                "[plugin:{}] WARN: mutex was poisoned, recovering. Previous call may have panicked.",
+                self.name
+            );
+            e.into_inner()
+        });
         let WasmChildInner { store, instance } = &mut *inner;
         match instance.call_health(store) {
             Ok(h) => {
@@ -417,7 +435,13 @@ impl crate::mother::MotherChild for WasmChild {
     }
 
     fn handle(&self, request: &ChildRequest) -> Result<ChildResponse> {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+            eprintln!(
+                "[plugin:{}] WARN: mutex was poisoned, recovering. Previous call may have panicked.",
+                self.name
+            );
+            e.into_inner()
+        });
         let WasmChildInner { store, instance } = &mut *inner;
         let payload_json = serde_json::to_string(&request.payload)?;
         let result = instance.call_handle(store, &request.action, &payload_json)?;
@@ -430,7 +454,13 @@ impl crate::mother::MotherChild for WasmChild {
     }
 
     fn tick(&mut self) -> Vec<Toy> {
-        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| {
+            eprintln!(
+                "[plugin:{}] WARN: mutex was poisoned, recovering. Previous call may have panicked.",
+                self.name
+            );
+            e.into_inner()
+        });
         let WasmChildInner { store, instance } = &mut *inner;
         match instance.call_tick(store) {
             Ok(wasm_toys) => wasm_toys
