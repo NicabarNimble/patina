@@ -1,0 +1,8 @@
+[package]
+name = "patina-task-api"
+version = "0.1.0"
+edition = "2021"
+description = "Guest-side API for Patina WASM task plugins"
+
+[dependencies]
+wit-bindgen = "0.41"
