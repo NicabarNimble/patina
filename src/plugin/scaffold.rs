@@ -168,10 +168,7 @@ pub fn scaffold(parent: &Path, name: &str, world: &PluginWorld) -> Result<PathBu
 
     let (cargo_tmpl, plugin_tmpl, lib_tmpl) = world_templates(world);
 
-    std::fs::write(
-        project_dir.join("Cargo.toml"),
-        substitute(cargo_tmpl, name),
-    )?;
+    std::fs::write(project_dir.join("Cargo.toml"), substitute(cargo_tmpl, name))?;
     std::fs::write(
         project_dir.join("plugin.toml"),
         substitute(plugin_tmpl, name),

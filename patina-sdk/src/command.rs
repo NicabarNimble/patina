@@ -118,7 +118,8 @@ pub trait CommandPlugin {
 // Plugin singleton
 // =========================================================================
 
-static PLUGIN: WasmCell<Option<Box<dyn CommandPlugin>>> = WasmCell(std::cell::UnsafeCell::new(None));
+static PLUGIN: WasmCell<Option<Box<dyn CommandPlugin>>> =
+    WasmCell(std::cell::UnsafeCell::new(None));
 
 #[doc(hidden)]
 pub fn __register_command(plugin: Box<dyn CommandPlugin>) {
