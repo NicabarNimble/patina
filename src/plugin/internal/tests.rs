@@ -1300,3 +1300,124 @@ fn task_hello_unapproved_toy_denied() {
         toys.len()
     );
 }
+
+// =====================================================================
+// PipelineEngine — echo-pipeline conformance tests
+// =====================================================================
+
+fn load_echo_pipeline_component(
+) -> Option<(pipeline::PipelineEngine, wasmtime::component::Component)> {
+    let wasm_path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/echo_pipeline.wasm");
+    if !wasm_path.exists() {
+        return None;
+    }
+    let engine = pipeline::PipelineEngine::new().expect("PipelineEngine::new() failed");
+    let wasm_bytes = std::fs::read(&wasm_path).expect("failed to read echo-pipeline wasm");
+    let component = engine
+        .load_component(&wasm_bytes)
+        .expect("load_component failed");
+    Some((engine, component))
+}
+
+fn echo_pipeline_manifest() -> PluginManifest {
+    PluginManifest {
+        name: "echo-pipeline".into(),
+        version: "0.1.0".into(),
+        description: "test".into(),
+        world: "pipeline".into(),
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec![],
+        provides: PluginProvides {
+            pipeline_ops: vec!["echo".into()],
+            ..Default::default()
+        },
+    }
+}
+
+#[test]
+fn pipeline_echo_name() {
+    let (engine, component) = match load_echo_pipeline_component() {
+        Some(ec) => ec,
+        None => {
+            panic!(
+                "test fixture missing: tests/fixtures/echo_pipeline.wasm\n\
+                 Build: cd tests/echo-pipeline && cargo build --release --target wasm32-wasip2\n\
+                 Copy: cp tests/echo-pipeline/target/wasm32-wasip2/release/echo_pipeline.wasm tests/fixtures/"
+            );
+        }
+    };
+
+    let name = engine.get_name(&component).expect("get_name failed");
+    assert_eq!(name, "echo-pipeline");
+}
+
+#[test]
+fn pipeline_echo_handle_roundtrip() {
+    let (engine, component) = match load_echo_pipeline_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    let manifest = echo_pipeline_manifest();
+    let request = r#"{"op":"echo","version":"1","payload":{"key":"value","count":42}}"#;
+    let response = engine
+        .handle(&component, &manifest, request)
+        .expect("handle failed");
+
+    // Echo returns payload unchanged
+    let parsed: serde_json::Value = serde_json::from_str(&response).unwrap();
+    assert_eq!(parsed.get("key").and_then(|v| v.as_str()), Some("value"));
+    assert_eq!(parsed.get("count").and_then(|v| v.as_i64()), Some(42));
+}
+
+#[test]
+fn pipeline_echo_unknown_op_error() {
+    let (engine, component) = match load_echo_pipeline_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    let manifest = echo_pipeline_manifest();
+    let request = r#"{"op":"frobnicate","version":"1","payload":{}}"#;
+    let result = engine.handle(&component, &manifest, request);
+
+    assert!(
+        result.is_err(),
+        "unknown op should return error, got: {:?}",
+        result
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("unknown op"),
+        "error should mention 'unknown op', got: {}",
+        err
+    );
+}
+
+#[test]
+fn pipeline_echo_version_mismatch_error() {
+    let (engine, component) = match load_echo_pipeline_component() {
+        Some(ec) => ec,
+        None => return,
+    };
+
+    let manifest = echo_pipeline_manifest();
+    let request = r#"{"op":"echo","version":"999","payload":{}}"#;
+    let result = engine.handle(&component, &manifest, request);
+
+    assert!(
+        result.is_err(),
+        "version mismatch should return error, got: {:?}",
+        result
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("version"),
+        "error should mention 'version', got: {}",
+        err
+    );
+}
