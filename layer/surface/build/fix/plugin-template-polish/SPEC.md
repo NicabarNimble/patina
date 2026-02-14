@@ -1,5 +1,5 @@
 ---
-type: feat
+type: fix
 id: plugin-template-polish
 status: ready
 created: 2026-02-14
