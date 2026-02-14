@@ -7,7 +7,7 @@ use anyhow::Result;
 use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
 
-use super::{wasm_engine, PluginManifest};
+use super::{wasm_engine, GrantedCapabilities, PluginManifest};
 use crate::mother::{ChildHealth, ChildRequest, ChildResponse, MotherHost, Toy};
 
 // =========================================================================
@@ -61,12 +61,16 @@ pub(super) fn validate_http_url(url: &str) -> Result<String, String> {
 /// stays internal — WasmChild bridges to our crate::mother::MotherChild trait.
 mod bindings {
     /// State passed to WASM plugins via Store<HostState>.
-    /// Contains WASI context (wasm32-wasip2 components always import basic WASI)
-    /// and plugin name for log prefix.
+    /// Contains WASI context (wasm32-wasip2 components always import basic WASI),
+    /// plugin name for log prefix, and HTTP client for domain-allowlisted access.
     pub struct HostState {
         pub plugin_name: String,
         pub wasi: wasmtime_wasi::WasiCtx,
         pub wasi_table: wasmtime::component::ResourceTable,
+        /// Resolved capabilities for call-time gating.
+        pub grants: super::GrantedCapabilities,
+        /// Pre-configured HTTP client with cross-domain redirect rejection.
+        pub http_client: reqwest::blocking::Client,
     }
 
     // WasiView is required for wasmtime-wasi to satisfy WASI imports
@@ -100,20 +104,60 @@ mod bindings {
     // patina:host/types only defines types (no functions) — empty Host trait
     impl patina::host::types::Host for HostState {}
 
-    // patina:host/http — stub impl (commit 1: WIT + capabilities only).
-    // Real implementation with reqwest::blocking::Client in commit 2.
+    // patina:host/http — domain-allowlisted HTTP access.
+    //
+    // Defense in depth: domains are validated at load time (check_capabilities)
+    // AND at call time (grants.http_domains check below). URLs are sanitized
+    // by validate_http_url (HTTPS-only, no IPs, no localhost). Cross-domain
+    // redirects are rejected by the reqwest client's redirect policy.
     impl patina::host::http::Host for HostState {
         fn http_post(
             &mut self,
-            _url: String,
-            _body: String,
-            _content_type: String,
+            url: String,
+            body: String,
+            content_type: String,
         ) -> Result<patina::host::http::HttpResponse, String> {
-            Err("HTTP not yet configured for this plugin".to_string())
+            let domain = super::validate_http_url(&url)?;
+            if !self.grants.http_domains.contains(&domain) {
+                return Err(format!(
+                    "domain '{}' not in allowlist for plugin '{}'",
+                    domain, self.plugin_name
+                ));
+            }
+            let response = self
+                .http_client
+                .post(&url)
+                .header("Content-Type", &content_type)
+                .body(body)
+                .send()
+                .map_err(|e| format!("HTTP POST failed: {}", e))?;
+            let status = response.status().as_u16();
+            let resp_body = response.text().map_err(|e| format!("read body: {}", e))?;
+            Ok(patina::host::http::HttpResponse {
+                status,
+                body: resp_body,
+            })
         }
 
-        fn http_get(&mut self, _url: String) -> Result<patina::host::http::HttpResponse, String> {
-            Err("HTTP not yet configured for this plugin".to_string())
+        fn http_get(&mut self, url: String) -> Result<patina::host::http::HttpResponse, String> {
+            let domain = super::validate_http_url(&url)?;
+            if !self.grants.http_domains.contains(&domain) {
+                return Err(format!(
+                    "domain '{}' not in allowlist for plugin '{}'",
+                    domain, self.plugin_name
+                ));
+            }
+            let response = self
+                .http_client
+                .get(&url)
+                .send()
+                .map_err(|e| format!("HTTP GET failed: {}", e))?;
+            let status = response.status().as_u16();
+            let resp_body = response.text().map_err(|e| format!("read body: {}", e))?;
+            Ok(patina::host::http::HttpResponse {
+                status,
+                body: resp_body,
+            })
         }
     }
 }
@@ -242,13 +286,32 @@ impl PluginEngine {
         // Check capabilities before instantiation
         Self::check_capabilities(manifest)?;
 
+        // Build resolved capabilities for call-time gating
+        let grants = manifest.granted_capabilities();
+
+        // Build HTTP client with cross-domain redirect rejection.
+        // Per spec: if a response redirects to a different domain, reject it
+        // (prevents allowlist bypass via open redirectors).
+        let http_client = reqwest::blocking::Client::builder()
+            .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                if attempt.url().host_str() != attempt.previous().last().and_then(|u| u.host_str())
+                {
+                    attempt.stop()
+                } else {
+                    attempt.follow()
+                }
+            }))
+            .build()
+            .map_err(|e| anyhow::anyhow!("build HTTP client: {}", e))?;
+
         // Minimal WASI context — no filesystem access, no env inheritance.
-        // Phase 1: plugins are sandboxed to pure computation + host log.
         let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
         let host_state = HostState {
             plugin_name: manifest.name.clone(),
             wasi,
             wasi_table: wasmtime::component::ResourceTable::new(),
+            grants,
+            http_client,
         };
         let mut store = Store::new(wasm_engine(), host_state);
 
