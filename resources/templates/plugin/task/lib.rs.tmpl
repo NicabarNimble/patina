@@ -1,0 +1,24 @@
+use patina_task_api::{register_task, TaskPlugin, Toy};
+
+#[derive(Default)]
+struct __NAME_STRUCT__;
+
+impl TaskPlugin for __NAME_STRUCT__ {
+    fn name(&self) -> String {
+        "__NAME__".into()
+    }
+
+    fn description(&self) -> String {
+        "A Patina task plugin".into()
+    }
+
+    fn run(&mut self, _args: &[String]) -> i32 {
+        0
+    }
+
+    fn toys(&self) -> Vec<Toy> {
+        vec![]
+    }
+}
+
+register_task!(__NAME_STRUCT__);

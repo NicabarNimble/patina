@@ -1,0 +1,25 @@
+use patina_pipeline_api::{parse_request, register_pipeline, PipelinePlugin};
+
+#[derive(Default)]
+struct __NAME_STRUCT__;
+
+impl PipelinePlugin for __NAME_STRUCT__ {
+    fn name(&self) -> String {
+        "__NAME__".into()
+    }
+
+    fn handle(&mut self, request: &str) -> Result<String, String> {
+        let req = parse_request(request)?;
+
+        if req.version != "1" {
+            return Err(format!("unsupported version: {}", req.version));
+        }
+
+        match req.op.as_str() {
+            "parse" => Ok(req.payload.to_string()),
+            other => Err(format!("unknown op: {}", other)),
+        }
+    }
+}
+
+register_pipeline!(__NAME_STRUCT__);

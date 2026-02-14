@@ -1,0 +1,20 @@
+use patina_command_api::{register_command, CommandPlugin};
+
+#[derive(Default)]
+struct __NAME_STRUCT__;
+
+impl CommandPlugin for __NAME_STRUCT__ {
+    fn name(&self) -> String {
+        "__NAME__".into()
+    }
+
+    fn description(&self) -> String {
+        "A Patina command plugin".into()
+    }
+
+    fn run(&mut self, _args: &[String]) -> i32 {
+        0
+    }
+}
+
+register_command!(__NAME_STRUCT__);
