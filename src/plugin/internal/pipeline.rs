@@ -169,7 +169,7 @@ impl PipelineEngine {
                 }
             };
 
-            if manifest.world != "pipeline" {
+            if manifest.world != super::PluginWorld::Pipeline {
                 continue;
             }
 

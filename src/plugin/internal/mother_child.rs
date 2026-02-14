@@ -199,6 +199,25 @@ impl PluginEngine {
     /// Phase 2: host_query validated — kinds must be known.
     /// Future: reads from ~/.patina/plugin-config/grants.toml.
     pub fn check_capabilities(manifest: &PluginManifest) -> Result<()> {
+        // F4: Per-world capability enforcement — reject capabilities
+        // that the manifest's world doesn't support.
+        let allowed = manifest.world.allowed_capabilities();
+        let world_denied: Vec<&str> = manifest
+            .capabilities
+            .iter()
+            .filter(|cap| !allowed.contains(&cap.as_str()))
+            .map(|s| s.as_str())
+            .collect();
+
+        if !world_denied.is_empty() {
+            anyhow::bail!(
+                "plugin '{}' (world '{}') requests capabilities not allowed for this world: {}",
+                manifest.name,
+                manifest.world,
+                world_denied.join(", ")
+            );
+        }
+
         // Boolean capabilities that are always granted (no config needed)
         let auto_granted = ["host_log", "host_layer"];
 

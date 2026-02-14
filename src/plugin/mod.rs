@@ -13,5 +13,5 @@
 mod internal;
 pub use internal::{
     CommandEngine, GrantedCapabilities, PipelineEngine, PluginEngine, PluginManifest,
-    PluginProvides, QueryDispatchFn, QueryScope, TaskEngine,
+    PluginProvides, PluginWorld, QueryDispatchFn, QueryScope, TaskEngine,
 };
