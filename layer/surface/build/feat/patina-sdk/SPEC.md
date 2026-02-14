@@ -1,7 +1,7 @@
 ---
 type: feat
 id: patina-sdk
-status: ready
+status: active
 created: 2026-02-14
 sessions:
   origin: 20260214-130235
@@ -210,6 +210,27 @@ The `WasmCell<T>` pattern (single-threaded WASM global) is currently
 duplicated in all 4 guest API crates. Extract to `wasm_cell.rs` and
 use from each world module. One copy, one `compile_error!` guard.
 
+### Workspace Feature Unification
+
+**Discovery during build:** Cargo workspace builds unify features across
+all consumers. Since patina-doctor needs `command` and patina-plugin-models
+needs `mother-child`, a workspace build activates both features simultaneously.
+
+Two conflicts arise:
+1. **Mutual exclusion `compile_error!`** fires when multiple features active
+2. **`export!(Component)` generates duplicate ABI symbols** (both worlds
+   export `name`, `description`, etc. via `#[export_name]`)
+
+**Solution:** Gate both the `compile_error!` and the `export!(Component)`
+bridge code on `target_arch = "wasm32"`. On native workspace builds, the
+SDK compiles as a library without generating WASM export symbols. On wasm32
+plugin builds, only one feature is active (enforced by the guard) and
+`export!` generates the correct single set of ABI symbols.
+
+This is the correct layering: the compiler enforces single-world on the
+target that matters (wasm32), while the workspace toolchain (native) is
+free to unify features for type-checking and testing.
+
 ### API Version Embedding
 
 Each world module embeds `API_VERSION` in `.patina_api_version` link
@@ -375,20 +396,20 @@ Target: 6 phases, ~8 commits.
 ## Exit Criteria
 
 ### Critical
-- [ ] `patina-sdk` crate exists with feature-gated worlds (task,
+- [x] `patina-sdk` crate exists with feature-gated worlds (task,
       command, mother-child, pipeline)
-- [ ] Each feature compiles to wasm32-wasip2 independently
-- [ ] Scaffold emits `patina-sdk = { version = "X", features = ["<world>"] }`
+- [x] Each feature compiles to wasm32-wasip2 independently
+- [x] Scaffold emits `patina-sdk = { version = "X", features = ["<world>"] }`
       with no absolute paths
-- [ ] All internal consumers (doctor, models, repos) build against
+- [x] All internal consumers (doctor, models, repos) build against
       patina-sdk
-- [ ] `cargo test --workspace` passes
+- [x] `cargo test --workspace` passes
 
 ### Important
 - [ ] `patina-sdk` published to crates.io
 - [ ] `patina-ai` published to crates.io (`cargo install patina-ai` works)
-- [ ] WasmCell<T> deduplicated (one copy in SDK)
-- [ ] Old guest API crates marked `publish = false`
+- [x] WasmCell<T> deduplicated (one copy in SDK)
+- [x] Old guest API crates marked `publish = false`
 
 ### Nice-to-have
 - [ ] CI workflow for automated publish on tag
@@ -396,9 +417,9 @@ Target: 6 phases, ~8 commits.
 - [ ] docs.rs renders correctly for patina-sdk
 
 ### Pre-push
-- [ ] `cargo fmt --all`
-- [ ] `cargo clippy --workspace`
-- [ ] `cargo test --workspace`
+- [x] `cargo fmt --all`
+- [x] `cargo clippy --workspace`
+- [x] `cargo test --workspace`
 
 ## Supersedes
 
@@ -414,3 +435,4 @@ build ergonomics) remain valid and can be built independently.
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-14 | draft | Designed from session discussion. Consolidates 4 guest API crates into 1 SDK, publishes to crates.io. Eliminates absolute path deps from scaffold. |
+| 2026-02-14 | active | Phases 1-5 complete. SDK crate built, consumers migrated, scaffold updated, old crates marked, dry-run passes. Publish (phase 6) pending user decision. |
