@@ -1,7 +1,7 @@
 ---
 type: feat
 id: plugin-ecosystem
-status: active
+status: complete
 created: 2026-02-13
 sessions:
   origin: 20260213-055346
@@ -743,9 +743,19 @@ Recoverable via git tags (`spec/<id>`).
    - Commits: 9ad5f098..1921ef39 (6 commits)
    - Divergence: `QueryDispatchFn` callback (belief: [[lib-owns-policy-binary-owns-wiring]])
    - Added: `SCOPE_RESERVED_KEYS` stripping (belief: [[sanitize-at-data-level-not-just-control-flow]])
-2. ⬜ `patina:host/http` — **[[plugin-host-http]]** (ready)
-3. ⬜ `task` world — **[[plugin-task-world]]** (design, blocked by #2)
-4. ⬜ `pipeline` world — **[[plugin-pipeline-world]]** (design, blocked by #3)
+2. ✅ `patina:host/http` — COMPLETE [[session-20260213-163217]]
+   - Commits: 9a9cb6dd..a3c1e5bc (5 commits)
+   - Added: domain-allowlisted HTTP for task + mother-child
+   - Added: `validate_http_url()` data-level sanitization, cross-domain redirect rejection
+3. ✅ `task` world — COMPLETE [[session-20260213-192200]]
+   - Commits: 4 impl + 1 release (v0.19.0)
+   - TaskEngine: union of command + HTTP capabilities, toy filtering
+   - Guest crate: `patina-task-api`, conformance fixture: `hello-task`
+4. ✅ `pipeline` world — COMPLETE [[session-20260213-221412]]
+   - Commits: 4 impl + 1 release (v0.20.0)
+   - PipelineEngine: log-only host state, string dispatch via JSON envelope
+   - Guest crate: `patina-pipeline-api`, conformance fixture: `echo-pipeline`
+   - Scrape integration: plugin-first dispatch with built-in fallback
 
 *Ecosystem tooling last (wraps around the above):*
 5-6. ⬜ Approval UX + templates — **[[plugin-authoring]]** (design, blocked by #4)
@@ -868,3 +878,4 @@ extensions. These are orthogonal.
 | 2026-02-13 | amended | External review refinements. **(1)** Action removed from protocol spine — protocol verbs are capture/index/search/believe/evolve only. Task and mother-child act on protocol *outputs*, not as protocol phases. **(2)** Query scope added as first-class capability: `query_scope = current_project \| allowed_repos \| all_repos` + optional `query_budget`. **(3)** Governance principle elevated: "if changing it would break every plugin, it's protocol." **(4)** Adapters explicitly placed outside 4-world system as host-side extension point (auth, APIs, secrets require full host access). **(5)** Worlds reframed as execution contracts, not capability bundles. Belief [[patina-is-knowledge-protocol]] updated. |
 | 2026-02-13 | active | Build order item #1 (`patina:host/query`) complete — 6 commits in [[session-20260213-112528]]. `QueryDispatchFn` callback pattern diverged from spec (stronger). Two beliefs captured. Spec promoted to active for remaining build items. |
 | 2026-02-13 | amended | Spec alignment session [[20260213-104615]]. **(1)** Pipeline world: replaced N-export design with single `handle(json)` dispatch — avoids WIT stub tax, mirrors query and mother-child string dispatch. Added envelope schema (`op`, `version`, `payload`). Guest crate offers typed helpers. **(2)** HTTP interface: added `http-response` record with `status: u16`. Host rejects non-HTTPS and cross-domain redirects. Host injects auth from secrets store — plugins never touch credentials. Future headers field compatible. **(3)** Query interface: added defense-in-depth (load-time + call-time gating). Host state carries resolved `GrantedCapabilities` struct. `QueryEngine` as `OnceCell` for lazy init. `all_repos` scope logged for audit trail. **(4)** Oracle fate resolved: stays host-side, not a plugin world. Internal trait designed as-if-pluggable for future Phase 6+. **(5)** Phase 3-5 alignment: yolo/upgrade → task world, scraper → pipeline, grammars → pipeline `handle`, oracle-scraper spec amended. **(6)** Added conformance test plan: one golden-path test per world. **(7)** Added versioned envelope schemas section: `pipeline_req.v1`, `mother_child_action.v1`, `query_params.v1`. Envelopes are protocol-stable, additive-only. Op payloads evolve independently. **(8)** WASM trap handling: all plugin calls fallible, traps convert to `PluginError::Trap`. Deliberate-panic conformance test required. **(9)** Guest API: resolved as umbrella crate `patina-guest` re-exporting world modules. Typed enums (`QueryKind`, `PipelineOp`) serialize at boundary — plugin authors get compile-time safety, WIT stays compact. Open Question #3 resolved. |
+| 2026-02-13 | complete | Runtime architecture complete — all gaps closed in [[session-20260213-224126]]. **(1)** Build order items 2-4 marked ✅ (host/http v0.18.0, task v0.19.0, pipeline v0.20.0). **(2)** Mother-child world upgraded: added `patina:host/layer` + `patina:host/query` imports — Interface × World matrix now fully realized across all 4 worlds. Fixed stale deps/host.wit with hard link per [[wit-hard-links-not-copies]]. **(3)** WASM trap handling conformance test: `panic-pipeline` fixture deliberately panics in handle(); two tests prove host catches traps as clean errors. Items 5-8 (authoring, distribution) tracked by their own child specs as future work. |
