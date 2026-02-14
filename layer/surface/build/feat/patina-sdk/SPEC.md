@@ -436,4 +436,4 @@ build ergonomics) remain valid and can be built independently.
 |------|--------|------|
 | 2026-02-14 | draft | Designed from session discussion. Consolidates 4 guest API crates into 1 SDK, publishes to crates.io. Eliminates absolute path deps from scaffold. |
 | 2026-02-14 | active | Phases 1-5 complete. SDK crate built, consumers migrated, scaffold updated, old crates marked, dry-run passes. Publish (phase 6) pending user decision. |
-| 2026-02-14 | active | Phase 6 complete. patina-sdk v0.21.0 published to crates.io. patina-ai publish deferred. |
+| 2026-02-14 | active | Phase 6 complete. patina-sdk v0.21.0 published to crates.io. patina-ai publish blocked by patina-metal's nested Cargo.toml (grammar repos) — [[grammar-extraction]] unblocks this by folding metal into patina-ai and deleting the crate. |
