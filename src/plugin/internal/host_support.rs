@@ -173,15 +173,10 @@ pub(super) fn query(
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         if all_repos && !matches!(grants.query_scope, QueryScope::AllRepos) {
-            return Err(
-                "all_repos not allowed: plugin query_scope is current_project".to_string(),
-            );
+            return Err("all_repos not allowed: plugin query_scope is current_project".to_string());
         }
         if all_repos {
-            eprintln!(
-                "[plugin:{}] query: all_repos=true (audit)",
-                plugin_name
-            );
+            eprintln!("[plugin:{}] query: all_repos=true (audit)", plugin_name);
         }
     }
 

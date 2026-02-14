@@ -1493,6 +1493,155 @@ fn wasm_trap_pipeline_panic_returns_error() {
     );
 }
 
+// =====================================================================
+// Plugin host fragility — spec exit criteria tests
+// =====================================================================
+
+// F2: Path traversal in count_layer_files returns 0 (silent reject).
+#[test]
+fn count_layer_files_rejects_path_traversal() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().to_path_buf();
+
+    // Create layer/core with a .md file so a valid subdir would return >0
+    let layer_core = root.join("layer").join("core");
+    std::fs::create_dir_all(&layer_core).unwrap();
+    std::fs::write(layer_core.join("test.md"), "# test").unwrap();
+
+    // Valid subdir works
+    assert_eq!(
+        host_support::count_layer_files(&Some(root.clone()), "core"),
+        1
+    );
+
+    // Path traversal variants — all must return 0
+    assert_eq!(
+        host_support::count_layer_files(&Some(root.clone()), "../../etc"),
+        0,
+        "parent dir traversal must return 0"
+    );
+    assert_eq!(
+        host_support::count_layer_files(&Some(root.clone()), "../.."),
+        0,
+        "bare parent traversal must return 0"
+    );
+    assert_eq!(
+        host_support::count_layer_files(&Some(root.clone()), "/etc"),
+        0,
+        "absolute path must return 0"
+    );
+    assert_eq!(
+        host_support::count_layer_files(&Some(root.clone()), "core/../../../etc"),
+        0,
+        "embedded traversal must return 0"
+    );
+
+    // None project root also returns 0
+    assert_eq!(host_support::count_layer_files(&None, "core"), 0);
+}
+
+// F4: Unknown world string rejected at parse time.
+#[test]
+fn manifest_rejects_unknown_world() {
+    let f = write_temp_manifest(
+        r#"
+[plugin]
+name = "bad-world"
+world = "oracle"
+
+[capabilities]
+host_log = true
+
+[provides]
+child = "test"
+"#,
+    );
+    let err = PluginManifest::from_path(f.path()).unwrap_err();
+    assert!(
+        err.to_string().contains("unknown plugin world") && err.to_string().contains("oracle"),
+        "expected 'unknown plugin world: oracle', got: {}",
+        err
+    );
+}
+
+// F4: Pipeline manifest with host_query rejected at check_capabilities.
+#[test]
+fn check_capabilities_rejects_pipeline_with_query() {
+    let m = PluginManifest {
+        name: "bad-pipeline".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::Pipeline,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into(), "host_query".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec!["scry".into()],
+        host_http_domains: vec![],
+        provides: PluginProvides {
+            pipeline_ops: vec!["echo".into()],
+            ..Default::default()
+        },
+    };
+    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("host_query") && msg.contains("not allowed for this world"),
+        "expected per-world capability rejection for host_query, got: {}",
+        msg
+    );
+}
+
+// F4: Pipeline manifest with host_http also rejected (pipeline only allows host_log).
+#[test]
+fn check_capabilities_rejects_pipeline_with_http() {
+    let m = PluginManifest {
+        name: "bad-pipeline".into(),
+        version: "0.1.0".into(),
+        description: String::new(),
+        world: PluginWorld::Pipeline,
+        patina_min: "0.0.0".into(),
+        capabilities: vec!["host_log".into(), "host_http".into()],
+        allowed_toy_commands: vec![],
+        host_query_kinds: vec![],
+        host_http_domains: vec!["evil.com".into()],
+        provides: PluginProvides {
+            pipeline_ops: vec!["echo".into()],
+            ..Default::default()
+        },
+    };
+    let err = PluginEngine::check_capabilities(&m).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("host_http"),
+        "expected host_http rejection, got: {}",
+        msg
+    );
+}
+
+// F4: PluginWorld Display impl returns kebab-case strings.
+#[test]
+fn plugin_world_display() {
+    assert_eq!(PluginWorld::MotherChild.to_string(), "mother-child");
+    assert_eq!(PluginWorld::Command.to_string(), "command");
+    assert_eq!(PluginWorld::Task.to_string(), "task");
+    assert_eq!(PluginWorld::Pipeline.to_string(), "pipeline");
+}
+
+// F4: PluginWorld round-trips through from_str and Display.
+#[test]
+fn plugin_world_roundtrip() {
+    for world in [
+        PluginWorld::MotherChild,
+        PluginWorld::Command,
+        PluginWorld::Task,
+        PluginWorld::Pipeline,
+    ] {
+        let s = world.to_string();
+        let parsed = s.parse::<PluginWorld>().unwrap();
+        assert_eq!(parsed, world, "round-trip failed for {}", s);
+    }
+}
+
 /// WASM trap handling: guest panic in mother-child handle() returns Err, not crash.
 #[test]
 fn wasm_trap_mother_child_panic_returns_error() {
