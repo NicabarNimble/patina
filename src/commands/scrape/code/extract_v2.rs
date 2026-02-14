@@ -104,17 +104,9 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
         db.update_index_state(&relative_path, mtime, size, None, Some(line_count))?;
 
         // Process file: plugin-first dispatch with built-in fallback
-        let ext = file_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
-        match process_file_with_plugins(
-            &relative_path,
-            &content,
-            language,
-            ext,
-            &pipeline_plugins,
-        ) {
+        let ext = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        match process_file_with_plugins(&relative_path, &content, language, ext, &pipeline_plugins)
+        {
             Ok(extracted) => {
                 all_symbols.extend(extracted.symbols);
                 all_functions.extend(extracted.functions);
@@ -241,7 +233,10 @@ fn process_file_with_plugins(
     // Plugin-first dispatch: check if a pipeline plugin claims this extension
     if let Some(plugin) = pipeline_plugins.get(ext) {
         let request = build_parse_envelope(content, ext);
-        match plugin.engine.handle(&plugin.component, &plugin.manifest, &request) {
+        match plugin
+            .engine
+            .handle(&plugin.component, &plugin.manifest, &request)
+        {
             Ok(response) => {
                 match serde_json::from_str::<ExtractedData>(&response) {
                     Ok(extracted) => return Ok(extracted),
