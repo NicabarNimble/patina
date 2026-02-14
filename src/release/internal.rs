@@ -289,9 +289,10 @@ fn execute_cargo(
 
     // 2. Stage files
     if let Some(dir) = archive_dir {
-        // Archive mode: remove spec directory (stages deletion), then add Cargo.toml
+        // Archive mode: force-remove spec directory (stages deletion), then add Cargo.toml.
+        // -f needed because the spec file was just modified (status update) on disk.
         let output = Command::new("git")
-            .args(["rm", "-r", dir])
+            .args(["rm", "-rf", dir])
             .output()
             .context("Failed to remove spec directory")?;
         if !output.status.success() {
