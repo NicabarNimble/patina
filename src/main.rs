@@ -1476,11 +1476,7 @@ fn main() -> Result<()> {
             commands::belief::execute(command)?;
         }
         Some(Commands::Spec { command }) => match command {
-            commands::spec::SpecCommands::Archive {
-                id,
-                dry_run,
-                stale,
-            } => {
+            commands::spec::SpecCommands::Archive { id, dry_run, stale } => {
                 if stale {
                     commands::spec::archive_stale(dry_run)?;
                 } else if let Some(id) = id {
