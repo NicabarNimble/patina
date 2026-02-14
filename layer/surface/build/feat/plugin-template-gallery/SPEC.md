@@ -13,6 +13,11 @@ beliefs:
 
 # feat: Plugin Scaffolding — `patina plugin init`
 
+> **NOTE:** This spec documents the implementation as built. The guest API
+> dependency handling (4 separate crates with absolute path deps) was
+> superseded by [[patina-sdk]] (consolidated SDK crate on crates.io).
+> Templates, scaffold logic, and CLI wiring remain valid.
+
 > One command to create a working plugin project for any world. Templates
 > are embedded in the binary — no network, no registry, no cache sync.
 > The existing test plugins (`tests/hello-task/`, `tests/echo-pipeline/`)
@@ -178,3 +183,4 @@ These are follow-on work that builds on the scaffolding foundation:
 |------|--------|------|
 | 2026-02-14 | design | Rewritten from outside agent draft. Removed fabricated belief (`local-first-by-default`), fake session ID, wrong file paths (`src/plugins/`, `src/crypto/`). Removed scope creep (template registry, signing, dev watch). Split into main + 2 child specs. Grounded in existing test plugin patterns. |
 | 2026-02-14 | active | Built in 7 commits: templates for all 4 worlds, scaffold.rs with name validation + PascalCase conversion, CLI wiring with --build flag, guest API path resolution via paths.rs (CARGO_MANIFEST_DIR). All 4 worlds scaffold and compile to wasm32-wasip2. Pre-push checks pass. |
+| 2026-02-14 | complete | Guest API dep handling superseded by [[patina-sdk]] — absolute path deps will be replaced with `patina-sdk = { version = "X", features = ["<world>"] }`. |

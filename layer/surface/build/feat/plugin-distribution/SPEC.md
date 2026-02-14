@@ -103,13 +103,13 @@ Closes the loop: plugin provides intelligence (WASM) + instructions
 - WIT files — stable by this point
 - Core scrape/search code — distribution is packaging, not protocol
 - Adapter internals beyond skill discovery hooks
-- `patina-guest` crate internals (created in authoring spec)
+- `patina-sdk` crate internals (see [[patina-sdk]] spec)
 
 ## Dependencies
 
 - Plugin authoring (approval UX + templates) must exist
 - All four worlds must be working and tested
-- `patina-guest` on crates.io (for `cargo add` in template/install flow)
+- `patina-sdk` on crates.io (for `cargo add` in template/install flow — see [[patina-sdk]] spec)
 - At least one real plugin exists to validate the install + skill flow
 
 ## Key Files (likely, verify when ready)
@@ -142,3 +142,4 @@ Closes the loop: plugin provides intelligence (WASM) + instructions
 |------|--------|------|
 | 2026-02-13 | design | Extracted from [[plugin-ecosystem]] build order items #7-8. Blocked by authoring (needs approval UX). |
 | 2026-02-13 | design | Refined in session [[20260213-135136]]. Added key decisions to resolve, likely files, "What NOT to Touch", clarified skill registration design questions. |
+| 2026-02-14 | design | SDK aligned: `patina-guest` → `patina-sdk` (see [[patina-sdk]] spec). |

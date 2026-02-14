@@ -69,19 +69,17 @@ unless capabilities change on update.
 
 `patina plugin new <name> --world <world>` scaffolds a minimal plugin:
 - Four templates, one per world (pipeline, command, task, mother-child)
-- Uses `patina-guest` umbrella crate
+- Uses `patina-sdk` crate with feature flags per world
 - `register_*!` macros hide bindgen boilerplate
 - ~30 lines for a complete plugin
 
-**Key decisions to resolve when ready:**
-- `patina-guest` umbrella crate: single crate with `features = ["command"]`
-  vs workspace re-export. Ecosystem spec resolved this (umbrella with
-  features). Need to decide if all 4 guest API crates merge or if the
-  umbrella re-exports them.
-- Template storage: embedded in binary (compile-time, always available)
-  vs external files (flexible, slower). Current lean: embedded (per
-  existing `resources/` pattern).
-- Scaffold must compile to valid WASM without edits (zero-to-working).
+**Resolved by [[patina-sdk]] and [[plugin-template-gallery]]:**
+- SDK crate: `patina-sdk` — physical merge of 4 guest API crates into
+  one crate with feature flags. Published to crates.io. Resolved by
+  [[patina-sdk]] spec.
+- Template storage: embedded in binary via `include_str!`. Built in
+  [[plugin-template-gallery]].
+- Scaffold compiles to valid WASM without edits — verified for all 4 worlds.
 
 ### What NOT to Touch
 
@@ -98,7 +96,7 @@ unless capabilities change on update.
 - All four worlds must exist (templates cover all of them)
 - `GrantedCapabilities` struct must be finalized (http_domains, query_kinds,
   query_scope, toy_commands all settled)
-- This is the natural point to publish `patina-guest` to crates.io
+- This is the natural point to publish `patina-sdk` to crates.io
 
 ## Key Files (likely, verify when ready)
 
@@ -107,7 +105,7 @@ unless capabilities change on update.
 | Approval UX | `src/commands/plugin.rs` (new or extend), `src/plugin/internal/mod.rs` (grants loading) |
 | Grants storage | `src/paths.rs` (grants file path), new grants parser module |
 | Template scaffolding | `src/commands/plugin.rs` (new subcommand), `resources/templates/` (embedded templates) |
-| Guest umbrella | `patina-guest/` (new crate), workspace Cargo.toml |
+| SDK crate | `patina-sdk/` (consolidates 4 guest API crates), workspace Cargo.toml |
 
 ## Exit Criteria
 
@@ -115,7 +113,7 @@ unless capabilities change on update.
 - [ ] `~/.patina/plugin-grants.toml` persists approved grants
 - [ ] `check_capabilities()` reads from grants file, not hardcoded list
 - [ ] `patina plugin new --world <world>` creates working scaffold for all 4 worlds
-- [ ] `patina-guest` umbrella crate with feature flags per world
+- [ ] `patina-sdk` crate with feature flags per world (see [[patina-sdk]] spec)
 - [ ] Generated scaffold compiles to valid WASM component without edits
 - [ ] LLM can generate a working plugin from the template + docs
 - [ ] `cargo test --workspace` passes
@@ -127,3 +125,4 @@ unless capabilities change on update.
 |------|--------|------|
 | 2026-02-13 | design | Extracted from [[plugin-ecosystem]] build order items #5-6. Blocked by pipeline world (all worlds needed for templates). |
 | 2026-02-13 | design | Refined in session [[20260213-135136]]. Added key decisions to resolve, likely files, "What NOT to Touch", sharper exit criteria. |
+| 2026-02-14 | design | SDK aligned: `patina-guest` → `patina-sdk`. Template and SDK decisions resolved by [[patina-sdk]] and [[plugin-template-gallery]]. |
