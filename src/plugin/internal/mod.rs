@@ -40,7 +40,7 @@ pub(super) fn wasm_engine() -> &'static Engine {
 // =========================================================================
 
 /// Parsed plugin manifest from plugin.toml.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PluginManifest {
     pub name: String,
     pub version: String,
@@ -86,10 +86,14 @@ pub struct GrantedCapabilities {
 }
 
 /// What the plugin provides to the system.
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct PluginProvides {
     pub child: Option<String>,
     pub commands: Vec<String>,
+    /// Pipeline operations this plugin handles (e.g., ["parse", "chunk"]).
+    pub pipeline_ops: Vec<String>,
+    /// Languages (file extensions) this pipeline plugin claims (e.g., ["zig", "nim"]).
+    pub languages: Vec<String>,
 }
 
 impl PluginManifest {
@@ -195,6 +199,26 @@ impl PluginManifest {
             })
             .unwrap_or_default();
 
+        let pipeline_ops = provides_table
+            .and_then(|p| p.get("pipeline_ops"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let languages = provides_table
+            .and_then(|p| p.get("languages"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
         Ok(Self {
             name,
             version,
@@ -205,7 +229,12 @@ impl PluginManifest {
             allowed_toy_commands,
             host_query_kinds,
             host_http_domains,
-            provides: PluginProvides { child, commands },
+            provides: PluginProvides {
+                child,
+                commands,
+                pipeline_ops,
+                languages,
+            },
         })
     }
 

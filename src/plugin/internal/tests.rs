@@ -164,6 +164,7 @@ fn capabilities_all_granted() {
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
@@ -184,6 +185,7 @@ fn capabilities_empty() {
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
@@ -204,6 +206,7 @@ fn capabilities_denied() {
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
@@ -299,6 +302,7 @@ fn check_capabilities_rejects_unknown_query_kinds() {
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
@@ -324,6 +328,7 @@ fn check_capabilities_accepts_known_query_kinds() {
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
@@ -368,6 +373,7 @@ fn wasm_models_child_handle_roundtrip() {
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
+            ..Default::default()
         },
     };
 
@@ -419,6 +425,7 @@ fn wasm_models_child_health() {
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
+            ..Default::default()
         },
     };
 
@@ -457,6 +464,7 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
         provides: PluginProvides {
             child: Some("repos".into()),
             commands: vec![],
+            ..Default::default()
         },
     };
 
@@ -660,6 +668,7 @@ fn wasm_repos_child_toy_capability_gating() {
         provides: PluginProvides {
             child: Some("repos".into()),
             commands: vec![],
+            ..Default::default()
         },
     };
 
@@ -739,6 +748,7 @@ fn benchmark_plugin_performance() {
         provides: PluginProvides {
             child: Some("models".into()),
             commands: vec![],
+            ..Default::default()
         },
     };
     let t2 = Instant::now();
@@ -864,6 +874,7 @@ fn load_doctor_manifest() -> PluginManifest {
         provides: PluginProvides {
             child: None,
             commands: vec!["doctor".into()],
+            ..Default::default()
         },
     }
 }
@@ -1009,6 +1020,7 @@ fn check_capabilities_rejects_empty_http_domain() {
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
@@ -1030,6 +1042,7 @@ fn check_capabilities_rejects_http_domain_with_path() {
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     };
     let err = PluginEngine::check_capabilities(&m).unwrap_err();
@@ -1051,6 +1064,7 @@ fn check_capabilities_accepts_valid_http_domains() {
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     };
     assert!(PluginEngine::check_capabilities(&m).is_ok());
@@ -1075,6 +1089,7 @@ fn granted_capabilities_includes_http_domains() {
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     };
     let grants = m.granted_capabilities();
@@ -1167,6 +1182,7 @@ fn hello_task_manifest() -> PluginManifest {
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     }
 }
@@ -1269,6 +1285,7 @@ fn task_hello_unapproved_toy_denied() {
         provides: PluginProvides {
             child: None,
             commands: vec![],
+            ..Default::default()
         },
     };
 

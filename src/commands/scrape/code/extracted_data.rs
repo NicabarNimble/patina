@@ -10,7 +10,7 @@ use super::database::{CodeSymbol, FunctionFact, ImportFact, TypeFact};
 use super::types::CallGraphEntry;
 
 /// Represents a constant, macro, enum value, or static variable
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ConstantFact {
     pub file: String,
     pub name: String,
@@ -21,7 +21,7 @@ pub struct ConstantFact {
 }
 
 /// Represents a class/struct member (field or method)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct MemberFact {
     pub file: String,
     pub container: String, // Class/struct/interface name
@@ -33,7 +33,7 @@ pub struct MemberFact {
 }
 
 /// Container for all data extracted from a source file
-#[derive(Debug, Default)]
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct ExtractedData {
     pub symbols: Vec<CodeSymbol>,
     pub functions: Vec<FunctionFact>,

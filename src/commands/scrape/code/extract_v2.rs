@@ -9,15 +9,19 @@
 //! - Type-preserving data structures
 //! - Batch operations for performance
 
-use anyhow::Result;
-use ignore::WalkBuilder;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+
+use anyhow::Result;
+use ignore::WalkBuilder;
 
 use super::database::Database;
 use super::extracted_data::ExtractedData;
 use super::languages::Language;
 use super::types::FilePath;
+
+use patina::plugin::{PipelineEngine, PluginManifest};
 
 /// Process all source files and extract metadata using safe database operations
 pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) -> Result<usize> {
@@ -51,6 +55,9 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
         println!("  No source files found. Is this a code repository?");
         return Ok(0);
     }
+
+    // Discover pipeline plugins from ~/.patina/pipeline/
+    let pipeline_plugins = discover_pipeline_plugins();
 
     // Collect all extracted data in memory first
     let mut all_symbols = Vec::new();
@@ -96,8 +103,18 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
         // Update index state
         db.update_index_state(&relative_path, mtime, size, None, Some(line_count))?;
 
-        // Process file based on language
-        match process_file_by_language(&relative_path, &content, language) {
+        // Process file: plugin-first dispatch with built-in fallback
+        let ext = file_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        match process_file_with_plugins(
+            &relative_path,
+            &content,
+            language,
+            ext,
+            &pipeline_plugins,
+        ) {
             Ok(extracted) => {
                 all_symbols.extend(extracted.symbols);
                 all_functions.extend(extracted.functions);
@@ -142,7 +159,116 @@ pub fn extract_code_metadata_v2(db_path: &str, work_dir: &Path, _force: bool) ->
     Ok(symbols_count + functions_count + types_count + imports_count)
 }
 
-/// Process a single file based on its language
+/// Loaded pipeline plugin — engine + component + manifest, ready to dispatch.
+struct LoadedPipelinePlugin {
+    engine: PipelineEngine,
+    component: wasmtime::component::Component,
+    manifest: PluginManifest,
+}
+
+/// Discover pipeline plugins from ~/.patina/pipeline/.
+/// Returns a map of file extension → loaded plugin.
+fn discover_pipeline_plugins() -> HashMap<String, LoadedPipelinePlugin> {
+    let pipeline_dir = dirs::home_dir()
+        .map(|h| h.join(".patina").join("pipeline"))
+        .unwrap_or_default();
+
+    if !pipeline_dir.is_dir() {
+        return HashMap::new();
+    }
+
+    let engine = match PipelineEngine::new() {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("[pipeline] failed to create engine: {}", e);
+            return HashMap::new();
+        }
+    };
+
+    let discovered = engine.discover(&pipeline_dir);
+    if !discovered.is_empty() {
+        println!(
+            "  Pipeline plugins: {} language(s) claimed",
+            discovered.len()
+        );
+    }
+
+    // Wrap into LoadedPipelinePlugin — we need the engine for each dispatch
+    // Since PipelineEngine contains a Linker (not Clone), create one per plugin.
+    // For efficiency, share a single engine across all plugins.
+    let mut result = HashMap::new();
+    for (lang, (component, manifest)) in discovered {
+        // Re-create engine per entry since we can't clone it.
+        // The wasmtime Engine singleton is shared (OnceLock), so this is cheap.
+        let engine = match PipelineEngine::new() {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        result.insert(
+            lang,
+            LoadedPipelinePlugin {
+                engine,
+                component,
+                manifest,
+            },
+        );
+    }
+    result
+}
+
+/// Build a parse request envelope. Source code is sent as UTF-8 string.
+fn build_parse_envelope(content: &[u8], language: &str) -> String {
+    let source = String::from_utf8_lossy(content);
+    serde_json::json!({
+        "op": "parse",
+        "version": "1",
+        "payload": {
+            "source": source,
+            "language": language
+        }
+    })
+    .to_string()
+}
+
+/// Try pipeline plugin first, fall back to built-in processor.
+fn process_file_with_plugins(
+    file_path: &str,
+    content: &[u8],
+    language: Language,
+    ext: &str,
+    pipeline_plugins: &HashMap<String, LoadedPipelinePlugin>,
+) -> Result<ExtractedData> {
+    // Plugin-first dispatch: check if a pipeline plugin claims this extension
+    if let Some(plugin) = pipeline_plugins.get(ext) {
+        let request = build_parse_envelope(content, ext);
+        match plugin.engine.handle(&plugin.component, &plugin.manifest, &request) {
+            Ok(response) => {
+                match serde_json::from_str::<ExtractedData>(&response) {
+                    Ok(extracted) => return Ok(extracted),
+                    Err(e) => {
+                        eprintln!(
+                            "  [pipeline:{}] parse response failed for {}: {}",
+                            plugin.manifest.name, file_path, e
+                        );
+                        // Fall through to built-in
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!(
+                    "  [pipeline:{}] handle failed for {}: {}",
+                    plugin.manifest.name, file_path, e
+                );
+                // Fall through to built-in
+            }
+        }
+    }
+
+    // Built-in path (patina-metal fallback)
+    process_file_by_language(file_path, content, language)
+}
+
+/// Process a single file based on its language (built-in patina-metal processors)
 fn process_file_by_language(
     file_path: &str,
     content: &[u8],

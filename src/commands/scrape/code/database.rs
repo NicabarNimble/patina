@@ -25,7 +25,7 @@ use crate::commands::scrape::database as unified_db;
 // ============================================================================
 
 /// Symbol extracted from source code
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CodeSymbol {
     pub path: String,
     pub name: String,
@@ -35,7 +35,7 @@ pub struct CodeSymbol {
 }
 
 /// Function with rich metadata
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FunctionFact {
     pub file: String,
     pub name: String,
@@ -53,7 +53,7 @@ pub struct FunctionFact {
 }
 
 /// Type definition
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TypeFact {
     pub file: String,
     pub name: String,
@@ -64,7 +64,7 @@ pub struct TypeFact {
 }
 
 /// Import statement
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ImportFact {
     pub file: String,
     pub import_path: String,
