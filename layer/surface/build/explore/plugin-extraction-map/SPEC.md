@@ -1,16 +1,21 @@
 ---
 type: explore
 id: plugin-extraction-map
-status: active
+status: complete
 created: 2026-02-14
 sessions:
   origin: 20260214-104350
+  completed: 20260214-110957
 beliefs:
 - graceful-extraction
 - separate-worlds-for-isolation
 - plugin-is-agent-plus-skill
 - wasi-sandboxed-filesystem
 - two-layer-capability-grants
+- duplicate-before-extract
+- reads-via-host-writes-via-intents
+- decouple-before-extract
+- eval-stays-compiled
 references:
 - layer/core/patina-identity.md
 - layer/core/dependable-rust.md
@@ -691,7 +696,354 @@ The host/git work is NOT on the critical path. The sequence is:
 
 Steps 1-3 happen first. Steps 4-6 are long-term.
 
+## 9. WIT Convention Audit: Option E vs Existing Interfaces
+
+Vetted the proposed `host/git-read` interface and `git-action` intents
+against the three existing WIT files.
+
+### Naming Conventions
+
+Existing host interfaces use kebab-case: `log-level`, `child-health`,
+`health-status`, `http-response`, `http-post`, `http-get`, `find-project-root`,
+`count-layer-files`, `check-adapter-version`. Option E's proposed names
+(`current-branch`, `tag-exists`, `head-sha`, `status-porcelain`,
+`has-upstream`, `is-diverged`, `commits-since`, `log-oneline`,
+`files-changed-since`) follow this convention exactly. No corrections needed.
+
+### Interface Placement
+
+Existing pattern: one interface per concern, all in `patina:host@0.1.0`:
+- `log` — logging
+- `types` — shared records/enums outside any world
+- `layer` — read-only project data
+- `query` — capability-gated search
+- `http` — domain-allowlisted network
+
+A `git-read` interface fits naturally as another `patina:host` interface.
+It would live in `host.wit` alongside the others. The name `git-read`
+follows the existing pattern of scoping by capability (read-only, safe).
+
+### Where git-actions Belong
+
+Existing intent pattern: `toy` record in `patina:host/types@0.1.0`.
+Toys are returned from `tick()` (mother-child) and `toys()` (task).
+A `git-action` record should follow the same pattern:
+
+- **Define** `git-action` record + `git-action-kind` enum in
+  `patina:host/types@0.1.0` (alongside `toy`, `child-health`)
+- **Return** from a new export: either extend `run()` to return a
+  composite result, or add a `git-actions: func() -> list<git-action>`
+  export parallel to `toys()`
+
+The second approach (dedicated export) is cleaner — it preserves
+`run()` returning a simple `s32` and follows the proven `toys()` pattern.
+Host calls `run()`, then calls `git-actions()`, validates against
+manifest capabilities, and executes.
+
+### World Import/Export Changes
+
+| World | Current imports | Would add |
+|-------|---------------|-----------|
+| command | log, layer, query | + `git-read` import (for session, spec, release reads) |
+| task | log, types, layer, query, http | + `git-read` import |
+| command | exports: init, name, description, run | + `git-actions` export |
+| task | exports: init, name, description, run, toys | + `git-actions` export |
+
+**Key observation:** Command world currently has NO action mechanism.
+It returns only `s32` from `run()`. Adding `git-actions()` to command
+world would be the first command-world intent pattern. This is
+architecturally significant — it means command plugins can have
+side-effects mediated by the host. This is the right design (host
+validates + executes), but it changes command world's semantic from
+"inform only" to "inform + mediated action."
+
+**Alternative:** Move git-writing modules (spec, release) to task world
+instead. Task world already has the `toys()` intent pattern. Git-actions
+would compose naturally alongside toys. This preserves command world as
+read-only.
+
+**Recommendation:** Use task world for all Tier 3 extractions. Session,
+spec, and release all write (git tags, commits, file removals). The
+task world's existing `toys()` pattern extends cleanly to
+`git-actions()`. Keep command world pure read-only per its docstring
+("one-shot execution"). This aligns with [[separate-worlds-for-isolation]].
+
+---
+
+## 10. spec→release Decoupling: Code-Level Validation
+
+### Current Coupling (verified against source)
+
+`src/commands/spec/internal.rs` imports:
+```
+use patina::release::{BumpType, ReleaseStrategy};
+use patina::spec::{parse_spec_file, serialize_spec_file};
+```
+
+The coupling is concentrated in `update_spec_status()` (line 361).
+When `new_status == "complete"`:
+
+1. `ReleaseStrategy::from_project(Path::new("."))` — detects Cargo/External/None
+2. `BumpType::from_spec_type(&frontmatter.r#type)` — feat→Minor, fix→Patch
+3. `strategy.preflight(bump, &file_path)` — safeguard checks (git status, tags, etc.)
+4. `prepared.execute(title, &file_path, archive_dir)` — bump Cargo.toml, git add, git commit, git tag
+
+`release/internal.rs` in turn uses:
+- `crate::git` (5 functions in safeguard checks): `status_porcelain`,
+  `has_upstream`, `commits_behind_upstream`, `is_diverged`, `tag_exists`,
+  `current_branch`
+- `crate::git::create_tag` (1 function in execute)
+- `crate::project::is_versioning_enabled` (1 function in detection)
+- Direct `Command::new("git")` for: `git rm -rf`, `git add`, `git commit`
+
+### Additional Finding: spec's Private Git Duplicates
+
+`spec/internal.rs` has its own private `tag_exists()` (line 731) and
+`is_tree_clean()` (line 741) that duplicate `patina::git::tag_exists`
+and `patina::git::is_clean`. These were presumably written before the
+shared git module existed or to avoid an import. A small tech debt item
+independent of extraction.
+
+### What Changes if spec Stops Invoking release
+
+Today's flow (`patina spec status <id> complete`):
+```
+spec::update_spec_status()
+  → validate status
+  → update spec file + DB
+  → ReleaseStrategy::from_project()
+  → BumpType::from_spec_type()
+  → strategy.preflight()      ← safeguard checks
+  → prepared.execute()         ← Cargo.toml bump + commit + tag
+  → archive_spec_inner()       ← git rm + commit + spec tag
+```
+
+Decoupled flow (`patina spec status` + `patina release`):
+```
+patina spec status <id> complete
+  → validate status
+  → update spec file + DB
+  → [if should_archive] archive_spec_inner()
+  → print: "Spec marked complete. Run 'patina release' to bump version."
+
+patina release
+  → find completed, unreleased specs
+  → ReleaseStrategy::from_project()
+  → determine aggregate bump (highest of all completed spec types)
+  → preflight() → execute()
+```
+
+### Refactoring Scope
+
+| Change | Files | Effort |
+|--------|-------|--------|
+| Remove `patina::release` imports from spec/internal.rs | 1 file | Small |
+| Remove the `if new_status == "complete"` release delegation block (lines 428-457) | 1 file | Small |
+| Add `patina release` subcommand (scan for completed unreleased specs) | New command or extend release/mod.rs | Medium |
+| Consolidate spec's private `tag_exists`/`is_tree_clean` to use `patina::git` | 1 file, cleanup | Small |
+| Archive flow stays in spec (it's spec lifecycle, not release) | No change | — |
+
+Total: ~1 session of work. The release command needs a "scan for completed
+specs that haven't been released" query, which is a new `patina release`
+subcommand. This is a natural fit — release owns versioning strategy,
+spec owns spec lifecycle.
+
+### Verdict
+
+This decoupling is **worth doing as a standalone refactor spec**, independent
+of plugin extraction. Reasons:
+
+1. **unix-philosophy compliance** — spec does one job (spec lifecycle),
+   release does one job (version management)
+2. **Unblocks both modules for independent extraction** — spec becomes
+   Tier 2 (needs host/query + host/git for archiving, not host/release),
+   release becomes independently extractable
+3. **Better user model** — explicit `patina release` is clearer than the
+   hidden side-effect of `spec status complete` bumping versions
+4. **Small, bounded change** — mostly deleting code from spec/internal.rs
+   and adding a query to the release command
+
+---
+
+## 11. Coupling Analysis Corrections
+
+Re-read all extractable modules against current source (commit ff7d270).
+Changes from the initial analysis:
+
+### 11.1 spec Coupling — Corrected
+
+Initial claim: "2 public API imports + DB + git"
+Verified: **2 public API imports + 1 DB import + 5 raw git commands**
+
+- `patina::release::{BumpType, ReleaseStrategy}` — public API, extraction blocker
+- `patina::spec::{parse_spec_file, serialize_spec_file}` — lib crate public API, NOT a blocker (this is spec's own types re-exported through the lib)
+- `rusqlite::Connection` — direct DB for spec queries and status updates
+- 5 raw `Command::new("git")` calls: `git tag -a`, `git rm -rf`, `git add`, `git commit -m`, plus 2 private helpers (`tag_exists`, `is_tree_clean`)
+
+The coupling is **slightly higher** than reported because of the raw git
+commands (counted as "direct git" but not broken out as individual
+`Command::new` calls). The private `tag_exists`/`is_tree_clean` duplicates
+add 2 more git operations not counted in the Section 8 inventory.
+
+**Updated git operation count for spec:**
+- Reads: `tag_exists` (×3 call sites), `is_tree_clean` (×1) → 2 unique reads
+- Writes: `git tag -a -m ref` (×1), `git rm -rf` (×2 paths), `git add` (×0, delegated to release), `git commit -m` (×1) → 3 unique writes
+- Plus all git operations delegated through `release` (7 via `crate::git`)
+
+### 11.2 session Coupling — Confirmed Accurate
+
+Initial claim: "LOW-MEDIUM (`patina::git` only)"
+Verified: **Exactly 1 import: `use patina::git;`**
+
+Session uses 16 git read functions and 2 write functions through the
+public `patina::git` module. No raw `Command::new("git")` calls. No DB
+access. No imports from other command modules. This is the cleanest
+Tier 3 module — a pure observer with boundary markers.
+
+### 11.3 release Coupling — Confirmed Accurate
+
+Initial claim: "HIGH (2 internal crate imports, 7+ git functions)"
+Verified: `crate::git` (6 functions in safeguards + 1 `create_tag` in execute),
+`crate::project::is_versioning_enabled` (1), plus 3 raw
+`Command::new("git")` for `rm`, `add`, `commit`.
+
+Total: 7 `crate::git` + 1 `crate::project` + 3 raw git = 11 git-touching
+operations. HIGH coupling confirmed.
+
+### 11.4 No Other Coupling Changes
+
+yolo (0 imports), upgrade (0 imports), version (2 public API imports),
+report (3 internal imports), eval+bench (5+ internal imports) — all
+unchanged since initial analysis. No recent commits touched these modules.
+
+---
+
+## 12. Belief Cross-Check
+
+### Existing Beliefs — Validation
+
+| Belief | Relevant? | Validated? |
+|--------|:---------:|:----------:|
+| [[graceful-extraction]] | YES | Confirmed — doctor extraction proves the pattern. Feature-gated fallback works. |
+| [[separate-worlds-for-isolation]] | YES | Confirmed — and strengthened by the finding that Tier 3 modules should use task world (not command) because they write. |
+| [[two-layer-capability-grants]] | YES | Confirmed — manifest declares git-read + git-action-kinds, host validates. |
+| [[plugin-is-agent-plus-skill]] | PARTIAL | Applies to ecosystem plugins more than extraction of existing commands. Extracted commands ARE the agent; skill templates are optional. |
+| [[wasi-sandboxed-filesystem]] | YES | Confirmed — extracted modules can't access git directly, must go through host functions. |
+| [[duplicate-before-extract]] | YES | Relevant counter-guidance: spec's private `tag_exists`/`is_tree_clean` are duplicates, but since there are now 3 consumers (spec, release, session all use tag_exists), extraction to shared `patina::git` is justified by the rule of three. |
+
+### New Beliefs to Capture
+
+Three beliefs emerged from this exploration:
+
+**1. reads-via-host-writes-via-intents**
+Plugin reads are synchronous host calls (safe, typed, immediate return).
+Plugin writes are returned as intents (host validates, audits, executes).
+This split keeps decision logic in the plugin while keeping destructive
+execution in the host. Proven by the toy pattern (mother-child + task
+worlds), now recommended for git operations.
+
+**2. decouple-before-extract**
+Coupled modules must be decoupled before independent extraction.
+spec→release coupling means extracting one requires extracting or
+hosting the other. Decoupling first (each command does one job) makes
+both independently extractable and follows unix-philosophy. General
+principle: tightly coupled modules that want different extraction
+timelines must be decoupled first.
+
+**3. eval-stays-compiled**
+eval+bench should stay compiled because their value is in ablation
+testing of retrieval internals (QueryEngine, RetrievalConfig,
+FusedResult, create_embedder). Extracting them limits testing to the
+host/query surface, losing the ability to test retrieval component
+combinations. This is "protocol quality tooling" — it tests the
+protocol engine, not just uses it.
+
+---
+
+## 13. Identity Document Updates
+
+### Recommended Changes to `layer/core/patina-identity.md`
+
+**1. Add `session` to the extraction table** (section "Protocol Tooling")
+
+Session is listed in the Evolution Path block as protocol tooling
+(`spec, session, release, eval, report, yolo`) but omitted from the
+extraction table. The Protocol Test confirms it's extractable:
+- Uses the protocol (writes layer data, creates git tags, writes events)
+- Patina functions without it (`patina scrape && patina scry` works)
+- LOW-MEDIUM coupling (only `patina::git`)
+
+Add row:
+```
+| `session` | Development session tracking | Task plugin (needs host/git for tags) |
+```
+
+**2. Annotate eval+bench as "likely stays compiled"**
+
+Current extraction table says: `Command plugin (power user tooling)`.
+Should be updated to reflect the analysis:
+```
+| `eval` + `bench` | Retrieval quality measurement | Likely stays compiled — value is ablation testing of retrieval internals |
+```
+
+**3. Do NOT reference host/git-read + git-action pattern**
+
+The identity document is about *what Patina is*, not *how plugins work*.
+The host/git design is implementation detail that belongs in the
+plugin-extraction-map explore spec (here) or a future host/git-read
+WIT spec. Adding implementation details to the identity doc would
+violate its purpose.
+
+**4. Add `upgrade` to the Evolution Path block**
+
+The Evolution Path lists `spec, session, release, eval, report, yolo`
+as protocol tooling. `upgrade` is missing. It's in the extraction table
+but not the narrative block. Add it for consistency.
+
+---
+
+## 14. Closure Assessment
+
+### Is the Exploration Complete?
+
+**YES — the exploration can close.** All questions from the initial
+exploration (Sections 1-8) have been validated, corrected, and deepened.
+The remaining work is action items, not analysis.
+
+### What This Explore Produced
+
+1. Complete coupling analysis of 11 modules (7 from identity table + 4 candidates)
+2. Four-tier extraction order with verified coupling scores
+3. Host/git WIT design (Option E) vetted against existing WIT conventions
+4. spec→release decoupling plan with line-level code references
+5. Three new beliefs: reads-via-host-writes-via-intents, decouple-before-extract, eval-stays-compiled
+6. Identity doc update recommendations (4 items)
+7. Clear WIT convention finding: Tier 3 modules should use task world (not command) due to write operations
+
+### Child Specs: What's Warranted and What's Premature
+
+| Potential Child Spec | Warranted? | Reason |
+|---------------------|:----------:|--------|
+| [[spec-release-decouple]] (refactor) | **YES** | Well-scoped, bounded, code-level plan exists (Section 10). Worth doing regardless of extraction timeline. Follows unix-philosophy. |
+| [[host-git-read]] (WIT design) | **NOT YET** | Depends on Tier 1 extractions + PTG shipping first. Design is documented here (Sections 8-9) and can be promoted to a spec when the prerequisite work completes. Writing a spec now would be speculative — the WIT may need to evolve as Tier 1/2 extractions teach us lessons. |
+| [[identity-doc-update]] | **NO** — inline | The 4 identity doc changes are small (add 2 table rows, update 1 row text, add 1 word to a list). These should be done as a direct commit, not a spec. Specs authorize non-trivial changes. |
+
+### Recommended Next Actions (not specs, just work items)
+
+1. **Capture 3 beliefs** (reads-via-host-writes-via-intents, decouple-before-extract, eval-stays-compiled)
+2. **Update identity doc** (4 small changes per Section 13)
+3. **Write [[spec-release-decouple]] refactor spec** when ready to schedule the work
+4. **Clean up spec's git duplicates** (consolidate private tag_exists/is_tree_clean → patina::git) — small tech debt, can piggyback on any spec/ change
+
+---
+
 ## Status Log
+
+| Date | Status | Note |
+|------|--------|------|
+| 2026-02-14 | active | Initial exploration. Read all 7 extractable modules + 4 additional candidates. Produced coupling scores, world mappings, format stability assessments, blocker inventory, and recommended extraction order. |
+| 2026-02-14 | active | Deep dive into host/git question. Inventoried all 25 git operations across Tier 3 modules (18 reads, 7 writes). Evaluated 5 design options. Recommended Option E (split read/write: synchronous reads + intent-based writes). Identified spec→release decoupling as prerequisite for extraction. |
+| 2026-02-14 | complete | Validated all analysis against current source. Vetted Option E against WIT conventions (fits cleanly). Documented spec→release decoupling at code level. Found spec has private git duplicates (tech debt). Determined Tier 3 modules should use task world (not command) due to writes. Captured 3 new beliefs. Identified 1 warranted child spec ([[spec-release-decouple]]) and assessed 1 as premature ([[host-git-read]]). Exploration complete.
 
 | Date | Status | Note |
 |------|--------|------|
