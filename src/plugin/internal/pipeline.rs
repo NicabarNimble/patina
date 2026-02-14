@@ -3,6 +3,9 @@
 //! Host-invoked pure-compute plugins. Grammar parsers, chunkers, tokenizers.
 //! The simplest world: log-only import, no query, no layer, no HTTP, no toys.
 
+use std::collections::HashMap;
+use std::path::Path;
+
 use anyhow::Result;
 use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
@@ -123,5 +126,99 @@ impl PipelineEngine {
             wasi,
             wasi_table: wasmtime::component::ResourceTable::new(),
         }
+    }
+
+    /// Discover pipeline plugins from ~/.patina/pipeline/.
+    ///
+    /// Scans for plugin.toml manifests, loads WASM components, and builds
+    /// a language→(component, manifest) map for dispatch.
+    pub fn discover(
+        &self,
+        pipeline_dir: &Path,
+    ) -> HashMap<String, (Component, PluginManifest)> {
+        let mut plugins: HashMap<String, (Component, PluginManifest)> = HashMap::new();
+
+        if !pipeline_dir.is_dir() {
+            return plugins;
+        }
+
+        let entries = match std::fs::read_dir(pipeline_dir) {
+            Ok(e) => e,
+            Err(_) => return plugins,
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+
+            let manifest_path = path.join("plugin.toml");
+            let wasm_path = path.join("plugin.wasm");
+
+            if !manifest_path.exists() || !wasm_path.exists() {
+                continue;
+            }
+
+            let manifest = match PluginManifest::from_path(&manifest_path) {
+                Ok(m) => m,
+                Err(e) => {
+                    eprintln!(
+                        "[pipeline] failed to load manifest {}: {}",
+                        manifest_path.display(),
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            if manifest.world != "pipeline" {
+                continue;
+            }
+
+            let wasm_bytes = match std::fs::read(&wasm_path) {
+                Ok(b) => b,
+                Err(e) => {
+                    eprintln!(
+                        "[pipeline] failed to read {}: {}",
+                        wasm_path.display(),
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            let component = match self.load_component(&wasm_bytes) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!(
+                        "[pipeline] failed to compile {}: {}",
+                        wasm_path.display(),
+                        e
+                    );
+                    continue;
+                }
+            };
+
+            // Map each claimed language to this plugin
+            for lang in &manifest.provides.languages {
+                if plugins.contains_key(lang) {
+                    eprintln!(
+                        "[pipeline] language '{}' already claimed, skipping plugin '{}'",
+                        lang, manifest.name
+                    );
+                    continue;
+                }
+                eprintln!(
+                    "[pipeline] {} claims language '{}'",
+                    manifest.name, lang
+                );
+                // Clone component for each language mapping.
+                // Component is cheap to clone (Arc internally).
+                plugins.insert(lang.clone(), (component.clone(), manifest.clone()));
+            }
+        }
+
+        plugins
     }
 }

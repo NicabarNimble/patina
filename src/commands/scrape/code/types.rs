@@ -58,7 +58,8 @@ impl fmt::Display for SymbolKind {
 // CALL GRAPH TYPES
 // ============================================================================
 /// Type-safe representation of call types in the call graph
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum CallType {
     Direct,      // Regular function call
     Method,      // Method call (obj.method())
@@ -95,7 +96,7 @@ impl fmt::Display for CallType {
 }
 
 /// Type-safe call graph entry
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CallGraphEntry {
     pub caller: String,
     pub callee: String,

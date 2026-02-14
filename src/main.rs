@@ -1314,6 +1314,7 @@ fn main() -> Result<()> {
                         provides: patina::plugin::PluginProvides {
                             child: None,
                             commands: vec!["doctor".into()],
+                            ..Default::default()
                         },
                     }
                 };
