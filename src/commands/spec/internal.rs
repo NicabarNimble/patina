@@ -354,7 +354,11 @@ const VALID_STATUSES: &[&str] = &["draft", "ready", "active", "complete", "aband
 /// When status is "complete", delegates to `ReleaseStrategy` for version
 /// management. The `major` flag overrides type-based bump detection for
 /// 1.0.0 moments (`patina spec status <id> complete --major`).
-pub fn update_spec_status(id: &str, new_status: &str, major: bool, _no_archive: bool) -> Result<()> {
+///
+/// When `no_archive` is false and status is "complete" or "abandoned",
+/// the spec is auto-archived (tag + git rm) as part of the release commit
+/// or as a standalone commit if no release is needed.
+pub fn update_spec_status(id: &str, new_status: &str, major: bool, no_archive: bool) -> Result<()> {
     // 1. Validate new status
     if !VALID_STATUSES.contains(&new_status) {
         anyhow::bail!(
@@ -403,6 +407,24 @@ pub fn update_spec_status(id: &str, new_status: &str, major: bool, _no_archive: 
     println!("Updated: {} → {}", title_str, new_status);
     println!("  File: {}", file_path);
 
+    // Should we auto-archive after this status change?
+    let should_archive =
+        !no_archive && (new_status == "complete" || new_status == "abandoned");
+
+    // Pre-check: if archiving, ensure spec tag doesn't already exist
+    let spec_dir = if should_archive {
+        let tag_name = format!("spec/{}", id);
+        if tag_exists(&tag_name)? {
+            anyhow::bail!(
+                "Tag '{}' already exists. Spec may have been archived previously.",
+                tag_name
+            );
+        }
+        resolve_spec_dir(&file_path)
+    } else {
+        None
+    };
+
     // 7. If completing, delegate to release strategy
     if new_status == "complete" {
         let strategy = ReleaseStrategy::from_project(Path::new("."));
@@ -416,12 +438,59 @@ pub fn update_spec_status(id: &str, new_status: &str, major: bool, _no_archive: 
 
         if let Some(bump) = bump {
             let prepared = strategy.preflight(bump, &file_path)?;
-            prepared.execute(title_str, &file_path)?;
+
+            if should_archive {
+                // Create spec tag on HEAD (preserves spec content before removal)
+                create_spec_tag(id, title_str)?;
+            }
+
+            // Archive dir tells execute_cargo to git rm -r instead of git add
+            let archive_dir = if should_archive {
+                spec_dir
+                    .as_ref()
+                    .and_then(|d| d.to_str())
+                    .or(Some(&file_path))
+            } else {
+                None
+            };
+            prepared.execute(title_str, &file_path, archive_dir)?;
+
+            if should_archive {
+                println!("  Archived: spec/{}", id);
+            }
         } else {
             println!("\n  Spec type '{}' → no version bump", frontmatter.r#type);
+            // No release — archive as standalone commit if requested
+            if should_archive {
+                archive_spec_inner(id, &file_path, new_status, title_str, &spec_dir)?;
+            }
         }
+    } else if new_status == "abandoned" && should_archive {
+        // No release for abandoned — archive as standalone commit
+        archive_spec_inner(id, &file_path, new_status, title_str, &spec_dir)?;
     }
 
+    Ok(())
+}
+
+/// Create an annotated spec tag on HEAD (preserves spec content for recovery)
+fn create_spec_tag(id: &str, description: &str) -> Result<()> {
+    let tag_name = format!("spec/{}", id);
+    println!("Creating tag: {}", tag_name);
+    let output = Command::new("git")
+        .args([
+            "tag",
+            "-a",
+            &tag_name,
+            "-m",
+            &format!("Archived spec: {}", description),
+        ])
+        .output()
+        .context("Failed to create spec tag")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git tag failed: {}", stderr);
+    }
     Ok(())
 }
 
