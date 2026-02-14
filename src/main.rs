@@ -901,6 +901,9 @@ enum PluginCommands {
         /// Build the plugin after scaffolding
         #[arg(long)]
         build: bool,
+        /// Build in release mode (requires --build)
+        #[arg(long, requires = "build")]
+        release: bool,
     },
 }
 
@@ -1354,43 +1357,72 @@ fn main() -> Result<()> {
         }
         Some(Commands::Plugin { command }) => match command {
             PluginCommands::List => commands::plugin::execute_list()?,
-            PluginCommands::Init { name, world, build } => {
+            PluginCommands::Init {
+                name,
+                world,
+                build,
+                release,
+            } => {
                 let world: patina::plugin::PluginWorld = world.parse()?;
                 let cwd = std::env::current_dir()?;
                 let project_dir = patina::plugin::scaffold::scaffold(&cwd, &name, &world)?;
 
+                let profile = if release { "release" } else { "debug" };
+                let artifact = project_dir
+                    .join(format!("target/wasm32-wasip2/{}", profile))
+                    .join(format!("{}.wasm", name.replace('-', "_")));
+
                 println!("Created {} plugin: {}", world, project_dir.display());
                 println!();
                 println!("  cd {}", name);
-                println!("  cargo build --target wasm32-wasip2");
+                if release {
+                    println!("  cargo build --target wasm32-wasip2 --release");
+                } else {
+                    println!("  cargo build --target wasm32-wasip2");
+                }
+                println!();
+                println!("Artifact will be at: {}", artifact.display());
 
                 if build {
+                    // Proactive rustup check before attempting the build
+                    let has_target = std::process::Command::new("rustup")
+                        .args(["target", "list", "--installed"])
+                        .output()
+                        .map(|o| {
+                            String::from_utf8_lossy(&o.stdout)
+                                .lines()
+                                .any(|l| l.trim() == "wasm32-wasip2")
+                        })
+                        .unwrap_or(false);
+
+                    if !has_target {
+                        eprintln!("Missing wasm32-wasip2 target. Install it:");
+                        eprintln!("  rustup target add wasm32-wasip2");
+                        std::process::exit(1);
+                    }
+
                     println!();
-                    println!("Building...");
+                    println!("Building ({})...", profile);
+                    let mut cargo_args = vec!["build", "--target", "wasm32-wasip2"];
+                    if release {
+                        cargo_args.push("--release");
+                    }
+
                     let status = std::process::Command::new("cargo")
-                        .args(["build", "--target", "wasm32-wasip2"])
+                        .args(&cargo_args)
                         .current_dir(&project_dir)
                         .status();
 
                     match status {
                         Ok(s) if s.success() => {
-                            let artifact = project_dir
-                                .join("target/wasm32-wasip2/debug")
-                                .join(format!("{}.wasm", name.replace('-', "_")));
                             println!("Built: {}", artifact.display());
                         }
                         Ok(s) => {
                             eprintln!("Build failed (exit code {})", s.code().unwrap_or(-1));
-                            eprintln!();
-                            eprintln!("If the wasm32-wasip2 target is missing, install it:");
-                            eprintln!("  rustup target add wasm32-wasip2");
                             std::process::exit(1);
                         }
                         Err(e) => {
                             eprintln!("Failed to run cargo: {}", e);
-                            eprintln!();
-                            eprintln!("If the wasm32-wasip2 target is missing, install it:");
-                            eprintln!("  rustup target add wasm32-wasip2");
                             std::process::exit(1);
                         }
                     }
