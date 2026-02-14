@@ -184,18 +184,8 @@ impl TaskEngine {
         // Check capabilities before execution
         PluginEngine::check_capabilities(manifest)?;
 
-        // Build HTTP client with cross-domain redirect rejection
-        let http_client = reqwest::blocking::Client::builder()
-            .redirect(reqwest::redirect::Policy::custom(|attempt| {
-                if attempt.url().host_str() != attempt.previous().last().and_then(|u| u.host_str())
-                {
-                    attempt.stop()
-                } else {
-                    attempt.follow()
-                }
-            }))
-            .build()
-            .map_err(|e| anyhow::anyhow!("build HTTP client: {}", e))?;
+        // Build HTTP client with cross-domain redirect rejection (G5: shared builder).
+        let http_client = super::host_support::build_http_client()?;
 
         let wasi = wasmtime_wasi::WasiCtxBuilder::new()
             .inherit_stdout()

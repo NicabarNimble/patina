@@ -298,20 +298,8 @@ impl PluginEngine {
         // Build resolved capabilities for call-time gating
         let grants = manifest.granted_capabilities();
 
-        // Build HTTP client with cross-domain redirect rejection.
-        // Per spec: if a response redirects to a different domain, reject it
-        // (prevents allowlist bypass via open redirectors).
-        let http_client = reqwest::blocking::Client::builder()
-            .redirect(reqwest::redirect::Policy::custom(|attempt| {
-                if attempt.url().host_str() != attempt.previous().last().and_then(|u| u.host_str())
-                {
-                    attempt.stop()
-                } else {
-                    attempt.follow()
-                }
-            }))
-            .build()
-            .map_err(|e| anyhow::anyhow!("build HTTP client: {}", e))?;
+        // Build HTTP client with cross-domain redirect rejection (G5: shared builder).
+        let http_client = super::host_support::build_http_client()?;
 
         // Minimal WASI context — no filesystem access, no env inheritance.
         let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
