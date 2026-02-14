@@ -1,24 +1,22 @@
 ---
 type: fix
 id: plugin-host-fragility
-status: ready
+status: active
 created: 2026-02-14
 sessions:
   origin: 20260214-061751
-blocked_by: []
-blocks: []
 related:
-  - layer/surface/build/feat/plugin-system/SPEC.md
-  - layer/surface/build/fix/plugin-system-audit-remediation/SPEC.md
+- layer/surface/build/feat/plugin-system/SPEC.md
+- layer/surface/build/fix/plugin-system-audit-remediation/SPEC.md
 beliefs:
-  - dependable-rust
-  - safety-boundaries
-  - sanitize-at-data-level-not-just-control-flow
-  - wit-deps-must-be-hard-links-verified
-  - compiler-enforced-safety
+- dependable-rust
+- safety-boundaries
+- sanitize-at-data-level-not-just-control-flow
+- wit-deps-must-be-hard-links-verified
+- compiler-enforced-safety
 references:
-  - "Eskil Steenberg — simplicity-first, data-oriented, 'if it can break it will'"
-  - "Jon Gjengset — Rust ownership rigor, API ergonomics, earned complexity"
+- Eskil Steenberg — simplicity-first, data-oriented, 'if it can break it will'
+- Jon Gjengset — Rust ownership rigor, API ergonomics, earned complexity
 ---
 
 # fix: Plugin Host Engine — Fragility Remediation
