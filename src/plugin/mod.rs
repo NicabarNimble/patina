@@ -11,6 +11,7 @@
 //! See: layer/surface/build/feat/plugin-system/SPEC.md
 
 mod internal;
+pub mod scaffold;
 pub use internal::{
     CommandEngine, GrantedCapabilities, PipelineEngine, PluginEngine, PluginManifest,
     PluginProvides, PluginWorld, QueryDispatchFn, QueryScope, TaskEngine,
