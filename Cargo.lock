@@ -2806,6 +2806,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "patina-task-api"
+version = "0.1.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
 name = "pbkdf2"
 version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
