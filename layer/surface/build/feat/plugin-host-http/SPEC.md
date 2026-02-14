@@ -1,13 +1,12 @@
 ---
 type: feat
 id: plugin-host-http
-status: ready
+status: complete
 created: 2026-02-13
-sessions:
-  origin: 20260213-120746
-  refined: 20260213-135136
 blocked_by:
 - plugin-system
+sessions:
+  origin: 20260213-120746
 related:
 - layer/surface/build/feat/plugin-ecosystem/SPEC.md
 beliefs:
