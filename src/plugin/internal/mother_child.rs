@@ -7,8 +7,10 @@ use anyhow::Result;
 use wasmtime::component::{Component, Linker};
 use wasmtime::Store;
 
-use super::{wasm_engine, GrantedCapabilities, PluginManifest};
+use super::{wasm_engine, GrantedCapabilities, PluginManifest, QueryScope};
 use crate::mother::{ChildHealth, ChildRequest, ChildResponse, MotherHost, Toy};
+
+use super::command::QueryDispatchFn;
 
 // =========================================================================
 // URL validation — data-level sanitization per [[sanitize-at-data-level]]
@@ -67,8 +69,13 @@ mod bindings {
         pub plugin_name: String,
         pub wasi: wasmtime_wasi::WasiCtx,
         pub wasi_table: wasmtime::component::ResourceTable,
+        /// Cached project root — computed once at store creation.
+        pub project_root: Option<std::path::PathBuf>,
         /// Resolved capabilities for call-time gating.
         pub grants: super::GrantedCapabilities,
+        /// Query dispatch — provided by binary crate, handles engine calls.
+        /// None for plugins without query grants.
+        pub query_fn: Option<super::QueryDispatchFn>,
         /// Pre-configured HTTP client with cross-domain redirect rejection.
         pub http_client: reqwest::blocking::Client,
     }
@@ -103,6 +110,134 @@ mod bindings {
 
     // patina:host/types only defines types (no functions) — empty Host trait
     impl patina::host::types::Host for HostState {}
+
+    // patina:host/layer — read-only project data access.
+    //
+    // Re-entrancy invariant: these implementations MUST NOT acquire the
+    // store Mutex or call WASM methods on the same instance.
+    // All calls go to the Patina core library, never back into WASM.
+    impl patina::host::layer::Host for HostState {
+        fn find_project_root(&mut self) -> Option<String> {
+            self.project_root
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string())
+        }
+
+        fn read_config(&mut self) -> Result<String, String> {
+            let root = self
+                .project_root
+                .as_ref()
+                .ok_or_else(|| "no project root".to_string())?;
+            let config = crate::project::load_with_migration(root)
+                .map_err(|e| format!("load config: {}", e))?;
+            serde_json::to_string(&config).map_err(|e| format!("serialize config: {}", e))
+        }
+
+        fn detect_environment(&mut self) -> Result<String, String> {
+            let env = crate::environment::Environment::detect()
+                .map_err(|e| format!("detect env: {}", e))?;
+            serde_json::to_string(&env).map_err(|e| format!("serialize env: {}", e))
+        }
+
+        fn get_stored_tools(&mut self) -> Vec<String> {
+            let root = match self.project_root.as_ref() {
+                Some(r) => r,
+                None => return vec![],
+            };
+            let config = match crate::project::load_with_migration(root) {
+                Ok(c) => c,
+                Err(_) => return vec![],
+            };
+            config
+                .environment
+                .map(|e| e.detected_tools)
+                .unwrap_or_default()
+        }
+
+        fn count_layer_files(&mut self, subdir: String) -> u32 {
+            let root = match self.project_root.as_ref() {
+                Some(r) => r,
+                None => return 0,
+            };
+            let path = root.join("layer").join(&subdir);
+            if let Ok(entries) = std::fs::read_dir(path) {
+                entries
+                    .filter_map(Result::ok)
+                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
+                    .count() as u32
+            } else {
+                0
+            }
+        }
+
+        fn get_project_uid(&mut self) -> Option<String> {
+            let root = self.project_root.as_ref()?;
+            crate::project::get_uid(root)
+        }
+
+        fn check_adapter_version(
+            &mut self,
+            adapter_name: String,
+        ) -> Result<Option<String>, String> {
+            let root = self
+                .project_root
+                .as_ref()
+                .ok_or_else(|| "no project root".to_string())?;
+            let adapter = crate::adapters::get_adapter(&adapter_name);
+            adapter
+                .check_for_updates(root)
+                .map(|opt| opt.map(|(current, _)| current))
+                .map_err(|e| format!("adapter check: {}", e))
+        }
+    }
+
+    // patina:host/query — capability-gated query dispatch.
+    //
+    // Defense in depth: kinds are validated at load time (check_capabilities)
+    // AND at call time (grants.query_kinds check below). Query scope is
+    // enforced at call time — all_repos requires AllRepos scope.
+    // Actual engine dispatch is handled by query_fn (provided by binary).
+    impl patina::host::query::Host for HostState {
+        fn query(&mut self, kind: String, params: String) -> Result<String, String> {
+            // Call-time gating: kind must be in granted set
+            if !self.grants.query_kinds.contains(&kind) {
+                return Err(format!(
+                    "query kind '{}' not granted for plugin '{}'",
+                    kind, self.plugin_name
+                ));
+            }
+
+            // Scope enforcement: deny all_repos explicitly, then sanitize.
+            if let Ok(args) = serde_json::from_str::<serde_json::Value>(&params) {
+                let all_repos = args
+                    .get("all_repos")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if all_repos && !matches!(self.grants.query_scope, super::QueryScope::AllRepos) {
+                    return Err(
+                        "all_repos not allowed: plugin query_scope is current_project".to_string(),
+                    );
+                }
+                if all_repos {
+                    eprintln!(
+                        "[plugin:{}] query: all_repos=true (audit)",
+                        self.plugin_name
+                    );
+                }
+            }
+
+            // Sanitize: strip scope-reserved keys so callback can't bypass policy
+            let sanitized_params =
+                super::super::command::sanitize_query_params(&params, &self.grants.query_scope);
+
+            // Delegate to binary-provided dispatch function
+            let query_fn = self
+                .query_fn
+                .as_mut()
+                .ok_or_else(|| "query dispatch not configured".to_string())?;
+            query_fn(&kind, &sanitized_params)
+        }
+    }
 
     // patina:host/http — domain-allowlisted HTTP access.
     //
@@ -278,10 +413,15 @@ impl PluginEngine {
 
     /// Instantiate a MotherChild from a WASM component + manifest.
     /// Returns Box<dyn MotherChild> for ChildRegistry compatibility.
+    ///
+    /// `query_fn`: Optional query dispatch provided by the binary crate.
+    /// Required if the plugin has host_query capabilities. The host impl
+    /// handles gating; this function handles actual engine dispatch.
     pub fn instantiate_child(
         &self,
         component: &Component,
         manifest: &PluginManifest,
+        query_fn: Option<QueryDispatchFn>,
     ) -> Result<Box<dyn crate::mother::MotherChild>> {
         // Check capabilities before instantiation
         Self::check_capabilities(manifest)?;
@@ -306,11 +446,14 @@ impl PluginEngine {
 
         // Minimal WASI context — no filesystem access, no env inheritance.
         let wasi = wasmtime_wasi::WasiCtxBuilder::new().build();
+        let project_root = crate::session::SessionManager::find_project_root().ok();
         let host_state = HostState {
             plugin_name: manifest.name.clone(),
             wasi,
             wasi_table: wasmtime::component::ResourceTable::new(),
+            project_root,
             grants,
+            query_fn,
             http_client,
         };
         let mut store = Store::new(wasm_engine(), host_state);

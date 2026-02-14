@@ -378,7 +378,7 @@ fn wasm_models_child_handle_roundtrip() {
     };
 
     let child = engine
-        .instantiate_child(&component, &manifest)
+        .instantiate_child(&component, &manifest, None)
         .expect("instantiate_child failed");
 
     // Verify identity
@@ -429,7 +429,9 @@ fn wasm_models_child_health() {
         },
     };
 
-    let child = engine.instantiate_child(&component, &manifest).unwrap();
+    let child = engine
+        .instantiate_child(&component, &manifest, None)
+        .unwrap();
     match child.health() {
         crate::mother::ChildHealth::Healthy => {} // expected
         other => panic!("expected Healthy, got: {:?}", other),
@@ -468,7 +470,11 @@ fn load_repos_child() -> Option<Box<dyn crate::mother::MotherChild>> {
         },
     };
 
-    Some(engine.instantiate_child(&component, &manifest).unwrap())
+    Some(
+        engine
+            .instantiate_child(&component, &manifest, None)
+            .unwrap(),
+    )
 }
 
 /// Repos child: report_repo + check_freshness handle() round-trip.
@@ -672,7 +678,9 @@ fn wasm_repos_child_toy_capability_gating() {
         },
     };
 
-    let mut child = engine.instantiate_child(&component, &manifest).unwrap();
+    let mut child = engine
+        .instantiate_child(&component, &manifest, None)
+        .unwrap();
 
     // Report a stale repo — tick() will return both git pull and patina scrape toys
     let request = crate::mother::ChildRequest {
@@ -752,7 +760,9 @@ fn benchmark_plugin_performance() {
         },
     };
     let t2 = Instant::now();
-    let child = engine.instantiate_child(&component, &manifest).unwrap();
+    let child = engine
+        .instantiate_child(&component, &manifest, None)
+        .unwrap();
     let instantiate_ms = t2.elapsed().as_secs_f64() * 1000.0;
 
     // 4. handle() round-trip — spec threshold: <1ms
