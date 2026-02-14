@@ -129,7 +129,11 @@ use std::cell::UnsafeCell;
 /// because `static` items must be `Sync`, but WASM's single-threaded
 /// execution model makes this sound.
 struct WasmCell<T>(UnsafeCell<T>);
+#[cfg(not(target_feature = "atomics"))]
 unsafe impl<T> Sync for WasmCell<T> {}
+
+#[cfg(target_feature = "atomics")]
+compile_error!("WasmCell assumes single-threaded WASM. Use thread_local! with atomics.");
 
 static PLUGIN: WasmCell<Option<Box<dyn CommandPlugin>>> = WasmCell(UnsafeCell::new(None));
 
