@@ -1,13 +1,12 @@
 ---
 type: feat
 id: plugin-task-world
-status: design
+status: complete
 created: 2026-02-13
-sessions:
-  origin: 20260213-120746
-  refined: 20260213-135136
 blocked_by:
 - plugin-host-http
+sessions:
+  origin: 20260213-120746
 related:
 - layer/surface/build/feat/plugin-ecosystem/SPEC.md
 - layer/surface/build/feat/plugin-host-http/SPEC.md
