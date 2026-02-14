@@ -1,0 +1,13 @@
+[package]
+name = "hello-task"
+version = "0.1.0"
+edition = "2021"
+description = "Minimal task plugin for conformance testing"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+patina-task-api = { path = "../../patina-task-api" }
