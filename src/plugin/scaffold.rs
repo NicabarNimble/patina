@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Result};
 
 use super::PluginWorld;
+use crate::paths;
 
 // =========================================================================
 // Embedded templates (compiled into the binary)
@@ -104,56 +105,13 @@ pub fn to_pascal_case(name: &str) -> String {
 // =========================================================================
 
 /// The guest API crate name for each world.
-fn guest_api_crate(world: &PluginWorld) -> &'static str {
+fn guest_api_crate_name(world: &PluginWorld) -> &'static str {
     match world {
         PluginWorld::MotherChild => "patina-plugin-api",
         PluginWorld::Command => "patina-command-api",
         PluginWorld::Task => "patina-task-api",
         PluginWorld::Pipeline => "patina-pipeline-api",
     }
-}
-
-/// Find the patina source tree by searching upward for the guest API crate.
-///
-/// Starting from `from`, walks parent directories looking for one that
-/// contains `<crate_name>/Cargo.toml`. Returns the patina root if found.
-fn find_patina_root(from: &Path, crate_name: &str) -> Option<PathBuf> {
-    let mut current = from.to_path_buf();
-    loop {
-        if current.join(crate_name).join("Cargo.toml").exists() {
-            return Some(current);
-        }
-        if !current.pop() {
-            return None;
-        }
-    }
-}
-
-/// Compute a relative path from `from` to `to`.
-///
-/// Both paths must be absolute. Returns the relative path that, when
-/// resolved from `from`, reaches `to`.
-fn relative_path(from: &Path, to: &Path) -> PathBuf {
-    let from_parts: Vec<_> = from.components().collect();
-    let to_parts: Vec<_> = to.components().collect();
-
-    // Find common prefix length
-    let common = from_parts
-        .iter()
-        .zip(to_parts.iter())
-        .take_while(|(a, b)| a == b)
-        .count();
-
-    let mut result = PathBuf::new();
-    // Go up from `from` to common ancestor
-    for _ in common..from_parts.len() {
-        result.push("..");
-    }
-    // Go down from common ancestor to `to`
-    for part in &to_parts[common..] {
-        result.push(part);
-    }
-    result
 }
 
 // =========================================================================
@@ -206,9 +164,8 @@ fn world_templates(world: &PluginWorld) -> (&'static str, &'static str, &'static
 /// - `plugin.toml` (world, capabilities, provides)
 /// - `src/lib.rs` (trait impl, register macro)
 ///
-/// Resolves guest API crate path by searching upward from `parent` for
-/// the patina source tree. If not found, uses a relative sibling path
-/// (`../<crate-name>`) as fallback.
+/// Guest API crate path is resolved via `paths::plugin::guest_api_crate`,
+/// which uses the compile-time source root.
 ///
 /// Returns the path to the created project directory.
 pub fn scaffold(parent: &Path, name: &str, world: &PluginWorld) -> Result<PathBuf> {
@@ -222,18 +179,10 @@ pub fn scaffold(parent: &Path, name: &str, world: &PluginWorld) -> Result<PathBu
     let src_dir = project_dir.join("src");
     std::fs::create_dir_all(&src_dir)?;
 
-    // Resolve guest API crate path
-    let crate_name = guest_api_crate(world);
-    let abs_parent = std::fs::canonicalize(parent)?;
-    let abs_project = abs_parent.join(name);
-    let guest_api_path = if let Some(patina_root) = find_patina_root(&abs_parent, crate_name) {
-        let crate_dir = patina_root.join(crate_name);
-        let rel = relative_path(&abs_project, &crate_dir);
-        rel.to_string_lossy().to_string()
-    } else {
-        // Fallback: assume sibling directory (e.g., created next to guest API crates)
-        format!("../{}", crate_name)
-    };
+    let crate_name = guest_api_crate_name(world);
+    let guest_api_path = paths::plugin::guest_api_crate(crate_name)
+        .to_string_lossy()
+        .to_string();
 
     let (cargo_tmpl, plugin_tmpl, lib_tmpl) = world_templates(world);
 
@@ -291,26 +240,11 @@ mod tests {
     fn test_substitute() {
         let template =
             "name = \"__NAME__\"\npath = \"__GUEST_API_PATH__\"\nstruct __NAME_STRUCT__;";
-        let result = substitute(template, "review-bot", "../patina-task-api");
+        let result = substitute(template, "review-bot", "/src/patina-task-api");
         assert_eq!(
             result,
-            "name = \"review-bot\"\npath = \"../patina-task-api\"\nstruct ReviewBot;"
+            "name = \"review-bot\"\npath = \"/src/patina-task-api\"\nstruct ReviewBot;"
         );
-    }
-
-    #[test]
-    fn test_relative_path() {
-        let from = Path::new("/a/b/c");
-        let to = Path::new("/a/d/e");
-        assert_eq!(relative_path(from, to), PathBuf::from("../../d/e"));
-
-        let from = Path::new("/a/b");
-        let to = Path::new("/a/b/c/d");
-        assert_eq!(relative_path(from, to), PathBuf::from("c/d"));
-
-        let from = Path::new("/a/b/c");
-        let to = Path::new("/a/b");
-        assert_eq!(relative_path(from, to), PathBuf::from(".."));
     }
 
     #[test]
