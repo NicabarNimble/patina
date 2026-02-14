@@ -1,2 +1,0 @@
-cargo:rustc-link-lib=static=wit_bindgen_cabi_realloc0_41_0
-cargo:rustc-link-search=native=/Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-cairo/target/wasm32-wasip2/debug/build/wit-bindgen-rt-4c7f6e373fd85374/out
