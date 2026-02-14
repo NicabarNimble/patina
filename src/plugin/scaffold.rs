@@ -84,7 +84,7 @@ pub fn validate_name(name: &str) -> Result<()> {
 ///
 /// "review-bot" → "ReviewBot", "my_plugin" → "MyPlugin"
 pub fn to_pascal_case(name: &str) -> String {
-    name.split(|c| c == '-' || c == '_')
+    name.split(['-', '_'])
         .map(|segment| {
             let mut chars = segment.chars();
             match chars.next() {
