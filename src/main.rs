@@ -883,6 +883,14 @@ enum BumpType {
 enum PluginCommands {
     /// List installed plugins
     List,
+    /// Run a plugin by name
+    Run {
+        /// Plugin name (matches <name>.wasm in plugins dir)
+        name: String,
+        /// Arguments passed to the plugin
+        #[arg(last = true)]
+        args: Vec<String>,
+    },
 }
 
 /// Build a query dispatch closure for command plugins.
@@ -1334,6 +1342,96 @@ fn main() -> Result<()> {
         }
         Some(Commands::Plugin { command }) => match command {
             PluginCommands::List => commands::plugin::execute_list()?,
+            PluginCommands::Run { name, args } => {
+                let plugins_dir = patina::paths::plugin::plugins_dir();
+                let wasm_path = plugins_dir.join(format!("{}.wasm", name));
+                let toml_path = plugins_dir.join(format!("{}.toml", name));
+
+                if !wasm_path.exists() {
+                    anyhow::bail!(
+                        "plugin '{}' not found at {}\nInstall: cp {}.wasm {}",
+                        name,
+                        wasm_path.display(),
+                        name,
+                        plugins_dir.display()
+                    );
+                }
+
+                let manifest = if toml_path.exists() {
+                    patina::plugin::PluginEngine::load_manifest(&toml_path)?
+                } else {
+                    anyhow::bail!(
+                        "plugin manifest not found at {}\nTask and command plugins require a plugin.toml",
+                        toml_path.display()
+                    );
+                };
+
+                let wasm_bytes = std::fs::read(&wasm_path)?;
+
+                // Auto-detect world from manifest and dispatch
+                match manifest.world.as_str() {
+                    "task" => {
+                        let engine = patina::plugin::TaskEngine::new()?;
+                        let component = engine.load_component(&wasm_bytes)?;
+                        let query_fn = make_query_dispatch(&manifest);
+                        let (exit_code, toys) =
+                            engine.run_task(&component, &manifest, &args, query_fn)?;
+
+                        // Execute approved toys
+                        for toy in &toys {
+                            eprintln!(
+                                "[task:{}] executing toy '{}': {} {}",
+                                name,
+                                toy.name,
+                                toy.command,
+                                toy.args.join(" ")
+                            );
+                            let status = std::process::Command::new(&toy.command)
+                                .args(&toy.args)
+                                .status();
+                            match status {
+                                Ok(s) if s.success() => {
+                                    eprintln!("[task:{}] toy '{}' succeeded", name, toy.name);
+                                }
+                                Ok(s) => {
+                                    eprintln!(
+                                        "[task:{}] toy '{}' failed with exit code {}",
+                                        name,
+                                        toy.name,
+                                        s.code().unwrap_or(-1)
+                                    );
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "[task:{}] toy '{}' failed to execute: {}",
+                                        name, toy.name, e
+                                    );
+                                }
+                            }
+                        }
+
+                        if exit_code != 0 {
+                            std::process::exit(exit_code);
+                        }
+                    }
+                    "command" => {
+                        let engine = patina::plugin::CommandEngine::new()?;
+                        let component = engine.load_component(&wasm_bytes)?;
+                        let query_fn = make_query_dispatch(&manifest);
+                        let exit_code =
+                            engine.run_command(&component, &manifest, &args, query_fn)?;
+                        if exit_code != 0 {
+                            std::process::exit(exit_code);
+                        }
+                    }
+                    other => {
+                        anyhow::bail!(
+                            "plugin '{}' has world '{}' — only 'task' and 'command' are supported by `plugin run`",
+                            name, other
+                        );
+                    }
+                }
+            }
         },
         Some(Commands::Repo {
             command,
