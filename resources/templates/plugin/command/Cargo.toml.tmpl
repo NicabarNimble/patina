@@ -1,0 +1,13 @@
+[package]
+name = "__NAME__"
+version = "0.1.0"
+edition = "2021"
+description = "Patina command plugin"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+patina-command-api = { path = "../patina-command-api" }
