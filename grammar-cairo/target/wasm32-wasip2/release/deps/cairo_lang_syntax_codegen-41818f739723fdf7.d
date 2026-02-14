@@ -1,0 +1,12 @@
+/Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-cairo/target/wasm32-wasip2/release/deps/cairo_lang_syntax_codegen-41818f739723fdf7.d: /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/lib.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/cairo_spec.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/generator.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/spec.rs
+
+/Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-cairo/target/wasm32-wasip2/release/deps/libcairo_lang_syntax_codegen-41818f739723fdf7.rlib: /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/lib.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/cairo_spec.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/generator.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/spec.rs
+
+/Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-cairo/target/wasm32-wasip2/release/deps/libcairo_lang_syntax_codegen-41818f739723fdf7.rmeta: /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/lib.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/cairo_spec.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/generator.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/spec.rs
+
+/Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/lib.rs:
+/Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/cairo_spec.rs:
+/Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/generator.rs:
+/Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0/src/spec.rs:
+
+# env-dep:CARGO_MANIFEST_DIR=/Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/cairo-lang-syntax-codegen-2.15.0

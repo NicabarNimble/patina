@@ -1,0 +1,14 @@
+/Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-cairo/target/release/deps/serde-d72b68da18c1147a.d: /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-cairo/target/release/build/serde-c80820a442c04b5f/out/private.rs
+
+/Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-cairo/target/release/deps/libserde-d72b68da18c1147a.rlib: /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-cairo/target/release/build/serde-c80820a442c04b5f/out/private.rs
+
+/Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-cairo/target/release/deps/libserde-d72b68da18c1147a.rmeta: /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs /Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs /Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-cairo/target/release/build/serde-c80820a442c04b5f/out/private.rs
+
+/Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/lib.rs:
+/Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/integer128.rs:
+/Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/mod.rs:
+/Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/de.rs:
+/Users/nicabar/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.228/src/private/ser.rs:
+/Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-cairo/target/release/build/serde-c80820a442c04b5f/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-cairo/target/release/build/serde-c80820a442c04b5f/out

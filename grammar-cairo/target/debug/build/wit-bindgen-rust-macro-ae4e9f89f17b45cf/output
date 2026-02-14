@@ -1,0 +1,2 @@
+cargo:rerun-if-changed=build.rs
+cargo:rustc-env=DEBUG_OUTPUT_DIR=/Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-cairo/target/debug/build/wit-bindgen-rust-macro-ae4e9f89f17b45cf/out
