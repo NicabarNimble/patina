@@ -1,7 +1,7 @@
 ---
 type: feat
 id: plugin-template-gallery
-status: design
+status: active
 created: 2026-02-14
 sessions:
   origin: 20260214-084147
@@ -177,3 +177,4 @@ These are follow-on work that builds on the scaffolding foundation:
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-14 | design | Rewritten from outside agent draft. Removed fabricated belief (`local-first-by-default`), fake session ID, wrong file paths (`src/plugins/`, `src/crypto/`). Removed scope creep (template registry, signing, dev watch). Split into main + 2 child specs. Grounded in existing test plugin patterns. |
+| 2026-02-14 | active | Built in 7 commits: templates for all 4 worlds, scaffold.rs with name validation + PascalCase conversion, CLI wiring with --build flag, guest API path resolution via paths.rs (CARGO_MANIFEST_DIR). All 4 worlds scaffold and compile to wasm32-wasip2. Pre-push checks pass. |
