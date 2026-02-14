@@ -418,8 +418,282 @@ session and note eval+bench's likely permanent residence:
    must either extract with it or call through a host function. Decoupling
    them (spec just marks status, release runs separately) might be cleaner.
 
+## 8. Deep Dive: The host/git Question
+
+### The Precise Inventory
+
+Every `crate::git` call and raw `Command::new("git")` across the three
+Tier 3 modules, classified as read (safe, informational) or write (mutates
+repo state).
+
+#### Read Operations (18 unique)
+
+| Operation | session | spec | release | What it returns |
+|-----------|:-------:|:----:|:-------:|-----------------|
+| `is_git_repo()` | Y | - | - | bool |
+| `current_branch()` | Y | - | Y | string |
+| `is_clean()` | Y | - | - | bool |
+| `branch_exists(name)` | Y | - | - | bool |
+| `head_sha()` | Y | - | - | string (full SHA) |
+| `short_sha()` | Y | - | - | string (7-char SHA) |
+| `tag_exists(name)` | Y | Y | Y | bool |
+| `has_upstream()` | - | - | Y | bool |
+| `commits_behind_upstream()` | - | - | Y | usize |
+| `is_diverged()` | - | - | Y | bool |
+| `status_porcelain()` | Y | Y | Y | string (full status) |
+| `commits_since_count(sha)` | Y | - | - | usize |
+| `last_commit_relative_time()` | Y | - | - | string |
+| `last_commit_message()` | Y | - | - | string |
+| `diff_stat_summary()` | Y | - | - | string |
+| `log_oneline(n)` | Y | - | - | string |
+| `files_changed_since(ref)` | Y | - | - | list\<string\> |
+| `status_count()` | Y | - | - | usize |
+
+Session dominates reads (16/18). It's an observer — it watches git
+state to report session metrics. Release reads are safeguard checks (5/18).
+Spec reads are minimal (2/18, just tag_exists + is_tree_clean).
+
+#### Write Operations (7 unique)
+
+| Operation | session | spec | release | What it does |
+|-----------|:-------:|:----:|:-------:|-------------|
+| `create_tag(name, msg)` | Y | - | Y | Annotated tag on HEAD |
+| `create_tag(name, msg, ref)` | - | Y | - | Annotated tag on specific ref |
+| `checkout(branch)` | Y | - | - | Switch branch |
+| `checkout_new_branch(name, from)` | Y | - | - | Create + switch |
+| `git rm -rf <path>` | - | Y | Y | Remove tracked files |
+| `git add <paths>` | - | Y | Y | Stage files |
+| `git commit -m <msg>` | - | Y | Y | Create commit |
+
+Session writes are boundary markers (2: create_tag) and branch setup
+(2: checkout). Spec and release write the same 4 operations (tag, rm,
+add, commit) — their write surfaces are nearly identical because spec
+delegates to release.
+
+### Five Design Options
+
+#### Option A: Comprehensive host/git WIT Interface
+
+```
+interface git {
+    // Reads
+    current-branch: func() -> result<string, string>;
+    tag-exists: func(name: string) -> result<bool, string>;
+    head-sha: func() -> result<string, string>;
+    status-porcelain: func() -> result<string, string>;
+    has-upstream: func() -> result<bool, string>;
+    commits-behind-upstream: func() -> result<u32, string>;
+    is-diverged: func() -> result<bool, string>;
+    commits-since-count: func(sha: string) -> result<u32, string>;
+    log-oneline: func(count: u32) -> result<string, string>;
+    files-changed-since: func(ref: string) -> result<list<string>, string>;
+    // ... 8 more reads
+
+    // Writes
+    create-tag: func(name: string, message: string, ref: option<string>)
+        -> result<_, string>;
+    checkout: func(branch: string) -> result<_, string>;
+    checkout-new-branch: func(name: string, from: string)
+        -> result<_, string>;
+    add-paths: func(paths: list<string>) -> result<_, string>;
+    rm-paths: func(paths: list<string>, force: bool) -> result<_, string>;
+    commit: func(message: string) -> result<_, string>;
+}
+```
+
+**Assessment:** 24+ functions. Huge WIT surface. Every new git need = WIT
+change + host impl change + re-publish guest API crate. Tight coupling
+between plugin capabilities and host git surface. Violates unix-philosophy
+("one tool, one job") — this is building a git client inside WIT.
+
+#### Option B: host/exec Allowlisted Shell Execution
+
+```
+interface exec {
+    run: func(command: string, args: list<string>)
+        -> result<exec-result, string>;
+    record exec-result {
+        exit-code: s32,
+        stdout: string,
+        stderr: string,
+    }
+}
+```
+
+With manifest-declared allowed commands:
+```toml
+[capabilities]
+host_exec = ["git"]
+```
+
+**Assessment:** Small interface, maximum flexibility. But terrible for
+security — even "just git" includes `git push --force`, `git reset --hard`,
+`git clean -fdx`. The manifest allowlist is too coarse. Would need
+sub-command allowlisting (`git.tag`, `git.commit` but not `git.push`)
+which recreates Option A's complexity in TOML instead of WIT.
+
+#### Option C: Intent-Based (Return Actions, Host Executes)
+
+Plugins return *what they want to happen*, host decides *how and whether*.
+This is the toy pattern already proven in the task world.
+
+```
+interface git-intents {
+    record git-intent {
+        kind: git-intent-kind,
+        args: list<string>,
+    }
+    enum git-intent-kind {
+        create-tag,     // args: [name, message] or [name, message, ref]
+        add-paths,      // args: [path1, path2, ...]
+        rm-paths,       // args: [path1, path2, ...]
+        commit,         // args: [message]
+        checkout,       // args: [branch]
+        create-branch,  // args: [name, from]
+    }
+}
+
+// Plugin run() returns intents alongside exit code
+record run-result {
+    exit-code: s32,
+    git-intents: list<git-intent>,
+}
+```
+
+**Assessment:** Clean separation of concerns. Host validates, audits,
+and executes. Plugin can't do destructive operations the host doesn't
+allow. BUT: plugin can't make decisions mid-execution based on git state.
+"If tag exists, bail" requires the plugin to query tag_exists first,
+then conditionally emit the create-tag intent. This means **reads must
+still be synchronous host calls** while writes are deferred intents.
+
+#### Option D: Don't Extract These Modules
+
+The identity doc says "bundle now, extract later" and "the boundary
+moves outward over time." Maybe the boundary shouldn't move here.
+
+**Argument for staying compiled:** Spec, release, and session are not
+just "using the protocol" — they are **operating the development
+lifecycle**. They create commits. They create tags. They move files in
+and out of the git index. This is the version control substrate itself.
+
+The Protocol Test asks "Can Patina function without it?" Yes, technically.
+But these modules are the governance layer — the spec-driven development
+lifecycle that makes Patina's knowledge layer trustworthy. Extracting
+them into sandboxed WASM means the most critical workflow operations
+run with the least host access.
+
+**Argument for eventual extraction:** The whole point of plugins is that
+the binary gets smaller and the protocol core gets harder. Community
+members might want different spec lifecycles, release strategies, or
+session workflows. Extraction enables customization.
+
+#### Option E: Split Read/Write (Recommended)
+
+Combine the best of Options A and C:
+
+**Reads: Synchronous host calls** — small, typed, safe.
+**Writes: Returned as intents** — validated and executed by host.
+
+```
+// host/git-read — synchronous, safe, typed
+interface git-read {
+    current-branch: func() -> result<string, string>;
+    tag-exists: func(name: string) -> result<bool, string>;
+    head-sha: func() -> result<string, string>;
+    status-porcelain: func() -> result<string, string>;
+    has-upstream: func() -> result<bool, string>;
+    is-diverged: func() -> result<bool, string>;
+    commits-since: func(ref: string) -> result<u32, string>;
+    log-oneline: func(count: u32) -> result<string, string>;
+    files-changed-since: func(ref: string) -> result<list<string>, string>;
+}
+```
+
+```
+// Writes are returned as intents from run()
+record git-action {
+    kind: git-action-kind,
+    args: list<string>,
+}
+enum git-action-kind {
+    create-tag,     // [name, message] or [name, message, ref]
+    add-paths,      // [path1, ...]
+    rm-paths,       // [path1, ...]
+    commit,         // [message]
+    checkout,       // [branch]
+    create-branch,  // [name, from]
+}
+```
+
+**Assessment:**
+- Reads are an 8-9 function interface — manageable, typed, testable.
+- Writes follow the proven toy pattern — plugin declares intent, host
+  executes with full validation. The host can reject, audit, or modify.
+- Plugin logic works: "query tag_exists → if exists, return exit code 1;
+  if not, return create-tag intent" — decision logic stays in the plugin,
+  destructive execution stays in the host.
+- Matches [[two-layer-capability-grants]]: manifest declares what the
+  plugin wants (git-read + git write kinds), host decides what to allow.
+- Matches [[wasi-sandboxed-filesystem]]: reads go through host functions,
+  writes are mediated intents.
+
+### Which Modules Fit Which Pattern?
+
+| Module | Reads needed | Writes needed | Option E fit |
+|--------|:----------:|:------------:|:------------:|
+| session | 16 reads | 2 (tag, branch) | Excellent — mostly observer + boundary markers |
+| release | 5 reads (safeguards) | 4 (tag, add, rm, commit) | Good — safeguard reads → write intents |
+| spec | 2 reads | 5 (tag, add, rm, commit) | Good — but delegates to release |
+
+### The spec→release Coupling Problem
+
+Even with Option E, there's a structural issue: `spec status complete`
+calls `release.preflight()` → `release.execute()`. In a plugin world:
+
+1. **Both extracted:** spec-plugin calls... what? It can't call
+   release-plugin. Plugins don't call each other. The host would need
+   to orchestrate: spec returns "release-intent", host runs release logic.
+2. **Spec extracted, release stays:** spec-plugin returns a "release"
+   intent, host dispatches to compiled release code. Clean.
+3. **Both stay compiled:** Status quo. Works fine.
+4. **Decouple them:** `patina spec status <id> complete` just marks status.
+   `patina release` is a separate command that reads completions and
+   bumps versions. Cleanest separation but changes the user workflow.
+
+**Recommendation: Option 4 (decouple) before extraction.**
+
+Today's coupling is a convenience, not a necessity. `spec status complete`
+doing version bump + git tag + archive is an all-in-one workflow.
+Decomposing it into `spec status complete` (mark status) +
+`patina release` (detect completions, bump, tag) + `patina spec archive`
+(which already exists) follows unix-philosophy: each command does one job.
+This decoupling is worth doing regardless of plugin extraction.
+
+### Timeline Assessment
+
+```
+                   Now        After PTG    After Tier 1    Long-term
+                   ────        ─────────    ──────────      ─────────
+host/git-read:     n/a         n/a          Design          Ship
+git-action intents: n/a         n/a          Design          Ship
+spec→release:      coupled     coupled      decouple spec   extract both
+session:           compiled    compiled     compiled        extract w/ git-read
+```
+
+The host/git work is NOT on the critical path. The sequence is:
+1. Ship PTG (plugin-template-gallery)
+2. Extract yolo + upgrade (Tier 1, no git needed)
+3. Decouple spec from release (refactor, no plugin work)
+4. Design host/git-read WIT + git-action intents
+5. Extract session (heaviest git-read user, lightest writer)
+6. Extract spec, then release
+
+Steps 1-3 happen first. Steps 4-6 are long-term.
+
 ## Status Log
 
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-14 | active | Initial exploration. Read all 7 extractable modules + 4 additional candidates. Produced coupling scores, world mappings, format stability assessments, blocker inventory, and recommended extraction order. |
+| 2026-02-14 | active | Deep dive into host/git question. Inventoried all 25 git operations across Tier 3 modules (18 reads, 7 writes). Evaluated 5 design options. Recommended Option E (split read/write: synchronous reads + intent-based writes). Identified spec→release decoupling as prerequisite for extraction. |
