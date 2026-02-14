@@ -295,10 +295,7 @@ fn execute_cargo(
             .output()
             .context("Failed to remove spec directory")?;
         if !output.status.success() {
-            anyhow::bail!(
-                "git rm failed: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
+            anyhow::bail!("git rm failed: {}", String::from_utf8_lossy(&output.stderr));
         }
         let output = Command::new("git")
             .args(["add", "Cargo.toml"])

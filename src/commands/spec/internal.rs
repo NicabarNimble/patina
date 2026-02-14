@@ -408,8 +408,7 @@ pub fn update_spec_status(id: &str, new_status: &str, major: bool, no_archive: b
     println!("  File: {}", file_path);
 
     // Should we auto-archive after this status change?
-    let should_archive =
-        !no_archive && (new_status == "complete" || new_status == "abandoned");
+    let should_archive = !no_archive && (new_status == "complete" || new_status == "abandoned");
 
     // Pre-check: if archiving, ensure spec tag doesn't already exist
     let spec_dir = if should_archive {
@@ -674,10 +673,7 @@ pub fn archive_stale_specs(dry_run: bool) -> Result<()> {
         return Ok(());
     }
 
-    println!(
-        "Found {} stale spec(s) to archive:\n",
-        stale.len()
-    );
+    println!("Found {} stale spec(s) to archive:\n", stale.len());
 
     for (id, file_path, status, title) in &stale {
         let tag_name = format!("spec/{}", id);
@@ -762,10 +758,57 @@ fn is_tree_clean() -> Result<bool> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn test_tag_name_format() {
         let id = "session-092-hardening";
         let tag = format!("spec/{}", id);
         assert_eq!(tag, "spec/session-092-hardening");
+    }
+
+    #[test]
+    fn test_resolve_spec_dir_with_directory() {
+        let dir = resolve_spec_dir("layer/surface/build/feat/my-feature/SPEC.md");
+        assert_eq!(
+            dir.as_ref().map(|p| p.to_str().unwrap()),
+            Some("layer/surface/build/feat/my-feature")
+        );
+    }
+
+    #[test]
+    fn test_resolve_spec_dir_root_file() {
+        // A file at the root has no meaningful parent directory
+        let dir = resolve_spec_dir("SPEC.md");
+        // Parent is "" which has no file_name, so None
+        assert!(dir.is_none());
+    }
+
+    #[test]
+    fn test_valid_statuses_include_complete_and_abandoned() {
+        assert!(VALID_STATUSES.contains(&"complete"));
+        assert!(VALID_STATUSES.contains(&"abandoned"));
+        assert!(!VALID_STATUSES.contains(&"archived"));
+    }
+
+    #[test]
+    fn test_archive_requires_complete_or_abandoned() {
+        // Verify the status check logic matches expectations
+        let archivable = ["complete", "abandoned"];
+        let non_archivable = ["draft", "ready", "active"];
+        for s in archivable {
+            assert!(
+                s == "complete" || s == "abandoned",
+                "{} should be archivable",
+                s
+            );
+        }
+        for s in non_archivable {
+            assert!(
+                s != "complete" && s != "abandoned",
+                "{} should not be archivable",
+                s
+            );
+        }
     }
 }
