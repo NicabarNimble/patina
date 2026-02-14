@@ -590,9 +590,10 @@ fn archive_spec_inner(
     } else {
         file_path.to_string()
     };
+    // -f needed because the spec file may have just been modified (status update) on disk
     println!("Removing: {}", remove_target);
     let output = Command::new("git")
-        .args(["rm", "-r", &remove_target])
+        .args(["rm", "-rf", &remove_target])
         .output()
         .context("Failed to remove spec from tree")?;
     if !output.status.success() {
