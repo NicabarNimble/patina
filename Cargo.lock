@@ -2707,7 +2707,7 @@ checksum = "17359afc20d7ab31fdb42bb844c8b3bb1dabd7dcf7e68428492da7f16966fcef"
 
 [[package]]
 name = "patina-ai"
-version = "0.18.0"
+version = "0.19.0"
 dependencies = [
  "age",
  "anyhow",
@@ -2780,6 +2780,15 @@ dependencies = [
  "once_cell",
  "streaming-iterator",
  "tree-sitter",
+]
+
+[[package]]
+name = "patina-pipeline-api"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "wit-bindgen",
 ]
 
 [[package]]
