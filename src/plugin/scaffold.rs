@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Result};
 
 use super::PluginWorld;
-use crate::paths;
 
 // =========================================================================
 // Embedded templates (compiled into the binary)
@@ -100,30 +99,20 @@ pub fn to_pascal_case(name: &str) -> String {
 }
 
 // =========================================================================
-// Guest API crate resolution
-// =========================================================================
-
-/// The guest API crate name for each world.
-fn guest_api_crate_name(world: &PluginWorld) -> &'static str {
-    match world {
-        PluginWorld::MotherChild => "patina-plugin-api",
-        PluginWorld::Command => "patina-command-api",
-        PluginWorld::Task => "patina-task-api",
-        PluginWorld::Pipeline => "patina-pipeline-api",
-    }
-}
-
-// =========================================================================
 // Template substitution
 // =========================================================================
 
-/// Apply name and path substitutions to a template string.
-fn substitute(template: &str, name: &str, guest_api_path: &str) -> String {
+/// SDK version embedded in scaffolded Cargo.toml files.
+/// Uses the patina-sdk crate version, which tracks patina-ai major.minor.
+const SDK_VERSION: &str = "0.21";
+
+/// Apply name and version substitutions to a template string.
+fn substitute(template: &str, name: &str) -> String {
     let struct_name = to_pascal_case(name);
     template
         .replace("__NAME_STRUCT__", &struct_name)
         .replace("__NAME__", name)
-        .replace("__GUEST_API_PATH__", guest_api_path)
+        .replace("__SDK_VERSION__", SDK_VERSION)
 }
 
 // =========================================================================
@@ -163,8 +152,7 @@ fn world_templates(world: &PluginWorld) -> (&'static str, &'static str, &'static
 /// - `plugin.toml` (world, capabilities, provides)
 /// - `src/lib.rs` (trait impl, register macro)
 ///
-/// Guest API crate path is resolved via `paths::plugin::guest_api_crate`,
-/// which uses the compile-time source root.
+/// Templates use `patina-sdk` version dep — no absolute paths.
 ///
 /// Returns the path to the created project directory.
 pub fn scaffold(parent: &Path, name: &str, world: &PluginWorld) -> Result<PathBuf> {
@@ -178,25 +166,17 @@ pub fn scaffold(parent: &Path, name: &str, world: &PluginWorld) -> Result<PathBu
     let src_dir = project_dir.join("src");
     std::fs::create_dir_all(&src_dir)?;
 
-    let crate_name = guest_api_crate_name(world);
-    let guest_api_path = paths::plugin::guest_api_crate(crate_name)
-        .to_string_lossy()
-        .to_string();
-
     let (cargo_tmpl, plugin_tmpl, lib_tmpl) = world_templates(world);
 
     std::fs::write(
         project_dir.join("Cargo.toml"),
-        substitute(cargo_tmpl, name, &guest_api_path),
+        substitute(cargo_tmpl, name),
     )?;
     std::fs::write(
         project_dir.join("plugin.toml"),
-        substitute(plugin_tmpl, name, &guest_api_path),
+        substitute(plugin_tmpl, name),
     )?;
-    std::fs::write(
-        src_dir.join("lib.rs"),
-        substitute(lib_tmpl, name, &guest_api_path),
-    )?;
+    std::fs::write(src_dir.join("lib.rs"), substitute(lib_tmpl, name))?;
 
     Ok(project_dir)
 }
@@ -238,11 +218,11 @@ mod tests {
     #[test]
     fn test_substitute() {
         let template =
-            "name = \"__NAME__\"\npath = \"__GUEST_API_PATH__\"\nstruct __NAME_STRUCT__;";
-        let result = substitute(template, "review-bot", "/src/patina-task-api");
+            "name = \"__NAME__\"\nversion = \"__SDK_VERSION__\"\nstruct __NAME_STRUCT__;";
+        let result = substitute(template, "review-bot");
         assert_eq!(
             result,
-            "name = \"review-bot\"\npath = \"/src/patina-task-api\"\nstruct ReviewBot;"
+            "name = \"review-bot\"\nversion = \"0.21\"\nstruct ReviewBot;"
         );
     }
 
