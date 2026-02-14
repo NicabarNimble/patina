@@ -20,13 +20,19 @@
 // Compiler-enforced world exclusion — [[compiler-enforced-safety]]
 // =========================================================================
 
-#[cfg(any(
-    all(feature = "task", feature = "command"),
-    all(feature = "task", feature = "mother-child"),
-    all(feature = "task", feature = "pipeline"),
-    all(feature = "command", feature = "mother-child"),
-    all(feature = "command", feature = "pipeline"),
-    all(feature = "mother-child", feature = "pipeline"),
+// Only enforce on wasm32 — workspace builds on native unify features across
+// consumers (doctor=command, models=mother-child) which is harmless on native
+// but would break a WASM binary with conflicting export symbols.
+#[cfg(all(
+    target_arch = "wasm32",
+    any(
+        all(feature = "task", feature = "command"),
+        all(feature = "task", feature = "mother-child"),
+        all(feature = "task", feature = "pipeline"),
+        all(feature = "command", feature = "mother-child"),
+        all(feature = "command", feature = "pipeline"),
+        all(feature = "mother-child", feature = "pipeline"),
+    )
 ))]
 compile_error!(
     "Enable exactly one patina-sdk world feature: task, command, mother-child, or pipeline"
