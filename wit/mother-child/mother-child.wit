@@ -9,6 +9,12 @@ world mother-child {
     /// so other worlds (command, oracle, etc.) can reuse them.
     import patina:host/types@0.1.0;
 
+    /// Import read-only layer access for project data
+    import patina:host/layer@0.1.0;
+
+    /// Import capability-gated query access (scry, context, assay)
+    import patina:host/query@0.1.0;
+
     /// Import host HTTP (domain-allowlisted)
     import patina:host/http@0.1.0;
 
