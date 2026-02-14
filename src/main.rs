@@ -1476,8 +1476,22 @@ fn main() -> Result<()> {
             commands::belief::execute(command)?;
         }
         Some(Commands::Spec { command }) => match command {
-            commands::spec::SpecCommands::Archive { id, dry_run } => {
-                commands::spec::archive(&id, dry_run)?;
+            commands::spec::SpecCommands::Archive {
+                id,
+                dry_run,
+                stale,
+            } => {
+                if stale {
+                    commands::spec::archive_stale(dry_run)?;
+                } else if let Some(id) = id {
+                    commands::spec::archive(&id, dry_run)?;
+                } else {
+                    anyhow::bail!(
+                        "Spec ID required. Usage:\n  \
+                         patina spec archive <id>\n  \
+                         patina spec archive --stale"
+                    );
+                }
             }
             commands::spec::SpecCommands::Ready { json } => {
                 commands::spec::ready(json)?;
@@ -1485,8 +1499,13 @@ fn main() -> Result<()> {
             commands::spec::SpecCommands::Blocked { json } => {
                 commands::spec::blocked(json)?;
             }
-            commands::spec::SpecCommands::Status { id, status, major } => {
-                commands::spec::status(&id, &status, major)?;
+            commands::spec::SpecCommands::Status {
+                id,
+                status,
+                major,
+                no_archive,
+            } => {
+                commands::spec::status(&id, &status, major, no_archive)?;
             }
             commands::spec::SpecCommands::List {
                 status,

@@ -354,7 +354,7 @@ const VALID_STATUSES: &[&str] = &["draft", "ready", "active", "complete", "aband
 /// When status is "complete", delegates to `ReleaseStrategy` for version
 /// management. The `major` flag overrides type-based bump detection for
 /// 1.0.0 moments (`patina spec status <id> complete --major`).
-pub fn update_spec_status(id: &str, new_status: &str, major: bool) -> Result<()> {
+pub fn update_spec_status(id: &str, new_status: &str, major: bool, _no_archive: bool) -> Result<()> {
     // 1. Validate new status
     if !VALID_STATUSES.contains(&new_status) {
         anyhow::bail!(
@@ -538,6 +538,13 @@ pub fn archive_spec(id: &str, dry_run: bool) -> Result<()> {
         id, tag_name, tag_name, file_path
     );
 
+    Ok(())
+}
+
+/// Archive all completed/abandoned specs that still have files in the tree
+pub fn archive_stale_specs(_dry_run: bool) -> Result<()> {
+    // Stub — will be implemented in step 5
+    println!("--stale not yet implemented");
     Ok(())
 }
 
