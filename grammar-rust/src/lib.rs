@@ -213,7 +213,9 @@ fn walk_node(
             }
         }
         "impl_item" => {
+            // process_impl handles its own recursion into body children
             process_impl(node, source, file_path, data);
+            return;
         }
         "mod_item" => {
             if let Some(name) = get_node_field_text(node, "name", source) {
@@ -231,7 +233,7 @@ fn walk_node(
         _ => {}
     }
 
-    // Recurse into children
+    // Recurse into children (skipped for impl_item which handles its own)
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         walk_node(&child, source, file_path, data, current_function);
