@@ -152,7 +152,11 @@ use std::cell::UnsafeCell;
 /// Safety: WASM is single-threaded (wasm32-wasip2 has no threads).
 /// No concurrent access is possible.
 struct WasmCell<T>(UnsafeCell<T>);
+#[cfg(not(target_feature = "atomics"))]
 unsafe impl<T> Sync for WasmCell<T> {}
+
+#[cfg(target_feature = "atomics")]
+compile_error!("WasmCell assumes single-threaded WASM. Use thread_local! with atomics.");
 
 static PLUGIN: WasmCell<Option<Box<dyn PipelinePlugin>>> = WasmCell(UnsafeCell::new(None));
 
