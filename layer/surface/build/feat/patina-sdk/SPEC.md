@@ -1,7 +1,7 @@
 ---
 type: feat
 id: patina-sdk
-status: draft
+status: ready
 created: 2026-02-14
 sessions:
   origin: 20260214-130235
