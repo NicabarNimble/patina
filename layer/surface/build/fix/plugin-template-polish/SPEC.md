@@ -1,7 +1,7 @@
 ---
 type: fix
 id: plugin-template-polish
-status: ready
+status: active
 created: 2026-02-14
 sessions:
   origin: 20260214-113605
@@ -38,22 +38,12 @@ three rough edges:
 
 ## Design
 
-### 1. Guest API Path Comment
+### ~~1. Guest API Path Comment~~ — SUPERSEDED
 
-Add a comment block above the dependency line in every Cargo.toml
-template:
-
-```toml
-[dependencies]
-# NOTE: This path dependency points to the patina source tree where
-# the binary was compiled. When the guest API crates are published
-# to crates.io, replace with:
-#   patina-task-api = "0.1"
-patina-task-api = { path = "__GUEST_API_PATH__" }
-```
-
-Four templates affected (one per world). No code change — template
-files only.
+Superseded by [[patina-sdk]] (layer/surface/build/feat/patina-sdk/SPEC.md).
+That spec eliminates the absolute path entirely by publishing a
+consolidated SDK crate to crates.io. No comment needed when there's
+no path dep.
 
 ### 2. Per-World Capability Scaffolding
 
@@ -129,17 +119,17 @@ src/main.rs    # --release flag, proactive rustup check, artifact path
 
 ## Build Order
 
-1. **Cargo.toml comments** — add path dep comment to all 4 templates
+1. ~~**Cargo.toml comments**~~ — superseded by [[patina-sdk]]
 2. **Capability expansion** — update 3 plugin.toml templates (skip pipeline)
 3. **Build ergonomics** — add --release flag, proactive rustup check
 
-Target: 3 commits.
+Target: 2 commits (item 1 superseded).
 
 ## Exit Criteria
 
 ### Critical
-- [ ] Every generated Cargo.toml has a comment explaining the path dep
-      and showing the future crates.io syntax
+- [x] ~~Every generated Cargo.toml has path dep comment~~ — superseded
+      by [[patina-sdk]]
 - [ ] command/task/mother-child plugin.toml templates show all
       capabilities their world supports (enabled or commented)
 - [ ] `--release` flag produces release-mode WASM artifact
@@ -159,3 +149,4 @@ Target: 3 commits.
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-14 | ready | Created from review feedback on PTG build. Three focused improvements: path dep comment, per-world capabilities, build ergonomics. |
+| 2026-02-14 | active | Item 1 superseded by [[patina-sdk]]. Building items 2 and 3. |
