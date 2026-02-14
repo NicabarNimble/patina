@@ -247,20 +247,34 @@ fn check_index_freshness() -> Result<()> {
 // ============================================================================
 
 /// Execute a prepared release.
+///
+/// When `archive_dir` is provided, the spec directory is removed and folded
+/// into the release commit (Cargo strategy only).
 pub(crate) fn execute_release(
     prepared: PreparedRelease,
     title: &str,
     spec_path: &str,
+    archive_dir: Option<&str>,
 ) -> Result<()> {
     match prepared.strategy {
-        ReleaseStrategy::Cargo => execute_cargo(prepared, title, spec_path),
+        ReleaseStrategy::Cargo => execute_cargo(prepared, title, spec_path, archive_dir),
         ReleaseStrategy::External => execute_external(prepared, title),
         ReleaseStrategy::None => Ok(()), // Silent no-op
     }
 }
 
 /// Cargo release: update Cargo.toml, commit, tag.
-fn execute_cargo(prepared: PreparedRelease, title: &str, spec_path: &str) -> Result<()> {
+///
+/// When `archive_dir` is provided, the spec directory is `git rm -r`'d
+/// and included in the release commit. The caller is responsible for
+/// creating the `spec/<id>` tag before calling this (so it points to
+/// the commit that still has the spec).
+fn execute_cargo(
+    prepared: PreparedRelease,
+    title: &str,
+    spec_path: &str,
+    archive_dir: Option<&str>,
+) -> Result<()> {
     let new_version = prepared
         .new_version
         .as_deref()
@@ -273,19 +287,45 @@ fn execute_cargo(prepared: PreparedRelease, title: &str, spec_path: &str) -> Res
     // 1. Update Cargo.toml
     update_cargo_version(new_version)?;
 
-    // 2. Stage and commit
-    let commit_msg = format!("release: v{} — {}", new_version, title);
-    let output = Command::new("git")
-        .args(["add", "Cargo.toml", spec_path])
-        .output()
-        .context("Failed to stage files")?;
-    if !output.status.success() {
-        anyhow::bail!(
-            "git add failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+    // 2. Stage files
+    if let Some(dir) = archive_dir {
+        // Archive mode: remove spec directory (stages deletion), then add Cargo.toml
+        let output = Command::new("git")
+            .args(["rm", "-r", dir])
+            .output()
+            .context("Failed to remove spec directory")?;
+        if !output.status.success() {
+            anyhow::bail!(
+                "git rm failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        let output = Command::new("git")
+            .args(["add", "Cargo.toml"])
+            .output()
+            .context("Failed to stage Cargo.toml")?;
+        if !output.status.success() {
+            anyhow::bail!(
+                "git add failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    } else {
+        // Normal mode: stage Cargo.toml + spec file
+        let output = Command::new("git")
+            .args(["add", "Cargo.toml", spec_path])
+            .output()
+            .context("Failed to stage files")?;
+        if !output.status.success() {
+            anyhow::bail!(
+                "git add failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
     }
 
+    // 3. Commit
+    let commit_msg = format!("release: v{} — {}", new_version, title);
     let output = Command::new("git")
         .args(["commit", "-m", &commit_msg])
         .output()
@@ -297,7 +337,7 @@ fn execute_cargo(prepared: PreparedRelease, title: &str, spec_path: &str) -> Res
         }
     }
 
-    // 3. Create tag
+    // 4. Create version tag
     let tag_name = format!("v{}", new_version);
     crate::git::create_tag(&tag_name, title)?;
 
