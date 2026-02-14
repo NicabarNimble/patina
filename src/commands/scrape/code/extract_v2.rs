@@ -209,14 +209,15 @@ fn discover_pipeline_plugins() -> HashMap<String, LoadedPipelinePlugin> {
 }
 
 /// Build a parse request envelope. Source code is sent as UTF-8 string.
-fn build_parse_envelope(content: &[u8], language: &str) -> String {
+fn build_parse_envelope(content: &[u8], language: &str, path: &str) -> String {
     let source = String::from_utf8_lossy(content);
     serde_json::json!({
         "op": "parse",
         "version": "1",
         "payload": {
             "source": source,
-            "language": language
+            "language": language,
+            "path": path
         }
     })
     .to_string()
@@ -232,7 +233,7 @@ fn process_file_with_plugins(
 ) -> Result<ExtractedData> {
     // Plugin-first dispatch: check if a pipeline plugin claims this extension
     if let Some(plugin) = pipeline_plugins.get(ext) {
-        let request = build_parse_envelope(content, ext);
+        let request = build_parse_envelope(content, ext, file_path);
         match plugin
             .engine
             .handle(&plugin.component, &plugin.manifest, &request)
