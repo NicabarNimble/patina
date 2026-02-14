@@ -3,8 +3,10 @@ type: feat
 id: grammar-extraction
 status: ready
 created: 2026-02-14
+revised: 2026-02-14
 sessions:
   origin: 20260214-130235
+  review: 20260214-170156
 blocked_by: []
 related:
 - layer/surface/build/feat/patina-sdk/SPEC.md
@@ -15,6 +17,9 @@ beliefs:
 - graceful-extraction
 - separate-worlds-for-isolation
 - fix-architecture-not-documentation
+- parser-agnostic-interfaces
+- structural-fixes-over-tactical
+- gate-exports-on-target-arch
 ---
 
 # feat: Grammar Extraction — Grammars as Pipeline Plugins
@@ -34,7 +39,7 @@ into the patina binary. This causes five real problems:
    [[20260127-085434]] hit the 10MB package limit. Current workaround:
    distribute as pre-built binaries, not crates.
 
-2. **52MB binary when goal is 10-15MB.** ONNX runtime + grammar bundle
+2. **69MB binary when goal is 10-15MB.** ONNX runtime + grammar bundle
    dominate. Users who only parse Rust still carry Go, Solidity, Cairo.
 
 3. **Version conflict hell.** Session [[20250901-135830]] and
@@ -53,41 +58,107 @@ into the patina binary. This causes five real problems:
    index, search, believe, evolve. Which languages you can parse is
    tooling.
 
-## Current State
+## Current State (Verified by Code Review)
 
 ### Parser Technologies (Not All Tree-sitter)
 
-| Language | Parser | Technology | Binary Impact |
+| Language | Parser | Technology | parser.c Size |
 |----------|--------|-----------|---------------|
-| Rust | tree-sitter-rust | C via FFI | ~2MB |
-| Go | tree-sitter-go | C via FFI | ~1MB |
-| Python | tree-sitter-python | C via FFI | ~1MB |
-| JavaScript | tree-sitter-javascript | C via FFI | ~1MB |
-| TypeScript | tree-sitter-typescript | C via FFI | ~1MB |
-| TSX | tree-sitter-tsx | C via FFI | ~1MB |
-| Solidity | tree-sitter-solidity | C via FFI | ~1MB |
-| C | tree-sitter-c | C via FFI | ~1MB |
-| C++ | tree-sitter-cpp | C via FFI | ~1MB |
-| **Cairo** | **cairo-lang-parser** | **Rust crates** | **~5MB** |
+| Rust | tree-sitter-rust | C via FFI | 5.8MB |
+| Go | tree-sitter-go | C via FFI | 1.4MB |
+| Python | tree-sitter-python | C via FFI | 3.3MB |
+| JavaScript | tree-sitter-javascript | C via FFI | 2.4MB |
+| TypeScript | tree-sitter-typescript | C via FFI | 8.3MB |
+| TSX | tree-sitter-tsx | C via FFI | 8.4MB |
+| Solidity | tree-sitter-solidity | C via FFI | 2.1MB |
+| C | tree-sitter-c | C via FFI | 3.7MB |
+| C++ | tree-sitter-cpp | C via FFI | 17MB |
+| **Cairo** | **cairo-lang-parser** | **Rust crates** | **N/A** |
 
 Cairo is architecturally different — it uses the official Cairo
 compiler's parser (`cairo-lang-parser`, `cairo-lang-syntax`,
 `cairo-lang-filesystem`), not tree-sitter. The extraction must handle
 both parser technologies.
 
-### What patina-metal Provides
+**Total C grammar source: ~52MB.** C++ alone is 17MB.
 
-Two distinct things:
+### What patina-metal Actually Provides (Code Review)
 
-1. **Routing infrastructure** (small, stays in patina-ai):
-   - `Metal` enum — language detection from file extensions
-   - Extension → language mapping
-   - `Analyzer` — unified parsing interface
+Three distinct things, not two:
 
-2. **Grammar implementations** (large, becomes plugins):
-   - 8 tree-sitter grammars (C source, FFI bindings)
-   - 1 Cairo parser (Rust crates, `CairoParser`)
-   - Per-language query logic (symbol extraction, complexity)
+1. **Metal enum + routing** (patina-metal/src/metal.rs, ~200 lines):
+   - `Metal` enum — 9 variants for supported languages
+   - `from_extension()` — extension → language detection
+   - `tree_sitter_language()` / `tree_sitter_language_for_ext()` —
+     returns the compiled tree-sitter Language for a metal
+   - `normalize_node_kind()` — maps language-specific AST node types
+     to generic categories (function, struct, trait, etc.)
+   - `file_pattern()` — glob patterns for file discovery
+
+2. **Grammar FFI bindings** (patina-metal/src/grammars.rs, ~50 lines):
+   - `extern "C"` declarations for 8 tree-sitter grammars
+   - Safe wrapper functions (e.g., `language_rust() -> Language`)
+   - These link against C libraries compiled by build.rs
+
+3. **Cairo parser** (patina-metal/src/cairo.rs, ~280 lines):
+   - Full Cairo AST parser using `SimpleParserDatabase`
+   - Extracts functions, structs, traits, impls, modules, imports
+   - Returns `CairoSymbols` struct (not `ExtractedData`)
+
+**NOT heavily used by scrape:** The `Analyzer` struct in lib.rs and
+the `queries.rs` module (which only has .scm files for Rust and Go)
+are largely unused. The actual extraction happens in the language
+processors, not through Analyzer.
+
+### Where the Real Extraction Logic Lives
+
+**NOT in patina-metal.** The heavy lifting is in
+`src/commands/scrape/code/languages/` — 9 per-language processor
+modules (each 200-400 lines):
+
+```
+src/commands/scrape/code/languages/
+├── rust.rs          # RustProcessor::process_file()
+├── go.rs            # GoProcessor::process_file()
+├── python.rs        # PythonProcessor::process_file()
+├── javascript.rs    # JavaScriptProcessor::process_file()
+├── typescript.rs    # TypeScriptProcessor::process_file()
+├── solidity.rs      # SolidityProcessor::process_file()
+├── cairo.rs         # CairoProcessor::process_file()
+├── c.rs             # CProcessor::process_file()
+├── cpp.rs           # CppProcessor::process_file()
+└── mod.rs           # Language enum (duplicate of Metal!)
+```
+
+Each processor:
+1. Gets a tree-sitter Language from `patina_metal::Metal::X`
+2. Creates its own `tree_sitter::Parser`
+3. Parses source code into an AST
+4. Walks the AST with custom extraction logic
+5. Returns `ExtractedData` (symbols, functions, types, imports,
+   call_edges, constants, members)
+
+**A grammar plugin replaces a language processor**, not the
+patina-metal Analyzer. The plugin must implement the same extraction
+logic that the processor does today.
+
+### Dual Enum Problem
+
+There are TWO language enums that do the same thing:
+- `patina_metal::Metal` (metal.rs) — used by language processors
+- `scrape::code::languages::Language` (languages/mod.rs) — used by
+  extract_v2.rs dispatch
+
+Both map identical file extensions. When Metal folds into patina-ai,
+these must unify into a single enum.
+
+### Query Files (Only 2 of 9)
+
+Only Rust and Go have `.scm` query files in `patina-metal/queries/`.
+The other 7 languages have no queries. The extraction logic for ALL
+9 languages lives in the per-language processors, not in tree-sitter
+queries. This is important — the plugins need to port the processor
+logic, not query files.
 
 ### Plugin Dispatch (Already Built)
 
@@ -95,15 +166,36 @@ Two distinct things:
 plugin-first dispatch:
 
 ```
-1. Scan file → detect language from extension
-2. Check pipeline plugins for extension claim
-3. If plugin exists → dispatch to WASM plugin
-4. If no plugin → fall back to compiled grammar
-5. If no fallback → skip file with warning
+1. Scan file → detect language from extension (Language enum)
+2. Check pipeline plugins for extension claim (HashMap<String, Plugin>)
+3. If plugin exists → build JSON envelope → dispatch to WASM plugin
+4. Parse response as ExtractedData (serde_json::from_str)
+5. If plugin fails → fall back to compiled language processor
+6. If no processor → skip file with error
 ```
 
 This is [[graceful-extraction]] in action. The host-side plumbing
-exists. We need to build the plugin-side.
+exists and is tested. We just need actual plugins.
+
+### ExtractedData Schema (The Plugin Contract)
+
+The response JSON must deserialize to `ExtractedData`:
+
+```rust
+pub struct ExtractedData {
+    pub symbols: Vec<CodeSymbol>,     // name, kind, path, line, signature
+    pub functions: Vec<FunctionFact>, // name, file, params, return_type, complexity
+    pub types: Vec<TypeFact>,         // name, file, kind, fields
+    pub imports: Vec<ImportFact>,     // file, import_path, alias
+    pub call_edges: Vec<CallGraphEntry>, // caller, callee, file, line, call_type
+    pub constants: Vec<ConstantFact>, // name, file, value, const_type, scope
+    pub members: Vec<MemberFact>,     // container, name, file, member_type, visibility
+}
+```
+
+This is the stable contract. All 7 field types derive
+`serde::Serialize` + `serde::Deserialize`. The host already does
+`serde_json::from_str::<ExtractedData>(&response)` (extract_v2.rs:241).
 
 ## Design
 
@@ -119,93 +211,152 @@ internally:
 - Cairo-lang-parser (Rust, compiled to wasm32-wasip2 natively)
 - Pest, nom, or any Rust parser combinator
 - Hand-written parsers
-- Future: WASM-native tree-sitter (upstream support maturing)
 
-### Phase 1: Spike — One Grammar as Plugin
+### Critical Feasibility: C Code to wasm32-wasip2
 
-Build the Rust grammar as a pipeline plugin to prove the pattern.
-Rust is the right choice because:
-- Self-hosting (patina is Rust, must always parse Rust)
-- Well-tested tree-sitter grammar
-- Validates the full chain: build → install → dispatch → extract
+Tree-sitter grammar plugins need C code compiled to WASM. Two C
+compilation steps are required:
 
-**Spike deliverables:**
-- `grammar-rust/` plugin project (built with patina-sdk pipeline)
-- Compiles tree-sitter-rust to wasm32-wasip2
-- Handles `parse` operation, returns `ExtractedData`-compatible JSON
-- Performance benchmark: plugin vs compiled-in
-- Decision: acceptable overhead for plugin dispatch?
+1. **tree-sitter runtime** — the `tree-sitter` crate's build.rs
+   compiles `src/lib.c` via `cc::Build` (~2000 lines of C)
+2. **Grammar C sources** — each grammar's `parser.c` + optional
+   `scanner.c` compiled in the plugin's own build.rs via `cc::Build`
 
-**Technical risks to validate:**
-- Tree-sitter C code compiling to wasm32-wasip2 (via wasi-sdk/clang)
-- Parser initialization cost per request (pipeline plugins are
-  stateless)
-- WASM component size (tree-sitter grammar + runtime)
+The `cc` crate supports cross-compilation to wasm32-wasip2 when
+a WASM-capable C compiler is available. **wasi-sdk** provides this.
 
-### Phase 2: Cairo Plugin (Non-Tree-sitter Proof)
+**Setup for grammar plugin authors:**
+```bash
+# Install wasi-sdk (one-time)
+# macOS: download from https://github.com/WebAssembly/wasi-sdk/releases
+export WASI_SDK_PATH=/opt/wasi-sdk
 
-Build the Cairo grammar as a pipeline plugin using cairo-lang-parser.
-This proves the system works for non-tree-sitter parsers.
+# In plugin project's .cargo/config.toml:
+[target.wasm32-wasip2]
+linker = "/opt/wasi-sdk/bin/wasm-ld"
 
-Cairo is actually simpler than tree-sitter for WASM because it's
-pure Rust — no C FFI, no wasi-sdk. Just:
-```toml
-[dependencies]
-patina-sdk = { version = "0.21", features = ["pipeline"] }
-cairo-lang-parser = "2.12"
-cairo-lang-syntax = "2.12"
-cairo-lang-filesystem = "2.12"
+[env]
+CC_wasm32_wasip2 = { value = "/opt/wasi-sdk/bin/clang", force = true }
+AR_wasm32_wasip2 = { value = "/opt/wasi-sdk/bin/llvm-ar", force = true }
 ```
 
-Compile to `wasm32-wasip2` and the parser works in WASM natively.
+**Prior art:** Zed editor uses this exact approach — their extension
+system compiles tree-sitter grammars to WASM via wasi-sdk. Commits
+in the zed-industries/zed ref repo confirm this:
+- "Bump Tree-sitter for bug fixes affecting YAML parser loaded via WASM"
+- "Compile and instantiate wasm modules on a background thread"
+- "Bump Tree-sitter for inclusion of strncat in wasm c stdlib"
 
-**Key question:** Do the cairo-lang crates compile to wasm32-wasip2?
-They're pure Rust with no native deps (as far as we know), but this
-needs verification.
+**End users never compile grammars.** They install pre-built `.wasm`
+binaries via `patina plugin install`. Only plugin authors need wasi-sdk.
+
+### Phase 1: Spike — Cairo Grammar Plugin (Pure Rust)
+
+**Changed from original:** Spike Cairo first, not Rust. Cairo is pure
+Rust — no wasi-sdk needed, no C toolchain variable. This proves the
+end-to-end pipeline plugin pattern cleanly.
+
+Cairo is the right first choice because:
+- Pure Rust → `cargo build --target wasm32-wasip2` with no C toolchain
+- Validates the full chain: build → install → dispatch → extract
+- Isolates the plugin pattern from the C-compilation question
+- The existing CairoProcessor (languages/cairo.rs) is the reference
+
+**Spike deliverables:**
+- `grammar-cairo/` plugin project (outside workspace, uses patina-sdk)
+- Compiles to wasm32-wasip2 as a WASM component
+- Handles `parse` operation, returns `ExtractedData` JSON
+- Install to `~/.patina/pipeline/grammar-cairo/`
+- `patina scrape` dispatches to plugin, produces same output as
+  the compiled-in CairoProcessor
+
+**Risk to validate:** Do cairo-lang-parser, cairo-lang-syntax,
+cairo-lang-filesystem compile to wasm32-wasip2? They're pure Rust
+(Salsa incremental computation framework, no native deps), but the
+dependency tree is large. Plugin binary size could be substantial.
+
+**Decision gate:** If cairo-lang crates don't compile to wasm32-wasip2
+(unlikely but possible), Cairo stays compiled-in as a special case
+and we proceed with tree-sitter grammars only.
+
+### Phase 2: Rust Grammar Plugin (Tree-sitter + wasi-sdk)
+
+Build the Rust grammar as a pipeline plugin to prove the tree-sitter
+pattern. This introduces the C-compilation variable.
+
+**Deliverables:**
+- `grammar-rust/` plugin project with wasi-sdk build configuration
+- Bundles tree-sitter runtime + tree-sitter-rust grammar C source
+- build.rs compiles parser.c + scanner.c via cc crate targeting wasm32
+- Handles `parse` operation with full extraction logic from
+  `languages/rust.rs` (the richest processor — constants, members,
+  call edges)
+- Performance benchmark: plugin vs compiled-in
+- Document wasi-sdk setup in README
+
+**Technical risks:**
+- wasi-sdk availability and setup friction for developers
+- Parser init cost per request (pipeline plugins are stateless —
+  each `handle()` creates a new Parser)
+- WASM component size (tree-sitter runtime + 5.8MB parser.c compiled)
+- tree-sitter's `src/lib.c` compatibility with WASM (Zed proves this
+  works, but version-specific issues possible)
+
+**Decision gate:** If overhead > 10x of compiled-in, reconsider.
+If wasi-sdk setup is too painful, consider `zig cc` as alternative.
 
 ### Phase 3: Extract Remaining Grammars
 
-Once both patterns are proven (tree-sitter and non-tree-sitter),
-extract the remaining 7 grammars as individual plugins:
+Once both patterns are proven (pure Rust and tree-sitter + C),
+extract the remaining 7 grammars. Each plugin ports its corresponding
+language processor from `src/commands/scrape/code/languages/`.
 
 ```
-grammar-go/         (tree-sitter)
-grammar-python/     (tree-sitter)
-grammar-javascript/ (tree-sitter)
-grammar-typescript/  (tree-sitter, handles .ts + .tsx)
-grammar-solidity/    (tree-sitter)
-grammar-c/          (tree-sitter, handles .c + .h)
-grammar-cpp/        (tree-sitter, handles .cpp + .cc + .hpp + etc)
+grammar-go/         ports languages/go.rs          (1.4MB parser.c)
+grammar-python/     ports languages/python.rs      (3.3MB parser.c)
+grammar-javascript/ ports languages/javascript.rs  (2.4MB parser.c)
+grammar-typescript/ ports languages/typescript.rs   (8.3MB + 8.4MB TS/TSX)
+grammar-solidity/   ports languages/solidity.rs     (2.1MB parser.c)
+grammar-c/          ports languages/c.rs            (3.7MB parser.c)
+grammar-cpp/        ports languages/cpp.rs          (17MB parser.c)
 ```
 
-TypeScript and TSX may merge into one plugin (same upstream grammar
-repo, different entry points). C and C++ may merge similarly. Let
-the natural boundaries emerge during extraction.
+**TypeScript plugin handles both .ts and .tsx** — same upstream
+grammar repo, dual parser entry points. Claims languages = ["ts", "tsx"].
+
+**C and C++ stay separate** — very different parser sizes (3.7MB vs
+17MB) and different AST node kinds. No benefit to merging.
 
 ### Phase 4: Fold Infrastructure, Delete Metal
 
 Once all 9 grammars are plugins:
 
-1. **Move routing into patina-ai** — `Metal` enum, extension mapping,
-   `Language` detection. This is ~100 lines of pattern matching, not
-   a separate crate.
+1. **Unify Language enums** — Merge `Metal` (from patina-metal) and
+   `Language` (from scrape/code/languages/mod.rs) into a single enum
+   in patina-ai. Keep the extension mapping, drop the tree-sitter
+   language lookup (plugins own that now).
 
-2. **Keep Rust as compiled fallback** — Per [[graceful-extraction]],
+2. **Move `normalize_node_kind()` into plugins** — Each plugin
+   normalizes its own AST node types before serializing to
+   ExtractedData. The host doesn't need language-specific knowledge.
+
+3. **Keep Rust as compiled fallback** — Per [[graceful-extraction]],
    patina must always parse Rust even with zero plugins installed.
-   The Rust grammar stays compiled into patina-ai (or a minimal
-   built-in fallback parser).
+   Keep `languages/rust.rs` + tree-sitter-rust compiled-in. Remove
+   the other 8 language processors.
 
-3. **Remove patina-metal from workspace** — Delete the crate, the
-   grammars/ submodule directory, the 152-line build.rs. The workspace
-   loses ~60MB of C source.
+4. **Remove patina-metal from workspace** — Delete the crate, the
+   grammars/ directory (52MB+ of C source), the 152-line build.rs,
+   the FFI bindings, the Analyzer, the query files.
 
-4. **Update patina-ai Cargo.toml** — Remove `patina-metal` dependency.
-   Binary size drops significantly.
+5. **Update patina-ai Cargo.toml** — Remove `patina-metal` dependency.
+   Remove `tree-sitter` dep from patina-ai if only used through metal
+   (check: rust.rs fallback still needs it).
 
 ### Plugin Distribution
 
-Grammar plugins ship via the mechanism built in [[patina-sdk]] and
-[[plugin-distribution]]:
+Grammar plugins ship as pre-built WASM binaries, NOT as crates.io
+packages. Distribution via the mechanism built in [[patina-sdk]]:
 
 ```bash
 # First run — install common grammars
@@ -228,36 +379,44 @@ their stack.
 
 Pipeline plugins receive and return JSON envelopes:
 
-**Request:**
+**Request** (already built in extract_v2.rs `build_parse_envelope()`):
 ```json
 {
-  "version": "1",
   "op": "parse",
+  "version": "1",
   "payload": {
     "source": "fn main() { ... }",
-    "path": "src/main.rs",
-    "language": "rust"
+    "language": "rs"
   }
 }
 ```
 
-**Response:**
+**Response** (must deserialize to `ExtractedData`):
 ```json
 {
-  "version": "1",
-  "data": {
-    "functions": [...],
-    "types": [...],
-    "imports": [...],
-    "symbols": [...],
-    "complexity": 42
-  }
+  "symbols": [
+    {"path": "./src/main.rs", "name": "main", "kind": "function",
+     "line": 1, "end_line": 3, "signature": "fn main()"}
+  ],
+  "functions": [
+    {"file": "./src/main.rs", "name": "main", "params": "",
+     "return_type": "", "complexity": 1, "start_line": 1,
+     "end_line": 3, "is_public": false}
+  ],
+  "types": [],
+  "imports": [],
+  "call_edges": [],
+  "constants": [],
+  "members": []
 }
 ```
 
-The `data` schema matches what `ExtractedData` currently expects.
-Plugins serialize to this format. The host deserializes. Parser
-technology is invisible to the host.
+Note: `payload.language` is the file extension (e.g., "rs", "py"),
+NOT the language name. This matches how `pipeline_plugins.get(ext)`
+dispatches in extract_v2.rs. The `path` field is NOT in the request
+envelope today — plugins receive source code only, file path context
+comes from the host. If plugins need path for their ExtractedData
+output, we add it to the payload.
 
 ### Version Conflict: Permanently Solved
 
@@ -270,80 +429,75 @@ This is the structural fix for the problem that `architecture-patina-metal.md`
 documented. The compiled-from-source approach was a tactical fix (it
 worked). Plugins are the strategic fix (the problem cannot recur).
 
-## Naming: crates.io Awareness
-
-The `patina` crate on crates.io is a UEFI firmware SDK (unrelated).
-They use underscore naming (`patina_macro`, `patina_stacktrace`).
-Our crates use hyphen naming (`patina-ai`, `patina-sdk`). Low
-confusion risk, but worth noting:
-
-- `patina-ai` — clearly distinct (already our package name)
-- `patina-sdk` — slightly generic but "SDK for building Patina WASM
-  plugins" in the description disambiguates
-- Grammar plugins would NOT be published to crates.io — they're
-  WASM binaries distributed via `patina plugin install`, not Rust
-  library crates
-
 ## Files to Change
 
 ```
-# Phase 1: Spike
+# Phase 1: Cairo spike (pure Rust, no wasi-sdk)
+grammar-cairo/                    # New plugin project (outside workspace)
+grammar-cairo/Cargo.toml          # patina-sdk pipeline + cairo-lang deps
+grammar-cairo/.cargo/config.toml  # wasm32-wasip2 target config
+grammar-cairo/plugin.toml         # provides: languages = ["cairo"]
+grammar-cairo/src/lib.rs          # PipelinePlugin impl, ports languages/cairo.rs
+
+# Phase 2: Rust spike (tree-sitter + wasi-sdk)
 grammar-rust/                     # New plugin project (outside workspace)
 grammar-rust/Cargo.toml           # patina-sdk pipeline + tree-sitter deps
+grammar-rust/.cargo/config.toml   # wasi-sdk CC/AR configuration
+grammar-rust/build.rs             # cc::Build for parser.c + scanner.c
 grammar-rust/plugin.toml          # provides: languages = ["rs"]
-grammar-rust/src/lib.rs           # PipelinePlugin impl, tree-sitter parse
+grammar-rust/src/lib.rs           # PipelinePlugin impl, ports languages/rust.rs
+grammar-rust/grammars/rust/src/   # Copy of tree-sitter-rust C source
 
-# Phase 2: Cairo
-grammar-cairo/                    # New plugin project
-grammar-cairo/Cargo.toml          # patina-sdk pipeline + cairo-lang deps
-grammar-cairo/plugin.toml         # provides: languages = ["cairo"]
-grammar-cairo/src/lib.rs          # PipelinePlugin impl, cairo parser
-
-# Phase 3: Remaining grammars (7 more plugin projects)
+# Phase 3: Remaining grammars (7 more plugin projects, same pattern)
 
 # Phase 4: Fold and delete
-src/commands/scrape/code/metal.rs       # Metal enum + extension mapping (from patina-metal)
-src/commands/scrape/code/extract_v2.rs  # Update fallback path
-Cargo.toml                              # Remove patina-metal from workspace + deps
-patina-metal/                           # DELETE entire crate
-grammars/                               # DELETE submodule directory
+src/commands/scrape/code/languages/mod.rs  # Unify Language + Metal enums
+src/commands/scrape/code/extract_v2.rs     # Update fallback path
+src/commands/scrape/code/languages/*.rs    # DELETE 8 processors (keep rust.rs)
+Cargo.toml                                 # Remove patina-metal from workspace
+patina-metal/                              # DELETE entire crate
 ```
 
 ## Build Order
 
-1. **Spike: Rust grammar plugin** — Prove tree-sitter compiles to
-   WASM, benchmark dispatch overhead, validate extraction format.
-   Decision gate: if overhead > 10x, reconsider approach.
+1. **Cairo grammar plugin** — Prove pure Rust compiles to wasm32-wasip2.
+   Validate end-to-end: build → install → scrape → extract matches
+   compiled-in output. No wasi-sdk needed — isolates the plugin
+   pattern from C-compilation.
 
-2. **Cairo grammar plugin** — Prove non-tree-sitter parsers work
-   as plugins. Validate cairo-lang crates compile to wasm32-wasip2.
+2. **Rust grammar plugin** — Prove tree-sitter C compiles to
+   wasm32-wasip2 via wasi-sdk. Benchmark dispatch overhead. Document
+   wasi-sdk setup. Decision gate: if overhead > 10x, reconsider.
 
-3. **Extract remaining 7 grammars** — Mechanical once pattern proven.
-   One commit per grammar or batch similar ones.
+3. **Extract remaining 7 grammars** — Mechanical once both patterns
+   proven. Each ports its language processor. One commit per grammar.
 
-4. **Fold Metal routing into patina-ai** — Move extension mapping,
-   keep Rust fallback, delete patina-metal crate.
+4. **Fold Metal into patina-ai, delete patina-metal** — Unify enums,
+   move node normalization into plugins, keep Rust fallback, delete
+   crate + 52MB of C source.
 
-5. **Update docs and specs** — architecture-patina-metal.md becomes
-   historical. patina-identity.md extraction table updated.
+5. **Publish patina-ai** — `cargo publish -p patina-ai` dry-run
+   passes without patina-metal blocking.
 
 ## Exit Criteria
 
 ### Critical
+- [ ] Cairo grammar works as a pipeline plugin (pure Rust proof)
 - [ ] At least one tree-sitter grammar works as a pipeline plugin
-      (Rust grammar, end-to-end: build → install → scrape → extract)
-- [ ] At least one non-tree-sitter grammar works as a plugin (Cairo)
+      (Rust grammar, wasi-sdk proof: build → install → scrape)
 - [ ] `patina scrape` produces identical extraction output with
       grammar plugins vs compiled-in (same symbols, functions, types)
 - [ ] patina-metal removed from workspace
+- [ ] `cargo publish -p patina-ai --dry-run` passes
 
 ### Important
 - [ ] All 9 current grammars available as pipeline plugins
-- [ ] Binary size drops to <20MB (from 52MB)
+- [ ] Binary size drops significantly (from 69MB)
 - [ ] `patina setup grammars` installs default grammar set
 - [ ] Performance within 5x of compiled-in (acceptable for scrape —
       not real-time editing)
 - [ ] Version conflict impossible (each plugin bundles own parser)
+- [ ] Language enums unified (Metal + Language → single enum)
 
 ### Nice-to-have
 - [ ] At least one new language grammar (Zig, Elixir, Swift) built
@@ -357,8 +511,40 @@ grammars/                               # DELETE submodule directory
 - [ ] `cargo clippy --workspace`
 - [ ] `cargo test --workspace`
 
+## Open Risks
+
+1. **cairo-lang dependency tree on wasm32-wasip2.** The Salsa
+   incremental computation framework is pure Rust, but the full
+   dep tree is large. Possible wasm32 compatibility issues. Mitigation:
+   test early (phase 1), fallback to compiled-in if needed.
+
+2. **wasi-sdk installation friction.** Grammar plugin authors need
+   wasi-sdk. Not in Homebrew core. Mitigation: document setup clearly,
+   consider `zig cc` as alternative C compiler, provide CI build
+   scripts.
+
+3. **Plugin binary size.** C++ grammar (17MB parser.c) could produce
+   a very large WASM binary. WASM is typically more compact than
+   native, but tree-sitter + large grammar + Rust std could still
+   be multi-MB. Mitigation: measure in phase 2, acceptable for
+   install-once plugins.
+
+4. **Stateless parse overhead.** Each `handle()` call creates a new
+   Parser + sets language. Tree-sitter parser creation is cheap but
+   not free. Mitigation: benchmark in phase 2, consider caching
+   parser in WasmCell if needed (pipeline plugins already use
+   singleton pattern via `register_pipeline!`).
+
+5. **File path in ExtractedData.** Language processors populate
+   `file` fields in ExtractedData (e.g., `symbol.path`, `function.file`).
+   The current request envelope doesn't include the file path — only
+   source code and language extension. Either add `path` to the
+   envelope or have the host rewrite paths after receiving plugin
+   response.
+
 ## Status Log
 
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-14 | draft | Designed from session discussion. Extracts 9 grammars (8 tree-sitter + 1 Cairo) from patina-metal into pipeline plugins. Parser-agnostic design — plugins bring their own parser technology. Blocked by [[patina-sdk]] (plugins need the SDK to build). |
+| 2026-02-14 | ready | Code review of patina-metal + scrape pipeline. Key corrections: extraction logic lives in language processors not patina-metal Analyzer, dual Language/Metal enum needs unification, only Rust/Go have .scm queries. Swapped phase order: Cairo first (pure Rust, no wasi-sdk) then Rust (tree-sitter + wasi-sdk). Added parser.c sizes, wasi-sdk setup details, file path envelope gap, Zed as prior art. |
