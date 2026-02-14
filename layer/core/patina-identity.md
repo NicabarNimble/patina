@@ -73,9 +73,10 @@ These modules use the protocol but aren't the protocol itself. Today they're com
 |--------|-------------|-----------------|
 | `spec` | Spec lifecycle + release delegation | Command plugin (reads/writes stable markdown format) |
 | `release` | Version strategy dispatch | Command plugin (reads Cargo.toml, creates tags) |
+| `session` | Development session tracking | Task plugin (needs host/git for tags) |
 | `version` | Version display + tracking | Command plugin |
 | `report` | Project state reports | Command plugin (composes from scry/assay/context) |
-| `eval` + `bench` | Retrieval quality measurement | Command plugin (power user tooling) |
+| `eval` + `bench` | Retrieval quality measurement | Likely stays compiled — value is ablation testing of retrieval internals |
 | `doctor` | Health checks | **Extracted (v0.17.0)** — first plugin, proves the pattern |
 | `yolo` | Devcontainer generation | Task plugin (mutates filesystem) |
 | `upgrade` | Version check | Command plugin (task if it downloads/replaces binary) |
@@ -187,7 +188,7 @@ Every non-trivial change is authorized by a spec. See [[spec-driven-design]].
 Protocol core:    capture, index, search, believe, evolve
                   → Always in the binary. Hardened by extraction.
 
-Protocol tooling: spec, session, release, eval, report, yolo
+Protocol tooling: spec, session, release, eval, report, yolo, upgrade
                   → Compiled today. Plugin tomorrow. Formats stabilize first.
 
 Protocol infra:   mother, adapters, secrets, plugin engine
