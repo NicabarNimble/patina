@@ -260,235 +260,25 @@ fn process_file_with_plugins(
         }
     }
 
-    // Built-in path (patina-metal fallback)
+    // Built-in Rust fallback — other languages require pipeline plugins
     process_file_by_language(file_path, content, language)
 }
 
-/// Process a single file based on its language (built-in patina-metal processors)
+/// Compiled-in Rust fallback. All other languages dispatch via pipeline plugins.
+/// Per [[graceful-extraction]], patina must always parse Rust even with zero plugins.
 fn process_file_by_language(
     file_path: &str,
     content: &[u8],
     language: Language,
 ) -> Result<ExtractedData> {
-    let mut data = ExtractedData {
-        symbols: Vec::new(),
-        functions: Vec::new(),
-        types: Vec::new(),
-        imports: Vec::new(),
-        call_edges: Vec::new(),
-        constants: Vec::new(),
-        members: Vec::new(),
-    };
-
-    // For now, we'll still use the existing processors but convert their output
-    // In the next step, we'll refactor them to return structs directly
     match language {
         Language::Rust => {
-            process_rust_file(file_path, content, &mut data)?;
+            use super::languages::rust::RustProcessor;
+            RustProcessor::process_file(FilePath::from(file_path), content)
         }
-        Language::Go => {
-            process_go_file(file_path, content, &mut data)?;
-        }
-        Language::Python => {
-            process_python_file(file_path, content, &mut data)?;
-        }
-        Language::JavaScript | Language::JavaScriptJSX => {
-            process_javascript_file(file_path, content, &mut data)?;
-        }
-        Language::TypeScript | Language::TypeScriptTSX => {
-            process_typescript_file(file_path, content, &mut data)?;
-        }
-        Language::C => {
-            process_c_file(file_path, content, &mut data)?;
-        }
-        Language::Cpp => {
-            process_cpp_file(file_path, content, &mut data)?;
-        }
-        Language::Cairo => {
-            process_cairo_file(file_path, content, &mut data)?;
-        }
-        Language::Solidity => {
-            process_solidity_file(file_path, content, &mut data)?;
-        }
-        _ => {
-            // Skip unknown languages
-            return Err(anyhow::anyhow!("Unsupported language: {:?}", language));
-        }
-    }
-
-    Ok(data)
-}
-
-// Temporary adapters - these will be replaced when we refactor the language processors
-// to return structs instead of SQL strings
-
-fn process_rust_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
-    use super::languages::rust::RustProcessor;
-
-    // Rust processor now returns ExtractedData directly!
-    let extracted = RustProcessor::process_file(FilePath::from(file_path), content)?;
-    data.merge(extracted);
-    Ok(())
-}
-
-fn process_go_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
-    use super::languages::go::GoProcessor;
-
-    match GoProcessor::process_file(FilePath::from(file_path), content) {
-        Ok(extracted) => {
-            // Merge the extracted data
-            data.symbols.extend(extracted.symbols);
-            data.functions.extend(extracted.functions);
-            data.types.extend(extracted.types);
-            data.imports.extend(extracted.imports);
-            data.call_edges.extend(extracted.call_edges);
-            data.constants.extend(extracted.constants);
-            data.members.extend(extracted.members);
-            Ok(())
-        }
-        Err(e) => Err(e),
-    }
-}
-
-fn process_python_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
-    use super::languages::python::PythonProcessor;
-
-    match PythonProcessor::process_file(FilePath::from(file_path), content) {
-        Ok(extracted) => {
-            // Merge the extracted data
-            data.symbols.extend(extracted.symbols);
-            data.functions.extend(extracted.functions);
-            data.types.extend(extracted.types);
-            data.imports.extend(extracted.imports);
-            data.call_edges.extend(extracted.call_edges);
-            data.constants.extend(extracted.constants);
-            data.members.extend(extracted.members);
-            Ok(())
-        }
-        Err(e) => Err(e),
-    }
-}
-
-fn process_javascript_file(
-    file_path: &str,
-    content: &[u8],
-    data: &mut ExtractedData,
-) -> Result<()> {
-    use super::languages::javascript::JavaScriptProcessor;
-
-    match JavaScriptProcessor::process_file(FilePath::from(file_path), content) {
-        Ok(extracted) => {
-            // Merge the extracted data
-            data.symbols.extend(extracted.symbols);
-            data.functions.extend(extracted.functions);
-            data.types.extend(extracted.types);
-            data.imports.extend(extracted.imports);
-            data.call_edges.extend(extracted.call_edges);
-            data.constants.extend(extracted.constants);
-            data.members.extend(extracted.members);
-            Ok(())
-        }
-        Err(e) => Err(e),
-    }
-}
-
-fn process_typescript_file(
-    file_path: &str,
-    content: &[u8],
-    data: &mut ExtractedData,
-) -> Result<()> {
-    use super::languages::typescript::TypeScriptProcessor;
-
-    match TypeScriptProcessor::process_file(FilePath::from(file_path), content) {
-        Ok(extracted) => {
-            // Merge the extracted data
-            data.symbols.extend(extracted.symbols);
-            data.functions.extend(extracted.functions);
-            data.types.extend(extracted.types);
-            data.imports.extend(extracted.imports);
-            data.call_edges.extend(extracted.call_edges);
-            data.constants.extend(extracted.constants);
-            data.members.extend(extracted.members);
-            Ok(())
-        }
-        Err(e) => Err(e),
-    }
-}
-
-fn process_c_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
-    use super::languages::c::CProcessor;
-
-    match CProcessor::process_file(FilePath::from(file_path), content) {
-        Ok(extracted) => {
-            // Merge the extracted data
-            data.symbols.extend(extracted.symbols);
-            data.functions.extend(extracted.functions);
-            data.types.extend(extracted.types);
-            data.imports.extend(extracted.imports);
-            data.call_edges.extend(extracted.call_edges);
-            data.constants.extend(extracted.constants);
-            data.members.extend(extracted.members);
-            Ok(())
-        }
-        Err(e) => Err(e),
-    }
-}
-
-fn process_cpp_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
-    use super::languages::cpp::CppProcessor;
-
-    match CppProcessor::process_file(FilePath::from(file_path), content) {
-        Ok(extracted) => {
-            // Merge the extracted data
-            data.symbols.extend(extracted.symbols);
-            data.functions.extend(extracted.functions);
-            data.types.extend(extracted.types);
-            data.imports.extend(extracted.imports);
-            data.call_edges.extend(extracted.call_edges);
-            data.constants.extend(extracted.constants);
-            data.members.extend(extracted.members);
-            Ok(())
-        }
-        Err(e) => Err(e),
-    }
-}
-
-fn process_cairo_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
-    use super::languages::cairo::CairoProcessor;
-
-    // Cairo needs string content
-    let content_str = std::str::from_utf8(content)?;
-    match CairoProcessor::process_file(FilePath::from(file_path), content_str) {
-        Ok(extracted) => {
-            // Merge the extracted data
-            data.symbols.extend(extracted.symbols);
-            data.functions.extend(extracted.functions);
-            data.types.extend(extracted.types);
-            data.imports.extend(extracted.imports);
-            data.call_edges.extend(extracted.call_edges);
-            data.constants.extend(extracted.constants);
-            data.members.extend(extracted.members);
-            Ok(())
-        }
-        Err(e) => Err(e),
-    }
-}
-
-fn process_solidity_file(file_path: &str, content: &[u8], data: &mut ExtractedData) -> Result<()> {
-    use super::languages::solidity::SolidityProcessor;
-
-    match SolidityProcessor::process_file(FilePath::from(file_path), content) {
-        Ok(extracted) => {
-            // Merge the extracted data
-            data.symbols.extend(extracted.symbols);
-            data.functions.extend(extracted.functions);
-            data.types.extend(extracted.types);
-            data.imports.extend(extracted.imports);
-            data.call_edges.extend(extracted.call_edges);
-            data.constants.extend(extracted.constants);
-            data.members.extend(extracted.members);
-            Ok(())
-        }
-        Err(e) => Err(e),
+        _ => Err(anyhow::anyhow!(
+            "No pipeline plugin for {:?} — install with `patina plugin install`",
+            language
+        )),
     }
 }

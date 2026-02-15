@@ -9,15 +9,9 @@ use std::path::Path;
 // ============================================================================
 // LANGUAGE MODULES
 // ============================================================================
-pub mod c;
-pub mod cairo;
-pub mod cpp;
-pub mod go;
-pub mod javascript;
-pub mod python;
+// Rust is the only compiled-in processor (fallback per [[graceful-extraction]]).
+// All other languages are handled by pipeline plugins in ~/.patina/pipeline/.
 pub mod rust;
-pub mod solidity;
-pub mod typescript; // Special non-tree-sitter parser
 
 // ============================================================================
 // LANGUAGE ENUM
