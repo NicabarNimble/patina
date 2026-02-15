@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "patina-metal", "patina-sdk", "patina-plugin-api", "patina-plugin-models", "patina-plugin-repos", "patina-command-api", "patina-task-api", "patina-pipeline-api", "patina-doctor"]
+members = [".", "patina-sdk", "patina-plugin-api", "patina-plugin-models", "patina-plugin-repos", "patina-command-api", "patina-task-api", "patina-pipeline-api", "patina-doctor"]
 exclude = ["layer/dust"]
 resolver = "2"
 
@@ -73,8 +73,6 @@ glob = "0.3"
 # YAML support for docker-compose generation
 serde_yaml = "0.9"
 
-# Semantic analysis - moved to patina-metal
-patina-metal = { version = "0.1.0", path = "patina-metal" }
 walkdir = "2"
 ignore = "0.4"
 
