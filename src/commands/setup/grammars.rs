@@ -139,10 +139,7 @@ pub fn install(options: GrammarOptions) -> Result<()> {
 /// Print what would be installed without doing it.
 fn print_list(grammars: &[&str], pipeline_dir: &Path, source_root: &Path) {
     println!("Default grammar plugins:\n");
-    println!(
-        "  {:<20} {:<12} {:<10} SOURCE",
-        "GRAMMAR", "STATUS", "SIZE"
-    );
+    println!("  {:<20} {:<12} {:<10} SOURCE", "GRAMMAR", "STATUS", "SIZE");
     println!("  {}", "-".repeat(65));
 
     for name in grammars {
