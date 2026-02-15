@@ -404,6 +404,12 @@ enum Commands {
         command: Option<commands::belief::BeliefCommands>,
     },
 
+    /// First-run setup for components (grammars, etc.)
+    Setup {
+        #[command(subcommand)]
+        command: SetupCommands,
+    },
+
     /// Manage spec lifecycle (archive completed specs)
     Spec {
         #[command(subcommand)]
@@ -877,6 +883,24 @@ enum BumpType {
     Major,
     Minor,
     Patch,
+}
+
+#[derive(Subcommand)]
+enum SetupCommands {
+    /// Install default grammar plugins to ~/.patina/pipeline/
+    Grammars {
+        /// Show what would be installed without doing it
+        #[arg(long)]
+        list: bool,
+
+        /// Install only specific grammars (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        only: Option<Vec<String>>,
+
+        /// Force reinstall even if already present
+        #[arg(long)]
+        force: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1560,6 +1584,12 @@ fn main() -> Result<()> {
         Some(Commands::Belief { command }) => {
             commands::belief::execute(command)?;
         }
+        Some(Commands::Setup { command }) => match command {
+            SetupCommands::Grammars { list, only, force } => {
+                let options = commands::setup::GrammarOptions { list, only, force };
+                commands::setup::execute_grammars(options)?;
+            }
+        },
         Some(Commands::Spec { command }) => match command {
             commands::spec::SpecCommands::Archive { id, dry_run, stale } => {
                 if stale {
