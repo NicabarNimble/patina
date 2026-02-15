@@ -140,14 +140,15 @@ pub fn install(options: GrammarOptions) -> Result<()> {
 fn print_list(grammars: &[&str], pipeline_dir: &Path, source_root: &Path) {
     println!("Default grammar plugins:\n");
     println!(
-        "  {:<20} {:<12} {:<10} {}",
-        "GRAMMAR", "STATUS", "SIZE", "SOURCE"
+        "  {:<20} {:<12} {:<10} SOURCE",
+        "GRAMMAR", "STATUS", "SIZE"
     );
     println!("  {}", "-".repeat(65));
 
     for name in grammars {
         let target_dir = pipeline_dir.join(format!("grammar-{}", name));
-        let installed = target_dir.join("plugin.wasm").exists() && target_dir.join("plugin.toml").exists();
+        let installed =
+            target_dir.join("plugin.wasm").exists() && target_dir.join("plugin.toml").exists();
 
         let grammar_dir = source_root.join(format!("grammar-{}", name));
         let wasm_name = format!("grammar_{}.wasm", name);
@@ -181,10 +182,7 @@ fn print_list(grammars: &[&str], pipeline_dir: &Path, source_root: &Path) {
     }
 
     println!();
-    println!(
-        "  Target: {}",
-        pipeline_dir.display()
-    );
+    println!("  Target: {}", pipeline_dir.display());
 }
 
 /// Find the root directory containing grammar-*/ build artifacts.
@@ -197,9 +195,9 @@ fn find_source_root() -> Result<PathBuf> {
             // For dev builds, exe is in target/release/ or target/debug/.
             // Walk up to find the repo root.
             let candidates = [
-                parent.to_path_buf(),                       // same dir as exe
-                parent.join("..").join(".."),                // target/release/../../
-                parent.join("..").join("..").join(".."),     // target/release/../../../
+                parent.to_path_buf(),                    // same dir as exe
+                parent.join("..").join(".."),            // target/release/../../
+                parent.join("..").join("..").join(".."), // target/release/../../../
             ];
             for candidate in &candidates {
                 let resolved = candidate.canonicalize().unwrap_or(candidate.clone());

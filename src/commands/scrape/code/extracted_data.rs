@@ -116,5 +116,4 @@ impl ExtractedData {
             self.call_edges.push(edge);
         }
     }
-
 }

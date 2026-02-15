@@ -129,7 +129,6 @@ impl<'a> FilePath<'a> {
     pub fn new(path: &'a str) -> Self {
         FilePath(path)
     }
-
 }
 
 impl<'a> From<&'a str> for FilePath<'a> {
