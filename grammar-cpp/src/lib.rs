@@ -245,11 +245,12 @@ fn walk_node(
                 }
             }
         }
-        "enum_specifier" => {
+        "enum_specifier" | "enum_class_specifier" => {
+            let is_enum_class = node.kind() == "enum_class_specifier";
             if let Some(name_node) = node.child_by_field_name("name") {
                 if let Ok(name) = name_node.utf8_text(source) {
                     let full_name = qualify_name(name, namespace_stack);
-                    process_cpp_enum(node, source, file_path, &full_name, false, data);
+                    process_cpp_enum(node, source, file_path, &full_name, is_enum_class, data);
                 }
             }
         }
@@ -399,9 +400,15 @@ fn process_cpp_function(
     let return_type = if is_constructor || is_destructor {
         None
     } else {
-        node.child_by_field_name("type")
+        // Check for trailing return type first (C++11: auto f() -> int)
+        node.child_by_field_name("trailing_return_type")
             .and_then(|t| t.utf8_text(source).ok())
-            .map(String::from)
+            .map(|s| s.trim_start_matches("->").trim().to_string())
+            .or_else(|| {
+                node.child_by_field_name("type")
+                    .and_then(|t| t.utf8_text(source).ok())
+                    .map(String::from)
+            })
     };
 
     let kind = if is_constructor {
@@ -506,6 +513,13 @@ fn process_cpp_class(
                         scope: name.to_string(),
                         line: child.start_position().row + 1,
                     });
+                    data.symbols.push(CodeSymbol {
+                        path: file_path.to_string(),
+                        name: format!("{} : {} {}", name, access, base_name),
+                        kind: "inheritance".into(),
+                        line: child.start_position().row + 1,
+                        context: format!("{} inherits {} from {}", name, access, base_name),
+                    });
                 }
             }
         }
@@ -553,6 +567,14 @@ fn extract_class_members(
                             modifiers.push("mutable".to_string());
                         }
 
+                        let full_name = format!("{}::{}", class_name, name);
+                        data.symbols.push(CodeSymbol {
+                            path: file_path.to_string(),
+                            name: full_name,
+                            kind: "field".into(),
+                            line: child.start_position().row + 1,
+                            context: format!("{}: {}", current_visibility, child.utf8_text(source).unwrap_or("").lines().next().unwrap_or("")),
+                        });
                         data.members.push(MemberFact {
                             file: file_path.to_string(),
                             container: class_name.to_string(),
@@ -586,9 +608,22 @@ fn extract_class_members(
                         "constructor"
                     } else if is_destructor {
                         "destructor"
+                    } else if is_static {
+                        "static_method"
+                    } else if is_virtual {
+                        "virtual_method"
                     } else {
                         "method"
                     };
+
+                    let full_name = format!("{}::{}", class_name, name);
+                    data.symbols.push(CodeSymbol {
+                        path: file_path.to_string(),
+                        name: full_name,
+                        kind: member_type.into(),
+                        line: child.start_position().row + 1,
+                        context: format!("{}: {}", current_visibility, child.utf8_text(source).unwrap_or("").lines().next().unwrap_or("")),
+                    });
 
                     data.members.push(MemberFact {
                         file: file_path.to_string(),
