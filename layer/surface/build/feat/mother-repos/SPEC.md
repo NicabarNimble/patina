@@ -3,21 +3,19 @@ type: feat
 id: mother-repos
 status: ready
 created: 2026-02-09
-revised: 2026-02-12
 sessions:
   origin: 20260209-215657
-  amended: [20260212-091430]
 related:
-  - layer/surface/build/feat/mother-architecture/SPEC.md
-  - layer/surface/build/feat/mother-environment/SPEC.md
-  - layer/surface/build/feat/plugin-system/SPEC.md
+- layer/surface/build/feat/mother-architecture/SPEC.md
+- layer/surface/build/feat/mother-environment/SPEC.md
+- layer/surface/build/feat/plugin-system/SPEC.md
 beliefs:
-  - mother-is-the-daemon
-  - mother-owns-ref-repo-indexing
-  - four-layer-architecture
-  - corpus-composition-over-model
-  - coupling-is-complexity
-  - de-risk-runtime-with-simplest-payload
+- mother-is-the-daemon
+- mother-owns-ref-repo-indexing
+- four-layer-architecture
+- corpus-composition-over-model
+- coupling-is-complexity
+- de-risk-runtime-with-simplest-payload
 ---
 
 # feat: Repos Child — Reference Repository Ownership

@@ -1,26 +1,24 @@
 ---
 type: feat
 id: patina-platform
-status: design
+status: complete
 created: 2026-02-05
 sessions:
   origin: 20260205-102402
-blocked_by: []
-blocks: []
 related:
-  - layer/surface/build/explore/wit-interfaces/SPEC.md
-  - layer/surface/build/explore/llm-adapter-refactor/SPEC.md
-  - layer/surface/build/explore/beads-patterns/SPEC.md
+- layer/surface/build/explore/wit-interfaces/SPEC.md
+- layer/surface/build/explore/llm-adapter-refactor/SPEC.md
+- layer/surface/build/explore/beads-patterns/SPEC.md
 beliefs:
-  - unix-philosophy
-  - simplicity-is-architecture
+- unix-philosophy
+- simplicity-is-architecture
 references:
-  - "Obsidian plugin architecture"
-  - "steveyegge/beads"
-  - "Extism WASM plugin system"
-  - "tree-sitter WASM grammars"
-  - "Zed ACP (Agent Client Protocol)"
-  - "zed-industries/zed (ref repo)"
+- Obsidian plugin architecture
+- steveyegge/beads
+- Extism WASM plugin system
+- tree-sitter WASM grammars
+- Zed ACP (Agent Client Protocol)
+- zed-industries/zed (ref repo)
 ---
 
 # feat: Patina as Platform
@@ -458,3 +456,4 @@ From "Zed Decoded: Extensions" video with Marshall and Max:
 |------|--------|------|
 | 2026-02-05 | draft | Created from session discussion. Key insight: Patina should be a platform with WASM plugins, not a monolith. Work tracking (beads-like) becomes a plugin, not a spec hack. Grammars already planned for WASM, plugins use same runtime. |
 | 2026-02-05 | draft | Deep-dive into Zed's extension system. Decided: wasmtime (not Extism), two-layer capability grants, separate worlds per plugin type (diverging from Zed's single world). Added detailed patterns to adopt and diverge. |
+| 2026-02-15 | complete | Superseded by [[plugin-ecosystem]] which delivered the full runtime: 4 worlds (pipeline, command, task, mother-child), host interfaces (query, http, layer), 9 grammar plugins, doctor extraction. Remaining ecosystem work (authoring, distribution) tracked by child specs. |

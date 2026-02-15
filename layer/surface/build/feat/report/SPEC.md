@@ -1,22 +1,20 @@
 ---
 type: feat
 id: report
-status: design
+status: ready
 created: 2026-01-13
 updated: 2026-02-06
-blocked_by:
-  - eval-repair
 related:
-  - layer/surface/build/fix/eval-repair/SPEC.md
-  - layer/surface/build/feat/doctor-dev/SPEC.md
-  - layer/surface/build/explore/lab-automation/SPEC.md
+- layer/surface/build/fix/eval-repair/SPEC.md
+- layer/surface/build/feat/doctor-dev/SPEC.md
+- layer/surface/build/explore/lab-automation/SPEC.md
 ---
 
 # feat: Project Report
 
 > Report quality = tool quality. If scry can't answer "what are the main modules," that's a scry bug.
 
-**Blocked by:** eval-repair (report uses scry/assay output — need working quality measurement first)
+**Note:** eval-repair is now complete. Scry/assay quality measurement available.
 
 ---
 

@@ -1,14 +1,12 @@
 ---
 type: feat
 id: model-runtime
-status: design
+status: ready
 created: 2026-01-13
 updated: 2026-02-06
-blocked_by:
-  - eval-repair
 related:
-  - layer/surface/build/fix/eval-repair/SPEC.md
-  - layer/surface/build/explore/lab-automation/SPEC.md
+- layer/surface/build/fix/eval-repair/SPEC.md
+- layer/surface/build/explore/lab-automation/SPEC.md
 ---
 
 # feat: Model & Runtime Strategy
@@ -17,7 +15,7 @@ related:
 
 **Key Principle:** "Don't optimize what you can't measure." Model swapping invalidates ALL trained projections, so only upgrade after eval infrastructure can measure the impact.
 
-**Blocked by:** eval-repair (need working eval to measure model swap impact)
+**Note:** eval-repair is now complete. Eval infrastructure is available to measure model swap impact.
 
 ---
 

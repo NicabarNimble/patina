@@ -1,15 +1,12 @@
 ---
 type: refactor
 id: database-identity-federation
-status: design
+status: ready
 created: 2026-02-06
-blocked_by:
-  - mother-architecture
-blocks: []
 related:
-  - layer/surface/build/feat/mother-architecture/SPEC.md
+- layer/surface/build/feat/mother-architecture/SPEC.md
 beliefs:
-  - project-config-in-git
+- project-config-in-git
 ---
 
 # refactor: Database Identity — Federation Integration
