@@ -117,38 +117,4 @@ impl ExtractedData {
         }
     }
 
-    /// Add a constant fact (with deduplication)
-    pub fn add_constant(&mut self, constant: ConstantFact) {
-        // Check if we already have this constant (same file, name, and scope)
-        let already_exists = self.constants.iter().any(|c| {
-            c.file == constant.file && c.name == constant.name && c.scope == constant.scope
-        });
-
-        if !already_exists {
-            self.constants.push(constant);
-        }
-    }
-
-    /// Add a member fact (with deduplication)
-    pub fn add_member(&mut self, member: MemberFact) {
-        // Check if we already have this member (same container and name)
-        let already_exists = self.members.iter().any(|m| {
-            m.file == member.file && m.container == member.container && m.name == member.name
-        });
-
-        if !already_exists {
-            self.members.push(member);
-        }
-    }
-
-    /// Merge another ExtractedData into this one
-    pub fn merge(&mut self, other: ExtractedData) {
-        self.symbols.extend(other.symbols);
-        self.functions.extend(other.functions);
-        self.types.extend(other.types);
-        self.imports.extend(other.imports);
-        self.call_edges.extend(other.call_edges);
-        self.constants.extend(other.constants);
-        self.members.extend(other.members);
-    }
 }
