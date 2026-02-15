@@ -232,6 +232,34 @@ fn walk_node(
         }
         "lexical_declaration" | "variable_declaration" => {
             process_variable_declaration(node, source, file_path, data, current_function);
+            // Walk children with correct current_function for variable-assigned functions
+            let mut decl_cursor = node.walk();
+            for decl_child in node.children(&mut decl_cursor) {
+                if decl_child.kind() == "variable_declarator" {
+                    if let Some(name_node) = decl_child.child_by_field_name("name") {
+                        if let Some(value_node) = decl_child.child_by_field_name("value") {
+                            if matches!(value_node.kind(), "arrow_function" | "function") {
+                                if let Ok(fn_name) = name_node.utf8_text(source) {
+                                    // Recurse into function body with the variable name as caller
+                                    let mut body_cursor = value_node.walk();
+                                    for body_child in value_node.children(&mut body_cursor) {
+                                        walk_node(
+                                            &body_child,
+                                            source,
+                                            file_path,
+                                            data,
+                                            Some(fn_name),
+                                        );
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+                walk_node(&decl_child, source, file_path, data, current_function);
+            }
+            return;
         }
         "import_statement" => {
             process_es6_import(node, source, file_path, data);
@@ -592,6 +620,16 @@ fn process_es6_import(node: &Node, source: &[u8], file_path: &str, data: &mut Ex
         import_kind: if is_external { "external" } else { "internal" }.into(),
         line_number: (node.start_position().row + 1) as i32,
     });
+
+    // Add import as searchable symbol
+    let import_text = node.utf8_text(source).unwrap_or("").to_string();
+    data.symbols.push(CodeSymbol {
+        path: file_path.to_string(),
+        name: import_text.clone(),
+        kind: "import".into(),
+        line: node.start_position().row + 1,
+        context: import_text,
+    });
 }
 
 fn process_commonjs_require(
@@ -615,6 +653,16 @@ fn process_commonjs_require(
                         imported_names: vec!["*".to_string()],
                         import_kind: if is_external { "external" } else { "internal" }.into(),
                         line_number: (node.start_position().row + 1) as i32,
+                    });
+
+                    // Add require as searchable symbol
+                    let context = node.utf8_text(source).unwrap_or("").to_string();
+                    data.symbols.push(CodeSymbol {
+                        path: file_path.to_string(),
+                        name: format!("require('{}')", module_path),
+                        kind: "require".into(),
+                        line: node.start_position().row + 1,
+                        context,
                     });
                     break;
                 }
@@ -705,18 +753,9 @@ fn extract_calls(
 // =========================================================================
 
 fn extract_function_name(node: &Node, source: &[u8]) -> Option<String> {
-    if let Some(name_node) = node.child_by_field_name("name") {
-        return name_node.utf8_text(source).ok().map(String::from);
-    }
-    // For anonymous functions assigned to variables
-    if let Some(parent) = node.parent() {
-        if parent.kind() == "variable_declarator" {
-            if let Some(name_node) = parent.child_by_field_name("name") {
-                return name_node.utf8_text(source).ok().map(String::from);
-            }
-        }
-    }
-    None
+    node.child_by_field_name("name")
+        .and_then(|n| n.utf8_text(source).ok())
+        .map(String::from)
 }
 
 fn get_field_text(node: &Node, field: &str, source: &[u8]) -> Option<String> {
