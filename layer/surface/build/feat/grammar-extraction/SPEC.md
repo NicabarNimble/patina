@@ -485,13 +485,16 @@ patina-metal/                              # DELETE entire crate
 - [ ] Cairo grammar works as a pipeline plugin (pure Rust proof)
 - [ ] At least one tree-sitter grammar works as a pipeline plugin
       (Rust grammar, wasi-sdk proof: build → install → scrape)
-- [ ] `patina scrape` produces identical extraction output with
-      grammar plugins vs compiled-in (same symbols, functions, types)
+- [ ] `patina scrape` produces equivalent extraction output with
+      grammar plugins vs compiled-in — verified by `grammar-compare.sh all`
+      against ref repos. See [TEST-SPEC.md](TEST-SPEC.md) for thresholds
+      and method. Tool: `resources/scripts/grammar-compare.sh`
 - [ ] patina-metal removed from workspace
 - [ ] `cargo publish -p patina-ai --dry-run` passes
 
 ### Important
-- [ ] All 9 current grammars available as pipeline plugins
+- [ ] All 9 current grammars available as pipeline plugins — each
+      passes `grammar-compare.sh <lang>` against its ref repo
 - [ ] Binary size drops significantly (from 69MB)
 - [ ] `patina setup grammars` installs default grammar set
 - [ ] Performance within 5x of compiled-in (acceptable for scrape —
