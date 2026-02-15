@@ -78,8 +78,9 @@ patina-metal = { version = "0.1.0", path = "patina-metal" }
 walkdir = "2"
 ignore = "0.4"
 
-# Tree-sitter - AST parsing for code scraper (11 languages)
+# Tree-sitter - AST parsing for Rust fallback processor
 tree-sitter = "0.24"
+tree-sitter-rust = "0.24"
 
 # Embeddings and vector search
 ort = { version = "=2.0.0-rc.10", features = ["download-binaries"] }  # ONNX Runtime - pinned, rc.11 breaks API
