@@ -482,24 +482,29 @@ patina-metal/                              # DELETE entire crate
 ## Exit Criteria
 
 ### Critical
-- [ ] Cairo grammar works as a pipeline plugin (pure Rust proof)
-- [ ] At least one tree-sitter grammar works as a pipeline plugin
+- [x] Cairo grammar works as a pipeline plugin (pure Rust proof)
+- [x] At least one tree-sitter grammar works as a pipeline plugin
       (Rust grammar, wasi-sdk proof: build → install → scrape)
-- [ ] `patina scrape` produces equivalent extraction output with
+- [x] `patina scrape` produces equivalent extraction output with
       grammar plugins vs compiled-in — verified by `grammar-compare.sh all`
       against ref repos. See [TEST-SPEC.md](TEST-SPEC.md) for thresholds
       and method. Tool: `resources/scripts/grammar-compare.sh`
+      **VERIFIED 2026-02-14**: All 7 Phase 3 grammars pass with 0% delta
+      across all 7 tables. Session [[20260214-205609]].
 - [ ] patina-metal removed from workspace
 - [ ] `cargo publish -p patina-ai --dry-run` passes
 
 ### Important
-- [ ] All 9 current grammars available as pipeline plugins — each
+- [x] All 9 current grammars available as pipeline plugins — each
       passes `grammar-compare.sh <lang>` against its ref repo
+      **VERIFIED 2026-02-14**: go, c, cpp, python, javascript, solidity,
+      typescript — all 0% delta. Cairo (Phase 1) and Rust (Phase 2)
+      verified during their respective sessions.
 - [ ] Binary size drops significantly (from 69MB)
 - [ ] `patina setup grammars` installs default grammar set
 - [ ] Performance within 5x of compiled-in (acceptable for scrape —
       not real-time editing)
-- [ ] Version conflict impossible (each plugin bundles own parser)
+- [x] Version conflict impossible (each plugin bundles own parser)
 - [ ] Language enums unified (Metal + Language → single enum)
 
 ### Nice-to-have
@@ -551,3 +556,4 @@ patina-metal/                              # DELETE entire crate
 |------|--------|------|
 | 2026-02-14 | draft | Designed from session discussion. Extracts 9 grammars (8 tree-sitter + 1 Cairo) from patina-metal into pipeline plugins. Parser-agnostic design — plugins bring their own parser technology. Blocked by [[patina-sdk]] (plugins need the SDK to build). |
 | 2026-02-14 | ready | Code review of patina-metal + scrape pipeline. Key corrections: extraction logic lives in language processors not patina-metal Analyzer, dual Language/Metal enum needs unification, only Rust/Go have .scm queries. Swapped phase order: Cairo first (pure Rust, no wasi-sdk) then Rust (tree-sitter + wasi-sdk). Added parser.c sizes, wasi-sdk setup details, file path envelope gap, Zed as prior art. |
+| 2026-02-14 | **phase-3-verified** | `grammar-compare.sh` run against all 7 Phase 3 ref repos. All 7 grammars produce 0% delta across all 7 ExtractedData tables (3,120 files total). Phases 1-3 complete: all 9 grammars available as plugins. Remaining: Phase 4 (fold infrastructure, delete patina-metal). |

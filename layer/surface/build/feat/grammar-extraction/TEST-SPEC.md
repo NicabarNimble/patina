@@ -1,7 +1,7 @@
 ---
 type: test-spec
 id: grammar-extraction-phase3-test
-status: draft
+status: passed
 created: 2026-02-14
 parent: grammar-extraction
 session: 20260214-202314
@@ -123,3 +123,4 @@ This test spec satisfies the Phase 3 exit criterion:
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-14 | draft | Created during audit session [[20260214-202314]]. Tool not yet run against ref repos. |
+| 2026-02-14 | **passed** | All 7 grammars pass with **0% delta** across all 7 tables. Session [[20260214-205609]]. Results: go (377 files, 0%), c (783 files, 0%), cpp (37 files, 0%), python (804 files, 0%), javascript (51 files, 0%), solidity (247 files, 0%), typescript (821 files, 0%). Total: 3,120 files scraped twice, zero deviation. |
