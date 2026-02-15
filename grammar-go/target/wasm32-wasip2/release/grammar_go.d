@@ -1,0 +1,1 @@
+/Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-go/target/wasm32-wasip2/release/grammar_go.wasm: /Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-go/build.rs /Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-go/grammars/go/src/parser.c /Users/nicabar/Projects/Sandbox/AI/RUST/patina/grammar-go/src/lib.rs
