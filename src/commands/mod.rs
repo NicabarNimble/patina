@@ -21,6 +21,7 @@ pub mod scry;
 pub mod secrets;
 pub mod serve;
 pub mod session;
+pub mod setup;
 pub mod spec;
 pub mod upgrade;
 pub mod version;
