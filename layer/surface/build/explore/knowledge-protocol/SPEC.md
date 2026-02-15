@@ -1,7 +1,7 @@
 ---
 type: explore
 id: knowledge-protocol
-status: ready
+status: complete
 created: 2026-02-15
 sessions:
   origin: 20260215-063600
@@ -301,14 +301,79 @@ the protocol substrate rather than a standalone schema change.
 
 ## Exit Criteria
 
-- [ ] Determine if content addressing works for beliefs (question 1-3)
-- [ ] Design the object format (what gets hashed, what's metadata)
-- [ ] Design the ref format (pointer files vs symlinks vs index)
-- [ ] Design the migration path (current -> objects/refs)
-- [ ] Prototype `patina diff` against two knowledge snapshots
-- [ ] Determine if this is a real protocol or over-engineering for 120 files
-- [ ] If real: write a feat spec for implementation
-- [ ] If not real: document why and what alternative serves the same needs
+- [x] Determine if content addressing works for beliefs (question 1-3) — **No.** Slug is identity, not hash. Beliefs are meant to be mutable.
+- [x] Design the object format — **N/A.** Content addressing rejected.
+- [x] Design the ref format — **N/A.** Git tags already serve as refs.
+- [x] Design the migration path — **N/A.** No migration needed.
+- [ ] Prototype `patina diff` against two knowledge snapshots — **Deferred.** Valid command, doesn't need substrate. Standalone feat spec.
+- [x] Determine if this is a real protocol or over-engineering for 120 files — **Over-engineering.** Git already provides the substrate.
+- [x] If not real: document why and what alternative serves the same needs — **See Findings below.**
+
+---
+
+## Findings (Session 20260215-075638)
+
+### Outcome: C — the git analogy doesn't hold at the storage layer
+
+Read all code paths: `create-belief.sh` (write), `scrape/beliefs/mod.rs` (read),
+`persona/mod.rs` (persona write), `scrape/layer/mod.rs` (router), `paths.rs`
+(filesystem layout). 120 belief files examined in context.
+
+### Why content addressing fails for beliefs
+
+**Belief identity is the slug, not the hash.** In git, changing a byte creates
+a new object — that's the entire point. In beliefs, you WANT to change content
+(add evidence, refine the statement, update relationships) while preserving
+identity. The slug `sync-first` is stable across all edits. A hash would
+change on every evidence addition, creating meaningless object churn.
+
+Belief content decomposes into assertion (rarely changes) and everything else
+(changes constantly — evidence, relationships, entrenchment, metrics, applied-in).
+Even hashing "just the assertion" fails because rewording for clarity should not
+create a new identity. The slug already handles this correctly.
+
+### Why refs are redundant with git
+
+Git tags already serve as knowledge snapshots:
+- Session tags: `session-20260215-075638-claude-start`
+- Release tags: `v0.23.0`
+
+Each tag points to a commit containing the belief files in their state at that
+moment. `git show v0.20.0:layer/surface/epistemic/beliefs/` gives you the
+exact knowledge state at v0.20. No filesystem refs needed.
+
+### What IS genuinely missing (and doesn't need a substrate)
+
+1. **`patina diff` command** — "What did we learn between v0.20 and v0.23?"
+   Implementable with `git2` crate: read belief files at two tags, parse
+   frontmatter, compute delta (new/changed/removed beliefs, relationship
+   changes, entrenchment shifts). Pure Rust, no filesystem changes.
+
+2. **Queryable relationship graph** — Supports/Attacks/Attacked-By are
+   embedded in markdown sections but not efficiently queryable. A
+   `belief_edges` table in SQLite (populated by scrape) enables graph walks:
+   "find all beliefs that attack X", "walk the support chain from Y".
+
+3. **Session provenance tracking** — Which session created which belief?
+   Partially exists (evidence links embed session IDs) but not materialized
+   as a first-class relationship in scrape.
+
+### Every proposed service has a git-native equivalent
+
+| Proposed | Git-native |
+|----------|-----------|
+| `objects.write(content) -> hash` | `git add` hashes files |
+| `refs.set(name, hash)` | Git tags (session + release) |
+| `snapshot.create(name)` | `git tag -a vX.Y.Z` (already done) |
+| `diff(snap_a, snap_b)` | NEW: `patina diff` command using git2 |
+| `graph.add_edge(from, to, type)` | Markdown sections + scrape materialization |
+
+### The protocol/product split is real — it just lives at a different layer
+
+The five protocol verbs (capture, index, search, believe, evolve) are the
+real protocol. They don't need a custom storage substrate because git IS
+the storage substrate. The protocol is the pipeline (scrape → oxidize →
+scry/assay/context), not the filesystem layout.
 
 ---
 
@@ -355,3 +420,4 @@ All three outcomes are valid. The explore's job is to find out which is true.
 | Date | Status | Note |
 |------|--------|------|
 | 2026-02-15 | ready | Emerged from session deep dive into core values, spec landscape, and the question "is git-for-knowledge real or smoke?" Anchored by outside analysis: content-addressed objects + refs is the minimal substrate that earns the git analogy. Beliefs are the proving ground. |
+| 2026-02-15 | complete | **Outcome C.** Read all belief write/read/scrape code paths. Content addressing fails because belief identity is the slug, not the hash — beliefs are meant to be mutable. Git already provides history, diffing, refs (tags), and snapshots. The real missing capabilities (knowledge diff, queryable graph, session provenance) are commands and scrape enhancements, not a filesystem substrate. |
