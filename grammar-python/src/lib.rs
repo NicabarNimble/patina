@@ -449,6 +449,16 @@ fn process_class(
 
 fn process_import(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
     if let Ok(import_text) = node.utf8_text(source) {
+        // Add import as searchable symbol
+        let context = import_text.to_string();
+        data.symbols.push(CodeSymbol {
+            path: file_path.to_string(),
+            name: context.clone(),
+            kind: "import".into(),
+            line: node.start_position().row + 1,
+            context,
+        });
+
         match node.kind() {
             "import_statement" => {
                 let clean = import_text.trim_start_matches("import ").trim();
@@ -626,7 +636,20 @@ fn extract_params(node: &Node, source: &[u8]) -> Vec<String> {
             }
             if let Ok(param_text) = child.utf8_text(source) {
                 let cleaned = param_text.trim();
-                if !cleaned.is_empty() && cleaned != "self" && cleaned != "cls" {
+                if cleaned.is_empty() {
+                    continue;
+                }
+                // For typed/default params (e.g. "self: MyClass"), use starts_with
+                // For plain identifiers, use exact match
+                let is_self_or_cls = if matches!(
+                    child.kind(),
+                    "typed_parameter" | "default_parameter" | "typed_default_parameter"
+                ) {
+                    cleaned.starts_with("self") || cleaned.starts_with("cls")
+                } else {
+                    cleaned == "self" || cleaned == "cls"
+                };
+                if !is_self_or_cls {
                     params.push(cleaned.to_string());
                 }
             }
