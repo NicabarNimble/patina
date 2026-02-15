@@ -1,13 +1,10 @@
 ---
 type: feat
 id: plugin-authoring
-status: design
+status: ready
 created: 2026-02-13
 sessions:
   origin: 20260213-120746
-  refined: 20260213-135136
-blocked_by:
-- plugin-pipeline-world
 related:
 - layer/surface/build/feat/plugin-ecosystem/SPEC.md
 - layer/surface/build/feat/plugin-distribution/SPEC.md
