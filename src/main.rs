@@ -647,6 +647,13 @@ enum ScrapeCommands {
 
 #[derive(Subcommand)]
 enum BenchCommands {
+    /// Benchmark grammar plugin overhead (compiled-in vs WASM)
+    Grammar {
+        /// Maximum number of files to benchmark
+        #[arg(long)]
+        files: Option<usize>,
+    },
+
     /// Benchmark retrieval quality
     Retrieval {
         /// Path to query set JSON file
@@ -1262,6 +1269,9 @@ fn main() -> Result<()> {
             }
         }
         Some(Commands::Bench { command }) => match command {
+            BenchCommands::Grammar { files } => {
+                commands::bench::execute_grammar(files)?;
+            }
             BenchCommands::Retrieval {
                 query_set,
                 limit,
