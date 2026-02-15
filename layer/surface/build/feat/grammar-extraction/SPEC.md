@@ -1,7 +1,7 @@
 ---
 type: feat
 id: grammar-extraction
-status: complete
+status: active
 created: 2026-02-14
 revised: 2026-02-14
 sessions:
@@ -353,6 +353,159 @@ Once all 9 grammars are plugins:
    Remove `tree-sitter` dep from patina-ai if only used through metal
    (check: rust.rs fallback still needs it).
 
+### Phase 5: Setup Grammars Command
+
+`patina setup grammars` — first-run convenience that installs the
+default grammar plugin set to `~/.patina/pipeline/`.
+
+**Problem:** After Phase 4, a fresh patina install can only parse
+Rust. Running `patina scrape` on a Python repo gives "No pipeline
+plugin for Python — install with `patina plugin install`." But
+`patina plugin install` doesn't exist yet either. Users must
+manually copy plugin.wasm + plugin.toml to the right directory.
+This is unacceptable for v1.0.
+
+**Design:**
+
+The grammar plugins are already built as WASM binaries (~0.5-2MB
+each). They live in the `grammar-*/` directories in this repo.
+`patina setup grammars` needs to get them into `~/.patina/pipeline/`.
+
+**Source of truth for default grammars:**
+
+```toml
+# resources/grammar-defaults.toml
+[grammars]
+default = ["rust", "go", "python", "javascript", "typescript", "c", "cpp", "solidity", "cairo"]
+```
+
+**Two installation sources (checked in order):**
+
+1. **Local build artifacts** — if `grammar-*/` directories exist
+   adjacent to the patina binary (dev/contributor workflow), copy
+   from there. This is how contributors who build from source get
+   grammars.
+
+2. **GitHub releases** — download pre-built `.wasm` + `plugin.toml`
+   from the patina GitHub releases page. Each release tags grammar
+   plugin binaries as assets. This is how end users get grammars.
+
+**Command behavior:**
+
+```bash
+patina setup grammars              # Install all defaults
+patina setup grammars --list       # Show what would be installed
+patina setup grammars --only go,py # Install specific grammars
+patina setup grammars --force      # Reinstall (overwrite existing)
+```
+
+For each grammar:
+1. Check if already installed in `~/.patina/pipeline/grammar-<lang>/`
+2. Skip if present (unless `--force`)
+3. Copy or download `plugin.wasm` + `plugin.toml`
+4. Verify: load manifest, check world = "pipeline"
+5. Report: "Installed grammar-go v0.1.0 (598KB)"
+
+**Output:**
+```
+Installing default grammar plugins to ~/.patina/pipeline/...
+  grammar-rust      v0.1.0  ✓ already installed
+  grammar-go        v0.1.0  ✓ installed (598KB)
+  grammar-python    v0.1.0  ✓ installed (1.2MB)
+  ...
+  9/9 grammars ready
+```
+
+**Integration with `patina init`:**
+
+When `patina init .` runs on a new project and no grammar plugins
+are installed, print a hint:
+
+```
+Hint: No grammar plugins found. Run `patina setup grammars` to
+install language parsers for scraping.
+```
+
+**Files to change:**
+
+```
+resources/grammar-defaults.toml           # Default grammar manifest
+src/commands/setup.rs                     # New: setup command
+src/commands/setup/grammars.rs            # New: grammar installer
+src/commands/mod.rs                       # Register setup command
+src/main.rs                              # Wire CLI subcommand
+```
+
+**Exit criteria:**
+- `patina setup grammars` installs all 9 grammars to `~/.patina/pipeline/`
+- Idempotent — running twice doesn't duplicate or error
+- Works from local build artifacts (dev workflow)
+- `patina scrape` works on any supported language after setup
+
+### Phase 6: Performance Benchmark
+
+Measure plugin dispatch overhead vs the compiled-in baseline that
+existed before Phase 4. The spec requires "within 5x."
+
+**Problem:** We deleted the compiled-in processors. We can't A/B
+test anymore. But we have the `grammar-compare.sh` timing data and
+can construct a focused benchmark.
+
+**Method:**
+
+Benchmark the one language where we DO have both paths: **Rust**.
+`rust.rs` is compiled-in. `grammar-rust` is a WASM plugin. Both
+produce identical output (verified by grammar-compare.sh). Parse
+the same set of files through each path and compare wall-clock time.
+
+```bash
+patina bench grammar                    # Run the benchmark
+patina bench grammar --files 100        # Limit file count
+patina bench grammar --language rs      # Specific language
+```
+
+**Implementation:**
+
+1. Collect N Rust source files from the current repo (or a ref repo)
+2. **Compiled-in path:** Call `RustProcessor::process_file()` directly
+   for each file. Measure total time.
+3. **Plugin path:** Call `PipelineEngine::handle()` for each file.
+   Measure total time. This includes: JSON envelope build → WASM
+   instantiation → plugin parse → JSON response deserialize.
+4. Report: files processed, total time each path, ratio, per-file
+   average.
+
+**Output:**
+```
+Grammar performance benchmark (195 Rust files):
+
+  Compiled-in:  1.2s  (6.2ms/file)
+  Plugin WASM:  3.8s  (19.5ms/file)
+  Overhead:     3.2x
+
+  ✓ Within 5x threshold
+```
+
+**Decision gates:**
+- If overhead <= 5x: PASS. Document the number, move on.
+- If overhead 5-10x: ACCEPTABLE for batch scrape. Note in docs.
+  Consider parser caching in WasmCell if it's WASM instantiation
+  cost (not parse cost).
+- If overhead > 10x: INVESTIGATE. Profile where time goes. WASM
+  compile? JSON serde? Parser init? Fix or document the tradeoff.
+
+**Files to change:**
+
+```
+src/commands/bench.rs                    # Add grammar subcommand
+src/commands/bench/grammar.rs            # New: grammar benchmark
+```
+
+**Exit criteria:**
+- Benchmark runs and produces a clear overhead ratio
+- Result documented in this spec's status log
+- If > 5x, root cause identified and documented
+
 ### Plugin Distribution
 
 Grammar plugins ship as pre-built WASM binaries, NOT as crates.io
@@ -479,6 +632,14 @@ patina-metal/                              # DELETE entire crate
 5. **Publish patina-ai** — `cargo publish -p patina-ai` dry-run
    passes without patina-metal blocking.
 
+6. **Setup grammars command** — `patina setup grammars` installs
+   default grammar set from local build artifacts or GitHub releases.
+   First-run UX so users don't manually copy WASM files.
+
+7. **Performance benchmark** — Measure plugin dispatch overhead
+   using Rust (both paths available). Verify within 5x threshold.
+   Document the number.
+
 ## Exit Criteria
 
 ### Critical
@@ -561,4 +722,5 @@ patina-metal/                              # DELETE entire crate
 | 2026-02-14 | draft | Designed from session discussion. Extracts 9 grammars (8 tree-sitter + 1 Cairo) from patina-metal into pipeline plugins. Parser-agnostic design — plugins bring their own parser technology. Blocked by [[patina-sdk]] (plugins need the SDK to build). |
 | 2026-02-14 | ready | Code review of patina-metal + scrape pipeline. Key corrections: extraction logic lives in language processors not patina-metal Analyzer, dual Language/Metal enum needs unification, only Rust/Go have .scm queries. Swapped phase order: Cairo first (pure Rust, no wasi-sdk) then Rust (tree-sitter + wasi-sdk). Added parser.c sizes, wasi-sdk setup details, file path envelope gap, Zed as prior art. |
 | 2026-02-14 | **phase-3-verified** | `grammar-compare.sh` run against all 7 Phase 3 ref repos. All 7 grammars produce 0% delta across all 7 ExtractedData tables (3,120 files total). Phases 1-3 complete: all 9 grammars available as plugins. Remaining: Phase 4 (fold infrastructure, delete patina-metal). |
-| 2026-02-14 | **complete** | Phase 4 done. patina-metal deleted (61MB, 585 files). Language enums unified (Metal gone, Language survives). Rust fallback uses tree-sitter-rust crate. 8 processors deleted (6,678 lines). `cargo publish --dry-run` passes at 6.9MB. Binary 61MB (was 69MB). All critical + important exit criteria met. |
+| 2026-02-14 | **phase-4-done** | Phase 4 done. patina-metal deleted (61MB, 585 files). Language enums unified (Metal gone, Language survives). Rust fallback uses tree-sitter-rust crate. 8 processors deleted (6,678 lines). `cargo publish --dry-run` passes at 6.9MB. Binary 61MB (was 69MB). All critical exit criteria met. |
+| 2026-02-14 | **active** | Reopened: Phase 5 (`patina setup grammars`) and Phase 6 (performance benchmark) designed. Two remaining Important exit criteria need completion before spec can close. |
