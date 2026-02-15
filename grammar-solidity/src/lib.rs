@@ -416,6 +416,16 @@ fn process_contract(
                             scope: name.to_string(),
                             line: child.start_position().row + 1,
                         });
+                        data.symbols.push(CodeSymbol {
+                            path: file_path.to_string(),
+                            name: format!("{} : {}", name, base_clean),
+                            kind: "inheritance".into(),
+                            line: child.start_position().row + 1,
+                            context: format!(
+                                "contract {} inherits from {}",
+                                name, base_clean
+                            ),
+                        });
                     }
                 }
             }
@@ -512,6 +522,15 @@ fn process_state_variable(
 
 fn process_import(node: &Node, source: &[u8], file_path: &str, data: &mut ExtractedData) {
     if let Ok(import_text) = node.utf8_text(source) {
+        // Add import as searchable symbol
+        data.symbols.push(CodeSymbol {
+            path: file_path.to_string(),
+            name: import_text.to_string(),
+            kind: "import".into(),
+            line: node.start_position().row + 1,
+            context: import_text.to_string(),
+        });
+
         let import_clean = import_text
             .trim_start_matches("import ")
             .trim_end_matches(';')
@@ -532,7 +551,24 @@ fn process_import(node: &Node, source: &[u8], file_path: &str, data: &mut Extrac
                     line_number: (node.start_position().row + 1) as i32,
                 });
             }
+        } else if import_clean.contains(" as ") {
+            // Aliased import: import "path" as Alias
+            let parts: Vec<&str> = import_clean.split(" as ").collect();
+            if parts.len() == 2 {
+                let path = parts[0].trim().trim_matches('"').trim_matches('\'');
+                let alias = parts[1].trim();
+                let is_external = !path.starts_with('.');
+
+                data.imports.push(ImportFact {
+                    file: file_path.to_string(),
+                    import_path: path.to_string(),
+                    imported_names: vec![alias.to_string()],
+                    import_kind: if is_external { "external" } else { "relative" }.into(),
+                    line_number: (node.start_position().row + 1) as i32,
+                });
+            }
         } else {
+            // Simple import: import "path"
             let path = import_clean.trim_matches('"').trim_matches('\'');
             let is_external = !path.starts_with('.');
             let imported = path.split('/').next_back().unwrap_or(path);
