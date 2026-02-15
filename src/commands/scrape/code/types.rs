@@ -10,10 +10,7 @@ use std::fmt;
 pub enum SymbolKind {
     Function,
     Struct,
-    Union, // C/C++ union
-    Class,
     Trait,
-    Interface,
     Module,
     Import,
     Const,
@@ -31,10 +28,7 @@ impl SymbolKind {
         match self {
             Self::Function => "function",
             Self::Struct => "struct",
-            Self::Union => "union",
-            Self::Class => "class",
             Self::Trait => "trait",
-            Self::Interface => "interface",
             Self::Module => "module",
             Self::Import => "import",
             Self::Const => "const",
@@ -136,10 +130,6 @@ impl<'a> FilePath<'a> {
         FilePath(path)
     }
 
-    /// Get the inner string
-    pub fn as_str(&self) -> &'a str {
-        self.0
-    }
 }
 
 impl<'a> From<&'a str> for FilePath<'a> {
