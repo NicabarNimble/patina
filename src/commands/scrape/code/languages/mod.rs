@@ -61,7 +61,7 @@ impl Language {
             "sol" => Language::Solidity,
             "cairo" => Language::Cairo,
             "c" | "h" => Language::C,
-            "cpp" | "cc" | "cxx" | "hpp" | "hxx" => Language::Cpp,
+            "cpp" | "cc" | "cxx" | "hpp" | "hxx" | "h++" => Language::Cpp,
             _ => return None,
         };
         Some(lang)
