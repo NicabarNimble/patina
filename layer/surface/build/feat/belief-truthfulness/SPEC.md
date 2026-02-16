@@ -144,8 +144,23 @@ Add temporal awareness to belief metrics during scrape:
    `[beliefs]` section will deserialize with the default (90) — no migration
    needed. `patina init` templates should include the section for discoverability.
 
-   Audit summary emits freshness stats: "32/128 beliefs stale (>90d), median
-   age 143d" for immediate signal without hardcoding policy.
+   **Config access in scrape:** In `run()` (`beliefs/mod.rs`), load config
+   via `crate::project::load(Path::new("."))` at the top of the function.
+   Extract `stale_days` for freshness computation and health score. If config
+   load fails (e.g., no `.patina/` directory), fall back to `BeliefsSection`
+   default (90 days).
+
+   **Config access in audit:** In `run_audit()` (`belief/mod.rs`), load
+   config via the same `crate::project::load(Path::new("."))` path. Use
+   `stale_days` for the `--stale` filter threshold. Each command loads
+   config independently — no coupling between scrape and audit.
+
+   Audit summary emits freshness stats: "32/128 beliefs stale (>90d),
+   median activity age 143d" for immediate signal without hardcoding
+   policy. Median computed over beliefs with non-NULL `last_activity`
+   only — NULL-activity beliefs are excluded from the median (their age
+   is unknown, not infinite) but counted in the stale total (since NULL
+   last_activity → stale per the threshold definition).
 
 3. **Verification drift** — snapshot-before-drop approach.
 
@@ -237,9 +252,12 @@ where:
   freshness    = 1.0 - min(1.0, days_since_activity / stale_days)
 ```
 
-Weights: `w_use = 0.3, w_truth = 0.4, w_fresh = 0.3` (tunable via config, not CLI).
-Linear freshness curve — don't optimize the math until real score distributions
-are observed.
+Weights: `w_use = 0.3, w_truth = 0.4, w_fresh = 0.3` — hardcoded constants in
+`src/commands/scrape/beliefs/mod.rs`. Move to `[beliefs]` config fields only
+when real score distributions motivate tuning. Until then, changing weights
+means editing code — intentionally raising the bar for premature optimization.
+Linear freshness curve — don't optimize the math until real distributions are
+observed.
 
 **NULL last_activity:** If all four activity signals are NULL, freshness = 0.0
 (maximally stale). Health score still computes from use + truth dimensions.
@@ -249,7 +267,8 @@ are observed.
 truth). **This is intentional** — beliefs without evidence are hypotheses and
 SHOULD score lower. The `no-evidence` warning already flags these; the health
 score reinforces it quantitatively. If this proves too punitive in practice,
-adjust `w_truth` in config — don't add special-case logic.
+adjust `w_truth` in the hardcoded constants — don't add special-case logic.
+Moving weights to config is a future decision gated on observed distributions.
 
 Store as `health_score REAL` column on beliefs table. Compute during scrape,
 expose via:
