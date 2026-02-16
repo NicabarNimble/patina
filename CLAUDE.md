@@ -109,8 +109,6 @@ patina/
 │   └── ...                     # db, forge, git, models, scanner, workspace
 ├── grammars/                   # Grammar plugins (WASM, outside workspace)
 ├── plugins/                    # Workspace plugin crates (sdk, doctor, models, repos)
-├── patina-plugin-api/          # Guest-side WASM bindings (deprecated)
-├── patina-command-api/         # Command world guest API (deprecated)
 ├── layer/                      # Pattern storage (Git as memory)
 │   ├── core/                   # Eternal patterns + core beliefs
 │   ├── surface/                # Specs, architecture, epistemic beliefs

@@ -3,7 +3,7 @@
 //! Handles "echo" op — returns payload unchanged.
 //! Unknown ops return an error.
 
-use patina_pipeline_api::{parse_request, register_pipeline, PipelinePlugin};
+use patina_sdk::{parse_request, register_pipeline, PipelinePlugin};
 
 #[derive(Default)]
 struct EchoPipeline;

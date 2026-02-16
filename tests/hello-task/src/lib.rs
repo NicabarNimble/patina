@@ -3,7 +3,7 @@
 //! Returns exit code 0, one approved toy (echo "hello"),
 //! and one unapproved toy (rm -rf /) to verify filtering.
 
-use patina_task_api::{register_task, TaskPlugin, Toy};
+use patina_sdk::{register_task, TaskPlugin, Toy};
 
 #[derive(Default)]
 struct HelloTask;

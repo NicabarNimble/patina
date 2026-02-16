@@ -66,4 +66,4 @@ pub use mother_child::{ChildHealth, HealthStatus, MotherChildPlugin, Toy};
 #[cfg(feature = "pipeline")]
 pub mod pipeline;
 #[cfg(feature = "pipeline")]
-pub use pipeline::PipelinePlugin;
+pub use pipeline::{parse_request, PipelinePlugin};

@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "plugins/sdk", "patina-plugin-api", "plugins/models", "plugins/repos", "patina-command-api", "patina-task-api", "patina-pipeline-api", "plugins/doctor"]
+members = [".", "plugins/sdk", "plugins/models", "plugins/repos", "plugins/doctor"]
 exclude = ["layer/dust"]
 resolver = "2"
 

@@ -14,7 +14,7 @@ echo ""
 echo "📦 [1/5] Checking WIT consistency..."
 wit_ok=true
 # Mother-child guest crates: full wit/ tree (mother-child + command + deps)
-for crate_dir in patina-plugin-api plugins/models plugins/repos; do
+for crate_dir in plugins/models plugins/repos; do
     if [ -d "$crate_dir/wit" ]; then
         if ! diff -r wit/ "$crate_dir/wit/" > /dev/null 2>&1; then
             echo "   ERROR: $crate_dir/wit/ differs from canonical wit/"
@@ -23,14 +23,19 @@ for crate_dir in patina-plugin-api plugins/models plugins/repos; do
         fi
     fi
 done
-# Command guest crates: only wit/command/ subtree
-for crate_dir in patina-command-api; do
-    if [ -d "$crate_dir/wit/command" ]; then
-        if ! diff -r wit/command/ "$crate_dir/wit/command/" > /dev/null 2>&1; then
-            echo "   ERROR: $crate_dir/wit/command/ differs from canonical wit/command/"
-            echo "   Fix: cp -r wit/command/ $crate_dir/wit/command/"
-            wit_ok=false
-        fi
+# Step 1b: SDK WIT consistency — ensure published SDK ships current WIT
+# Compare world definitions AND their deps/patina-host/host.wit copies
+echo "   Checking SDK WIT consistency..."
+for world in command mother-child pipeline task; do
+    if ! diff "wit/$world/$world.wit" "plugins/sdk/wit/$world/$world.wit" > /dev/null 2>&1; then
+        echo "   ERROR: plugins/sdk/wit/$world/$world.wit differs from canonical"
+        echo "   Fix: cp wit/$world/$world.wit plugins/sdk/wit/$world/$world.wit"
+        wit_ok=false
+    fi
+    if ! diff "wit/$world/deps/patina-host/host.wit" "plugins/sdk/wit/$world/deps/patina-host/host.wit" > /dev/null 2>&1; then
+        echo "   ERROR: plugins/sdk/wit/$world/deps/patina-host/host.wit differs from canonical"
+        echo "   Fix: cp wit/$world/deps/patina-host/host.wit plugins/sdk/wit/$world/deps/patina-host/host.wit"
+        wit_ok=false
     fi
 done
 if [ "$wit_ok" = false ]; then
@@ -67,9 +72,6 @@ else
         "wit/command/deps/patina-host/host.wit"
         "wit/task/deps/patina-host/host.wit"
         "wit/pipeline/deps/patina-host/host.wit"
-        "patina-command-api/wit/command/deps/patina-host/host.wit"
-        "patina-task-api/wit/task/deps/patina-host/host.wit"
-        "patina-pipeline-api/wit/pipeline/deps/patina-host/host.wit"
     )
     for COPY in "${COPIES[@]}"; do
         if [ ! -f "$COPY" ]; then
