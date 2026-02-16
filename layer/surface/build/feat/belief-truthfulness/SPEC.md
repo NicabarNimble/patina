@@ -1,11 +1,10 @@
 ---
 type: feat
 id: belief-truthfulness
-status: active
+status: complete
 created: 2026-02-15
 sessions:
   origin: 20260215-083121
-  amended: [20260216-064229, 20260216-073845]
 related:
 - layer/core/patina-identity.md
 beliefs:
