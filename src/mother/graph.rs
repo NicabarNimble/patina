@@ -755,24 +755,39 @@ impl Graph {
     // Knowledge Operations (Cross-Project Beliefs)
     // =========================================================================
 
-    /// Sync knowledge entries into graph.db (transactional rebuild)
+    /// Sync knowledge entries into graph.db (per-source rebuild)
     ///
-    /// Wraps the entire rebuild in a single SQLite transaction:
-    /// DELETE all → repopulate → COMMIT. On failure, rolls back and
-    /// old data is preserved.
-    pub fn sync_knowledge(&self, entries: &[KnowledgeEntry]) -> Result<()> {
+    /// Only deletes entries for sources that were successfully collected.
+    /// Sources that failed collection retain their previously indexed data.
+    /// This prevents running sync from project B from wiping project A's beliefs.
+    ///
+    /// `synced_sources` is the set of source names that were successfully collected
+    /// (even if they returned 0 entries — 0 means "delete old, insert nothing").
+    pub fn sync_knowledge(
+        &self,
+        entries: &[KnowledgeEntry],
+        synced_sources: &[String],
+    ) -> Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
 
         self.conn.execute("BEGIN", [])?;
 
-        // Delete existing knowledge (full rebuild)
-        if let Err(e) = self.conn.execute("DELETE FROM knowledge", []) {
-            let _ = self.conn.execute("ROLLBACK", []);
-            return Err(e.into());
-        }
-        if let Err(e) = self.conn.execute("DELETE FROM knowledge_search", []) {
-            let _ = self.conn.execute("ROLLBACK", []);
-            return Err(e.into());
+        // Delete only entries from successfully collected sources
+        for source in synced_sources {
+            if let Err(e) = self
+                .conn
+                .execute("DELETE FROM knowledge WHERE source = ?1", params![source])
+            {
+                let _ = self.conn.execute("ROLLBACK", []);
+                return Err(e.into());
+            }
+            if let Err(e) = self.conn.execute(
+                "DELETE FROM knowledge_search WHERE source = ?1",
+                params![source],
+            ) {
+                let _ = self.conn.execute("ROLLBACK", []);
+                return Err(e.into());
+            }
         }
 
         // Repopulate
@@ -1215,7 +1230,8 @@ mod tests {
             },
         ];
 
-        graph.sync_knowledge(&entries)?;
+        let sources = vec!["patina".to_string(), "persona".to_string()];
+        graph.sync_knowledge(&entries, &sources)?;
         assert_eq!(graph.knowledge_count()?, 2);
 
         // FTS5 search
@@ -1232,7 +1248,7 @@ mod tests {
         assert_eq!(results[0].kind, "value");
 
         // Idempotent: sync again with same data → same count
-        graph.sync_knowledge(&entries)?;
+        graph.sync_knowledge(&entries, &sources)?;
         assert_eq!(graph.knowledge_count()?, 2);
 
         // Empty results
@@ -1243,29 +1259,29 @@ mod tests {
     }
 
     #[test]
-    fn test_sync_knowledge_rollback_preserves_old_data() -> Result<()> {
+    fn test_per_source_rebuild_preserves_other_sources() -> Result<()> {
         let dir = tempdir()?;
         let db_path = dir.path().join("graph.db");
         let conn = Connection::open(&db_path)?;
         let graph = Graph { conn };
         graph.init_schema()?;
 
-        // Initial sync
-        let entries = vec![KnowledgeEntry {
+        // Sync project-a beliefs
+        let entries_a = vec![KnowledgeEntry {
             id: "test-belief".to_string(),
             source: "project-a".to_string(),
             kind: "belief".to_string(),
-            statement: "Test belief".to_string(),
+            statement: "Test belief from project A".to_string(),
             entrenchment: "medium".to_string(),
             status: "active".to_string(),
             facets: "[]".to_string(),
         }];
 
-        graph.sync_knowledge(&entries)?;
+        graph.sync_knowledge(&entries_a, &["project-a".to_string()])?;
         assert_eq!(graph.knowledge_count()?, 1);
 
-        // Sync with new data succeeds
-        let new_entries = vec![
+        // Sync project-b beliefs — project-a should be preserved
+        let entries_b = vec![
             KnowledgeEntry {
                 id: "belief-one".to_string(),
                 source: "project-b".to_string(),
@@ -1286,11 +1302,20 @@ mod tests {
             },
         ];
 
-        graph.sync_knowledge(&new_entries)?;
-        assert_eq!(graph.knowledge_count()?, 2);
+        graph.sync_knowledge(&entries_b, &["project-b".to_string()])?;
+        // project-a (1) + project-b (2) = 3 total
+        assert_eq!(graph.knowledge_count()?, 3);
 
-        // Old entry should be gone (full rebuild)
-        let results = graph.search_knowledge("Test belief", 10)?;
+        // project-a belief still searchable
+        let results = graph.search_knowledge("project A", 10)?;
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].source, "project-a");
+
+        // Re-sync project-a with 0 entries → old project-a entries deleted
+        graph.sync_knowledge(&[], &["project-a".to_string()])?;
+        assert_eq!(graph.knowledge_count()?, 2); // only project-b remains
+
+        let results = graph.search_knowledge("project A", 10)?;
         assert!(results.is_empty());
 
         Ok(())
@@ -1348,7 +1373,7 @@ mod tests {
             facets: "[\"security\", \"llm\"]".to_string(),
         }];
 
-        graph.sync_knowledge(&entries)?;
+        graph.sync_knowledge(&entries, &["patina".to_string()])?;
 
         // These queries previously crashed with "no such column: llm"
         let results = graph.search_knowledge("secrets-llm-boundary", 10)?;
