@@ -286,7 +286,11 @@ patina-plugin-repos/  → plugins/repos/
      disk, hard links still resolve. Phase C removes the 3 deprecated entries.
 5. Update `CLAUDE.md` and `README.md`: project structure diagrams
    (`README.md` lines 233-237 list `patina-plugin-api/`, `patina-doctor/`, etc.)
-6. Crate names stay the same (Cargo package name ≠ directory name)
+6. `.gitignore`: Add `plugins/*/target/` after the existing `grammars/*/target/`
+   line (added in Phase A). Plugin crates are workspace members so builds
+   normally use the root `target/`, but a direct `cargo build` inside a plugin
+   crate would create a local `target/` that must not be tracked.
+7. Crate names stay the same (Cargo package name ≠ directory name)
 
 **Symlink update:** `patina-plugin-models/wit/` and `patina-plugin-repos/wit/`
 are symlinks to `../wit`. After moving to `plugins/models/` and `plugins/repos/`,
