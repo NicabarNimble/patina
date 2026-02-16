@@ -5,6 +5,7 @@ status: active
 created: 2026-02-15
 sessions:
   origin: 20260215-083121
+  amended: 20260216-064229
 related:
 - layer/core/patina-identity.md
 beliefs:
@@ -93,19 +94,63 @@ beliefs (
 
 Add temporal awareness to belief metrics during scrape:
 
-1. **Last-activity tracking** — new column `last_activity TEXT` on beliefs table.
-   Computed as MAX of: file mtime, most recent session citation, most recent
-   verification run, `revised` frontmatter date.
+1. **Last-activity tracking** — four nullable component columns on the beliefs
+   table, plus a computed `last_activity` column as their MAX:
 
-2. **Staleness threshold** — belief is "stale" if last_activity > 90 days ago.
-   Configurable via `.patina/config.toml` `[beliefs] stale_days = 90`.
+   - `last_file_touch TEXT` — `std::fs::metadata(path).modified()` during
+     `parse_belief_file()` (free — already reading the file)
+   - `last_frontmatter_revision TEXT` — from `revised` YAML field (already parsed
+     at `scrape/beliefs/mod.rs:257-263`)
+   - `last_session_citation TEXT` — during `cross_reference_beliefs()` (line 528-541),
+     the code already iterates session files checking `contains(bid)`. Session
+     filenames ARE timestamps (`20260215-230959.md`). Track the MAX filename per
+     belief — zero extra I/O, just a string comparison in the existing loop.
+   - `last_verification_run TEXT` — from `belief_verifications.last_run_at` (already
+     stored at `verification/internal/exec.rs:299`)
+   - `last_activity TEXT` — MAX of the four above, computed after all signals collected.
 
-3. **Verification drift** — compare current verification results against
-   `belief_verifications.data_freshness`. If a query that previously passed now
-   fails, flag as "drifted". New column: `verification_drifted INTEGER DEFAULT 0`.
+   Storing pre-MAX components keeps audit output explainable (future `--show-activity`
+   can display why a belief is stale) and avoids re-deriving during display.
 
-**Code path:** `src/commands/scrape/beliefs/mod.rs` — extend `BeliefMetrics` with
-`last_activity` and `verification_drifted`. Add columns to `create_materialized_views()`.
+2. **Staleness threshold** — belief is "stale" if last_activity > N days ago.
+   Configurable via `.patina/config.toml` `[beliefs] stale_days = 90`. Audit
+   summary emits freshness stats: "32/128 beliefs stale (>90d), median age 143d"
+   for immediate signal without hardcoding policy.
+
+3. **Verification drift** — snapshot-before-drop approach.
+
+   **Constraint:** `create_tables()` (`verification/internal/exec.rs:257`) does
+   `DROP TABLE IF EXISTS belief_verifications` on every scrape. There are no
+   "previous results" to compare against — `data_freshness` is just the string
+   "full" or "incremental", not a temporal marker.
+
+   **Implementation:** Before the DROP, rename the table:
+   ```sql
+   ALTER TABLE belief_verifications RENAME TO belief_verifications_prev;
+   ```
+   After the new verification run completes, diff:
+   ```sql
+   SELECT p.belief_id, p.label
+   FROM belief_verifications_prev p
+   JOIN belief_verifications c ON p.belief_id = c.belief_id AND p.label = c.label
+   WHERE p.last_status = 'pass' AND c.last_status != 'pass'
+   ```
+   Flag matched beliefs with `verification_drifted = 1`. Drop the `_prev` table.
+
+   This delivers drift detection with minimal pipeline change. An append-only
+   history table is deferred until there's proven need for trend analysis.
+
+   New column: `verification_drifted INTEGER DEFAULT 0` on beliefs table.
+
+**Code paths:**
+- `src/commands/scrape/beliefs/mod.rs` — extend `BeliefMetrics` with four
+  `last_*` fields plus `last_activity` and `verification_drifted`. Add columns
+  to `create_materialized_views()`. Populate `last_file_touch` in
+  `parse_belief_file()`, `last_session_citation` in `cross_reference_beliefs()`,
+  `last_frontmatter_revision` from existing `revised` field.
+- `src/commands/scrape/beliefs/verification/internal/exec.rs` — in
+  `create_tables()`, rename before drop. After `run_verification_queries()`
+  loop in `beliefs/mod.rs`, run drift diff query and set flags.
 
 ### Phase B: Health Score
 
@@ -120,26 +165,47 @@ where:
   freshness    = 1.0 - min(1.0, days_since_activity / stale_days)
 ```
 
-Weights: `w_use = 0.3, w_truth = 0.4, w_fresh = 0.3` (tunable).
+Weights: `w_use = 0.3, w_truth = 0.4, w_fresh = 0.3` (tunable via config, not CLI).
+Linear freshness curve — don't optimize the math until real score distributions
+are observed.
 
-Store as `health_score REAL` column on beliefs table. Add `--sort health` to
-belief audit. Add `--stale` flag to filter beliefs where freshness < 0.3.
+Store as `health_score REAL` column on beliefs table. Compute during scrape,
+expose via:
+- `--sort health` sort mode in belief audit
+- `--stale` flag to filter beliefs where freshness < 0.3
+- `low-health` warning in `health_warnings()` when health_score < 0.4
 
-**Code path:** `src/commands/belief/mod.rs` — add sort mode, stale filter.
-`src/commands/scrape/beliefs/mod.rs` — compute health_score during scrape.
+Compute and expose only — health score does not gate any automated action.
+Collect feedback from real audit usage before refining weights or adding
+nonlinear curves.
+
+**Code path:** `src/commands/belief/mod.rs` — add sort mode, stale filter,
+low-health warning. `src/commands/scrape/beliefs/mod.rs` — compute
+health_score during scrape after all signals collected (Phase A fields required).
 
 ### Phase C: Contradiction Detection
 
 Detect when two active beliefs have `attacks` relationships and both are active:
 
-1. During belief scrape, parse `## Attacks` and `## Attacked-By` sections
-   (already parsed for `defeated_attacks` metric)
-2. If both beliefs are `status: active` and the attack is not `defeated`,
-   flag both as "contested"
-3. New warning: `contested-by:{other-belief-id}`
+1. During belief scrape, `extract_file_metrics()` (`scrape/beliefs/mod.rs:323-361`)
+   already parses `## Attacked-By` sections and counts defeated attacks. Extend
+   it to also collect non-defeated attacker IDs into a new `BeliefMetrics` field:
+   `attacked_by_ids: Vec<String>`.
 
-**Code path:** `src/commands/scrape/beliefs/mod.rs` — after all beliefs parsed,
-cross-reference attacks. New table or column for active attack pairs.
+2. In `cross_reference_beliefs()`, after all beliefs are parsed, check each
+   `attacked_by_ids` entry: if the attacking belief is also `status: active`
+   and the attack is not `defeated`, flag both as "contested".
+
+3. New column `contested_by TEXT` on beliefs table (comma-separated attacker IDs).
+   Populated during scrape's cross-reference pass. New warning in
+   `health_warnings()`: `contested-by:{other-belief-id}`, read from this column
+   at display time. Uses the existing ALTER TABLE migration pattern
+   (`scrape/beliefs/mod.rs:131-152`).
+
+**Code path:** `src/commands/scrape/beliefs/mod.rs` — extend
+`extract_file_metrics()` to collect attacker IDs. Add cross-reference pass
+in `cross_reference_beliefs()`. `src/commands/belief/mod.rs` — add
+`contested-by:` warning to `health_warnings()`.
 
 ## Exit Criteria
 
@@ -159,9 +225,25 @@ cross-reference attacks. New table or column for active attack pairs.
 
 | Claim | Source |
 |-------|--------|
-| 126 beliefs, all static metrics | `patina belief audit` output |
+| 128 beliefs, all static metrics | `patina belief audit` output |
 | health_warnings has 7 static checks | `src/commands/belief/mod.rs:101-125` |
-| Verification stores data_freshness | `src/commands/scrape/beliefs/verification/mod.rs:93-101` |
 | BeliefMetrics has no temporal fields | `src/commands/scrape/beliefs/mod.rs:44-67` |
 | beliefs table has no last_activity | `src/commands/scrape/beliefs/mod.rs:70-100` |
 | Verification types: sql, assay, temporal | `src/commands/scrape/beliefs/verification/internal/` |
+| **belief_verifications is DROP+CREATE every scrape** | `verification/internal/exec.rs:257-258` |
+| data_freshness is "full"/"incremental", not temporal | `scrape/beliefs/mod.rs:1047` + `exec.rs:299` |
+| `revised` frontmatter already parsed | `scrape/beliefs/mod.rs:257-263` |
+| cross_reference_beliefs reads all session files | `scrape/beliefs/mod.rs:528-541` |
+| Session filenames are timestamps (YYYYMMDD-HHMMSS.md) | `layer/sessions/` directory convention |
+| extract_file_metrics parses Attacked-By for defeated count | `scrape/beliefs/mod.rs:350-354` |
+
+### Amendment History
+
+- **2026-02-16** (session 20260216-064229): Deep code read revealed belief_verifications
+  is DROP+CREATE every scrape — original drift detection approach was impossible.
+  Amended Phase A with snapshot-before-drop strategy. Added 4 component columns for
+  last_activity explainability. Fixed Phase C to reuse existing parsing infrastructure
+  (reuses parsing, adds one `contested_by TEXT` column). Added `low-health` warning
+  to Phase B. Grounded all claims against actual line numbers. UX review confirmed
+  terminal width constraint: show `last_activity` in main table, component columns
+  behind future `--verbose` flag only.
