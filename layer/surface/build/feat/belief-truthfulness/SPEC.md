@@ -122,12 +122,24 @@ Add temporal awareness to belief metrics during scrape:
      beliefs that HAVE verification queries (i.e., `verification_total > 0`).
      Beliefs with no `## Verification` section get NULL — they have no verification
      signal. This is per-belief freshness, not per-scrape.
-   - `last_activity TEXT` — MAX of the four non-NULL values above, computed after
-     all signals collected. If all four are NULL, `last_activity` is NULL (belief
-     has no temporal signal — will appear stale).
+   - `last_activity TEXT` — computed after all signals collected. Algorithm:
+     ```
+     strong = MAX(last_frontmatter_revision, last_session_citation, last_verification_run)
+     last_activity = strong ?? last_file_touch ?? NULL
+     ```
+     `last_file_touch` is a **fallback only** — it participates in `last_activity`
+     exclusively when ALL THREE strong signals are NULL. This prevents file mtime
+     (reset by `git clone`, touched by formatters) from masking genuine staleness.
+     After a fresh clone, beliefs without recent revisions, citations, or
+     verification will correctly appear stale — `last_file_touch = today` does
+     NOT override the absence of real activity signals.
 
-   Storing pre-MAX components keeps audit output explainable (future `--show-activity`
-   can display why a belief is stale) and avoids re-deriving during display.
+     If all four component signals are NULL, `last_activity` is NULL (belief has
+     no temporal signal — will appear stale).
+
+   Storing pre-fallback components keeps audit output explainable (future
+   `--show-activity` can display why a belief is stale) and avoids re-deriving
+   during display.
 
 2. **Staleness threshold** — belief is "stale" if last_activity > N days ago.
    Configurable via `.patina/config.toml` `[beliefs] stale_days = 90`.
