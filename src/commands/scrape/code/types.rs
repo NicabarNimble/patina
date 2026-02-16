@@ -10,10 +10,7 @@ use std::fmt;
 pub enum SymbolKind {
     Function,
     Struct,
-    Union, // C/C++ union
-    Class,
     Trait,
-    Interface,
     Module,
     Import,
     Const,
@@ -31,10 +28,7 @@ impl SymbolKind {
         match self {
             Self::Function => "function",
             Self::Struct => "struct",
-            Self::Union => "union",
-            Self::Class => "class",
             Self::Trait => "trait",
-            Self::Interface => "interface",
             Self::Module => "module",
             Self::Import => "import",
             Self::Const => "const",
@@ -58,7 +52,8 @@ impl fmt::Display for SymbolKind {
 // CALL GRAPH TYPES
 // ============================================================================
 /// Type-safe representation of call types in the call graph
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum CallType {
     Direct,      // Regular function call
     Method,      // Method call (obj.method())
@@ -95,7 +90,7 @@ impl fmt::Display for CallType {
 }
 
 /// Type-safe call graph entry
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CallGraphEntry {
     pub caller: String,
     pub callee: String,
@@ -133,11 +128,6 @@ impl<'a> FilePath<'a> {
     /// Create a new FilePath
     pub fn new(path: &'a str) -> Self {
         FilePath(path)
-    }
-
-    /// Get the inner string
-    pub fn as_str(&self) -> &'a str {
-        self.0
     }
 }
 

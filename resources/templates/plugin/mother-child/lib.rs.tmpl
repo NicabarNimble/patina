@@ -1,0 +1,23 @@
+use patina_sdk::{register_plugin, ChildHealth, HealthStatus, MotherChildPlugin};
+
+#[derive(Default)]
+struct __NAME_STRUCT__;
+
+impl MotherChildPlugin for __NAME_STRUCT__ {
+    fn name(&self) -> String {
+        "__NAME__".into()
+    }
+
+    fn handle(&mut self, _action: &str, _payload: &str) -> Result<String, String> {
+        Ok("{}".into())
+    }
+
+    fn health(&self) -> ChildHealth {
+        ChildHealth {
+            status: HealthStatus::Healthy,
+            reason: None,
+        }
+    }
+}
+
+register_plugin!(__NAME_STRUCT__);

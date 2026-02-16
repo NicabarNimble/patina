@@ -16,7 +16,7 @@
 //! let bump = BumpType::from_spec_type("feat");
 //! if let Some(bump) = bump {
 //!     let prepared = strategy.preflight(bump, "layer/surface/build/feat/my-feature/SPEC.md")?;
-//!     prepared.execute("my feature", "layer/surface/build/feat/my-feature/SPEC.md")?;
+//!     prepared.execute("my feature", "layer/surface/build/feat/my-feature/SPEC.md", None)?;
 //! }
 //! ```
 
@@ -128,7 +128,10 @@ impl PreparedRelease {
     /// For `Cargo`: updates Cargo.toml, commits, tags.
     /// For `External`: prints bump recommendation.
     /// For `None`: silent no-op.
-    pub fn execute(self, title: &str, spec_path: &str) -> Result<()> {
-        internal::execute_release(self, title, spec_path)
+    ///
+    /// When `archive_dir` is provided, the spec directory is `git rm -r`'d
+    /// and folded into the release commit (no separate archive commit needed).
+    pub fn execute(self, title: &str, spec_path: &str, archive_dir: Option<&str>) -> Result<()> {
+        internal::execute_release(self, title, spec_path, archive_dir)
     }
 }

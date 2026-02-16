@@ -711,7 +711,7 @@ fn load_wasm_child(
     let manifest = patina::plugin::PluginEngine::load_manifest(manifest_path)?;
     let wasm_bytes = std::fs::read(wasm_path)?;
     let component = engine.load_component(&wasm_bytes)?;
-    engine.instantiate_child(&component, &manifest)
+    engine.instantiate_child(&component, &manifest, None)
 }
 
 /// Write PID file for daemon lifecycle management

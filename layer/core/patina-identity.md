@@ -3,29 +3,30 @@ id: patina-identity
 layer: core
 status: active
 created: 2026-02-11
-tags: [identity, architecture, core-principle, plugin-boundary]
+revised: 2026-02-13
+tags: [identity, architecture, core-principle, plugin-boundary, protocol]
 references: [dependable-rust, unix-philosophy, adapter-pattern, spec-driven-design]
 ---
 
 # Patina Identity
 
-**Purpose:** Define what Patina is and isn't, where the core boundary lives, and when something belongs in the binary versus a plugin. Every architectural decision flows from this document.
+**Purpose:** Define what Patina is and isn't, where the protocol core lives, and when something belongs in the binary versus a plugin. Every architectural decision flows from this document.
 
 ---
 
 ## Core Principle
 
-Patina is a **knowledge substrate for AI-assisted development**. It captures, indexes, and serves project context — patterns, beliefs, sessions, code structure, commit history — so that AI agents can make informed decisions about your codebase. Patina is to AI agents what git is to editors: invisible infrastructure that makes the tool above it smarter.
+Patina is a **knowledge protocol for AI-assisted development**. Five verbs define the protocol: **capture, index, search, believe, evolve**. Everything else is tooling built on the protocol or infrastructure that supports it.
 
-**The binary is the pipeline. The layer is the product.**
+**The binary is the pipeline. The layer is the product. The protocol is the contract.**
 
-## What Patina IS
+## The Protocol
 
-Patina does six things. Everything in the binary serves one of these:
+Patina's irreducible core. These five operations define what Patina *is*. Remove any one and it stops being Patina.
 
 ### 1. Capture — Extract knowledge from development artifacts
 
-Code structure, git history, layer files, forge data, beliefs. The `scrape` pipeline reads your project and writes to SQLite + eventlog. This is the intake.
+Code structure, git history, layer files, forge data. The `scrape` pipeline reads your project and writes to SQLite + eventlog. This is the intake.
 
 **Modules:** `scrape` (15K lines), `scanner`, `eventlog`, `forge`, `git`
 
@@ -35,220 +36,184 @@ Embeddings from ONNX models, FTS5 indexes, structural graphs, temporal co-change
 
 **Modules:** `oxidize`, `embeddings`, `models`, `db`
 
-### 3. Serve — Answer questions about your project
+### 3. Search — Retrieve relevant knowledge about your project
 
-Semantic search (scry), factual search (assay), pattern delivery (context), belief grounding. This is what AI agents consume via MCP or CLI.
+Semantic search (scry), factual search (assay), pattern delivery (context), belief grounding. Search is retrieval, not reasoning — Patina finds and ranks, it doesn't plan or decide. AI agents consume search results via MCP or CLI.
 
 **Modules:** `scry`, `assay`, `context`, `retrieval`, `mcp`
 
-### 4. Govern — Track decisions and enforce process
+### 4. Believe — Capture and evolve project principles
 
-Specs authorize work. Sessions capture discussion. Beliefs capture principles. Versions track releases. The governance pipeline ensures decisions have provenance.
+Beliefs are project-scoped, evidence-backed assertions — not global truth. They capture decisions, patterns, and principles with supports/attacks relationships. Beliefs ground the protocol in project reality.
 
-**Modules:** `spec`, `session`, `belief`, `release`, `version`
+**Modules:** `belief`, `layer` (epistemic beliefs in layer/surface/epistemic/)
 
-### 5. Connect — cross-project awareness and plugin orchestration
+### 5. Evolve — Knowledge accumulates and matures
 
-Mother is the daemon that connects everything. Cross-project routing, model caching, relationship graph, and future plugin management. Mother IS how Patina scales beyond a single project.
+Patterns move through core → surface → dust. Sessions distill into beliefs. Beliefs gain or lose entrenchment through evidence. The layer is a living document.
 
-**Modules:** `mother` (daemon, graph, children), `adapters` (LLM entry points), `workspace`
-
-### 6. Protect — security infrastructure
-
-Secrets management, scanner, encryption. Security is core infrastructure that grows with the system, not an optional add-on.
-
-**Modules:** `secrets`, `scanner`
+**Modules:** `layer` (lifecycle), `session` (distillation)
 
 ### Foundation
 
-These serve all six functions:
+These serve all five protocol operations:
 
 - **`layer`** — filesystem structure for knowledge storage (core/surface/dust/sessions)
 - **`paths`** — single source of truth for all path construction (no I/O)
 - **`project`** — unified config management (.patina/config.toml)
 - **`models`** — embedding models exist so Patina can work. No models, no scry.
 - **`migration`** — path migration between versions (idempotent)
+- **`init`** — project skeleton setup
+
+## Protocol Tooling — uses the protocol, extractable over time
+
+These modules use the protocol but aren't the protocol itself. Today they're compiled-in. As the plugin system matures and formats stabilize, they move to plugins. Nothing is lost — features move and the core hardens.
+
+| Module | What it does | Extraction path |
+|--------|-------------|-----------------|
+| `spec` | Spec lifecycle + release delegation | Command plugin (reads/writes stable markdown format) |
+| `release` | Version strategy dispatch | Command plugin (reads Cargo.toml, creates tags) |
+| `session` | Development session tracking | Task plugin (needs host/git for tags) |
+| `version` | Version display + tracking | Command plugin |
+| `report` | Project state reports | Command plugin (composes from scry/assay/context) |
+| `eval` + `bench` | Retrieval quality measurement | Likely stays compiled — value is ablation testing of retrieval internals |
+| `doctor` | Health checks | **Extracted (v0.17.0)** — first plugin, proves the pattern |
+| `yolo` | Devcontainer generation | Task plugin (mutates filesystem) |
+| `upgrade` | Version check | Command plugin (task if it downloads/replaces binary) |
+
+### Extraction principle
+
+Per [[graceful-extraction]]: keep the compiled version as a feature-gated fallback. Plugin-first dispatch with compiled fallback means the system works regardless of plugin availability. The compiled path is only removed after the plugin path is proven stable.
+
+## Protocol Infrastructure — supports the protocol, stays longest
+
+These modules provide infrastructure the protocol needs to operate at scale. They stay in the binary longest because they need full host access or provide cross-cutting concerns.
+
+| Module | What it does | Why it stays |
+|--------|-------------|-------------|
+| `mother` | Cross-project daemon, routing, plugin management | The router that connects everything. Mother IS how Patina scales. |
+| `adapters` | LLM entry points (Claude, Gemini, OpenCode) | Need full host access (auth, APIs, secrets). Not sandboxable. |
+| `secrets` | Age encryption + Keychain | Security infrastructure. Plugins consume secrets; they don't manage them. |
+| `plugin` | WASM engine (wasmtime, WIT, 4 worlds) | The extraction mechanism itself. |
 
 ## What Patina IS NOT
 
 ### Not a build system
 
-Patina doesn't compile code, run tests, or deploy artifacts. It *understands* build artifacts (Cargo.toml, package.json) to auto-detect project type, but it never executes builds. `ReleaseStrategy::External` prints advisory messages — it doesn't run `npm publish`.
+Patina doesn't compile code, run tests, or deploy artifacts. It *understands* build artifacts (Cargo.toml, package.json) to auto-detect project type, but it never executes builds.
 
 ### Not a deployment tool
 
-No CI/CD, no container orchestration, no cloud integration. `yolo` generates devcontainer configs (1,600 lines) — this is the strongest candidate for extraction. It creates environments; Patina captures knowledge.
+No CI/CD, no container orchestration, no cloud integration.
 
 ### Not an LLM runtime
 
-Adapters are config generators, not inference engines. `ClaudeAdapter` writes `CLAUDE.md` and copies session scripts. It doesn't call the Claude API, manage tokens, or route prompts. The MCP server exposes Patina's *knowledge* tools to LLMs — it doesn't host LLM capabilities.
+Adapters are config generators, not inference engines. The MCP server exposes Patina's *knowledge* tools to LLMs — it doesn't host LLM capabilities.
 
 ### Not a task tracker
 
-Session tracking and spec lifecycle are governance, not project management. Patina doesn't have sprints, assignees, or Kanban boards. The frozen `patina-work` spec (beads-like work tracking) belongs in a plugin, not core.
+Session tracking and spec lifecycle are governance tooling, not project management. No sprints, assignees, or Kanban boards.
 
 ### Not a general-purpose database
 
-SQLite is an implementation detail. Patina doesn't expose SQL, manage schemas for external consumers, or serve as a data warehouse. The eventlog is an append-only knowledge substrate, not an application database.
+SQLite is an implementation detail. The eventlog is an append-only knowledge substrate, not an application database.
 
-## The Core/Plugin Boundary
-
-The boundary follows a simple test: **does it serve a core function (capture, index, serve, govern, connect, protect)?** If yes, it's core. If it's an optional enhancement that Patina can function without, it's a plugin.
-
-### Definitely Core — stays in the binary
-
-| Module | Pillar | Why core |
-|--------|--------|----------|
-| `scrape` (all) | Capture | The entire pipeline — engine + scrapers (code, git, layer, forge, beliefs). Scrape is how Patina gets data. |
-| `oxidize` | Index | Embedding pipeline. Transforms raw scrape data into queryable form. |
-| `scry` + `retrieval` | Serve | Query engine + oracle fusion. The serve surface for AI agents. |
-| `assay` | Serve | Structural/factual queries (FTS5, imports, call graph). |
-| `context` | Serve | Pattern + belief delivery to agents. |
-| `session` | Govern | Session lifecycle. |
-| `spec` | Govern | Spec lifecycle + release delegation. |
-| `release` | Govern | Strategy dispatch (Cargo/External/None). |
-| `belief` | Govern | Belief audit + metrics. |
-| `layer` | Foundation | Knowledge storage structure. |
-| `paths` | Foundation | Path construction (no I/O). |
-| `project` | Foundation | Config management. |
-| `eventlog` | Foundation | Append-only truth store. |
-| `db` | Foundation | SQLite abstraction. |
-| `embeddings` | Foundation | Embedding engine trait + ONNX runtime. |
-| `models` | Foundation | Embedding models exist so Patina can work. No models, no embeddings, no scry. |
-| `mcp` | Serve | Protocol bridge (JSON-RPC over stdio). Thin shim — CLI is the product. |
-| `init` | Foundation | Project skeleton setup. |
-| `mother` | Connective | The daemon that connects everything — cross-project routing, plugin management, caching, graph. Mother IS how Patina scales beyond a single project. Future: runs adapters, manages plugins. |
-| `adapters` | Entry | How users and agents enter Patina. Today: config generators. Future: Mother-managed runtime integration. |
-| `secrets` | Security | Local-first encryption (age + Keychain). Security is core infrastructure that will grow, not optional. |
-
-### Definitely Plugin — extract as plugin system matures
-
-`doctor` was the first extraction (v0.17.0) — it ships as a WASM plugin with compiled fallback, proving the pattern works. Next candidates:
-
-| Module | Lines | Why plugin | Status |
-|--------|-------|------------|--------|
-| `yolo` | 1,613 | Devcontainer generation isn't knowledge. Strongest extraction candidate. | Pending |
-| `eval` + `bench` | 3,229 | Quality measurement for power users. Not core to knowledge serving. | Pending |
-| `report` | ~605 | Report generation. Composed from core tools — classic plugin. | Pending |
-| `doctor` | 278 | Health checks. Useful but not knowledge infrastructure. | **Extracted (v0.17.0)** |
-| `upgrade` | 162 | Version check. Utility, not pillar. | Pending |
-
-## The Plugin Test
+## The Protocol Test
 
 Before adding ANY new module to the binary, apply this test:
 
-### 1. Does it serve a core function?
+### 1. Is it a protocol operation?
 
-Capture, index, serve, govern, connect, or protect. If no → it's a plugin. Full stop.
+Capture, index, search, believe, or evolve. If yes → protocol core. If no → continue.
 
-### 2. Can Patina function without it?
+### 2. Does it use the protocol?
 
-If yes → it's a plugin. `patina scrape && patina scry "how does auth work?"` must work without eval, yolo, or doctor installed.
+If it reads/writes layer data, queries scry/assay/context, or manages beliefs → it's protocol tooling. Compile it in today, plan for extraction.
 
-### 3. Does it introduce a new external dependency?
+### 3. Does it provide infrastructure the protocol needs?
 
-If yes → strong signal for plugin. Every new dependency in `Cargo.toml` increases binary size and attack surface. The 52MB binary exists because everything is compiled in.
+Cross-project routing, security, plugin hosting → protocol infrastructure. Stays in the binary.
 
-### 4. Would a different project want different behavior?
+### 4. None of the above?
 
-If yes → it's a plugin. Forge behavior differs per platform (GitHub vs Gitea vs GitLab). Oracle behavior differs per domain. These are extension points, not core.
+It's a plugin. Don't add it to the binary. Build it as a WASM plugin from day one.
+
+### 5. Can Patina function without it?
+
+`patina scrape && patina scry "how does auth work?"` must work without eval, yolo, doctor, or report installed. If removing it breaks the protocol → it's core. If not → plugin or tooling.
 
 ### When in doubt: bundle now, extract later
 
-The plugin system is live (v0.17.0) — wasmtime + WIT Component Model with two worlds (child world for daemon children, command world for CLI commands). Doctor was the first extraction, proving the pattern: WASM-first with compiled fallback via feature gate (`bundled-doctor`). The MotherChild trait and existing traits (LLMAdapter, ForgeReader, Oracle) are the plugin interfaces — some dispatch to compiled code, some to WASM, with the boundary moving outward over time.
+The plugin system is live (v0.17.0) with four planned worlds: pipeline (pure compute), command (inform), task (act), mother-child (daemon). Doctor was the first extraction. The boundary moves outward over time — tooling first, infrastructure last.
 
 ## Architectural Invariants
 
-These are non-negotiable properties of the system:
+Non-negotiable properties of the system:
 
 ### 1. Rust-first runtime
 
 No Python subprocess dependencies. No Node.js. No shell scripts at runtime. Embeddings run through ONNX Runtime via `ort` crate. Cross-platform: same vector space on Mac/Linux/Windows.
 
-**Why:** AI agents execute in contexts without guaranteed runtimes. The binary must be self-contained.
-
 ### 2. Local-first data
 
-All knowledge lives on disk. SQLite databases, markdown files, TOML configs. No cloud dependencies for core operation. Secrets use `age` encryption + macOS Keychain — no external vault services.
-
-**Why:** Project knowledge is sensitive. Dependencies on external services create availability risks that compound in agentic contexts.
+All knowledge lives on disk. SQLite databases, markdown files, TOML configs. No cloud dependencies for core operation.
 
 ### 3. Eventlog is truth
 
-The append-only eventlog is the canonical data source. All SQLite tables (code_fts, commits_fts, moments, etc.) are materialized views — derived, rebuildable. `patina rebuild` recreates everything from eventlog + layer/ + git.
-
-**Why:** Rebuildable data is portable. Clone the repo, run rebuild, get full knowledge. No state migration, no schema versioning hell.
+The append-only eventlog is the canonical data source. All SQLite tables are materialized views — derived, rebuildable. `patina rebuild` recreates everything from eventlog + layer/ + git.
 
 ### 4. Layer is git-tracked knowledge
 
-`layer/` is the knowledge product — checked into git, versioned, reviewable. `.patina/` is derived local state — gitignored, rebuildable. Never store irreplaceable data in `.patina/`.
-
-**Why:** Knowledge that isn't in git doesn't survive `rm -rf .patina/`. Git is the durability layer.
+`layer/` is the knowledge product — checked into git, versioned, reviewable. `.patina/` is derived local state — gitignored, rebuildable.
 
 ### 5. Compiler-enforced safety
 
-In agentic contexts, the compiler is the only reliable review gate. Prefer enums over strings, typestate over documentation, exhaustive match over convention. See [[compiler-enforced-safety]].
-
-**Why:** No PR review, no team lead, no QA gate. If bad code compiles, it ships.
+In agentic contexts, the compiler is the only reliable review gate. Prefer enums over strings, typestate over documentation. See [[compiler-enforced-safety]].
 
 ### 6. Sync-first execution
 
-Synchronous, blocking code by default. No async infection. Use `std::thread::scope` for parallelism when needed, `rayon` for CPU-bound batch work. See [[sync-first]].
-
-**Why:** Async adds complexity without benefit for inherently sequential workloads (file I/O, SQLite, CLI commands). Contained async only if WASM host I/O demands it.
+Synchronous, blocking code by default. Parallelism is explicit and bounded (`std::thread::scope`, `rayon`); async only when host integration requires it. See [[sync-first]].
 
 ### 7. MCP is shim, CLI is product
 
-The MCP server is a discovery mechanism for LLM agents. It wraps CLI logic, never implements its own. Every MCP tool must have a CLI equivalent. See [[mcp-is-shim-cli-is-product]].
-
-**Why:** Users debug with CLI. Agents discover with MCP. Same code path, different transport.
+The MCP server wraps CLI logic, never implements its own. See [[mcp-is-shim-cli-is-product]].
 
 ### 8. Specs authorize action
 
-Every non-trivial change is authorized by a spec. Sessions discuss, specs decide, code executes. See [[spec-driven-design]].
-
-**Why:** In agentic development, unauthorized scope creep is the default failure mode. Specs are the guardrail.
+Every non-trivial change is authorized by a spec. See [[spec-driven-design]].
 
 ## The Evolution Path
 
-Patina's architecture has a deliberate evolution path from monolith to platform:
-
 ```
-Today:          enum dispatch → compiled code
-                ReleaseStrategy::Cargo → internal.rs
-                ForgeReader → github/internal.rs
-                Oracle → semantic.rs
+Protocol core:    capture, index, search, believe, evolve
+                  → Always in the binary. Hardened by extraction.
 
-Plugin system:  enum dispatch → WIT interface → WASM module
-                ReleaseStrategy → release.wit → release-cargo.wasm
-                ForgeReader → forge.wit → forge-github.wasm
-                Oracle → oracle.wit → oracle-semantic.wasm
+Protocol tooling: spec, session, release, eval, report, yolo, upgrade
+                  → Compiled today. Plugin tomorrow. Formats stabilize first.
+
+Protocol infra:   mother, adapters, secrets, plugin engine
+                  → Stays in the binary longest. Full host access required.
+
+Plugin ecosystem: 4 worlds (pipeline, command, task, mother-child)
+                  → Community extends Patina without touching core.
 ```
 
-The traits exist and WIT interfaces are shipping. v0.17.0 delivered two WIT worlds: `child` (daemon children — models, repos) and `command` (CLI commands — doctor). The refactor from enum to trait to WIT is mechanical — one extension point at a time, never a rewrite.
-
-**Key constraint:** wasmtime + WIT Component Model. Not Extism. Separate WIT worlds per plugin type for capability isolation. Two-layer capability grants (manifest + host). See [[patina-platform]].
+The plugin system (v0.17.0+) enables this evolution. Each extraction hardens the protocol core by proving it doesn't need the extracted module to function. The binary gets smaller and more stable. The ecosystem gets richer.
 
 ## Common Mistakes
 
-### 1. Adding features that don't serve the six core functions
+### 1. Adding features that don't serve the protocol
 
 ```
 Bad:  "Let's add a code formatter to patina"
-      → That's a build tool, not knowledge infrastructure
-
 Good: "Let's add a scraper that indexes formatting rules"
-      → That captures knowledge about the project's style
 ```
 
 ### 2. Building systems when you need tools
 
 ```
 Bad:  "Let's build a task management system in patina"
-      → That's patina-work plugin territory
-
 Good: "Let's add belief grounding to assay"
-      → That enhances the serve pillar with existing infrastructure
 ```
 
 ### 3. Coupling plugins to core internals
@@ -258,46 +223,31 @@ Bad:  forge reads from eventlog internals directly
 Good: forge writes to eventlog via public API, assay reads via FTS5
 ```
 
-### 4. Adding external dependencies for one-time operations
-
-```
-Bad:  Add `glob` crate for one call in release safeguards
-Good: Use `toml::Value` (already in tree) for config parsing
-      See [[use-whats-in-the-tree]]
-```
-
-### 5. Making the binary bigger instead of the layer richer
+### 4. Making the binary bigger instead of the layer richer
 
 ```
 Bad:  Compile tree-sitter grammars for 30 languages into the binary
-Good: Load grammars as WASM plugins from ~/.patina/grammars/
-
-Bad:  Add LLM inference to the binary
-Good: Generate context files that LLM tools consume
+Good: Load grammars as WASM plugins from ~/.patina/pipeline/
 ```
 
-### 6. Confusing the layer with the binary
+### 5. Confusing the layer with the binary
 
 ```
-The layer (layer/) is the knowledge product — portable, git-tracked, human-readable
-The binary (patina) is the pipeline — captures, indexes, serves, governs
-The cache (.patina/) is derived state — rebuildable, gitignored, machine-readable
-
-Don't store knowledge in the binary (hardcoded patterns)
-Don't store pipeline logic in the layer (executable scripts)
-Don't treat cache as durable (it's derived from layer + git)
+The layer (layer/) is the knowledge product
+The binary (patina) is the protocol engine
+The cache (.patina/) is derived state
 ```
 
 ## References
 
-- [Dependable Rust](./dependable-rust.md) — Black-box module pattern (mod.rs + internal.rs)
+- [Dependable Rust](./dependable-rust.md) — Black-box module pattern
 - [Unix Philosophy](./unix-philosophy.md) — One tool, one job, done well
 - [Adapter Pattern](./adapter-pattern.md) — Trait-based external system integration
 - [Spec-Driven Design](./spec-driven-design.md) — Specs authorize action
 - [Session Capture](./session-capture.md) — Friction-free knowledge capture
 - [[compiler-enforced-safety]] — Type-level enforcement in agentic contexts
-- [[transparent-complexity]] — Every code path visible to the compiler
-- [[work-triages-specs]] — Let the build determine what matters
+- [[patina-is-knowledge-protocol]] — Protocol distillation principle
 - [[patina-is-knowledge-layer]] — Git-style substrate, not LLM tool competitor
+- [[graceful-extraction]] — Plugin-first with compiled fallback
 - [[sync-first]] — No async infection
 - [[mcp-is-shim-cli-is-product]] — CLI is the real product

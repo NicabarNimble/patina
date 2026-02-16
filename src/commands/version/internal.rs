@@ -45,7 +45,7 @@ pub fn hotfix(description: &str) -> Result<()> {
     }
 
     let prepared = strategy.preflight(BumpType::Patch, "Cargo.toml")?;
-    prepared.execute(description, "Cargo.toml")?;
+    prepared.execute(description, "Cargo.toml", None)?;
 
     println!("\n  Consider creating a spec for traceability:");
     println!("    patina spec status <id> complete");

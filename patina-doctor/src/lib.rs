@@ -6,7 +6,8 @@
 //!
 //! Proves the command world: CLI subcommand that runs without Mother daemon.
 
-use patina_command_api::{layer, register_command, CommandPlugin};
+use patina_sdk::command::{layer, query};
+use patina_sdk::{register_command, CommandPlugin};
 
 /// JSON structures for health check output.
 /// Mirrors the original compiled-in doctor types.
@@ -22,6 +23,7 @@ mod types {
         pub layer_patterns: u32,
         pub sessions: u32,
         pub uid: Option<String>,
+        pub beliefs: Option<u32>,
         pub recommendations: Vec<String>,
     }
 
@@ -56,6 +58,7 @@ mod types {
                     "adapter_version": self.adapter_version,
                     "layer_patterns": self.layer_patterns,
                     "sessions": self.sessions,
+                    "beliefs": self.beliefs,
                 },
                 "recommendations": self.recommendations,
             })
@@ -147,11 +150,17 @@ impl CommandPlugin for DoctorPlugin {
         // Get UID via host
         let uid = layer::get_project_uid();
 
+        // Query belief count via host query interface
+        let beliefs = query::query("context", "{}")
+            .ok()
+            .and_then(|text| extract_belief_count(&text));
+
         health.llm = llm;
         health.adapter_version = adapter_version;
         health.layer_patterns = pattern_count;
         health.sessions = session_count;
         health.uid = uid;
+        health.beliefs = beliefs;
 
         // Output
         if json_output {
@@ -251,6 +260,7 @@ fn analyze_environment(
         layer_patterns: 0,
         sessions: 0,
         uid: None,
+        beliefs: None,
         recommendations,
     }
 }
@@ -306,6 +316,9 @@ fn display_health_check(health: &types::HealthCheck) {
         health.layer_patterns
     );
     println!("  \u{2713} Sessions: {} recorded", health.sessions);
+    if let Some(count) = health.beliefs {
+        println!("  \u{2713} Beliefs: {} epistemic", count);
+    }
 
     if !health.recommendations.is_empty() {
         println!("\nRecommendations:");
@@ -315,6 +328,25 @@ fn display_health_check(health: &types::HealthCheck) {
 
         println!("\n\u{1f4a1} Run 'patina init .' to refresh your environment snapshot");
     }
+}
+
+/// Extract belief count from context query output.
+///
+/// The context text includes lines like "Epistemic Beliefs: 105 total"
+/// or similar patterns. Extracts the first number after "beliefs" (case-insensitive).
+fn extract_belief_count(context_text: &str) -> Option<u32> {
+    for line in context_text.lines() {
+        let lower = line.to_lowercase();
+        if lower.contains("belief") {
+            // Find first number in the line
+            for word in line.split_whitespace() {
+                if let Ok(n) = word.parse::<u32>() {
+                    return Some(n);
+                }
+            }
+        }
+    }
+    None
 }
 
 register_command!(DoctorPlugin);

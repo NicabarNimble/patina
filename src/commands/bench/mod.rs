@@ -1,12 +1,14 @@
-//! Benchmark command - measure retrieval quality
+//! Benchmark command - measure retrieval quality and grammar performance
 //!
 //! Public interface:
 //! - `execute()` - run retrieval benchmarks
 //! - `generate()` - generate querysets from git commits
+//! - `execute_grammar()` - A/B test compiled-in vs WASM grammar dispatch
 //! - `QuerySet` - benchmark query set format
 //!
 //! Follows dependable-rust: metrics calculation is internal
 
+pub mod grammar;
 mod internal;
 
 use anyhow::Result;
@@ -50,6 +52,12 @@ pub fn execute(options: BenchOptions) -> Result<()> {
         config,
         options.repo,
     )
+}
+
+/// Execute grammar performance benchmark
+pub fn execute_grammar(files: Option<usize>) -> Result<()> {
+    let options = grammar::GrammarBenchOptions { files };
+    grammar::run(options)
 }
 
 /// Options for generating querysets from git commits

@@ -1,11 +1,11 @@
 [workspace]
-members = [".", "patina-metal", "patina-plugin-api", "patina-plugin-models", "patina-plugin-repos", "patina-command-api", "patina-doctor"]
+members = [".", "patina-sdk", "patina-plugin-api", "patina-plugin-models", "patina-plugin-repos", "patina-command-api", "patina-task-api", "patina-pipeline-api", "patina-doctor"]
 exclude = ["layer/dust"]
 resolver = "2"
 
 [package]
 name = "patina-ai"
-version = "0.17.0"
+version = "0.23.0"
 edition = "2021"
 license = "MIT"
 description = "Context orchestration for AI development - captures and evolves patterns over time"
@@ -73,13 +73,12 @@ glob = "0.3"
 # YAML support for docker-compose generation
 serde_yaml = "0.9"
 
-# Semantic analysis - moved to patina-metal
-patina-metal = { version = "0.1.0", path = "patina-metal" }
 walkdir = "2"
 ignore = "0.4"
 
-# Tree-sitter - AST parsing for code scraper (11 languages)
+# Tree-sitter - AST parsing for Rust fallback processor
 tree-sitter = "0.24"
+tree-sitter-rust = "0.24"
 
 # Embeddings and vector search
 ort = { version = "=2.0.0-rc.10", features = ["download-binaries"] }  # ONNX Runtime - pinned, rc.11 breaks API

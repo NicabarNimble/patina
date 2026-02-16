@@ -13,12 +13,16 @@ use anyhow::Result;
 pub enum SpecCommands {
     /// Archive a completed spec (git tag + remove from tree)
     Archive {
-        /// Spec ID to archive (e.g., "session-092-hardening")
-        id: String,
+        /// Spec ID to archive (required unless --stale)
+        id: Option<String>,
 
         /// Dry run - show what would happen without executing
         #[arg(long)]
         dry_run: bool,
+
+        /// Archive all completed/abandoned specs still in tree
+        #[arg(long)]
+        stale: bool,
     },
 
     /// Show specs ready to work on (unblocked, status=ready/active)
@@ -46,6 +50,10 @@ pub enum SpecCommands {
         /// Force major version bump on complete (for 1.0.0 moments)
         #[arg(long)]
         major: bool,
+
+        /// Skip auto-archive on complete/abandoned (preserve spec in tree)
+        #[arg(long)]
+        no_archive: bool,
     },
 
     /// List all specs with optional filters
@@ -69,6 +77,11 @@ pub fn archive(id: &str, dry_run: bool) -> Result<()> {
     internal::archive_spec(id, dry_run)
 }
 
+/// Archive all completed/abandoned specs still in tree
+pub fn archive_stale(dry_run: bool) -> Result<()> {
+    internal::archive_stale_specs(dry_run)
+}
+
 /// Show specs ready to work on
 pub fn ready(json: bool) -> Result<()> {
     internal::show_ready_specs(json)
@@ -80,12 +93,111 @@ pub fn blocked(json: bool) -> Result<()> {
 }
 
 /// Update a spec's status
-pub fn status(id: &str, new_status: &str, major: bool) -> Result<()> {
-    internal::update_spec_status(id, new_status, major)
+pub fn status(id: &str, new_status: &str, major: bool, no_archive: bool) -> Result<()> {
+    internal::update_spec_status(id, new_status, major, no_archive)
 }
 
 /// List all specs with optional filters
 pub fn list(status: Option<String>, target: Option<String>, json: bool) -> Result<()> {
     let filters = internal::ListFilters { status, target };
     internal::show_spec_list(&filters, json)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SpecCommands;
+    use clap::Parser;
+
+    // Minimal CLI struct for testing SpecCommands parsing
+    #[derive(Parser)]
+    struct TestCli {
+        #[command(subcommand)]
+        command: SpecCommands,
+    }
+
+    fn parse(args: &[&str]) -> Result<SpecCommands, clap::Error> {
+        TestCli::try_parse_from(std::iter::once("patina-spec").chain(args.iter().copied()))
+            .map(|cli| cli.command)
+    }
+
+    #[test]
+    fn status_with_no_archive_flag() {
+        let cmd = parse(&["status", "my-spec", "complete", "--no-archive"]).unwrap();
+        match cmd {
+            SpecCommands::Status {
+                id,
+                status,
+                no_archive,
+                major,
+            } => {
+                assert_eq!(id, "my-spec");
+                assert_eq!(status, "complete");
+                assert!(no_archive);
+                assert!(!major);
+            }
+            _ => panic!("expected Status"),
+        }
+    }
+
+    #[test]
+    fn status_defaults_archive_on() {
+        let cmd = parse(&["status", "my-spec", "complete"]).unwrap();
+        match cmd {
+            SpecCommands::Status { no_archive, .. } => {
+                assert!(!no_archive, "--no-archive should default to false");
+            }
+            _ => panic!("expected Status"),
+        }
+    }
+
+    #[test]
+    fn archive_with_id() {
+        let cmd = parse(&["archive", "my-spec"]).unwrap();
+        match cmd {
+            SpecCommands::Archive { id, stale, dry_run } => {
+                assert_eq!(id.as_deref(), Some("my-spec"));
+                assert!(!stale);
+                assert!(!dry_run);
+            }
+            _ => panic!("expected Archive"),
+        }
+    }
+
+    #[test]
+    fn archive_stale_no_id() {
+        let cmd = parse(&["archive", "--stale"]).unwrap();
+        match cmd {
+            SpecCommands::Archive { id, stale, .. } => {
+                assert!(id.is_none());
+                assert!(stale);
+            }
+            _ => panic!("expected Archive"),
+        }
+    }
+
+    #[test]
+    fn archive_stale_dry_run() {
+        let cmd = parse(&["archive", "--stale", "--dry-run"]).unwrap();
+        match cmd {
+            SpecCommands::Archive { id, stale, dry_run } => {
+                assert!(id.is_none());
+                assert!(stale);
+                assert!(dry_run);
+            }
+            _ => panic!("expected Archive"),
+        }
+    }
+
+    #[test]
+    fn archive_no_id_no_stale_still_parses() {
+        // clap accepts this — validation happens at dispatch time in main.rs
+        let cmd = parse(&["archive"]).unwrap();
+        match cmd {
+            SpecCommands::Archive { id, stale, .. } => {
+                assert!(id.is_none());
+                assert!(!stale);
+            }
+            _ => panic!("expected Archive"),
+        }
+    }
 }

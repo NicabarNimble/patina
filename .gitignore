@@ -56,3 +56,4 @@ node_modules/
 
 # Project-specific patina files (local data only)
 # Note: config.toml IS tracked - only [environment] section is machine-specific
+tests/panic-pipeline/target/
