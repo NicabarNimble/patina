@@ -82,8 +82,8 @@ This is the legacy path. See [[mother-design]] for deprecation roadmap.
 
 Parses `layer/surface/epistemic/beliefs/*.md` YAML frontmatter + markdown. Computes
 rich metrics (citations, evidence, verification, grounding). Stores in `beliefs` table
-with FTS5 index (`belief_fts`), evidence table (`belief_evidence`), code reach table
-(`belief_code_reach`).
+with FTS5 index (`belief_fts`), verification table (`belief_verifications`), code reach
+table (`belief_code_reach`).
 
 Mother's index doesn't need per-project metrics — statement, entrenchment,
 facets, and status are sufficient for cross-project discovery.
@@ -127,7 +127,7 @@ and persona values in one searchable index.
 -- In ~/.patina/mother/graph.db (alongside existing nodes/edges tables)
 CREATE TABLE IF NOT EXISTS knowledge (
     id TEXT NOT NULL,
-    source TEXT NOT NULL,          -- 'persona', project UID, or ref repo name
+    source TEXT NOT NULL,          -- 'persona', registry project name, or ref repo name
     kind TEXT NOT NULL,            -- 'belief' or 'value' (see [[mother-design]])
     statement TEXT NOT NULL,
     entrenchment TEXT DEFAULT 'medium',
