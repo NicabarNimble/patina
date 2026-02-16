@@ -5,7 +5,8 @@
 use anyhow::{bail, Result};
 use std::path::Path;
 
-use patina::mother::{EdgeType, Graph, NodeType, MIN_SAMPLES};
+use patina::mother::{EdgeType, Graph, KnowledgeEntry, NodeType, MIN_SAMPLES};
+use patina::paths;
 
 use crate::commands::repo::internal::Registry;
 
@@ -53,6 +54,54 @@ pub fn sync_from_registry() -> Result<()> {
         println!("  + {} (reference)", name);
     }
 
+    // =========================================================================
+    // Knowledge sync: collect beliefs from projects + persona values
+    // =========================================================================
+
+    println!();
+    println!("📚 Syncing knowledge...\n");
+
+    let mut knowledge: Vec<KnowledgeEntry> = Vec::new();
+    let mut beliefs_synced = 0;
+    let mut values_synced = 0;
+
+    // For each project, try to open patina.db and read beliefs
+    for (name, entry) in &registry.projects {
+        let db_path = Path::new(&entry.path).join(".patina/local/data/patina.db");
+        match collect_project_beliefs(name, &db_path) {
+            Ok(entries) => {
+                let count = entries.len();
+                beliefs_synced += count;
+                if count > 0 {
+                    println!("  + {} beliefs from {}", count, name);
+                }
+                knowledge.extend(entries);
+            }
+            Err(e) => {
+                eprintln!("  ⚠ {}: {}", name, e);
+            }
+        }
+    }
+
+    // Ref repos: skip knowledge sync entirely (per SPEC)
+
+    // Read persona values from ~/.patina/layer/surface/beliefs/
+    match collect_persona_values() {
+        Ok(entries) => {
+            values_synced = entries.len();
+            if values_synced > 0 {
+                println!("  + {} values from persona", values_synced);
+            }
+            knowledge.extend(entries);
+        }
+        Err(e) => {
+            eprintln!("  ⚠ persona: {}", e);
+        }
+    }
+
+    // Sync all knowledge in a single transaction
+    graph.sync_knowledge(&knowledge)?;
+
     println!();
     println!(
         "✅ Synced {} projects, {} repos",
@@ -62,6 +111,12 @@ pub fn sync_from_registry() -> Result<()> {
         "   Graph: {} nodes, {} edges",
         graph.node_count()?,
         graph.edge_count()?
+    );
+    println!(
+        "   Knowledge: {} beliefs + {} values = {} total",
+        beliefs_synced,
+        values_synced,
+        graph.knowledge_count()?
     );
 
     Ok(())
@@ -85,6 +140,168 @@ fn detect_project_domains(project_root: &Path) -> Vec<String> {
     }
 
     domains
+}
+
+/// Collect beliefs from a project's patina.db
+///
+/// Opens the project's patina.db and reads the beliefs table.
+/// Returns empty vec with warning on missing db or missing table.
+fn collect_project_beliefs(project_name: &str, db_path: &Path) -> Result<Vec<KnowledgeEntry>> {
+    use rusqlite::Connection;
+
+    if !db_path.exists() {
+        anyhow::bail!("no patina.db (not yet scraped)");
+    }
+
+    let conn = Connection::open(db_path)?;
+
+    // Check if beliefs table exists (might be legacy schema)
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='beliefs'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+
+    if !table_exists {
+        anyhow::bail!("no beliefs table (legacy schema)");
+    }
+
+    let mut stmt = conn.prepare(
+        "SELECT id, statement, entrenchment, status, facets FROM beliefs WHERE status != 'archived'",
+    )?;
+
+    let entries: Vec<KnowledgeEntry> = stmt
+        .query_map([], |row| {
+            Ok(KnowledgeEntry {
+                id: row.get(0)?,
+                source: project_name.to_string(),
+                kind: "belief".to_string(),
+                statement: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                entrenchment: row.get::<_, Option<String>>(2)?.unwrap_or_else(|| "medium".to_string()),
+                status: row.get::<_, Option<String>>(3)?.unwrap_or_else(|| "active".to_string()),
+                facets: row.get::<_, Option<String>>(4)?.unwrap_or_else(|| "[]".to_string()),
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(entries)
+}
+
+/// Collect persona values from ~/.patina/layer/surface/beliefs/*.md
+///
+/// Parses YAML frontmatter for id, statement, entrenchment, status, facets.
+/// Required: id (from filename if missing) + statement (first non-empty line after heading).
+/// Malformed files: warn to stderr, skip, continue.
+fn collect_persona_values() -> Result<Vec<KnowledgeEntry>> {
+    let beliefs_dir = paths::user_layer::beliefs_dir();
+
+    if !beliefs_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries = Vec::new();
+
+    let dir_entries: Vec<_> = std::fs::read_dir(&beliefs_dir)?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.path()
+                .extension()
+                .map(|ext| ext == "md")
+                .unwrap_or(false)
+        })
+        .collect();
+
+    for dir_entry in dir_entries {
+        let path = dir_entry.path();
+        match parse_persona_value(&path) {
+            Ok(entry) => entries.push(entry),
+            Err(e) => {
+                eprintln!(
+                    "  ⚠ persona file {}: {}",
+                    path.file_name().unwrap_or_default().to_string_lossy(),
+                    e
+                );
+            }
+        }
+    }
+
+    Ok(entries)
+}
+
+/// Parse a single persona value markdown file
+fn parse_persona_value(path: &Path) -> Result<KnowledgeEntry> {
+    let content = std::fs::read_to_string(path)?;
+
+    // Split frontmatter from body
+    let (frontmatter, body) = if content.starts_with("---") {
+        if let Some(end) = content[3..].find("---") {
+            let fm = &content[3..3 + end];
+            let body = &content[3 + end + 3..];
+            (fm.trim(), body)
+        } else {
+            anyhow::bail!("unclosed frontmatter");
+        }
+    } else {
+        anyhow::bail!("no frontmatter");
+    };
+
+    // Parse frontmatter as YAML
+    let yaml: serde_yaml::Value = serde_yaml::from_str(frontmatter)?;
+
+    // Extract id (required — fall back to filename stem)
+    let id = yaml["id"]
+        .as_str()
+        .map(String::from)
+        .unwrap_or_else(|| {
+            path.file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        });
+
+    // Extract statement: first non-empty line after # heading in body
+    let statement = extract_statement(body).unwrap_or_else(|| id.clone());
+
+    // Defaults per SPEC: entrenchment=medium, status=active, facets=[]
+    let entrenchment = yaml["entrenchment"]
+        .as_str()
+        .unwrap_or("medium")
+        .to_string();
+    let status = yaml["status"].as_str().unwrap_or("active").to_string();
+    let facets = if let Some(seq) = yaml["facets"].as_sequence() {
+        let tags: Vec<String> = seq
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect();
+        serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string())
+    } else {
+        "[]".to_string()
+    };
+
+    Ok(KnowledgeEntry {
+        id,
+        source: "persona".to_string(),
+        kind: "value".to_string(),
+        statement,
+        entrenchment,
+        status,
+        facets,
+    })
+}
+
+/// Extract statement from markdown body: first non-empty, non-heading line
+fn extract_statement(body: &str) -> Option<String> {
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        return Some(trimmed.to_string());
+    }
+    None
 }
 
 /// Show graph state
