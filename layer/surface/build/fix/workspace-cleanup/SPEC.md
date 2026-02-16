@@ -193,12 +193,16 @@ grammar-typescript/ → grammars/typescript/
    - `print_list()` (lines 150, 170): Same path format change
 3. Update `CLAUDE.md` (line 110) and `README.md` (lines 233-237): Change
    `grammar-*/` → `grammars/` in project structure diagrams
-4. Fix stale doc comment in `grammars/cairo/src/parser.rs` (line 1): Change
-   `//! Cairo language parser — ported from patina-metal/src/cairo.rs.` to
-   `//! Cairo language parser — native Rust implementation using cairo-lang-parser.`
-   (The patina-metal reference is historically stale; the parser has been a
-   standalone grammar plugin since extraction. This also eliminates a false
-   positive in Phase D's `rg 'patina-metal'` verification.)
+4. Fix stale doc comments in `grammars/cairo/src/parser.rs`: Two lines
+   reference patina-metal:
+   - Line 1: `//! Cairo language parser — ported from patina-metal/src/cairo.rs.`
+     → `//! Cairo language parser — native Rust implementation using cairo-lang-parser.`
+   - Line 4: `//! Self-contained: no dependency on patina-metal or patina-ai.`
+     → delete the line (the "self-contained" qualifier is meaningless for a
+     standalone grammar plugin — there is nothing to be self-contained *from*)
+   (Both references are historically stale; the parser has been a standalone
+   grammar plugin since extraction. This eliminates false positives in
+   Phase D's `rg 'patina-metal'` verification.)
 5. Update vendored-file exclusions for the new grammar locations. After the
    move, 8 of 9 grammar crates contain vendored tree-sitter C sources at
    `grammars/<lang>/grammars/<lang>/src/` (grammar-cairo has no vendored C).
@@ -302,11 +306,11 @@ The SDK's `include` field uses relative paths. No release scripts or automation
    `rg '../patina-sdk' plugins/`
    (Every plugin Cargo.toml should now say `path = "../sdk"`, not `"../patina-sdk"`.)
 3. Confirm symlinks: `ls -la plugins/*/wit` — should show `../../wit`.
-4. Confirm packaging still works: `cargo package -p patina-sdk`.
-   (`cargo publish --dry-run` requires a clean working tree and would fail
-   after uncommitted `git mv` operations. `cargo package` validates the same
-   packaging logic — manifest, include/exclude, dependency resolution — without
-   the clean-tree requirement.)
+4. Confirm SDK crate still resolves after the move: `cargo check -p patina-sdk`.
+   (`cargo publish --dry-run` and `cargo package` both refuse dirty working
+   trees. `cargo check` validates dependency resolution, manifest parsing, and
+   compilation without that constraint. Full publish validation happens via
+   `cargo publish -p patina-sdk --dry-run` after the phase is committed.)
 
 **Root:** 18 → 15 dirs.
 
