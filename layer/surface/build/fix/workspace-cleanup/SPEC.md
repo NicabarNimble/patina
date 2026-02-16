@@ -232,18 +232,20 @@ grammar-typescript/ → grammars/typescript/
 **Verification:**
 1. Build, test, pre-push:
    `cargo build --release && cargo test --workspace && ./resources/git/pre-push-checks.sh`
-2. Exercise `find_source_root()` and `install()` end-to-end:
+2. Build both grammar plugin archetypes from their new locations:
+   - Tree-sitter + cc: `cd grammars/rust && cargo build --target wasm32-wasip2`
+   - Pure Rust parser: `cd grammars/cairo && cargo build --target wasm32-wasip2`
+     (grammar-cairo is the only non-tree-sitter implementation and the likeliest
+     place for path-sensitive assumptions.)
+3. Exercise `find_source_root()` and `install()` end-to-end (must run AFTER
+   step 2 — `setup grammars --list` reports "missing" when WASM artifacts
+   don't exist, which is indistinguishable from find_source_root() failure):
    ```bash
    cargo run --release -- setup grammars --list
    ```
    Every grammar should show "available" or "installed" with a source path
    under `grammars/`. If any show "missing", `find_source_root()` didn't
    find the new directory layout.
-3. Build both grammar plugin archetypes from their new locations:
-   - Tree-sitter + cc: `cd grammars/rust && cargo build --target wasm32-wasip2`
-   - Pure Rust parser: `cd grammars/cairo && cargo build --target wasm32-wasip2`
-     (grammar-cairo is the only non-tree-sitter implementation and the likeliest
-     place for path-sensitive assumptions.)
 
 **Root:** 26 → 18 dirs. 9 grammar dirs consolidated into 1.
 
@@ -373,6 +375,22 @@ No other source changes needed — the registration macros, traits, and types
 have identical signatures. The internal macro paths differ
 (`$crate::pipeline::__register_pipeline` vs `$crate::__register_pipeline`)
 but this is transparent to callers.
+
+**Regenerate fixture lockfiles.** Each fixture has its own `Cargo.lock`
+(~21KB each) pinning the old `patina-pipeline-api` / `patina-task-api`
+path deps. Editing `Cargo.toml` alone doesn't update the lockfile —
+cargo will try to resolve the deleted crates and fail. Delete and
+regenerate:
+```bash
+for fixture in tests/echo-pipeline tests/panic-pipeline tests/hello-task; do
+  rm "$fixture/Cargo.lock"
+  (cd "$fixture" && cargo generate-lockfile)
+done
+```
+(`cargo generate-lockfile` creates a fresh lockfile from the current
+`Cargo.toml` without building. The fixtures are standalone WASM crates
+with `wasm32-wasip2` target, so `cargo build` would need the WASM
+toolchain; `generate-lockfile` avoids that requirement.)
 
 **Step 2: Update pre-push-checks.sh**
 
