@@ -230,11 +230,9 @@ patina/
 │   ├── adapters/               # LLM adapters (Claude, Gemini, OpenCode)
 │   └── ...                     # db, forge, git, models, scanner, workspace
 ├── grammars/                   # Grammar WASM plugins (9 languages)
-├── patina-plugin-api/          # Guest-side WASM bindings
-├── patina-command-api/         # Command world guest API
-├── patina-doctor/              # Doctor as WASM plugin
-├── patina-plugin-models/       # Models WASM plugin
-├── patina-plugin-repos/        # Repos WASM plugin
+├── plugins/                    # Workspace plugin crates (sdk, doctor, models, repos)
+├── patina-plugin-api/          # Guest-side WASM bindings (deprecated)
+├── patina-command-api/         # Command world guest API (deprecated)
 ├── layer/                      # Pattern storage (Git as memory)
 │   ├── core/                   # Eternal principles + core beliefs
 │   ├── surface/                # Active specs, architecture docs
