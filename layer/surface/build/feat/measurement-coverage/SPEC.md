@@ -172,6 +172,69 @@ checks. Report composes from existing query tools.
 4. **No plugin measurement API** — plugins can't report metrics to the system
 5. **No consumer-specific views** — one output for everyone
 
+## Reference Pattern: Belief Audit
+
+The believe verb's measurement stack — built across E4 (use/truth metrics), E4.6a
+(grounding), and [[belief-truthfulness]] (staleness, health, drift, contradiction) —
+already implements the measurement system pattern that this spec generalizes to all
+five verbs. It is the reference implementation.
+
+### The Pattern
+
+```
+producer        →  storage         →  system view      →  detail view
+─────────          ───────            ───────────         ───────────
+patina scrape   →  beliefs table   →  patina measure   →  patina belief audit
+(computes)         (materialized)     (verb summary)      (per-belief drill-down)
+```
+
+Belief audit demonstrates every layer of the measurement system:
+
+| Layer | Belief Audit Implementation | Code |
+|-------|---------------------------|------|
+| **Metrics** | health_score, last_activity, verification_drifted, contested_by | `src/commands/belief/mod.rs:57-80` |
+| **Thresholds** | health < 0.4 → low-health, last_activity > stale_days → stale | `src/commands/belief/mod.rs:112-148` |
+| **Warnings** | health_warnings() returns actionable flags per belief | `src/commands/belief/mod.rs:112-148` |
+| **Summary stats** | stale count, median age, floating count, warning breakdown | `src/commands/belief/mod.rs:429-555` |
+| **Filters** | --stale, --warnings-only, --sort health — consumer drill-down | `src/commands/belief/mod.rs:151-153` |
+| **Storage** | beliefs table (materialized view from scrape) | `src/commands/scrape/beliefs/mod.rs` |
+
+### What Each Verb Needs
+
+Every verb needs this same stack. Belief audit proves the pattern; the measurement
+system generalizes it:
+
+| Layer | Believe (exists) | Search (partial) | Capture (gap) | Index (gap) | Evolve (gap) |
+|-------|-----------------|-----------------|--------------|------------|-------------|
+| **Producer** | scrape | eval, bench | scrape | oxidize | session lifecycle |
+| **Storage** | beliefs table | stdout (lost) | none | none | none |
+| **System view** | (new: measure) | (new: measure) | (new: measure) | (new: measure) | (new: measure) |
+| **Detail view** | belief audit | eval output | (future) | (future) | (future) |
+| **Metrics** | 8+ per belief | 12+ per run | 0 | 0 | 0 |
+| **Thresholds** | health < 0.4, stale_days | D1 budget 5pp | (undefined) | (undefined) | (undefined) |
+| **Warnings** | 10 warning types | PASS/FAIL only | none | none | none |
+
+The critical gap is visible: **search has metrics but no storage**, and the other
+three verbs have **no metrics at all**. Belief audit's progression from zero to
+full measurement stack (across 4 specs over 3 weeks) is the path each verb follows.
+
+### Three-Level View
+
+The measurement system creates a three-level hierarchy. Belief audit already fills
+the bottom two levels for the believe verb:
+
+```
+patina measure              ← system view (all 5 verbs, one line each)
+  └─ patina measure --verb  ← verb detail (one verb, summary stats + history)
+       └─ verb-specific cmd ← item detail (per-belief, per-query, per-file)
+```
+
+For believe, the item-detail level is `patina belief audit`. For search, it's
+`patina eval`. For capture/index/evolve, the item-detail commands don't exist yet
+and are out of scope for this spec — but the measurement system's verb-detail level
+(`patina measure --verb capture`) will show whatever metrics the producers emit,
+even before dedicated detail commands exist.
+
 ## Design: The Measurement System
 
 ### Core Idea
@@ -556,11 +619,15 @@ No verb has fewer than 3 metrics.
 
 ## Relationship to Existing Specs
 
-- **[[belief-truthfulness]]** (complete) — Phase A/B/C added staleness, health scores,
-  and contradiction detection to the believe verb. This spec composes those metrics
-  into the measurement system alongside all other verbs.
+- **[[belief-truthfulness]]** (complete) — The reference implementation. Built the
+  full measurement stack for the believe verb: metrics → thresholds → warnings →
+  summaries → drill-down. This spec generalizes that pattern to all five verbs.
+  Belief audit's summary statistics (`mod.rs:429-555`) feed directly into
+  `patina measure`'s believe-verb section — same data, system-level view.
 - **[[cross-project-beliefs]]** (mother-v2 Phase 2) — Cross-project belief index will
-  need measurement: federation health, cross-project search quality.
+  need measurement: federation health, cross-project search quality. The measurement
+  event schema supports this — `measure.believe` events from multiple projects can
+  be compared once mother-v2 enables cross-project queries.
 - **[[patina-identity]]** — `patina measure` is protocol tooling. It uses the protocol
   (reads eventlog, reads beliefs) but isn't the protocol itself. Extraction path:
   command plugin once formats stabilize.
